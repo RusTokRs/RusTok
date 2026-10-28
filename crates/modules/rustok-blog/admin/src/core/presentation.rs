@@ -16,6 +16,9 @@ pub struct BlogPostAdminTableRowViewModel {
     pub is_busy: bool,
     pub is_published: bool,
     pub is_archived: bool,
+    pub is_pinned: bool,
+    pub show_pin_action: bool,
+    pub next_pin_state: bool,
     pub next_publish_state: bool,
     pub show_publish_action: bool,
     pub show_archive_action: bool,
@@ -54,6 +57,9 @@ pub fn blog_post_admin_table_row_view(
     let show_publish_action = should_show_publish_action(is_archived);
     let show_archive_action = should_show_archive_action(is_published);
     let show_restore_action = should_show_restore_action(is_archived);
+    // Pinned posts may later be archived; unpin is permitted for every status.
+    let show_pin_action = is_published || post.is_pinned;
+    let next_pin_state = !post.is_pinned;
 
     BlogPostAdminTableRowViewModel {
         post_id,
@@ -66,6 +72,9 @@ pub fn blog_post_admin_table_row_view(
         is_busy,
         is_published,
         is_archived,
+        is_pinned: post.is_pinned,
+        show_pin_action,
+        next_pin_state,
         next_publish_state: next_publish_state(is_published),
         show_publish_action,
         show_archive_action,
@@ -607,6 +616,23 @@ pub struct BlogPostStatusCommand {
     pub operation: BlogPostStatusOperation,
     pub locale: Option<String>,
     pub busy_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostPinCommand {
+    pub post_id: String,
+    pub pin: bool,
+    pub locale: Option<String>,
+    pub busy_key: String,
+}
+
+pub fn prepare_blog_post_pin_command(post_id: String, pin: bool, post_locale: &str) -> BlogPostPinCommand {
+    BlogPostPinCommand {
+        busy_key: busy_key_for_pin(&post_id),
+        post_id,
+        pin,
+        locale: locale_arg(post_locale),
+    }
 }
 
 pub fn prepare_blog_post_status_command(

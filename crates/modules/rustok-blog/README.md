@@ -73,6 +73,13 @@ Run both `npm run verify:module-source-layout` and
   event bus.
 - Publish module-owned Leptos admin/storefront packages for installable UI
   surfaces.
+- On both Next and Leptos storefronts, a nonempty `?q=` selects the Search
+  owner's published Blog corpus rather than substring-filtering a Blog feed
+  page. `category` UUID and exact localized/canonical `tag` are applied in
+  Search SQL before its nine-result relevance/offset pagination; `?page=` is
+  consistent across frameworks. With no query, Blog retains its own
+  pinned-post keyset cursor. The indexed Blog document is an eventual read
+  model and the live Blog Search audience port rechecks publication/channel.
 - Keep Blog configuration limited to settings that have a canonical runtime owner;
   unused manifest-only settings are not declared.
 - Publish separate typed RBAC resources: `blog_posts:*`,
@@ -120,9 +127,24 @@ copy must use the canonical Taxonomy owner contract.
 - Routes comment reads, create/update/delete, and moderation through the neutral
   `CommentsThreadPort` contract from `rustok-comments-api`; Blog does not import
   or call `CommentsService` directly.
+- A generic `comments:create` grant never permits comments on drafts, archived
+  or channel-hidden posts or bypasses the Blog comments mode: public REST and
+  GraphQL writes apply the Blog publication/channel/policy gate. The separate
+  owner create command requires `comments:moderate`, and both flows recheck
+  the target after the external owner write; if it disappeared, they issue an
+  idempotent compensating delete.
+- A generic `comments:list` grant serves only Comments' approved public
+  projection after rechecking Blog mode and channel visibility; the full
+  pending/spam/trash queue requires `comments:moderate`. Direct comment
+  details are available to a moderator or to the comment's own author;
+  other readers see only approved comments on currently public posts.
 - The static `blog -> comments` lifecycle edge is removed. Blog owns comment-surface
   policy; Comments owns threads, bodies, moderation, and retention. Provider absence
   fails comment operations closed while Blog publication serving remains available.
+  Public comment reads revalidate post/channel visibility and the current Blog
+  discussion mode after the Comments owner response. Cached approved-comment
+  snapshots are never returned after the discussion becomes disabled, even if
+  the mode changes during an upstream timeout.
 - The projected `comment_count` on a post counts **approved comments only** — the
   number a public reader can actually see. Creation is moderation-pending and does
   not move the counter; approval moves it exactly once; moving a comment to
@@ -155,8 +177,21 @@ copy must use the canonical Taxonomy owner contract.
   manifest-declared Axum router mount.
 - Used by `apps/admin` and `apps/storefront` through manifest-driven Leptos
   package composition.
+- Search projection is a separate, asynchronously updated read model:
+  `BlogSearchProjectionSource` emits only published, timestamped post
+  translations with title, full article body, tags, category, author and
+  `facets.category_id`; Search owns storage and PostgreSQL ranking. The host
+  declares Blog as a **gated** Search audience. Blog authorizes each bounded
+  candidate batch against the current tenant, post status, post-channel
+  allowlist and Channel's active Blog-module binding rather than trusting the
+  potentially stale search payload. Channel/tenant module disable and
+  publication changes therefore hide results before the index catches up.
 - Public Blog reads honor channel module bindings and typed post visibility
-  allowlists; authenticated/admin flows bypass the public channel gate.
+  allowlists. **Authentication alone does not bypass** that gate: only a
+  tenant-wide editor may read posts independently of storefront channels.
+  REST and GraphQL authenticated post lists apply public channel filtering in
+  the owner query before cursor/limit calculation for readers without editor
+  authority; direct unscoped public reads see globally visible posts only.
 - Post adapters validate `blog_posts:*`; category adapters validate only
   `blog_categories:*`. Catalog `categories:*` and `blog_posts:*` do not
   authorize Blog Category operations.
@@ -201,18 +236,22 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   host owns the poll loop and the deployment stop signal: `blog_scheduled_publish`,
   `blog_preview_token_cleanup` and `blog_route_reconciliation`. A deployment that does not
   run the host's module-work scheduler in `full`/`worker` mode gets no scheduled publishing.
-- Every work item is tenant-scoped. Discovery is a read-only hint (the tenant with the
-  earliest due schedule) and the owner command re-checks the due predicate through the
-  post-version CAS, so one tenant's backlog cannot starve another and a stale hint cannot
-  publish the wrong post.
-- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes the drafts of one
-  tenant whose `scheduled_at` has passed, oldest first, at most
-  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 per call. Each post runs the same
-  transition command as a manual publish in its own transaction: a post edited after the scan
-  fails the CAS and is skipped with a warning instead of being overwritten, and the next
-  scheduler iteration picks it up. The `BlogPostPublished` event is published in the same
-  transaction, under the system actor — which is why this command is never reachable from an
-  end-user transport.
+- Every work item is tenant-scoped. The first discovery chooses the oldest due
+  schedule; later local claims rotate over due tenant ids, even if an earlier
+  tenant has a permanently failing draft. This fairness cursor is an
+  in-memory scheduling hint, **not** durable retry state or a lease; other host
+  instances may claim the same tenant. The authoritative owner command scans
+  due drafts and uses post-version CAS to reject concurrent edits.
+- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes at most
+  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 **successful** due
+  drafts per call. Database reads are individually bounded and seek forward by
+  `(scheduled_at, id)`; a failing draft is logged, left due for repair/retry,
+  and does not hide healthy drafts behind the first fixed-size page. Because
+  failures do not count against the success budget, a run with many damaged
+  rows can inspect more than 200 candidates. Each post runs the same versioned
+  transition as manual publishing in its own transaction, with
+  `BlogPostPublished` atomically announced under the system actor. The owner
+  command is not reachable from an end-user transport.
 - `scheduled_at` is a draft-only intent on both write paths. On create, setting it together
   with `publish: true` is rejected; on update, a `Set` patch is refused unless the row is a
   draft, and a past timestamp is refused on both. Publishing clears the schedule it consumed,
@@ -243,8 +282,12 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   neither be born expired nor outlive 30 days; an out-of-range request is refused instead of being
   stored.
 - `get_post_by_token` resolves only an unexpired token whose tenant still has Blog enabled, and
-  loads the post through the draft-only preview accessor. A revoked, expired, foreign, or
-  module-disabled token reads as "not found" rather than as an error.
+  loads the post through the draft-only preview accessor. REST keeps its
+  deliberately unscoped bearer-token contract. GraphQL uses
+  `get_post_by_token_for_tenant`, which additionally restricts the lookup to the
+  current authenticated/request tenant, so a foreign tenant's token cannot
+  leak its draft through a different tenant's GraphQL endpoint. A revoked,
+  expired, foreign (in GraphQL), or module-disabled token reads as "not found".
 - `revoke_token` reports a missing or foreign token as `PreviewTokenNotFound`
   (`PREVIEW_TOKEN_NOT_FOUND`), never as a missing post.
 - A token authorizes a read of a draft only, so leaving the draft state revokes the post's

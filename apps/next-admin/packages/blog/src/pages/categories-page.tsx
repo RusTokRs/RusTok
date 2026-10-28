@@ -31,7 +31,7 @@ import {
 } from '@/shared/ui/shadcn/alert-dialog';
 
 import type { BlogCategory, GqlOpts } from '../api/categories';
-import { listBlogCategories, deleteBlogCategory } from '../api/categories';
+import { listAllBlogCategories, deleteBlogCategory } from '../api/categories';
 import { CategoryModal } from '../components/category-modal';
 
 interface CategoriesPageProps {
@@ -64,9 +64,9 @@ export default function CategoriesPage({
 
   const fetchCategories = () => {
     setLoading(true);
-    listBlogCategories({ locale: hostLocale }, gqlOpts)
+    listAllBlogCategories({ locale: hostLocale }, gqlOpts)
       .then((res) => {
-        setCategories(res.items);
+        setCategories(res);
       })
       .catch(() => {
         toast.error('Failed to load categories');
@@ -221,6 +221,7 @@ export default function CategoriesPage({
         open={modalOpen}
         onOpenChange={setModalOpen}
         category={editingCategory}
+        categories={categories}
         locale={hostLocale}
         gqlOpts={gqlOpts}
         onSuccess={fetchCategories}

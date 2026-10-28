@@ -11,9 +11,13 @@ use super::share::{BlogShareButtons, BlogStatusBadge};
 
 use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
-    BlogCommentsAvailability, BlogPostDetail, BlogPostListItem, StorefrontBlogData,
+    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList, BlogPostListItem,
+    StorefrontBlogData,
 };
+use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
+
+const BLOG_SEARCH_PAGE_SIZE: usize = 9;
 
 #[component]
 pub fn BlogView() -> impl IntoView {
@@ -21,6 +25,8 @@ pub fn BlogView() -> impl IntoView {
     let selected_locale = route_context.locale.clone();
     let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
+    let search_query = use_route_query_value("q");
+    let search_page_query = use_route_query_value("page");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
     let shell_view = core::build_storefront_shell_view_model(selected_locale.as_deref());
@@ -46,13 +52,50 @@ pub fn BlogView() -> impl IntoView {
                 .get()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
+            let q = search_query.get().map(|q| q.trim().to_owned())
+                .filter(|q| !q.is_empty());
+            let search_page = search_page_query.get()
+                .and_then(|value| value.parse::<usize>().ok())
+                .unwrap_or(1)
+                .clamp(1, 100);
+            if q.is_some() {
+                // The Blog keyset cursor belongs to the ordinary feed, not
+                // to a relevance-ranked Search page. An old postsCursor in
+                // a bookmarked URL must never prevent a valid FTS request.
+                fetch_request.posts_after = None;
+            }
             (
                 fetch_request,
                 comments_pagination::comments_page_from_query(comments_page_query.get()),
+                q,
+                search_page,
             )
         },
-        move |(request, comments_page)| async move {
-            transport::fetch_blog(request, comments_page).await
+        move |(request, comments_page, query, search_page)| async move {
+            let mut data = transport::fetch_blog(request.clone(), comments_page)
+                .await.map_err(|error| error.to_string())?;
+            let Some(query) = query else {
+                return Ok::<_, String>((data, None, search_page));
+            };
+            let mut filters = SearchPreviewFilters::default();
+            filters.entity_types.push("blog_post".to_owned());
+            filters.source_modules.push("blog".to_owned());
+            filters.statuses.push("published".to_owned());
+            if let Some(category_id) = request.category_id {
+                filters.category_ids.push(category_id);
+            }
+            let result = rustok_search_storefront::transport::fetch_search_page(
+                query,
+                request.locale,
+                None,
+                filters,
+                request.tag,
+                BLOG_SEARCH_PAGE_SIZE,
+                (search_page - 1) * BLOG_SEARCH_PAGE_SIZE,
+            ).await.map_err(|error| error.to_string())?;
+            let total = result.total;
+            data.posts = map_blog_search_results(result)?;
+            Ok((data, Some(total), search_page))
         },
     );
 
@@ -88,8 +131,8 @@ pub fn BlogView() -> impl IntoView {
                         );
                         Suspend::new(async move {
                             match posts_resource.await {
-                                Ok(data) => view! {
-                                    <BlogShowcase data comments_page />
+                                Ok((data, search_total, search_page)) => view! {
+                                    <BlogShowcase data comments_page search_total search_page />
                                 }
                                 .into_any(),
                                 Err(err) => view! {
@@ -108,11 +151,18 @@ pub fn BlogView() -> impl IntoView {
 }
 
 #[component]
-fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
+fn BlogShowcase(
+    data: StorefrontBlogData,
+    comments_page: u64,
+    search_total: Option<u64>,
+    search_page: usize,
+) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let posts_query_writer = use_route_query_writer();
     let first_page_writer = posts_query_writer.clone();
-    let next_page_writer = posts_query_writer;
+    let next_page_writer = posts_query_writer.clone();
+    let search_previous_writer = posts_query_writer.clone();
+    let search_next_writer = posts_query_writer;
     let posts_next_cursor = data.posts.next_cursor.clone();
     let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
     let first_page_label = t(
@@ -139,7 +189,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
             .or_insert_with(|| name.clone());
     }
 
-    let other_posts = if let Some(slug) = selected_post_slug.as_deref() {
+    let other_posts = if let Some(slug) = selected_post_slug.as_deref().filter(|_| search_total.is_none()) {
         data.posts
             .items
             .into_iter()
@@ -154,34 +204,32 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     let search_query = use_route_query_value("q");
     let tag_query = use_route_query_value("tag");
     let category_query = use_route_query_value("category");
-    let active_search = search_query.get();
-    let active_tag = tag_query.get();
-    let active_category = category_query.get();
+    let active_search = search_query.get().filter(|value| !value.trim().is_empty());
+    let active_tag = tag_query.get().filter(|value| !value.trim().is_empty());
+    let active_category = category_query.get().filter(|value| !value.trim().is_empty());
 
-    let other_posts = if let Some(q) = active_search
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        let q_lower = q.to_lowercase();
-        other_posts
-            .into_iter()
-            .filter(|p| {
-                p.title.to_lowercase().contains(&q_lower)
-                    || p.excerpt
-                        .as_deref()
-                        .map(|e| e.to_lowercase().contains(&q_lower))
-                        .unwrap_or(false)
-                    || p.tags.iter().any(|t| t.to_lowercase().contains(&q_lower))
-                    || p.category_name
-                        .as_deref()
-                        .map(|c| c.to_lowercase().contains(&q_lower))
-                        .unwrap_or(false)
-            })
-            .collect()
-    } else {
-        other_posts
-    };
+    let selected_slug = selected_post_slug.as_deref();
+    let remove_category_href = core::filter_query_href(
+        selected_slug, active_tag.as_deref(), None, active_search.as_deref(),
+    );
+    let remove_tag_href = core::filter_query_href(
+        selected_slug, None, active_category.as_deref(), active_search.as_deref(),
+    );
+    let remove_search_href = core::filter_query_href(
+        selected_slug, active_tag.as_deref(), active_category.as_deref(), None,
+    );
+    let clear_filters_href = core::filter_query_href(selected_slug, None, None, None);
+    let all_categories_href = remove_category_href.clone();
+    let tag_for_links = active_tag.clone();
+    let search_for_links = active_search.clone();
+    let slug_for_links = selected_post_slug.clone();
+    let tag_for_form = active_tag.clone();
+    let category_for_form = active_category.clone();
+    let slug_for_form = selected_post_slug.clone();
+
+    // Query results already passed full-text ranking, tenant/channel and
+    // exact category/tag filters *before* Search applied the page offset.
+    // Never locally filter the returned page again.
 
     let has_active_filter =
         active_tag.is_some() || active_category.is_some() || active_search.is_some();
@@ -194,22 +242,22 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 {active_category.as_ref().map(|cat| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
                         {format!("Category: {cat}")}
-                        <a href="?category=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_category_href.clone() class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
                 {active_tag.map(|tag| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("#{tag}")}
-                        <a href="?tag=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_tag_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
                 {active_search.as_ref().map(|q| view! {
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                         {format!("Search: \"{q}\"")}
-                        <a href="?q=" class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
+                        <a href=remove_search_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
                     </span>
                 })}
-                <a href="?category=&tag=&q=" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
+                <a href=clear_filters_href class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
                     {t(locale.as_deref(), "blog.filter.clear", "Clear all")}
                 </a>
             </div>
@@ -224,7 +272,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         view! {
             <div class="flex flex-wrap items-center gap-2 pt-1">
                 <a
-                    href="?category="
+                    href=all_categories_href
                     class=if is_all_active {
                         "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
                     } else {
@@ -238,7 +286,12 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     .map(|(cat_id, cat_name)| {
                         let is_active = active_category.as_deref() == Some(&cat_id)
                             || active_category.as_deref() == Some(&cat_name);
-                        let cat_link = format!("?category={}", cat_id);
+                        let cat_link = core::filter_query_href(
+                            slug_for_links.as_deref(),
+                            tag_for_links.as_deref(),
+                            Some(cat_id.as_str()),
+                            search_for_links.as_deref(),
+                        );
                         view! {
                             <a
                                 href=cat_link
@@ -264,6 +317,9 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
         <div class="space-y-6" id="top">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <form method="GET" class="relative max-w-md w-full">
+                    {slug_for_form.map(|slug| view! { <input type="hidden" name="slug" value=slug /> })}
+                    {tag_for_form.map(|tag| view! { <input type="hidden" name="tag" value=tag /> })}
+                    {category_for_form.map(|category| view! { <input type="hidden" name="category" value=category /> })}
                     <input
                         type="search"
                         name="q"
@@ -273,7 +329,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     />
                 </form>
                 <a
-                    href="/blog/feed.xml"
+                    href=core::feed_href(locale.as_deref())
                     target="_blank"
                     rel="noopener noreferrer"
                     class="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors shadow-sm"
@@ -327,7 +383,8 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                 }
                 .into_any()
             }}
-            {move || posts_cursor_query.get().filter(|value| !value.trim().is_empty()).map(|_| {
+            {move || (search_total.is_none()).then(|| ())
+                .and_then(|_| posts_cursor_query.get().filter(|value| !value.trim().is_empty())).map(|_| {
                 let writer = first_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
@@ -345,7 +402,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     </div>
                 }
             })}
-            {posts_next_cursor.map(|cursor| {
+            {posts_next_cursor.filter(|_| search_total.is_none()).map(|cursor| {
                 let writer = next_page_writer.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
@@ -364,8 +421,102 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
                     </div>
                 }
             })}
+            {search_total.map(|total| {
+                let has_previous = search_page > 1;
+                let has_next = (search_page as u64) * (BLOG_SEARCH_PAGE_SIZE as u64) < total;
+                let previous_writer = search_previous_writer.clone();
+                let next_writer = search_next_writer.clone();
+                view! {
+                    <nav aria-label="Blog search pages" class="mt-6 flex items-center justify-center gap-4">
+                        {has_previous.then(|| {
+                            let writer = previous_writer.clone();
+                            view! {
+                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
+                                    on:click=move |_| {
+                                        if search_page <= 2 {
+                                            writer.apply_query_intent(UiRouteQueryIntent::clear("page"));
+                                        } else {
+                                            writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                                "page", (search_page - 1).to_string(),
+                                            ));
+                                        }
+                                    }>
+                                    {t(locale.as_deref(), "blog.posts.previousPage", "Previous")}
+                                </button>
+                            }
+                        })}
+                        <span class="text-sm text-muted-foreground">
+                            {format!("Page {search_page} · {total} results")}
+                        </span>
+                        {has_next.then(|| {
+                            let writer = next_writer.clone();
+                            view! {
+                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
+                                    on:click=move |_| {
+                                        writer.apply_query_intent(UiRouteQueryIntent::replace(
+                                            "page", (search_page + 1).to_string(),
+                                        ));
+                                    }>
+                                    {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
+                                </button>
+                            }
+                        })}
+                    </nav>
+                }
+            })}
         </div>
     }
+}
+
+/// Convert Search's public projection into Blog's canonical presentation
+/// model without requerying/locally filtering a limited Blog page. An invalid
+/// owner projection is an error, never silently shown as zero matches.
+fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList, String> {
+    let mut items = Vec::with_capacity(result.items.len());
+    for item in result.items {
+        if item.source_module != "blog" || item.entity_type != "blog_post" {
+            return Err("Search returned an unrelated Blog result".to_owned());
+        }
+        let payload: serde_json::Value = serde_json::from_str(&item.payload)
+            .map_err(|_| "Search returned malformed Blog metadata".to_owned())?;
+        let get_string = |key: &str| payload.get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned);
+        let slug = get_string("slug")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Search result has no canonical Blog slug".to_owned())?;
+        let tags = payload.get("tags").and_then(serde_json::Value::as_array)
+            .map(|values| values.iter().filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                .collect::<Vec<_>>())
+            .unwrap_or_default();
+        let author_profile = match (get_string("author_id"), get_string("author_name")) {
+            (Some(user_id), Some(display_name)) if !display_name.trim().is_empty() => {
+                Some(BlogPostAuthorProfile {
+                    user_id,
+                    handle: String::new(),
+                    display_name,
+                    tags: Vec::new(),
+                    avatar_media_id: None,
+                })
+            }
+            _ => None,
+        };
+        items.push(BlogPostListItem {
+            id: item.id,
+            title: item.title,
+            effective_locale: item.locale.unwrap_or_else(|| "en".to_string()),
+            slug: Some(slug),
+            excerpt: get_string("excerpt"),
+            status: "published".to_string(),
+            published_at: get_string("published_at"),
+            tags,
+            featured_image_url: get_string("featured_image_url"),
+            author_profile,
+            category_id: get_string("category_id"),
+            category_name: get_string("category_name"),
+        });
+    }
+    Ok(BlogPostList { items, next_cursor: None })
 }
 
 #[component]
@@ -454,6 +605,10 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let category_id = post.category_id;
     let featured_image_url = post.featured_image_url;
     let share_slug = slug.clone();
+    let selected_tag_filter = use_route_query_value("tag").get();
+    let selected_category_filter = use_route_query_value("category").get();
+    let selected_search_filter = use_route_query_value("q").get();
+    let selected_slug_filter = slug.clone();
     let reading_minutes = core::calculate_reading_time(&content_plain_text);
     let reading_time_label = core::format_reading_time(reading_minutes, locale.as_deref());
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
@@ -516,18 +671,30 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 {category_name.map(|name| {
-                    let cat_link = if let Some(cat_id) = category_id {
-                        format!("?category={}", cat_id)
+                    let category_label = if let Some(cat_id) = category_id {
+                        view! {
+                            <a
+                                href=core::filter_query_href(
+                                    Some(selected_slug_filter.as_str()),
+                                    selected_tag_filter.as_deref(),
+                                    Some(&cat_id),
+                                    selected_search_filter.as_deref(),
+                                )
+                                class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
+                            >
+                                {name}
+                            </a>
+                        }.into_any()
                     } else {
-                        format!("?category={}", core::percent_encode(&name))
+                        // A display name is not a UUID accepted by the Blog owner.
+                        view! {
+                            <span class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal">
+                                {name}
+                            </span>
+                        }.into_any()
                     };
                     view! {
-                        <a
-                            href=cat_link
-                            class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
-                        >
-                            {name}
-                        </a>
+                        {category_label}
                         <span>{selected_post_header.meta.separator}</span>
                     }
                 })}
@@ -604,7 +771,12 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                             .items
                             .into_iter()
                             .map(|tag| {
-                                let tag_link = format!("?tag={}", core::percent_encode(&tag));
+                                let tag_link = core::filter_query_href(
+                                    Some(slug.as_str()),
+                                    Some(tag.as_str()),
+                                    selected_category_filter.as_deref(),
+                                    selected_search_filter.as_deref(),
+                                );
                                 view! {
                                     <a
                                         href=tag_link
@@ -668,6 +840,10 @@ fn PublishedPostsList(
         core::DEFAULT_ROUTE_SEGMENT,
     );
     let module_route_base = route_context.module_route_base(route_segment.as_str());
+    let list_slug_filter = use_route_query_value("slug").get();
+    let list_tag_filter = use_route_query_value("tag").get();
+    let list_category_filter = use_route_query_value("category").get();
+    let list_search_filter = use_route_query_value("q").get();
     let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
     let default_title = t(locale.as_deref(), "blog.list.title", "Published posts");
     let header_title = list_title.unwrap_or(default_title);
@@ -756,18 +932,26 @@ fn PublishedPostsList(
                                         unknown_label=unknown_status_label.clone()
                                     />
                                     {post.category_name.as_deref().map(|cat| {
-                                        let cat_link = if let Some(cat_id) = post.category_id {
-                                            format!("?category={}", cat_id)
+                                        if let Some(cat_id) = post.category_id.as_deref() {
+                                            view! {
+                                                <a
+                                                    href=core::filter_query_href(
+                                                        list_slug_filter.as_deref(),
+                                                        list_tag_filter.as_deref(),
+                                                        Some(cat_id),
+                                                        list_search_filter.as_deref(),
+                                                    )
+                                                    class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                                                >
+                                                    {cat.to_string()}
+                                                </a>
+                                            }.into_any()
                                         } else {
-                                            format!("?category={}", core::percent_encode(cat))
-                                        };
-                                        view! {
-                                            <a
-                                                href=cat_link
-                                                class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                                            >
-                                                {cat.to_string()}
-                                            </a>
+                                            view! {
+                                                <span class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                                                    {cat.to_string()}
+                                                </span>
+                                            }.into_any()
                                         }
                                     })}
                                 </div>
@@ -793,7 +977,12 @@ fn PublishedPostsList(
                                             {post.tags
                                                 .iter()
                                                 .map(|tag| {
-                                                    let tag_link = format!("?tag={}", core::percent_encode(tag));
+                                                    let tag_link = core::filter_query_href(
+                                                        list_slug_filter.as_deref(),
+                                                        Some(tag),
+                                                        list_category_filter.as_deref(),
+                                                        list_search_filter.as_deref(),
+                                                    );
                                                     view! {
                                                         <a
                                                             href=tag_link
@@ -825,4 +1014,50 @@ fn PublishedPostsList(
         </div>
     }
     .into_any()
+}
+
+#[cfg(test)]
+mod blog_search_mapping_tests {
+    use super::*;
+
+    #[test]
+    fn search_result_projection_keeps_cross_page_fulltext_metadata() {
+        let result = serde_json::from_value::<SearchPreviewPayload>(
+            serde_json::json!({
+                "queryLogId": null,
+                "presetKey": null,
+                "total": 51,
+                "tookMs": 3,
+                "engine": "postgres",
+                "rankingProfile": "balanced",
+                "facets": [],
+                "items": [{
+                    "id": "c293edb7-4f5b-432b-9011-096354ba8ba6",
+                    "entityType": "blog_post",
+                    "sourceModule": "blog",
+                    "title": "Article with searchable body",
+                    "snippet": "A matching word from the body",
+                    "score": 0.9,
+                    "locale": "ru",
+                    "url": "/modules/blog?slug=search-guide",
+                    "payload": serde_json::json!({
+                        "slug": "search-guide",
+                        "excerpt": "Excerpt",
+                        "category_id": "4c66bc80-d348-44a9-bce6-a43d74832adf",
+                        "category_name": "Tutorials",
+                        "featured_image_url": "/media/example.webp",
+                        "tags": ["rust", "search"],
+                        "published_at": "2026-10-28T13:00:00Z"
+                    }).to_string()
+                }]
+            }),
+        ).expect("Search GraphQL response must deserialize");
+        let page = map_blog_search_results(result).expect("Blog page projection");
+        assert!(page.next_cursor.is_none(), "Search uses offsets, not Blog cursors");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].slug.as_deref(), Some("search-guide"));
+        assert_eq!(page.items[0].effective_locale, "ru");
+        assert_eq!(page.items[0].tags, ["rust", "search"]);
+        assert_eq!(page.items[0].category_name.as_deref(), Some("Tutorials"));
+    }
 }

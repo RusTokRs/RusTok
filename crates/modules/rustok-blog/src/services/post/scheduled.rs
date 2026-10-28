@@ -10,24 +10,13 @@ use super::commands::apply_status_transition_in_tx;
 use super::*;
 
 impl PostService {
-    /// Publish the scheduled drafts of **one tenant** whose `scheduled_at` has passed.
+    /// Publish up to `limit` successful due drafts for **one tenant**.
     ///
-    /// The host scheduler drives this command through the `blog_scheduled_publish`
-    /// module-work registration (`src/services/scheduler.rs`) in host modes `full` and
-    /// `worker`, one tenant per work item, so the command is shaped to be called
-    /// repeatedly and safely:
-    ///
-    /// - the tenant is an explicit argument, so a scheduler iteration can never
-    ///   reach another tenant's rows;
-    /// - the batch is bounded by `limit` (`MAX_SCHEDULED_PUBLISH_BATCH`), oldest
-    ///   schedule first, so a backlog drains across bounded iterations;
-    /// - each post is published in its own transaction, and **any** per-post
-    ///   failure (a concurrent edit conflict, a storage invariant, a transient
-    ///   database error) skips that post instead of aborting the whole batch;
-    ///   the failing post keeps its due schedule and is retried on the next
-    ///   iteration, so one poisoned row cannot head-of-line block the tenant;
-    /// - the actor is the system actor, so it must not be reachable from a
-    ///   request path or an end-user transport.
+    /// Failed rows remain scheduled for retry, but do not use up the success
+    /// budget or trap later due drafts behind the first fixed-size page.
+    /// Walking by (scheduled_at, id) bounds each database read and keeps
+    /// forward progress even when the oldest rows cannot be published.
+    /// A run can inspect more than `limit` rows if there are failures.
     pub async fn publish_scheduled_posts(
         &self,
         tenant_id: Uuid,
@@ -35,95 +24,122 @@ impl PostService {
     ) -> BlogResult<Vec<Uuid>> {
         let limit = limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH);
         let now = chrono::Utc::now();
-
-        let due = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
-            .filter(blog_post::Column::ScheduledAt.is_not_null())
-            .filter(blog_post::Column::ScheduledAt.lte(now))
-            .order_by_asc(blog_post::Column::ScheduledAt)
-            .order_by_asc(blog_post::Column::Id)
-            .limit(u64::from(limit))
-            .all(&self.db)
-            .await
-            .map_err(BlogError::from)?;
-
         let mut published = Vec::new();
+        let mut after: Option<(chrono::DateTime<chrono::FixedOffset>, Uuid)> = None;
 
-        for post in due {
-            let txn = self.db.begin().await.map_err(BlogError::from)?;
+        loop {
+            let mut select = blog_post::Entity::find()
+                .filter(blog_post::Column::TenantId.eq(tenant_id))
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
+                .filter(blog_post::Column::ScheduledAt.is_not_null())
+                .filter(blog_post::Column::ScheduledAt.lte(now));
 
-            // Same transition logic as a manual publish: it carries the version CAS,
-            // so a post edited after the scan is skipped rather than overwritten.
-            if let Err(error) = apply_status_transition_in_tx(
-                &txn,
-                post.tenant_id,
-                post.id,
-                post.version,
-                BlogPostStatus::Published,
-                Some(post.published_at.map(Into::into).unwrap_or(now)),
-                None,
-            )
-            .await
-            {
-                // The batch is best-effort per post. Returning here would leave every
-                // remaining due post of the tenant unpublished behind one bad row
-                // (head-of-line blocking); the failed post keeps `scheduled_at`, so the
-                // next iteration retries it after the rest of the backlog drains.
-                match error {
-                    BlogError::Conflict(message) => tracing::warn!(
-                        tenant_id = %post.tenant_id,
-                        post_id = %post.id,
-                        error = %message,
-                        "Scheduled Blog post changed concurrently; leaving it for the next scheduler iteration"
-                    ),
-                    error => tracing::error!(
+            if let Some((scheduled_at, id)) = &after {
+                // A failed post is still due, so an offset-based retry would
+                // repeatedly fetch it and could also skip rows removed by
+                // successful publishes. Seek beyond the last *attempted* row.
+                select = select.filter(
+                    Condition::any()
+                        .add(blog_post::Column::ScheduledAt.gt(scheduled_at.to_owned()))
+                        .add(
+                            Condition::all()
+                                .add(blog_post::Column::ScheduledAt.eq(scheduled_at.to_owned()))
+                                .add(blog_post::Column::Id.gt(*id)),
+                        ),
+                );
+            }
+
+            let due = select
+                .order_by_asc(blog_post::Column::ScheduledAt)
+                .order_by_asc(blog_post::Column::Id)
+                .limit(u64::from(limit))
+                .all(&self.db)
+                .await
+                .map_err(BlogError::from)?;
+            if due.is_empty() {
+                break;
+            }
+            let full_page = due.len() == limit as usize;
+
+            for post in due {
+                let scheduled_at = post.scheduled_at.ok_or_else(|| {
+                    BlogError::invariant("Due Blog post has no scheduled_at timestamp")
+                })?;
+                after = Some((scheduled_at, post.id));
+                let txn = self.db.begin().await.map_err(BlogError::from)?;
+
+                // Same transition and version CAS as a manual publish.
+                if let Err(error) = apply_status_transition_in_tx(
+                    &txn,
+                    post.tenant_id,
+                    post.id,
+                    post.version,
+                    BlogPostStatus::Published,
+                    Some(post.published_at.map(Into::into).unwrap_or(now)),
+                    None,
+                )
+                .await
+                {
+                    match error {
+                        BlogError::Conflict(message) => tracing::warn!(
+                            tenant_id = %post.tenant_id,
+                            post_id = %post.id,
+                            error = %message,
+                            "Scheduled Blog post changed concurrently; leaving it for retry"
+                        ),
+                        error => tracing::error!(
+                            tenant_id = %post.tenant_id,
+                            post_id = %post.id,
+                            error = %error,
+                            "Scheduled Blog post could not be published; leaving it for retry"
+                        ),
+                    }
+                    drop(txn);
+                    continue;
+                }
+
+                // Status transition and outbox announcement commit atomically.
+                if let Err(error) = self
+                    .event_bus
+                    .publish_in_tx(
+                        &txn,
+                        post.tenant_id,
+                        None,
+                        DomainEvent::BlogPostPublished {
+                            post_id: post.id,
+                            author_id: Some(post.author_id),
+                        },
+                    )
+                    .await
+                {
+                    tracing::error!(
                         tenant_id = %post.tenant_id,
                         post_id = %post.id,
                         error = %error,
-                        "Scheduled Blog post could not be published; leaving it for the next scheduler iteration"
-                    ),
+                        "Scheduled Blog post announcement failed; leaving it for retry"
+                    );
+                    drop(txn);
+                    continue;
                 }
-                drop(txn);
-                continue;
+
+                if let Err(error) = txn.commit().await {
+                    tracing::error!(
+                        tenant_id = %post.tenant_id,
+                        post_id = %post.id,
+                        error = %error,
+                        "Scheduled Blog post commit failed; leaving it for retry"
+                    );
+                    continue;
+                }
+                published.push(post.id);
+                if published.len() == limit as usize {
+                    return Ok(published);
+                }
             }
 
-            // The status write and its announcement commit atomically: a rollback of
-            // the event rolls the status back too, so a post is never silently
-            // published without the event its consumers rely on.
-            if let Err(error) = self
-                .event_bus
-                .publish_in_tx(
-                    &txn,
-                    post.tenant_id,
-                    None, // System actor: this command is operational, never user-facing.
-                    DomainEvent::BlogPostPublished {
-                        post_id: post.id,
-                        author_id: Some(post.author_id),
-                    },
-                )
-                .await
-            {
-                tracing::error!(
-                    tenant_id = %post.tenant_id,
-                    post_id = %post.id,
-                    error = %error,
-                    "Scheduled Blog post could not be announced; leaving it for the next scheduler iteration"
-                );
-                drop(txn);
-                continue;
+            if !full_page {
+                break;
             }
-
-            if let Err(error) = txn.commit().await {
-                tracing::error!(
-                    tenant_id = %post.tenant_id,
-                    post_id = %post.id,
-                    error = %error,
-                    "Scheduled Blog post commit failed; leaving it for the next scheduler iteration"
-                );
-                continue;
-            }
-            published.push(post.id);
         }
 
         Ok(published)

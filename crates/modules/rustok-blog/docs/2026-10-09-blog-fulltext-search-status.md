@@ -112,3 +112,67 @@ via `canonical_search_result_url()` in `rustok-search::engine`.
 3. **Search analytics**: Track which blog searches are popular to improve content strategy
 
 These are convenience improvements, not gaps. The core search functionality is complete.
+
+## 2026-10-28 storefront FTS completion in PR #4658
+
+The Next and Leptos `/blog?q=` integrations now use the canonical
+`storefrontSearch` endpoint with `sourceModules=["blog"]`,
+`entityTypes=["blog_post"]`, the trusted tenant/channel, the current
+locale, category UUID and exact tag filter. The search engine applies all
+filters **before** ranking/offset/total computation. Each framework renders
+Blog cards from the public Blog Search projection payload instead of
+filtering an arbitrary page of `publicBlogPosts`. Both use nine-result
+search pages, preserve `q`, `category` and `tag` in the URL, and reset the
+page when filters change. Unsearched Blog feeds still use their own
+pinned-post keyset pagination; Search never reuses a Blog keyset cursor.
+
+The canonical Search contract now accepts a Unicode-aware `tag` filter
+and PostgreSQL checks `facets.tag_keys`. Blog supplies those exact keys
+from Taxonomy-owned canonical identifiers, localized slugs and names, so
+matching is not an incidental substring of a fetched card. The Next
+facade exposes `searchPublishedPosts`; Leptos consumes the existing
+`rustok-search-storefront` transport with bounded limit/offset.
+
+**Deployment:** prior Search documents lack both `facets.category_id`
+and `facets.tag_keys`. A Blog scope reindex is required when deploying
+this update. No reindex, test or build has been executed during this PR
+source-only pass.
+
+**Remaining constraints:** broad dynamically gated Blog corpus queries
+may hit Search's current 1,000-candidate scan guard. A future indexed
+visibility/revalidation optimization is needed for arbitrarily broad
+queries. The Search locale predicate uses the exact locale of a
+translation; per-post locale-fallback ranking requires a separate
+Search contract decision rather than mixing result pages locally.
+
+## 2026-10-28 audit clarification (implementation in PR #4658)
+
+The backend Search projection is owned by the canonical Search storage
+driver, with Blog supplying public documents and events. Earlier in the audit,
+Next and Leptos applied `q` only to a fetched `publicBlogPosts` page. The
+later storefront cutover described above corrects that limitation in this PR
+by using Search-ranked, server-filtered result pages.
+
+The audit found that Blog's category UUID existed in `payload.category_id`
+but Search's category filtering SQL reads `facets.category_id`. The facet
+was added for future projections; **existing documents require a Blog scope
+reindex** (the canonical `ReindexRequested(target_type="blog", target_id=None)`
+event) to gain it. Do not attempt a second projection writer or a direct
+mutation of Search tables from Blog.
+
+The host's former public Search corpus declaration for Blog skipped live
+Channel-module visibility. Blog is now registered as a gated
+`SearchAudiencePolicyPort` through host composition; its bulk eligibility
+lookup checks publication, tenant, post allowlist and Channel active/module
+binding against the Blog owner. Search and autocomplete approvals are keyed by
+`(source_module, document_id)` so independent modules with the same UUID do
+not share visibility. Public Blog projections remain absent for drafts and
+archived posts.
+
+The generic Search gated-audience scan currently has a **1,000 candidate
+limit** per request. Broad Blog searches may require narrower text/filters;
+this is a known performance/capability constraint, not infinite pagination.
+Search exposes category UUID filters and now an exact Blog-tag facet filter;
+the two are combined with full text in SQL before pagination.
+
+All regressions are added as source tests but have **not been executed**.

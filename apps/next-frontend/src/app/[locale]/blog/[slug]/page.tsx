@@ -54,22 +54,20 @@ export async function generateMetadata({
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
 
-  let post = null;
-  if (tenantId) {
-    try {
-      post = await fetchPublishedPost(
+  // Metadata must not mistake a failed owner read for a missing article.
+  // A retired slug resolves to the live post, whose current slug owns the
+  // canonical metadata route just as it does the permanent page redirect.
+  const post = tenantId
+    ? await fetchPublishedPost(
         storefrontGraphql,
         tenantId,
         tenantSlug,
         slug,
         locale
-      );
-    } catch {
-      post = null;
-    }
-  }
+      )
+    : null;
 
-  const path = `/blog/${slug}`;
+  const path = `/blog/${encodeURIComponent(post?.slug ?? slug)}`;
   const seoResolution = await resolveSeoPageContextForRoute({
     locale,
     route: path,
@@ -117,20 +115,17 @@ export default async function BlogPostPage({
   const rawCommentsPage = typeof query.commentsPage === "string" ? parseInt(query.commentsPage, 10) : 1;
   const commentsPage = Number.isFinite(rawCommentsPage) && rawCommentsPage > 0 ? rawCommentsPage : 1;
 
-  let post;
-  try {
-    post = await fetchPublishedPost(
-      storefrontGraphql,
-      tenantId,
-      tenantSlug,
-      slug,
-      locale,
-      commentsPage,
-      20
-    );
-  } catch {
-    notFound();
-  }
+  // A failed GraphQL request is not a missing article. Let the route error
+  // boundary report backend failure; only an actual null post is a 404.
+  const post = await fetchPublishedPost(
+    storefrontGraphql,
+    tenantId,
+    tenantSlug,
+    slug,
+    locale,
+    commentsPage,
+    20
+  );
 
   if (!post) {
     notFound();
@@ -315,6 +310,7 @@ export default async function BlogPostPage({
               <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
                 <Image
                   src={post.featuredImageUrl}
+                  unoptimized
                   alt={post.title}
                   fill
                   className="object-cover"
@@ -345,7 +341,7 @@ export default async function BlogPostPage({
               />
               <BlogShareButtons
                 title={post.title}
-                url={articleUrl}
+                url={`${getSiteUrl()}${articleUrl}`}
                 locale={locale}
               />
             </div>
@@ -393,7 +389,11 @@ export default async function BlogPostPage({
                   locale={locale}
                 />
 
-                {comments.total > 20 && (
+                {comments.availability !== 'DISABLED' &&
+                  (comments.availability === 'AVAILABLE' ||
+                    comments.availability === 'READ_ONLY' ||
+                    comments.cachedSnapshot) &&
+                  comments.total > 20 && (
                   <CommentsPagination
                     currentPage={commentsPage}
                     totalItems={comments.total}

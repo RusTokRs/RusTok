@@ -97,18 +97,26 @@ fn work_item_tenant(item: &ModuleWorkItem, expected_slug: &str) -> Result<Uuid, 
 
 /// Blog-owned bridge between scheduled drafts and the generic scheduler.
 ///
-/// One claim serves one tenant: the tenant owning the earliest due schedule is
-/// drained up to [`MAX_SCHEDULED_PUBLISH_BATCH`] posts. Published posts leave the due
-/// set, so each iteration advances every tenant's earliest schedule in turn.
+/// Each claim serves one tenant. The first claim selects the oldest due schedule;
+/// subsequent claims rotate over due tenant ids, so a tenant with an
+/// unpublishable draft does not monopolize every later worker iteration.
 #[derive(Clone)]
 pub struct BlogScheduledPublishWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only: due drafts remain the durable source of work. Share
+    // the cursor across adapter clones and serialize local claims; another host
+    // can still claim the same tenant, which the owner version CAS tolerates.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogScheduledPublishWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     /// Publishes this worker through the generic scheduler. The host only composes
@@ -121,20 +129,51 @@ impl BlogScheduledPublishWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant with the earliest due schedule. Read-only: the CAS in the owner command
-    /// re-checks the due predicate before publishing anything.
+    /// Rotate due tenants instead of re-claiming the earliest poisoned draft
+    /// forever. The cursor does not replace the durable due-post predicate,
+    /// and an instance restart simply begins a new fair cycle.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
-        blog_post::Entity::find()
-            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
-            .filter(blog_post::Column::ScheduledAt.is_not_null())
-            .filter(blog_post::Column::ScheduledAt.lte(now))
-            .order_by_asc(blog_post::Column::ScheduledAt)
-            .order_by_asc(blog_post::Column::Id)
-            .one(&self.database)
-            .await
-            .map(|post| post.map(|post| post.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        let due_posts = || {
+            blog_post::Entity::find()
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
+                .filter(blog_post::Column::ScheduledAt.is_not_null())
+                .filter(blog_post::Column::ScheduledAt.lte(now.to_owned()))
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = due_posts()
+                .filter(blog_post::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_post::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(post) => Some(post.tenant_id),
+                None => due_posts()
+                    .order_by_asc(blog_post::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|post| post.map(|post| post.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            due_posts()
+                .order_by_asc(blog_post::Column::ScheduledAt)
+                .order_by_asc(blog_post::Column::Id)
+                .one(&self.database)
+                .await
+                .map(|post| post.map(|post| post.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 }
 
@@ -698,6 +737,78 @@ mod scheduled_publish_worker_tests {
                 .expect("claim should not fail")
                 .is_none(),
             "a drained queue claims nothing"
+        );
+    }
+
+    /// Tenant work remains claimable even when an older tenant never makes
+    /// progress. Claims are hints, so the first item is deliberately not
+    /// executed before asking for the second one.
+    #[tokio::test]
+    async fn scheduled_claim_rotates_tenants_when_the_oldest_stays_due() {
+        let (db, events) = setup_hardening_schema().await;
+        let oldest_tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let oldest = create_draft_post(&db, &events, oldest_tenant, "oldest-stuck").await;
+        let other = create_draft_post(&db, &events, other_tenant, "other-still-due").await;
+        make_post_due(&db, oldest, 3).await;
+        make_post_due(&db, other, 1).await;
+
+        let adapter = adapter(&db, &events);
+        let first = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("claim must succeed")
+            .expect("oldest tenant has work");
+        assert_eq!(first.tenant_id, oldest_tenant);
+
+        let second = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("second claim must succeed")
+            .expect("second tenant must not be starved");
+        assert_eq!(second.tenant_id, other_tenant);
+
+        let third = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("third claim must succeed")
+            .expect("cycle must wrap back to remaining due work");
+        assert_eq!(third.tenant_id, oldest_tenant);
+    }
+
+    /// The oldest due draft can be permanently invalid. The command must walk
+    /// beyond the first fixed-size page rather than retrying that row forever.
+    #[tokio::test]
+    async fn failed_due_draft_does_not_starve_a_later_healthy_draft() {
+        let (db, events) = setup_hardening_schema().await;
+        let tenant_id = Uuid::new_v4();
+        let invalid = create_draft_post(&db, &events, tenant_id, "poison-due").await;
+        let healthy = create_draft_post(&db, &events, tenant_id, "healthy-due").await;
+        make_post_due(&db, invalid, 3).await;
+        make_post_due(&db, healthy, 1).await;
+
+        // A legacy/corrupt exhausted revision cannot be published: the owner
+        // transition uses checked arithmetic, and must not wrap the version.
+        blog_post::Entity::update_many()
+            .col_expr(blog_post::Column::Version, Expr::value(i32::MAX))
+            .filter(blog_post::Column::Id.eq(invalid))
+            .exec(&db)
+            .await
+            .expect("invalid post revision fixture should be stored");
+
+        let published = PostService::new(db.clone(), events.clone())
+            .publish_scheduled_posts(tenant_id, 1)
+            .await
+            .expect("a failed row must not abort the batch");
+        assert_eq!(published, vec![healthy]);
+        assert_eq!(
+            post_status(&db, healthy).await,
+            status_to_storage(BlogPostStatus::Published)
+        );
+        assert_eq!(
+            post_status(&db, invalid).await,
+            status_to_storage(BlogPostStatus::Draft),
+            "the poisoned post stays due for explicit repair/retry"
         );
     }
 

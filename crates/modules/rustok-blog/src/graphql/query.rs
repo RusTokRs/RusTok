@@ -50,12 +50,13 @@ impl BlogQuery {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post = match service
-            .get_post_with_locale_fallback(
+            .get_post_with_locale_fallback_on_channel(
                 tenant_id,
                 request_security_context(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
             )
             .await
         {
@@ -182,7 +183,7 @@ impl BlogQuery {
         let service = PostService::new(db.clone(), event_bus.clone());
         let list_started_at = Instant::now();
         let result = service
-            .list_posts_with_locale_fallback(
+            .list_posts_with_locale_fallback_on_channel(
                 tenant_id,
                 request_security_context(ctx),
                 crate::PostListQuery {
@@ -199,6 +200,7 @@ impl BlogQuery {
                     sort_order: Some(filter.sort_order.map(Into::into).unwrap_or_default()),
                 },
                 Some(tenant.default_locale.as_str()),
+                public_channel_slug(ctx).as_deref(),
             )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
@@ -432,9 +434,15 @@ impl BlogQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
+        let tenant_id = query_tenant_id(ctx, tenant, None)?;
         let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
         let post = service
-            .get_post_by_token(&token, &locale, Some(tenant.default_locale.as_str()))
+            .get_post_by_token_for_tenant(
+                tenant_id,
+                &token,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 

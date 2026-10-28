@@ -289,6 +289,23 @@ pub async fn resolve_audience_eligible_candidates(
     request_context: Option<RequestContext>,
     transport: StorefrontSearchTransport,
 ) -> Result<HashSet<Uuid>, PortError> {
+    Ok(resolve_audience_eligible_candidates_by_module(
+        registry, tenant_id, locale, candidates, auth, request_context, transport,
+    ).await?.into_iter().map(|(_, id)| id).collect())
+}
+
+/// Preserves each owner's identity during candidate authorization.
+/// IDs by themselves are insufficient: two gated modules may legitimately
+/// project documents with the same UUID, but only one owner may approve it.
+pub async fn resolve_audience_eligible_candidates_by_module(
+    registry: &SearchAudienceRegistry,
+    tenant_id: Uuid,
+    locale: &str,
+    candidates: &[SearchCandidateDescriptor],
+    auth: Option<AuthContext>,
+    request_context: Option<RequestContext>,
+    transport: StorefrontSearchTransport,
+) -> Result<HashSet<(String, Uuid)>, PortError> {
     if candidates.is_empty() {
         return Ok(HashSet::new());
     }
@@ -331,7 +348,7 @@ pub async fn resolve_audience_eligible_candidates(
                 allowed_ids.extend(
                     module_candidates
                         .iter()
-                        .map(|candidate| candidate.document_id),
+                        .map(|candidate| (source_module.to_string(), candidate.document_id)),
                 );
             }
             Some(SearchAudienceClass::Gated) => {
@@ -406,7 +423,7 @@ pub async fn resolve_audience_eligible_candidates(
                                 ),
                             ));
                         }
-                        allowed_ids.insert(allowed_id);
+                        allowed_ids.insert((source_module.to_string(), allowed_id));
                     }
                 }
             }
@@ -713,7 +730,7 @@ async fn authorize_gated_candidates(
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
     transport: StorefrontSearchTransport,
-) -> CoreResult<Vec<Uuid>> {
+) -> CoreResult<Vec<(String, Uuid)>> {
     let mut scan_query = search_query.clone();
     scan_query.source_modules = gated_scope.to_vec();
     scan_query.offset = 0;
@@ -795,7 +812,7 @@ async fn authorize_gated_candidates(
         .filter(|locale| !locale.is_empty())
         .unwrap_or("en");
 
-    let allowed_ids = resolve_audience_eligible_candidates(
+    let allowed_ids = resolve_audience_eligible_candidates_by_module(
         registry,
         tenant_id,
         effective_locale,
@@ -814,24 +831,26 @@ async fn authorize_gated_candidates(
 
 fn unique_candidate_descriptors(
     candidates: &[SearchCandidateDescriptor],
-) -> Result<BTreeMap<Uuid, SearchCandidateDescriptor>, PortError> {
-    let mut unique: BTreeMap<Uuid, SearchCandidateDescriptor> = BTreeMap::new();
+) -> Result<BTreeMap<(String, Uuid), SearchCandidateDescriptor>, PortError> {
+    // UUID uniqueness is owned by each module, not by the entire platform.
+    // Two modules with an imported/shared entity UUID remain independently
+    // eligible; one module + UUID with conflicting entity types is corrupted.
+    let mut unique: BTreeMap<(String, Uuid), SearchCandidateDescriptor> = BTreeMap::new();
     for candidate in candidates {
-        if let Some(existing) = unique.get(&candidate.document_id) {
-            if existing.source_module != candidate.source_module
-                || existing.entity_type != candidate.entity_type
-            {
+        let key = (candidate.source_module.clone(), candidate.document_id);
+        if let Some(existing) = unique.get(&key) {
+            if existing.entity_type != candidate.entity_type {
                 return Err(PortError::invariant_violation(
                     "search.audience.candidate_conflict",
                     format!(
-                        "Search audience candidate {} was reported with conflicting source module or entity type",
-                        candidate.document_id
+                        "Search audience candidate {} from module {} has conflicting entity types",
+                        candidate.document_id, candidate.source_module
                     ),
                 ));
             }
             continue;
         }
-        unique.insert(candidate.document_id, candidate.clone());
+        unique.insert(key, candidate.clone());
     }
     Ok(unique)
 }
@@ -961,6 +980,40 @@ mod tests {
         assert!(allowed.contains(&allowed_event));
         assert!(!allowed.contains(&denied_event));
         assert!(allowed.contains(&blog_post)); // Blog is declared public
+    }
+
+    #[tokio::test]
+    async fn identical_uuids_from_two_modules_never_share_an_audience_grant() {
+        let shared_id = Uuid::new_v4();
+        let mut registry = public_blog_registry();
+        registry.register(MockEventsPolicy { allowed_id: Uuid::new_v4() })
+            .expect("gated module registered");
+
+        let allowed = resolve_audience_eligible_candidates_by_module(
+            &registry,
+            Uuid::new_v4(),
+            "en",
+            &[
+                SearchCandidateDescriptor::new(shared_id, "blog", "blog_post"),
+                SearchCandidateDescriptor::new(shared_id, "events", "event_announcement"),
+            ],
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        ).await.expect("independent modules may use the same UUID");
+
+        assert_eq!(
+            allowed,
+            HashSet::from([("blog".to_string(), shared_id)]),
+            "the denied Events document must not inherit the Blog approval"
+        );
+        assert!(
+            unique_candidate_descriptors(&[
+                SearchCandidateDescriptor::new(shared_id, "blog", "blog_post"),
+                SearchCandidateDescriptor::new(shared_id, "blog", "other_entity"),
+            ]).is_err(),
+            "conflicting types inside a single owner remain a hard failure"
+        );
     }
 
     #[tokio::test]
@@ -1537,6 +1590,7 @@ mod tests {
             source_modules,
             statuses: Vec::new(),
             category_ids: Vec::new(),
+            tag: None,
             attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,

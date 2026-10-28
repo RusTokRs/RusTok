@@ -106,6 +106,7 @@ struct SearchDocumentSnapshot {
     slug: Option<String>,
     locale: String,
     body: String,
+    facets: JsonValue,
     payload: JsonValue,
 }
 
@@ -297,6 +298,10 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
     // The article body, not the excerpt, is what full-text search can see.
     assert_eq!(published.body, "Published body");
     assert_eq!(published.payload["slug"], "release-notes");
+    // The PostgreSQL Search category predicate reads facets.category_id,
+    // not payload.category_id. Regression: a post with a Category owner
+    // membership must be discoverable by category-scoped full-text search.
+    assert_eq!(published.facets["category_id"], published.payload["category_id"]);
     assert_eq!(published.payload["category_name"], "Search Category");
     assert_eq!(published.payload["category_slug"], "search-category");
     // The `users` fixture still says "Search Author"; a document that carried that name
@@ -307,6 +312,12 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
     assert_eq!(
         published.payload["tags"],
         serde_json::json!(["rust", "cms"])
+    );
+    assert!(
+        published.facets["tag_keys"]
+            .as_array()
+            .is_some_and(|keys| keys.iter().any(|key| key == "rust")),
+        "Search must index an exact canonical/localized tag key before paging"
     );
     assert_eq!(
         published.payload["channel_slugs"],
@@ -1055,7 +1066,7 @@ async fn load_blog_document(
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
-            SELECT status, is_public, title, slug, locale, body, payload
+            SELECT status, is_public, title, slug, locale, body, facets, payload
             FROM search_documents
             WHERE tenant_id = $1
               AND document_id = $2
@@ -1074,6 +1085,7 @@ async fn load_blog_document(
             slug: row.try_get("", "slug")?,
             locale: row.try_get("", "locale")?,
             body: row.try_get("", "body")?,
+            facets: row.try_get("", "facets")?,
             payload: row.try_get("", "payload")?,
         })
     })

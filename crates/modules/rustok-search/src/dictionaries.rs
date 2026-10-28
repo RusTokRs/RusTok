@@ -437,15 +437,20 @@ impl SearchDictionaryService {
             return Ok(result);
         }
 
-        let mut by_id = result
-            .items
-            .drain(..)
-            .map(|item| (item.id, item))
-            .collect::<BTreeMap<_, _>>();
+        // Preserve the engine's relevance order and every source/locale
+        // document. Converting this page into a UUID-keyed BTreeMap sorted by
+        // identity instead of score and dropped independent owner documents
+        // whose UUID happened to match.
+        let mut ordered = std::mem::take(&mut result.items);
         let mut pinned = Vec::new();
 
         for rule in &rules {
-            if let Some(existing) = by_id.remove(&rule.document_id) {
+            if let Some(existing) = take_matching_pinned(
+                &mut ordered,
+                rule.document_id,
+                &rule.source_module,
+                &rule.entity_type,
+            ) {
                 pinned.push((rule.pinned_position.max(1), existing));
                 continue;
             }
@@ -454,14 +459,18 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(item) =
-                Self::load_pinned_item(db, query, rule.document_id, storefront_channel).await?
-            {
+            if let Some(item) = Self::load_pinned_item(
+                db,
+                query,
+                rule.document_id,
+                &rule.source_module,
+                &rule.entity_type,
+                storefront_channel,
+            ).await? {
                 pinned.push((rule.pinned_position.max(1), item));
             }
         }
 
-        let mut ordered = by_id.into_values().collect::<Vec<_>>();
         for (pinned_position, item) in pinned.into_iter().rev() {
             let index = pinned_position.saturating_sub(1) as usize;
             ordered.insert(index.min(ordered.len()), item);
@@ -475,6 +484,8 @@ impl SearchDictionaryService {
         db: &DatabaseConnection,
         query: &SearchQuery,
         document_id: Uuid,
+        source_module: &str,
+        entity_type: &str,
         storefront_channel: Option<&TrustedStorefrontChannel>,
     ) -> Result<Option<SearchResultItem>> {
         let tenant_id = query
@@ -487,10 +498,19 @@ impl SearchDictionaryService {
             FROM search_documents
             WHERE tenant_id = $1
               AND document_id = $2
+              AND source_module = $3
+              AND entity_type = $4
+              AND ($5 = '' OR locale = $5)
             ORDER BY indexed_at DESC
             LIMIT 1
             "#,
-            vec![tenant_id.into(), document_id.into()],
+            vec![
+                tenant_id.into(),
+                document_id.into(),
+                source_module.to_string().into(),
+                entity_type.to_string().into(),
+                query.locale.clone().unwrap_or_default().into(),
+            ],
         );
 
         let row = db.query_one_raw(stmt).await.map_err(Error::Database)?;
@@ -697,8 +717,26 @@ fn map_pinned_item_row(row: QueryResult) -> Result<SearchResultItem> {
     })
 }
 
+/// Removes only the requested owner's item while leaving all other ranked
+/// results in their original order, including coincident UUIDs and locales.
+fn take_matching_pinned(
+    ordered: &mut Vec<SearchResultItem>,
+    document_id: Uuid,
+    source_module: &str,
+    entity_type: &str,
+) -> Option<SearchResultItem> {
+    let position = ordered.iter().position(|item| {
+        item.id == document_id
+            && item.source_module == source_module
+            && item.entity_type == entity_type
+    })?;
+    Some(ordered.remove(position))
+}
+
 fn has_catalog_filters(query: &SearchQuery) -> bool {
-    !query.category_ids.is_empty() || !query.attribute_filters.is_empty()
+    !query.category_ids.is_empty()
+        || !query.attribute_filters.is_empty()
+        || query.tag.is_some()
 }
 
 fn pinned_item_matches_query(
@@ -812,6 +850,58 @@ mod tests {
     };
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn pinning_preserves_relevance_and_same_uuid_from_other_owners() {
+        let same_id = Uuid::new_v4();
+        let item = |id: Uuid, module: &str, score: f64| crate::SearchResultItem {
+            id,
+            entity_type: if module == "blog" { "blog_post" } else { "forum_topic" }.to_string(),
+            source_module: module.to_string(),
+            title: module.to_string(),
+            snippet: None,
+            score,
+            locale: Some("en".to_string()),
+            payload: serde_json::json!({}),
+        };
+        let mut ranked = vec![
+            item(same_id, "forum", 0.98),
+            item(same_id, "blog", 0.85),
+            item(Uuid::new_v4(), "blog", 0.3),
+        ];
+        let pinned = super::take_matching_pinned(&mut ranked, same_id, "blog", "blog_post")
+            .expect("Blog item matches the owner-qualified pin");
+        assert_eq!(pinned.source_module, "blog");
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].source_module, "forum");
+        assert_eq!(ranked[0].score, 0.98);
+        assert_eq!(ranked[1].score, 0.3);
+    }
+
+    #[test]
+    fn pinned_query_rules_must_not_bypass_blog_tag_filter() {
+        let query = crate::SearchQuery {
+            tenant_id: Some(Uuid::new_v4()),
+            locale: Some("ru".to_string()),
+            channel_id: None,
+            original_query: "search".to_string(),
+            query: "search".to_string(),
+            ranking_profile: crate::SearchRankingProfile::Balanced,
+            preset_key: None,
+            limit: 9,
+            offset: 0,
+            published_only: true,
+            entity_types: vec!["blog_post".to_string()],
+            source_modules: vec!["blog".to_string()],
+            statuses: vec!["published".to_string()],
+            category_ids: Vec::new(),
+            tag: Some("новости".to_string()),
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
+        };
+        assert!(super::has_catalog_filters(&query));
+    }
 
     #[test]
     fn normalize_query_text_collapses_whitespace_and_case() {

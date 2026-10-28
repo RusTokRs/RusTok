@@ -11,3 +11,6 @@ mod ui;
 pub use ui::BlogCommentComposer;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub use ui::BlogView;
+
+#[cfg(feature = "ssr")]
+pub use transport::feed::render_rss_feed;

@@ -304,6 +304,14 @@ impl CommentsService {
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
             let comment = self.find_comment(tenant_id, comment_id, false).await?;
+            // The canonical owner cannot determine whether an arbitrary
+            // consumer target is publicly visible. Generic COMMENTS_READ
+            // therefore authorizes only own comments, not another author's
+            // unpublished/approved content. Consumer public reads must use
+            // the approved-only port and apply their own target visibility.
+            if !self.can_moderate(&security) && security.user_id != Some(comment.author_id) {
+                return Err(CommentsError::CommentNotFound(comment_id));
+            }
             let thread = comment_thread::Entity::find_by_id(comment.thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
                 .one(&self.db)
@@ -651,7 +659,9 @@ impl CommentsService {
                     "target_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::List)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
             let requested_limit = Some(filter.per_page);
@@ -835,7 +845,9 @@ impl CommentsService {
                     "tenant_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::List)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
 
             let mut query = comment_thread::Entity::find()
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
@@ -903,7 +915,9 @@ impl CommentsService {
                     "thread_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::Read)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = filter
                 .fallback_locale
@@ -1442,19 +1456,19 @@ impl CommentsService {
         requested: crate::dto::CommentStatus,
     ) -> CommentsResult<crate::dto::CommentStatus> {
         match requested {
-            crate::dto::CommentStatus::Pending | crate::dto::CommentStatus::Approved => {
-                Ok(requested)
-            }
-            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash
+            crate::dto::CommentStatus::Pending => Ok(requested),
+            crate::dto::CommentStatus::Approved
+            | crate::dto::CommentStatus::Spam
+            | crate::dto::CommentStatus::Trash
                 if self.can_moderate(security) =>
             {
                 Ok(requested)
             }
-            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash => {
-                Err(CommentsError::Forbidden(
-                    "Only moderators can create comments with spam/trash status".to_string(),
-                ))
-            }
+            crate::dto::CommentStatus::Approved
+            | crate::dto::CommentStatus::Spam
+            | crate::dto::CommentStatus::Trash => Err(CommentsError::Forbidden(
+                "Only moderators may bypass pending comment moderation".to_string(),
+            )),
         }
     }
 
@@ -1584,28 +1598,155 @@ mod richtext_validation_tests {
     }
 
     #[tokio::test]
-    async fn non_moderator_cannot_create_spam_or_trash_comment() {
+    async fn only_moderators_can_create_an_already_moderated_comment() {
         let service = setup_comments_service().await;
         let tenant_id = Uuid::new_v4();
         let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+        let target = Uuid::new_v4();
 
-        let err = service
+        for status in [
+            crate::dto::CommentStatus::Approved,
+            crate::dto::CommentStatus::Spam,
+            crate::dto::CommentStatus::Trash,
+        ] {
+            let error = service
+                .create_comment(
+                    tenant_id,
+                    customer.clone(),
+                    CreateCommentInput {
+                        target_type: "blog_post".to_string(),
+                        target_id: target,
+                        locale: "en".to_string(),
+                        body: test_document("not pre-approved"),
+                        parent_comment_id: None,
+                        status,
+                    },
+                )
+                .await
+                .expect_err("ordinary user cannot bypass pending moderation");
+            assert!(matches!(error, CommentsError::Forbidden(_)));
+        }
+
+        let moderator = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+        let approved = service
             .create_comment(
                 tenant_id,
-                customer,
+                moderator,
                 CreateCommentInput {
                     target_type: "blog_post".to_string(),
-                    target_id: Uuid::new_v4(),
+                    target_id: target,
                     locale: "en".to_string(),
-                    body: test_document("spam"),
+                    body: test_document("moderator approved"),
                     parent_comment_id: None,
-                    status: crate::dto::CommentStatus::Spam,
+                    status: crate::dto::CommentStatus::Approved,
                 },
             )
             .await
-            .expect_err("non-moderator should not create spam comments");
+            .expect("moderator may explicitly pre-approve");
+        assert_eq!(approved.status, crate::dto::CommentStatus::Approved);
+    }
 
-        assert!(matches!(err, CommentsError::Forbidden(_)));
+    #[tokio::test]
+    async fn ordinary_read_permissions_never_expose_other_users_or_moderation_queue() {
+        use rustok_api::Permission;
+
+        let service = setup_comments_service().await;
+        let tenant = Uuid::new_v4();
+        let target = Uuid::new_v4();
+        let author_id = Uuid::new_v4();
+        let other_id = Uuid::new_v4();
+        let author = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(author_id),
+            [Permission::COMMENTS_CREATE, Permission::COMMENTS_READ, Permission::COMMENTS_LIST],
+        );
+        let other = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(other_id),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST],
+        );
+        let created = service
+            .create_comment(
+                tenant,
+                author.clone(),
+                CreateCommentInput {
+                    target_type: "blog_post".into(),
+                    target_id: target,
+                    locale: "en".into(),
+                    body: test_document("private moderation text"),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Pending,
+                },
+            )
+            .await
+            .expect("comment created");
+        assert_eq!(
+            service.get_comment(tenant, author, created.id, "en", None)
+                .await.expect("own read").id,
+            created.id,
+            "an author can inspect their own pending comment"
+        );
+
+        assert!(matches!(
+            service.get_comment(tenant, other.clone(), created.id, "en", None).await,
+            Err(CommentsError::CommentNotFound(_))
+        ), "generic read is not an authorization to fetch someone else's pending comment");
+
+        let filter = ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 };
+        assert!(matches!(
+            service.list_comments_for_target(tenant, other.clone(), "blog_post", target, filter.clone(), None).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+        assert!(matches!(
+            service.list_threads(tenant, other.clone(), crate::dto::ListThreadsFilter::default()).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+        assert!(matches!(
+            service.get_thread_detail(
+                tenant,
+                other.clone(),
+                crate::dto::GetThreadDetailFilter {
+                    thread_id: created.thread_id,
+                    locale: "en".into(),
+                    fallback_locale: None,
+                    page: 1,
+                    per_page: 10,
+                },
+            ).await,
+            Err(CommentsError::Forbidden(_))
+        ));
+
+        // The public port remains deliberately approved-only; a moderator may
+        // still inspect and update the private queue.
+        assert_eq!(
+            crate::public_read::list_public_comments_for_target(
+                &service.db, tenant, "blog_post", target, filter, None,
+            ).await.expect("approved-only projection").1,
+            0
+        );
+        let moderator = SecurityContext::system();
+        assert_eq!(
+            service.list_comments_for_target(
+                tenant, moderator.clone(), "blog_post", target,
+                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
+            ).await.expect("moderator queue").1,
+            1
+        );
+
+        service.set_comment_status(
+            tenant, moderator, created.id, crate::dto::CommentStatus::Approved, "en", None,
+        ).await.expect("moderation must work");
+        assert!(matches!(
+            service.get_comment(tenant, other, created.id, "en", None).await,
+            Err(CommentsError::CommentNotFound(_))
+        ), "the Comments owner cannot infer whether an approved target is public");
+        assert_eq!(
+            crate::public_read::list_public_comments_for_target(
+                &service.db, tenant, "blog_post", target,
+                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
+            ).await.expect("public approved projection").1,
+            1
+        );
     }
 
     #[tokio::test]

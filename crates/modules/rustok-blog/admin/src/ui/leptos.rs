@@ -51,7 +51,16 @@ pub fn BlogAdmin() -> impl IntoView {
     let (excerpt, set_excerpt) = signal(String::new());
     let (content, set_content) = signal(RichTextDocument::empty());
     let (locale, set_locale) = signal(default_locale.clone());
+    // Keep the owner translation locale independent of admin list filters.
+    let (list_locale, set_list_locale) = signal(default_locale.clone());
     let (tags_input, set_tags_input) = signal(String::new());
+    let (category_id, set_category_id) = signal(String::new());
+    let (channel_slugs_input, set_channel_slugs_input) = signal(String::new());
+    let (featured_image_url, set_featured_image_url) = signal(String::new());
+    let (seo_title, set_seo_title) = signal(String::new());
+    let (seo_description, set_seo_description) = signal(String::new());
+    let (scheduled_at, set_scheduled_at) = signal(String::new());
+    let (schedule_editable, set_schedule_editable) = signal(true);
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
@@ -68,6 +77,13 @@ pub fn BlogAdmin() -> impl IntoView {
                     content: set_content,
                     locale: set_locale,
                     tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                     publish_now: set_publish_now,
                 },
                 default_locale.as_str(),
@@ -94,6 +110,11 @@ pub fn BlogAdmin() -> impl IntoView {
     let form_field_classes = core::blog_post_admin_editor_field_classes_view();
     let shell_classes = core::blog_post_admin_shell_classes_view();
 
+    let categories_unavailable_label = t(
+        ui_locale.as_deref(),
+        "blog.error.categories",
+        "Categories unavailable",
+    );
     let form_view_locale = ui_locale.clone();
     let form_view_model = Memo::new(move |_| {
         blog_form_view_model(
@@ -110,6 +131,20 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
 
+    // Categories are loaded from the same selected owner transport as post edits.
+    // A failed lookup remains visible; the editor never silently replaces a category.
+    let categories_resource = local_resource(
+        move || (token.get(), tenant.get(), locale.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, locale_value, _)| async move {
+            transport::fetch_categories(
+                token_value,
+                tenant_value,
+                core::locale_arg(locale_value.as_str()),
+            )
+            .await
+        },
+    );
+
     // Admin posts are cursor-paged. The resource loads the first page; later pages are appended to `posts_rows`.
     let posts_rows = RwSignal::new(Vec::<crate::model::BlogPostListItem>::new());
     let posts_next_cursor = RwSignal::new(None::<String>);
@@ -123,7 +158,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                list_locale.get(),
                 posts_sort.get(),
             )
         },
@@ -149,7 +184,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let load_more_posts = Callback::new(move |cursor: String| {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let locale_value = locale.get_untracked();
+        let locale_value = list_locale.get_untracked();
         let sort_value = posts_sort.get_untracked();
         let error_label = load_more_error_label.clone();
         posts_load_more_error.set(None);
@@ -223,6 +258,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                         content: set_content,
                                         locale: set_locale,
                                         tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                         publish_now: set_publish_now,
                                     },
                                     &post,
@@ -283,6 +325,12 @@ pub fn BlogAdmin() -> impl IntoView {
         let excerpt_value = excerpt.get_untracked();
         let content_value = content.get_untracked();
         let tags_value = tags_input.get_untracked();
+        let category_id_value = category_id.get_untracked();
+        let channel_slugs_value = channel_slugs_input.get_untracked();
+        let featured_image_value = featured_image_url.get_untracked();
+        let seo_title_value = seo_title.get_untracked();
+        let seo_description_value = seo_description.get_untracked();
+        let scheduled_at_value = scheduled_at.get_untracked();
         let draft = core::build_blog_post_draft(core::BlogPostFormInput {
             locale: &locale_value,
             version: editing_version.get_untracked(),
@@ -292,6 +340,13 @@ pub fn BlogAdmin() -> impl IntoView {
             content: &content_value,
             publish: publish_now.get_untracked(),
             tags: &tags_value,
+            category_id: &category_id_value,
+            channel_slugs: &channel_slugs_value,
+            featured_image_url: &featured_image_value,
+            seo_title: &seo_title_value,
+            seo_description: &seo_description_value,
+            scheduled_at: &scheduled_at_value,
+            schedule_editable: schedule_editable.get_untracked(),
         });
 
         let required_fields_message = t(
@@ -339,6 +394,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -417,6 +479,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                     content: set_content,
                                     locale: set_locale,
                                     tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                     publish_now: set_publish_now,
                                 },
                                 &post,
@@ -432,6 +501,86 @@ pub fn BlogAdmin() -> impl IntoView {
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
                                 "Failed to update post status",
+                            ),
+                            &err.to_string(),
+                        )));
+                    }
+                }
+
+                set_busy_key.set(None);
+            });
+        },
+    );
+
+    let toggle_pin_locale = ui_locale.clone();
+    let toggle_pin = Callback::new(
+        move |(post_id, pin, post_locale): (String, bool, String)| {
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let ui_locale = toggle_pin_locale.clone();
+            let command =
+                core::prepare_blog_post_pin_command(post_id, pin, post_locale.as_str());
+            set_submit_error.set(None);
+            set_busy_key.set(Some(command.busy_key.clone()));
+
+            spawn_local(async move {
+                let result = if command.pin {
+                    transport::pin_post(
+                        token_value,
+                        tenant_value,
+                        command.post_id.clone(),
+                        command.locale.clone(),
+                    )
+                    .await
+                } else {
+                    transport::unpin_post(
+                        token_value,
+                        tenant_value,
+                        command.post_id.clone(),
+                        command.locale.clone(),
+                    )
+                    .await
+                };
+
+                match result {
+                    Ok(post) => {
+                        let result_view = core::blog_post_mutation_result_view(
+                            editing_post_id.get_untracked().as_deref(),
+                            post.id.as_str(),
+                        );
+                        if result_view.apply_returned_post_to_form {
+                            apply_post_to_form(
+                                BlogPostFormSetters {
+                                    editing_post_id: set_editing_post_id,
+                                    editing_version: set_editing_version,
+                                    title: set_title,
+                                    slug: set_slug,
+                                    excerpt: set_excerpt,
+                                    content: set_content,
+                                    locale: set_locale,
+                                    tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
+                                    publish_now: set_publish_now,
+                                },
+                                &post,
+                            );
+                        }
+                        if result_view.refresh_posts {
+                            set_refresh_nonce.update(|value| *value += 1);
+                        }
+                    }
+                    Err(err) => {
+                        set_submit_error.set(Some(core::blog_post_transport_failure_issue(
+                            &t(
+                                ui_locale.as_deref(),
+                                "blog.error.updatePin",
+                                "Failed to change post pin state",
                             ),
                             &err.to_string(),
                         )));
@@ -477,6 +626,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -536,6 +692,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
+                    category_id: set_category_id,
+                    channel_slugs_input: set_channel_slugs_input,
+                    featured_image_url: set_featured_image_url,
+                    seo_title: set_seo_title,
+                    seo_description: set_seo_description,
+                    scheduled_at: set_scheduled_at,
+                    schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -632,8 +795,8 @@ pub fn BlogAdmin() -> impl IntoView {
                 <section class=shell_classes.layout>
                     <div class=shell_classes.list_card>
                         <BlogPostsListHeader
-                            locale=locale
-                            set_locale=set_locale
+                            locale=list_locale
+                            set_locale=set_list_locale
                             locale_filter_label=form_copy_view.locale_label.clone()
                         />
 
@@ -697,6 +860,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                                     on_sort_change=change_posts_sort
                                                     on_edit=open_post
                                                     on_toggle_publish=toggle_publish
+                                                    on_toggle_pin=toggle_pin
                                                     on_archive=archive_post
                                                     on_restore=restore_post
                                                     on_delete=delete_post
@@ -740,11 +904,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     on:input=move |ev| {
                                         let title_input = core::blog_post_admin_title_input_view(
                                             event_target_value(&ev),
-                                            slug.get_untracked().as_str(),
                                         );
-                                        if let Some(slug_value) = title_input.slug_update {
-                                            set_slug.set(slug_value);
-                                        }
                                         set_title.set(title_input.title);
                                     }
                                 />
@@ -771,6 +931,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                         type="text"
                                         class=form_field_classes.text_input
                                         prop:value=locale
+                                        disabled=move || editing_post_id.get().is_some()
                                         on:input=move |ev| set_locale.set(event_target_value(&ev))
                                     />
                                 </label>
@@ -809,14 +970,97 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <label class=form_field_classes.checkbox_label>
-                                <input
-                                    type="checkbox"
-                                    prop:checked=publish_now
-                                    on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
-                                />
-                                {form_copy_view.publish_now_label.clone()}
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>
+                                    {t(ui_locale.as_deref(), "blog.form.category", "Category")}
+                                </span>
+                                <select class=form_field_classes.text_input
+                                    prop:value=category_id
+                                    on:change=move |ev| set_category_id.set(event_target_value(&ev))
+                                >
+                                    <option value="">{t(ui_locale.as_deref(), "blog.form.uncategorized", "Uncategorized")}</option>
+                                    {move || {
+                                        match categories_resource.get() {
+                                            Some(Ok(items)) => items.into_iter().map(|item| {
+                                                view! { <option value=item.id>{item.name}</option> }
+                                            }).collect_view().into_any(),
+                                            _ => ().into_any(),
+                                        }
+                                    }}
+                                </select>
+                                {move || categories_resource.get().and_then(|result| result.err()).map(|error| {
+                                    view! { <span class="text-xs text-destructive">{format!("{}: {error}", categories_unavailable_label.clone())}</span> }
+                                })}
                             </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.channels", "Channels (comma separated; empty = all channels)")}</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    placeholder="default, mobile"
+                                    prop:value=channel_slugs_input
+                                    on:input=move |ev| set_channel_slugs_input.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.featuredImage", "Featured image URL")}</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    placeholder="https://example.com/cover.jpg"
+                                    prop:value=featured_image_url
+                                    on:input=move |ev| set_featured_image_url.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoTitle", "SEO title (Blog default)")}</span>
+                                <input type="text" class=form_field_classes.text_input
+                                    prop:value=seo_title
+                                    on:input=move |ev| set_seo_title.set(event_target_value(&ev))
+                                />
+                            </label>
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoDescription", "SEO description (Blog default)")}</span>
+                                <textarea class=form_field_classes.textarea_short
+                                    prop:value=seo_description
+                                    on:input=move |ev| set_seo_description.set(event_target_value(&ev))
+                                />
+                            </label>
+
+                            <Show when=move || schedule_editable.get()>
+                                <label class=shell_classes.locale_filter_label>
+                                    <span class=form_field_classes.label_text>
+                                        {t(ui_locale.as_deref(), "blog.form.scheduledAt", "Schedule (RFC 3339 with timezone)")}
+                                    </span>
+                                    <input type="text" class=form_field_classes.text_input
+                                        placeholder="2026-11-01T10:00:00+01:00"
+                                        prop:value=scheduled_at
+                                        on:input=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if !value.trim().is_empty() {
+                                                set_publish_now.set(false);
+                                            }
+                                            set_scheduled_at.set(value);
+                                        }
+                                    />
+                                </label>
+                            </Show>
+
+                            <Show when=move || editing_post_id.get().is_none()>
+                                <label class=form_field_classes.checkbox_label>
+                                    <input
+                                        type="checkbox"
+                                        prop:checked=publish_now
+                                        on:change=move |ev| {
+                                            let checked = event_target_checked(&ev);
+                                            if checked {
+                                                set_scheduled_at.set(String::new());
+                                            }
+                                            set_publish_now.set(checked);
+                                        }
+                                    />
+                                    {form_copy_view.publish_now_label.clone()}
+                                </label>
+                            </Show>
 
                             <Show when=move || issue_banner_view.get().visible>
                                 <div class=move || issue_banner_view.get().class>

@@ -62,6 +62,11 @@ identity/hierarchy and consumer attachment ownership are separate concerns.
 - `rustok-blog`, `rustok-forum`, `rustok-product` and `rustok-profiles` use Taxonomy as shared classification infrastructure;
 - consumer attachment/binding ownership and public domain policy remain inside owning modules;
 - canonical Category identity/hierarchy/localized copy migrates to Taxonomy instead of being reimplemented by each consumer;
+- module-scoped Category reorder accepts **exactly** the existing siblings of the
+  selected parent (no omissions or extra ids that would silently reparent a
+  child); module-scoped sibling insertion shifts positions only for Category
+  identities in that module, including the shared `parent_id = NULL` root
+  partition;
 - Blog and Forum tag orchestration enters Taxonomy through the transaction-aware service helper, so module-local term creation records the same revision and change evidence as direct Taxonomy writes;
 - locale normalization and fallback must remain synchronized with the shared `rustok-content` contract;
 - new taxonomy consumers must use explicit typed module-owned relation/binding tables rather than generic polymorphic attachment storage;

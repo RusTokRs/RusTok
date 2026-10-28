@@ -844,6 +844,7 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         .await
         .expect("published post should be created");
 
+    crate::tests::hardening::allow_legacy_invalid_post_fixture(&db).await;
     let row = blog_post::Entity::find_by_id(damaged)
         .one(&db)
         .await
@@ -873,6 +874,28 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         visible,
         vec![healthy],
         "only the intact published post belongs in the customer list"
+    );
+
+    let denied_detail = post_service
+        .get_post(tenant_id, customer.clone(), damaged, "en")
+        .await
+        .expect_err("unstamped published detail is not public");
+    assert!(matches!(denied_detail, BlogError::Forbidden(_)));
+    assert!(
+        post_service
+            .get_post_by_slug(tenant_id, customer.clone(), "en", "damaged")
+            .await
+            .expect("slug lookup should succeed")
+            .is_none(),
+        "unstamped published post must not be exposed through the slug lookup"
+    );
+    assert_eq!(
+        post_service
+            .get_post(tenant_id, admin.clone(), damaged, "en")
+            .await
+            .expect("an editor may repair the broken post")
+            .id,
+        damaged
     );
 
     // The explicit `status: Published` request takes the other branch and must
@@ -906,5 +929,318 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
         listed_for_admin.items.len(),
         2,
         "an authorized editor still sees the damaged row they have to repair"
+    );
+}
+
+/// The public cursor must be calculated over renderable posts, not a page
+/// containing posts whose translations have been lost.
+#[tokio::test]
+async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let transport = OutboxTransport::new(db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let mut broken_input = crate::tests::hardening::post_input("missing-translation");
+    broken_input.publish = true;
+    let broken = post_service
+        .create_post(tenant_id, admin.clone(), broken_input)
+        .await
+        .expect("published post should be created");
+    let mut healthy_input = crate::tests::hardening::post_input("healthy-translation");
+    healthy_input.publish = true;
+    let healthy = post_service
+        .create_post(tenant_id, admin.clone(), healthy_input)
+        .await
+        .expect("second published post should be created");
+    post_service
+        .pin_post(tenant_id, broken, admin)
+        .await
+        .expect("the future damaged post is pinnable");
+
+    blog_post_translation::Entity::delete_many()
+        .filter(blog_post_translation::Column::PostId.eq(broken))
+        .exec(&db)
+        .await
+        .expect("remove the damaged post's translation fixture");
+
+    let page = post_service
+        .list_public_visible_keyset(
+            tenant_id,
+            PublicPostsPageQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(1),
+                ..Default::default()
+            },
+            Some("en"),
+            None,
+        )
+        .await
+        .expect("public listing should succeed");
+
+    assert_eq!(
+        page.items.iter().map(|post| post.id).collect::<Vec<_>>(),
+        vec![healthy],
+        "damaged pinned post cannot consume the only slot of the first page"
+    );
+    assert!(
+        page.next_cursor.is_none(),
+        "the sole renderable post must not produce a phantom next page"
+    );
+}
+
+/// The authenticated post endpoints used to expose channel-restricted posts to
+/// non-editor readers, even though the public Blog list hid them.
+#[tokio::test]
+async fn customer_channel_scope_applies_before_post_list_keyset() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    seed_channel(&db, tenant_id, "mobile").await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let mut restricted = crate::tests::hardening::post_input("mobile-secret");
+    restricted.publish = true;
+    restricted.channel_slugs = Some(vec!["mobile".to_string()]);
+    let mobile_id = service
+        .create_post(tenant_id, admin.clone(), restricted)
+        .await
+        .expect("mobile published post should be created");
+
+    let mut global = crate::tests::hardening::post_input("public-global");
+    global.publish = true;
+    let global_id = service
+        .create_post(tenant_id, admin.clone(), global)
+        .await
+        .expect("global published post should be created");
+
+    assert!(
+        service
+            .get_post_with_locale_fallback_on_channel(
+                tenant_id,
+                customer.clone(),
+                mobile_id,
+                "en",
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .is_err(),
+        "a web reader must not read a mobile-only post by id"
+    );
+    assert!(
+        service
+            .get_post_with_locale_fallback(tenant_id, customer.clone(), mobile_id, "en", Some("en"))
+            .await
+            .is_err(),
+        "an unscoped public reader may only see globally visible posts"
+    );
+    assert_eq!(
+        service
+            .get_post_with_locale_fallback_on_channel(
+                tenant_id,
+                admin.clone(),
+                mobile_id,
+                "en",
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .expect("editor can inspect any channel")
+            .id,
+        mobile_id
+    );
+
+    let first = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            customer.clone(),
+            PostListQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(1),
+                ..Default::default()
+            },
+            Some("en"),
+            Some("web"),
+        )
+        .await
+        .expect("customer list should succeed");
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].id, global_id);
+    assert!(
+        first.next_cursor.is_none(),
+        "hidden rows cannot create a phantom next page"
+    );
+
+    let mobile = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            customer,
+            PostListQuery {
+                locale: Some("en".to_string()),
+                per_page: Some(10),
+                ..Default::default()
+            },
+            Some("en"),
+            Some("mobile"),
+        )
+        .await
+        .expect("mobile scoped list should succeed");
+    assert_eq!(mobile.items.len(), 2);
+
+    let all_for_admin = service
+        .list_posts_with_locale_fallback_on_channel(
+            tenant_id,
+            admin,
+            PostListQuery::default(),
+            Some("en"),
+            Some("web"),
+        )
+        .await
+        .expect("editor list should succeed");
+    assert_eq!(all_for_admin.items.len(), 2);
+}
+
+/// Comments and post listings must agree on a canonical channel slug. A route
+/// carrying an uppercase/space-padded slug must not turn a visible post into a
+/// false 404 or mask a Channel owner failure as missing content.
+#[tokio::test]
+async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let posts = PostService::new(db.clone(), events);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    seed_channel(&db, tenant_id, "web").await;
+    let mut input = crate::tests::hardening::post_input("channel-comments");
+    input.publish = true;
+    input.channel_slugs = Some(vec!["web".to_string()]);
+    let post_id = posts
+        .create_post(
+            tenant_id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+            input,
+        )
+        .await
+        .expect("channel restricted post should publish");
+
+    let comments = crate::CommentService::from_runtime_capabilities(db, None, None);
+    comments
+        .ensure_public_post_visible(tenant_id, post_id, Some(" WEB "))
+        .await
+        .expect("normalized channel permits the published post");
+    assert!(
+        matches!(
+            comments
+                .ensure_public_post_visible(tenant_id, post_id, Some("other"))
+                .await,
+            Err(BlogError::PostNotFound(_))
+        ),
+        "unmatched channel must fail closed"
+    );
+    assert!(
+        matches!(
+            comments
+                .ensure_public_post_visible(tenant_id, post_id, Some("  "))
+                .await,
+            Err(BlogError::PostNotFound(_))
+        ),
+        "empty channel does not inherit another channel's authorization"
+    );
+}
+
+/// Search must not treat a stale indexed `blog_post` row as authority: the
+/// Blog owner supplies current published/channel eligibility independently of
+/// whatever was previously projected into Search storage.
+#[tokio::test]
+async fn search_audience_rechecks_live_publication_and_channel_binding() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let events = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let posts = PostService::new(db.clone(), events);
+    let tenant = Uuid::new_v4();
+    seed_tenant(&db, tenant).await;
+    seed_channel(&db, tenant, "web").await;
+    seed_channel(&db, tenant, "mobile").await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let mut global = crate::tests::hardening::post_input("search-global");
+    global.publish = true;
+    let global_id = posts.create_post(tenant, admin.clone(), global)
+        .await.expect("global published post");
+
+    let mut mobile = crate::tests::hardening::post_input("search-mobile-only");
+    mobile.publish = true;
+    mobile.channel_slugs = Some(vec!["mobile".to_string()]);
+    let mobile_id = posts.create_post(tenant, admin.clone(), mobile)
+        .await.expect("mobile published post");
+
+    let draft = crate::tests::hardening::post_input("search-draft");
+    let draft_id = posts.create_post(tenant, admin, draft)
+        .await.expect("draft post");
+
+    let requested = vec![global_id, mobile_id, draft_id, Uuid::new_v4()];
+    let owner = crate::search_projection::filter_public_search_post_ids;
+    assert_eq!(
+        owner(&db, tenant, Some(" WEB "), &requested).await.expect("web audience"),
+        vec![global_id],
+        "a search row for another channel or a draft is not discoverable"
+    );
+    assert_eq!(
+        owner(&db, tenant, Some("mobile"), &requested).await.expect("mobile audience"),
+        vec![global_id, mobile_id],
+    );
+    let channels = rustok_channel::ChannelService::new(db.clone());
+    let mobile_channel = channels
+        .get_channel_by_slug(tenant, "mobile")
+        .await.expect("lookup mobile channel").expect("mobile exists");
+    channels
+        .bind_module(
+            mobile_channel.id,
+            rustok_channel::BindChannelModuleInput {
+                module_slug: "blog".to_string(),
+                is_enabled: false,
+                settings: None,
+            },
+        ).await.expect("disable Blog on mobile");
+    assert!(
+        owner(&db, tenant, Some("mobile"), &requested)
+            .await.expect("disabled channel must be hidden").is_empty(),
+        "even indexed global Blog posts must not be exposed by a disabled channel"
+    );
+    channels
+        .bind_module(
+            mobile_channel.id,
+            rustok_channel::BindChannelModuleInput {
+                module_slug: "blog".to_string(),
+                is_enabled: true,
+                settings: None,
+            },
+        ).await.expect("re-enable Blog on mobile");
+    assert_eq!(
+        owner(&db, tenant, Some("mobile"), &requested).await.expect("reenabled mobile"),
+        vec![global_id, mobile_id],
+    );
+    assert_eq!(
+        owner(&db, tenant, None, &requested).await.expect("unscoped audience"),
+        vec![global_id],
+        "unscoped search must not publish channel-specific posts"
+    );
+    assert!(
+        owner(&db, tenant, Some("missing-channel"), &requested)
+            .await.expect("missing channel is closed").is_empty()
+    );
+    assert!(
+        owner(&db, Uuid::new_v4(), Some("mobile"), &requested)
+            .await.expect("other tenant is isolated").is_empty()
     );
 }

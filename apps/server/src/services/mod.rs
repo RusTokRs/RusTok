@@ -3,6 +3,8 @@ pub mod alloy_translation_target;
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+#[cfg(feature = "mod-blog")]
+mod blog_search_result_eligibility;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
@@ -139,7 +141,9 @@ pub mod module_event_dispatcher {
     /// superset of everything `projector_core` can emit, which is what fail-closed
     /// Search requires.
     pub fn search_public_source_modules() -> Vec<&'static str> {
-        let mut modules = vec!["blog", "commerce", "content", "docs", "pages"];
+        // Blog is gated: live Channel bindings and publication may change
+        // before an asynchronous Search projection catches up.
+        let mut modules = vec!["commerce", "content", "docs", "pages"];
         #[cfg(feature = "mod-content")]
         modules.extend_from_slice(rustok_content::CONTENT_NODE_KINDS);
         modules
@@ -210,6 +214,15 @@ pub mod module_event_dispatcher {
             .map_err(|error| {
                 Error::BadRequest(format!(
                     "Search audience registry rejected a public source module declaration: {error}"
+                ))
+            })?;
+
+        #[cfg(feature = "mod-blog")]
+        audience_registry
+            .register(super::blog_search_result_eligibility::ServerBlogSearchResultEligibilityPort::new(db.clone()))
+            .map_err(|error| {
+                Error::BadRequest(format!(
+                    "Search audience registry rejected the Blog visibility owner policy: {error}"
                 ))
             })?;
 
@@ -529,10 +542,13 @@ pub mod module_event_dispatcher {
             let audience_registry = extensions
                 .get::<rustok_search::SearchAudienceRegistry>()
                 .expect("Search audience registry should be composed");
+            #[cfg(feature = "mod-blog")]
             assert_eq!(
                 audience_registry.audience_class("blog"),
-                Some(rustok_search::SearchAudienceClass::Public)
+                Some(rustok_search::SearchAudienceClass::Gated)
             );
+            #[cfg(not(feature = "mod-blog"))]
+            assert_eq!(audience_registry.audience_class("blog"), None);
             // Content Search documents are keyed by CMS node kind, not by a single
             // `content` module name.
             assert_eq!(

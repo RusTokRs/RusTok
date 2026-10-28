@@ -31,6 +31,115 @@ export interface BlogPostListResponse {
   nextCursor: string | null;
 }
 
+export interface BlogSearchPage {
+  items: BlogPostSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+type IndexedBlogPost = {
+  id: string;
+  entityType: string;
+  sourceModule: string;
+  title: string;
+  locale: string | null;
+  payload: string;
+};
+
+/**
+ * Search owns full-text ranking and offset pagination. Blog owns the live
+ * publication/channel gate and the projected presentation fields. Never
+ * post-filter a keyset page of publicBlogPosts for q: doing so loses matches
+ * on later pages and returns incorrect counts.
+ */
+export async function searchPublishedPosts(
+  graphql: BlogGraphqlExecutor,
+  tenantSlug: string | null,
+  query: string,
+  locale: string,
+  page: number,
+  pageSize: number,
+  categoryId?: string,
+  tag?: string,
+): Promise<BlogSearchPage> {
+  const safePageSize = Math.max(1, Math.min(50, Math.trunc(pageSize)));
+  const safePage = Math.max(1, Math.min(100, Math.trunc(page)));
+  const input = {
+    query,
+    locale,
+    entityTypes: ["blog_post"],
+    sourceModules: ["blog"],
+    statuses: ["published"],
+    categoryIds: categoryId ? [categoryId] : undefined,
+    tag: tag || undefined,
+    limit: safePageSize,
+    offset: (safePage - 1) * safePageSize,
+  };
+  const response = await graphql<{
+    storefrontSearch: { total: number; items: IndexedBlogPost[] };
+  }, { input: typeof input }>({
+    query: `
+      query BlogFullTextSearch($input: SearchPreviewInput!) {
+        storefrontSearch(input: $input) {
+          total
+          items { id entityType sourceModule title locale payload }
+        }
+      }
+    `,
+    variables: { input },
+    tenant: tenantSlug ?? undefined,
+  });
+  if (response.errors?.length || !response.data) {
+    throw new Error(response.errors?.[0]?.message ?? "Blog Search payload is missing");
+  }
+  const items = response.data.storefrontSearch.items.map((item): BlogPostSummary => {
+    if (item.sourceModule !== "blog" || item.entityType !== "blog_post") {
+      throw new Error("Blog Search returned a document from another source");
+    }
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(item.payload) as Record<string, unknown>;
+    } catch {
+      throw new Error("Blog Search returned an invalid document payload");
+    }
+    const str = (value: unknown): string | null =>
+      typeof value === "string" ? value : null;
+    const slug = str(payload.slug);
+    if (!slug) {
+      throw new Error("Blog Search returned a post without its canonical slug");
+    }
+    const authorId = str(payload.author_id);
+    // The public Profiles owner already decides whether author_name may
+    // be projected into Search. Render only that approved label, never
+    // resolve private Profiles data directly from a search result.
+    const authorName = str(payload.author_name);
+    return {
+      id: item.id,
+      title: item.title,
+      slug,
+      excerpt: str(payload.excerpt),
+      featuredImageUrl: str(payload.featured_image_url),
+      authorId,
+      categoryId: str(payload.category_id),
+      categoryName: str(payload.category_name),
+      tags: Array.isArray(payload.tags)
+        ? payload.tags.filter((value): value is string => typeof value === "string")
+        : [],
+      publishedAt: str(payload.published_at),
+      authorProfile: authorId && authorName
+        ? { userId: authorId, handle: "", displayName: authorName, tags: [], avatarMediaId: null }
+        : null,
+    };
+  });
+  return {
+    items,
+    total: response.data.storefrontSearch.total,
+    page: safePage,
+    pageSize: safePageSize,
+  };
+}
+
 export interface BlogPublicComment {
   id: string;
   effectiveLocale: string;
@@ -259,28 +368,81 @@ const BLOG_CATEGORIES_QUERY = `
   }
 `;
 
+/** Load the full category dictionary, not just the first GraphQL page. */
 export async function fetchBlogCategories(
   graphql: BlogGraphqlExecutor,
   tenantId?: string | null,
   tenantSlug?: string | null,
   locale?: string,
 ): Promise<BlogCategorySummary[]> {
-  const response = await graphql<{
-    blogCategories: { items: BlogCategorySummary[]; total: number };
-  }, {
-    tenantId?: string | null;
-    filter?: { locale?: string };
-  }>({
-    query: BLOG_CATEGORIES_QUERY,
-    variables: {
-      tenantId,
-      filter: { locale },
-    },
-    tenant: tenantSlug ?? undefined,
-  });
-  if (response.errors?.length || !response.data) {
-    throw new Error(response.errors?.[0]?.message ?? "Blog categories payload is missing");
+  const items: BlogCategorySummary[] = [];
+  const pageSize = 100;
+  for (let page = 1; ; page += 1) {
+    const response = await graphql<{
+      blogCategories: { items: BlogCategorySummary[]; total: number };
+    }, {
+      tenantId?: string | null;
+      filter: { locale?: string; page: number; perPage: number };
+    }>({
+      query: BLOG_CATEGORIES_QUERY,
+      variables: {
+        tenantId,
+        filter: { locale, page, perPage: pageSize },
+      },
+      tenant: tenantSlug ?? undefined,
+    });
+    if (response.errors?.length || !response.data) {
+      throw new Error(response.errors?.[0]?.message ?? "Blog categories payload is missing");
+    }
+
+    const batch = response.data.blogCategories;
+    items.push(...batch.items);
+    if (items.length >= batch.total) return items;
+    // Do not spin forever on a broken or inconsistent server pagination response.
+    if (batch.items.length === 0) {
+      throw new Error("Blog category pagination returned an incomplete result");
+    }
   }
-  return response.data.blogCategories.items;
 }
 
+/** Public taxonomy tags are not limited to the current post page. */
+export async function fetchBlogTags(
+  graphql: BlogGraphqlExecutor,
+  tenantId?: string | null,
+  tenantSlug?: string | null,
+  locale?: string,
+): Promise<string[]> {
+  const query = `
+    query BlogTags($tenantId: UUID, $filter: BlogTagsFilter) {
+      blogTags(tenantId: $tenantId, filter: $filter) {
+        items { name }
+        total
+      }
+    }
+  `;
+  const names = new Set<string>();
+  const pageSize = 100;
+  for (let page = 1; ; page += 1) {
+    const response = await graphql<{
+      blogTags: { items: Array<{ name: string }>; total: number };
+    }, {
+      tenantId?: string | null;
+      filter: { locale?: string; page: number; perPage: number };
+    }>({
+      query,
+      variables: { tenantId, filter: { locale, page, perPage: pageSize } },
+      tenant: tenantSlug ?? undefined,
+    });
+    if (response.errors?.length || !response.data) {
+      throw new Error(response.errors?.[0]?.message ?? "Blog tags payload is missing");
+    }
+    const batch = response.data.blogTags;
+    for (const item of batch.items) names.add(item.name);
+    // Page boundaries are defined by the Blog taxonomy owner, independently of
+    // duplicate localized labels or orphaned derived usage rows.
+    if (page * pageSize >= batch.total) return [...names];
+    if (batch.items.length === 0) {
+      throw new Error("Blog tag pagination returned an incomplete result");
+    }
+  }
+}

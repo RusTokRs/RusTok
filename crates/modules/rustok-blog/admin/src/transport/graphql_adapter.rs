@@ -3,18 +3,22 @@ use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphq
 use serde::{Deserialize, Serialize};
 
 use crate::core;
-use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
+use crate::model::{BlogCategoryOption, BlogPostDetail, BlogPostDraft, BlogPostList};
 
 pub type ApiError = GraphqlHttpError;
 
-const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt } } }";
-const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt tags featuredImageUrl seoTitle seoDescription version } }";
+const BLOG_CATEGORIES_QUERY: &str =
+    "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
+const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
 const PUBLISH_POST_MUTATION: &str = "mutation PublishPost($id: UUID!) { publishPost(id: $id) }";
 const UNPUBLISH_POST_MUTATION: &str =
     "mutation UnpublishPost($id: UUID!) { unpublishPost(id: $id) }";
+const PIN_POST_MUTATION: &str = "mutation PinPost($id: UUID!) { pinPost(id: $id) }";
+const UNPIN_POST_MUTATION: &str = "mutation UnpinPost($id: UUID!) { unpinPost(id: $id) }";
 const ARCHIVE_POST_MUTATION: &str =
     "mutation ArchivePost($id: UUID!, $reason: String) { archivePost(id: $id, reason: $reason) }";
 const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
@@ -23,6 +27,28 @@ const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost
 #[derive(Debug, Deserialize)]
 struct BlogPostsResponse {
     posts: BlogPostList,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogCategoriesResponse {
+    #[serde(rename = "blogCategories")]
+    blog_categories: BlogCategoryPage,
+}
+#[derive(Debug, Deserialize)]
+struct BlogCategoryPage {
+    items: Vec<BlogCategoryOption>,
+    total: u64,
+}
+#[derive(Debug, Serialize)]
+struct CategoryFilter {
+    locale: Option<String>,
+    page: u64,
+    #[serde(rename = "perPage")]
+    per_page: u64,
+}
+#[derive(Debug, Serialize)]
+struct CategoryVariables {
+    filter: CategoryFilter,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +70,10 @@ struct BoolMutationResponse {
     publish_post: bool,
     #[serde(default, rename = "unpublishPost")]
     unpublish_post: bool,
+    #[serde(default, rename = "pinPost")]
+    pin_post: bool,
+    #[serde(default, rename = "unpinPost")]
+    unpin_post: bool,
     #[serde(default, rename = "archivePost")]
     archive_post: bool,
     #[serde(default, rename = "restorePost")]
@@ -99,6 +129,8 @@ struct CreatePostInput {
     tags: Vec<String>,
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
+    #[serde(rename = "channelSlugs")]
+    channel_slugs: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     featured_image_url: Option<String>,
     #[serde(rename = "seoTitle")]
@@ -117,14 +149,18 @@ struct UpdatePostInput {
     excerpt: Option<String>,
     slug: Option<String>,
     tags: Option<Vec<String>>,
-    #[serde(rename = "categoryId", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "categoryId")]
     category_id: Option<String>,
-    #[serde(rename = "featuredImageUrl", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "channelSlugs")]
+    channel_slugs: Vec<String>,
+    #[serde(rename = "featuredImageUrl")]
     featured_image_url: Option<String>,
-    #[serde(rename = "seoTitle", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "seoTitle")]
     seo_title: Option<String>,
-    #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "seoDescription")]
     seo_description: Option<String>,
+    #[serde(rename = "scheduledAt", skip_serializing_if = "Option::is_none")]
+    scheduled_at: Option<Option<String>>,
     version: i32,
 }
 
@@ -157,6 +193,39 @@ where
         None,
     )
     .await
+}
+
+pub async fn fetch_categories(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryOption>, ApiError> {
+    let mut items = Vec::new();
+    for page in 1.. {
+        let result: BlogCategoriesResponse = request(
+            BLOG_CATEGORIES_QUERY,
+            CategoryVariables {
+                filter: CategoryFilter {
+                    locale: locale.clone(),
+                    page,
+                    per_page: 100,
+                },
+            },
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await?;
+        items.extend(result.blog_categories.items);
+        if items.len() as u64 >= result.blog_categories.total {
+            return Ok(items);
+        }
+        if items.len() as u64 < page * 100 {
+            return Err(GraphqlHttpError::Graphql(
+                "Blog categories pagination returned incomplete rows".into(),
+            ));
+        }
+    }
+    unreachable!("Blog categories page count is bounded by owner taxonomy")
 }
 
 pub async fn fetch_posts(
@@ -221,11 +290,12 @@ pub async fn create_post(
                 slug: core::optional_text(draft.slug.as_str()),
                 publish: draft.publish,
                 tags: draft.tags,
-                category_id: None,
-                featured_image_url: None,
-                seo_title: None,
-                seo_description: None,
-                scheduled_at: None,
+                category_id: draft.category_id,
+                channel_slugs: draft.channel_slugs,
+                featured_image_url: draft.featured_image_url,
+                seo_title: draft.seo_title,
+                seo_description: draft.seo_description,
+                scheduled_at: draft.scheduled_at,
             },
         },
         token.clone(),
@@ -258,10 +328,12 @@ pub async fn update_post(
                 // from the title, so a cleared field would block the save.
                 slug: core::optional_text(draft.slug.as_str()),
                 tags: Some(draft.tags),
-                category_id: None,
-                featured_image_url: None,
-                seo_title: None,
-                seo_description: None,
+                category_id: draft.category_id,
+                channel_slugs: draft.channel_slugs,
+                featured_image_url: draft.featured_image_url,
+                seo_title: draft.seo_title,
+                seo_description: draft.seo_description,
+                scheduled_at: draft.schedule_editable.then_some(draft.scheduled_at),
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),
@@ -333,6 +405,48 @@ pub async fn unpublish_post(
     fetch_post(token, tenant_slug, id, locale)
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Unpublished post could not be reloaded".into()))
+}
+
+pub async fn pin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let response: BoolMutationResponse = request(
+        PIN_POST_MUTATION,
+        PostIdVariables { id: id.clone() },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+    if !response.pin_post {
+        return Err(GraphqlHttpError::Graphql("Pin post returned false".into()));
+    }
+    fetch_post(token, tenant_slug, id, locale)
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Pinned post could not be reloaded".into()))
+}
+
+pub async fn unpin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let response: BoolMutationResponse = request(
+        UNPIN_POST_MUTATION,
+        PostIdVariables { id: id.clone() },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+    if !response.unpin_post {
+        return Err(GraphqlHttpError::Graphql("Unpin post returned false".into()));
+    }
+    fetch_post(token, tenant_slug, id, locale)
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Unpinned post could not be reloaded".into()))
 }
 
 pub async fn archive_post(

@@ -98,6 +98,10 @@ pub struct SearchQuery {
     pub statuses: Vec<String>,
     #[serde(default)]
     pub category_ids: Vec<Uuid>,
+    /// Optional exact Blog tag key (canonical slug or localized display name).
+    /// The engine applies it to a module-owned `facets.tag_keys` projection.
+    #[serde(default)]
+    pub tag: Option<String>,
     #[serde(default)]
     pub attribute_filters: Vec<SearchAttributeFilter>,
     #[serde(default)]

@@ -8,7 +8,7 @@ use rustok_core::{Error, Result};
 use crate::TrustedStorefrontChannel;
 use crate::audience_security::{
     SearchAudienceClass, SearchAudienceRegistry, SearchCandidateDescriptor,
-    resolve_audience_eligible_candidates, search_audience_error,
+    resolve_audience_eligible_candidates_by_module, search_audience_error,
 };
 use crate::storefront_category_scope::StorefrontSearchTransport;
 use crate::storefront_product_channel_visibility::product_channel_visibility_sql;
@@ -289,7 +289,7 @@ async fn authorize_suggestion_documents(
         return Ok(suggestions);
     }
 
-    let allowed = resolve_audience_eligible_candidates(
+    let allowed = resolve_audience_eligible_candidates_by_module(
         registry,
         tenant_id,
         locale.unwrap_or("en"),
@@ -301,26 +301,18 @@ async fn authorize_suggestion_documents(
     .await
     .map_err(|error| search_audience_error(error, "suggestion candidate authorization"))?;
 
-    let mut allowed_by_module: HashMap<&str, HashSet<Uuid>> = HashMap::new();
-    for descriptor in &descriptors {
-        if allowed.contains(&descriptor.document_id) {
-            allowed_by_module
-                .entry(descriptor.source_module.as_str())
-                .or_default()
-                .insert(descriptor.document_id);
-        }
-    }
-
+    // Search documents from two different owners can share a UUID. Never
+    // turn an approval for one source module into a suggestion for another.
     Ok(suggestions
         .into_iter()
-        .filter(
-            |suggestion| match (&suggestion.source_module, suggestion.document_id) {
-                (Some(module), Some(document_id)) => allowed_by_module
-                    .get(module.as_str())
-                    .is_some_and(|ids| ids.contains(&document_id)),
+        .filter(|suggestion| {
+            match (&suggestion.source_module, suggestion.document_id) {
+                (Some(module), Some(document_id)) => {
+                    allowed.contains(&(module.clone(), document_id))
+                }
                 _ => false,
-            },
-        )
+            }
+        })
         .collect())
 }
 

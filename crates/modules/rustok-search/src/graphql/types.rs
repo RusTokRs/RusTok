@@ -83,6 +83,7 @@ pub struct SearchPreviewInput {
     pub source_modules: Option<Vec<String>>,
     pub statuses: Option<Vec<String>>,
     pub category_ids: Option<Vec<String>>,
+    pub tag: Option<String>,
     pub attribute_filters: Option<Vec<SearchAttributeFilterInput>>,
     pub sort_attribute_code: Option<String>,
     pub sort_desc: Option<bool>,

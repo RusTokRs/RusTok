@@ -119,6 +119,7 @@ async fn search_admin_preview_native(
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: normalize_uuid_values("category_ids", input.category_ids)?,
+            tag: None,
             attribute_filters: normalize_attribute_filters(input.attribute_filters)?,
             sort_attribute_code: normalize_attribute_code(input.sort_attribute_code)?,
             sort_desc: input.sort_desc.unwrap_or(false),

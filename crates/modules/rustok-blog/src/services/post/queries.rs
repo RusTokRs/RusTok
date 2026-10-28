@@ -24,6 +24,24 @@ impl PostService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
+        self.get_post_with_locale_fallback_on_channel(
+            tenant_id, security, post_id, locale, fallback_locale, None,
+        )
+        .await
+    }
+
+    /// Public readers are scoped to the channel and its enabled Blog module;
+    /// tenant-wide editors are independent of storefront channel visibility.
+    #[instrument(skip(self))]
+    pub async fn get_post_with_locale_fallback_on_channel(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        post_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> BlogResult<PostResponse> {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("Tenant ID must not be nil"));
         }
@@ -34,13 +52,23 @@ impl PostService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let post = self.find_post(tenant_id, post_id).await?;
+        // Public detail reads follow the same corpus contract as the public
+        // list and Search/SEO projections. A published row missing its stamp
+        // is damaged state, visible only to an editor who can repair it.
         if !can_read_non_public_posts(&security)
-            && storage_to_status(&post.status)? != BlogPostStatus::Published
+            && (storage_to_status(&post.status)? != BlogPostStatus::Published
+                || post.published_at.is_none())
         {
             return Err(BlogError::forbidden("Permission denied"));
         }
         let translations = self.load_translations(tenant_id, post_id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, post_id).await?;
+        if !can_read_non_public_posts(&security)
+            && (!self.channel_is_public_visible(tenant_id, channel_slug).await?
+                || !is_post_visible_for_channel(&channel_slugs, channel_slug))
+        {
+            return Err(BlogError::forbidden("Permission denied"));
+        }
         self.build_post_response(
             post,
             translations,
@@ -158,8 +186,9 @@ impl PostService {
             return Ok(None);
         };
 
-        if storage_to_status(&post.status)? != BlogPostStatus::Published
-            && !can_read_non_public_posts(&security)
+        if !can_read_non_public_posts(&security)
+            && (storage_to_status(&post.status)? != BlogPostStatus::Published
+                || post.published_at.is_none())
         {
             return Ok(None);
         }
@@ -195,6 +224,23 @@ impl PostService {
         security: SecurityContext,
         query: PostListQuery,
         fallback_locale: Option<&str>,
+    ) -> BlogResult<PostListResponse> {
+        self.list_posts_with_locale_fallback_on_channel(
+            tenant_id, security, query, fallback_locale, None,
+        )
+        .await
+    }
+
+    /// Channel-aware list entrypoint for authenticated transports. Public
+    /// restrictions apply in SQL *before* keyset LIMIT/cursor computation.
+    #[instrument(skip(self))]
+    pub async fn list_posts_with_locale_fallback_on_channel(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        query: PostListQuery,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
     ) -> BlogResult<PostListResponse> {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("Tenant ID must not be nil"));
@@ -250,6 +296,12 @@ impl PostService {
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
         {
             return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
+        }
+        if !can_read_non_public {
+            if !self.channel_is_public_visible(tenant_id, channel_slug).await? {
+                return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
+            }
+            select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
         }
         if let Some(author_id) = query.author_id {
             select = select.filter(blog_post::Column::AuthorId.eq(author_id));
@@ -446,10 +498,19 @@ impl PostService {
             });
         }
 
+        // A post with no translation cannot produce a public summary. Exclude
+        // such damaged rows *before* keyset LIMIT/cursor calculation; filtering
+        // them only in summarize_posts can otherwise return an empty page while
+        // intact posts remain beyond its cursor.
+        let translated_post_ids = Query::select()
+            .column(blog_post_translation::Column::PostId)
+            .from(blog_post_translation::Entity)
+            .to_owned();
         let mut select = blog_post::Entity::find()
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
-            .filter(blog_post::Column::PublishedAt.is_not_null());
+            .filter(blog_post::Column::PublishedAt.is_not_null())
+            .filter(blog_post::Column::Id.in_subquery(translated_post_ids));
 
         if let Some(ref tag) = query.tag {
             let Some(tag_id) = resolve_tag_id_for_posts(

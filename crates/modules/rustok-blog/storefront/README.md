@@ -12,7 +12,15 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Exposes the blog storefront root view used by `apps/storefront`.
 - Keeps blog-specific storefront UI inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
+- Serves native RSS 2.0 through the Blog-owned feed projection, mounted as `/blog/feed.xml` and `/{locale}/blog/feed.xml` by the Leptos storefront host; deploys with `NEXT_PUBLIC_STOREFRONT_URL` or `NEXT_PUBLIC_SITE_URL` configured for absolute, trustworthy public links.
 - Owns dual-path read access for published posts and selected `?slug=` rendering.
+- A nonblank `?q=` uses the canonical `rustok-search-storefront` native/GraphQL
+  transport, not a substring filter on the Blog post page. It applies `category`,
+  `tag`, locale and a nine-result offset before rendering canonical Blog cards;
+  `?page=` is Search-only. Plain feeds still use Blog's pinned-post keyset
+  cursor (`postsCursor`). A stale feed cursor cannot poison a search request;
+  the public Search projection is validated and malformed metadata is surfaced
+  as an error rather than silently disappearing.
 - Renders the selected post's approved public comments from the Comments-owned projection; pending, spam, trash, and deleted comments never enter the storefront DTO.
 - Composes the reusable Comments-owned public composer with a Blog-owned post-bound command; the browser cannot choose a generic Comments target.
 - Owns public comment pagination through the `commentsPage` route query. Page parsing, upper bounds, total-page calculation, and canonical first-page clearing live in the framework-free `comments_pagination` policy.

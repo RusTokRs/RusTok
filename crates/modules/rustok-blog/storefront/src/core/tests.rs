@@ -502,3 +502,21 @@ fn share_url_helpers_generate_valid_escaped_urls() {
         "https://twitter.com/intent/tweet?url=%2Fblog%3Fslug%3Dpost-1&text=My%20Post"
     );
 }
+
+#[test]
+fn filter_links_preserve_independent_filters_and_drop_stale_pagination() {
+    assert_eq!(
+        filter_query_href(
+            Some("release-notes"),
+            Some("новости"),
+            Some("e291c5a6-09ea-455c-99b3-80618aba8b25"),
+            Some("hello world"),
+        ),
+        "?slug=release-notes&tag=%D0%BD%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8&category=e291c5a6-09ea-455c-99b3-80618aba8b25&q=hello%20world",
+    );
+    assert_eq!(
+        filter_query_href(Some("release-notes"), None, None, None),
+        "?slug=release-notes",
+    );
+    assert_eq!(filter_query_href(None, None, None, None), "?");
+}

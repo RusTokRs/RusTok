@@ -21,13 +21,31 @@ RusToK.
 - Consume product-owned high-load projections from `rustok-index` without
   exposing index runtime types to Search consumers.
 - Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
+- Accept an optional exact Blog `tag` filter in the canonical SearchQuery and
+  GraphQL SearchPreviewInput. Blog supplies normalized canonical/localized tag
+  keys in `facets.tag_keys` through the Taxonomy owner; Search applies the
+  PostgreSQL JSONB membership predicate alongside text/category predicates
+  **before** total, facets and offset pagination. Existing projections must
+  be reindexed to add `facets.tag_keys` and `facets.category_id`.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
 - Serve storefront Search, admin preview, and host global-search capabilities.
+  GraphQL storefront Search enforces the no-tenant-override surface policy
+  before performing dictionary, settings or index reads, rejecting explicit
+  `tenant_id` even when it equals the current tenant. The tenant comes only
+  from the trusted host request.
   Storefront Search and suggestions read only the *declared* Search corpus: the host
   declares each source module as public or gated, gated modules answer a real-time
   discovery preflight and per-candidate authorization, and modules that were never
   declared are denied. Admin Search is unaffected.
+- Blog storefront documents use **gated** search audience discovery, not unconditional
+  public declaration. The server host composes a thin adapter to Blog's batch
+  `filter_public_search_post_ids` owner read; the Blog owner checks the live
+  published timestamp, tenant, channel allowlist, active channel and Channel
+  module binding before an indexed candidate becomes visible. The Search engine
+  still owns ranking and SQL storage. Each grant and SQL predicate is keyed by
+  `(source_module, document_id)` to avoid cross-owner UUID collisions.
+  Generic storefront autocompletion uses the same owner-qualified gate.
 - Provide the generic `SearchAudiencePolicyPort` and `SearchAudienceRegistry` SPI for
   domain-owned real-time audience discovery preflights and batch candidate
   authorization across dynamic access-controlled source modules, without any

@@ -121,6 +121,10 @@ pub struct BlogPostDetail {
     #[serde(rename = "pinnedAt")]
     pub pinned_at: Option<String>,
     pub tags: Vec<String>,
+    #[serde(rename = "categoryId")]
+    pub category_id: Option<String>,
+    #[serde(rename = "channelSlugs", default)]
+    pub channel_slugs: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,
     #[serde(rename = "seoTitle")]
@@ -128,6 +132,12 @@ pub struct BlogPostDetail {
     #[serde(rename = "seoDescription")]
     pub seo_description: Option<String>,
     pub version: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BlogCategoryOption {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -180,4 +190,15 @@ pub struct BlogPostDraft {
     pub content: RichTextDocument,
     pub publish: bool,
     pub tags: Vec<String>,
+    /// None is the uncategorized state; an explicit UUID selects a Blog-owned category.
+    pub category_id: Option<String>,
+    /// An empty list means publication to all channels (owner contract).
+    pub channel_slugs: Vec<String>,
+    pub featured_image_url: Option<String>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
+    /// RFC 3339 timestamp; absent means unscheduled.
+    pub scheduled_at: Option<String>,
+    /// The form may change schedule only while the post is a draft.
+    pub schedule_editable: bool,
 }

@@ -1,6 +1,8 @@
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub mod graphql_adapter;
 pub mod native_server_adapter;
+#[cfg(feature = "ssr")]
+pub mod feed;
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::core::BlogStorefrontFetchRequest;

@@ -16,6 +16,10 @@ Leptos storefront UI package for the `rustok-search` module.
 - Provides the baseline route/slot scaffold for query input, suggestions, filters, and results.
 - Keeps storefront result summary, preset, locale, item, source, score, snippet, and click presentation in framework-agnostic core view-model helpers.
 - Uses native Leptos `#[server]` entry points in parallel with the GraphQL transport.
+- Offers `transport::fetch_search_page` for module-owned consumers such as Blog:
+  bounded `limit`/`offset`, exact Blog `tag` plus ordinary Search filters,
+  using the same native/GraphQL selected transport and DTO. The default
+  `fetch_search` behavior stays 12 results at offset zero.
 - Consumes canonical result URLs produced by `rustok-search::canonical_search_result_url`; the package does not parse indexed payloads or construct product, content, or Blog routes.
 - Ships package-owned `storefront/locales/en.ftl` and `storefront/locales/ru.ftl` bundles declared through `[provides.storefront_ui.i18n]`.
 

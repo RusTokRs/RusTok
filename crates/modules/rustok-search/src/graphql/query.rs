@@ -71,6 +71,7 @@ struct NormalizedSearchPreviewInput {
     source_modules: Vec<String>,
     statuses: Vec<String>,
     category_ids: Vec<Uuid>,
+    tag: Option<String>,
     attribute_filters: Vec<SearchAttributeFilter>,
     sort_attribute_code: Option<String>,
     sort_desc: bool,
@@ -339,6 +340,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -404,6 +406,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -431,19 +434,27 @@ impl SearchQueryRoot {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
+        // Storefront callers may not select a tenant, including an explicit
+        // assertion equal to the current one. The Search surface policy must
+        // be executed, not merely covered by unit tests for its helper.
+        let tenant_id = resolve_surface_tenant_scope(
+            tenant,
+            parse_optional_uuid(input.tenant_id.as_deref())?,
+            policy,
+        )?;
         let request_context = ctx.data::<RequestContext>()?;
         let trusted_channel =
-            resolve_trusted_storefront_channel(request_context, tenant.id, input.channel_id)
+            resolve_trusted_storefront_channel(request_context, tenant_id, input.channel_id)
                 .map_err(|error| FieldError::new(error.to_string()))?;
         enforce_storefront_rate_limit(ctx, policy.surface).await?;
         let engine = PgSearchEngine::new(db.clone());
         let requested_limit = input.limit;
         let effective_limit = policy.effective_limit(requested_limit);
         let started_at = Instant::now();
-        let transform = SearchDictionaryService::transform_query(db, tenant.id, &input.query)
+        let transform = SearchDictionaryService::transform_query(db, tenant_id, &input.query)
             .await
             .map_err(map_search_module_error)?;
-        let settings = SearchSettingsService::load_effective(db, Some(tenant.id))
+        let settings = SearchSettingsService::load_effective(db, Some(tenant_id))
             .await
             .map_err(map_search_module_error)?;
         let resolved = resolve_preset_and_ranking(
@@ -457,7 +468,7 @@ impl SearchQueryRoot {
         )?;
 
         let search_query = SearchQuery {
-            tenant_id: Some(tenant.id),
+            tenant_id: Some(tenant_id),
             locale: input.locale,
             channel_id: trusted_channel.channel_id,
             original_query: transform.original_query,
@@ -471,6 +482,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -659,6 +671,7 @@ fn normalize_search_preview_input(
         source_modules,
         statuses,
         category_ids,
+        tag: normalize_blog_tag_filter(input.tag)?,
         attribute_filters,
         sort_attribute_code: normalize_attribute_code(input.sort_attribute_code)?,
         sort_desc: input.sort_desc.unwrap_or(false),
@@ -755,6 +768,16 @@ fn normalize_uuid_values(field_name: &str, values: Option<Vec<String>>) -> Resul
                 .map_err(|_| FieldError::new(format!("{field_name} contains an invalid UUID")))
         })
         .collect()
+}
+
+fn normalize_blog_tag_filter(tag: Option<String>) -> Result<Option<String>> {
+    let Some(tag) = tag.map(|tag| tag.trim().to_lowercase()).filter(|tag| !tag.is_empty()) else {
+        return Ok(None);
+    };
+    if tag.chars().count() > 120 || tag.chars().any(char::is_control) {
+        return Err(FieldError::new("Invalid Blog tag filter"));
+    }
+    Ok(Some(tag))
 }
 
 fn normalize_attribute_code(value: Option<String>) -> Result<Option<String>> {

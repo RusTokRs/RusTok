@@ -14,7 +14,7 @@ use rustok_comments::{
     SetCommentStatusRequest as ApiSetCommentStatusRequest,
     UpdateCommentInput as ApiUpdateCommentInput,
 };
-use rustok_core::{SecurityActorKind, SecurityContext};
+use rustok_core::{PermissionScope, SecurityActorKind, SecurityContext};
 use std::sync::Arc;
 
 use crate::BlogPostStatus;
@@ -27,7 +27,11 @@ use crate::dto::{
 };
 use crate::entities::{blog_comment_projection_delivery, blog_post, blog_post_channel_visibility};
 use crate::error::{BlogError, BlogResult};
-use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac::enforce_scope};
+use crate::services::{
+    is_post_visible_for_channel,
+    post::{normalize_public_channel_slug, storage_to_status},
+    rbac::enforce_scope,
+};
 
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
@@ -155,11 +159,11 @@ impl CommentService {
     /// Creates a comment for an owner-facing actor.
     ///
     /// The target only has to be a Blog post of the tenant: a draft, an archived
-    /// post and a post that is hidden from the storefront channels are valid
-    /// targets here. The public publication/channel boundary and the public
-    /// comments mode belong to [`Self::create_public_comment`]; applying them here
-    /// would write the comment to the Comments owner and then compensate it away,
-    /// so the comment would never survive the command.
+    /// post and a channel-hidden post are valid targets. The public
+    /// publication/channel policy is not applied to owner writes, but target
+    /// existence is rechecked after the external Comments commit. If the post
+    /// disappeared while the port call was in flight, the comment is deleted
+    /// with the existing idempotent compensation command.
     #[instrument(skip(self, security, input))]
     pub async fn create_comment(
         &self,
@@ -168,6 +172,10 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        // Owner writes bypass the public publication and comments-mode gates.
+        // Only comment moderators may use that exception; COMMENT_CREATE alone
+        // never authorizes writing to drafts, archived or channel-hidden posts.
+        enforce_scope(&security, Resource::Comments, Action::Moderate)?;
         self.create_comment_internal(
             tenant_id,
             security,
@@ -237,27 +245,29 @@ impl CommentService {
         // fresh idempotent delete command. The terminal TargetDeleted event remains the
         // durable cross-owner cleanup backstop for the deletion case.
         //
-        // An owner-facing write has no public boundary to revalidate: its target is
-        // the Blog post itself, which was checked for existence before the write.
-        if target_policy == CommentTargetPolicy::Owner {
-            return Self::map_comment_record(record);
-        }
-
-        match self
-            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
-            .await
-        {
+        // Both write profiles must confirm the target still exists after the
+        // external Comments commit. The owner profile does not require public
+        // visibility, but a post deleted during the port call must not leave
+        // an orphan comment after its TargetDeleted cleanup was delivered.
+        let revalidated = match target_policy {
+            CommentTargetPolicy::Owner => self.ensure_post_exists(tenant_id, post_id).await,
+            CommentTargetPolicy::Public => {
+                self.ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)
+                    .await
+            }
+        };
+        match revalidated {
             Ok(()) => {}
             Err(revalidation_error) => {
                 // The Comments write already crossed an owner boundary. Any failure in
-                // the final Blog visibility check means the create command cannot report
+                // the final Blog target check means the create command cannot report
                 // success without leaving a committed foreign-side effect behind.
                 if let Err(compensation_error) = self
-                    .compensate_created_public_comment(tenant_id, record.id)
+                    .compensate_created_comment(tenant_id, record.id)
                     .await
                 {
                     return Err(BlogError::invariant(format!(
-                        "Blog post {post_id} public visibility could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
+                        "Blog post {post_id} target policy could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"
                     )));
                 }
 
@@ -268,7 +278,7 @@ impl CommentService {
         Self::map_comment_record(record)
     }
 
-    async fn compensate_created_public_comment(
+    async fn compensate_created_comment(
         &self,
         tenant_id: Uuid,
         comment_id: Uuid,
@@ -316,11 +326,38 @@ impl CommentService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
+        self.get_comment_with_locale_fallback_on_channel(
+            tenant_id, security, comment_id, locale, fallback_locale, None,
+        )
+        .await
+    }
+
+    /// Ordinary readers may inspect their own comments; others' unpublished
+    /// moderation entries are never exposed by a generic COMMENTS_READ grant.
+    #[instrument(skip(self, security))]
+    pub async fn get_comment_with_locale_fallback_on_channel(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        comment_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
+    ) -> BlogResult<CommentResponse> {
         enforce_scope(&security, Resource::Comments, Action::Read)?;
         let record = self
             .require_comments_thread_port()?
             .get_comment(
-                comments_read_port_context(tenant_id, &security, locale, comment_id)?,
+                // The Comments owner deliberately restricts direct reads of
+                // someone else's entry. Blog loads with system authority,
+                // then applies its own author/moderator/approved-post policy
+                // before returning a byte to the caller.
+                comments_read_port_context(
+                    tenant_id,
+                    &SecurityContext::system(),
+                    locale,
+                    comment_id,
+                )?,
                 comment_id,
                 fallback_locale.map(str::to_owned),
             )
@@ -328,6 +365,27 @@ impl CommentService {
             .map_err(comments_port_error_to_blog_error)?;
         let post_id = Self::ensure_blog_target(&record)?;
         self.ensure_post_exists(tenant_id, post_id).await?;
+        match comment_detail_read_policy(&security, record.author_id, record.status) {
+            CommentDetailReadPolicy::Owner => {}
+            CommentDetailReadPolicy::Denied => {
+                return Err(BlogError::comment_not_found(comment_id));
+            }
+            CommentDetailReadPolicy::Public => {
+                if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
+                    return Err(BlogError::comment_not_found(comment_id));
+                }
+                match self
+                    .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(BlogError::PostNotFound(_)) => {
+                        return Err(BlogError::comment_not_found(comment_id));
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        }
         Self::map_comment_record(record)
     }
 
@@ -553,10 +611,19 @@ impl CommentService {
         fallback_locale: Option<&str>,
         public_channel_slug: Option<&str>,
     ) -> BlogResult<(Vec<CommentListItem>, u64)> {
-        if !security.is_public_read() {
+        // COMMENTS_LIST is not a moderation grant. Without COMMENTS_MODERATE
+        // an authenticated customer must use exactly the same approved-only,
+        // published/channel-visible Comments projection as an anonymous reader.
+        let owner_read = may_moderate_comments(&security);
+        if owner_read {
             enforce_scope(&security, Resource::Comments, Action::List)?;
             self.ensure_post_exists(tenant_id, post_id).await?;
         } else {
+            // Anonymous storefront reads already use the dedicated public
+            // Comments port and need no authenticated COMMENTS_LIST grant.
+            if !security.is_public_read() {
+                enforce_scope(&security, Resource::Comments, Action::List)?;
+            }
             if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
                 return Err(BlogError::CommentsDisabled);
             }
@@ -580,7 +647,7 @@ impl CommentService {
             per_page,
         };
 
-        let result = if security.is_public_read() {
+        let result = if !owner_read {
             self.require_comments_thread_port()?
                 .list_public_comments_for_target(
                     comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
@@ -603,6 +670,17 @@ impl CommentService {
         };
 
         let (items, total) = result.map_err(comments_port_error_to_blog_error)?;
+        if !owner_read {
+            // A post can be unpublished, moved to another channel or have its
+            // comments disabled while the Comments owner request is in flight.
+            // Do not return a once-authorized thread after the owner read
+            // finishes without revalidating the current public boundary.
+            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
+                return Err(BlogError::CommentsDisabled);
+            }
+            self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                .await?;
+        }
         Ok((
             items
                 .into_iter()
@@ -697,12 +775,12 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
-        if let Some(channel_slug) = public_channel_slug {
+        if let Some(channel_slug) = normalize_public_channel_slug(public_channel_slug) {
             let channel_service = rustok_channel::ChannelService::new(self.db.clone());
             let Some(channel) = channel_service
-                .get_channel_by_slug(tenant_id, channel_slug)
+                .get_channel_by_slug(tenant_id, channel_slug.as_str())
                 .await
-                .map_err(|_| BlogError::post_not_found(post_id))?
+                .map_err(BlogError::from)?
             else {
                 return Err(BlogError::post_not_found(post_id));
             };
@@ -714,7 +792,7 @@ impl CommentService {
             let enabled = channel_service
                 .is_module_enabled_for_tenant(tenant_id, channel.id, "blog")
                 .await
-                .map_err(|_| BlogError::post_not_found(post_id))?;
+                .map_err(BlogError::from)?;
             if !enabled {
                 return Err(BlogError::post_not_found(post_id));
             }
@@ -763,6 +841,39 @@ impl CommentService {
             created_at: item.created_at,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommentDetailReadPolicy {
+    Owner,
+    Public,
+    Denied,
+}
+
+/// An ordinary caller may read their own pending comment, but someone else's
+/// comment is readable only if approved and its post passes current public
+/// visibility. Moderator reads remain independent of the storefront channel.
+fn comment_detail_read_policy(
+    security: &SecurityContext,
+    author_id: Uuid,
+    status: ApiCommentStatus,
+) -> CommentDetailReadPolicy {
+    if may_moderate_comments(security) || security.user_id == Some(author_id) {
+        CommentDetailReadPolicy::Owner
+    } else if status == ApiCommentStatus::Approved {
+        CommentDetailReadPolicy::Public
+    } else {
+        CommentDetailReadPolicy::Denied
+    }
+}
+
+/// Only a moderation grant permits reading the owner queue (including
+/// pending, spam and trash). Generic read/list grants are not escalation.
+fn may_moderate_comments(security: &SecurityContext) -> bool {
+    !matches!(
+        security.get_scope(Resource::Comments, Action::Moderate),
+        PermissionScope::None
+    )
 }
 
 fn is_public_comment_target(
@@ -898,3 +1009,89 @@ mod rich_content_tests;
 
 #[cfg(test)]
 mod public_target_tests;
+
+#[cfg(test)]
+mod comment_access_tests {
+    use super::*;
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
+
+    #[test]
+    fn ordinary_comment_grants_do_not_enable_mod_queue() {
+        let commenter = Uuid::new_v4();
+        let other_author = Uuid::new_v4();
+        let reader = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(commenter),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_CREATE],
+        );
+        assert!(!may_moderate_comments(&reader));
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Pending),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Spam),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Trash),
+            CommentDetailReadPolicy::Denied
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, other_author, ApiCommentStatus::Approved),
+            CommentDetailReadPolicy::Public,
+            "approved comments still require the live Blog post/channel check"
+        );
+        assert_eq!(
+            comment_detail_read_policy(&reader, commenter, ApiCommentStatus::Pending),
+            CommentDetailReadPolicy::Owner,
+            "an author retains access to their own moderation-pending reply"
+        );
+    }
+
+    #[test]
+    fn moderator_can_read_the_owner_queue() {
+        let moderator = SecurityContext::from_permissions(
+            UserRole::Manager,
+            Some(Uuid::new_v4()),
+            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_MODERATE],
+        );
+        assert!(may_moderate_comments(&moderator));
+        assert_eq!(
+            comment_detail_read_policy(&moderator, Uuid::new_v4(), ApiCommentStatus::Trash),
+            CommentDetailReadPolicy::Owner
+        );
+    }
+
+    #[tokio::test]
+    async fn comment_create_grant_cannot_bypass_owner_draft_policy() {
+        let (db, events) = crate::tests::hardening::setup_hardening_schema().await;
+        let tenant_id = Uuid::new_v4();
+        let post_id =
+            crate::tests::hardening::create_draft_post(&db, &events, tenant_id, "private-comment")
+                .await;
+        let commenter = SecurityContext::from_permissions(
+            UserRole::Customer,
+            Some(Uuid::new_v4()),
+            [Permission::COMMENTS_CREATE],
+        );
+        let service = CommentService::from_runtime_capabilities(db, None, None);
+
+        let error = service
+            .create_comment(
+                tenant_id,
+                commenter,
+                post_id,
+                CreateCommentInput {
+                    command_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    content: crate::richtext::article_document_from_plain_text("private"),
+                    parent_comment_id: None,
+                },
+            )
+            .await
+            .expect_err("owner-only comment create needs moderation authority");
+        assert!(matches!(error, BlogError::Forbidden(_)));
+    }
+}

@@ -15,7 +15,10 @@ use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
 use crate::dto::PublishedPostCursor;
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
+use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation};
+use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
+use crate::error::{BlogError, BlogResult};
+use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
@@ -26,6 +29,77 @@ use crate::services::tag::load_post_tags_map;
 
 pub const BLOG_SOURCE_MODULE: &str = "blog";
 pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
+
+/// The Blog owner's live Search audience gate.
+///
+/// Search owns the indexed document and ranking, but only Blog can authorize a
+/// stored candidate against *current* publication, post/channel allowlists and
+/// the Channel owner's active Blog-module binding. This is a bounded batch read
+/// and never trusts `search_documents.payload` as the authorization source.
+///
+/// The host adapter checks the tenant module lifecycle before invoking this
+/// method. A missing channel means the unscoped public corpus, so only posts
+/// with no explicit channel allowlist are eligible.
+pub async fn filter_public_search_post_ids(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    channel_slug: Option<&str>,
+    candidate_ids: &[Uuid],
+) -> BlogResult<Vec<Uuid>> {
+    if tenant_id.is_nil() {
+        return Err(BlogError::validation("Tenant ID must not be nil"));
+    }
+    if candidate_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let normalized_channel = normalize_public_channel_slug(channel_slug);
+    if let Some(slug) = normalized_channel.as_deref() {
+        let channels = rustok_channel::ChannelService::new(db.clone());
+        let Some(channel) = channels.get_channel_by_slug(tenant_id, slug)
+            .await.map_err(BlogError::from)?
+        else {
+            return Ok(Vec::new());
+        };
+        if !channel.is_active
+            || !channels.is_module_enabled_for_tenant(tenant_id, channel.id, BLOG_SOURCE_MODULE)
+                .await.map_err(BlogError::from)?
+        {
+            return Ok(Vec::new());
+        }
+    }
+
+    let published = blog_post::Entity::find()
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .filter(blog_post::Column::Id.is_in(candidate_ids.to_vec()))
+        .filter(blog_post::Column::Status.eq("published"))
+        .filter(blog_post::Column::PublishedAt.is_not_null())
+        .all(db).await.map_err(BlogError::from)?;
+    if published.is_empty() {
+        return Ok(Vec::new());
+    }
+    let published_ids = published.iter().map(|post| post.id)
+        .collect::<std::collections::HashSet<_>>();
+    let visibility = blog_post_channel_visibility::Entity::find()
+        .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_channel_visibility::Column::PostId.is_in(
+            published_ids.iter().copied().collect::<Vec<_>>()
+        ))
+        .all(db).await.map_err(BlogError::from)?;
+    let mut channels_by_post = HashMap::<Uuid, Vec<String>>::new();
+    for visibility_row in visibility {
+        channels_by_post.entry(visibility_row.post_id)
+            .or_default().push(visibility_row.channel_slug);
+    }
+    // Return only IDs that were actually requested; the Search SPI verifies
+    // this invariant too, independently of Blog.
+    Ok(candidate_ids.iter().copied().filter(|id| {
+        published_ids.contains(id) && is_post_visible_for_channel(
+            channels_by_post.get(id).map(Vec::as_slice).unwrap_or(&[]),
+            normalized_channel.as_deref(),
+        )
+    }).collect())
+}
+
 
 #[derive(Clone, Default)]
 pub struct BlogSearchProjectionSourceFactory;
@@ -114,6 +188,25 @@ impl BlogSearchProjectionSource {
                 .push(vis.channel_slug);
         }
 
+        // Blog owns post/tag attachment state, while Taxonomy owns each
+        // term's stable canonical key, localized slug and display name.
+        // Project all three as normalized *exact* keys: the Blog storefront
+        // accepts tag filters by slug or name and SQL must filter the complete
+        // result set before applying pagination.
+        let tag_relations = blog_post_tag::Entity::find()
+            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_tag::Column::PostId.is_in(post_ids.clone()))
+            .all(&self.db)
+            .await
+            .map_err(Error::Database)?;
+        let mut tag_ids_by_post: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        for relation in tag_relations {
+            tag_ids_by_post.entry(relation.post_id).or_default().push(relation.tag_id);
+        }
+        let mut distinct_tag_ids = tag_ids_by_post.values().flatten().copied().collect::<Vec<_>>();
+        distinct_tag_ids.sort_unstable();
+        distinct_tag_ids.dedup();
+
         // 3. Collect the Category identities of the whole page
         let category_ids: Vec<Uuid> = posts.iter().filter_map(|p| p.category_id).collect();
 
@@ -130,6 +223,7 @@ impl BlogSearchProjectionSource {
             HashMap<Uuid, BlogCategoryProjectionInfo>,
         > = HashMap::new();
         let mut tag_maps_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
+        let mut tag_keys_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
         for locale in &locales {
             let category_map = load_category_projections_map(
                 &self.db,
@@ -147,6 +241,32 @@ impl BlogSearchProjectionSource {
                     .await
                     .map_err(|error| Error::External(error.to_string()))?;
             tag_maps_by_locale.insert(locale.clone(), tag_map);
+            let canonical_terms = TaxonomyOwnerReader::new(self.db.clone())
+                .load_scoped_terms(
+                    tenant_id,
+                    TaxonomyTermKind::Tag,
+                    TaxonomyScopeType::Module,
+                    Some(BLOG_SOURCE_MODULE),
+                    Some(&distinct_tag_ids),
+                    locale,
+                    fallback_locale,
+                )
+                .await
+                .map_err(|error| Error::External(error.to_string()))?;
+            let terms_by_id = canonical_terms.into_iter()
+                .map(|term| (term.id, term)).collect::<HashMap<_, _>>();
+            let mut by_post = HashMap::new();
+            for (post_id, ids) in &tag_ids_by_post {
+                let mut keys = ids.iter().filter_map(|id| terms_by_id.get(id))
+                    .flat_map(|term| [&term.canonical_key, &term.slug, &term.name])
+                    .map(|key| key.trim().to_lowercase())
+                    .filter(|key| !key.is_empty())
+                    .collect::<Vec<_>>();
+                keys.sort();
+                keys.dedup();
+                by_post.insert(*post_id, keys);
+            }
+            tag_keys_by_locale.insert(locale.clone(), by_post);
         }
 
         let mut documents = Vec::new();
@@ -177,6 +297,11 @@ impl BlogSearchProjectionSource {
                 let post_tags = tag_maps_by_locale
                     .get(locale)
                     .and_then(|tags_map| tags_map.get(&post.id))
+                    .cloned()
+                    .unwrap_or_default();
+                let tag_keys = tag_keys_by_locale
+                    .get(locale)
+                    .and_then(|keys| keys.get(&post.id))
                     .cloned()
                     .unwrap_or_default();
 
@@ -228,8 +353,13 @@ impl BlogSearchProjectionSource {
                     body: body_text,
                     keywords_text,
                     facets: json!({
+                        // Search's category filter reads facets.category_id,
+                        // not payload.category_id. Omitting it made every
+                        // Blog post vanish under a category-scoped FTS query.
+                        "category_id": post.category_id,
                         "has_category": post.category_id.is_some(),
                         "has_tags": !post_tags.is_empty(),
+                        "tag_keys": tag_keys,
                         "has_channels": !post_channels.is_empty(),
                         "channel_slugs": post_channels,
                     }),

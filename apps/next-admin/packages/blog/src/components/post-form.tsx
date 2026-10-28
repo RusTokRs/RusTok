@@ -27,7 +27,8 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
-import { listBlogCategories, type BlogCategory } from '../api/categories';
+import { listAllBlogCategories, type BlogCategory } from '../api/categories';
+import { BlogModerationPanel } from './moderation-panel';
 
 const formSchema = z.object({
   title: z.string().min(2, 'Title must be at least 2 characters.'),
@@ -37,7 +38,10 @@ const formSchema = z.object({
   channelSlugs: z.string().optional(),
   excerpt: z.string().optional(),
   tags: z.string().optional(),
-  featuredImageUrl: z.string().url().optional().or(z.literal('')),
+  featuredImageUrl: z.string().refine(
+    (value) => !value || (value.startsWith('/') && !value.startsWith('//')) || /^https?:\/\//.test(value),
+    'Enter an HTTP/HTTPS URL or a root-relative image path.'
+  ).optional(),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   publish: z.boolean().default(false),
@@ -45,6 +49,13 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+function toLocalDateTimeInput(iso: string): string {
+  const date = new Date(iso);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
 
 function resolveInitialDoc(initialData: PostResponse | null): RichTextDocument {
   return initialData?.content?.document ?? emptyRichTextDocument();
@@ -72,10 +83,10 @@ export default function PostForm({
 
   useEffect(() => {
     let active = true;
-    listBlogCategories({ locale: defaultLocale }, gqlOpts)
+    listAllBlogCategories({ locale: defaultLocale }, gqlOpts)
       .then((res) => {
         if (active) {
-          setCategories(res.items);
+          setCategories(res);
         }
       })
       .catch(() => {});
@@ -85,7 +96,7 @@ export default function PostForm({
   }, [defaultLocale, gqlOpts]);
 
   const categoryOptions: FormOption[] = useMemo(() => {
-    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '' }];
+    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '__none__' }];
     categories.forEach((cat) => {
       opts.push({ label: cat.name, value: cat.id });
     });
@@ -96,7 +107,7 @@ export default function PostForm({
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
-    categoryId: initialData?.categoryId ?? '',
+    categoryId: initialData?.categoryId ?? '__none__',
     channelSlugs: initialData?.channelSlugs?.join(', ') ?? '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
@@ -105,7 +116,7 @@ export default function PostForm({
     seoDescription: initialData?.seoDescription ?? '',
     publish: false,
     scheduledAt: initialData?.scheduledAt
-      ? new Date(initialData.scheduledAt).toISOString().slice(0, 16)
+      ? toLocalDateTimeInput(initialData.scheduledAt)
       : ''
   };
 
@@ -169,15 +180,15 @@ export default function PostForm({
           {
             title: values.title,
             slug: values.slug || undefined,
-            locale: values.locale,
+            locale: initialData.requestedLocale,
             content,
-            excerpt: values.excerpt || undefined,
+            excerpt: values.excerpt?.trim() || null,
             tags,
-            categoryId: values.categoryId ? values.categoryId : null,
+            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : null,
             channelSlugs,
-            featuredImageUrl: values.featuredImageUrl || undefined,
-            seoTitle: values.seoTitle || undefined,
-            seoDescription: values.seoDescription || undefined,
+            featuredImageUrl: values.featuredImageUrl?.trim() || null,
+            seoTitle: values.seoTitle?.trim() || null,
+            seoDescription: values.seoDescription?.trim() || null,
             version: initialData.version,
             scheduledAt: updateSchedule
           },
@@ -194,7 +205,7 @@ export default function PostForm({
             excerpt: values.excerpt || undefined,
             publish: values.publish,
             tags,
-            categoryId: values.categoryId ? values.categoryId : undefined,
+            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : undefined,
             channelSlugs: channelSlugs.length > 0 ? channelSlugs : undefined,
             featuredImageUrl: values.featuredImageUrl || undefined,
             seoTitle: values.seoTitle || undefined,
@@ -213,7 +224,8 @@ export default function PostForm({
   }
 
   return (
-    <Card className='mx-auto w-full'>
+    <>
+      <Card className='mx-auto w-full'>
       <CardHeader>
         <CardTitle className='text-left text-2xl font-bold'>
           {pageTitle}
@@ -247,6 +259,8 @@ export default function PostForm({
               name='locale'
               label='Locale'
               placeholder='Host locale'
+              description={initialData ? 'Translation locale is fixed for this edit. Open the target locale before editing its content.' : undefined}
+              disabled={Boolean(initialData)}
               required
             />
             <FormInput
@@ -357,6 +371,15 @@ export default function PostForm({
           </Button>
         </Form>
       </CardContent>
-    </Card>
+      </Card>
+      {initialData && (
+        <BlogModerationPanel
+          key={initialData.id}
+          postId={initialData.id}
+          locale={initialData.requestedLocale}
+          gqlOpts={gqlOpts}
+        />
+      )}
+    </>
   );
 }

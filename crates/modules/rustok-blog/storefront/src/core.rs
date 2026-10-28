@@ -509,6 +509,31 @@ pub fn format_reading_time(minutes: u32, locale: Option<&str>) -> String {
     }
 }
 
+/// Preserve the selected post and other active filters while changing one filter.
+/// Cursor state is deliberately excluded: a cursor belongs to the old filter set.
+/// RSS route is mounted by the Leptos host, not by the generic module page.
+pub fn feed_href(locale: Option<&str>) -> String {
+    match locale.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(locale) => format!("/{locale}/blog/feed.xml"),
+        None => "/blog/feed.xml".to_string(),
+    }
+}
+
+pub fn filter_query_href(
+    slug: Option<&str>,
+    tag: Option<&str>,
+    category: Option<&str>,
+    search: Option<&str>,
+) -> String {
+    let mut pairs = Vec::new();
+    for (key, value) in [("slug", slug), ("tag", tag), ("category", category), ("q", search)] {
+        if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+            pairs.push(format!("{key}={}", percent_encode(value)));
+        }
+    }
+    format!("?{}", pairs.join("&"))
+}
+
 pub fn percent_encode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for b in s.bytes() {

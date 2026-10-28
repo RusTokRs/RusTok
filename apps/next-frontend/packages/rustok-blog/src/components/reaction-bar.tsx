@@ -44,6 +44,7 @@ export function ReactionBar({
 }: ReactionBarProps) {
   const [auth, setAuth] = useState<AuthSession | null>(null);
   const [isLiked, setIsLiked] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -63,6 +64,7 @@ export function ReactionBar({
 
   useEffect(() => {
     let active = true;
+    setAvailable(false);
 
     async function loadSnapshot() {
       try {
@@ -78,7 +80,10 @@ export function ReactionBar({
           tenant: tenantSlug ?? undefined
         });
 
-        if (!active || !res.data?.reactionSnapshot) return;
+        if (res.errors?.length || !res.data?.reactionSnapshot) {
+          throw new Error(res.errors?.[0]?.message ?? 'Reactions unavailable');
+        }
+        if (!active) return;
 
         const aggregates = res.data.reactionSnapshot.aggregates ?? [];
         const likeAggregate = aggregates.find((a) => a.reaction === 'like');
@@ -86,8 +91,9 @@ export function ReactionBar({
 
         const selected = res.data.reactionSnapshot.actorState?.selected ?? [];
         setIsLiked(selected.includes('like'));
+        setAvailable(true);
       } catch {
-        // Degraded mode / reactions unavailable
+        if (active) setAvailable(false);
       }
     }
 
@@ -115,7 +121,7 @@ export function ReactionBar({
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-        await storefrontGraphql<
+        const result = await storefrontGraphql<
           { applyReaction: { commandId: string; changed: boolean } },
           {
             input: {
@@ -138,6 +144,9 @@ export function ReactionBar({
           token: auth.token,
           tenant: tenantSlug ?? undefined
         });
+        if (result.errors?.length || !result.data?.applyReaction) {
+          throw new Error(result.errors?.[0]?.message ?? 'Reaction mutation failed');
+        }
       } catch {
         // Rollback optimistic state
         setIsLiked(!nextLiked);
@@ -147,6 +156,10 @@ export function ReactionBar({
       }
     });
   };
+
+  // The provider and the Blog use_reactions setting are checked by the owner.
+  // Do not show a working-looking control when the capability is unavailable.
+  if (!available) return null;
 
   return (
     <div className='flex items-center gap-3'>

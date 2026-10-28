@@ -70,6 +70,7 @@ export interface PostSummary {
   createdAt: string;
   publishedAt: string | null;
   scheduledAt: string | null;
+  isPinned: boolean;
 }
 
 export interface PostResponse {
@@ -90,6 +91,7 @@ export interface PostResponse {
   createdAt: string;
   publishedAt: string | null;
   scheduledAt: string | null;
+  isPinned: boolean;
   tags: string[];
   featuredImageUrl: string | null;
   seoTitle: string | null;
@@ -135,13 +137,13 @@ export interface UpdatePostInput {
   locale?: string;
   title?: string;
   content?: RichTextDocument;
-  excerpt?: string;
+  excerpt?: string | null;
   slug?: string;
   tags?: string[];
   categoryId?: string | null;
-  featuredImageUrl?: string;
-  seoTitle?: string;
-  seoDescription?: string;
+  featuredImageUrl?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
   channelSlugs?: string[];
   version: number;
   scheduledAt?: string | null;
@@ -162,6 +164,7 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       createdAt
       publishedAt
       scheduledAt
+      isPinned
     }
     nextCursor
   }
@@ -191,6 +194,7 @@ query Post($tenantId: UUID!, $id: UUID!) {
     createdAt
     publishedAt
     scheduledAt
+    isPinned
     tags
     featuredImageUrl
     seoTitle
@@ -208,6 +212,18 @@ mutation CreatePost($tenantId: UUID!, $input: CreatePostInput!) {
 const UPDATE_POST_MUTATION = `
 mutation UpdatePost($id: UUID!, $tenantId: UUID!, $input: UpdatePostInput!) {
   updatePost(id: $id, tenantId: $tenantId, input: $input)
+}
+`;
+
+const ARCHIVE_POST_MUTATION = `
+mutation ArchivePost($id: UUID!, $tenantId: UUID!) {
+  archivePost(id: $id, tenantId: $tenantId)
+}
+`;
+
+const RESTORE_POST_MUTATION = `
+mutation RestorePost($id: UUID!, $tenantId: UUID!) {
+  restorePost(id: $id, tenantId: $tenantId)
 }
 `;
 
@@ -229,6 +245,18 @@ mutation UnpublishPost($id: UUID!, $tenantId: UUID!) {
 }
 `;
 
+const PIN_POST_MUTATION = `
+mutation PinPost($id: UUID!, $tenantId: UUID!) {
+  pinPost(id: $id, tenantId: $tenantId)
+}
+`;
+
+const UNPIN_POST_MUTATION = `
+mutation UnpinPost($id: UUID!, $tenantId: UUID!) {
+  unpinPost(id: $id, tenantId: $tenantId)
+}
+`;
+
 // ---------- Response types ----------
 
 interface PostsQueryResponse {
@@ -247,6 +275,14 @@ interface UpdatePostResponse {
   updatePost: boolean;
 }
 
+interface ArchivePostResponse {
+  archivePost: boolean;
+}
+
+interface RestorePostResponse {
+  restorePost: boolean;
+}
+
 interface DeletePostResponse {
   deletePost: boolean;
 }
@@ -257,6 +293,14 @@ interface PublishPostResponse {
 
 interface UnpublishPostResponse {
   unpublishPost: boolean;
+}
+
+interface PinPostResponse {
+  pinPost: boolean;
+}
+
+interface UnpinPostResponse {
+  unpinPost: boolean;
 }
 
 // ---------- API functions ----------
@@ -323,7 +367,7 @@ export async function updatePost(
   input: UpdatePostInput,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<
+  const data = await graphqlRequest<
     { id: string; tenantId: string; input: UpdatePostInput },
     UpdatePostResponse
   >(
@@ -332,40 +376,85 @@ export async function updatePost(
     opts.token,
     opts.tenantSlug
   );
+  if (!data.updatePost) throw new Error('Update post rejected by the Blog owner');
 }
 
 export async function deletePost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
     DELETE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.deletePost) throw new Error('deletePost rejected by the Blog owner');
 }
 
 export async function publishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
     PUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.publishPost) throw new Error('publishPost rejected by the Blog owner');
 }
 
 export async function unpublishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
+  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
     UNPUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
+  if (!data.unpublishPost) throw new Error('unpublishPost rejected by the Blog owner');
+}
+
+export async function archivePost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, ArchivePostResponse>(
+    ARCHIVE_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.archivePost) throw new Error('Archive post rejected by the Blog owner');
+}
+
+export async function restorePost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, RestorePostResponse>(
+    RESTORE_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.restorePost) throw new Error('Restore post rejected by the Blog owner');
+}
+
+/** Pin state is owned by Blog and is independent of the post edit version. */
+export async function pinPost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, PinPostResponse>(
+    PIN_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.pinPost) throw new Error('Pin post rejected by the Blog owner');
+}
+
+export async function unpinPost(id: string, opts: GqlOpts): Promise<void> {
+  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpinPostResponse>(
+    UNPIN_POST_MUTATION,
+    { id, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.unpinPost) throw new Error('Unpin post rejected by the Blog owner');
 }

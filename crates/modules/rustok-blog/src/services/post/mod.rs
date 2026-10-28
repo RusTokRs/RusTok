@@ -539,7 +539,7 @@ fn matching_blog_post_channel_visibility_subquery(
         .to_owned()
 }
 
-fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+pub(crate) fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
         .filter(|slug| !slug.is_empty())

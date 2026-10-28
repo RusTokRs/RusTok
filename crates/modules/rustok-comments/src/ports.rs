@@ -666,12 +666,22 @@ mod in_process {
         lease: idempotency::Lease,
         error: &PortError,
     ) {
-        if let Err(receipt_error) = idempotency::fail(database, lease, error).await {
+        // Only deterministic failures may be replayed as terminal receipts.
+        // A transient DB/provider outage, timeout or uncertain commit must
+        // release its *processing* lease so that the same command_id can retry.
+        // The Outbox release checks both status and lease token, so it cannot
+        // erase a concurrently completed write or another worker's claim.
+        let result = if error.retryable {
+            idempotency::release_retryable(database, lease, error).await
+        } else {
+            idempotency::fail(database, lease, error).await
+        };
+        if let Err(receipt_error) = result {
             tracing::error!(
                 operation_id = %lease.operation_id,
                 %error,
                 %receipt_error,
-                "Failed to persist durable Comments failure receipt"
+                "Failed to finalize Comments failure receipt safely"
             );
         }
     }
@@ -739,6 +749,61 @@ mod in_process {
     #[cfg(test)]
     mod idempotency_tests {
         use super::*;
+
+        #[tokio::test]
+        async fn transient_failure_allows_same_command_id_to_retry_but_terminal_failure_replays() {
+            use rustok_outbox::SysEventsMigration;
+            use sea_orm::Database;
+            use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+            let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
+            SysEventsMigration.up(&SchemaManager::new(&db))
+                .await.expect("receipts migration");
+            let tenant_id = Uuid::new_v4();
+            let request = serde_json::json!({"actor": "commenter", "body": "same"});
+            async fn admit_comment(
+                db: &sea_orm::DatabaseConnection,
+                tenant_id: Uuid,
+                request: &serde_json::Value,
+                key: &str,
+            ) -> Result<Admission, PortError> {
+                idempotency::admit(
+                    db,
+                    OwnerOperationScope::Tenant(tenant_id),
+                    "comments",
+                    key,
+                    "create_comment",
+                    request,
+                ).await
+            }
+
+            let lease = match admit_comment(&db, tenant_id, &request, "temporarily-unavailable")
+                .await.expect("admit") {
+                Admission::Run(lease) => lease,
+                _ => panic!("first admission must run"),
+            };
+            persist_idempotency_failure(
+                &db, lease,
+                &PortError::unavailable("comments.database", "temporary failure"),
+            ).await;
+            assert!(matches!(
+                admit_comment(&db, tenant_id, &request, "temporarily-unavailable").await.expect("re-admit"),
+                Admission::Run(_)
+            ), "a retryable failure must not poison the durable command identity");
+
+            let lease = match admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("admit") {
+                Admission::Run(lease) => lease,
+                _ => panic!("first admission must run"),
+            };
+            persist_idempotency_failure(
+                &db, lease,
+                &PortError::validation("comments.validation", "invalid rich text"),
+            ).await;
+            assert!(matches!(
+                admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("replay"),
+                Admission::ReplayError(error) if !error.retryable
+            ), "terminal validation failures must still replay deterministically");
+        }
 
         #[test]
         fn idempotency_request_binds_principal_identity() {

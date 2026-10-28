@@ -12,6 +12,7 @@ Leptos admin UI package for the `rustok-blog` module.
 - Exposes the blog admin root view used by `apps/admin`.
 - Stays module-owned: blog-specific admin UI does not live in `apps/admin`.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
+- Exposes Blog-owned Category selection, per-post channel visibility, featured image, localized SEO defaults, and RFC 3339 schedule authoring for drafts through both selected transports.
 - Owns blog CRUD through a module transport facade: SSR/hydrate selects native `#[server]` functions, while standalone CSR selects the parallel GraphQL contract.
 - Owns a separate comment-moderation slice through `admin/src/moderation.rs`; selecting a post loads its non-deleted owner queue and supports approve/spam/trash actions through the selected native or GraphQL transport.
 - Paginates the moderation queue with bounded `page`/`per_page` inputs, resets page state when the selected post changes, and prevents navigation outside the server-reported total.

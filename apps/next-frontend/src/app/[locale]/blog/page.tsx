@@ -20,7 +20,9 @@ import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
   fetchPublishedPosts,
+  searchPublishedPosts,
   fetchBlogCategories,
+  fetchBlogTags,
   PostCard,
   BlogPagination,
   type BlogPostSummary,
@@ -88,11 +90,33 @@ export default async function BlogListingPage({
     typeof query.after === "string" && query.after.trim() ? query.after.trim() : null;
   const pageSize = 9;
 
+  // A full-text query uses Search's exact count and offset pagination.
+  // The ordinary Blog feed retains its pinned-post keyset cursor, since
+  // Search relevance offsets and Blog publication cursors are not interchangeable.
+  const searchPage = Math.max(
+    1,
+    Math.min(100, Number.parseInt(typeof query.page === "string" ? query.page : "1", 10) || 1),
+  );
   let posts: BlogPostSummary[] = [];
   let nextCursor: string | null = null;
-  try {
-    if (tenantId) {
-      const res = await fetchPublishedPosts(
+  let searchTotal = 0;
+  if (searchQuery) {
+      // Search resolves tenant identity exclusively from the trusted host,
+      // so a separate client-supplied tenant UUID is neither needed nor safe.
+      const found = await searchPublishedPosts(
+        storefrontGraphql,
+        tenantSlug,
+        searchQuery,
+        locale,
+        searchPage,
+        pageSize,
+        selectedCategory,
+        selectedTag,
+      );
+      posts = found.items;
+      searchTotal = found.total;
+  } else if (tenantId) {
+      const listed = await fetchPublishedPosts(
         storefrontGraphql,
         tenantId,
         tenantSlug,
@@ -100,27 +124,21 @@ export default async function BlogListingPage({
         pageSize,
         selectedTag,
         selectedCategory,
-        locale
+        locale,
       );
-      posts = res.items;
-      nextCursor = res.nextCursor;
-    }
-  } catch {
-    posts = [];
+      posts = listed.items;
+      nextCursor = listed.nextCursor;
   }
 
-  // Filter posts by keyword if search query is provided
-  const filteredPosts = searchQuery
-    ? posts.filter((p) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          p.title.toLowerCase().includes(q) ||
-          (p.excerpt && p.excerpt.toLowerCase().includes(q)) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)) ||
-          (p.categoryName && p.categoryName.toLowerCase().includes(q))
-        );
-      })
-    : posts;
+  const filteredPosts = posts;
+  const searchPageHref = (page: number) => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set("q", searchQuery);
+    if (selectedCategory) params.set("category", selectedCategory);
+    if (selectedTag) params.set("tag", selectedTag);
+    if (page > 1) params.set("page", String(page));
+    return `/${locale}/blog?${params.toString()}`;
+  };
 
   // Load categories directly from taxonomy/blog GraphQL
   let allCategories: Array<{ id: string; name: string }> = [];
@@ -138,8 +156,16 @@ export default async function BlogListingPage({
     // fallback
   }
 
-  // Extract all distinct tags and categories fallback from results
-  const allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+  // Taxonomy owns the complete tag dictionary; a post page is not a facet API.
+  let allTags: string[] = [];
+  try {
+    allTags = await fetchBlogTags(storefrontGraphql, tenantId, tenantSlug, locale);
+  } catch {
+    // Keep the listing accessible if taxonomy is unavailable; this fallback is
+    // explicitly limited to tags present on the fetched page.
+    allTags = Array.from(new Set(posts.flatMap((p) => p.tags)));
+  }
+  // Categories likewise fall back to their currently loaded post labels.
   if (allCategories.length === 0) {
     const categoriesMap = new Map<string, string>();
     for (const p of posts) {
@@ -354,6 +380,14 @@ export default async function BlogListingPage({
                   ? "В данный момент статьи отсутствуют или не соответствуют фильтру."
                   : "Check back later or clear the selected filter."}
             </p>
+            {searchQuery && searchTotal > 0 && searchPage > 1 && (
+              <Link
+                href={searchPageHref(1)}
+                className="mt-4 inline-flex rounded-full border px-4 py-2 text-sm"
+              >
+                {isRu ? "Вернуться к первым результатам" : "Back to first results"}
+              </Link>
+            )}
             {(searchQuery || selectedCategory || selectedTag) && (
               <div className="mt-4">
                 <Link
@@ -373,6 +407,11 @@ export default async function BlogListingPage({
                   key={post.id}
                   post={post}
                   locale={locale}
+                  filters={{
+                    tag: selectedTag,
+                    category: selectedCategory,
+                    q: searchQuery
+                  }}
                   href={
                     post.slug
                       ? `/${locale}/blog/${encodeURIComponent(post.slug)}`
@@ -382,16 +421,35 @@ export default async function BlogListingPage({
               ))}
             </div>
 
-            {/* Pagination */}
-            <BlogPagination
-              nextCursor={nextCursor}
-              currentCursor={currentCursor}
-              baseUrl={`/${locale}/blog`}
-              selectedTag={selectedTag}
-              selectedCategory={selectedCategory}
-              searchQuery={searchQuery}
-              locale={locale}
-            />
+            {/* Full-text results use relevance-offset pagination; the feed
+                retains Blog's independent keyset cursor. */}
+            {searchQuery ? (
+              <nav aria-label={isRu ? "Страницы поиска" : "Search pages"} className="flex items-center justify-center gap-4 py-6">
+                {searchPage > 1 && (
+                  <Link href={searchPageHref(searchPage - 1)} className="rounded-full border px-4 py-2 text-sm">
+                    {isRu ? "Назад" : "Previous"}
+                  </Link>
+                )}
+                <span className="text-sm text-muted-foreground">
+                  {isRu ? `Страница ${searchPage} · Найдено: ${searchTotal}` : `Page ${searchPage} · ${searchTotal} results`}
+                </span>
+                {searchPage * pageSize < searchTotal && (
+                  <Link href={searchPageHref(searchPage + 1)} className="rounded-full border px-4 py-2 text-sm">
+                    {isRu ? "Далее" : "Next"}
+                  </Link>
+                )}
+              </nav>
+            ) : (
+              <BlogPagination
+                nextCursor={nextCursor}
+                currentCursor={currentCursor}
+                baseUrl={`/${locale}/blog`}
+                selectedTag={selectedTag}
+                selectedCategory={selectedCategory}
+                searchQuery={undefined}
+                locale={locale}
+              />
+            )}
           </>
         )}
       </div>

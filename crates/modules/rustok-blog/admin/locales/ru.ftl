@@ -102,3 +102,15 @@ richText-strike = Зачёркнутый
 richText-undo = Отменить
 blog-error-restorePost = Не удалось восстановить публикацию
 blog-table-restore = Восстановить
+
+blog-form-category = Категория
+blog-form-uncategorized = Без категории
+blog-form-channels = Каналы (через запятую; пусто = все каналы)
+blog-form-featuredImage = URL обложки
+blog-form-seoTitle = SEO-заголовок (значение по умолчанию)
+blog-form-seoDescription = SEO-описание (значение по умолчанию)
+blog-error-categories = Не удалось загрузить категории
+blog-form-scheduledAt = Публикация по расписанию (RFC 3339 с часовым поясом)
+blog-table-pin = Закрепить
+blog-table-unpin = Открепить
+blog-error-updatePin = Не удалось изменить закрепление статьи

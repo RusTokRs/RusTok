@@ -343,3 +343,4 @@ Forum-draftNotSaved = Drafts are not saved until you sign in with a known accoun
 Forum-replyingTo = Replying to: { $title }
 Forum-quotes = Quotes
 Forum-topic = Topic
+Blog-comments-readOnly = Comments are closed for new replies.

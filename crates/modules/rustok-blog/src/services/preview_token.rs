@@ -217,15 +217,44 @@ impl PreviewTokenService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
+        self.get_post_by_token_scoped(None, token, locale, fallback_locale)
+            .await
+    }
+
+    /// GraphQL preview read bound to the *request's* tenant. The token remains
+    /// a bearer credential, but it cannot cause the GraphQL tenant-scoped
+    /// endpoint to serve a draft belonging to a different tenant.
+    pub async fn get_post_by_token_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        token: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<Option<PostResponse>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        self.get_post_by_token_scoped(Some(tenant_id), token, locale, fallback_locale)
+            .await
+    }
+
+    async fn get_post_by_token_scoped(
+        &self,
+        expected_tenant_id: Option<Uuid>,
+        token: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<Option<PostResponse>> {
         let token = token.trim();
         if token.is_empty() || token.len() > 128 {
             return Ok(None);
         }
-        let token_record = blog_preview_token::Entity::find()
-            .filter(blog_preview_token::Column::Token.eq(preview_token_digest(token)))
-            .one(&self.db)
-            .await
-            .map_err(BlogError::from)?;
+        let mut lookup = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::Token.eq(preview_token_digest(token)));
+        if let Some(tenant_id) = expected_tenant_id {
+            lookup = lookup.filter(blog_preview_token::Column::TenantId.eq(tenant_id));
+        }
+        let token_record = lookup.one(&self.db).await.map_err(BlogError::from)?;
 
         let Some(token_record) = token_record else {
             return Ok(None);
@@ -233,7 +262,7 @@ impl PreviewTokenService {
 
         // Check if token is expired
         let expires_at: DateTime<Utc> = token_record.expires_at.into();
-        if expires_at < Utc::now() {
+        if expires_at <= Utc::now() {
             return Ok(None);
         }
 
@@ -361,7 +390,7 @@ impl PreviewTokenService {
         let now = Utc::now();
         let expired = blog_preview_token::Entity::find()
             .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
-            .filter(blog_preview_token::Column::ExpiresAt.lt(now))
+            .filter(blog_preview_token::Column::ExpiresAt.lte(now))
             .limit(u64::from(bounded_cleanup_batch(limit)))
             .all(&self.db)
             .await

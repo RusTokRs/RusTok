@@ -27,7 +27,19 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    fetch_storefront_search_server(query, locale, preset_key, filters).await
+    fetch_storefront_search_server(query, locale, preset_key, filters, None, 12, 0).await
+}
+
+pub async fn fetch_search_page(
+    query: String,
+    locale: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
+) -> Result<SearchPreviewPayload, ApiError> {
+    fetch_storefront_search_server(query, locale, preset_key, filters, tag, limit, offset).await
 }
 
 pub async fn fetch_suggestions(
@@ -55,8 +67,11 @@ async fn fetch_storefront_search_server(
     locale: Option<String>,
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    storefront_search_native(query, locale, preset_key, filters)
+    storefront_search_native(query, locale, preset_key, filters, tag, limit, offset)
         .await
         .map_err(ApiError::from)
 }
@@ -93,6 +108,9 @@ async fn storefront_search_native(
     locale: Option<String>,
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
+    tag: Option<String>,
+    limit: usize,
+    offset: usize,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -114,6 +132,9 @@ async fn storefront_search_native(
             .await
             .map_err(ServerFnError::new)?;
         let input = normalize_search_input(query, locale, preset_key, filters)?;
+        let limit = limit.clamp(1, 50);
+        let offset = offset.min(10_000);
+        let tag = normalize_blog_search_tag(tag)?;
         let trusted_channel =
             resolve_trusted_storefront_channel(&request_context, tenant.id, input.channel_id)
                 .map_err(|error| ServerFnError::new(error.to_string()))?;
@@ -148,13 +169,14 @@ async fn storefront_search_native(
             query: transform.effective_query,
             ranking_profile,
             preset_key: resolved_preset.preset.map(|preset| preset.key),
-            limit: 12,
-            offset: 0,
+            limit,
+            offset,
             published_only: true,
             entity_types: resolved_preset.entity_types,
             source_modules: resolved_preset.source_modules,
             statuses: resolved_preset.statuses,
             category_ids: input.category_ids,
+            tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -219,7 +241,7 @@ async fn storefront_search_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (query, locale, preset_key, filters);
+        let _ = (query, locale, preset_key, filters, tag, limit, offset);
         Err(ServerFnError::new(
             "search/storefront-search requires the `ssr` feature",
         ))
@@ -392,6 +414,15 @@ struct NormalizedSearchInput {
     attribute_filters: Vec<rustok_search::SearchAttributeFilter>,
     sort_attribute_code: Option<String>,
     sort_desc: bool,
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_blog_search_tag(tag: Option<String>) -> Result<Option<String>, ServerFnError> {
+    let tag = tag.map(|tag| tag.trim().to_lowercase()).filter(|tag| !tag.is_empty());
+    if tag.as_ref().is_some_and(|tag| tag.chars().count() > 120 || tag.chars().any(char::is_control)) {
+        return Err(ServerFnError::new("Invalid Blog tag filter"));
+    }
+    Ok(tag)
 }
 
 #[cfg(feature = "ssr")]

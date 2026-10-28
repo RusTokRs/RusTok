@@ -213,9 +213,13 @@ pub async fn reorder_module_category_siblings_in_tx(
         .map(|row| row.term_id)
         .collect::<HashSet<_>>();
     let ordered_ids = ordered_term_ids.iter().copied().collect::<HashSet<_>>();
-    if !sibling_ids.is_subset(&ordered_ids) {
+    // This is an *ordering* command, not a move. A superset of the current
+    // sibling ids silently reparents the extra terms below, bypassing the
+    // canonical move command's cycle/depth validation and affecting another
+    // sibling set. Both directions of the set comparison are mandatory.
+    if sibling_ids != ordered_ids {
         return Err(TaxonomyError::conflict(
-            "Module Category sibling order does not cover the complete canonical sibling set",
+            "Module Category sibling order must match the canonical sibling set exactly",
         ));
     }
 
@@ -281,8 +285,22 @@ pub async fn shift_module_category_siblings_for_insert_in_tx(
             "Module Category insertion placement changed before sibling normalization",
         ));
     }
+    // Roots from every module share parent_id = NULL. Scope the shift to
+    // this module's Taxonomy identities before touching any sibling position;
+    // otherwise adding one Blog root can reorder unrelated module roots.
+    let scoped_ids = taxonomy_term::Entity::find()
+        .select_only()
+        .column(taxonomy_term::Column::Id)
+        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+        .filter(taxonomy_term::Column::ScopeValue.eq(&module_scope))
+        .into_tuple::<Uuid>()
+        .all(txn)
+        .await?;
     let siblings = taxonomy_category_hierarchy::Entity::find()
         .filter(taxonomy_category_hierarchy::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_category_hierarchy::Column::TermId.is_in(scoped_ids))
         .filter(match parent_id {
             Some(parent_id) => taxonomy_category_hierarchy::Column::ParentTermId.eq(parent_id),
             None => taxonomy_category_hierarchy::Column::ParentTermId.is_null(),
@@ -445,4 +463,130 @@ fn normalize_module_scope(value: &str) -> TaxonomyResult<String> {
         ));
     }
     Ok(normalized)
+}
+
+#[cfg(test)]
+mod scope_isolation_tests {
+    use super::*;
+    use rustok_test_utils::setup_test_db;
+    use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
+
+    async fn schema(db: &DatabaseConnection) {
+        db.execute_unprepared(
+            "CREATE TABLE taxonomy_terms (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                scope_type TEXT NOT NULL,
+                scope_value TEXT NOT NULL,
+                canonical_key TEXT NOT NULL,
+                revision BIGINT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+        )
+        .await
+        .expect("test Taxonomy term schema");
+        db.execute_unprepared(
+            "CREATE TABLE taxonomy_category_hierarchy (
+                tenant_id TEXT NOT NULL,
+                term_id TEXT NOT NULL,
+                parent_term_id TEXT NULL,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (tenant_id, term_id)
+            )",
+        )
+        .await
+        .expect("test Taxonomy hierarchy schema");
+    }
+
+    async fn insert_category(
+        db: &DatabaseConnection,
+        tenant: Uuid,
+        scope: &str,
+        parent_id: Option<Uuid>,
+        position: i32,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        let now = chrono::Utc::now().fixed_offset();
+        taxonomy_term::ActiveModel {
+            id: Set(id),
+            tenant_id: Set(tenant),
+            kind: Set(TaxonomyTermKind::Category),
+            scope_type: Set(TaxonomyScopeType::Module),
+            scope_value: Set(scope.to_string()),
+            canonical_key: Set(format!("category-{id}")),
+            revision: Set(1),
+            created_at: Set(now.to_owned()),
+            updated_at: Set(now),
+        }
+        .insert(db)
+        .await
+        .expect("category identity fixture");
+        taxonomy_category_hierarchy::ActiveModel {
+            tenant_id: Set(tenant),
+            term_id: Set(id),
+            parent_term_id: Set(parent_id),
+            position: Set(position),
+        }
+        .insert(db)
+        .await
+        .expect("category placement fixture");
+        id
+    }
+
+    #[tokio::test]
+    async fn module_insert_does_not_shift_another_module_root() {
+        let db = setup_test_db().await;
+        schema(&db).await;
+        let tenant = Uuid::new_v4();
+        let blog_root = insert_category(&db, tenant, "blog", None, 0).await;
+        let foreign_root = insert_category(&db, tenant, "pages", None, 0).await;
+        let new_blog_root = insert_category(&db, tenant, "blog", None, 0).await;
+
+        let txn = db.begin().await.expect("transaction");
+        shift_module_category_siblings_for_insert_in_tx(
+            &txn, tenant, new_blog_root, "blog", None, 0,
+        )
+        .await
+        .expect("shift Blog sibling only");
+        txn.commit().await.expect("commit");
+
+        let blog = taxonomy_category_hierarchy::Entity::find_by_id((tenant, blog_root))
+            .one(&db)
+            .await
+            .expect("read")
+            .expect("blog root exists");
+        let foreign = taxonomy_category_hierarchy::Entity::find_by_id((tenant, foreign_root))
+            .one(&db)
+            .await
+            .expect("read")
+            .expect("other root exists");
+        assert_eq!(blog.position, 1);
+        assert_eq!(foreign.position, 0, "a Blog insert must not reorder Pages");
+    }
+
+    #[tokio::test]
+    async fn reorder_rejects_an_extra_category_from_another_parent() {
+        let db = setup_test_db().await;
+        schema(&db).await;
+        let tenant = Uuid::new_v4();
+        let root = insert_category(&db, tenant, "blog", None, 0).await;
+        let child = insert_category(&db, tenant, "blog", Some(root), 0).await;
+
+        let txn = db.begin().await.expect("transaction");
+        let err = reorder_module_category_siblings_in_tx(
+            &txn, tenant, "blog", None, &[root, child],
+        )
+        .await
+        .expect_err("reorder must not move a child to a root");
+        assert!(err.to_string().contains("must match"));
+        txn.rollback().await.expect("rollback");
+        let row = taxonomy_category_hierarchy::Entity::find_by_id((tenant, child))
+            .one(&db)
+            .await
+            .expect("read")
+            .expect("child still exists");
+        assert_eq!(row.parent_term_id, Some(root));
+    }
 }

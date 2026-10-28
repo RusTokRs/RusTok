@@ -11,7 +11,6 @@ import {
   parsePostSortOrder
 } from '../api/posts';
 import { PostTable, type PostTablePager } from '../components/post-table';
-import { columns } from '../components/post-table/columns';
 
 interface PostsPageProps {
   searchParams: {
@@ -57,8 +56,16 @@ export default async function PostsPage({
   tenantSlug,
   tenantId
 }: PostsPageProps) {
-  const perPage = Number(searchParams.perPage) || 20;
-  const status = searchParams.status as BlogPostStatus | undefined;
+  const requestedPageSize = Number(searchParams.perPage);
+  const perPage = Number.isInteger(requestedPageSize) && requestedPageSize > 0
+    ? Math.min(requestedPageSize, 100)
+    : 20;
+  const status: BlogPostStatus | undefined =
+    searchParams.status === 'DRAFT' ||
+    searchParams.status === 'PUBLISHED' ||
+    searchParams.status === 'ARCHIVED'
+      ? searchParams.status
+      : undefined;
   const after = searchParams.after || undefined;
   const history = searchParams.history
     ? searchParams.history.split(',').filter(Boolean)
@@ -99,5 +106,5 @@ export default async function PostsPage({
       : null
   };
 
-  return <PostTable data={posts} pager={pager} columns={columns} />;
+  return <PostTable data={posts} pager={pager} gqlOpts={opts} />;
 }

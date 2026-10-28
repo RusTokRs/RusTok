@@ -3,7 +3,7 @@ import { getTranslations } from '@rustok/next-fluent/server';
 
 import { storefrontGraphql } from '@/shared/lib/graphql';
 import { fetchPublishedPost, fetchPublishedPosts } from "../api/posts";
-import { BlogCommentComposer } from './blog-comment-composer';
+import { BlogCommentsSection } from './blog-comments-section';
 import { PostCard } from "./post-card";
 
 export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }: {
@@ -40,7 +40,9 @@ export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }
               ? 'comments.timeoutCached'
               : 'comments.timeout'
           )
-        : null
+        : selectedPost.publicComments.availability === 'READ_ONLY'
+          ? t('comments.readOnly')
+          : null
     : null;
 
   return (
@@ -55,34 +57,16 @@ export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }
             className="mt-5 text-sm leading-7 text-foreground"
           />
           {tenantSlug && (
-            <BlogCommentComposer
+            <BlogCommentsSection
               tenantId={tenantId}
               tenantSlug={tenantSlug}
               postId={selectedPost.id}
               contentLocale={selectedPost.effectiveLocale}
+              comments={selectedPost.publicComments}
+              degradedMessage={degradedCommentsMessage}
+              locale={locale}
             />
           )}
-          <section className="mt-8 border-t border-border pt-6">
-            <h3 className="text-lg font-semibold text-foreground">{t('comments.title')}</h3>
-            {degradedCommentsMessage && (
-              <p className="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground" role="status">
-                {degradedCommentsMessage}
-              </p>
-            )}
-            {selectedPost.publicComments.availability !== 'AVAILABLE' &&
-            !selectedPost.publicComments.cachedSnapshot ? null :
-            selectedPost.publicComments.items.length === 0 ? (
-              <p className="mt-3 text-sm text-muted-foreground">{t('comments.empty')}</p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {selectedPost.publicComments.items.map((comment) => (
-                  <article key={comment.id} className="rounded-xl border border-border p-4">
-                    <p className="whitespace-pre-line text-sm leading-6 text-foreground">{comment.contentPreview}</p>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
         </article>
       )}
       <div>

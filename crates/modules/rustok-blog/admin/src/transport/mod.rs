@@ -4,7 +4,8 @@ mod native_server_adapter;
 
 use crate::core::BlogPostAdminSort;
 use crate::model::{
-    BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
+    BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
+    BlogPostDraft, BlogPostList,
 };
 use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 
@@ -19,6 +20,21 @@ fn selected_transport_path() -> UiTransportPath {
     {
         UiTransportPath::Graphql
     }
+}
+
+pub async fn fetch_categories(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryOption>, ApiError> {
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/categories",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_categories(native_locale),
+        move || graphql_adapter::fetch_categories(token, tenant_slug, locale),
+    )
+    .await
 }
 
 pub async fn fetch_posts(
@@ -126,6 +142,40 @@ pub async fn unpublish_post(
         selected_transport_path(),
         move || native_server_adapter::unpublish_post(native_id, native_locale),
         move || graphql_adapter::unpublish_post(token, tenant_slug, id, locale),
+    )
+    .await
+}
+
+pub async fn pin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let native_id = id.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/pin-post",
+        selected_transport_path(),
+        move || native_server_adapter::pin_post(native_id, native_locale),
+        move || graphql_adapter::pin_post(token, tenant_slug, id, locale),
+    )
+    .await
+}
+
+pub async fn unpin_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<BlogPostDetail, ApiError> {
+    let native_id = id.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/unpin-post",
+        selected_transport_path(),
+        move || native_server_adapter::unpin_post(native_id, native_locale),
+        move || graphql_adapter::unpin_post(token, tenant_slug, id, locale),
     )
     .await
 }
