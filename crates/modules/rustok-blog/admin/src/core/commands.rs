@@ -245,6 +245,8 @@ pub struct BlogPostFormInput<'a> {
     pub featured_image_url: &'a str,
     pub seo_title: &'a str,
     pub seo_description: &'a str,
+    pub scheduled_at: &'a str,
+    pub schedule_editable: bool,
 }
 
 pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
@@ -262,6 +264,8 @@ pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
         featured_image_url: optional_text(input.featured_image_url),
         seo_title: optional_text(input.seo_title),
         seo_description: optional_text(input.seo_description),
+        scheduled_at: optional_text(input.scheduled_at),
+        schedule_editable: input.schedule_editable,
     }
 }
 
@@ -280,6 +284,8 @@ pub struct BlogPostEditorFormState {
     pub featured_image_url: String,
     pub seo_title: String,
     pub seo_description: String,
+    pub scheduled_at: String,
+    pub schedule_editable: bool,
     pub publish_now: bool,
 }
 
@@ -299,6 +305,8 @@ impl BlogPostEditorFormState {
             featured_image_url: String::new(),
             seo_title: String::new(),
             seo_description: String::new(),
+            scheduled_at: String::new(),
+            schedule_editable: true,
             publish_now: false,
         }
     }
@@ -322,6 +330,8 @@ impl BlogPostEditorFormState {
             featured_image_url: optional_text_or_default(post.featured_image_url.clone()),
             seo_title: optional_text_or_default(post.seo_title.clone()),
             seo_description: optional_text_or_default(post.seo_description.clone()),
+            scheduled_at: optional_text_or_default(post.scheduled_at.clone()),
+            schedule_editable: post.status.eq_ignore_ascii_case("draft"),
             publish_now: is_published_status(post.status.as_str()),
         }
     }
