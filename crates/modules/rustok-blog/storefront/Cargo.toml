@@ -21,6 +21,7 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:rustok-tenant",
+  "dep:rustok-profiles",
   "dep:uuid",
   "rustok-api/server",
   "rustok-comments-storefront-support/ssr",
@@ -43,5 +44,6 @@ rustok-ui-i18n.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, default-features = false, optional = true }
 uuid = { workspace = true, optional = true }
 rustok-comments-storefront-support = { path = "../../rustok-comments/storefront", default-features = false }
