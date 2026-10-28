@@ -154,6 +154,18 @@ pub(crate) async fn insert_route(
     source_route
 }
 
+/// Deliberately bypass the SQLite test-only integrity update trigger when
+/// simulating corrupted *legacy* publication state. Production writes must
+/// never do this; the normal Blog migration rightly rejects new corruption.
+/// These regression tests verify read-side defense in depth against imported
+/// databases that have not yet satisfied the migration preflight.
+pub(crate) async fn allow_legacy_invalid_post_fixture(db: &DatabaseConnection) {
+    assert_eq!(db.get_database_backend(), DbBackend::Sqlite);
+    db.execute_unprepared("DROP TRIGGER IF EXISTS blog_posts_column_integrity_update")
+        .await
+        .expect("test-only update trigger should be removable");
+}
+
 /// Writes the schedule a post would have, which is how a draft reaches a due state once
 /// the clock passes its `scheduled_at`. The owner commands refuse a schedule that is not in
 /// the future, so a test that needs a due draft writes the row directly.
