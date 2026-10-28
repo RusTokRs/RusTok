@@ -36,22 +36,22 @@ required runtime evidence are complete. Source-ready slices remain
 
 ## Scoped forum audit remediation — 2026-10-28
 
-Branch: \`fix/forum-audit-2026-10-28\`, base \`main\` at
-\`35ceddafb6fec742d4361dc89e44a09328a9235d\`.
+Branch: `fix/forum-audit-2026-10-28`, base `main` at
+`35ceddafb6fec742d4361dc89e44a09328a9235d`.
 **Status: in_progress, source changes only; no local cargo, database or browser runtime.**
 Do not mark complete or integrate until the maintainer runs the scoped checks and
 explicitly authorizes a merge. No competing audit ledger is created.
 
-The remediation follows the canonical Forum owner, existing ADRs and \`AGENTS.md\`.
+The remediation follows the canonical Forum owner, existing ADRs and `AGENTS.md`.
 Findings are ordered by risk and by dependency (owner correctness before transport/UI):
 
-1. **P1, implemented in this branch:** Publish \`ForumTopicCreated\` exactly on
-   first publication: immediate \`Open\` create or \`Pending -> Open\` approval,
-   never on initial \`Pending\` create or \`Archived -> Open\` restore. Retain the
+1. **P1, implemented in this branch:** Publish `ForumTopicCreated` exactly on
+   first publication: immediate `Open` create or `Pending -> Open` approval,
+   never on initial `Pending` create or `Archived -> Open` restore. Retain the
    transactional outbox and category notification audience reauthorization.
 2. **P1/P2, implemented in this branch:** Archive/reopen must adjust category
    topic **and approved reply** totals and recompute author topic/reply/solution
-   counts in the same transaction. Preserve \`forum_topics.reply_count\` as the
+   counts in the same transaction. Preserve `forum_topics.reply_count` as the
    approved-reply projection. Emit category and topic invalidations. Preexisting
    drift still needs a separately reviewed reconciliation.
 3. **P1, implemented in this branch:** Replace retired taxonomy binding paths
@@ -62,8 +62,8 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    ADR before changing all REST/GraphQL services and native/Next adapters.
    Add policy-revocation races on PostgreSQL, channel-crossing and denied
    topic-vs-missing non-disclosure regressions.
-5. **P2, outstanding:** \`Rejected -> Approved\` may emit a second
-   \`ForumTopicReplied\` after a previously approved reply is rejected. Introduce
+5. **P2, outstanding:** `Rejected -> Approved` may emit a second
+   `ForumTopicReplied` after a previously approved reply is rejected. Introduce
    durable first-publication identity or journal-derived exactly-once evidence;
    do not infer it from the immediate previous status. Test repeated cycles,
    lost responses and restart replay across both backends.
@@ -77,8 +77,8 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
 8. **P2, outstanding:** Add report rate limits through the Moderation owner,
    category/topic/reply report UI, and operator-friendly feedback. Avoid
    duplicating automatic Moderation policy in Forum.
-9. **P2, outstanding:** The \`default_topic_sort\` and
-   \`allow_user_topic_closing\` settings have no effect; resolve the contract
+9. **P2, outstanding:** The `default_topic_sort` and
+   `allow_user_topic_closing` settings have no effect; resolve the contract
    against the current feed-selection ADR and wire or remove them atomically.
 10. **P2/P3, outstanding:** Separate faithful owner widget preview from live
     storefront preview, batch audience checks, and avoid a hard failure over
@@ -91,21 +91,21 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
 
 Maintainer verification before merge:
 
-- \`cargo fmt --all -- --check\`
-- \`cargo check --locked -p rustok-forum --lib\`
-- \`cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite\`
-- \`cargo test --locked -p rustok-forum --test moderation_semantics_sqlite\`
-- \`cargo test --locked -p rustok-forum --test moderation_semantics_postgres\`
-- \`cargo test --locked -p rustok-forum --test counter_reconciliation_sqlite\`
-- \`cargo test --locked -p rustok-forum --test category_taxonomy_read_cutover\`
-- \`node scripts/verify/verify-forum-taxonomy-category-binding.mjs\`
-- Review \`git diff --check\`, GitHub Actions status and deployed outbox recipient
+- `cargo fmt --all -- --check`
+- `cargo check --locked -p rustok-forum --lib`
+- `cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite`
+- `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
+- `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`
+- `cargo test --locked -p rustok-forum --test counter_reconciliation_sqlite`
+- `cargo test --locked -p rustok-forum --test category_taxonomy_read_cutover`
+- `node scripts/verify/verify-forum-taxonomy-category-binding.mjs`
+- Review `git diff --check`, GitHub Actions status and deployed outbox recipient
   behavior (pending approval once, archive restore never).
 
 SQLite source regressions in this packet are **written but not executed** here.
 PostgreSQL concurrency, migration/backfill effects, frontend integration,
 outbox delivery/notification deduplication and the maintainer's acceptance
-remain unverified. Keep this packet separate from future \`main\` integration.
+remain unverified. Keep this packet separate from future `main` integration.
 
 ## Scoped functional remediation — 2026-10-17
 
