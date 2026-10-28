@@ -17,14 +17,15 @@ use rustok_api::{Action, PortContext, Resource};
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };
-use crate::services::topic_write_audience::topic_write_audience_allows;
-use crate::state_machine::ReplyStatus;
+use crate::services::topic_write_audience::topic_write_audience_allows_in_tx;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VoteSummary {
@@ -113,8 +114,12 @@ impl VoteService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
-        if !topic_write_audience_allows(
+
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        if !topic_write_audience_allows_in_tx(
             &self.db,
+            &txn,
             self.audience_facts.clone(),
             tenant_id,
             topic_id,
@@ -125,8 +130,6 @@ impl VoteService {
         {
             return Err(ForumError::TopicNotFound(topic_id));
         }
-
-        let txn = self.db.begin().await?;
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
@@ -176,16 +179,20 @@ impl VoteService {
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
-        lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
-        lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        forum_topic_vote::Entity::delete_many()
+        // This is an actor-scoped blind delete, not a topic mutation.
+        // The active-topic lock rejects archived or missing topics, which
+        // exposes target existence and strands votes after archival.
+        // Deletion by the exact vote tuple is atomic without a topic probe.
+        let deleted = forum_topic_vote::Entity::delete_many()
             .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_vote::Column::TopicId.eq(topic_id))
             .filter(forum_topic_vote::Column::UserId.eq(user_id))
             .exec(&txn)
             .await?;
-        publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
-            .await?;
+        if deleted.rows_affected > 0 {
+            publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
+                .await?;
+        }
         txn.commit().await?;
         Ok(())
     }
@@ -216,18 +223,22 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
 
-        // The parent topic id is immutable for a reply, so the audience gate can use it
-        // before the transaction. Status and author are re-read under the row lock below.
-        let preflight = forum_reply::Entity::find_by_id(reply_id)
+        // Load the immutable reply -> topic binding within the same
+        // transaction as authorization and the vote write. Never disclose
+        // whether a reply exists when its parent is audience-denied.
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let parent = forum_reply::Entity::find_by_id(reply_id)
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ForumError::ReplyNotFound(reply_id))?;
-        if !topic_write_audience_allows(
+        if !topic_write_audience_allows_in_tx(
             &self.db,
+            &txn,
             self.audience_facts.clone(),
             tenant_id,
-            preflight.topic_id,
+            parent.topic_id,
             &security,
             context,
         )
@@ -236,12 +247,25 @@ impl VoteService {
             return Err(ForumError::ReplyNotFound(reply_id));
         }
 
-        let txn = self.db.begin().await?;
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
         let policy = ForumVotePolicy::resolve_in_tx(&self.settings, &txn, tenant_id).await?;
         policy.require_value_allowed(value)?;
+        // Match topic-vote rules and the category -> topic -> reply lock
+        // order. An approved reply must not be votable after its parent
+        // topic has been archived while authorization was evaluated.
+        let parent_topic = crate::services::TopicService::find_topic_for_update_in_tx(
+            &txn,
+            tenant_id,
+            parent.topic_id,
+        )
+        .await?;
+        if parent_topic.status == TopicStatus::Archived {
+            return Err(ForumError::Validation(
+                "Forum reply votes cannot be changed after topic archival".to_string(),
+            ));
+        }
         let reply =
             crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
                 .await?;
@@ -285,8 +309,9 @@ impl VoteService {
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
-        crate::services::ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id)
-            .await?;
+        // Blindly delete only this principal's vote. Requiring the reply row
+        // here leaks whether an inaccessible or deleted reply still exists
+        // and contradicts the accepted vote-clear owner contract.
         forum_reply_vote::Entity::delete_many()
             .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_vote::Column::ReplyId.eq(reply_id))

@@ -23,8 +23,7 @@ use crate::{
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListTopicsQuery {
     pub search: Option<String>,
-    #[serde(default)]
-    pub order: crate::ForumTopicListOrder,
+    pub order: Option<crate::ForumTopicListOrder>,
     #[serde(default)]
     pub solved_only: bool,
     pub category_id: Option<uuid::Uuid>,
@@ -129,9 +128,17 @@ pub async fn list_topics(
             .await
             .map_err(crate::controllers::map_forum_error)?,
     };
+    let order = match query.order {
+        Some(order) => order,
+        None => runtime
+            .settings_providers
+            .default_topic_order(tenant.id)
+            .await
+            .map_err(crate::controllers::map_forum_error)?,
+    };
     let filter = ListTopicsFilter {
         search: query.search,
-        order: query.order,
+        order,
         solved_only: query.solved_only,
         category_id: query.category_id,
         status: query.status,
@@ -212,7 +219,23 @@ fn topic_audience_list_service(
 
 #[cfg(test)]
 mod tests {
-    use super::{PaginationParams, clamp_per_page};
+    use super::{ListTopicsQuery, PaginationParams, clamp_per_page};
+    use crate::ForumTopicListOrder;
+    use serde_json::json;
+
+    #[test]
+    fn omitted_rest_topic_sort_is_not_a_synthetic_latest_order() {
+        let omitted: ListTopicsQuery = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(omitted.order, None);
+        let latest: ListTopicsQuery =
+            serde_json::from_value(json!({"order": "latest"})).unwrap();
+        assert_eq!(latest.order, Some(ForumTopicListOrder::Latest));
+        let top: ListTopicsQuery = serde_json::from_value(json!({"order": "top"})).unwrap();
+        assert_eq!(top.order, Some(ForumTopicListOrder::Top));
+        assert!(
+            serde_json::from_value::<ListTopicsQuery>(json!({"order": "votes"})).is_err()
+        );
+    }
 
     #[test]
     fn pagination_params_limit_clamps_large_page_size() {
@@ -396,7 +419,7 @@ pub async fn restore_topic(
         ("value" = i32, Path, description = "Vote value (-1 or 1)")
     ),
     responses(
-        (status = 200, description = "Topic vote updated", body = TopicResponse),
+        (status = 204, description = "set topic vote acknowledged"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -407,7 +430,7 @@ pub async fn set_topic_vote(
     auth: AuthContext,
     request_context: RequestContext,
     Path((topic_id, value)): Path<(Uuid, i32)>,
-) -> HttpResult<Json<TopicResponse>> {
+) -> HttpResult<StatusCode> {
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request(
             "invalid_tenant_id",
@@ -449,26 +472,7 @@ pub async fn set_topic_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let read_context = topic_read_audience_port_context(
-        ForumTopicReadTransport::Rest,
-        ForumTopicReadOperation::SelectedTopic,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let topic = topic_audience_read_service(&runtime)
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            read_context,
-            topic_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(
@@ -477,7 +481,7 @@ pub async fn set_topic_vote(
     tag = "forum",
     params(("topic_id" = Uuid, Path, description = "Topic ID")),
     responses(
-        (status = 200, description = "Topic vote cleared", body = TopicResponse),
+        (status = 204, description = "clear topic vote acknowledged"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -486,9 +490,8 @@ pub async fn clear_topic_vote(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
-    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
-) -> HttpResult<Json<TopicResponse>> {
+) -> HttpResult<StatusCode> {
     if tenant.id.is_nil() {
         return Err(HttpError::bad_request(
             "invalid_tenant_id",
@@ -515,26 +518,7 @@ pub async fn clear_topic_vote(
         .await
         .map_err(crate::controllers::map_forum_error)?;
 
-    let read_context = topic_read_audience_port_context(
-        ForumTopicReadTransport::Rest,
-        ForumTopicReadOperation::SelectedTopic,
-        tenant.id,
-        &auth,
-        Some(&request_context),
-        request_context.locale.as_str(),
-    )
-    .map_err(crate::controllers::map_forum_error)?;
-    let topic = topic_audience_read_service(&runtime)
-        .get_authenticated_owner_visible_with_audience_context(
-            tenant.id,
-            forum_security(&auth),
-            read_context,
-            topic_id,
-            Some(tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(crate::controllers::map_forum_error)?;
-    Ok(Json(topic))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(

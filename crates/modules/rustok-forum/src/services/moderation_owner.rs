@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,6 +15,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{forum_solution, forum_topic_translation};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
 use crate::services::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
@@ -248,32 +250,53 @@ impl ModerationService {
         target: TopicStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        // Match create/delete lock order: category scope precedes topic row.
+        // Archiving changes both category counts and all thread author stats.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         let current = topic.status;
         current.validate_transition(&target)?;
 
-        // Counter invariant: category and author topic totals always count
-        // exactly the topics that are neither archived nor deleted. Leaving
-        // `Archived` (only `Pending` -> `Open` is reachable) re-enters the
-        // topic into the aggregates; entering `Archived` releases it.
-        let enters_public = current == TopicStatus::Archived && target == TopicStatus::Open;
-        let leaves_public = current != TopicStatus::Archived && target == TopicStatus::Archived;
+        // Pending topics already contribute to authored/category topic counts
+        // while their first publication is withheld. Restoring an archived
+        // topic re-enters the counters. The append-only owner journal
+        // distinguishes a rejected pending topic from a previously published
+        // archived topic, so only the first-ever public appearance notifies.
+        let first_publication = target == TopicStatus::Open
+            && !was_published_before_in_tx(&txn, tenant_id, "topic", topic_id).await?;
+        let restores_counted_topic =
+            current == TopicStatus::Archived && target == TopicStatus::Open;
+        let archives_counted_topic =
+            current != TopicStatus::Archived && target == TopicStatus::Archived;
 
         let old_status = current.to_string();
         let new_status = target.to_string();
 
         TopicService::set_status_in_tx(&txn, tenant_id, topic_id, target).await?;
-        if leaves_public {
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, -1, 0)
-                .await?;
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, -1)
-                .await?;
-        }
-        if enters_public {
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 1, 0)
-                .await?;
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
-                .await?;
+        if archives_counted_topic || restores_counted_topic {
+            // Topic.reply_count counts approved replies even while archived.
+            // Category.reply_count and user statistics only count replies in
+            // non-archived topics; undo/redo the whole thread contribution.
+            let sign = if archives_counted_topic { -1 } else { 1 };
+            let reply_delta = topic.reply_count.checked_mul(sign).ok_or_else(|| {
+                ForumError::Validation("Forum topic reply counter delta overflow".to_string())
+            })?;
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                sign,
+                reply_delta,
+            )
+            .await?;
+            UserStatsService::reconcile_topic_thread_user_stats_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                topic.author_id,
+                None,
+            )
+            .await?;
         }
         self.event_bus
             .publish_in_tx(
@@ -288,13 +311,11 @@ impl ModerationService {
                 },
             )
             .await?;
-        if enters_public {
-            // A pending topic was created without `ForumTopicCreated` (held
-            // for pre-moderation). Approving it through `Pending` -> `Open`
-            // publishes the exact creation event now, so category watchers
-            // are notified once the topic actually becomes public. The event
-            // locale mirrors topic creation: the primary translation row is
-            // written in the same transaction as the topic, so it exists.
+        if first_publication {
+            // Held topics do not emit `ForumTopicCreated` until their first
+            // public transition, including an archive restore after rejection.
+            // The primary translation was created with the topic and provides
+            // the same locale as direct publication.
             let locale = forum_topic_translation::Entity::find()
                 .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
                 .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
@@ -316,6 +337,16 @@ impl ModerationService {
                     },
                 )
                 .await?;
+        }
+        if archives_counted_topic || restores_counted_topic {
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.category_id,
+            )
+            .await?;
         }
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
@@ -617,7 +648,13 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
-        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        // An archive committed after the pre-transaction audience/read check
+        // must not admit a new solution or alter its author's live statistics.
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if locked_topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let reply = ReplyService::find_reply_for_update_in_tx(&txn, tenant_id, reply_id).await?;
         if reply.topic_id != topic_id {
@@ -701,7 +738,11 @@ impl ModerationService {
         }
 
         let txn = self.db.begin().await?;
-        TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if locked_topic.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let solution = forum_solution::Entity::find()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -745,6 +786,9 @@ impl ModerationService {
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        // Topic archive and reply moderation both adjust category counters.
+        // Acquire the tenant category lock before the topic row in both paths.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         if topic.status == TopicStatus::Archived {
@@ -766,12 +810,11 @@ impl ModerationService {
         let became_public = current != ReplyStatus::Approved && target == ReplyStatus::Approved;
         let stopped_being_public =
             current == ReplyStatus::Approved && target != ReplyStatus::Approved;
-        // Topic watchers were already notified when this reply first became
-        // public. Returning from `Hidden`/`Flagged` must not re-notify; only a
-        // first public appearance (from the pre-moderation states `Pending`
-        // and `Rejected`) publishes `ForumTopicReplied`.
-        let first_public_appearance = matches!(current, ReplyStatus::Pending | ReplyStatus::Rejected)
-            && target == ReplyStatus::Approved;
+        // A Rejected or Hidden reply may have been public previously. Read
+        // the canonical append-only journal before updating the row (and
+        // before its status-change trigger records the new Approved state).
+        let first_public_appearance = became_public
+            && !was_published_before_in_tx(&txn, tenant_id, "reply", reply_id).await?;
         let old_status = current.to_string();
         let new_status = target.to_string();
 
@@ -873,4 +916,87 @@ impl ModerationService {
 
 fn is_exact_topic_author(security: &SecurityContext, topic_author_id: Option<Uuid>) -> bool {
     topic_author_id.is_some() && security.user_id == topic_author_id
+}
+
+/// Checks immutable Forum-owned creation/status events, not the prunable host
+/// delivery outbox. Called while the parent topic row is locked, before the
+/// state change, so concurrent moderation cannot emit duplicate first-public
+/// events for the same subject.
+async fn was_published_before_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    aggregate_type: &'static str,
+    aggregate_id: Uuid,
+) -> ForumResult<bool> {
+    if !matches!(aggregate_type, "topic" | "reply") {
+        return Err(ForumError::Validation(
+            "Unsupported Forum publication aggregate type".to_string(),
+        ));
+    }
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT (CASE WHEN EXISTS (
+                SELECT 1
+                FROM forum_domain_events
+                WHERE tenant_id = $1
+                  AND aggregate_type = $2
+                  AND aggregate_id = $3
+                  AND (
+                    (event_type = 'forum.topic.created'
+                        AND payload->>'status' IN ('open', 'closed'))
+                    OR (event_type = 'forum.topic.status_changed'
+                        AND payload->>'new_status' = 'open')
+                    OR (event_type = 'forum.reply.created'
+                        AND payload->>'status' = 'approved')
+                    OR (event_type = 'forum.reply.status_changed'
+                        AND payload->>'new_status' = 'approved')
+                  )
+            ) THEN 1 ELSE 0 END)::BIGINT AS value
+            "#,
+            vec![
+                tenant_id.into(),
+                aggregate_type.into(),
+                aggregate_id.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            r#"
+            SELECT CAST(CASE WHEN EXISTS (
+                SELECT 1
+                FROM forum_domain_events
+                WHERE tenant_id = ?1
+                  AND aggregate_type = ?2
+                  AND aggregate_id = ?3
+                  AND (
+                    (event_type = 'forum.topic.created'
+                        AND json_extract(payload, '$.status') IN ('open', 'closed'))
+                    OR (event_type = 'forum.topic.status_changed'
+                        AND json_extract(payload, '$.new_status') = 'open')
+                    OR (event_type = 'forum.reply.created'
+                        AND json_extract(payload, '$.status') = 'approved')
+                    OR (event_type = 'forum.reply.status_changed'
+                        AND json_extract(payload, '$.new_status') = 'approved')
+                  )
+            ) THEN 1 ELSE 0 END AS INTEGER) AS value
+            "#,
+            vec![
+                tenant_id.into(),
+                aggregate_type.into(),
+                aggregate_id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum publication history does not support database backend {backend:?}"
+            )));
+        }
+    };
+    let row = txn.query_one_raw(statement).await?.ok_or_else(|| {
+        ForumError::Validation("Forum publication history query returned no row".to_string())
+    })?;
+    let published: i64 = row.try_get("", "value")?;
+    Ok(published != 0)
 }

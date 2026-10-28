@@ -357,6 +357,18 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
         .clear_reply_vote(tenant_id, reply.id, voter.clone())
         .await
         .expect("reply vote should clear");
+    vote_service
+        .clear_reply_vote(tenant_id, reply.id, voter.clone())
+        .await
+        .expect("repeated reply clear must be idempotent");
+    vote_service
+        .clear_reply_vote(tenant_id, Uuid::new_v4(), voter.clone())
+        .await
+        .expect("missing reply clear must not disclose reply existence");
+    vote_service
+        .clear_reply_vote(Uuid::new_v4(), reply.id, voter.clone())
+        .await
+        .expect("foreign-tenant reply clear must not reach this tenant's vote");
 
     let topic_after_clear = topic_service
         .get(tenant_id, voter.clone(), topic.id, "en")
@@ -366,11 +378,71 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
     assert_eq!(topic_after_clear.current_user_vote, None);
 
     let reply_after_clear = reply_service
-        .get(tenant_id, voter, reply.id, "en")
+        .get(tenant_id, voter.clone(), reply.id, "en")
         .await
         .expect("reply should load after clear");
     assert_eq!(reply_after_clear.vote_score, 0);
     assert_eq!(reply_after_clear.current_user_vote, None);
+
+    vote_service
+        .clear_topic_vote(tenant_id, Uuid::new_v4(), voter.clone())
+        .await
+        .expect("missing topic clear must not disclose topic existence");
+    vote_service
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .await
+        .expect("repeated topic clear must be idempotent");
+
+    vote_service
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
+        .await
+        .expect("topic can be voted again before archival");
+    let subscription_service = SubscriptionService::new(db.clone());
+    subscription_service
+        .set_topic_subscription(
+            tenant_id,
+            topic.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+        )
+        .await
+        .expect("viewer can subscribe before archival");
+    let moderation = rustok_forum::ModerationService::new(db.clone(), event_bus);
+    moderation
+        .archive_topic(
+            tenant_id,
+            topic.id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+        )
+        .await
+        .expect("topic should archive");
+    vote_service
+        .clear_topic_vote(tenant_id, topic.id, voter.clone())
+        .await
+        .expect("archived topic must still allow removing the caller's vote");
+    subscription_service
+        .clear_topic_subscription(tenant_id, topic.id, voter.clone())
+        .await
+        .expect("archived topic must still allow clearing its subscription");
+    let archived_reply_vote = vote_service
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            voter.clone(),
+            write_context(tenant_id, &voter),
+            1,
+        )
+        .await;
+    assert!(
+        matches!(archived_reply_vote, Err(ForumError::Validation(_))),
+        "archived topic must reject new reply votes as well as topic votes"
+    );
 }
 
 #[tokio::test]
@@ -919,6 +991,67 @@ async fn vote_and_subscription_writes_require_owner_audience_and_reject_self_vot
         .clear_topic_subscription(tenant_id, topic.id, low.clone())
         .await
         .expect("clearing a subscription must not require audience access");
+
+    // A committed Forum policy revocation takes effect on all subsequent
+    // write attempts, including replacement of existing vote/subscription rows.
+    ForumCategoryAudiencePolicyService::new(db.clone())
+        .set(
+            tenant_id,
+            category.id,
+            admin.clone(),
+            SetForumCategoryAudiencePolicyInput {
+                constraints: ForumAudienceConstraints {
+                    minimum_trust_level: Some(9),
+                    ..ForumAudienceConstraints::default()
+                },
+            },
+        )
+        .await
+        .expect("category policy revocation must commit");
+
+    let denied_topic = vote_service
+        .set_topic_vote(
+            tenant_id,
+            topic.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            -1,
+        )
+        .await;
+    assert!(
+        matches!(denied_topic, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        "revoked topic writer must not change a vote"
+    );
+    let denied_reply = vote_service
+        .set_reply_vote(
+            tenant_id,
+            reply.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            -1,
+        )
+        .await;
+    assert!(
+        matches!(denied_reply, Err(ForumError::ReplyNotFound(id)) if id == reply.id),
+        "revoked reply writer must not change a vote"
+    );
+    let denied_subscription = subscription_service
+        .update_topic_subscription(
+            tenant_id,
+            topic.id,
+            trusted.clone(),
+            write_context(tenant_id, &trusted),
+            UpdateForumSubscriptionInput::watching(),
+        )
+        .await;
+    assert!(
+        matches!(denied_subscription, Err(ForumError::TopicNotFound(id)) if id == topic.id),
+        "revoked subscriber must not update a subscription"
+    );
+    subscription_service
+        .clear_topic_subscription(tenant_id, topic.id, trusted)
+        .await
+        .expect("revoked subscriber may still clear its own subscription");
 }
 
 /// Writes the Forum module settings row that the vote policy reads for this tenant.

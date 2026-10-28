@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-28
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -33,6 +33,112 @@ migration or degraded-mode behavior. A task is `done` only after implementation,
 integration, migration/backfill, tests, public contracts, documentation and
 required runtime evidence are complete. Source-ready slices remain
 `in_progress`.
+
+## Scoped forum audit remediation — 2026-10-28
+
+Branch: `fix/forum-audit-2026-10-28`, base `main` at
+`35ceddafb6fec742d4361dc89e44a09328a9235d`.
+**Status: in_progress, source changes only; no local cargo, database or browser runtime.**
+Do not mark complete or integrate until the maintainer runs the scoped checks and
+explicitly authorizes a merge. No competing audit ledger is created.
+
+The remediation follows the canonical Forum owner, existing ADRs and `AGENTS.md`.
+Findings are ordered by risk and by dependency (owner correctness before transport/UI):
+
+1. **P1, source-ready in this branch:** Publish `ForumTopicCreated` only on
+   the first transition to public visibility (direct `Open` creation,
+   `Pending -> Open` approval, or a first-ever `Archived -> Open` restore
+   after `Pending -> Archived` rejection). Consult the immutable Forum
+   creation/status journal inside the moderation transaction. Re-archiving and
+   restoring a previously published thread never notifies again.
+   Notification audience is reauthorized at fanout.
+2. **P1/P2, source-ready in this branch:** Archive/reopen adjusts category
+   topic **and approved reply** totals and recomputes author topic/reply/solution
+   counts in the same transaction. Solution mark/clear re-checks archived state
+   under the locked topic row, eliminating its stale pre-transaction status
+   acceptance. Preserve `forum_topics.reply_count` as the approved-reply
+   projection. Emit category and topic invalidations. Preexisting drift still
+   needs a separately reviewed reconciliation.
+3. **P1, outstanding (CI-specific authorization required):** The
+   taxonomy-category-binding workflow references retired paths and a missing
+   runtime test. `AGENTS.md` forbids workflow edits unless the maintainer
+   explicitly requests CI/CD changes. The attempted workflow edit was
+   reverted; once authorized, update the workflow to the live Taxonomy
+   owner files and canonical read-cutover test.
+4. **P1, partially implemented (remaining external owner contract):** Forum
+   category/topic audience is evaluated from the write transaction after
+   acquiring the category-tree writer lock, including reply-parent lookup.
+   Topic subscription updates use the same boundary; blind clears remain
+   possible after archival. Reply votes now lock/check the parent topic and
+   refuse writes after archival, matching topic vote behavior.
+   This serializes Forum-owned policy changes with writes, but host-owned
+   trust/channel/group facts remain outside the database snapshot and the
+   vote/subscription route channel is still unmodeled. Design a host-owned
+   revision/fencing contract before claiming full cross-owner atomicity.
+   SQLite committed-revocation and PostgreSQL policy-lock overlap regressions
+   are source-ready; host-fact and route-channel races still need owner contracts.
+5. **P2, source-ready in this branch:** Reply first publication is derived
+   from the Forum append-only creation/status journal before the status
+   mutation, including `Rejected -> Approved` and `Hidden -> Approved`.
+   Repeat visibility cycles must not duplicate `ForumTopicReplied`. SQLite
+   and PostgreSQL semantic regression sources are ready; PostgreSQL concurrency,
+   restart and import paths remain unverified.
+6. **P2, source-ready in this branch:** Topic/reply vote set/clear and topic
+   solution mark/clear acknowledge successful owner writes without a subsequent
+   audience-selected topic/reply read. Both vote clears delete only the
+   actor's own row without probing the target. Topic clearing remains possible
+   after archival; no phantom projection event is emitted for no-op clears.
+   REST returns
+   `204 No Content`; GraphQL returns `Boolean!`. Owner authorization,
+   tenant checks and write-failure propagation are unchanged; mutations
+   do not leak hidden content. Confirm
+   clients, schema and authorization races in the maintainer runtime run.
+7. **P2, outstanding:** Wire the canonical posting policy evaluator and its
+   window facts into create transactions (not only cooldown). Verify
+   concurrent writers, temporal boundaries, failure modes and actor exemption.
+8. **P2, outstanding:** Add report rate limits through the Moderation owner,
+   category/topic/reply report UI, and operator-friendly feedback. Avoid
+   duplicating automatic Moderation policy in Forum.
+9. **P2, partially source-ready:** `default_topic_sort` now resolves
+   omitted REST, GraphQL owner, storefront and unread sort orders from
+   tenant settings (`latest_reply` or `top`). Explicit ordering wins;
+   invalid stored values produce a typed validation error. The module
+   manifest now lists only `latest_reply` and `top`; any previously saved
+   unsupported value needs explicit operator correction, not a silent remap.
+   `allow_user_topic_closing` remains unwired pending its separate
+   write-authorization and UI decision.
+10. **P2/P3, outstanding:** Separate faithful owner widget preview from live
+    storefront preview, batch audience checks, and avoid a hard failure over
+    1000 candidates.
+11. **P3, outstanding:** Exact reply anchors beyond the 20-page discovery
+    budget need a viewer-scoped owner-backed cursor/location lookup.
+12. **P3, outstanding:** Complete topic move/revision/attachment transports
+    and UI; benchmark sparse unread/Search/Top/Solved reads on PostgreSQL.
+    Do not assert performance without measurements.
+
+Maintainer verification before merge:
+
+- `cargo fmt --all -- --check`
+- `cargo check --locked -p rustok-forum --lib`
+- `cargo test --locked -p rustok-forum --lib`
+- `cargo test --locked -p rustok-forum --test topic_sort_settings`
+- `cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite`
+- `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
+- `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`
+- `cargo test --locked -p rustok-forum --test moderation_revision_concurrency_postgres`
+- `cargo test --locked -p rustok-forum --test votes`
+- `cargo test --locked -p rustok-forum --test vote_subscription_audience_concurrency_postgres`
+- `cargo test --locked -p rustok-forum --test graphql_stats_and_vote_tenant_scope_sqlite`
+- `cargo test --locked -p rustok-forum --test counter_reconciliation_sqlite`
+- `cargo test --locked -p rustok-forum --test category_taxonomy_read_cutover`
+- `node scripts/verify/verify-forum-taxonomy-category-binding.mjs`
+- Review `git diff --check`, GitHub Actions status and deployed outbox recipient
+  behavior (pending approval once, archive restore never).
+
+SQLite source regressions in this packet are **written but not executed** here.
+PostgreSQL concurrency, migration/backfill effects, frontend integration,
+outbox delivery/notification deduplication and the maintainer's acceptance
+remain unverified. Keep this packet separate from future `main` integration.
 
 ## Scoped functional remediation — 2026-10-17
 

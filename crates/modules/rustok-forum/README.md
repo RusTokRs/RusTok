@@ -125,13 +125,12 @@
 - Per-user forum stats live in forum-owned services and transport adapters; the
   module tracks `topic_count`, `reply_count`, and `solution_count` through topic/reply
   lifecycle and accepted-solution transitions, and exposes a dedicated read-path for
-  user-level stats. Known counter drift: archiving a topic that contains approved
-  replies or a live accepted solution compensates only the category/topic aggregates;
-  the reply authors' and solution author's per-user `reply_count` / `solution_count`
-  stay inflated until the topic is soft-deleted (delete-time user-stat recompute) or
-  the scheduled FORUM-33 counter reconciliation re-enumerates the user. Archival is
-  reversible, so the drift resolves on restore or delete; permanent correction of the
-  archive edge is tracked FORUM-33 follow-up work.
+  user-level stats. Topic archive/reopen now recomputes all affected author
+  topic/reply/solution counts in the write transaction and adjusts category
+  reply counts alongside topic counts. Solution mark/clear also reject an
+  archived state after acquiring the topic row lock, rather than trusting only
+  a pre-transaction read. Historical drift predating this change still requires
+  operator reconciliation (FORUM-33).
 - Topic tag write-paths resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.
@@ -189,11 +188,13 @@ wrappers. Each one has an owner decision or a follow-up task in
   category audience contract. See
   [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
 - Vote and subscription writes evaluate the owner audience of the parent topic
-  before the write, and reject self-voting unless `allow_self_voting` is enabled. See
+  inside their write transaction under the Forum category-policy lock, and
+  reject self-voting unless `allow_self_voting` is enabled. Reply votes also
+  lock the parent topic and reject archived threads, matching topic votes. See
   [`DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`](../../../DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md).
-  Known gaps: the route channel is not part of the write gate; the gate runs
-  before the write transaction, so a policy change committed in between can let
-  one write through. Domain topic clears are intentionally not gated, but category
+  Remaining gaps: route-channel scope is not part of the write gate, and
+  externally provided trust/channel/group facts have no shared transaction
+  or version fence. Domain topic clears are intentionally not gated, but category
   clears require category-owner visibility to avoid existence oracles. The
   canonical GraphQL `clearForumTopicSubscription` now acknowledges only `true`,
   while REST `DELETE /api/forum/topics/{topic_id}/subscription` returns
@@ -214,10 +215,13 @@ wrappers. Each one has an owner decision or a follow-up task in
   Selective policies can require scanning more raw candidates than the page size.
   The `Authoring` SEO scope keeps the system context and does not apply the
   audience contract.
-- Moderation solution write responses (REST and GraphQL mark/clear) read the topic through
-  the owner path after the write. The moderation gate exempts the exact topic author, so an
-  author who has lost audience access gets `TopicNotFound` (404) after a committed write.
-  See [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
+- Topic/reply vote set/clear and topic solution mark/clear return only
+  command acknowledgements: REST `204 No Content`, GraphQL `Boolean!`.
+  Reply vote clearing is now a blind actor-scoped deletion without probing the
+  reply row; an absent or restricted reply is indistinguishable at this
+  boundary. There is no post-commit object read that could turn success into
+  a 404 or disclose restricted content. Clients needing updated details must
+  call a separately authorized owner read. See the write acknowledgement ADR.
 - `ForumOwnerExportReader` is an operator-scope library reader. It is not
   audience-filtered and has no CLI or API transport.
 - Among the `ForumModuleSettings` values, `use_reactions`, `allow_downvotes`, and
@@ -236,10 +240,12 @@ wrappers. Each one has an owner decision or a follow-up task in
   they can include discussions outside the viewer's audience and must never be used as
   a viewer-visible list total or pagination cursor. The Next.js category UI labels
   this distinction; per-viewer listing still comes from the exact audience owner.
-- Two declared `ForumModuleSettings` fields remain unread: `default_topic_sort`
-  (the list order is fixed, see the topic sort item) and `allow_user_topic_closing`
-  (authors cannot close or lock their own topics through this setting). Changing
-  either has no effect. The unread settings removed by
+- `default_topic_sort` now selects `latest_reply` (default) or `top`
+  for REST, GraphQL owner, storefront and unread topic lists when `order`
+  is omitted. Explicit `order` wins; unsupported saved values (including
+  former manifest choices `created_at`, `votes`, and `views`) fail with a
+  typed configuration error. The manifest now exposes only executable modes. `allow_user_topic_closing` remains unwired:
+  authors cannot close or lock their own topics through this setting. The unread settings removed by
   `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
   `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
@@ -285,8 +291,11 @@ wrappers. Each one has an owner decision or a follow-up task in
   moderation scope `All`, on every owner read and list. Storefront reads and storefront search return only `Open` topics
   and `Approved` replies, so held content is excluded there. Moderators approve a pending topic with the reopen
   transition (`Pending` to `Open`, requires `ForumTopics:Moderate`) and reject it with the archive transition
-  (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. Known limitation: approving a held topic
-  does not notify its subscribers, and there is no dedicated approve or reject transport for topics yet. See
+  (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. The creation
+  event is emitted on first publication (direct `Open` create, `Pending` to `Open`,
+  or first-ever reopen of a rejected pending topic). A second archive/reopen
+  never duplicates that event; the append-only Forum status journal is the
+  publication-history source. Dedicated approve/reject transports remain unimplemented. See
   [`DECISIONS/2026-10-09-forum-topic-pre-moderation.md`](../../../DECISIONS/2026-10-09-forum-topic-pre-moderation.md) and
   [`DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`](../../../DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md).
 - `show_locked_topics_in_lists = false` hides locked topics from the storefront topic list. The widget preview

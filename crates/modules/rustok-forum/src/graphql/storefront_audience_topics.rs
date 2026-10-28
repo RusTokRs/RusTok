@@ -78,9 +78,16 @@ impl ForumStorefrontAudienceTopicsQuery {
         let list_started_at = Instant::now();
         let service = super::forum_graphql_runtime(ctx)
             .topic_audience_list_service(db.clone(), event_bus.clone());
+        let order = match order {
+            Some(order) => order,
+            None => super::forum_graphql_runtime(ctx)
+                .default_topic_order(tenant_id)
+                .await
+                .map_err(|error| async_graphql::Error::new(error.to_string()))?,
+        };
         let filter = crate::ListTopicsFilter {
             search,
-            order: order.unwrap_or_default(),
+            order,
             solved_only,
             category_id,
             status: None,

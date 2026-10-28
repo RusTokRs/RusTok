@@ -84,6 +84,15 @@ impl ForumSettingsProviders {
         settings_from_snapshot(snapshot)
     }
 
+    /// Owner-resolved default for a topic list request with no explicit sort.
+    pub async fn default_topic_order(
+        &self,
+        tenant_id: Uuid,
+    ) -> ForumResult<crate::dto::ForumTopicListOrder> {
+        let settings = self.module_settings(tenant_id).await?;
+        parse_topic_order(&settings.default_topic_sort)
+    }
+
     /// Page size for topic lists when a transport request omits `per_page`.
     /// Storefront surfaces resolve their page size through this accessor instead of
     /// freezing a constant, so one tenant setting governs REST, GraphQL and widgets.
@@ -102,6 +111,52 @@ impl ForumSettingsProviders {
         Ok(crate::dto::bounded_forum_read_limit(Some(u64::from(
             settings.replies_per_page,
         ))))
+    }
+}
+
+fn parse_topic_order(value: &str) -> ForumResult<crate::dto::ForumTopicListOrder> {
+    match value {
+        "latest_reply" => Ok(crate::dto::ForumTopicListOrder::Latest),
+        "top" => Ok(crate::dto::ForumTopicListOrder::Top),
+        _ => Err(ForumError::Validation(
+            "Forum default_topic_sort must be 'latest_reply' or 'top'".to_string(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod topic_sort_tests {
+    use super::parse_topic_order;
+    use crate::dto::ForumTopicListOrder;
+
+    #[test]
+    fn tenant_sort_mapping_matches_the_canonical_list_orders() {
+        let defaults = crate::dto::ForumModuleSettings::default();
+        assert_eq!(
+            parse_topic_order(&defaults.default_topic_sort).unwrap(),
+            ForumTopicListOrder::Latest
+        );
+        assert_eq!(parse_topic_order("top").unwrap(), ForumTopicListOrder::Top);
+    }
+
+    #[test]
+    fn unsupported_sort_is_not_silently_accepted() {
+        for bad in ["oldest", "popular", "created_at", "votes", "views", "", "TOP"] {
+            assert!(parse_topic_order(bad).is_err(), "unexpected sort: {bad}");
+        }
+    }
+
+    #[test]
+    fn manifest_options_match_executable_sort_orders() {
+        let manifest = include_str!("../../rustok-module.toml");
+        let entry = manifest
+            .lines()
+            .find(|line| line.starts_with("default_topic_sort = "))
+            .expect("default_topic_sort setting must be declared");
+        assert!(
+            entry.contains("options = [\"latest_reply\", \"top\"]"),
+            "manifest sort choices must match the canonical list orders"
+        );
     }
 }
 

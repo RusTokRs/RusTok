@@ -195,6 +195,14 @@ impl ForumGraphqlRuntimeData {
         service.with_settings_providers(self.settings_providers.clone())
     }
 
+    /// Owner-resolved default ordering for a list without explicit `order`.
+    pub(crate) async fn default_topic_order(
+        &self,
+        tenant_id: Uuid,
+    ) -> crate::error::ForumResult<crate::ForumTopicListOrder> {
+        self.settings_providers.default_topic_order(tenant_id).await
+    }
+
     /// Tenant default page size for topic lists when a request omits `perPage`.
     pub(crate) async fn default_topics_per_page(
         &self,

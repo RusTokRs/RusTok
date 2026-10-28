@@ -173,10 +173,11 @@ impl UserStatsService {
         Ok(())
     }
 
-    /// Decrement all user statistics contributed by a topic without loading its
-    /// replies into application memory. The correlated update applies one
-    /// bounded SQL statement regardless of thread size.
-    pub(crate) async fn decrement_topic_thread_aggregated_in_tx(
+    /// Recompute statistics for every author affected by this topic after a
+    /// visibility lifecycle transition or a thread deletion. Counting from
+    /// canonical rows avoids divergent topic/reply/solution deltas and touches
+    /// all affected authors in one SQL statement.
+    pub(crate) async fn reconcile_topic_thread_user_stats_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic_id: Uuid,
