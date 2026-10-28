@@ -58,7 +58,7 @@ export function CategoryModal({
       name: '',
       slug: '',
       description: '',
-      parentId: '',
+      parentId: '__root__',
       position: 0
     }
   });
@@ -70,7 +70,7 @@ export function CategoryModal({
           name: category.name,
           slug: category.slug,
           description: category.description ?? '',
-          parentId: category.parentId ?? '',
+          parentId: category.parentId ?? '__root__',
           position: category.position
         });
       } else {
@@ -78,7 +78,7 @@ export function CategoryModal({
           name: '',
           slug: '',
           description: '',
-          parentId: '',
+          parentId: '__root__',
           position: 0
         });
       }
@@ -107,7 +107,7 @@ export function CategoryModal({
             name: values.name,
             slug: values.slug || undefined,
             description: values.description?.trim() || undefined,
-            parentId: values.parentId || undefined,
+            parentId: values.parentId === '__root__' ? undefined : values.parentId,
             position: values.position,
             locale
           },
@@ -168,7 +168,7 @@ export function CategoryModal({
               name='parentId'
               label='Parent category'
               options={[
-                { label: 'Root category', value: '' },
+                { label: 'Root category', value: '__root__' },
                 ...categories.map((item) => ({ label: item.name, value: item.id }))
               ]}
             />
