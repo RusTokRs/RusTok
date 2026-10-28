@@ -24,7 +24,7 @@ owner/shape (noted).
 | AI | ✅ | ✅ | |
 | Auth (users/roles UI) | ✅ host features | ✅ host features | Shell-level, both |
 | Billing | — | ✅ host route | No Rust module crate; platform surface |
-| Blog | ✅ | ✅ | |
+| Blog | ✅ | ✅ | Both own post CRUD; Rust also exposes archive/restore and comment moderation, Next exposes categories, schedules, channels and image fields. Feature-level parity remains incomplete; see Blog scope below. |
 | Brand | ✅ | ❌ | |
 | Cache | ✅ | ✅ | |
 | Channel | ✅ | ❌ | |
@@ -69,3 +69,27 @@ owner/shape (noted).
   first, never to one admin's private endpoint.
 - Host shells (`apps/admin`, `apps/next-admin` app routes) only compose module
   packages and pass session/tenant context; they do not grow business UI.
+
+## Blog feature parity (current implementation)
+
+The two admin packages are independently implemented but must obey the Blog
+owner's lifecycle, locale, channel, SEO, taxonomy, and optimistic revision
+contracts. A checkmark in the table means that the UI surface exists, **not**
+that every feature has equivalent controls.
+
+| Capability | Leptos admin | Next admin | Owner rule |
+| --- | --- | --- | --- |
+| Post CRUD / publish / unpublish | Yes | Yes | Preserve revisions and honor rejected mutations |
+| Archive / restore | Yes | Yes | Archived posts must be restored before publishing |
+| Post categories | Read only on posts | Category CRUD and post selector | Taxonomy is canonical for category hierarchy and copy |
+| Channel visibility | Preserves channels when editing | Editable | Empty allowlist is unrestricted across public channels |
+| Scheduled publication | Read-only timestamp | Editor supports scheduling | Backend owns publish timing and state transitions |
+| Featured image | Read-only in post editor | Editable | Absolute HTTP(S) or safe root-relative URLs |
+| SEO | Shared owner SEO panel | Blog-localized SEO fields | Effective SEO is composed from base copy and explicit overrides |
+| Comments moderation | Yes | Not yet | Comments owner gates permissions, availability, retention |
+| Preview tokens / pinned posts | No direct controls | No direct controls | Canonical Blog owner operations exist |
+
+The remaining gaps should not be concealed by parallel client-specific
+defaults. Changes must exercise the same canonical owner API under both the
+native server-function and GraphQL transport profiles, and verify that saving
+in one admin does not destroy fields set by the other.
