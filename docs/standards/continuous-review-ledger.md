@@ -60,6 +60,27 @@ broader full-crate inspection, runtime evidence and maintainer review. Keep the
 FS-07 `rustok-index` checkbox and component status unchecked.
 
 
+### Continued FS-07 discovery / CI evidence — 2026-10-28
+
+A source-pattern pass over the 116 `rustok-index/src/**/*.rs` files and
+selected server/Distribution consumer surfaces found additional unverified
+rollback, persistence, job recovery and source-key admission paths; that pass
+is **not** six-dimensional behavioral proof. In particular,
+`IndexSourceLoadRequest::new` currently checks the first tenant and key-set
+scope but not a nil entity identity; targeted execution provides a later
+preflight. This contract mismatch requires owner review before claiming a
+complete and fail-closed source API.
+
+GitHub Actions on the current draft PR reproduced one stale repository verifier:
+`verify-index-storage-migrations.mjs` erroneously looked for
+`migrations::migrations()` inside `src/lib.rs`, while the actual
+`MigrationSource for IndexModule` is in `src/module.rs`.
+The verifier was corrected on the draft branch to check the owner
+implementation and its public module entrypoint. This has **not yet**
+been re-run with a passing CI result. Separately, the Next admin browser
+run failed to resolve `grapesjs/dist/grapes.min.js` (not evidence of an Index
+cursor regression). Remaining CI and comprehensive verification are open.
+
 ## Bounded Product/Pricing remediation — 2026-10-18
 
 User-requested continuation on `arena/8161797f-rustok`, main snapshot
