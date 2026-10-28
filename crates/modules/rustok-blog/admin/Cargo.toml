@@ -16,6 +16,7 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:sea-orm",
+  "dep:chrono",
   "rustok-api/server",
 ]
 
@@ -41,6 +42,7 @@ rustok-blog = { path = "..", default-features = false, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
 rustok-seo-targets.workspace = true
 rustok-seo-panel.workspace = true
 uuid.workspace = true
