@@ -96,6 +96,8 @@ fn blog_post_draft_builder_normalizes_form_state_without_ui_runtime() {
         featured_image_url: "",
         seo_title: "",
         seo_description: "",
+        scheduled_at: "",
+        schedule_editable: true,
     });
 
     assert_eq!(draft.locale, "ru");
@@ -177,6 +179,8 @@ fn prepare_save_command_rejects_missing_required_fields() {
         featured_image_url: "",
         seo_title: "",
         seo_description: "",
+        scheduled_at: "",
+        schedule_editable: true,
     });
 
     let issue =
@@ -203,6 +207,8 @@ fn prepare_save_command_selects_create_operation() {
         featured_image_url: "",
         seo_title: "",
         seo_description: "",
+        scheduled_at: "",
+        schedule_editable: true,
     });
 
     let command = prepare_blog_post_save_command(None, draft, "required".to_string())
@@ -231,6 +237,8 @@ fn prepare_save_command_selects_update_operation() {
         featured_image_url: "",
         seo_title: "",
         seo_description: "",
+        scheduled_at: "",
+        schedule_editable: true,
     });
 
     let command =
