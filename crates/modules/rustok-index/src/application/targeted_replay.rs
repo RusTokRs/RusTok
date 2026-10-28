@@ -501,28 +501,14 @@ mod tests {
                 .is_empty()
         );
 
-        let optional_executor = executor(SourceMode::Valid);
+        // Nil entity ids are now rejected at the source request boundary, before
+        // callers can construct a Targeted execution selection.
         let mut nil_key = key(10);
         nil_key.entity_id = Uuid::nil();
-        let nil_entity = optional_executor
-            .run(IndexReplayModeSelection::targeted(vec![nil_key]).unwrap())
-            .await
-            .expect_err("Targeted entity id must be non-nil before load");
         assert!(matches!(
-            nil_entity,
-            IndexReplayTargetedError::InvalidTarget {
-                position: 0,
-                source: RecordValidationError::NilEntityId,
-            }
+            IndexReplayModeSelection::targeted(vec![nil_key]),
+            Err(IndexSourceError::NilLoadEntityId { position: 0 })
         ));
-        assert!(
-            optional_executor
-                .mutation_sink
-                .event_ids
-                .lock()
-                .unwrap()
-                .is_empty()
-        );
     }
 
     #[tokio::test]
