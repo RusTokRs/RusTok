@@ -417,7 +417,6 @@ struct NormalizedSearchInput {
 }
 
 #[cfg(feature = "ssr")]
-#[cfg(feature = "ssr")]
 fn normalize_blog_search_tag(tag: Option<String>) -> Result<Option<String>, ServerFnError> {
     let tag = tag.map(|tag| tag.trim().to_lowercase()).filter(|tag| !tag.is_empty());
     if tag.as_ref().is_some_and(|tag| tag.chars().count() > 120 || tag.chars().any(char::is_control)) {
@@ -426,6 +425,7 @@ fn normalize_blog_search_tag(tag: Option<String>) -> Result<Option<String>, Serv
     Ok(tag)
 }
 
+#[cfg(feature = "ssr")]
 fn normalize_search_input(
     query: String,
     locale: Option<String>,
