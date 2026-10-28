@@ -6,7 +6,7 @@ import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { Text, CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import { STATUS_OPTIONS } from './options';
-import type { PostSummary } from '../../api/posts';
+import type { GqlOpts, PostSummary } from '../../api/posts';
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   PUBLISHED: 'default',
@@ -20,7 +20,8 @@ const statusLabel: Record<string, string> = {
   ARCHIVED: 'Archived'
 };
 
-export const columns: ColumnDef<StockFeatures, PostSummary, any>[] = [
+export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSummary, any>[] {
+  return [
   {
     id: 'title',
     accessorKey: 'title',
@@ -89,6 +90,8 @@ export const columns: ColumnDef<StockFeatures, PostSummary, any>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => <CellAction data={row.original} />
+    cell: ({ row }) => <CellAction data={row.original} gqlOpts={gqlOpts} />
   }
 ];
+
+}
