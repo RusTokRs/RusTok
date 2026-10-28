@@ -66,6 +66,9 @@ pub enum DomainError {
     #[error("page size exceeds the supported maximum")]
     PageTooLarge,
 
+    #[error("query continuation token exceeds the supported encoded byte limit")]
+    CursorTooLarge,
+
     #[error("offset pagination exceeds the bounded compatibility limit")]
     OffsetLimitExceeded,
 
