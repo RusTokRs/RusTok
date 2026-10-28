@@ -59,8 +59,12 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    acceptance. Preserve `forum_topics.reply_count` as the approved-reply
    projection. Emit category and topic invalidations. Preexisting drift still
    needs a separately reviewed reconciliation.
-3. **P1, implemented in this branch:** Replace retired taxonomy binding paths
-   in the workflow with live owner files and a real canonical taxonomy test.
+3. **P1, outstanding (CI-specific authorization required):** The
+   taxonomy-category-binding workflow references retired paths and a missing
+   runtime test. `AGENTS.md` forbids workflow edits unless the maintainer
+   explicitly requests CI/CD changes. The attempted workflow edit was
+   reverted; once authorized, update the workflow to the live Taxonomy
+   owner files and canonical read-cutover test.
 4. **P1, outstanding:** Vote and subscription owner-audience authorization is
    outside the write transaction and excludes the route channel. Design the
    external audience-facts snapshot/lock/revalidation contract in the owning
