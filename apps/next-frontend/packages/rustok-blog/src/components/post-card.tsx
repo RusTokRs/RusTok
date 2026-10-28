@@ -73,17 +73,18 @@ export function PostCard({
       <div className="flex flex-1 flex-col p-5 space-y-3">
         {/* Meta row: Category, Author & Date */}
         <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
-          {post.categoryName && (
+          {post.categoryName && post.categoryId && (
             <Link
-              href={
-                post.categoryId
-                  ? `/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`
-                  : `/${locale}/blog?category=${encodeURIComponent(post.categoryName)}`
-              }
+              href={`/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`}
               className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px] hover:bg-secondary/80 transition-colors"
             >
               {post.categoryName}
             </Link>
+          )}
+          {post.categoryName && !post.categoryId && (
+            <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-[11px]">
+              {post.categoryName}
+            </span>
           )}
 
           {post.authorProfile ? (
