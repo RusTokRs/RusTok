@@ -295,3 +295,45 @@ export async function fetchBlogCategories(
     }
   }
 }
+
+/** Public taxonomy tags are not limited to the current post page. */
+export async function fetchBlogTags(
+  graphql: BlogGraphqlExecutor,
+  tenantId?: string | null,
+  tenantSlug?: string | null,
+  locale?: string,
+): Promise<string[]> {
+  const query = `
+    query BlogTags($tenantId: UUID, $filter: BlogTagsFilter) {
+      blogTags(tenantId: $tenantId, filter: $filter) {
+        items { name }
+        total
+      }
+    }
+  `;
+  const names = new Set<string>();
+  const pageSize = 100;
+  for (let page = 1; ; page += 1) {
+    const response = await graphql<{
+      blogTags: { items: Array<{ name: string }>; total: number };
+    }, {
+      tenantId?: string | null;
+      filter: { locale?: string; page: number; perPage: number };
+    }>({
+      query,
+      variables: { tenantId, filter: { locale, page, perPage: pageSize } },
+      tenant: tenantSlug ?? undefined,
+    });
+    if (response.errors?.length || !response.data) {
+      throw new Error(response.errors?.[0]?.message ?? "Blog tags payload is missing");
+    }
+    const batch = response.data.blogTags;
+    for (const item of batch.items) names.add(item.name);
+    // Page boundaries are defined by the Blog taxonomy owner, independently of
+    // duplicate localized labels or orphaned derived usage rows.
+    if (page * pageSize >= batch.total) return [...names];
+    if (batch.items.length === 0) {
+      throw new Error("Blog tag pagination returned an incomplete result");
+    }
+  }
+}
