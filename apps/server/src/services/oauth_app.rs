@@ -2092,7 +2092,7 @@ mod tests {
     async fn sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans() {
         let (db, tenant) = test_db_with_tenant().await;
 
-        OAuthAppActiveModel {
+        let orphan_app = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
             name: Set("old-storefront".to_string()),
@@ -2121,6 +2121,25 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert orphan app");
+
+        let old_token = oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(orphan_app.id),
+            user_id: Set(None),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("orphan-token-hash".to_string()),
+            family_id: Set(None),
+            grant_type: Set("client_credentials".to_string()),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert orphan OAuth token");
 
         let mut manifest = crate::modules::ModulesManifest::default();
         manifest.build.server.embed_admin = false;
@@ -2193,5 +2212,56 @@ mod tests {
             .expect("orphan app still queryable");
         assert!(!orphan.is_active);
         assert!(orphan.revoked_at.is_some());
+
+        let token = oauth_tokens::Entity::find_by_id(old_token.id)
+            .one(&db)
+            .await
+            .expect("read orphan token")
+            .expect("orphan token remains as revoked evidence");
+        assert!(token.revoked_at.is_some(), "removed managed app must revoke its tokens");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn orphan_deactivation_database_failure_is_not_silently_ignored() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = true;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack.clear();
+        manifest.build.storefront.clear();
+
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("create an active managed admin app");
+
+        let managed = OAuthAppsEntity::find_by_tenant(&db, tenant.id)
+            .await
+            .expect("load manifest-managed app")
+            .into_iter()
+            .find(|app| app.slug == "leptos-admin")
+            .expect("embedded admin app was created");
+        assert!(managed.is_active);
+
+        db.execute(sea_orm::Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TRIGGER abort_managed_app_deactivation BEFORE UPDATE OF is_active ON oauth_apps WHEN NEW.is_active = 0 BEGIN SELECT RAISE(ABORT, 'simulated deactivation failure'); END".to_string(),
+        ))
+        .await
+        .expect("install fault injection trigger");
+
+        manifest.build.server.embed_admin = false;
+        assert!(
+            sync_app_connections(&db, tenant.id, &manifest)
+                .await
+                .is_err(),
+            "manifest sync must fail when an orphan cannot be deactivated"
+        );
+        let still_active = OAuthAppsEntity::find_by_id(managed.id)
+            .one(&db)
+            .await
+            .expect("load app after failed sync")
+            .expect("app remains persisted");
+        assert!(still_active.is_active, "failed transaction must preserve prior app state");
     }
 }
