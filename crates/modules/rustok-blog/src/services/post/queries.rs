@@ -451,10 +451,19 @@ impl PostService {
             });
         }
 
+        // A post with no translation cannot produce a public summary. Exclude
+        // such damaged rows *before* keyset LIMIT/cursor calculation; filtering
+        // them only in summarize_posts can otherwise return an empty page while
+        // intact posts remain beyond its cursor.
+        let translated_post_ids = Query::select()
+            .column(blog_post_translation::Column::PostId)
+            .from(blog_post_translation::Entity)
+            .to_owned();
         let mut select = blog_post::Entity::find()
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
-            .filter(blog_post::Column::PublishedAt.is_not_null());
+            .filter(blog_post::Column::PublishedAt.is_not_null())
+            .filter(blog_post::Column::Id.in_subquery(translated_post_ids));
 
         if let Some(ref tag) = query.tag {
             let Some(tag_id) = resolve_tag_id_for_posts(
