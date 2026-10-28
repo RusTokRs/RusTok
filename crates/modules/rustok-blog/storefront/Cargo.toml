@@ -9,6 +9,7 @@ default = []
 hydrate = [
   "leptos/hydrate",
   "rustok-comments-storefront-support/hydrate",
+  "rustok-search-storefront/hydrate",
 ]
 comment-island = [
   "hydrate",
@@ -26,6 +27,7 @@ ssr = [
   "dep:uuid",
   "rustok-api/server",
   "rustok-comments-storefront-support/ssr",
+  "rustok-search-storefront/ssr",
 ]
 
 [dependencies]
@@ -50,3 +52,4 @@ url = { version = "2.5", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Location"] }
 uuid = { workspace = true, optional = true }
 rustok-comments-storefront-support = { path = "../../rustok-comments/storefront", default-features = false }
+rustok-search-storefront = { path = "../../rustok-search/storefront", default-features = false }
