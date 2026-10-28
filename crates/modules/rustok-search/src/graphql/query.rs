@@ -71,6 +71,7 @@ struct NormalizedSearchPreviewInput {
     source_modules: Vec<String>,
     statuses: Vec<String>,
     category_ids: Vec<Uuid>,
+    tag: Option<String>,
     attribute_filters: Vec<SearchAttributeFilter>,
     sort_attribute_code: Option<String>,
     sort_desc: bool,
@@ -339,6 +340,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -404,6 +406,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -479,6 +482,7 @@ impl SearchQueryRoot {
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
             category_ids: input.category_ids,
+            tag: input.tag,
             attribute_filters: input.attribute_filters,
             sort_attribute_code: input.sort_attribute_code,
             sort_desc: input.sort_desc,
@@ -667,6 +671,7 @@ fn normalize_search_preview_input(
         source_modules,
         statuses,
         category_ids,
+        tag: normalize_blog_tag_filter(input.tag)?,
         attribute_filters,
         sort_attribute_code: normalize_attribute_code(input.sort_attribute_code)?,
         sort_desc: input.sort_desc.unwrap_or(false),
@@ -763,6 +768,16 @@ fn normalize_uuid_values(field_name: &str, values: Option<Vec<String>>) -> Resul
                 .map_err(|_| FieldError::new(format!("{field_name} contains an invalid UUID")))
         })
         .collect()
+}
+
+fn normalize_blog_tag_filter(tag: Option<String>) -> Result<Option<String>> {
+    let Some(tag) = tag.map(|tag| tag.trim().to_lowercase()).filter(|tag| !tag.is_empty()) else {
+        return Ok(None);
+    };
+    if tag.chars().count() > 120 || tag.chars().any(char::is_control) {
+        return Err(FieldError::new("Invalid Blog tag filter"));
+    }
+    Ok(Some(tag))
 }
 
 fn normalize_attribute_code(value: Option<String>) -> Result<Option<String>> {
