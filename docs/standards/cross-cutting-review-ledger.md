@@ -56,7 +56,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 ## Phase Backlog — Cross-Cutting Capability Sequence (17 Phases Total)
 
 - [ ] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (0/6 completed)
-- [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/4 completed)
+- [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/5 completed)
 - [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
 - [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
 - [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
@@ -94,7 +94,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 ### CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity
 
 - **Canonical Documents:** [docs/UI/module-package-architecture.md](../UI/module-package-architecture.md), [docs/UI/graphql-architecture.md](../UI/graphql-architecture.md), [AGENTS.md](../../AGENTS.md) §5.
-- **Primary Owner Crates:** `crates/modules/*/admin`, `crates/modules/*/storefront`, `crates/ui/*`, `apps/admin`, `apps/storefront`.
+- **Primary Owner Crates:** `crates/modules/*/admin`, `crates/modules/*/storefront`, `crates/ui/*`, `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`, `apps/next-admin/packages/*`, `apps/next-frontend/packages/*`.
 - **CodeGraph Target:** `leptos_dom view rsx TransportFacade ViewModel rustok_ui`
 
 #### Sub-Audit Checklist
@@ -102,6 +102,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [ ] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verify `crates/modules/*/admin` and `storefront` adapters contain zero business calculations, price/discount math, status validations, or command construction inside view templates (`view!`, `rsx!`).
 - [ ] **CC-02.03 — Transport Facade Boundary:** Ensure UI adapters access backend capabilities strictly through module-owned `transport/` facades, never calling raw fetch or ad-hoc API endpoints directly.
 - [ ] **CC-02.04 — Design Token & UI Primitive Reuse:** Verify module UIs consume canonical visual primitives (`rustok-ui`, `rustok-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom styling.
+- [ ] **CC-02.05 — Dual-Stack UI & Admin Synchronization (Leptos ↔ Next.js Parity):** Verify full parity between Leptos and Next.js frontend/admin implementations for all modules. Check route availability (no 404s on root module paths like `/dashboard/<module>` and `/[locale]/<module>`), operational workspace parity (moderation tables, status filters, taxonomy trees, detail thread previews), and strict GraphQL schema conformance (variable nullability, connection pagination fields).
 
 ---
 

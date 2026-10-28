@@ -109,6 +109,14 @@ Code is defined by what it **does**, not just how cleanly it compiles. For every
 - **Zero Domain Logic in UI Adapters:** `ui/leptos` and `ui/dioxus` MUST NOT contain input validation rules, command construction, price/discount math, status evaluation, or direct backend API calls. The adapter ONLY binds the ready `ViewModel` to DOM/design tokens and events to callbacks.
 - **Anti-Leak Smell:** If a module's `core/` is trivial or lacks unit tests while `ui/leptos.rs` is bloated with business logic, extract the logic into `core/` before declaring the component reviewed.
 
+#### 8. Dual-Stack UI & Admin Parity (Leptos ↔ Next.js) (AGENTS.md §2.1, §5):
+- **Synchronized Dual Implementations:** For any module with UI or admin surfaces, audit BOTH the Leptos crates (`crates/modules/<module>/admin`, `storefront`) and the Next.js packages (`apps/next-admin/packages/<module>`, `apps/next-frontend/packages/<module>`). Never review one implementation while leaving the other broken or desynchronized.
+- **Route & Workspace Parity:** Ensure root navigation destinations (e.g. `/dashboard/<module>` and `/[locale]/<module>`) are fully functional and never return 404. Rich operational workspaces (moderation tables, category taxonomies, status filtering tabs, detail thread previews) present in Leptos Admin MUST have equivalent functional depth in Next.js Admin, and vice-versa.
+- **GraphQL Schema Conformance:** Frontend GraphQL operations across both stacks MUST strictly match the backend schema:
+  - Correct variable nullability (e.g. optional tenant context `$tenantId: UUID` vs non-null `$tenantId: UUID!`).
+  - Correct connection structures (querying `pageInfo { totalCount }` instead of non-existent direct `total` fields).
+  - Canonical public routing (e.g. `/[locale]/<module>` rather than internal `/[locale]/modules/<module>`).
+
 ### Step 4: Exhaustive Remediation ("Косяков нет, теперь иду дальше")
 Remediate **ALL** discovered defects across the entire crate in the same change set. An agent MUST NOT fix 2-3 isolated issues and leave the rest unaddressed. When a non-trivial logical branch lacks a test, add a focused unit test to lock in the verified behavior.
 
