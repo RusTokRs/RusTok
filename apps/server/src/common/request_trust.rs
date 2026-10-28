@@ -65,13 +65,18 @@ fn warn_ignored_forwarded_headers(headers: &HeaderMap, peer_ip: Option<IpAddr>, 
     }
 }
 
-fn first_header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    headers
-        .get(name)
+/// Use the value appended by the nearest trusted proxy, not a client-supplied
+/// value earlier in a comma-separated forwarding chain.
+fn last_forwarded_header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let values = headers.get_all(name);
+    values
+        .iter()
+        .last()
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
+        .and_then(|value| value.rsplit(',').next())
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn parse_forwarded_pair<'a>(forwarded: &'a str, key: &str) -> Option<&'a str> {
@@ -88,11 +93,15 @@ fn parse_forwarded_pair<'a>(forwarded: &'a str, key: &str) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
-fn forwarded_value<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
-    headers
-        .get(FORWARDED)
+fn last_forwarded_pair(headers: &HeaderMap, key: &str) -> Option<String> {
+    let values = headers.get_all(FORWARDED);
+    values
+        .iter()
+        .last()
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| parse_forwarded_pair(value, key))
+        .and_then(|value| value.rsplit(',').next())
+        .and_then(|entry| parse_forwarded_pair(entry, key))
+        .map(ToOwned::to_owned)
 }
 
 fn parse_forwarded_for_ip(value: &str) -> Option<IpAddr> {
@@ -151,12 +160,16 @@ pub fn extract_effective_host(
     settings: &RequestTrustSettings,
 ) -> Option<String> {
     if forwarded_headers_trusted(peer_ip, settings) {
-        return first_header_value(headers, "x-forwarded-host")
-            .or_else(|| forwarded_value(headers, "host"))
-            .or_else(|| headers.get(HOST).and_then(|value| value.to_str().ok()))
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
+        return last_forwarded_header_value(headers, "x-forwarded-host")
+            .or_else(|| last_forwarded_pair(headers, "host"))
+            .or_else(|| {
+                headers
+                    .get(HOST)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+            });
     }
 
     warn_ignored_forwarded_headers(headers, peer_ip, "untrusted_or_ignored_forwarded_host");
@@ -210,9 +223,10 @@ pub fn extract_effective_proto(
     settings: &RequestTrustSettings,
 ) -> Option<String> {
     if forwarded_headers_trusted(peer_ip, settings) {
-        return first_header_value(headers, "x-forwarded-proto")
-            .or_else(|| forwarded_value(headers, "proto"))
-            .map(|value| value.to_ascii_lowercase());
+        return last_forwarded_header_value(headers, "x-forwarded-proto")
+            .or_else(|| last_forwarded_pair(headers, "proto"))
+            .map(|value| value.to_ascii_lowercase())
+            .filter(|value| value == "http" || value == "https");
     }
 
     warn_ignored_forwarded_headers(headers, peer_ip, "untrusted_or_ignored_forwarded_proto");
@@ -271,6 +285,69 @@ mod tests {
         assert_eq!(
             extract_effective_proto(&headers, peer_ip, &settings).as_deref(),
             Some("https")
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_uses_last_forwarded_host_and_proto_not_spoofed_first_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("evil.example.test, tenant.example.test"),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_static("http, https"),
+        );
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test"),
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https"),
+        );
+    }
+
+    #[test]
+    fn trusted_proxy_uses_last_rfc_forwarded_host_and_proto() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            FORWARDED,
+            HeaderValue::from_static(
+                "for=198.51.100.66;host=evil.example.test;proto=http, for=203.0.113.8;host=tenant.example.test;proto=https",
+            ),
+        );
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+        let settings = trusted_settings();
+
+        assert_eq!(
+            extract_effective_host(&headers, peer, &settings).as_deref(),
+            Some("tenant.example.test"),
+        );
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &settings).as_deref(),
+            Some("https"),
+        );
+    }
+
+    #[test]
+    fn forwarded_proto_rejects_non_http_schemes() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-proto",
+            HeaderValue::from_static("javascript"),
+        );
+        assert_eq!(
+            extract_effective_proto(
+                &headers,
+                Some(IpAddr::from([10, 1, 2, 3])),
+                &trusted_settings(),
+            ),
+            None,
         );
     }
 
