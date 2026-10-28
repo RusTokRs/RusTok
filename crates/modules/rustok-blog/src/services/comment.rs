@@ -605,6 +605,17 @@ impl CommentService {
         };
 
         let (items, total) = result.map_err(comments_port_error_to_blog_error)?;
+        if security.is_public_read() {
+            // A post can be unpublished, moved to another channel or have its
+            // comments disabled while the Comments owner request is in flight.
+            // Do not return a once-authorized thread after the owner read
+            // finishes without revalidating the current public boundary.
+            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
+                return Err(BlogError::CommentsDisabled);
+            }
+            self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                .await?;
+        }
         Ok((
             items
                 .into_iter()
