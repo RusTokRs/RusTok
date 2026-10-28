@@ -24,6 +24,10 @@ RusToK.
 - Own canonical application URLs for normalized `SearchResultItem` values through
   `canonical_search_result_url`.
 - Serve storefront Search, admin preview, and host global-search capabilities.
+  GraphQL storefront Search enforces the no-tenant-override surface policy
+  before performing dictionary, settings or index reads, rejecting explicit
+  `tenant_id` even when it equals the current tenant. The tenant comes only
+  from the trusted host request.
   Storefront Search and suggestions read only the *declared* Search corpus: the host
   declares each source module as public or gated, gated modules answer a real-time
   discovery preflight and per-candidate authorization, and modules that were never
