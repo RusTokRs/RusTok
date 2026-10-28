@@ -173,6 +173,7 @@ integration. The canonical source of truth here is only manifest wiring.
 
 - `rustok-calls` storefront UI: [README](../../crates/modules/rustok-calls/storefront/README.md)
 - `rustok-calendar` storefront UI: [README](../../crates/modules/rustok-calendar/storefront/README.md)
+- `rustok-messenger` storefront UI: [README](../../crates/modules/rustok-messenger/storefront/README.md)
 
 ### UI Support Crates
 

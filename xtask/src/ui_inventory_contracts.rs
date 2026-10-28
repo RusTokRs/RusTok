@@ -147,12 +147,26 @@ fn collect_declared_ui_crates_for_surface(
                 .provides
                 .admin_ui
                 .as_ref()
-                .and_then(|ui| ui.leptos_crate.as_deref()),
+                .and_then(|ui| ui.leptos_crate.as_deref())
+                .or_else(|| {
+                    package_manifest
+                        .provides
+                        .admin_support
+                        .as_ref()
+                        .and_then(|ui| ui.leptos_crate.as_deref())
+                }),
             "storefront" => package_manifest
                 .provides
                 .storefront_ui
                 .as_ref()
-                .and_then(|ui| ui.leptos_crate.as_deref()),
+                .and_then(|ui| ui.leptos_crate.as_deref())
+                .or_else(|| {
+                    package_manifest
+                        .provides
+                        .storefront_support
+                        .as_ref()
+                        .and_then(|ui| ui.leptos_crate.as_deref())
+                }),
             _ => None,
         };
         let Some(ui_crate) = ui_crate.map(str::trim).filter(|value| !value.is_empty()) else {

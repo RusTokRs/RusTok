@@ -14,7 +14,7 @@ const MAX_PENDING_INVALIDATION_KEYS: usize = 4_096;
 
 #[derive(Debug)]
 struct DegradedWriteTracker {
-    state: Mutex<DegradedWriteTrackerState>,
+    state: AsyncMutex<DegradedWriteTrackerState>,
     maximum_keys: usize,
 }
 
@@ -27,7 +27,7 @@ struct DegradedWriteTrackerState {
 impl DegradedWriteTracker {
     fn new(maximum_keys: usize) -> Self {
         Self {
-            state: Mutex::new(DegradedWriteTrackerState::default()),
+            state: AsyncMutex::new(DegradedWriteTrackerState::default()),
             maximum_keys,
         }
     }
@@ -97,14 +97,14 @@ impl DegradedWriteTracker {
 
 #[derive(Debug)]
 struct PendingInvalidationTracker {
-    keys: Mutex<HashSet<String>>,
+    keys: AsyncMutex<HashSet<String>>,
     maximum_keys: usize,
 }
 
 impl PendingInvalidationTracker {
     fn new(maximum_keys: usize) -> Self {
         Self {
-            keys: Mutex::new(HashSet::new()),
+            keys: AsyncMutex::new(HashSet::new()),
             maximum_keys,
         }
     }
@@ -117,6 +117,7 @@ impl PendingInvalidationTracker {
         self.keys.lock().await.remove(key);
     }
 
+    #[cfg(test)]
     async fn clear(&self) {
         self.keys.lock().await.clear();
     }
@@ -125,6 +126,7 @@ impl PendingInvalidationTracker {
         self.keys.lock().await.iter().cloned().collect()
     }
 
+    #[cfg(test)]
     async fn is_empty(&self) -> bool {
         self.keys.lock().await.is_empty()
     }
@@ -383,7 +385,10 @@ impl DegradationAwareFallbackBackend {
                 self.clear_pending_invalidation(&key).await;
                 Ok(())
             }
-            Err(error) => self.retain_degraded_write_or_fail(&key, &value, error).await,
+            Err(error) => {
+                self.retain_degraded_write_or_fail(&key, &value, error)
+                    .await
+            }
         }
     }
 
@@ -1164,7 +1169,10 @@ mod tests {
             .set("key".to_string(), b"stale".to_vec())
             .await
             .unwrap();
-        let backend = backend(Arc::clone(&primary) as Arc<dyn CacheBackend>, Arc::clone(&fallback));
+        let backend = backend(
+            Arc::clone(&primary) as Arc<dyn CacheBackend>,
+            Arc::clone(&fallback),
+        );
 
         // The local layer may hold bytes the shared primary never acknowledged; a read must use the
         // primary value and must not treat the local copy as authoritative.
@@ -1360,7 +1368,12 @@ mod tests {
         // untracked invalidation means both shared bytes and local bytes may be stale.
         assert!(backend.get("key-2").await.is_err());
         assert!(backend.get("key-1").await.is_err());
-        assert!(backend.set("key-3".to_string(), b"v".to_vec()).await.is_err());
+        assert!(
+            backend
+                .set("key-3".to_string(), b"v".to_vec())
+                .await
+                .is_err()
+        );
 
         // Reconciliation while the primary is still unhealthy must be rejected...
         assert!(backend.reconcile_local_state().await.is_err());
@@ -1387,7 +1400,11 @@ mod tests {
         assert!(backend.invalidate("key").await.is_err());
         assert!(!backend.pending_invalidations.is_empty().await);
 
-        let error = backend.reconcile_local_state().await.unwrap_err().to_string();
+        let error = backend
+            .reconcile_local_state()
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("retained invalidation"));
         assert!(backend.get("key").await.is_err());
 

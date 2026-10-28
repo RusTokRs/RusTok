@@ -34,7 +34,7 @@ impl RusToKModule for ContentModule {
     }
 
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
+        ModuleKind::Optional
     }
 
     async fn health(&self) -> HealthStatus {
@@ -79,7 +79,7 @@ mod tests {
             "Shared content helpers and cross-domain orchestration module"
         );
         assert!(!module.version().is_empty());
-        assert_eq!(module.kind(), ModuleKind::Core);
+        assert_eq!(module.kind(), ModuleKind::Optional);
         assert_eq!(module.health().await, HealthStatus::Healthy);
         assert_eq!(module.permissions().len(), 12);
         assert!(!module.migrations().is_empty());

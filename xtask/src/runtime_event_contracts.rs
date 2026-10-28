@@ -4,9 +4,14 @@ pub(crate) fn validate_module_event_listener_contract(
     slug: &str,
     module_root: &Path,
 ) -> Result<()> {
-    let lib_rs_path = module_root.join("src").join("lib.rs");
-    let content = fs::read_to_string(&lib_rs_path)
-        .with_context(|| format!("Failed to read {}", lib_rs_path.display()))?;
+    let (target_path, content) = if let Some(source) = load_runtime_module_source(module_root)? {
+        (source.path, source.content)
+    } else {
+        let lib_rs_path = module_root.join("src").join("lib.rs");
+        let content = fs::read_to_string(&lib_rs_path)
+            .with_context(|| format!("Failed to read {}", lib_rs_path.display()))?;
+        (lib_rs_path, content)
+    };
 
     if slug == "index" {
         let legacy_listener_path = module_root.join("src").join("listener.rs");
@@ -25,7 +30,7 @@ pub(crate) fn validate_module_event_listener_contract(
             if content.contains(forbidden) {
                 anyhow::bail!(
                     "Module '{slug}' event listener contract drift: {} must not contain legacy fragment '{}'",
-                    lib_rs_path.display(),
+                    target_path.display(),
                     forbidden
                 );
             }
@@ -37,7 +42,7 @@ pub(crate) fn validate_module_event_listener_contract(
         "search" => &[
             "fn register_event_listeners(",
             "search_projection_source_registry_from_extensions",
-            "SearchIngestionHandler::with_forum_source",
+            "SearchIngestionHandler::with_",
         ],
         "workflow" => &[
             "fn register_event_listeners(",
@@ -50,7 +55,7 @@ pub(crate) fn validate_module_event_listener_contract(
         if !content.contains(fragment) {
             anyhow::bail!(
                 "Module '{slug}' event listener contract drift: {} must contain '{}'",
-                lib_rs_path.display(),
+                target_path.display(),
                 fragment
             );
         }

@@ -39,7 +39,7 @@ impl RusToKModule for NotificationsModule {
     }
 
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
+        ModuleKind::Optional
     }
 
     fn dependencies(&self) -> &[&'static str] {
@@ -100,7 +100,7 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.name(), "Notifications");
-        assert_eq!(module.kind(), ModuleKind::Core);
+        assert_eq!(module.kind(), ModuleKind::Optional);
         assert_eq!(module.dependencies(), &["outbox"]);
         assert_eq!(module.health().await, HealthStatus::Healthy);
         assert_eq!(module.migrations().len(), 7);

@@ -39,7 +39,7 @@ impl RusToKModule for ModerationModule {
     }
 
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
+        ModuleKind::Optional
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -92,7 +92,7 @@ mod tests {
         let module = ModerationModule;
         assert_eq!(module.slug(), "moderation");
         assert_eq!(module.name(), "Moderation");
-        assert_eq!(module.kind(), ModuleKind::Core);
+        assert_eq!(module.kind(), ModuleKind::Optional);
         assert!(module.dependencies().is_empty());
         assert_eq!(module.health().await, HealthStatus::Healthy);
         assert_eq!(module.migrations().len(), 4);

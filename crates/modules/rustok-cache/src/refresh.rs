@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome};
@@ -965,10 +966,13 @@ mod tests {
                     now_unix_ms: 2_000,
                     clock: CacheRefreshClock::Fixed(2_000),
                 },
-                move || async move {
-                    loader_calls.fetch_add(1, Ordering::SeqCst);
-                    CacheEnvelope::new(1, 2_000, "loaded".to_string())
-                        .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                move || {
+                    let loader_calls = Arc::clone(&loader_calls);
+                    async move {
+                        loader_calls.fetch_add(1, Ordering::SeqCst);
+                        CacheEnvelope::new(1, 2_000, "loaded".to_string())
+                            .map_err(|error| rustok_core::Error::Cache(error.to_string()))
+                    }
                 },
             )
             .await

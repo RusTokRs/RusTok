@@ -29,7 +29,7 @@ impl RusToKModule for AccountingModule {
     }
 
     fn kind(&self) -> rustok_core::module::ModuleKind {
-        rustok_core::module::ModuleKind::Core
+        rustok_core::module::ModuleKind::Optional
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -63,6 +63,7 @@ mod tests {
         );
         assert!(!module.version().is_empty());
         assert_eq!(module.dependencies(), &["outbox"]);
+        assert_eq!(module.kind(), rustok_core::module::ModuleKind::Optional);
         assert!(module.permissions().is_empty());
         assert!(module.migrations().is_empty());
 

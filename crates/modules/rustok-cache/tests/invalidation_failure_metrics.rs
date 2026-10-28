@@ -19,7 +19,8 @@ async fn unavailable_redis_counts_one_publish_failure_without_losing_local_deliv
             "cache.failure.metrics",
             "product:42",
         ))
-        .await;
+        .await
+        .expect("publish should return outcome");
 
     let delivered = tokio::time::timeout(std::time::Duration::from_secs(1), local.recv())
         .await

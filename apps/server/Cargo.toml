@@ -40,6 +40,7 @@ default = [
     "mod-pages",
     "mod-docs",
     "mod-forms",
+    "mod-messenger",
     "mod-navigation",
     "mod-page_builder",
     "mod-taxonomy",
