@@ -8,7 +8,7 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 pub type ApiError = GraphqlHttpError;
 
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
-const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags featuredImageUrl seoTitle seoDescription version } }";
+const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
@@ -99,6 +99,8 @@ struct CreatePostInput {
     tags: Vec<String>,
     #[serde(rename = "categoryId")]
     category_id: Option<String>,
+    #[serde(rename = "channelSlugs")]
+    channel_slugs: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     featured_image_url: Option<String>,
     #[serde(rename = "seoTitle")]
@@ -117,13 +119,15 @@ struct UpdatePostInput {
     excerpt: Option<String>,
     slug: Option<String>,
     tags: Option<Vec<String>>,
-    #[serde(rename = "categoryId", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "categoryId")]
     category_id: Option<String>,
-    #[serde(rename = "featuredImageUrl", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "channelSlugs")]
+    channel_slugs: Vec<String>,
+    #[serde(rename = "featuredImageUrl")]
     featured_image_url: Option<String>,
-    #[serde(rename = "seoTitle", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "seoTitle")]
     seo_title: Option<String>,
-    #[serde(rename = "seoDescription", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "seoDescription")]
     seo_description: Option<String>,
     version: i32,
 }
@@ -221,10 +225,11 @@ pub async fn create_post(
                 slug: core::optional_text(draft.slug.as_str()),
                 publish: draft.publish,
                 tags: draft.tags,
-                category_id: None,
-                featured_image_url: None,
-                seo_title: None,
-                seo_description: None,
+                category_id: draft.category_id,
+                channel_slugs: draft.channel_slugs,
+                featured_image_url: draft.featured_image_url,
+                seo_title: draft.seo_title,
+                seo_description: draft.seo_description,
                 scheduled_at: None,
             },
         },
@@ -258,10 +263,11 @@ pub async fn update_post(
                 // from the title, so a cleared field would block the save.
                 slug: core::optional_text(draft.slug.as_str()),
                 tags: Some(draft.tags),
-                category_id: None,
-                featured_image_url: None,
-                seo_title: None,
-                seo_description: None,
+                category_id: draft.category_id,
+                channel_slugs: draft.channel_slugs,
+                featured_image_url: draft.featured_image_url,
+                seo_title: draft.seo_title,
+                seo_description: draft.seo_description,
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),
