@@ -170,6 +170,15 @@ copy must use the canonical Taxonomy owner contract.
   manifest-declared Axum router mount.
 - Used by `apps/admin` and `apps/storefront` through manifest-driven Leptos
   package composition.
+- Search projection is a separate, asynchronously updated read model:
+  `BlogSearchProjectionSource` emits only published, timestamped post
+  translations with title, full article body, tags, category, author and
+  `facets.category_id`; Search owns storage and PostgreSQL ranking. The host
+  declares Blog as a **gated** Search audience. Blog authorizes each bounded
+  candidate batch against the current tenant, post status, post-channel
+  allowlist and Channel's active Blog-module binding rather than trusting the
+  potentially stale search payload. Channel/tenant module disable and
+  publication changes therefore hide results before the index catches up.
 - Public Blog reads honor channel module bindings and typed post visibility
   allowlists. **Authentication alone does not bypass** that gate: only a
   tenant-wide editor may read posts independently of storefront channels.
