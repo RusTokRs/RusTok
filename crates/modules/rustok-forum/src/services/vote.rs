@@ -176,16 +176,20 @@ impl VoteService {
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
-        lock_active_topic_vote_write_in_tx(&txn, tenant_id, topic_id).await?;
-        lock_topic_vote_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
-        forum_topic_vote::Entity::delete_many()
+        // This is an actor-scoped blind delete, not a topic mutation.
+        // The active-topic lock rejects archived or missing topics, which
+        // exposes target existence and strands votes after archival.
+        // Deletion by the exact vote tuple is atomic without a topic probe.
+        let deleted = forum_topic_vote::Entity::delete_many()
             .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_vote::Column::TopicId.eq(topic_id))
             .filter(forum_topic_vote::Column::UserId.eq(user_id))
             .exec(&txn)
             .await?;
-        publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
-            .await?;
+        if deleted.rows_affected > 0 {
+            publish_forum_topic_projection_direct_in_tx(&txn, tenant_id, Some(user_id), topic_id)
+                .await?;
+        }
         txn.commit().await?;
         Ok(())
     }

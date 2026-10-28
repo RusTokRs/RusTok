@@ -79,8 +79,10 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    restart and import paths remain unverified.
 6. **P2, source-ready in this branch:** Topic/reply vote set/clear and topic
    solution mark/clear acknowledge successful owner writes without a subsequent
-   audience-selected topic/reply read. Reply vote clears now delete only the
-   actor's own row without probing the reply's existence. REST returns
+   audience-selected topic/reply read. Both vote clears delete only the
+   actor's own row without probing the target. Topic clearing remains possible
+   after archival; no phantom projection event is emitted for no-op clears.
+   REST returns
    `204 No Content`; GraphQL returns `Boolean!`. Owner authorization,
    tenant checks and write-failure propagation are unchanged; mutations
    do not leak hidden content. Confirm
