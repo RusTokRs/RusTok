@@ -52,7 +52,8 @@ pub enum LocalizedCursorCodecError {
     #[error("localized cursor encoding is invalid: {0}")]
     Base64(#[from] base64::DecodeError),
     #[error("localized cursor payload is too short")]
-    TooShort,    #[error("cursor token exceeds {max} encoded bytes: {actual}")]
+    TooShort,
+    #[error("cursor token exceeds {max} encoded bytes: {actual}")]
     TooLarge { actual: usize, max: usize },
 
     #[error("unsupported localized cursor version: {0}")]
@@ -458,5 +459,4 @@ mod tests {
             Err(LocalizedCursorCodecError::TooLarge { .. })
         ));
     }
-
 }
