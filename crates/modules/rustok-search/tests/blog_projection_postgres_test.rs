@@ -313,6 +313,12 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
         published.payload["tags"],
         serde_json::json!(["rust", "cms"])
     );
+    assert!(
+        published.facets["tag_keys"]
+            .as_array()
+            .is_some_and(|keys| keys.iter().any(|key| key == "rust")),
+        "Search must index an exact canonical/localized tag key before paging"
+    );
     assert_eq!(
         published.payload["channel_slugs"],
         serde_json::json!(["web"])
