@@ -4,6 +4,14 @@
 
 ### Additional bounded remediation evidence
 
+- IDX-TEST-GAP (open): `crates/modules/rustok-index/tests/integration.rs`
+  contains an ignored `test_index_rebuild_flow` with a nil test tenant and
+  a `todo!(...)` index status lookup. It does not establish rebuild readiness.
+  Replacing it with a real database/rebuild contract test requires runtime
+  fixtures and owner verification; no test was deleted or falsely marked passed.
+- Additional inspection covered the Index admin adapter and integration-test
+  sources; the separate FS-07 Index admin checkbox also stays unchecked.
+
 - Reviewed the source tree for suspicious error-handling constructs
   (116 `src/**/*.rs` files, static pass only), and inspected Index-related
   entrypoints in Server, Distribution and Social Graph.
