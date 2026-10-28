@@ -337,6 +337,26 @@ fn build_rate_limit_key_ignores_spoofed_forwarded_ip_for_untrusted_peer() {
 }
 
 #[test]
+fn build_rate_limit_key_cannot_be_changed_by_spoofing_a_leftmost_proxy_hop() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-forwarded-for",
+        "198.51.100.66, 203.0.113.8".parse().unwrap(),
+    );
+    let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
+
+    let key = build_rate_limit_key(
+        &headers,
+        &request,
+        Some(&test_auth_config()),
+        false,
+        &trusted_request_trust(),
+    );
+
+    assert_eq!(key, "ip:203.0.113.8");
+}
+
+#[test]
 fn redis_rate_limit_key_is_bounded_stable_and_redacts_identity() {
     let identity = "ip:1.2.3.4|tenant:550e8400-e29b-41d4-a716-446655440000";
     let first = redis_rate_limit_key("rustok:rate-limit:api", identity);
