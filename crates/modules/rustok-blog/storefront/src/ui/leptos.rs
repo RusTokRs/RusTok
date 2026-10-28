@@ -189,7 +189,7 @@ fn BlogShowcase(
             .or_insert_with(|| name.clone());
     }
 
-    let other_posts = if let Some(slug) = selected_post_slug.as_deref() {
+    let other_posts = if let Some(slug) = selected_post_slug.as_deref().filter(|_| search_total.is_none()) {
         data.posts
             .items
             .into_iter()
