@@ -109,3 +109,6 @@ blog-form-seoTitle = SEO title (Blog default)
 blog-form-seoDescription = SEO description (Blog default)
 blog-error-categories = Categories unavailable
 blog-form-scheduledAt = Schedule (RFC 3339 with timezone)
+blog-table-pin = Pin
+blog-table-unpin = Unpin
+blog-error-updatePin = Failed to change post pin state
