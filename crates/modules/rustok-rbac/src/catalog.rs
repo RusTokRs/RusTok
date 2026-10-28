@@ -85,28 +85,38 @@ mod tests {
         let permissions = catalog.permissions(tenant_id);
 
         assert!(roles.iter().any(|role| role.slug == "admin"));
-        assert!(permissions
-            .iter()
-            .any(|permission| permission.slug == "ai:providers:manage"));
-        assert!(permissions
-            .iter()
-            .any(|permission| permission.slug == "forms:read"));
-        assert!(permissions
-            .iter()
-            .any(|permission| permission.slug == "conversations:read"));
-        assert!(catalog
-            .validate_assignment(
-                tenant_id,
-                &["admin".to_string()],
-                &[
-                    "ai:providers:manage".to_string(),
-                    "forms:read".to_string(),
-                    "conversations:read".to_string(),
-                ],
-            )
-            .is_ok());
-        assert!(catalog
-            .validate_assignment(tenant_id, &["unknown".to_string()], &[])
-            .is_err());
+        assert!(
+            permissions
+                .iter()
+                .any(|permission| permission.slug == "ai:providers:manage")
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|permission| permission.slug == "forms:read")
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|permission| permission.slug == "conversations:read")
+        );
+        assert!(
+            catalog
+                .validate_assignment(
+                    tenant_id,
+                    &["admin".to_string()],
+                    &[
+                        "ai:providers:manage".to_string(),
+                        "forms:read".to_string(),
+                        "conversations:read".to_string(),
+                    ],
+                )
+                .is_ok()
+        );
+        assert!(
+            catalog
+                .validate_assignment(tenant_id, &["unknown".to_string()], &[])
+                .is_err()
+        );
     }
 }

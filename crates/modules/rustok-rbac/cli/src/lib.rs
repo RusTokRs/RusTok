@@ -286,12 +286,15 @@ mod tests {
     async fn repair_system_roles_rejects_mutually_exclusive_tenant_flags() {
         let runtime = RuntimeComposition::without_database(serde_json::json!({}));
         let provider = command_provider(&runtime);
-        let request = command_request("repair-system-roles", serde_json::json!({
-            "options": {
-                "tenant_id": Uuid::new_v4().to_string(),
-                "all_tenants": true
-            }
-        }));
+        let request = command_request(
+            "repair-system-roles",
+            serde_json::json!({
+                "options": {
+                    "tenant_id": Uuid::new_v4().to_string(),
+                    "all_tenants": true
+                }
+            }),
+        );
         let result = provider.execute(request).await;
         assert!(matches!(
             result,
@@ -303,11 +306,14 @@ mod tests {
     async fn repair_system_roles_apply_requires_tenant_or_all_tenants() {
         let runtime = RuntimeComposition::without_database(serde_json::json!({}));
         let provider = command_provider(&runtime);
-        let request = command_request("repair-system-roles", serde_json::json!({
-            "options": {
-                "apply": true
-            }
-        }));
+        let request = command_request(
+            "repair-system-roles",
+            serde_json::json!({
+                "options": {
+                    "apply": true
+                }
+            }),
+        );
         let result = provider.execute(request).await;
         assert!(matches!(
             result,
@@ -319,11 +325,14 @@ mod tests {
     async fn repair_system_roles_rejects_invalid_uuid() {
         let runtime = RuntimeComposition::without_database(serde_json::json!({}));
         let provider = command_provider(&runtime);
-        let request = command_request("repair-system-roles", serde_json::json!({
-            "options": {
-                "tenant_id": "not-a-valid-uuid"
-            }
-        }));
+        let request = command_request(
+            "repair-system-roles",
+            serde_json::json!({
+                "options": {
+                    "tenant_id": "not-a-valid-uuid"
+                }
+            }),
+        );
         let result = provider.execute(request).await;
         assert!(matches!(
             result,
@@ -331,4 +340,3 @@ mod tests {
         ));
     }
 }
-

@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{select_classes, SelectOption, Size};
+use rustok_ui::{SelectOption, Size, select_classes};
 
 /// Native select control driven by [`SelectOption`] rows.
 ///

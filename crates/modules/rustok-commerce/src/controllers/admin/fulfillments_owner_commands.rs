@@ -349,7 +349,10 @@ pub async fn list_fulfillments(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "list_fulfillments",
@@ -425,10 +428,16 @@ pub async fn show_fulfillment(
         "Permission denied: fulfillments:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "show_fulfillment",
@@ -495,10 +504,16 @@ pub async fn create_fulfillment(
     )?;
     let order_id = input.order_id;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if order_id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "create_fulfillment",
@@ -564,10 +579,16 @@ pub async fn ship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "ship_fulfillment",
@@ -641,10 +662,16 @@ pub async fn deliver_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "deliver_fulfillment",
@@ -717,10 +744,16 @@ pub async fn reopen_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "reopen_fulfillment",
@@ -793,10 +826,16 @@ pub async fn reship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "reship_fulfillment",
@@ -869,10 +908,16 @@ pub async fn cancel_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Fulfillment ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Fulfillment ID must not be nil",
+        ));
     }
     log_admin_fulfillment_route_entry(
         "cancel_fulfillment",

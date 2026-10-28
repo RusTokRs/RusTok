@@ -212,11 +212,7 @@ fn build_filter_clause(
         // Gated modules are visible only for the ids their owner authorized. Every
         // other declared module keeps its normal visibility predicates, so public
         // modules are never bounded by the audience scan.
-        let gated_params = bind_list(
-            scope.gated_source_modules(),
-            &mut values,
-            &mut next_param,
-        );
+        let gated_params = bind_list(scope.gated_source_modules(), &mut values, &mut next_param);
         if scope.authorized_document_ids().is_empty() {
             clauses.push(format!("source_module NOT IN ({gated_params})"));
         } else {
@@ -1043,7 +1039,9 @@ mod tests {
             SearchAudienceDocumentScope::new(vec!["forum'); DROP TABLE".to_string()], Vec::new())
                 .is_err()
         );
-        assert!(SearchAudienceDocumentScope::new(vec!["forum".to_string()], vec![Uuid::nil()]).is_err());
+        assert!(
+            SearchAudienceDocumentScope::new(vec!["forum".to_string()], vec![Uuid::nil()]).is_err()
+        );
     }
 
     #[test]

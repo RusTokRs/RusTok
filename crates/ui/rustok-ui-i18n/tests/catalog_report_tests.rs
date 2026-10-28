@@ -8,8 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use rustok_ui_i18n::bundle::build_fluent_catalog_report;
 use rustok_ui_i18n::BundleBuildError;
+use rustok_ui_i18n::bundle::build_fluent_catalog_report;
 
 #[test]
 fn lenient_report_retains_every_skipped_entry_reason_in_input_order() {

@@ -81,9 +81,7 @@ impl CacheBackend for InstrumentedCacheBackend {
         value: Vec<u8>,
         ttl: Option<Duration>,
     ) -> rustok_core::Result<CacheCompareAndSetOutcome> {
-        self.inner
-            .compare_and_set(key, expected, value, ttl)
-            .await
+        self.inner.compare_and_set(key, expected, value, ttl).await
     }
 
     async fn invalidate(&self, key: &str) -> rustok_core::Result<()> {
@@ -195,7 +193,10 @@ mod tests {
         assert_eq!(stats.misses, 0);
         // One explicit invalidation; the inner "miss" bump on invalidate is not an eviction.
         assert_eq!(stats.evictions, 1);
-        assert_eq!(stats.entries, 7, "occupancy is delegated to the inner store");
+        assert_eq!(
+            stats.entries, 7,
+            "occupancy is delegated to the inner store"
+        );
     }
 
     #[tokio::test]

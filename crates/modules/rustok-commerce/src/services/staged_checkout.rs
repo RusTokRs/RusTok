@@ -14,9 +14,9 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 use super::{
     BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutFulfillmentStageError,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus,
-    CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
-    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutPaymentStageError,
+    CheckoutPlanBuilder, CheckoutStagePipeline, CheckoutStagePipelineError,
+    DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 #[cfg(feature = "marketplace-financial")]
 use super::{
@@ -488,7 +488,9 @@ fn pipeline_failure_message(error: &CheckoutStagePipelineError) -> String {
         CheckoutStagePipelineError::OrderStage(error) if error.bounded_failure().is_some() => {
             error.to_string()
         }
-        CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary { .. })
+        CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
+            ..
+        })
         | CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
             ..
         }) => error.to_string(),
@@ -623,14 +625,13 @@ mod tests {
 
     #[test]
     fn retryable_order_stage_boundary_does_not_force_compensation() {
-        let error = CheckoutStagePipelineError::OrderStage(Box::new(
-            CheckoutOrderStageError::Boundary {
+        let error =
+            CheckoutStagePipelineError::OrderStage(Box::new(CheckoutOrderStageError::Boundary {
                 stage: "load_order",
                 code: "checkout.order_temporarily_unavailable".to_string(),
                 message: "Checkout order service is temporarily unavailable".to_string(),
                 retryable: true,
-            },
-        ));
+            }));
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable

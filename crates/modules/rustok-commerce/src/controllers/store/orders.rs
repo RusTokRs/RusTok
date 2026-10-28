@@ -577,10 +577,16 @@ pub async fn get_me(
     auth: rustok_api::AuthContext,
 ) -> HttpResult<Json<CustomerResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
@@ -628,13 +634,22 @@ pub async fn get_order(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<OrderResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
@@ -700,13 +715,22 @@ pub async fn create_order_return(
     Json(input): Json<CreateOrderReturnInput>,
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
@@ -787,13 +811,22 @@ pub async fn list_order_returns(
     Query(params): Query<StoreOrderReturnsParams>,
 ) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
@@ -883,13 +916,22 @@ pub async fn list_order_refunds(
     Query(params): Query<StoreOrderRefundsParams>,
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_PAYMENT_BOUNDARY,
@@ -978,13 +1020,22 @@ pub async fn list_order_changes(
     Query(params): Query<StoreOrderChangesParams>,
 ) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_user_id", "User ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_user_id",
+            "User ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
     log_storefront_order_route_entry(
         STOREFRONT_ORDER_CUSTOMER_BOUNDARY,

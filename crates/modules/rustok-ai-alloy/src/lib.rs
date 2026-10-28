@@ -120,8 +120,7 @@ pub const ALLOY_CODE_AGENTS: &[AlloyCodeAgentDescriptor] = &[
     AlloyCodeAgentDescriptor {
         slug: "alloy_code_implementer",
         display_name: "Alloy code implementer",
-        responsibility:
-            "Draft and validate Alloy script changes; applying a change stays approval-gated.",
+        responsibility: "Draft and validate Alloy script changes; applying a change stays approval-gated.",
         required_permissions: ALLOY_TASK_RUN_PERMISSIONS,
         allowed_operations: &["list_scripts", "get_script", "validate_script"],
         requires_approval: true,
@@ -367,15 +366,19 @@ mod tests {
 
     #[test]
     fn stage_input_cannot_select_an_operation_outside_its_role_binding() {
-        assert!(validate_stage_execution_input(
-            "alloy_code_verifier",
-            &serde_json::json!({"operation":"run_script"})
-        )
-        .is_ok());
-        assert!(validate_stage_execution_input(
-            "alloy_code_verifier",
-            &serde_json::json!({"operation":"validate_script"})
-        )
-        .is_err());
+        assert!(
+            validate_stage_execution_input(
+                "alloy_code_verifier",
+                &serde_json::json!({"operation":"run_script"})
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_stage_execution_input(
+                "alloy_code_verifier",
+                &serde_json::json!({"operation":"validate_script"})
+            )
+            .is_err()
+        );
     }
 }

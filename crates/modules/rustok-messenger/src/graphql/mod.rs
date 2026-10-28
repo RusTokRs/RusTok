@@ -13,10 +13,14 @@ pub(crate) async fn require_auth_context<'a>(
     let tenant = ctx.data::<TenantContext>()?;
     let auth = ctx.data::<AuthContext>()?;
     if tenant.id.is_nil() {
-        return Err(FieldError::new("Invalid tenant ID: nil UUID is not permitted"));
+        return Err(FieldError::new(
+            "Invalid tenant ID: nil UUID is not permitted",
+        ));
     }
     if auth.user_id.is_nil() {
-        return Err(FieldError::new("Invalid user ID: nil UUID is not permitted"));
+        return Err(FieldError::new(
+            "Invalid user ID: nil UUID is not permitted",
+        ));
     }
     if auth.tenant_id != tenant.id {
         return Err(FieldError::new("Permission denied: tenant mismatch"));
@@ -30,6 +34,5 @@ pub(crate) async fn require_auth_context<'a>(
 
 pub use mutation::MessengerMutation;
 pub use query::MessengerQuery;
-pub use runtime_data::{attach_schema_data, MessengerGraphqlRuntimeData};
+pub use runtime_data::{MessengerGraphqlRuntimeData, attach_schema_data};
 pub use types::*;
-

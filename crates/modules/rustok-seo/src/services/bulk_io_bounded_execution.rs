@@ -210,7 +210,9 @@ impl SeoService {
             ))
         } else {
             match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-                Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
+                Some(SeoBulkJobOperationKind::Apply) => {
+                    self.execute_apply_job_chunk(&running).await
+                }
                 Some(SeoBulkJobOperationKind::ExportCsv) => {
                     self.execute_export_job_chunk(&running).await
                 }

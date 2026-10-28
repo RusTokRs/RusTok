@@ -341,7 +341,8 @@ mod tests {
             ModerationSubjectAdapterKey::new("forum", ModerationSubjectKind::ForumTopic).is_ok()
         );
         assert!(
-            ModerationSubjectAdapterKey::new("my_module-1", ModerationSubjectKind::BlogPost).is_ok()
+            ModerationSubjectAdapterKey::new("my_module-1", ModerationSubjectKind::BlogPost)
+                .is_ok()
         );
 
         assert_eq!(
@@ -407,7 +408,11 @@ mod tests {
         assert_eq!(registry.len(), 1);
         assert!(registry.contains("forum", ModerationSubjectKind::ForumTopic));
         assert!(!registry.contains("blog", ModerationSubjectKind::BlogPost));
-        assert!(registry.get("forum", ModerationSubjectKind::ForumTopic).is_some());
+        assert!(
+            registry
+                .get("forum", ModerationSubjectKind::ForumTopic)
+                .is_some()
+        );
         assert_eq!(registry.keys(), vec![key.clone()]);
 
         let dup = DummyFactory { key };

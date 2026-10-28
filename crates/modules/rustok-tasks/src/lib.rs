@@ -36,8 +36,7 @@ pub mod migrations;
 pub use domain::TasksStatus;
 pub use error::{TasksError, TasksResult};
 pub use events::{
-    TasksCreatedEvent, TasksDeletedEvent, TasksDomainEvent, TasksUpdatedEvent,
-    TASKS_EVENT_TOPIC,
+    TASKS_EVENT_TOPIC, TasksCreatedEvent, TasksDeletedEvent, TasksDomainEvent, TasksUpdatedEvent,
 };
 pub use module::TasksModule;
 pub use services::TasksService;

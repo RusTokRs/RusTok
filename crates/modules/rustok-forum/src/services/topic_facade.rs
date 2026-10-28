@@ -139,7 +139,11 @@ impl TopicService {
                     )
                     .await?
             }
-            None => self.inner.create_command(tenant_id, security, input).await?,
+            None => {
+                self.inner
+                    .create_command(tenant_id, security, input)
+                    .await?
+            }
         };
         require_localized_topic_response(response)
     }

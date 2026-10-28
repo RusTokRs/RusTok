@@ -190,4 +190,3 @@ mod tests {
         assert!(matches!(err, WorkflowError::InvalidStepConfig(_)));
     }
 }
-

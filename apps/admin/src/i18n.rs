@@ -9,7 +9,7 @@ rustok_ui_i18n::declare_module_i18n!(default = "en", locales = ["en", "ru"],);
 
 #[cfg(test)]
 mod tests {
-    use super::{t, MESSAGES};
+    use super::{MESSAGES, t};
 
     #[test]
     fn host_catalogs_are_valid_and_locale_specific() {

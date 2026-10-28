@@ -49,8 +49,12 @@ async fn storefront_category_mark_read_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
-        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
@@ -141,8 +145,12 @@ async fn storefront_all_topics_mark_read_native(
         let request = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
-        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request).await? {
-            return Err(ServerFnError::new("Forum module is not enabled for this channel"));
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
         }
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()

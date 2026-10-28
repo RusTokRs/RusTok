@@ -220,10 +220,12 @@ impl SearchAudiencePolicyPort for RealForumPublicEligibilityPort {
         forum_public_settings::default_settings()
             .anonymous_reading_allowed(tenant_id)
             .await
-            .map_err(|_| PortError::unavailable(
-                "forum.search_result_eligibility.public_discovery_unavailable",
-                "Forum public discovery is temporarily unavailable",
-            ))
+            .map_err(|_| {
+                PortError::unavailable(
+                    "forum.search_result_eligibility.public_discovery_unavailable",
+                    "Forum public discovery is temporarily unavailable",
+                )
+            })
     }
 
     async fn filter_eligible_candidates(
@@ -1025,11 +1027,11 @@ async fn assert_storefront_exact(
     expected_total: u64,
 ) -> TestResult<()> {
     let mut registry = SearchAudienceRegistry::new();
-    registry
-        .register_shared(eligibility)
-        .map_err(|error| {
-            test_error(format!("Forum audience policy registration failed: {error}"))
-        })?;
+    registry.register_shared(eligibility).map_err(|error| {
+        test_error(format!(
+            "Forum audience policy registration failed: {error}"
+        ))
+    })?;
     let engine = PgSearchEngine::new(db.clone());
     let request_context = RequestContext {
         tenant_id: fixture.tenant_id,

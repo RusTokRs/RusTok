@@ -62,8 +62,10 @@ fn test_in_memory_ssr_draft_session_store_lifecycle() {
         store.prune().expect("prune on empty store should succeed"),
         0
     );
-    assert!(store
-        .load("page-1", "non-existent")
-        .expect("load should return Ok")
-        .is_none());
+    assert!(
+        store
+            .load("page-1", "non-existent")
+            .expect("load should return Ok")
+            .is_none()
+    );
 }

@@ -1,6 +1,6 @@
 use super::{short_checksum, tr};
-use crate::entities::module::model::MarketplaceModuleVersion;
 use crate::Locale;
+use crate::entities::module::model::MarketplaceModuleVersion;
 use leptos::prelude::*;
 
 #[component]

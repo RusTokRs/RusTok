@@ -1,5 +1,5 @@
 use crate::editor::CanvasComponentGeometry;
-use fly_leptos::{BrowserPoint, PointerSample, FLY_IFRAME_PROTOCOL};
+use fly_leptos::{BrowserPoint, FLY_IFRAME_PROTOCOL, PointerSample};
 use fly_ui::KeyStroke;
 use serde::{Deserialize, Serialize};
 

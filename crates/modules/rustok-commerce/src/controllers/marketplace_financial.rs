@@ -124,7 +124,10 @@ pub async fn list_financial_operator_review(
 ) -> HttpResult<Json<Vec<MarketplaceFinancialOperationResponse>>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -162,10 +165,16 @@ pub async fn show_financial_operation(
 ) -> HttpResult<Json<MarketplaceFinancialOperationResponse>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -204,10 +213,16 @@ pub async fn retry_financial_operation(
 ) -> HttpResult<Json<MarketplaceFinancialOperationResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -245,7 +260,10 @@ pub async fn list_paid_event_operator_review(
 ) -> HttpResult<Json<Vec<MarketplacePaidEventResponse>>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -283,10 +301,16 @@ pub async fn show_paid_event(
 ) -> HttpResult<Json<MarketplacePaidEventResponse>> {
     ensure_read_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Paid event ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Paid event ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -325,10 +349,16 @@ pub async fn retry_paid_event(
 ) -> HttpResult<Json<MarketplacePaidEventResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Paid event ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Paid event ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,
@@ -367,7 +397,10 @@ pub async fn run_recovery_sweep(
 ) -> HttpResult<Json<MarketplaceFinancialSweepResponse>> {
     ensure_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = MARKETPLACE_FINANCIAL_BOUNDARY,

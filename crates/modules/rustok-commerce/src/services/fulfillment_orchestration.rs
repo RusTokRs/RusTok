@@ -450,7 +450,9 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err = service
             .create_manual_fulfillment(
@@ -467,7 +469,9 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("order_id")));
+        assert!(
+            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("order_id"))
+        );
 
         let err = service
             .create_manual_fulfillment(
@@ -484,6 +488,8 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("shipping_option_id")));
+        assert!(
+            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("shipping_option_id"))
+        );
     }
 }

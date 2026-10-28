@@ -37,7 +37,9 @@ impl GroupMembershipEnforcementService {
     ) -> GroupsResult<GroupMembershipEffectiveState> {
         request.validate()?;
         if tenant_id.is_nil() {
-            return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
         }
         resolve_group_membership_enforcement(
             &self.db,
@@ -66,13 +68,19 @@ where
     C: ConnectionTrait,
 {
     if tenant_id.is_nil() {
-        return Err(GroupsError::Validation("tenant_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "tenant_id cannot be nil UUID".to_string(),
+        ));
     }
     if group_id.is_nil() {
-        return Err(GroupsError::Validation("group_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "group_id cannot be nil UUID".to_string(),
+        ));
     }
     if user_id.is_nil() {
-        return Err(GroupsError::Validation("user_id cannot be nil UUID".to_string()));
+        return Err(GroupsError::Validation(
+            "user_id cannot be nil UUID".to_string(),
+        ));
     }
     let Some(membership) = membership_state::Entity::find()
         .filter(membership_state::Column::TenantId.eq(tenant_id))

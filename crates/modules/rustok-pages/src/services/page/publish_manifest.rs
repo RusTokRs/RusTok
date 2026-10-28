@@ -150,10 +150,16 @@ where
         }
 
         let composed_content = if page.template.is_empty() || page.template == "default" {
-            let symbols = site_symbols.get(&binding.locale).cloned().unwrap_or_default();
+            let symbols = site_symbols
+                .get(&binding.locale)
+                .cloned()
+                .unwrap_or_default();
             super::symbols::apply_site_symbols_to_content(&body.content, &symbols)?
         } else {
-            let symbols = site_symbols.get(&binding.locale).cloned().unwrap_or_default();
+            let symbols = site_symbols
+                .get(&binding.locale)
+                .cloned()
+                .unwrap_or_default();
             let template_record = template_records.get(&binding.locale).ok_or_else(|| {
                 PagesError::publish_operation_integrity(format!(
                     "page template `{}` missing for locale `{}` during manifest verification",

@@ -79,10 +79,8 @@ impl TopicService {
         let locale = normalize_locale(&context.locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let per_page = query.per_page.clamp(1, 100);
-        let viewer = crate::services::ForumTopicAudienceViewer::authenticated(
-            security.clone(),
-            context,
-        )?;
+        let viewer =
+            crate::services::ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
 
         let candidates = Self::widget_topic_candidates(
             tenant_id,

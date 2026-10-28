@@ -96,7 +96,9 @@ impl ForumTopicMergeReadStateReconciliationService {
                 &reason,
             )
             .await?
-            .ok_or_else(|| ForumError::TopicMergeReadStateReconciliationConflict(input.operation_id))?;
+            .ok_or_else(|| {
+                ForumError::TopicMergeReadStateReconciliationConflict(input.operation_id)
+            })?;
         txn.commit().await?;
         Ok(operation_to_result(operation))
     }
@@ -140,8 +142,7 @@ impl ForumTopicMergeReadStateReconciliationService {
                 &[existing.source_topic_id, existing.target_topic_id],
             )
             .await?;
-            ensure_source_read_states_empty_in_tx(txn, tenant_id, existing.source_topic_id)
-                .await?;
+            ensure_source_read_states_empty_in_tx(txn, tenant_id, existing.source_topic_id).await?;
             return Ok(Some(existing));
         }
 
@@ -323,7 +324,6 @@ impl ForumTopicMergeReadStateReconciliationService {
         }
         .insert(txn)
         .await?;
-
 
         Ok(Some(operation))
     }

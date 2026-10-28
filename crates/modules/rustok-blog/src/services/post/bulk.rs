@@ -62,7 +62,8 @@ impl PostService {
             BlogPostStatus::Draft => BulkLifecycleCommand::Unpublish,
             BlogPostStatus::Archived => BulkLifecycleCommand::Archive,
         };
-        self.bulk_apply(tenant_id, post_ids, command, security).await
+        self.bulk_apply(tenant_id, post_ids, command, security)
+            .await
     }
 
     /// Bulk unpublish: only Published posts move to Draft; archived posts are
@@ -73,8 +74,13 @@ impl PostService {
         post_ids: &[Uuid],
         security: SecurityContext,
     ) -> BlogResult<BulkOperationResult> {
-        self.bulk_apply(tenant_id, post_ids, BulkLifecycleCommand::Unpublish, security)
-            .await
+        self.bulk_apply(
+            tenant_id,
+            post_ids,
+            BulkLifecycleCommand::Unpublish,
+            security,
+        )
+        .await
     }
 
     /// Bulk restore: only Archived posts move to Draft.
@@ -143,18 +149,14 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         match command {
-            BulkLifecycleCommand::Publish => {
-                self.publish_post(tenant_id, post_id, security).await
-            }
+            BulkLifecycleCommand::Publish => self.publish_post(tenant_id, post_id, security).await,
             BulkLifecycleCommand::Unpublish => {
                 self.unpublish_post(tenant_id, post_id, security).await
             }
             BulkLifecycleCommand::Archive => {
                 self.archive_post(tenant_id, post_id, security, None).await
             }
-            BulkLifecycleCommand::Restore => {
-                self.restore_post(tenant_id, post_id, security).await
-            }
+            BulkLifecycleCommand::Restore => self.restore_post(tenant_id, post_id, security).await,
         }
     }
 }

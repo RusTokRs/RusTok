@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    column::delta_of_delta::DeltaOfDeltable, BoolRleColumn, ColumnTrait, DeltaOfDeltaColumn,
-    DeltaRleColumn, DeltaRleable, GenericColumn, RleColumn, Rleable,
+    BoolRleColumn, ColumnTrait, DeltaOfDeltaColumn, DeltaRleColumn, DeltaRleable, GenericColumn,
+    RleColumn, Rleable, column::delta_of_delta::DeltaOfDeltable,
 };
 
 impl<T: Rleable> Serialize for RleColumn<T> {

@@ -49,8 +49,10 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
         );
     }
     // A scope delete must be bounded by the source module, never by a module name.
-    assert!(PROJECTION_DRIVER
-        .contains("DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2"));
+    assert!(
+        PROJECTION_DRIVER
+            .contains("DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2")
+    );
 }
 
 #[test]

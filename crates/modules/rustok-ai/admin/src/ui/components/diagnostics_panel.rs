@@ -2,8 +2,8 @@ use crate::core::average_latency_ms;
 use crate::i18n::t;
 use crate::model::AiAdminBootstrap;
 use crate::ui::leptos::{
-    average_run_latency_summary, bucket_summary, recent_run_summary, stream_event_kind_label, Card,
-    InfoItem,
+    Card, InfoItem, average_run_latency_summary, bucket_summary, recent_run_summary,
+    stream_event_kind_label,
 };
 use leptos::prelude::*;
 

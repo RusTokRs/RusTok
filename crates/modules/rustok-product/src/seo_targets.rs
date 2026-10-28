@@ -7,10 +7,9 @@ use rustok_seo_targets::{
     SeoBulkSummaryPage, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkPageRequest,
     SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetLoadTargetsRequest,
-    SeoTargetOpenGraphRecord,
-    SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
-    SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap, builtin_slug,
-    populate_image_template_fields, schema,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
+    SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
+    builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 use uuid::Uuid;
@@ -101,8 +100,7 @@ impl SeoTargetProvider for ProductSeoTargetProvider {
                 continue;
             };
             if matches!(request.scope, SeoTargetLoadScope::PublicRoute)
-                && (projection.status != ProductStatus::Active
-                    || projection.published_at.is_none())
+                && (projection.status != ProductStatus::Active || projection.published_at.is_none())
             {
                 records.push((target_id, None));
                 continue;

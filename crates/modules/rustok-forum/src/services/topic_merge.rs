@@ -24,12 +24,12 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category_lifecycle::ensure_category_tree_target_is_active_in_tx;
 use super::category_owner::CategoryService;
-use super::topic_merge_follow_up_reconciliation::reconcile_topic_merge_follow_up_relations_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::enforce_scope;
 use super::topic_audience::load_policy_for_topic;
+use super::topic_merge_follow_up_reconciliation::reconcile_topic_merge_follow_up_relations_in_tx;
 use super::topic_route::ForumTopicRouteService;
 use super::user_stats::UserStatsService;
 
@@ -365,10 +365,8 @@ impl ForumTopicMergeService {
         // topics follow the same rule via the delete owner). The source was
         // counted from creation, so archiving it as the merge tombstone must
         // release that contribution.
-        CategoryService::adjust_counters_in_tx(&txn, tenant_id, source_category_id, -1, 0)
-            .await?;
-        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, source_author_id, -1)
-            .await?;
+        CategoryService::adjust_counters_in_tx(&txn, tenant_id, source_category_id, -1, 0).await?;
+        UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, source_author_id, -1).await?;
 
         transfer_cross_category_reply_counters_in_tx(
             &txn,

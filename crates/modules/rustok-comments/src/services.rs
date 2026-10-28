@@ -201,16 +201,24 @@ impl CommentsService {
         input: CreateCommentInput,
     ) -> CommentsResult<Uuid> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if input.target_type.trim().is_empty() {
-            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+            return Err(CommentsError::Validation(
+                "target_type cannot be empty".to_string(),
+            ));
         }
         if input.target_id.is_nil() {
-            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "target_id cannot be nil".to_string(),
+            ));
         }
         if input.parent_comment_id.is_some_and(|id| id.is_nil()) {
-            return Err(CommentsError::Validation("parent_comment_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "parent_comment_id cannot be nil".to_string(),
+            ));
         }
         let author_id = self.enforce_create_scope(&security)?;
         let body = serialize_comment_body(input.body)?;
@@ -282,10 +290,14 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             if comment_id.is_nil() {
-                return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "comment_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_read_scope(&security, Action::Read)?;
             let locale = normalize_locale(locale)?;
@@ -344,10 +356,14 @@ impl CommentsService {
         input: UpdateCommentInput,
     ) -> CommentsResult<CommentRecord> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if comment_id.is_nil() {
-            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "comment_id cannot be nil".to_string(),
+            ));
         }
         let locale = normalize_locale(&input.locale)?;
         if let Some(body) = input.body {
@@ -466,10 +482,14 @@ impl CommentsService {
         comment_id: Uuid,
     ) -> CommentsResult<()> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if comment_id.is_nil() {
-            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "comment_id cannot be nil".to_string(),
+            ));
         }
         let existing = comment::Entity::find_by_id(comment_id)
             .filter(comment::Column::TenantId.eq(tenant_id))
@@ -617,13 +637,19 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             if target_type.trim().is_empty() {
-                return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+                return Err(CommentsError::Validation(
+                    "target_type cannot be empty".to_string(),
+                ));
             }
             if target_id.is_nil() {
-                return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "target_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_read_scope(&security, Action::List)?;
             let locale = normalize_locale(&filter.locale)?;
@@ -750,13 +776,19 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             if target_type.trim().is_empty() {
-                return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+                return Err(CommentsError::Validation(
+                    "target_type cannot be empty".to_string(),
+                ));
             }
             if target_id.is_nil() {
-                return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "target_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_moderation_scope(&security)?;
             let txn = self.db.begin().await?;
@@ -799,7 +831,9 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_read_scope(&security, Action::List)?;
 
@@ -860,10 +894,14 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             if filter.thread_id.is_nil() {
-                return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "thread_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_read_scope(&security, Action::Read)?;
             let locale = normalize_locale(&filter.locale)?;
@@ -971,10 +1009,14 @@ impl CommentsService {
         fallback_locale: Option<&str>,
     ) -> CommentsResult<CommentRecord> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if comment_id.is_nil() {
-            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "comment_id cannot be nil".to_string(),
+            ));
         }
         self.enforce_moderation_scope(&security)?;
         let locale = normalize_locale(locale)?;
@@ -1042,10 +1084,14 @@ impl CommentsService {
         let started = Instant::now();
         let result = async {
             if tenant_id.is_nil() {
-                return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "tenant_id cannot be nil".to_string(),
+                ));
             }
             if thread_id.is_nil() {
-                return Err(CommentsError::Validation("thread_id cannot be nil".to_string()));
+                return Err(CommentsError::Validation(
+                    "thread_id cannot be nil".to_string(),
+                ));
             }
             self.enforce_moderation_scope(&security)?;
             let txn = self.db.begin().await?;
@@ -1084,13 +1130,19 @@ impl CommentsService {
         target_id: Uuid,
     ) -> CommentsResult<comment_thread::Model> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if target_type.trim().is_empty() {
-            return Err(CommentsError::Validation("target_type cannot be empty".to_string()));
+            return Err(CommentsError::Validation(
+                "target_type cannot be empty".to_string(),
+            ));
         }
         if target_id.is_nil() {
-            return Err(CommentsError::Validation("target_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "target_id cannot be nil".to_string(),
+            ));
         }
         if let Some(thread) = comment_thread::Entity::find()
             .filter(comment_thread::Column::TenantId.eq(tenant_id))
@@ -1216,10 +1268,14 @@ impl CommentsService {
         include_deleted: bool,
     ) -> CommentsResult<comment::Model> {
         if tenant_id.is_nil() {
-            return Err(CommentsError::Validation("tenant_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "tenant_id cannot be nil".to_string(),
+            ));
         }
         if comment_id.is_nil() {
-            return Err(CommentsError::Validation("comment_id cannot be nil".to_string()));
+            return Err(CommentsError::Validation(
+                "comment_id cannot be nil".to_string(),
+            ));
         }
         let mut query =
             comment::Entity::find_by_id(comment_id).filter(comment::Column::TenantId.eq(tenant_id));
@@ -1574,7 +1630,9 @@ mod richtext_validation_tests {
             .await
             .expect_err("empty target_type must be rejected");
 
-        assert!(matches!(err, CommentsError::Validation(msg) if msg.contains("target_type cannot be empty")));
+        assert!(
+            matches!(err, CommentsError::Validation(msg) if msg.contains("target_type cannot be empty"))
+        );
     }
 }
 

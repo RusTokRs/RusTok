@@ -1,5 +1,5 @@
 use fly::GrapesJsCodec;
-use rustok_page_builder::{validate_static_publish_document, PageBuilderStaticPublishPolicyError};
+use rustok_page_builder::{PageBuilderStaticPublishPolicyError, validate_static_publish_document};
 use serde_json::json;
 use std::collections::BTreeSet;
 

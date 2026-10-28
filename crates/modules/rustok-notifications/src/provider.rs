@@ -52,7 +52,6 @@ impl From<NotificationProviderError> for rustok_core::Error {
     }
 }
 
-
 impl From<crate::model::NotificationContractError> for NotificationProviderError {
     fn from(_: crate::model::NotificationContractError) -> Self {
         Self::InvalidEvent

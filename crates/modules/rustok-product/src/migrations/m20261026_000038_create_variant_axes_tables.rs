@@ -57,7 +57,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_product_variant_axes_attribute")
-                            .from(Alias::new("product_variant_axes"), Alias::new("attribute_id"))
+                            .from(
+                                Alias::new("product_variant_axes"),
+                                Alias::new("attribute_id"),
+                            )
                             .to(Alias::new("product_attributes"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::Restrict),
                     )
@@ -399,7 +402,12 @@ impl MigrationTrait for Migration {
             "product_variant_axes",
         ] {
             manager
-                .drop_table(Table::drop().table(Alias::new(table)).if_exists().to_owned())
+                .drop_table(
+                    Table::drop()
+                        .table(Alias::new(table))
+                        .if_exists()
+                        .to_owned(),
+                )
                 .await?;
         }
 

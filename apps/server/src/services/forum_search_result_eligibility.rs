@@ -1,15 +1,15 @@
 use async_trait::async_trait;
-use rustok_api::{PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled};
+use rustok_api::{
+    PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled,
+};
 use rustok_core::SecurityContext;
+use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError, ForumSearchResultCandidate,
     ForumSearchResultCandidateKind, ForumSearchResultEligibilityService, ForumSettingsProviders,
     SharedForumAudienceFactsPort, category_read_audience_port_context,
 };
-use rustok_forum::FORUM_MODULE_SLUG;
-use rustok_search::{
-    SearchAudiencePolicyPort, SearchAudienceRequest, StorefrontSearchTransport,
-};
+use rustok_search::{SearchAudiencePolicyPort, SearchAudienceRequest, StorefrontSearchTransport};
 use sea_orm::DatabaseConnection;
 
 #[derive(Clone)]
@@ -25,7 +25,11 @@ impl ServerForumSearchResultEligibilityPort {
         audience_facts: Option<SharedForumAudienceFactsPort>,
         settings_reader: Option<SharedStaticModuleSettingsReader>,
     ) -> Self {
-        Self { db, audience_facts, settings_reader }
+        Self {
+            db,
+            audience_facts,
+            settings_reader,
+        }
     }
 
     fn service(&self) -> ForumSearchResultEligibilityService {

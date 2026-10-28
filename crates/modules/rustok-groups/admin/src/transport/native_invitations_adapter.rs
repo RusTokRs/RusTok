@@ -164,7 +164,8 @@ async fn groups_admin_create_invitation_native(
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|s| {
-                let parsed = Uuid::parse_str(s).map_err(|_| ServerFnError::new("target_user_id must be a UUID"))?;
+                let parsed = Uuid::parse_str(s)
+                    .map_err(|_| ServerFnError::new("target_user_id must be a UUID"))?;
                 if parsed.is_nil() {
                     return Err(ServerFnError::new("target_user_id must not be nil"));
                 }

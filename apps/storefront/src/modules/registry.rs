@@ -115,7 +115,7 @@ pub fn page_for_route_segment(
 #[cfg(test)]
 mod tests {
     use super::{
-        page_for_route_segment, register_page, StorefrontPageLookup, StorefrontPageRegistration,
+        StorefrontPageLookup, StorefrontPageRegistration, page_for_route_segment, register_page,
     };
     use leptos::prelude::*;
     use std::collections::HashSet;

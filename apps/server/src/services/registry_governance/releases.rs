@@ -99,8 +99,11 @@ impl RegistryGovernanceService {
         context: ModuleCommandContext,
     ) -> anyhow::Result<ModuleReleaseUnyankResult> {
         let normalized_reason = normalize_required_reason(reason, "Registry un-yank")?;
-        let normalized_reason_code =
-            normalize_reason_code(reason_code, REGISTRY_UNYANK_REASON_CODES, "Registry un-yank")?;
+        let normalized_reason_code = normalize_reason_code(
+            reason_code,
+            REGISTRY_UNYANK_REASON_CODES,
+            "Registry un-yank",
+        )?;
 
         self.release_service()
             .unyank_release(ModuleReleaseUnyankCommand {

@@ -1,6 +1,6 @@
 use super::{comments_write_port_context, is_public_comment_target};
 use crate::BlogPostStatus;
-use rustok_api::{PortActorKind, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActorKind};
 use rustok_core::SecurityContext;
 use uuid::Uuid;
 

@@ -284,7 +284,7 @@ pub(crate) fn map_transition_coordinator_error(error: TransitionCoordinatorError
 
 #[cfg(test)]
 mod tests {
-    use super::{map_transition_coordinator_error, ModuleTransitionStateView};
+    use super::{ModuleTransitionStateView, map_transition_coordinator_error};
     use rustok_modules::{SecurityEpochConflictError, TransitionCoordinatorError};
 
     #[test]

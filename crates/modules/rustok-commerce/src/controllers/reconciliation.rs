@@ -181,7 +181,10 @@ pub async fn list_reconciliation_required(
 ) -> HttpResult<Json<Vec<AdminReconciliationProviderOperationResponse>>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,
@@ -229,7 +232,10 @@ pub async fn quarantine_stale_executing(
 ) -> HttpResult<Json<QuarantineStaleResponse>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,
@@ -282,10 +288,16 @@ pub async fn resolve_unknown_as_failed(
 ) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if operation_id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_operation_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,
@@ -336,10 +348,16 @@ pub async fn resolve_unknown_as_succeeded(
 ) -> HttpResult<Json<AdminReconciliationProviderOperationResponse>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if operation_id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_operation_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,
@@ -388,10 +406,16 @@ pub async fn retry_local_persistence(
 ) -> HttpResult<Json<crate::dto::FulfillmentResponse>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if operation_id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_operation_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,
@@ -441,10 +465,16 @@ pub async fn retry_create_label(
 ) -> HttpResult<Json<crate::dto::FulfillmentResponse>> {
     require_manage_permission(&auth)?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if operation_id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_operation_id", "Operation ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_operation_id",
+            "Operation ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = ADMIN_RECONCILIATION_BOUNDARY,

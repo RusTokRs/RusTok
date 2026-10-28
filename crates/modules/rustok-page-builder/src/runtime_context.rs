@@ -3,11 +3,10 @@ use crate::interaction_providers::{
 };
 use crate::{RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy};
 use fly::{
-    export_runtime_context_json_schema, extract_runtime_context_contract,
-    generate_runtime_context_example, preflight_runtime_context, FlyResult, GrapesJsCodec,
-    InteractionCapabilityPolicy, RuntimeContextContract, RuntimeContextExample,
-    RuntimeContextExamplePolicy, RuntimeContextJsonSchema, RuntimeContextPreflight,
-    RuntimeContextPreflightPolicy,
+    FlyResult, GrapesJsCodec, InteractionCapabilityPolicy, RuntimeContextContract,
+    RuntimeContextExample, RuntimeContextExamplePolicy, RuntimeContextJsonSchema,
+    RuntimeContextPreflight, RuntimeContextPreflightPolicy, export_runtime_context_json_schema,
+    extract_runtime_context_contract, generate_runtime_context_example, preflight_runtime_context,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -286,11 +285,13 @@ mod tests {
             })
             .expect("publish gate response");
         assert!(!response.evaluation.allowed);
-        assert!(response
-            .evaluation
-            .readiness
-            .as_ref()
-            .is_some_and(|report| !report.ready));
+        assert!(
+            response
+                .evaluation
+                .readiness
+                .as_ref()
+                .is_some_and(|report| !report.ready)
+        );
     }
 
     #[test]

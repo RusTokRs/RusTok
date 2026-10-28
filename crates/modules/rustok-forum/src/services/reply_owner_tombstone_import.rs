@@ -2,7 +2,8 @@ pub(crate) struct InsertImportReplyWithTombstoneParams<'a> {
     pub tenant_id: Uuid,
     pub prepared: &'a PreparedImportReplyInsert,
     pub relation: &'a crate::import_relation_preparation::ForumPreparedImportContentRelations,
-    pub tombstone: Option<&'a crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
+    pub tombstone:
+        Option<&'a crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
     pub relation_event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
     pub write_event_mode: crate::import_write_preparation::ForumImportWriteEventMode,
 }

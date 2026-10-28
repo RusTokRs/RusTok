@@ -78,11 +78,8 @@ pub fn start_forum_search_inbox_worker_if_ready(ctx: &ServerRuntimeContext) -> R
     // rebuilds it through the same neutral driver the event handler uses. A host
     // without the Blog module registers no source and keeps the optional driver
     // empty instead of failing the worker.
-    let blog_source = source_registry.build_with_extensions(
-        "blog",
-        ctx.db_clone(),
-        extensions.as_ref(),
-    );
+    let blog_source =
+        source_registry.build_with_extensions("blog", ctx.db_clone(), extensions.as_ref());
     let reconciler = ForumProjectionReconciler::with_owner_revision_source(
         ctx.db_clone(),
         forum_source,

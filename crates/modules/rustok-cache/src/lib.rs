@@ -19,9 +19,9 @@ mod event_dedupe;
 #[cfg(feature = "redis-cache")]
 mod fallback;
 mod generation;
+mod instrumentation;
 mod invalidation;
 mod invalidation_consumer;
-mod instrumentation;
 mod invalidation_processor;
 mod key;
 mod key_generation;
@@ -117,8 +117,7 @@ pub use policy::{CacheLoadPolicy, CachePolicyError, CacheTtlPolicy};
 pub use redis_status::{RedisCacheStatus, format_redis_cache_status_prometheus_metrics};
 pub use refresh::{
     CacheRefreshClock, CacheRefreshCoordinator, CacheRefreshCoordinatorError,
-    CacheRefreshLoadOptions,
-    CacheRefreshSchedule, CacheRefreshStats, MAX_CACHE_REFRESH_KEY_BYTES,
+    CacheRefreshLoadOptions, CacheRefreshSchedule, CacheRefreshStats, MAX_CACHE_REFRESH_KEY_BYTES,
     StaleWhileRevalidateResult,
 };
 pub use rustok_core::CacheCompareAndSetOutcome;
@@ -136,4 +135,3 @@ pub use tenant_generation_observability::{
     record_tenant_generation_listener_metrics,
 };
 pub use typed::{TypedCacheLoadOptions, TypedCacheLoadResult};
-

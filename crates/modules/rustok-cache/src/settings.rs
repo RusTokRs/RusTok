@@ -637,9 +637,11 @@ mod tests {
 
         let settings = redis_settings("redis://cache.internal:6379/999");
         let errors = settings.validate().expect_err("db out of range");
-        assert!(errors
-            .iter()
-            .any(|error| error.contains("between 0 and 255")));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("between 0 and 255"))
+        );
 
         let settings = redis_settings("redis://cache.internal:6379/not-a-db");
         let errors = settings.validate().expect_err("non numeric db");

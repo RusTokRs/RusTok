@@ -77,7 +77,11 @@ mod tests {
 
         // The cache target is deployment-owned, so the environment decides what the document
         // contains; the test asserts the round trip, not a specific deployment.
-        let current = port.port().read(tenant_id).await.expect("cache settings read");
+        let current = port
+            .port()
+            .read(tenant_id)
+            .await
+            .expect("cache settings read");
         let written = port
             .port()
             .update(tenant_id, None, current.clone())
@@ -85,7 +89,11 @@ mod tests {
             .expect("cache settings persist");
         assert_eq!(written["mode"], current["mode"]);
 
-        let read = port.port().read(tenant_id).await.expect("cache settings read");
+        let read = port
+            .port()
+            .read(tenant_id)
+            .await
+            .expect("cache settings read");
         assert_eq!(read["redis_port"], current["redis_port"]);
     }
 
@@ -97,11 +105,7 @@ mod tests {
 
         let error = port
             .port()
-            .update(
-                Uuid::new_v4(),
-                None,
-                json!({ "mode": "memcached" }),
-            )
+            .update(Uuid::new_v4(), None, json!({ "mode": "memcached" }))
             .await
             .expect_err("unknown mode must not be persisted");
         assert!(error.contains("mode"), "unexpected error: {error}");

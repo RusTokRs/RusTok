@@ -69,7 +69,8 @@ impl SeoService {
             (None, None) => name.to_string(),
         };
 
-        let is_cyrillic = locale.starts_with("ru") || locale.starts_with("uk") || locale.starts_with("be");
+        let is_cyrillic =
+            locale.starts_with("ru") || locale.starts_with("uk") || locale.starts_with("be");
         let meta_description = if let Some(desc) = target_state
             .description
             .as_deref()
@@ -84,7 +85,9 @@ impl SeoService {
             }
         } else if is_cyrillic {
             match category {
-                Some(c) => format!("{name} в категории {c}. Купить с гарантией и быстрой доставкой."),
+                Some(c) => {
+                    format!("{name} в категории {c}. Купить с гарантией и быстрой доставкой.")
+                }
                 None => format!("{name}. Официальный каталог, актуальные цены и быстрая доставка."),
             }
         } else {
@@ -123,8 +126,7 @@ impl SeoService {
             robots: Some(robots),
         };
 
-        validate_seo_metadata_payload(&generated)
-            .map_err(SeoError::validation)?;
+        validate_seo_metadata_payload(&generated).map_err(SeoError::validation)?;
 
         Ok(generated)
     }
@@ -351,10 +353,16 @@ mod tests {
     fn validates_generated_seo_metadata_invariants() {
         let meta = GeneratedSeoMetadata {
             meta_title: Some("Wireless Noise-Canceling Headphones".to_string()),
-            meta_description: Some("Experience crystal clear audio with advanced active noise cancellation.".to_string()),
+            meta_description: Some(
+                "Experience crystal clear audio with advanced active noise cancellation."
+                    .to_string(),
+            ),
             meta_keywords: Some("headphones, wireless, audio".to_string()),
             og_title: Some("Wireless Noise-Canceling Headphones".to_string()),
-            og_description: Some("Experience crystal clear audio with advanced active noise cancellation.".to_string()),
+            og_description: Some(
+                "Experience crystal clear audio with advanced active noise cancellation."
+                    .to_string(),
+            ),
             canonical_url: Some("/catalog/audio/headphones".to_string()),
             robots: Some("index, follow".to_string()),
         };

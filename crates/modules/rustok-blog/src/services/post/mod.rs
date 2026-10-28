@@ -42,8 +42,7 @@ use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
 };
 use crate::services::tag::{
-    load_post_tags_map, remove_post_tag_links_in_tx, resolve_tag_id_for_posts,
-    sync_post_tags_in_tx,
+    load_post_tags_map, remove_post_tag_links_in_tx, resolve_tag_id_for_posts, sync_post_tags_in_tx,
 };
 use crate::state_machine::BlogPostStatus;
 
@@ -74,10 +73,10 @@ mod scheduled;
 
 pub use routes::{BLOG_POST_TARGET_TYPE, BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner};
 
-pub(crate) use repository::load_post_subject_snapshot;
 pub(crate) use queries::{
     order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,
 };
+pub(crate) use repository::load_post_subject_snapshot;
 
 #[cfg(test)]
 mod tests;

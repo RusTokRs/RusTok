@@ -1,6 +1,6 @@
 use crate::dto::{PageBuilderErrorKind, PageBuilderModuleMetadata};
 use crate::health::{
-    record_provider_health_observation, ProviderHealthOperation, ProviderHealthOutcome,
+    ProviderHealthOperation, ProviderHealthOutcome, record_provider_health_observation,
 };
 use crate::service::PageBuilderServiceError;
 use rustok_api::PortContext;

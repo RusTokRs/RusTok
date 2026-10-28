@@ -1285,11 +1285,13 @@ mod tests {
             .expect("commit");
 
         // Immediately available in memory
-        assert!(durable
-            .memory()
-            .load(&committed.token, "landing")
-            .unwrap()
-            .is_some());
+        assert!(
+            durable
+                .memory()
+                .load(&committed.token, "landing")
+                .unwrap()
+                .is_some()
+        );
 
         // Simulate server process restart: new empty memory store, re-attached to same disk dir
         let cold_memory = InMemorySsrDraftSessionStore::new(Duration::from_secs(3600), 100);
@@ -1298,11 +1300,13 @@ mod tests {
         let restarted_durable = DurableSsrDraftSessionStore::new(cold_memory, reattached_file);
 
         // Cold memory does not have the token initially
-        assert!(restarted_durable
-            .memory()
-            .load(&committed.token, "landing")
-            .unwrap()
-            .is_none());
+        assert!(
+            restarted_durable
+                .memory()
+                .load(&committed.token, "landing")
+                .unwrap()
+                .is_none()
+        );
 
         // Loading via durable store seamlessly retrieves from disk and warms memory
         let loaded = restarted_durable
@@ -1314,11 +1318,13 @@ mod tests {
         assert!(loaded.controller.has_clipboard());
 
         // Now memory is warmed!
-        assert!(restarted_durable
-            .memory()
-            .load(&committed.token, "landing")
-            .unwrap()
-            .is_some());
+        assert!(
+            restarted_durable
+                .memory()
+                .load(&committed.token, "landing")
+                .unwrap()
+                .is_some()
+        );
 
         // Further commit increments generation across both layers
         let updated = restarted_durable
@@ -1328,10 +1334,12 @@ mod tests {
 
         // Remove cleans up both
         restarted_durable.remove(&committed.token).expect("remove");
-        assert!(restarted_durable
-            .load(&committed.token, "landing")
-            .unwrap()
-            .is_none());
+        assert!(
+            restarted_durable
+                .load(&committed.token, "landing")
+                .unwrap()
+                .is_none()
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

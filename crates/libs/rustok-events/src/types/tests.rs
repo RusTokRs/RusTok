@@ -316,12 +316,14 @@ fn test_tenant_module_toggled_rejects_empty_module_slug() {
 #[test]
 fn tenant_locale_events_require_canonical_runtime_locale() {
     let tenant_id = Uuid::new_v4();
-    assert!(DomainEvent::LocaleEnabled {
-        tenant_id,
-        locale: "pt-BR".to_string(),
-    }
-    .validate()
-    .is_ok());
+    assert!(
+        DomainEvent::LocaleEnabled {
+            tenant_id,
+            locale: "pt-BR".to_string(),
+        }
+        .validate()
+        .is_ok()
+    );
     for locale in ["pt_br", "PT-br", "und"] {
         assert!(
             DomainEvent::LocaleDisabled {

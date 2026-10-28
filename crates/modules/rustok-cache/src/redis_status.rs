@@ -400,7 +400,10 @@ mod tests {
             status.is_connectivity_healthy(),
             "a successful PING is a transport fact"
         );
-        assert!(!status.is_healthy(), "recovery backlog must degrade readiness");
+        assert!(
+            !status.is_healthy(),
+            "recovery backlog must degrade readiness"
+        );
         assert!(status.is_degraded());
 
         let metrics = format_redis_cache_status_prometheus_metrics(&status);

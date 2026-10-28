@@ -326,7 +326,10 @@ pub async fn list_orders(
         "Permission denied: orders:list required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "list_orders",
@@ -398,10 +401,16 @@ pub async fn show_order(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "show_order",
@@ -501,10 +510,16 @@ pub async fn mark_order_paid(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "mark_order_paid",
@@ -579,10 +594,16 @@ pub async fn ship_order(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "ship_order",
@@ -657,10 +678,16 @@ pub async fn deliver_order(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "deliver_order",
@@ -734,10 +761,16 @@ pub async fn cancel_order(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order ID must not be nil",
+        ));
     }
     log_admin_order_entry(
         "cancel_order",

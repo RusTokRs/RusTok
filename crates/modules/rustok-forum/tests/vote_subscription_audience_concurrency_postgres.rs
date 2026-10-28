@@ -19,8 +19,8 @@ use sea_orm::{
 use tokio::time::timeout;
 use uuid::Uuid;
 
-use support::postgres::PostgresForumTestDb;
 use support::TestResult;
+use support::postgres::PostgresForumTestDb;
 
 struct FixedTrustFacts;
 
@@ -126,9 +126,7 @@ async fn exercise(database: &PostgresForumTestDb) -> TestResult<()> {
             },
         )
         .await?;
-    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
-        database.db.clone(),
-    )));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.db.clone())));
     let topic = TopicService::new(database.db.clone(), event_bus)
         .create(
             tenant,
@@ -176,7 +174,9 @@ async fn exercise(database: &PostgresForumTestDb) -> TestResult<()> {
             .await
     });
     assert!(
-        timeout(Duration::from_millis(120), &mut vote).await.is_err(),
+        timeout(Duration::from_millis(120), &mut vote)
+            .await
+            .is_err(),
         "vote must wait while the policy writer owns the advisory lock"
     );
     raise_trust_threshold(&holder, tenant, category.id).await?;
@@ -209,12 +209,7 @@ async fn exercise(database: &PostgresForumTestDb) -> TestResult<()> {
     let mut subscription = tokio::spawn(async move {
         SubscriptionService::new(subscription_db)
             .with_audience_facts(Arc::new(FixedTrustFacts))
-            .set_topic_subscription(
-                tenant,
-                topic.id,
-                viewer,
-                viewer_context(tenant, user_id),
-            )
+            .set_topic_subscription(tenant, topic.id, viewer, viewer_context(tenant, user_id))
             .await
     });
     assert!(

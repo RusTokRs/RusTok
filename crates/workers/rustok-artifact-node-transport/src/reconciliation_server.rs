@@ -6,8 +6,7 @@ use rustok_modules::{
     ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeReconciliationAuthorizer,
     ModuleArtifactNodeReconciliationError, ModuleArtifactNodeReconciliationRequest,
     ModuleArtifactNodeTopologyResolveError, ModuleArtifactNodeTopologyResolver,
-    ModuleArtifactNodeTopologySnapshot, ModuleCommandContext,
-    ModuleControlPlane,
+    ModuleArtifactNodeTopologySnapshot, ModuleCommandContext, ModuleControlPlane,
 };
 use rustok_worker_transport::{
     PeerCertificateFingerprint, WorkerAdmission, peer_certificate_fingerprint,

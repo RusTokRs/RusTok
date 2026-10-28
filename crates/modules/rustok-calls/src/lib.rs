@@ -36,8 +36,7 @@ pub mod migrations;
 pub use domain::CallsStatus;
 pub use error::{CallsError, CallsResult};
 pub use events::{
-    CallsCreatedEvent, CallsDeletedEvent, CallsDomainEvent, CallsUpdatedEvent,
-    CALLS_EVENT_TOPIC,
+    CALLS_EVENT_TOPIC, CallsCreatedEvent, CallsDeletedEvent, CallsDomainEvent, CallsUpdatedEvent,
 };
 pub use module::CallsModule;
 pub use services::CallsService;

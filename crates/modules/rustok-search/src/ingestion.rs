@@ -231,7 +231,11 @@ async fn refresh_owner_entity(
     entity_id: Uuid,
 ) -> HandlerResult {
     match driver {
-        Some(driver) => driver.refresh_entity(tenant_id, entity_type, entity_id).await,
+        Some(driver) => {
+            driver
+                .refresh_entity(tenant_id, entity_type, entity_id)
+                .await
+        }
         None => Ok(()),
     }
 }
@@ -255,7 +259,11 @@ async fn delete_owner_entity(
     entity_id: Uuid,
 ) -> HandlerResult {
     match driver {
-        Some(driver) => driver.delete_entity(tenant_id, entity_type, entity_id).await,
+        Some(driver) => {
+            driver
+                .delete_entity(tenant_id, entity_type, entity_id)
+                .await
+        }
         None => Ok(()),
     }
 }
@@ -517,7 +525,8 @@ impl EventHandler for SearchIngestionHandler {
                     enabled,
                     ..
                 } if module_slug == "blog" => {
-                    toggle_owner_scope(self.blog_driver.as_ref(), envelope.tenant_id, *enabled).await
+                    toggle_owner_scope(self.blog_driver.as_ref(), envelope.tenant_id, *enabled)
+                        .await
                 }
                 DomainEvent::TenantModuleToggled {
                     module_slug,

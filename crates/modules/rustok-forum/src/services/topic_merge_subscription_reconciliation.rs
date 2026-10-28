@@ -99,7 +99,9 @@ impl ForumTopicMergeSubscriptionReconciliationService {
                 &reason,
             )
             .await?
-            .ok_or_else(|| ForumError::TopicMergeSubscriptionReconciliationConflict(input.operation_id))?;
+            .ok_or_else(|| {
+                ForumError::TopicMergeSubscriptionReconciliationConflict(input.operation_id)
+            })?;
         txn.commit().await?;
         Ok(operation_to_result(operation))
     }
@@ -350,7 +352,6 @@ impl ForumTopicMergeSubscriptionReconciliationService {
         }
         .insert(txn)
         .await?;
-
 
         Ok(Some(operation))
     }

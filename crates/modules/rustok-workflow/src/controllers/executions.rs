@@ -24,8 +24,7 @@ fn map_workflow_execution_error(
             "Workflow was not found",
             "workflow_not_found",
         ),
-        WorkflowError::VersionNotFound(_, _)
-        | WorkflowError::TemplateNotFound(_) => (
+        WorkflowError::VersionNotFound(_, _) | WorkflowError::TemplateNotFound(_) => (
             StatusCode::NOT_FOUND,
             "workflow_not_found",
             "Workflow entity was not found",

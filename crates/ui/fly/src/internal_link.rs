@@ -1,11 +1,11 @@
 use crate::{
-    component_visit::{visit_project_components, visit_project_components_mut},
-    interaction_route::{
-        build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
-    },
-    safe_url::normalize_safe_url,
     ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity,
+    component_visit::{visit_project_components, visit_project_components_mut},
+    interaction_route::{
+        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
+    },
+    safe_url::normalize_safe_url,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -503,9 +503,11 @@ mod tests {
             .extensions
             .get_mut(FLY_PAGE_LINK_FIELD)
             .unwrap()["fallback_href"] = json!("//attacker.example/path");
-        assert!(validate_internal_page_links(&unsafe_fallback)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+        assert!(
+            validate_internal_page_links(&unsafe_fallback)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "internal_page_link_invalid")
+        );
 
         let mut network_base = document();
         network_base
@@ -514,9 +516,11 @@ mod tests {
             .extensions
             .get_mut(FLY_PAGE_LINK_FIELD)
             .unwrap()["base_path"] = json!("//cdn.example");
-        assert!(validate_internal_page_links(&network_base)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+        assert!(
+            validate_internal_page_links(&network_base)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "internal_page_link_invalid")
+        );
     }
 
     #[test]
@@ -528,9 +532,11 @@ mod tests {
             .extensions
             .get_mut(FLY_PAGE_LINK_FIELD)
             .unwrap()["query"] = json!("source=hero#override");
-        assert!(validate_internal_page_links(&query)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+        assert!(
+            validate_internal_page_links(&query)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "internal_page_link_invalid")
+        );
 
         let mut fragment = document();
         fragment
@@ -539,9 +545,11 @@ mod tests {
             .extensions
             .get_mut(FLY_PAGE_LINK_FIELD)
             .unwrap()["fragment"] = json!("team\\details");
-        assert!(validate_internal_page_links(&fragment)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "internal_page_link_invalid"));
+        assert!(
+            validate_internal_page_links(&fragment)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "internal_page_link_invalid")
+        );
     }
 
     #[test]

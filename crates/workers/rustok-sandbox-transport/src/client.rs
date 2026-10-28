@@ -117,8 +117,7 @@ impl GrpcRhaiExecutor {
         .any(|field| field.trim().is_empty())
         {
             return Err(
-                "sandbox worker did not supply complete deployment identity evidence"
-                    .to_string(),
+                "sandbox worker did not supply complete deployment identity evidence".to_string(),
             );
         }
         Ok(identity)

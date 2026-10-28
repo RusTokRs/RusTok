@@ -397,10 +397,10 @@ mod tests {
                 "search": null, "order": "LATEST", "solvedOnly": false,
             })
         );
-        assert!(serde_json::from_value::<ForumTopicSelection>(
-            serde_json::json!({"order": "unknown"})
-        )
-        .is_err());
+        assert!(
+            serde_json::from_value::<ForumTopicSelection>(serde_json::json!({"order": "unknown"}))
+                .is_err()
+        );
     }
 
     fn topic_page_item(id: &str) -> ForumTopicListItem {

@@ -231,7 +231,11 @@ impl SearchProjectionDriver {
         Ok(())
     }
 
-    fn validate_document(&self, tenant_id: Uuid, document: &SearchProjectionDocument) -> Result<()> {
+    fn validate_document(
+        &self,
+        tenant_id: Uuid,
+        document: &SearchProjectionDocument,
+    ) -> Result<()> {
         if document.tenant_id != tenant_id
             || document.source_module != self.source_module()
             || !document.is_public

@@ -148,10 +148,16 @@ pub fn CommentsAdmin() -> impl IntoView {
             async move {
                 match thread_id {
                     Some(thread_id) => {
-                        let request =
-                            CommentThreadDetailRequest::new(thread_id, locale_value, 1, crate::core::DEFAULT_DETAIL_PER_PAGE);
+                        let request = CommentThreadDetailRequest::new(
+                            thread_id,
+                            locale_value,
+                            1,
+                            crate::core::DEFAULT_DETAIL_PER_PAGE,
+                        );
                         if let Err(err) = request.validate() {
-                            return Err(transport::CommentsAdminTransportError::ServerFn(err.to_string()));
+                            return Err(transport::CommentsAdminTransportError::ServerFn(
+                                err.to_string(),
+                            ));
                         }
                         transport::fetch_thread_detail(request).await
                     }
@@ -212,7 +218,8 @@ pub fn CommentsAdmin() -> impl IntoView {
 
     let update_comment_status = move |comment_id: String, status: CommentStatus| {
         let locale_value = locale.get_untracked();
-        let command = SetCommentStatusCommand::new(comment_id.clone(), status, locale_value.clone());
+        let command =
+            SetCommentStatusCommand::new(comment_id.clone(), status, locale_value.clone());
         if let Err(err) = command.validate() {
             set_mutation_error.set(Some(err.to_string()));
             return;

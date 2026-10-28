@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 use axum::{
     body::Body,
     http::{
-        header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
         HeaderMap, HeaderValue, StatusCode,
+        header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
     },
     response::Response,
 };

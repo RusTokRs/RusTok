@@ -82,8 +82,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        deleted_evidence_retention, ScriptDeletionCommand, ScriptDeletionError,
-        DELETED_EVIDENCE_RETENTION_DAYS,
+        DELETED_EVIDENCE_RETENTION_DAYS, ScriptDeletionCommand, ScriptDeletionError,
+        deleted_evidence_retention,
     };
 
     #[test]

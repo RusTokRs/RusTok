@@ -164,9 +164,11 @@ mod tests {
             context.claims,
             vec![Permission::FORUM_REPLIES_READ.to_string()]
         );
-        assert!(context
-            .correlation_id
-            .starts_with("forum-rest-selected-reply-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-rest-selected-reply-")
+        );
     }
 
     #[test]
@@ -187,9 +189,11 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(context
-            .correlation_id
-            .starts_with("forum-graphql-reply-list-"));
+        assert!(
+            context
+                .correlation_id
+                .starts_with("forum-graphql-reply-list-")
+        );
     }
 
     #[test]

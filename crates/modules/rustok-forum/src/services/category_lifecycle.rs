@@ -8,8 +8,12 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    let categories = super::category::CategoryService::load_categories_in_tx(txn, tenant_id).await?;
-    let category_ids = categories.iter().map(|category| category.id).collect::<Vec<_>>();
+    let categories =
+        super::category::CategoryService::load_categories_in_tx(txn, tenant_id).await?;
+    let category_ids = categories
+        .iter()
+        .map(|category| category.id)
+        .collect::<Vec<_>>();
     let parent_by_id = load_category_parents_in_tx(txn, tenant_id, &category_ids).await?;
     validate_parent_map(&parent_by_id)?;
 
@@ -22,7 +26,8 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
         .map(|lifecycle| (lifecycle.category_id, lifecycle))
         .collect::<HashMap<_, _>>();
 
-    if !parent_by_id.contains_key(&category_id) || lifecycle_by_category.contains_key(&category_id) {
+    if !parent_by_id.contains_key(&category_id) || lifecycle_by_category.contains_key(&category_id)
+    {
         return Err(ForumError::Validation(
             "Forum content cannot be placed in an archived category".to_string(),
         ));
@@ -48,19 +53,22 @@ async fn load_category_parents_in_tx(
     if category_ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let projections = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-        txn,
-        tenant_id,
-        rustok_taxonomy::TaxonomyScopeType::Module,
-        Some("forum"),
-        Some(category_ids),
-        rustok_api::PLATFORM_FALLBACK_LOCALE,
-        Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
-    )
-    .await
-    .map_err(|error| ForumError::Validation(format!(
-        "Forum Category Taxonomy hierarchy read failed: {error}"
-    )))?;
+    let projections =
+        rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+            txn,
+            tenant_id,
+            rustok_taxonomy::TaxonomyScopeType::Module,
+            Some("forum"),
+            Some(category_ids),
+            rustok_api::PLATFORM_FALLBACK_LOCALE,
+            Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+        )
+        .await
+        .map_err(|error| {
+            ForumError::Validation(format!(
+                "Forum Category Taxonomy hierarchy read failed: {error}"
+            ))
+        })?;
     if projections.len() != category_ids.len() {
         return Err(ForumError::Validation(
             "Forum Category Taxonomy hierarchy coverage is incomplete".to_string(),

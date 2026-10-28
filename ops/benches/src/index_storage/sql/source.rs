@@ -1,4 +1,4 @@
-use super::{sql_literal, DatasetConfig, Workload, WorkloadContext, SOURCE_SCHEMA};
+use super::{DatasetConfig, SOURCE_SCHEMA, Workload, WorkloadContext, sql_literal};
 
 pub fn dataset_sql(config: &DatasetConfig) -> String {
     let locales = config

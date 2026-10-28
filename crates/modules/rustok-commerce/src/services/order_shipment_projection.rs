@@ -98,14 +98,17 @@ pub fn shipment_truth(
     for item in live.iter().flat_map(|fulfillment| &fulfillment.items) {
         *shipped_by_line.entry(item.order_line_item_id).or_insert(0) +=
             i64::from(item.shipped_quantity.max(0));
-        *delivered_by_line.entry(item.order_line_item_id).or_insert(0) +=
-            i64::from(item.delivered_quantity.max(0));
+        *delivered_by_line
+            .entry(item.order_line_item_id)
+            .or_insert(0) += i64::from(item.delivered_quantity.max(0));
     }
 
     let mut quantity_truth = ShipmentTruth::Delivered;
-    for line in order.line_items.iter().filter(|line| {
-        line.fulfillment_requirement == OrderLineFulfillmentRequirement::Physical
-    }) {
+    for line in order
+        .line_items
+        .iter()
+        .filter(|line| line.fulfillment_requirement == OrderLineFulfillmentRequirement::Physical)
+    {
         let ordered = i64::from(line.quantity);
         if shipped_by_line.get(&line.id).copied().unwrap_or(0) < ordered {
             return ShipmentTruth::Open;
@@ -309,7 +312,10 @@ impl FulfillmentAdminCommandPort for ProjectingFulfillmentAdminCommandPort {
         context: PortContext,
         request: ShipAdminFulfillmentRequest,
     ) -> Result<FulfillmentResponse, PortError> {
-        let fulfillment = self.inner.ship_fulfillment(context.clone(), request).await?;
+        let fulfillment = self
+            .inner
+            .ship_fulfillment(context.clone(), request)
+            .await?;
         self.projector
             .project_after_fulfillment_command(&context, &fulfillment)
             .await;
@@ -481,7 +487,10 @@ mod tests {
         let order = order(vec![physical.clone()]);
         assert_eq!(shipment_truth(&order, &[]), ShipmentTruth::NoFulfillments);
         assert_eq!(
-            shipment_truth(&order, &[fulfillment("cancelled", &[(physical.id, 1, 0, 0)])]),
+            shipment_truth(
+                &order,
+                &[fulfillment("cancelled", &[(physical.id, 1, 0, 0)])]
+            ),
             ShipmentTruth::NoFulfillments
         );
     }
@@ -527,7 +536,10 @@ mod tests {
         let physical = line(2, OrderLineFulfillmentRequirement::Physical);
         let order = order(vec![physical.clone()]);
         assert_eq!(
-            shipment_truth(&order, &[fulfillment("delivered", &[(physical.id, 2, 2, 2)])]),
+            shipment_truth(
+                &order,
+                &[fulfillment("delivered", &[(physical.id, 2, 2, 2)])]
+            ),
             ShipmentTruth::Delivered
         );
         assert_eq!(

@@ -49,8 +49,10 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
         .expect("cursor index must end with UUID tie-breaker");
     assert!(source_kind < created_at);
     assert!(created_at < id);
-    assert!(migration_registry
-        .contains("Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration)"));
+    assert!(
+        migration_registry
+            .contains("Box::new(m20260716_000007_add_redirect_cache_cursor_index::Migration)")
+    );
 
     for required in [
         "trait SeoRedirectCacheInvalidator: Send + Sync",

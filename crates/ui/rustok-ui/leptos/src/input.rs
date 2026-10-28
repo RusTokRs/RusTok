@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{input_classes, Size};
+use rustok_ui::{Size, input_classes};
 
 /// Single-line text control.
 ///

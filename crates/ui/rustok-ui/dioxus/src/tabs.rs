@@ -10,7 +10,7 @@
 
 use dioxus::prelude::*;
 use rustok_ui::{
-    merge_classes, tabs_content_classes, tabs_list_classes, tabs_trigger_classes, Orientation,
+    Orientation, merge_classes, tabs_content_classes, tabs_list_classes, tabs_trigger_classes,
 };
 
 #[component]

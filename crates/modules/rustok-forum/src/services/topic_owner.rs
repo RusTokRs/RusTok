@@ -15,19 +15,19 @@ use rustok_outbox::TransactionalEventBus;
 use crate::dto::{ListTopicsFilter, TopicListItem, TopicPage, TopicResponse};
 use crate::entities::{forum_reply, forum_solution, forum_topic, forum_topic_merge_operation};
 use crate::error::{ForumError, ForumResult};
-use crate::state_machine::{ReplyStatus, TopicStatus};
 use crate::services::engagement_mode::ForumSettingsProviders;
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use self::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 use super::category::CategoryService;
 use super::category_audience::lock_category_tree_in_tx;
 use super::category_lifecycle::ensure_category_restore_target_is_active_in_tx;
-use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
 use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::topic;
+use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_route::{
     ForumTopicRouteService, ForumTopicSlugRenameResult, RenameForumTopicSlugInput,
 };
@@ -245,13 +245,7 @@ impl TopicService {
             None => None,
         };
 
-        record_topic_delete_snapshot_in_tx(
-            &txn,
-            tenant_id,
-            &topic,
-            solution.as_ref(),
-        )
-        .await?;
+        record_topic_delete_snapshot_in_tx(&txn, tenant_id, &topic, solution.as_ref()).await?;
         ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
             &txn, tenant_id, &topic,
         )
@@ -452,29 +446,21 @@ impl TopicService {
             .await?;
         }
 
-        let public_reply_count =
-            count_approved_replies_in_tx(&txn, tenant_id, topic_id).await?;
+        let public_reply_count = count_approved_replies_in_tx(&txn, tenant_id, topic_id).await?;
         if public_reply_count > i32::MAX as i64 {
             return Err(ForumError::Validation(
                 "Forum reply count exceeds supported range".to_string(),
             ));
         }
 
-        finalize_topic_restore_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
-            public_reply_count as i32,
-        )
-        .await?;
+        finalize_topic_restore_in_tx(&txn, tenant_id, topic_id, public_reply_count as i32).await?;
 
         // Counter invariant: only a topic restored to a non-`Archived` status
         // re-enters the public aggregates. Restoring a topic that had been
         // archived before its delete must not duplicate the contribution that
         // the archive transition already released.
         if snapshot.previous_status != TopicStatus::Archived {
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
-                .await?;
+            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1).await?;
             CategoryService::adjust_counters_in_tx(
                 &txn,
                 tenant_id,
@@ -665,7 +651,7 @@ async fn record_topic_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic delete snapshots do not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;
@@ -704,7 +690,7 @@ async fn record_topic_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic reply delete snapshots do not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;
@@ -730,7 +716,7 @@ async fn topic_is_deleted_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let row = txn
@@ -778,7 +764,7 @@ async fn load_topic_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
 
@@ -828,7 +814,7 @@ async fn load_topic_reply_delete_snapshots_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.query_all_raw(statement)
@@ -886,7 +872,7 @@ async fn restore_reply_from_delete_snapshot_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let result = txn.execute_raw(statement).await?;
@@ -942,7 +928,7 @@ async fn restore_solution_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     txn.execute_raw(statement).await?;
@@ -968,7 +954,7 @@ async fn count_approved_replies_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let row = txn
@@ -1016,7 +1002,7 @@ async fn unarchive_topic_for_restore_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let result = txn.execute_raw(statement).await?;
@@ -1049,11 +1035,7 @@ async fn finalize_topic_restore_in_tx(
                 updated_at = CURRENT_TIMESTAMP
             WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
             "#,
-            vec![
-                tenant_id.into(),
-                topic_id.into(),
-                reply_count.into(),
-            ],
+            vec![tenant_id.into(), topic_id.into(), reply_count.into()],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
@@ -1082,7 +1064,7 @@ async fn finalize_topic_restore_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
     let result = txn.execute_raw(statement).await?;
@@ -1125,7 +1107,7 @@ async fn clear_topic_delete_snapshots_in_tx(
         backend => {
             return Err(ForumError::Validation(format!(
                 "Forum topic restore does not support database backend {backend:?}"
-            )))
+            )));
         }
     };
 
@@ -1236,4 +1218,3 @@ async fn mark_topic_thread_deleted_in_tx(
     }
     Ok(())
 }
-

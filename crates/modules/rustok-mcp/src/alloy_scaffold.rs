@@ -472,9 +472,11 @@ mod tests {
         assert!(paths.contains(&"src/lib.rs"));
         assert!(paths.contains(&"docs/implementation-plan.md"));
         assert!(!paths.iter().any(|path| path.starts_with("src/graphql/")));
-        assert!(!paths
-            .iter()
-            .any(|path| path.starts_with("src/controllers/")));
+        assert!(
+            !paths
+                .iter()
+                .any(|path| path.starts_with("src/controllers/"))
+        );
 
         let plan = response
             .files

@@ -65,9 +65,10 @@ async fn storefront_topic_current_revision_native(
                 ForumTopicAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
             }
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus),
-        }.with_settings_providers(
-            super::native_server_adapter::forum_settings_providers(&runtime_ctx)
-        );
+        }
+        .with_settings_providers(super::native_server_adapter::forum_settings_providers(
+            &runtime_ctx,
+        ));
         let topic = load_audience_visible_topic(
             &topic_audience_service,
             tenant.id,
@@ -148,9 +149,10 @@ async fn storefront_reply_current_revision_native(
                 ForumReplyAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
             }
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus),
-        }.with_settings_providers(
-            super::native_server_adapter::forum_settings_providers(&runtime_ctx)
-        );
+        }
+        .with_settings_providers(super::native_server_adapter::forum_settings_providers(
+            &runtime_ctx,
+        ));
         let approved_statuses = [ReplyStatus::Approved];
         let reply = if let Some(auth) = auth.as_ref() {
             let security =

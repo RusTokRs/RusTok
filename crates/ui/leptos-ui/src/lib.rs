@@ -19,9 +19,9 @@ pub mod toc;
 
 pub use language_toggle::{LanguageToggle as ui_language_toggle, LanguageToggleOption};
 pub use richtext::{
-    localized_richtext_frame_copy, RichTextEditorFrame, RichTextFrameCopy, RichTextHtml,
+    RichTextEditorFrame, RichTextFrameCopy, RichTextHtml, localized_richtext_frame_copy,
 };
 pub use success_message::SuccessMessage as ui_success_message;
 pub use toc::{
-    extract_headings_from_html, TableOfContents, TableOfContents as ui_table_of_contents, TocItem,
+    TableOfContents, TableOfContents as ui_table_of_contents, TocItem, extract_headings_from_html,
 };

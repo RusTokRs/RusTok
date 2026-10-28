@@ -12,8 +12,8 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use rustok_ui_i18n::{
-    build_fluent_bundle, build_fluent_catalog, fluent_args, locale_candidates,
-    try_build_fluent_catalog, BundleBuildError, UiMessages,
+    BundleBuildError, UiMessages, build_fluent_bundle, build_fluent_catalog, fluent_args,
+    locale_candidates, try_build_fluent_catalog,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {

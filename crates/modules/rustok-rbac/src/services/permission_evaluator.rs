@@ -1,6 +1,6 @@
 use crate::services::permission_policy::{
-    check_all_permissions, check_any_permission, check_permission, DeniedReasonKind,
-    PermissionCheckOutcome,
+    DeniedReasonKind, PermissionCheckOutcome, check_all_permissions, check_any_permission,
+    check_permission,
 };
 use rustok_api::Permission;
 

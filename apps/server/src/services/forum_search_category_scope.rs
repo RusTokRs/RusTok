@@ -3,12 +3,12 @@ use rustok_api::{
     PortError, PortErrorKind, SharedStaticModuleSettingsReader, is_tenant_module_enabled,
 };
 use rustok_core::SecurityContext;
+use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_forum::{
     ForumCategoryReadOperation, ForumCategoryReadTransport, ForumError,
     ForumSearchCategoryAudienceScopeService, ForumSettingsProviders, SharedForumAudienceFactsPort,
     category_read_audience_port_context,
 };
-use rustok_forum::FORUM_MODULE_SLUG;
 use rustok_search::{
     SharedStorefrontSearchCategoryScopePort, StorefrontSearchCategoryScopePort,
     StorefrontSearchCategoryScopeRequest, StorefrontSearchTransport, scope_is_exactly,

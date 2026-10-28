@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{separator_classes, Orientation};
+use rustok_ui::{Orientation, separator_classes};
 
 /// Horizontal or vertical divider with `role="separator"` and the matching
 /// `aria-orientation`.

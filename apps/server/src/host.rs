@@ -584,4 +584,3 @@ mod tests {
         assert!(error.to_string().contains("cannot exceed max_connections"));
     }
 }
-

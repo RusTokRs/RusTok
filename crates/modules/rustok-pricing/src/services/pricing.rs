@@ -1094,10 +1094,10 @@ impl PricingService {
                 }
             }
 
-            let old_cents =
-                old_amount.and_then(|amount| money::to_minor_units(amount, &normalized_currency).ok());
-            let new_cents =
-                money::to_minor_units(price_input.amount, &normalized_currency).map_err(|error| {
+            let old_cents = old_amount
+                .and_then(|amount| money::to_minor_units(amount, &normalized_currency).ok());
+            let new_cents = money::to_minor_units(price_input.amount, &normalized_currency)
+                .map_err(|error| {
                     CommerceError::Validation(format!(
                         "price amount {} has no minor-unit form in {normalized_currency}: {error}",
                         price_input.amount
@@ -2370,7 +2370,10 @@ fn validate_price_precision(
     compare_at_amount: Option<Decimal>,
     currency_code: &str,
 ) -> CommerceResult<()> {
-    for (label, value) in [("Amount", Some(amount)), ("Compare at price", compare_at_amount)] {
+    for (label, value) in [
+        ("Amount", Some(amount)),
+        ("Compare at price", compare_at_amount),
+    ] {
         if let Some(value) = value {
             money::to_minor_units_exact(value, currency_code).map_err(|error| {
                 CommerceError::InvalidPrice(format!(

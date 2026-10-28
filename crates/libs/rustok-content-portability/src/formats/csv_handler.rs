@@ -1,5 +1,5 @@
 use crate::{FormatOptions, PortabilityError};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// CSV format handler for import/export operations.
 pub struct CsvFormatHandler;

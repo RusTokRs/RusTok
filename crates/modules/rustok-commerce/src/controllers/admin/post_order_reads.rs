@@ -207,7 +207,10 @@ pub async fn list_order_returns(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     log_admin_post_order_read_entry("list_order_returns", tenant.id, auth.user_id, None);
     let pagination = params.pagination.unwrap_or_default();
@@ -275,10 +278,16 @@ pub async fn show_order_return(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_return_id", "Order return ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_return_id",
+            "Order return ID must not be nil",
+        ));
     }
     log_admin_post_order_read_entry("show_order_return", tenant.id, auth.user_id, Some(id));
     let context = admin_post_order_read_context(
@@ -335,7 +344,10 @@ pub async fn list_order_changes(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     log_admin_post_order_read_entry("list_order_changes", tenant.id, auth.user_id, None);
     let pagination = params.pagination.unwrap_or_default();
@@ -404,10 +416,16 @@ pub async fn show_order_change(
         "Permission denied: orders:read required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_change_id", "Order change ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_change_id",
+            "Order change ID must not be nil",
+        ));
     }
     log_admin_post_order_read_entry("show_order_change", tenant.id, auth.user_id, Some(id));
     let context = admin_post_order_read_context(

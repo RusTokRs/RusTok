@@ -1,7 +1,7 @@
 use std::fmt;
 
 use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
-use rustok_ui_core::{normalize_ui_text, parse_ui_csv, UiRouteQueryIntent};
+use rustok_ui_core::{UiRouteQueryIntent, normalize_ui_text, parse_ui_csv};
 use uuid::Uuid;
 
 use crate::model::{

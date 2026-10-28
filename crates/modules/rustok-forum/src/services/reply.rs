@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -21,9 +21,9 @@ use crate::dto::{ListRepliesFilter, ReplyCursor, ReplyListItem, ReplyPage, Reply
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
-use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::pending_visibility::reply_owner_read_condition;
+use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::vote::{VoteService, VoteSummary};
 use crate::state_machine::ReplyStatus;
 
@@ -76,7 +76,8 @@ impl ReplyService {
         let solution_reply_id = self
             .load_solution_reply_id_for_topic(tenant_id, reply.topic_id)
             .await?;
-        let vote_summary = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
+        let vote_summary = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .reply_vote_summary(tenant_id, reply_id, security.user_id)
             .await?;
         to_reply_response(
@@ -117,7 +118,8 @@ impl ReplyService {
             .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
-        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
+        let vote_summaries = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
 
@@ -138,9 +140,7 @@ impl ReplyService {
                     id: reply.id,
                     locale: locale.clone(),
                     effective_locale: resolved.effective_locale,
-                    available_locales: available_locales_from(&bodies, |body| {
-                        body.locale.as_str()
-                    }),
+                    available_locales: available_locales_from(&bodies, |body| body.locale.as_str()),
                     topic_id: reply.topic_id,
                     author_id: reply.author_id,
                     content_preview: preview,
@@ -191,7 +191,8 @@ impl ReplyService {
             .await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(tenant_id, &reply_ids).await?;
-        let vote_summaries = VoteService::new(self.db.clone()).with_settings_providers(self.settings.clone())
+        let vote_summaries = VoteService::new(self.db.clone())
+            .with_settings_providers(self.settings.clone())
             .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
             .await?;
 
@@ -445,11 +446,8 @@ fn to_reply_response(
         .item
         .ok_or_else(|| ForumError::Validation("Forum reply body is unavailable".to_string()))?;
     let content = project_stored_discussion(&body.body)?;
-    let (content, content_plain_text) = redact_non_public_reply_content(
-        reply.status,
-        content.view,
-        content.plain_text,
-    );
+    let (content, content_plain_text) =
+        redact_non_public_reply_content(reply.status, content.view, content.plain_text);
 
     Ok(ReplyResponse {
         id: reply.id,
@@ -507,4 +505,3 @@ fn resolve_reply_body<'a>(
 ) -> rustok_content::ResolvedLocale<'a, forum_reply_body::Model> {
     resolve_by_locale_with_fallback(bodies, locale, fallback_locale, |body| body.locale.as_str())
 }
-

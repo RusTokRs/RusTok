@@ -1,5 +1,5 @@
 use rustok_benchmarks::index_storage::{
-    admit_query_equivalence_bundle, QueryEquivalenceAdmissionConfig,
+    QueryEquivalenceAdmissionConfig, admit_query_equivalence_bundle,
 };
 
 fn main() -> anyhow::Result<()> {

@@ -71,7 +71,8 @@ impl CategoryLifecycleProjectionOwnerService {
             .await
             .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
 
-        let categories = super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
+        let categories =
+            super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
         let models = categories
             .iter()
             .cloned()

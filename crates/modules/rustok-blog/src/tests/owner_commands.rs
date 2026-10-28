@@ -662,10 +662,7 @@ async fn seo_scan_skips_a_published_row_without_a_publication_timestamp() {
         .scan_published_posts(tenant_id, "en", Some("en"), None, 50)
         .await
         .expect("the scan should not fail on one damaged row");
-    let item = page
-        .items
-        .first()
-        .expect("the healthy post is projected");
+    let item = page.items.first().expect("the healthy post is projected");
     assert_eq!(item.slug, "seo-healthy");
     assert_eq!(item.effective_locale, "en");
     assert_eq!(

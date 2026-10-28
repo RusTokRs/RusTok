@@ -2,8 +2,8 @@ use rustok_ui_core::normalize_optional_ui_text;
 
 use rustok_grid::facet::{parse_selection, serialize_selection};
 use rustok_grid::facet_panel::{
-    has_selection_for_key, is_selection_selected, selection_after_clear_key,
-    selection_after_toggle, split_selection, FacetPanelLabels,
+    FacetPanelLabels, has_selection_for_key, is_selection_selected, selection_after_clear_key,
+    selection_after_toggle, split_selection,
 };
 
 use crate::i18n::t;

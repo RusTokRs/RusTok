@@ -84,10 +84,14 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adaptation_migration.contains("DatabaseBackend::Sqlite"));
     assert!(adaptation_migration.contains("DatabaseBackend::MySql"));
     assert!(!adaptation_migration.contains("foreign_key("));
-    assert!(migration_registry
-        .contains("m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity"));
-    assert!(migration_registry
-        .contains("m20260721_000006_create_marketplace_reversal_adaptation_failures"));
+    assert!(
+        migration_registry
+            .contains("m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity")
+    );
+    assert!(
+        migration_registry
+            .contains("m20260721_000006_create_marketplace_reversal_adaptation_failures")
+    );
 
     assert!(operator.contains("ReversalId.is_null()"));
     assert!(operator.contains("LedgerTransactionId.is_null()"));

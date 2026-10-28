@@ -117,7 +117,11 @@ pub(crate) fn plan_fulfillment_cancellation(
                 });
             }
             FulfillmentStatusKind::Pending => {
-                if fulfillment.items.iter().any(|item| item.shipped_quantity > 0) {
+                if fulfillment
+                    .items
+                    .iter()
+                    .any(|item| item.shipped_quantity > 0)
+                {
                     return Err(CancellationBlock::ShippedItems {
                         fulfillment_id: fulfillment.id,
                     });
@@ -177,7 +181,9 @@ pub(crate) fn validate_cancellation_reason(reason: Option<&str>) -> Result<(), P
         Some(reason) if reason.trim().chars().count() > MAX_CANCELLATION_REASON_CHARS => {
             Err(PortError::validation(
                 "order_cancellation.reason_too_long",
-                format!("cancellation reason must be at most {MAX_CANCELLATION_REASON_CHARS} characters"),
+                format!(
+                    "cancellation reason must be at most {MAX_CANCELLATION_REASON_CHARS} characters"
+                ),
             ))
         }
         _ => Ok(()),
@@ -269,8 +275,8 @@ impl OrderCancellationOrchestrator {
             .list_by_order(tenant_id, order_id)
             .await
             .map_err(|error| unavailable("order_cancellation.fulfillment_read_failed", error))?;
-        let fulfillment_ids =
-            plan_fulfillment_cancellation(&fulfillments).map_err(CancellationBlock::into_port_error)?;
+        let fulfillment_ids = plan_fulfillment_cancellation(&fulfillments)
+            .map_err(CancellationBlock::into_port_error)?;
 
         let payment_service = PaymentService::new(self.db.clone());
         let (collections, _) = payment_service
@@ -332,7 +338,9 @@ impl OrderCancellationOrchestrator {
                     },
                 )
                 .await
-                .map_err(|error| unavailable("order_cancellation.fulfillment_cancel_failed", error))?;
+                .map_err(|error| {
+                    unavailable("order_cancellation.fulfillment_cancel_failed", error)
+                })?;
         }
         Ok(())
     }

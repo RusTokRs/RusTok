@@ -234,27 +234,15 @@ impl MessengerAdminLabels {
                 "Channels, direct messaging, streaming fabric, and E2EE key registry",
             ),
             tab_overview: i18n::t(locale, "messenger-tab-overview", "Overview & Fabric"),
-            tab_channels: i18n::t(
-                locale,
-                "messenger-tab-channels",
-                "Channels & Conversations",
-            ),
+            tab_channels: i18n::t(locale, "messenger-tab-channels", "Channels & Conversations"),
             tab_e2ee: i18n::t(locale, "messenger-tab-e2ee", "E2EE & Cryptography"),
-            tab_federation: i18n::t(
-                locale,
-                "messenger-tab-federation",
-                "Matrix Federation",
-            ),
+            tab_federation: i18n::t(locale, "messenger-tab-federation", "Matrix Federation"),
             stat_conversations: i18n::t(
                 locale,
                 "messenger-stat-conversations",
                 "Active Conversations",
             ),
-            stat_streaming: i18n::t(
-                locale,
-                "messenger-stat-streaming",
-                "Streaming Partitions",
-            ),
+            stat_streaming: i18n::t(locale, "messenger-stat-streaming", "Streaming Partitions"),
             stat_e2ee_devices: i18n::t(
                 locale,
                 "messenger-stat-e2ee-devices",
@@ -266,27 +254,11 @@ impl MessengerAdminLabels {
                 "messenger-federation-status",
                 "Gateway Operational",
             ),
-            streaming_title: i18n::t(
-                locale,
-                "messenger-streaming-title",
-                "Iggy Streaming Fabric",
-            ),
+            streaming_title: i18n::t(locale, "messenger-streaming-title", "Iggy Streaming Fabric"),
             streaming_topic: i18n::t(locale, "messenger-streaming-topic", "Stream Topic"),
-            streaming_group: i18n::t(
-                locale,
-                "messenger-streaming-group",
-                "Consumer Group",
-            ),
-            streaming_partitions: i18n::t(
-                locale,
-                "messenger-streaming-partitions",
-                "Partitions",
-            ),
-            channels_title: i18n::t(
-                locale,
-                "messenger-channels-title",
-                "Channels Management",
-            ),
+            streaming_group: i18n::t(locale, "messenger-streaming-group", "Consumer Group"),
+            streaming_partitions: i18n::t(locale, "messenger-streaming-partitions", "Partitions"),
+            channels_title: i18n::t(locale, "messenger-channels-title", "Channels Management"),
             channels_id: i18n::t(locale, "messenger-channels-id", "ID"),
             channels_type: i18n::t(locale, "messenger-channels-type", "Type"),
             channels_title_col: i18n::t(locale, "messenger-channels-title-col", "Title"),
@@ -321,16 +293,8 @@ impl MessengerAdminLabels {
                 "messenger-federation-title",
                 "Matrix Federation Gateway",
             ),
-            federation_server: i18n::t(
-                locale,
-                "messenger-federation-server",
-                "Server Domain",
-            ),
-            federation_rooms: i18n::t(
-                locale,
-                "messenger-federation-rooms",
-                "Federated Rooms",
-            ),
+            federation_server: i18n::t(locale, "messenger-federation-server", "Server Domain"),
+            federation_rooms: i18n::t(locale, "messenger-federation-rooms", "Federated Rooms"),
         }
     }
 }

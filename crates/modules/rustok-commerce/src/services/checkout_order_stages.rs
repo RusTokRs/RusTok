@@ -67,7 +67,9 @@ impl CheckoutOrderStageError {
     /// keeps the pipeline's generic code and fail-closed disposition.
     pub fn bounded_failure(&self) -> Option<(&str, bool)> {
         match self {
-            Self::Boundary { code, retryable, .. } => Some((code.as_str(), *retryable)),
+            Self::Boundary {
+                code, retryable, ..
+            } => Some((code.as_str(), *retryable)),
             Self::Creation(error) => error.bounded_failure(),
             Self::Confirmation(error) => error.bounded_failure(),
             _ => None,

@@ -141,7 +141,15 @@ mod topic_sort_tests {
 
     #[test]
     fn unsupported_sort_is_not_silently_accepted() {
-        for bad in ["oldest", "popular", "created_at", "votes", "views", "", "TOP"] {
+        for bad in [
+            "oldest",
+            "popular",
+            "created_at",
+            "votes",
+            "views",
+            "",
+            "TOP",
+        ] {
             assert!(parse_topic_order(bad).is_err(), "unexpected sort: {bad}");
         }
     }

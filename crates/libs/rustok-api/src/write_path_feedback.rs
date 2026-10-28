@@ -79,7 +79,7 @@ fn contains_any(value: &str, needles: &[&str]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};
+    use super::{WritePathIssue, WritePathIssueKind, classify_write_path_issue};
 
     #[test]
     fn classify_marks_validation_errors() {

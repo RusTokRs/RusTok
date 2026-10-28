@@ -1,4 +1,4 @@
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -31,11 +31,15 @@ fn graphql_url() -> String {
 }
 
 fn sanitize_token(token: Option<String>) -> Option<String> {
-    token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    token
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
 }
 
 fn sanitize_tenant_slug(tenant_slug: Option<String>) -> Option<String> {
-    tenant_slug.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    tenant_slug
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 const LIST_CONVERSATIONS_QUERY: &str = r#"
@@ -108,7 +112,9 @@ pub async fn fetch_messages(
     limit: Option<i32>,
 ) -> Result<Vec<MessageItemPayload>, ApiError> {
     if conversation_id.is_nil() {
-        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+        return Err(ApiError::Graphql(
+            "conversation_id cannot be nil UUID".into(),
+        ));
     }
     if let Some(seq) = since_seq {
         if seq < 0 {
@@ -163,7 +169,9 @@ pub async fn send_message(
     input: SendMessagePayload,
 ) -> Result<MessageItemPayload, ApiError> {
     if input.conversation_id.is_nil() {
-        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+        return Err(ApiError::Graphql(
+            "conversation_id cannot be nil UUID".into(),
+        ));
     }
     let trimmed_content = input.content.trim();
     if trimmed_content.is_empty() {
@@ -207,10 +215,14 @@ pub async fn update_cursor(
     input: UpdateCursorPayload,
 ) -> Result<(), ApiError> {
     if input.conversation_id.is_nil() {
-        return Err(ApiError::Graphql("conversation_id cannot be nil UUID".into()));
+        return Err(ApiError::Graphql(
+            "conversation_id cannot be nil UUID".into(),
+        ));
     }
     if input.last_read_message_id < 0 {
-        return Err(ApiError::Graphql("last_read_message_id cannot be negative".into()));
+        return Err(ApiError::Graphql(
+            "last_read_message_id cannot be negative".into(),
+        ));
     }
 
     let variables = serde_json::json!({

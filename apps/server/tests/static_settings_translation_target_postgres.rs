@@ -10,21 +10,21 @@ use rustok_modules::translation::{
     StaticSettingsTranslationIdentity, StaticSettingsTranslationPrepareResult,
 };
 use rustok_modules::{
-    static_settings_translation_read::{
-        StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
-        StaticSettingsTranslationReadService,
-    },
     ModuleCommandContext, ModuleSettingSpec, StaticSettingsLocalizationError,
     StaticSettingsLocalizationRegistry, StaticSettingsLocalizationService,
     StaticSettingsSourceLocaleAssignCommand, StaticSettingsSourceLocaleService,
     StaticTenantLifecycleStore,
+    static_settings_translation_read::{
+        StaticSettingsChangeReadRequest, StaticSettingsExactLocaleSnapshot,
+        StaticSettingsTranslationReadService,
+    },
 };
 use rustok_test_utils::{
     assert_postgres_url, connect_postgres, create_postgres_database,
     drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
 };
 use rustok_translation_targets::{
-    provider_support::field_hash, TranslationFieldPatch, TranslationPatchRequest,
+    TranslationFieldPatch, TranslationPatchRequest, provider_support::field_hash,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;

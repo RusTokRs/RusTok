@@ -3,8 +3,8 @@
 use dioxus::prelude::*;
 
 use rustok_grid::{
-    has_filter_row, visible_columns, ColumnAlign, ColumnFilters, ColumnWidths, FilterValue,
-    GridColumnDef, SortDirection, SortState,
+    ColumnAlign, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, SortDirection, SortState,
+    has_filter_row, visible_columns,
 };
 
 use crate::filter_inputs::{FilterCommitMode, GridFilterCell};

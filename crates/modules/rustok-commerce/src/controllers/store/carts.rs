@@ -114,7 +114,10 @@ pub async fn create_cart(
     Json(input): Json<StoreCreateCartInput>,
 ) -> HttpResult<(StatusCode, Json<StoreCartResponse>)> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("create_cart", tenant.id, None, None);
 
@@ -208,10 +211,16 @@ pub async fn get_cart(
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<CartResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("get_cart", tenant.id, Some(id), None);
 
@@ -271,10 +280,16 @@ pub async fn update_cart_context(
     Json(input): Json<StoreUpdateCartInput>,
 ) -> HttpResult<Json<StoreCartResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("update_cart_context", tenant.id, Some(id), None);
 
@@ -352,10 +367,16 @@ pub async fn add_cart_line_item(
     Json(input): Json<StoreAddCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("add_cart_line_item", tenant.id, Some(id), None);
 
@@ -464,13 +485,22 @@ pub async fn update_cart_line_item(
     Json(input): Json<StoreUpdateCartLineItemInput>,
 ) -> HttpResult<Json<CartResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     if line_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_line_item_id",
+            "Line item ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("update_cart_line_item", tenant.id, Some(id), Some(line_id));
 
@@ -627,13 +657,22 @@ pub async fn remove_cart_line_item(
     Path((id, line_id)): Path<(Uuid, Uuid)>,
 ) -> HttpResult<Json<CartResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     if line_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_line_item_id", "Line item ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_line_item_id",
+            "Line item ID must not be nil",
+        ));
     }
     log_storefront_cart_route_entry("remove_cart_line_item", tenant.id, Some(id), Some(line_id));
 

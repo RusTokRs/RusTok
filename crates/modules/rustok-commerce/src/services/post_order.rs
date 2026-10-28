@@ -23,8 +23,7 @@ use rustok_fulfillment::FulfillmentService;
 
 use super::payment_orchestration::{PaymentOrchestrationError, PaymentOrchestrationService};
 use super::return_refund_value::{
-    resolve_return_refund_amount, return_refundable_value,
-    validate_return_quantities_were_shipped,
+    resolve_return_refund_amount, return_refundable_value, validate_return_quantities_were_shipped,
 };
 
 #[derive(Debug, Error)]

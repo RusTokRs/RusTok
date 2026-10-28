@@ -224,7 +224,9 @@ impl CategoryService {
         let (canonical_name, canonical_slug, canonical_description, copy_unchanged) =
             match existing_canonical {
                 Some(existing) => {
-                    let name = requested_name.clone().unwrap_or_else(|| existing.name.clone());
+                    let name = requested_name
+                        .clone()
+                        .unwrap_or_else(|| existing.name.clone());
                     validate_category_name(&name)?;
                     let slug = match requested_slug.as_deref() {
                         Some(slug) => normalize_non_empty_slug(slug)?,

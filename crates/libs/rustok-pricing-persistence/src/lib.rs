@@ -168,7 +168,9 @@ impl BootstrapService {
                     || price.channel_id.is_some()
                     || price.channel_slug.is_some()
                     || price.amount < Decimal::ZERO
-                    || price.compare_at_amount.is_some_and(|amount| amount < Decimal::ZERO)
+                    || price
+                        .compare_at_amount
+                        .is_some_and(|amount| amount < Decimal::ZERO)
             })
         {
             return Err(sea_orm::DbErr::Custom(
@@ -265,7 +267,10 @@ mod tests {
         let other_variant_id = rustok_core::generate_id();
         BootstrapService::create_initial_prices_in_tx(
             &db,
-            vec![initial_price(variant_id, 1000), initial_price(other_variant_id, 500)],
+            vec![
+                initial_price(variant_id, 1000),
+                initial_price(other_variant_id, 500),
+            ],
         )
         .await
         .unwrap();
@@ -296,9 +301,10 @@ mod tests {
         .await
         .unwrap();
         txn.commit().await.unwrap();
-        let base_prices = BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
-            .await
-            .unwrap();
+        let base_prices =
+            BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+                .await
+                .unwrap();
         assert_eq!(base_prices.len(), 1);
         assert_eq!(base_prices[0].amount, Decimal::new(1250, 2));
 
@@ -307,20 +313,26 @@ mod tests {
             .await
             .unwrap();
         txn.commit().await.unwrap();
-        assert!(BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+                .await
+                .unwrap()
+                .is_empty()
+        );
         let remaining = BootstrapService::load_prices_for_variants(&db, &[variant_id])
             .await
             .unwrap();
         assert_eq!(remaining.len(), contextual.len());
         for expected in contextual {
-            assert!(remaining.contains(&expected), "contextual price was changed or deleted");
+            assert!(
+                remaining.contains(&expected),
+                "contextual price was changed or deleted"
+            );
         }
-        let other = BootstrapService::load_catalog_base_prices_for_variants(&db, &[other_variant_id])
-            .await
-            .unwrap();
+        let other =
+            BootstrapService::load_catalog_base_prices_for_variants(&db, &[other_variant_id])
+                .await
+                .unwrap();
         assert_eq!(other.len(), 1);
         assert_eq!(other[0].amount, Decimal::new(500, 2));
     }
@@ -340,12 +352,15 @@ mod tests {
                 2 => input.variant_id = rustok_core::generate_id(),
                 _ => input.amount = Decimal::new(-1, 0),
             }
-            assert!(BootstrapService::replace_catalog_base_prices_in_tx(&db, variant_id, vec![input])
-                .await
-                .is_err());
-            let prices = BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
-                .await
-                .unwrap();
+            assert!(
+                BootstrapService::replace_catalog_base_prices_in_tx(&db, variant_id, vec![input])
+                    .await
+                    .is_err()
+            );
+            let prices =
+                BootstrapService::load_catalog_base_prices_for_variants(&db, &[variant_id])
+                    .await
+                    .unwrap();
             assert_eq!(prices.len(), 1);
             assert_eq!(prices[0].amount, Decimal::new(1000, 2));
         }
@@ -455,7 +470,10 @@ mod tests {
         let err = BootstrapService::create_initial_prices_in_tx(&db, prices)
             .await
             .expect_err("negative compare_at_amount must be rejected");
-        assert!(err.to_string().contains("compare_at_amount must not be negative"));
+        assert!(
+            err.to_string()
+                .contains("compare_at_amount must not be negative")
+        );
     }
 
     #[tokio::test]

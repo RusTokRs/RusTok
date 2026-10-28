@@ -362,7 +362,8 @@ impl SeoService {
             let explicit_description = effective_translation
                 .as_ref()
                 .and_then(|item| super::trimmed_option(item.description.clone()));
-            let (description, description_source) = if let Some(description) = explicit_description {
+            let (description, description_source) = if let Some(description) = explicit_description
+            {
                 (Some(description), SeoFieldSource::Explicit)
             } else if let Some(description) = generated.description.clone() {
                 (Some(description), SeoFieldSource::Generated)
@@ -379,20 +380,41 @@ impl SeoService {
                 .filter(|value| !value.trim().is_empty());
             let (canonical_url, canonical_source) = if let Some(value) = explicit_canonical {
                 let canonical = canonical_url_for_locale(effective_locale.as_str(), value.as_str());
-                if canonical_host_allowed(canonical.as_str(), settings.allowed_canonical_hosts.as_slice()) {
+                if canonical_host_allowed(
+                    canonical.as_str(),
+                    settings.allowed_canonical_hosts.as_slice(),
+                ) {
                     (canonical, SeoFieldSource::Explicit)
                 } else {
-                    (locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()), SeoFieldSource::Fallback)
+                    (
+                        locale_prefixed_path(
+                            effective_locale.as_str(),
+                            state.canonical_path.as_str(),
+                        ),
+                        SeoFieldSource::Fallback,
+                    )
                 }
             } else if let Some(value) = generated.canonical_url.as_deref() {
                 let canonical = canonical_url_for_locale(effective_locale.as_str(), value);
-                if canonical_host_allowed(canonical.as_str(), settings.allowed_canonical_hosts.as_slice()) {
+                if canonical_host_allowed(
+                    canonical.as_str(),
+                    settings.allowed_canonical_hosts.as_slice(),
+                ) {
                     (canonical, SeoFieldSource::Generated)
                 } else {
-                    (locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()), SeoFieldSource::Fallback)
+                    (
+                        locale_prefixed_path(
+                            effective_locale.as_str(),
+                            state.canonical_path.as_str(),
+                        ),
+                        SeoFieldSource::Fallback,
+                    )
                 }
             } else {
-                (locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()), SeoFieldSource::Fallback)
+                (
+                    locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str()),
+                    SeoFieldSource::Fallback,
+                )
             };
 
             let canonical_url = apply_canonical_protocol(
@@ -441,11 +463,12 @@ impl SeoService {
                 (None, SeoFieldSource::Fallback)
             };
 
-            let (structured_data, structured_data_source) = if let Some(value) = explicit.meta.structured_data.clone() {
-                (value, SeoFieldSource::Explicit)
-            } else {
-                (state.structured_data, SeoFieldSource::Fallback)
-            };
+            let (structured_data, structured_data_source) =
+                if let Some(value) = explicit.meta.structured_data.clone() {
+                    (value, SeoFieldSource::Explicit)
+                } else {
+                    (state.structured_data, SeoFieldSource::Fallback)
+                };
             let structured_data_present = !structured_data.is_null();
 
             return Ok(SeoPageContext {
@@ -483,19 +506,15 @@ impl SeoService {
                         effective_locale.as_str(),
                         SeoDocumentEffectiveState {
                             title: field_state(title_source, true),
-                            description: field_state(
-                                description_source,
-                                description.is_some(),
-                            ),
+                            description: field_state(description_source, description.is_some()),
                             canonical_url: field_state(canonical_source, true),
-                            keywords: field_state(
-                                keywords_source,
-                                keywords.is_some(),
-                            ),
+                            keywords: field_state(keywords_source, keywords.is_some()),
                             robots: field_state(SeoFieldSource::Explicit, true),
                             open_graph: field_state(og_source, true),
                             twitter: field_state(
-                                if generated.twitter_title.is_some() || generated.twitter_description.is_some() {
+                                if generated.twitter_title.is_some()
+                                    || generated.twitter_description.is_some()
+                                {
                                     SeoFieldSource::Generated
                                 } else {
                                     SeoFieldSource::Explicit
@@ -638,7 +657,9 @@ impl SeoService {
                             true,
                         ),
                         twitter: field_state(
-                            if generated.twitter_title.is_some() || generated.twitter_description.is_some() {
+                            if generated.twitter_title.is_some()
+                                || generated.twitter_description.is_some()
+                            {
                                 SeoFieldSource::Generated
                             } else {
                                 SeoFieldSource::Fallback

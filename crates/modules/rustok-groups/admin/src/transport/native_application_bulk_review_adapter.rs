@@ -72,10 +72,13 @@ async fn groups_admin_bulk_review_membership_applications_native(
             .application_ids
             .into_iter()
             .map(|application_id| {
-                let parsed = Uuid::parse_str(application_id.trim())
-                    .map_err(|_| ServerFnError::new("application_ids must contain valid UUID values"))?;
+                let parsed = Uuid::parse_str(application_id.trim()).map_err(|_| {
+                    ServerFnError::new("application_ids must contain valid UUID values")
+                })?;
                 if parsed.is_nil() {
-                    return Err(ServerFnError::new("application_ids must not contain nil UUIDs"));
+                    return Err(ServerFnError::new(
+                        "application_ids must not contain nil UUIDs",
+                    ));
                 }
                 Ok(parsed)
             })

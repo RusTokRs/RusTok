@@ -160,11 +160,15 @@ async fn assign(
 ) -> Result<Response> {
     let permission_key = input.permission_key.trim().to_string();
     if permission_key.is_empty() {
-        return Err(Error::BadRequest("permission_key must not be empty".to_string()));
+        return Err(Error::BadRequest(
+            "permission_key must not be empty".to_string(),
+        ));
     }
     let idempotency_key = input.idempotency_key.trim().trim_matches('"').to_string();
     if idempotency_key.is_empty() {
-        return Err(Error::BadRequest("idempotency_key must not be empty".to_string()));
+        return Err(Error::BadRequest(
+            "idempotency_key must not be empty".to_string(),
+        ));
     }
 
     let event_publisher = Arc::new(TransactionalOutboxArtifactPermissionEventPublisher::new(
@@ -410,14 +414,12 @@ mod tests {
         );
         assert!(matches!(bad_cmd, Error::BadRequest(_)));
 
-        let not_found = super::map_assignment_error(
-            ArtifactPermissionAssignmentError::RoleNotFound,
-        );
+        let not_found =
+            super::map_assignment_error(ArtifactPermissionAssignmentError::RoleNotFound);
         assert!(matches!(not_found, Error::NotFound));
 
-        let conflict = super::map_assignment_error(
-            ArtifactPermissionAssignmentError::IdempotencyConflict,
-        );
+        let conflict =
+            super::map_assignment_error(ArtifactPermissionAssignmentError::IdempotencyConflict);
         assert!(matches!(conflict, Error::Http(ref e) if e.status == StatusCode::CONFLICT));
     }
 }

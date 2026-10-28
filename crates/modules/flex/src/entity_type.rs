@@ -24,7 +24,7 @@ pub fn normalize_flex_entity_type(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_valid_flex_entity_type, normalize_flex_entity_type, TAXONOMY_CATEGORY_ENTITY_TYPE,
+        TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type, normalize_flex_entity_type,
     };
 
     #[test]

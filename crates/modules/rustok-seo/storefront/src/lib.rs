@@ -18,7 +18,7 @@ pub use crate::model::{
 };
 pub use crate::render::{render_head_html, render_head_html_with_nonce};
 pub use crate::transport::{
-    SeoPageContextResponse, SeoPageContextVariables, SEO_PAGE_CONTEXT_QUERY,
+    SEO_PAGE_CONTEXT_QUERY, SeoPageContextResponse, SeoPageContextVariables,
 };
 pub use crate::ui::SeoView;
 

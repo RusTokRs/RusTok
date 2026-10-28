@@ -267,22 +267,19 @@ fn map_admin_order_change_orchestration_error(
         }
         PostOrderOrchestrationError::Payment(source) => {
             adopt_order_change_payment_error_identity(&mut context, source);
-            let (status, code, message, error_kind) =
-                payment_error_policy(source);
+            let (status, code, message, error_kind) = payment_error_policy(source);
             (status, code, message, error_kind, "rustok_payment")
         }
         PostOrderOrchestrationError::PaymentOrchestration(source) => match source {
             PaymentOrchestrationError::Provider(source)
             | PaymentOrchestrationError::Payment(source) => {
                 adopt_order_change_payment_error_identity(&mut context, source);
-                let (status, code, message, error_kind) =
-                    payment_error_policy(source);
+                let (status, code, message, error_kind) = payment_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
             PaymentOrchestrationError::ProviderAfterRefundReservation { refund_id, source } => {
                 context.refund_id = Some(*refund_id);
-                let (status, code, message, error_kind) =
-                    reserved_refund_error_policy(source);
+                let (status, code, message, error_kind) = reserved_refund_error_policy(source);
                 (status, code, message, error_kind, "rustok_payment")
             }
         },
@@ -390,10 +387,16 @@ pub async fn apply_order_change(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_tenant", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_tenant",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("commerce_invalid_id", "Order change ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "commerce_invalid_id",
+            "Order change ID must not be nil",
+        ));
     }
     log_admin_order_change_entry("apply_order_change", tenant.id, auth.user_id, id);
 

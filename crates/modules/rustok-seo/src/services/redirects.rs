@@ -1112,7 +1112,11 @@ mod tests {
         assert!(redirect_pattern_captures("exact", "/new", "/new"));
         assert!(!redirect_pattern_captures("exact", "/new", "/new/deep"));
         assert!(redirect_pattern_captures("wildcard", "/old/*", "/old/page"));
-        assert!(!redirect_pattern_captures("wildcard", "/old/*", "/other/page"));
+        assert!(!redirect_pattern_captures(
+            "wildcard",
+            "/old/*",
+            "/other/page"
+        ));
         assert!(!redirect_pattern_captures("wildcard", "/old/*", "/old"));
         assert!(redirect_pattern_captures("wildcard", "/a*b", "/axxb"));
         assert!(redirect_pattern_captures("wildcard", "literal", "literal"));
@@ -1240,11 +1244,7 @@ mod tests {
     fn redirect_lookup_cache_entry_weight_accounts_for_underlying_models() {
         let tenant_id = Uuid::new_v4();
         let short_lookup = Arc::new(RedirectLookup::from_source(Arc::new(vec![redirect(
-            "exact",
-            "/short",
-            "/t",
-            true,
-            None,
+            "exact", "/short", "/t", true, None,
         )])));
         let long_lookup = Arc::new(RedirectLookup::from_source(Arc::new(vec![redirect(
             "exact",
@@ -1269,11 +1269,20 @@ mod tests {
 
         let bumped_a = bump_redirect_cache_generation(tenant_a);
         assert_eq!(bumped_a, initial_a.wrapping_add(1));
-        assert_eq!(current_redirect_cache_generation(tenant_a), initial_a.wrapping_add(1));
+        assert_eq!(
+            current_redirect_cache_generation(tenant_a),
+            initial_a.wrapping_add(1)
+        );
         assert_eq!(current_redirect_cache_generation(tenant_b), initial_b);
 
         bump_all_redirect_cache_generations();
-        assert_eq!(current_redirect_cache_generation(tenant_a), initial_a.wrapping_add(2));
-        assert_eq!(current_redirect_cache_generation(tenant_b), initial_b.wrapping_add(1));
+        assert_eq!(
+            current_redirect_cache_generation(tenant_a),
+            initial_a.wrapping_add(2)
+        );
+        assert_eq!(
+            current_redirect_cache_generation(tenant_b),
+            initial_b.wrapping_add(1)
+        );
     }
 }

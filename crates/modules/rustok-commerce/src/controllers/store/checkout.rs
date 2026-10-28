@@ -176,10 +176,16 @@ pub async fn create_payment_collection(
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> HttpResult<(StatusCode, Json<PaymentCollectionResponse>)> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if input.cart_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = STOREFRONT_PAYMENT_COLLECTION_BOUNDARY,
@@ -330,10 +336,16 @@ pub async fn complete_cart_checkout(
     Json(input): Json<StoreCompleteCartInput>,
 ) -> HttpResult<Json<CompleteCheckoutResponse>> {
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if cart_id.is_nil() {
-        return Err(HttpError::bad_request("invalid_cart_id", "Cart ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_cart_id",
+            "Cart ID must not be nil",
+        ));
     }
     tracing::debug!(
         boundary = STOREFRONT_CHECKOUT_BOUNDARY,

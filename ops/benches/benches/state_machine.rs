@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rust_decimal::Decimal;
 use rustok_commerce::state_machine::{Order, Pending};
 use rustok_content::state_machine::{ContentNode, Draft};

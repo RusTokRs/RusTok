@@ -195,18 +195,18 @@ pub async fn create_order_change(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
-    log_admin_post_order_command_entry(
-        "create_order_change",
-        tenant.id,
-        auth.user_id,
-        "order",
-        id,
-    );
+    log_admin_post_order_command_entry("create_order_change", tenant.id, auth.user_id, "order", id);
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_post_order_command_context(
@@ -268,7 +268,10 @@ pub async fn cancel_order_change(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
         return Err(HttpError::bad_request(
@@ -344,18 +347,18 @@ pub async fn create_order_return(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
-        return Err(HttpError::bad_request("invalid_order_id", "Order ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_order_id",
+            "Order ID must not be nil",
+        ));
     }
-    log_admin_post_order_command_entry(
-        "create_order_return",
-        tenant.id,
-        auth.user_id,
-        "order",
-        id,
-    );
+    log_admin_post_order_command_entry("create_order_return", tenant.id, auth.user_id, "order", id);
 
     let idempotency_key = require_idempotency_key(&headers)?;
     let context = admin_post_order_command_context(
@@ -417,7 +420,10 @@ pub async fn cancel_order_return(
         "Permission denied: orders:update required",
     )?;
     if tenant.id.is_nil() {
-        return Err(HttpError::bad_request("invalid_tenant_id", "Tenant ID must not be nil"));
+        return Err(HttpError::bad_request(
+            "invalid_tenant_id",
+            "Tenant ID must not be nil",
+        ));
     }
     if id.is_nil() {
         return Err(HttpError::bad_request(

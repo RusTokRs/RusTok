@@ -35,6 +35,10 @@ pub use streaming::{
     MessengerStreamEvent, messenger_calculate_partition, messenger_partition_key,
 };
 
+pub use controllers::{
+    MessengerClientMessage, MessengerHttpRuntime, MessengerRoomHub, MessengerServerMessage,
+    axum_router, router,
+};
 pub use domain::{
     Conversation, ConversationType, Member, MemberRole, Message, MessageType, SnowflakeGenerator,
     SyncCursor,
@@ -43,10 +47,6 @@ pub use dto::{
     ChannelTranslationOutput, ConversationOutput, CreateConversationInput, CursorOutput,
     FastSyncRequest, FastSyncResponse, ListMessagesQuery, MessageOutput, SearchMessagesQuery,
     SendMessageInput, UpdateChannelTranslationInput, UpdateCursorInput,
-};
-pub use controllers::{
-    axum_router, MessengerClientMessage, MessengerHttpRuntime, MessengerRoomHub,
-    MessengerServerMessage, router,
 };
 pub use error::{MessengerError, MessengerResult};
 pub use module::MessengerModule;
@@ -58,10 +58,10 @@ pub mod graphql;
 
 #[cfg(feature = "graphql")]
 pub use graphql::{
-    attach_schema_data, CreateMessengerChannelGqlInput, DeviceKeyGql,
-    MessengerChannelListItemGql, MessengerE2eeDeviceAuditGql, MessengerGraphqlRuntimeData,
-    MessengerMutation, MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
-    UploadDeviceKeysGqlInput,
+    CreateMessengerChannelGqlInput, DeviceKeyGql, MessengerChannelListItemGql,
+    MessengerE2eeDeviceAuditGql, MessengerGraphqlRuntimeData, MessengerMutation,
+    MessengerOverviewGql, MessengerQuery, OneTimePrekeyGql, PrekeyBundleGql,
+    UploadDeviceKeysGqlInput, attach_schema_data,
 };
 
 #[cfg(test)]

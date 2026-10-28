@@ -860,12 +860,12 @@ mod tests {
         RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
         RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
-    use rustok_cache::CacheService;
-    use rustok_outbox::RelayMetricsSnapshot;
     use axum::{
         http::{StatusCode, header::CONTENT_TYPE},
         response::IntoResponse,
     };
+    use rustok_cache::CacheService;
+    use rustok_outbox::RelayMetricsSnapshot;
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {

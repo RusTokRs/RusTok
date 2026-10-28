@@ -18,9 +18,7 @@ use rustok_modules::{
     ResolvingArtifactCapabilityBroker, RuntimeFingerprint, SeaOrmArtifactNodeReadiness,
     SharedArtifactBindingExecutor, VerifiedArtifactNodeCache,
 };
-use rustok_sandbox::{
-    CapabilityName, ExecutorRegistry, SandboxExecutorPlacement, SandboxRuntime,
-};
+use rustok_sandbox::{CapabilityName, ExecutorRegistry, SandboxExecutorPlacement, SandboxRuntime};
 use rustok_sandbox_transport::GrpcRhaiExecutor;
 use rustok_storage::StorageRuntime;
 use rustok_worker_transport::MutualTlsClientConfig;
@@ -331,8 +329,7 @@ fn governed_placement_policy() -> Result<OwnerPlacementPolicy> {
         .parse::<u64>()
         .map_err(|_| {
             Error::Message(
-                "RUSTOK_GOVERNED_PLACEMENT_POLICY_REVISION must be a positive integer"
-                    .to_string(),
+                "RUSTOK_GOVERNED_PLACEMENT_POLICY_REVISION must be a positive integer".to_string(),
             )
         })?;
     if policy_revision == 0 {
@@ -351,25 +348,25 @@ fn governed_placement_policy() -> Result<OwnerPlacementPolicy> {
                 ));
             }
         };
-    let allow_in_process_fallback =
-        match std::env::var("RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK") {
-            Ok(value) => match value.trim() {
-                "true" => true,
-                "false" => false,
-                _ => {
-                    return Err(Error::Message(
-                        "RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK must be `true` or `false`"
-                            .to_string(),
-                    ));
-                }
-            },
-            Err(std::env::VarError::NotPresent) => false,
-            Err(std::env::VarError::NotUnicode(_)) => {
+    let allow_in_process_fallback = match std::env::var("RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK")
+    {
+        Ok(value) => match value.trim() {
+            "true" => true,
+            "false" => false,
+            _ => {
                 return Err(Error::Message(
-                    "RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK must be valid UTF-8".to_string(),
+                    "RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK must be `true` or `false`"
+                        .to_string(),
                 ));
             }
-        };
+        },
+        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(Error::Message(
+                "RUSTOK_GOVERNED_ALLOW_IN_PROCESS_FALLBACK must be valid UTF-8".to_string(),
+            ));
+        }
+    };
     Ok(OwnerPlacementPolicy {
         policy_revision,
         required_placement,
@@ -496,9 +493,7 @@ pub async fn compose_governed_readiness(
         let mut executors = ExecutorRegistry::new();
         executors
             .register_in_process(rustok_sandbox::wasm::WasmComponentExecutor::new())
-            .map_err(|error| {
-                Error::Message(format!("artifact WASM executor failed: {error}"))
-            })?;
+            .map_err(|error| Error::Message(format!("artifact WASM executor failed: {error}")))?;
         readiness_services.push(build_pool_readiness_service(
             ctx,
             &control_plane,
@@ -519,9 +514,8 @@ pub async fn compose_governed_readiness(
                 "sandbox worker identity is unavailable, governed readiness refuses to compose: {error}"
             ))
         })?;
-        let tls = MutualTlsClientConfig::from_env_prefix("RUSTOK_SANDBOX").map_err(|error| {
-            Error::Message(format!("sandbox worker TLS is invalid: {error}"))
-        })?;
+        let tls = MutualTlsClientConfig::from_env_prefix("RUSTOK_SANDBOX")
+            .map_err(|error| Error::Message(format!("sandbox worker TLS is invalid: {error}")))?;
         let mut attestation_material = Vec::new();
         for part in [
             "rustok.governed_isolated_pool_attestation",
@@ -551,9 +545,9 @@ pub async fn compose_governed_readiness(
         )
         .await?;
         let mut executors = ExecutorRegistry::new();
-        executors.register_isolated_worker(rhai).map_err(|error| {
-            Error::Message(format!("artifact Rhai executor failed: {error}"))
-        })?;
+        executors
+            .register_isolated_worker(rhai)
+            .map_err(|error| Error::Message(format!("artifact Rhai executor failed: {error}")))?;
         readiness_services.push(build_pool_readiness_service(
             ctx,
             &control_plane,

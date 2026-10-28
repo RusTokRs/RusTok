@@ -229,11 +229,7 @@ impl ColumnWidth {
 }
 
 fn ordered(a: u32, b: u32) -> (u32, u32) {
-    if a <= b {
-        (a, b)
-    } else {
-        (b, a)
-    }
+    if a <= b { (a, b) } else { (b, a) }
 }
 
 /// Side a column is pinned (frozen) to.

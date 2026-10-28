@@ -1,6 +1,6 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
-use fly::{audit_page, AuditSeverity};
+use fly::{AuditSeverity, audit_page};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

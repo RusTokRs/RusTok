@@ -11,10 +11,10 @@ pub use catalog_read::ProductCatalogReadPort;
 pub use types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
     LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,
-    LegacyStorefrontProductsRequest, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
-    StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
+    LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
+    ProductProjectionRequest, PublishedProductsRequest, StorefrontCatalogFacetsRequest,
+    StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
 };
 
 pub(crate) use diagnostics::{product_owner_error_facts, product_port_context_facts};

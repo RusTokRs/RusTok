@@ -16,7 +16,8 @@ const MAX_GENERATION_OPERATION_ATTEMPTS: usize = 4;
 static BACKEND_GENERATIONS: OnceLock<Mutex<HashMap<String, Arc<BackendGenerationState>>>> =
     OnceLock::new();
 
-pub(crate) fn backend_generations() -> &'static Mutex<HashMap<String, Arc<BackendGenerationState>>> {
+pub(crate) fn backend_generations() -> &'static Mutex<HashMap<String, Arc<BackendGenerationState>>>
+{
     BACKEND_GENERATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 

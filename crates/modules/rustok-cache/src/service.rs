@@ -74,9 +74,13 @@ impl Drop for ConstructionGateLease {
             .registry
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if registry.construction_gates.get(&self.key).is_some_and(|current| {
-            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
-        }) {
+        if registry
+            .construction_gates
+            .get(&self.key)
+            .is_some_and(|current| {
+                Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) <= 2
+            })
+        {
             registry.construction_gates.remove(&self.key);
         }
     }
@@ -100,7 +104,8 @@ impl SharedBackendRegistry {
     fn prune_unreferenced(&mut self) {
         self.backends
             .retain(|_, backend| Arc::strong_count(backend) > 1);
-        self.construction_gates.retain(|_, gate| Arc::strong_count(gate) > 1);
+        self.construction_gates
+            .retain(|_, gate| Arc::strong_count(gate) > 1);
     }
 }
 
@@ -258,9 +263,7 @@ impl CacheService {
             return backend;
         }
 
-        registry
-            .backends
-            .insert(key, Arc::clone(&backend));
+        registry.backends.insert(key, Arc::clone(&backend));
         backend
     }
 
@@ -486,8 +489,7 @@ impl CacheService {
 
     /// Create a pure in-memory backend (no Redis).
     pub fn memory_backend(&self, ttl: Duration, max_capacity: u64) -> Arc<dyn CacheBackend> {
-        let (ttl, max_capacity) =
-            self.validated_backend_configuration("memory", ttl, max_capacity);
+        let (ttl, max_capacity) = self.validated_backend_configuration("memory", ttl, max_capacity);
         let backend = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
         if self.default_backend_options.metrics_enabled {
             Arc::new(InstrumentedCacheBackend::new("memory", backend))
@@ -1756,7 +1758,10 @@ mod tests {
         ));
         // Local delivery still happened before the shared transport failed.
         assert_eq!(subscriber.recv().await.unwrap().key, "key-1");
-        assert_eq!(service.invalidations().stats().redis_publish_failure_total, 1);
+        assert_eq!(
+            service.invalidations().stats().redis_publish_failure_total,
+            1
+        );
     }
 
     #[tokio::test]

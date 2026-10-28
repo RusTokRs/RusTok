@@ -174,8 +174,10 @@ mod in_process {
             let txn = match self.db.begin().await {
                 Ok(txn) => txn,
                 Err(error) => {
-                    let port_error =
-                        PortError::unavailable("comments.operation_begin_failed", error.to_string());
+                    let port_error = PortError::unavailable(
+                        "comments.operation_begin_failed",
+                        error.to_string(),
+                    );
                     persist_idempotency_failure(&self.db, lease, &port_error).await;
                     return Err(port_error);
                 }
@@ -206,7 +208,10 @@ mod in_process {
                         return Err(error);
                     }
                     let commit_result = txn.commit().await.map_err(|error| {
-                        PortError::unavailable("comments.operation_commit_failed", error.to_string())
+                        PortError::unavailable(
+                            "comments.operation_commit_failed",
+                            error.to_string(),
+                        )
                     });
                     if let Err(commit_error) = commit_result {
                         persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -369,8 +374,10 @@ mod in_process {
             let txn = match self.db.begin().await {
                 Ok(txn) => txn,
                 Err(error) => {
-                    let port_error =
-                        PortError::unavailable("comments.operation_begin_failed", error.to_string());
+                    let port_error = PortError::unavailable(
+                        "comments.operation_begin_failed",
+                        error.to_string(),
+                    );
                     persist_idempotency_failure(&self.db, lease, &port_error).await;
                     return Err(port_error);
                 }
@@ -401,7 +408,10 @@ mod in_process {
                         return Err(error);
                     }
                     let commit_result = txn.commit().await.map_err(|error| {
-                        PortError::unavailable("comments.operation_commit_failed", error.to_string())
+                        PortError::unavailable(
+                            "comments.operation_commit_failed",
+                            error.to_string(),
+                        )
                     });
                     if let Err(commit_error) = commit_result {
                         persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -468,8 +478,10 @@ mod in_process {
             let txn = match self.db.begin().await {
                 Ok(txn) => txn,
                 Err(error) => {
-                    let port_error =
-                        PortError::unavailable("comments.operation_begin_failed", error.to_string());
+                    let port_error = PortError::unavailable(
+                        "comments.operation_begin_failed",
+                        error.to_string(),
+                    );
                     persist_idempotency_failure(&self.db, lease, &port_error).await;
                     return Err(port_error);
                 }
@@ -500,7 +512,10 @@ mod in_process {
                         return Err(error);
                     }
                     let commit_result = txn.commit().await.map_err(|error| {
-                        PortError::unavailable("comments.operation_commit_failed", error.to_string())
+                        PortError::unavailable(
+                            "comments.operation_commit_failed",
+                            error.to_string(),
+                        )
                     });
                     if let Err(commit_error) = commit_result {
                         persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -568,8 +583,10 @@ mod in_process {
             let txn = match self.db.begin().await {
                 Ok(txn) => txn,
                 Err(error) => {
-                    let port_error =
-                        PortError::unavailable("comments.operation_begin_failed", error.to_string());
+                    let port_error = PortError::unavailable(
+                        "comments.operation_begin_failed",
+                        error.to_string(),
+                    );
                     persist_idempotency_failure(&self.db, lease, &port_error).await;
                     return Err(port_error);
                 }
@@ -608,7 +625,10 @@ mod in_process {
                         return Err(error);
                     }
                     let commit_result = txn.commit().await.map_err(|error| {
-                        PortError::unavailable("comments.operation_commit_failed", error.to_string())
+                        PortError::unavailable(
+                            "comments.operation_commit_failed",
+                            error.to_string(),
+                        )
                     });
                     if let Err(commit_error) = commit_result {
                         persist_idempotency_failure(&self.db, lease, &commit_error).await;
@@ -710,7 +730,9 @@ mod in_process {
                 message,
                 false,
             ),
-            CommentsError::Validation(message) => PortError::validation("comments.validation", message),
+            CommentsError::Validation(message) => {
+                PortError::validation("comments.validation", message)
+            }
         }
     }
 
@@ -762,4 +784,3 @@ mod in_process {
 
 #[cfg(feature = "server")]
 pub use in_process::in_process_comments_thread_port;
-

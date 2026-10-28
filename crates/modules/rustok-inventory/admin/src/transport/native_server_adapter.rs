@@ -933,7 +933,9 @@ async fn inventory_check_availability_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         if requested_quantity < 0 {
-            return Err(ServerFnError::new("Requested quantity must be non-negative"));
+            return Err(ServerFnError::new(
+                "Requested quantity must be non-negative",
+            ));
         }
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
@@ -998,7 +1000,9 @@ async fn inventory_release_reservation_native(
         assert_requested_tenant(&tenant, &tenant_id)?;
 
         if quantity < 0 {
-            return Err(ServerFnError::new("Release reservation quantity must be non-negative"));
+            return Err(ServerFnError::new(
+                "Release reservation quantity must be non-negative",
+            ));
         }
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;

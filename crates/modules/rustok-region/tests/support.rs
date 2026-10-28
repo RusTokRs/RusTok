@@ -16,4 +16,3 @@ pub async fn ensure_region_schema(db: &DatabaseConnection) {
             .expect("region migration should apply");
     }
 }
-

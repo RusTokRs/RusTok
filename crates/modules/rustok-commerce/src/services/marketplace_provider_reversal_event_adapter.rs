@@ -528,9 +528,9 @@ fn parse_uuid_map(
         ))
     })?;
     if id.is_nil() {
-        return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-            "normalized provider event field `{field}` must not be nil UUID"
-        )));
+        return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+            format!("normalized provider event field `{field}` must not be nil UUID"),
+        ));
     }
     Ok(id)
 }
@@ -597,4 +597,3 @@ mod tests {
         assert!(parse_uuid_map(&valid_map, "reversal_id").is_ok());
     }
 }
-

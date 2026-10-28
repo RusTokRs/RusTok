@@ -188,15 +188,12 @@ impl ForumTopicAudienceVisibilityService {
             Err(error) => return Err(error),
         };
         if topic.status == TopicStatus::Pending
-            && !can_see_pending(
-                viewer.security(),
-                Resource::ForumTopics,
-                topic.author_id,
-            )
+            && !can_see_pending(viewer.security(), Resource::ForumTopics, topic.author_id)
         {
             return Ok(false);
         }
-        self.policy_allows_for_topic(txn, tenant_id, &topic, viewer).await
+        self.policy_allows_for_topic(txn, tenant_id, &topic, viewer)
+            .await
     }
 
     /// A pending topic is visible only to its author and to moderators.

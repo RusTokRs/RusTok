@@ -87,9 +87,11 @@ mod tests {
             RetentionPolicy::RetainUntil.validate(Some(&(now - Duration::seconds(1))), now),
             Err(RetentionPolicyError::DeadlineNotFuture)
         );
-        assert!(RetentionPolicy::RetainUntil
-            .validate(Some(&(now + Duration::seconds(1))), now)
-            .is_ok());
+        assert!(
+            RetentionPolicy::RetainUntil
+                .validate(Some(&(now + Duration::seconds(1))), now)
+                .is_ok()
+        );
     }
 
     #[test]
