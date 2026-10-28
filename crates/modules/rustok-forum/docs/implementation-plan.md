@@ -121,6 +121,7 @@ Maintainer verification before merge:
 - `cargo fmt --all -- --check`
 - `cargo check --locked -p rustok-forum --lib`
 - `cargo test --locked -p rustok-forum --lib`
+- `cargo test --locked -p rustok-forum --test topic_sort_settings`
 - `cargo test --locked -p rustok-forum --test topic_publication_lifecycle_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_sqlite`
 - `cargo test --locked -p rustok-forum --test moderation_semantics_postgres`
