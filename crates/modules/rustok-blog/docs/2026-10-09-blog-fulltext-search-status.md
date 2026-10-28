@@ -112,3 +112,39 @@ via `canonical_search_result_url()` in `rustok-search::engine`.
 3. **Search analytics**: Track which blog searches are popular to improve content strategy
 
 These are convenience improvements, not gaps. The core search functionality is complete.
+
+## 2026-10-28 audit clarification (implementation in PR #4658)
+
+The **backend Search projection** is real and owned by the canonical Search
+storage driver, with Blog supplying its own public documents and events. The
+backend alone is **not equivalent to working full-text search on the /blog
+listing**: Next and Leptos still apply `q` as a substring filter over the
+already fetched page of `publicBlogPosts`. This loses matching documents on
+later pages and makes their Blog keyset cursors unrelated to full-text results.
+Those storefront UIs must switch to the Search owner transport and Search's
+offset pagination; they are not declared fixed by this backend audit.
+
+The audit found that Blog's category UUID existed in `payload.category_id`
+but Search's category filtering SQL reads `facets.category_id`. The facet
+was added for future projections; **existing documents require a Blog scope
+reindex** (the canonical `ReindexRequested(target_type="blog", target_id=None)`
+event) to gain it. Do not attempt a second projection writer or a direct
+mutation of Search tables from Blog.
+
+The host's former public Search corpus declaration for Blog skipped live
+Channel-module visibility. Blog is now registered as a gated
+`SearchAudiencePolicyPort` through host composition; its bulk eligibility
+lookup checks publication, tenant, post allowlist and Channel active/module
+binding against the Blog owner. Search and autocomplete approvals are keyed by
+`(source_module, document_id)` so independent modules with the same UUID do
+not share visibility. Public Blog projections remain absent for drafts and
+archived posts.
+
+The generic Search gated-audience scan currently has a **1,000 candidate
+limit** per request. Broad Blog searches may require narrower text/filters;
+this is a known performance/capability constraint, not infinite pagination.
+Search exposes category UUID filters, but not a combined exact Blog-tag filter;
+full-text plus tag filtering in the Blog listing requires explicit support,
+not local filtering of a single Search page.
+
+All regressions are added as source tests but have **not been executed**.
