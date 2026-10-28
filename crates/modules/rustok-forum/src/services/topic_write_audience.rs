@@ -32,3 +32,22 @@ pub(crate) async fn topic_write_audience_allows(
         .is_topic_owner_visible(tenant_id, topic_id, &viewer)
         .await
 }
+
+
+/// Re-evaluates the canonical owner audience with transaction-scoped Forum
+/// policy rows. The caller must first acquire the category-tree writer lock,
+/// then keep the transaction open through the actual vote/subscription write.
+pub(crate) async fn topic_write_audience_allows_in_tx(
+    db: &DatabaseConnection,
+    txn: &sea_orm::DatabaseTransaction,
+    facts_port: Option<SharedForumAudienceFactsPort>,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    security: &SecurityContext,
+    context: PortContext,
+) -> ForumResult<bool> {
+    let viewer = ForumTopicAudienceViewer::authenticated(security.clone(), context)?;
+    ForumTopicAudienceVisibilityService::new(db.clone(), facts_port)
+        .is_topic_owner_visible_in_tx(txn, tenant_id, topic_id, &viewer)
+        .await
+}

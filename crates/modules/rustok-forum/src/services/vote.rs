@@ -17,13 +17,14 @@ use rustok_api::{Action, PortContext, Resource};
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::engagement_mode::{ForumEngagementMode, ForumSettingsProviders};
 use crate::services::projection_invalidation::publish_forum_topic_projection_direct_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_vote_lock::{
     lock_active_topic_vote_write_in_tx, lock_topic_vote_scopes_in_tx,
 };
-use crate::services::topic_write_audience::topic_write_audience_allows;
+use crate::services::topic_write_audience::topic_write_audience_allows_in_tx;
 use crate::state_machine::ReplyStatus;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -113,8 +114,12 @@ impl VoteService {
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
-        if !topic_write_audience_allows(
+
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        if !topic_write_audience_allows_in_tx(
             &self.db,
+            &txn,
             self.audience_facts.clone(),
             tenant_id,
             topic_id,
@@ -125,8 +130,6 @@ impl VoteService {
         {
             return Err(ForumError::TopicNotFound(topic_id));
         }
-
-        let txn = self.db.begin().await?;
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;
@@ -220,18 +223,22 @@ impl VoteService {
         let user_id = require_authenticated_user(&security)?;
         validate_vote_value(value)?;
 
-        // The parent topic id is immutable for a reply, so the audience gate can use it
-        // before the transaction. Status and author are re-read under the row lock below.
-        let preflight = forum_reply::Entity::find_by_id(reply_id)
+        // Load the immutable reply -> topic binding within the same
+        // transaction as authorization and the vote write. Never disclose
+        // whether a reply exists when its parent is audience-denied.
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let parent = forum_reply::Entity::find_by_id(reply_id)
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(ForumError::ReplyNotFound(reply_id))?;
-        if !topic_write_audience_allows(
+        if !topic_write_audience_allows_in_tx(
             &self.db,
+            &txn,
             self.audience_facts.clone(),
             tenant_id,
-            preflight.topic_id,
+            parent.topic_id,
             &security,
             context,
         )
@@ -240,7 +247,6 @@ impl VoteService {
             return Err(ForumError::ReplyNotFound(reply_id));
         }
 
-        let txn = self.db.begin().await?;
         ForumEngagementMode::resolve_in_tx(&self.settings, &txn, tenant_id)
             .await?
             .require_internal_voting()?;

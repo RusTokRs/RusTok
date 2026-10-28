@@ -188,11 +188,12 @@ wrappers. Each one has an owner decision or a follow-up task in
   category audience contract. See
   [`DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`](../../../DECISIONS/2026-10-09-forum-topic-owner-audience-read.md).
 - Vote and subscription writes evaluate the owner audience of the parent topic
-  before the write, and reject self-voting unless `allow_self_voting` is enabled. See
+  inside their write transaction under the Forum category-policy lock, and
+  reject self-voting unless `allow_self_voting` is enabled. See
   [`DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`](../../../DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md).
-  Known gaps: the route channel is not part of the write gate; the gate runs
-  before the write transaction, so a policy change committed in between can let
-  one write through. Domain topic clears are intentionally not gated, but category
+  Remaining gaps: route-channel scope is not part of the write gate, and
+  externally provided trust/channel/group facts have no shared transaction
+  or version fence. Domain topic clears are intentionally not gated, but category
   clears require category-owner visibility to avoid existence oracles. The
   canonical GraphQL `clearForumTopicSubscription` now acknowledges only `true`,
   while REST `DELETE /api/forum/topics/{topic_id}/subscription` returns

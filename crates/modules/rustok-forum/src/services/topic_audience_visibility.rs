@@ -1,6 +1,6 @@
 use rustok_api::{PortActorKind, PortContext, Resource};
 use rustok_core::{SecurityActorKind, SecurityContext};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
 use crate::audience::{
@@ -169,6 +169,37 @@ impl ForumTopicAudienceVisibilityService {
         self.policy_allows(tenant_id, topic_id, viewer).await
     }
 
+    /// Write-side owner audience evaluated through the caller's transaction.
+    /// Category/tree and topic policy writers take the same category-tree
+    /// advisory scope before changing their policies; callers MUST hold that
+    /// scope until the write commits. Owner-supplied trust/membership facts
+    /// are still an external capability, not a database snapshot.
+    pub(crate) async fn is_topic_owner_visible_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> ForumResult<bool> {
+        self.validate_viewer_context(tenant_id, viewer)?;
+        let topic = match find_topic(txn, tenant_id, topic_id).await {
+            Ok(topic) => topic,
+            Err(ForumError::TopicNotFound(_)) => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        if topic.deleted_at.is_some()
+            || (topic.status == TopicStatus::Pending
+                && !can_see_pending(
+                    viewer.security(),
+                    Resource::ForumTopics,
+                    topic.author_id,
+                ))
+        {
+            return Ok(false);
+        }
+        self.policy_allows_for_topic(txn, tenant_id, &topic, viewer).await
+    }
+
     /// A pending topic is visible only to its author and to moderators.
     async fn pending_topic_visible(
         &self,
@@ -196,7 +227,18 @@ impl ForumTopicAudienceVisibilityService {
             Err(ForumError::TopicNotFound(_)) => return Ok(false),
             Err(error) => return Err(error),
         };
-        let policy = load_policy_for_topic(&self.db, tenant_id, &topic).await?;
+        self.policy_allows_for_topic(&self.db, tenant_id, &topic, viewer)
+            .await
+    }
+
+    async fn policy_allows_for_topic<C: ConnectionTrait>(
+        &self,
+        connection: &C,
+        tenant_id: Uuid,
+        topic: &crate::entities::forum_topic::Model,
+        viewer: &ForumTopicAudienceViewer,
+    ) -> ForumResult<bool> {
+        let policy = load_policy_for_topic(connection, tenant_id, topic).await?;
 
         for layer in &policy.inherited_category_layers {
             if !self

@@ -65,12 +65,16 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    explicitly requests CI/CD changes. The attempted workflow edit was
    reverted; once authorized, update the workflow to the live Taxonomy
    owner files and canonical read-cutover test.
-4. **P1, outstanding:** Vote and subscription owner-audience authorization is
-   outside the write transaction and excludes the route channel. Design the
-   external audience-facts snapshot/lock/revalidation contract in the owning
-   ADR before changing all REST/GraphQL services and native/Next adapters.
-   Add policy-revocation races on PostgreSQL, channel-crossing and denied
-   topic-vs-missing non-disclosure regressions.
+4. **P1, partially implemented (remaining external owner contract):** Forum
+   category/topic audience is evaluated from the write transaction after
+   acquiring the category-tree writer lock, including reply-parent lookup.
+   Topic subscription updates use the same boundary; blind clears remain
+   possible after archival. This serializes Forum-owned policy changes with
+   writes, but host-owned trust/channel/group facts remain outside the
+   database snapshot and the vote/subscription route channel is still
+   unmodeled. Design a host-owned revision/fencing contract before claiming
+   full cross-owner atomicity. PostgreSQL revocation and cross-channel race
+   tests remain mandatory.
 5. **P2, source-ready in this branch:** Reply first publication is derived
    from the Forum append-only creation/status journal before the status
    mutation, including `Rejected -> Approved` and `Hidden -> Approved`.

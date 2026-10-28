@@ -88,11 +88,16 @@ decision. Write paths did not:
 
 ## Data, transaction, and concurrency boundary
 
-- The audience gate runs before the write transaction, on the owner-read connection. A policy or
-  trust change that commits between the gate and the write can let one write through. The window
-  is bounded to one request and is accepted for this decision. Re-evaluating the gate inside the
-  transaction would require the policy and facts reads to share the write transaction. That
-  change is out of scope and is recorded as a follow-up.
+- Amendment (2026-10-28): the write audience gate for topic/reply vote set
+  and topic subscription set/update now reads Forum-owned topic/category
+  policy inside the write transaction, after the category-tree writer lock.
+  Forum policy changes using that same lock cannot slip between the check
+  and the commit. Reply parent lookup also moves inside the transaction.
+- Host-owned trust/channel/group facts are still resolved through the
+  external capability port and are **not** protected by this database lock.
+  A host-facts version/fence check and explicit route-channel contract must
+  be adopted by the capability owner before describing external policy
+  revocation as strictly atomic. This is a documented remaining P1 gap.
 - The self-vote check runs inside the transaction, after `lock_active_topic_vote_write_in_tx` and
   `lock_topic_vote_scopes_in_tx`. It reads the locked topic row.
 - Clear operations use the existing lock helpers and do not change their locking order.
@@ -142,8 +147,9 @@ decision. Write paths did not:
   code, and the Leptos server functions would be left out.
 - Gate clears too. Rejected: a user who loses access must still be able to remove their own vote and
   subscription. Gating clears would also make missing and hidden topics distinguishable.
-- Move the gate into the write transaction. Rejected for this change. It needs the facts and policy
-  reads to run on the transaction connection, which the current facts port does not support.
+- Move the gate into the write transaction. The Forum-owned policy portion is
+  now implemented using the existing transactional policy loaders and writer
+  lock. External owner fact fencing is deferred to its capability contract.
 
 ## Verification
 

@@ -15,11 +15,14 @@ use crate::dto::{
 };
 use crate::entities::forum_topic_subscription;
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::rbac::enforce_scope;
 use crate::services::topic_subscription_lock::{
     lock_active_topic_subscription_write_in_tx, lock_topic_subscription_scopes_in_tx,
 };
-use crate::services::topic_write_audience::topic_write_audience_allows;
+use crate::services::topic_write_audience::{
+    topic_write_audience_allows, topic_write_audience_allows_in_tx,
+};
 use crate::subscription::ForumSubscriptionLevel;
 
 use super::SubscriptionService;
@@ -68,6 +71,7 @@ impl SubscriptionService {
                 tenant_id,
                 topic_id,
                 user_id,
+                None,
                 UpdateForumSubscriptionInput {
                     level: ForumSubscriptionLevel::Normal,
                     notify_mentions: None,
@@ -153,35 +157,46 @@ impl SubscriptionService {
         }
         enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        if !topic_write_audience_allows(
-            &self.db,
-            self.audience_facts.clone(),
+        self.write_topic_subscription(
             tenant_id,
             topic_id,
-            &security,
-            context,
+            user_id,
+            Some((security, context)),
+            input,
         )
-        .await?
-        {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-        self.write_topic_subscription(tenant_id, topic_id, user_id, input)
-            .await
+        .await
     }
 
-    /// Persists the subscription row. Callers own the authorization decision: the update
-    /// path checks topic audience first, and the clear path intentionally does not, so a
-    /// caller who lost access to a topic can still remove their own subscription.
+    /// Persists the subscription row. Set/update authorizes on transaction-scoped
+    /// Forum policy rows while holding the category-tree writer lock. Blind
+    /// clear needs no audience gate and may run after topic archival.
     async fn write_topic_subscription(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         user_id: Uuid,
+        audience: Option<(SecurityContext, PortContext)>,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
         let preferences = resolve_preferences(&input);
         let txn = self.db.begin().await?;
-        lock_active_topic_subscription_write_in_tx(&txn, tenant_id, topic_id).await?;
+        if let Some((security, context)) = audience {
+            lock_category_tree_in_tx(&txn, tenant_id).await?;
+            if !topic_write_audience_allows_in_tx(
+                &self.db,
+                &txn,
+                self.audience_facts.clone(),
+                tenant_id,
+                topic_id,
+                &security,
+                context,
+            )
+            .await?
+            {
+                return Err(ForumError::TopicNotFound(topic_id));
+            }
+            lock_active_topic_subscription_write_in_tx(&txn, tenant_id, topic_id).await?;
+        }
         lock_topic_subscription_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         let existing = forum_topic_subscription::Entity::find()
             .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
