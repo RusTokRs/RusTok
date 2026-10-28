@@ -65,11 +65,12 @@ FS-07 `rustok-index` checkbox and component status unchecked.
 A source-pattern pass over the 116 `rustok-index/src/**/*.rs` files and
 selected server/Distribution consumer surfaces found additional unverified
 rollback, persistence, job recovery and source-key admission paths; that pass
-is **not** six-dimensional behavioral proof. In particular,
-`IndexSourceLoadRequest::new` currently checks the first tenant and key-set
-scope but not a nil entity identity; targeted execution provides a later
-preflight. This contract mismatch requires owner review before claiming a
-complete and fail-closed source API.
+is **not** six-dimensional behavioral proof. The subsequent bounded
+source contract correction rejects nil targeted entity ids in
+`IndexSourceLoadRequest::new` before they can reach any source adapter.
+Both canonical request and mode-selection tests now cover the rejection;
+the GraphQL adapter still classifies the invalid `targets` input as
+`BAD_USER_INPUT`. Crate compilation and scenario execution remain open.
 
 GitHub Actions on the current draft PR reproduced one stale repository verifier:
 `verify-index-storage-migrations.mjs` erroneously looked for
@@ -80,6 +81,27 @@ implementation and its public module entrypoint. This has **not yet**
 been re-run with a passing CI result. Separately, the Next admin browser
 run failed to resolve `grapesjs/dist/grapes.min.js` (not evidence of an Index
 cursor regression). Remaining CI and comprehensive verification are open.
+
+### Additional FS-07 scoped fixes and main synchronization barrier (2026-10-28)
+
+- Reject nil entity ids at construction of the canonical targeted source load
+  request, not only at the subsequent executor; update requester/mode/executor
+  regression tests. This does not bypass schema-specific locale admission.
+- Correct source-schema verifier ownership to `src/module.rs` and update
+  mutation-storage verifier's SQLite allowance to match the actual SQLite
+  contract-test adapter (no database support behavior was changed).
+- Extend Index Contract CI with crate-scoped `cargo check --locked -p rustok-index --lib`
+  and `cargo test --locked -p rustok-index --lib` to establish real CI
+  evidence instead of relying on source markers.
+- Latest compared `main` is `097aa2a31a6a9b950c49802f1758dd2e59b93575`.
+  It changes **21 Index source/test files** since the recorded base,
+  including `application/cursor.rs`, `application/localized_cursor.rs`
+  and `domain/error.rs`. These overlaps **must be reconciled** before
+  integration; the earlier non-overlap statement applies to a truncated
+  compare response and must not be used for merge authorization.
+- Source-only changes are not complete audit evidence; maintain the FS-07
+  checkbox as open. Full invariant/transactional assessment and CI validation
+  are still required before any merge.
 
 ## Bounded Product/Pricing remediation — 2026-10-18
 
