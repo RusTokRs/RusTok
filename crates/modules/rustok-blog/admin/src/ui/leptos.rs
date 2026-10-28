@@ -740,11 +740,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     on:input=move |ev| {
                                         let title_input = core::blog_post_admin_title_input_view(
                                             event_target_value(&ev),
-                                            slug.get_untracked().as_str(),
                                         );
-                                        if let Some(slug_value) = title_input.slug_update {
-                                            set_slug.set(slug_value);
-                                        }
                                         set_title.set(title_input.title);
                                     }
                                 />
@@ -809,14 +805,16 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <label class=form_field_classes.checkbox_label>
-                                <input
-                                    type="checkbox"
-                                    prop:checked=publish_now
-                                    on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
-                                />
-                                {form_copy_view.publish_now_label.clone()}
-                            </label>
+                            <Show when=move || editing_post_id.get().is_none()>
+                                <label class=form_field_classes.checkbox_label>
+                                    <input
+                                        type="checkbox"
+                                        prop:checked=publish_now
+                                        on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
+                                    />
+                                    {form_copy_view.publish_now_label.clone()}
+                                </label>
+                            </Show>
 
                             <Show when=move || issue_banner_view.get().visible>
                                 <div class=move || issue_banner_view.get().class>
