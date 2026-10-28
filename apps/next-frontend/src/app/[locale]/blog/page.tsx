@@ -100,8 +100,9 @@ export default async function BlogListingPage({
   let posts: BlogPostSummary[] = [];
   let nextCursor: string | null = null;
   let searchTotal = 0;
-  if (tenantId) {
-    if (searchQuery) {
+  if (searchQuery) {
+      // Search resolves tenant identity exclusively from the trusted host,
+      // so a separate client-supplied tenant UUID is neither needed nor safe.
       const found = await searchPublishedPosts(
         storefrontGraphql,
         tenantSlug,
@@ -114,7 +115,7 @@ export default async function BlogListingPage({
       );
       posts = found.items;
       searchTotal = found.total;
-    } else {
+  } else if (tenantId) {
       const listed = await fetchPublishedPosts(
         storefrontGraphql,
         tenantId,
@@ -127,7 +128,6 @@ export default async function BlogListingPage({
       );
       posts = listed.items;
       nextCursor = listed.nextCursor;
-    }
   }
 
   const filteredPosts = posts;
