@@ -454,12 +454,12 @@ impl SearchDictionaryService {
         let mut pinned = Vec::new();
 
         for rule in &rules {
-            if let Some(position) = ordered.iter().position(|item| {
-                item.id == rule.document_id
-                    && item.source_module == rule.source_module
-                    && item.entity_type == rule.entity_type
-            }) {
-                let existing = ordered.remove(position);
+            if let Some(existing) = take_matching_pinned(
+                &mut ordered,
+                rule.document_id,
+                &rule.source_module,
+                &rule.entity_type,
+            ) {
                 pinned.push((rule.pinned_position.max(1), existing));
                 continue;
             }
@@ -717,6 +717,22 @@ fn map_pinned_item_row(row: QueryResult) -> Result<SearchResultItem> {
     })
 }
 
+/// Removes only the requested owner's item while leaving all other ranked
+/// results in their original order, including coincident UUIDs and locales.
+fn take_matching_pinned(
+    ordered: &mut Vec<SearchResultItem>,
+    document_id: Uuid,
+    source_module: &str,
+    entity_type: &str,
+) -> Option<SearchResultItem> {
+    let position = ordered.iter().position(|item| {
+        item.id == document_id
+            && item.source_module == source_module
+            && item.entity_type == entity_type
+    })?;
+    Some(ordered.remove(position))
+}
+
 fn has_catalog_filters(query: &SearchQuery) -> bool {
     !query.category_ids.is_empty()
         || !query.attribute_filters.is_empty()
@@ -834,6 +850,33 @@ mod tests {
     };
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn pinning_preserves_relevance_and_same_uuid_from_other_owners() {
+        let same_id = Uuid::new_v4();
+        let item = |id: Uuid, module: &str, score: f64| crate::SearchResultItem {
+            id,
+            entity_type: if module == "blog" { "blog_post" } else { "forum_topic" }.to_string(),
+            source_module: module.to_string(),
+            title: module.to_string(),
+            snippet: None,
+            score,
+            locale: Some("en".to_string()),
+            payload: serde_json::json!({}),
+        };
+        let mut ranked = vec![
+            item(same_id, "forum", 0.98),
+            item(same_id, "blog", 0.85),
+            item(Uuid::new_v4(), "blog", 0.3),
+        ];
+        let pinned = super::take_matching_pinned(&mut ranked, same_id, "blog", "blog_post")
+            .expect("Blog item matches the owner-qualified pin");
+        assert_eq!(pinned.source_module, "blog");
+        assert_eq!(ranked.len(), 2);
+        assert_eq!(ranked[0].source_module, "forum");
+        assert_eq!(ranked[0].score, 0.98);
+        assert_eq!(ranked[1].score, 0.3);
+    }
 
     #[test]
     fn pinned_query_rules_must_not_bypass_blog_tag_filter() {
