@@ -1199,6 +1199,37 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
         owner(&db, tenant, Some("mobile"), &requested).await.expect("mobile audience"),
         vec![global_id, mobile_id],
     );
+    let channels = rustok_channel::ChannelService::new(db.clone());
+    let mobile_channel = channels
+        .get_channel_by_slug(tenant, "mobile")
+        .await.expect("lookup mobile channel").expect("mobile exists");
+    channels
+        .bind_module(
+            mobile_channel.id,
+            rustok_channel::BindChannelModuleInput {
+                module_slug: "blog".to_string(),
+                is_enabled: false,
+                settings: None,
+            },
+        ).await.expect("disable Blog on mobile");
+    assert!(
+        owner(&db, tenant, Some("mobile"), &requested)
+            .await.expect("disabled channel must be hidden").is_empty(),
+        "even indexed global Blog posts must not be exposed by a disabled channel"
+    );
+    channels
+        .bind_module(
+            mobile_channel.id,
+            rustok_channel::BindChannelModuleInput {
+                module_slug: "blog".to_string(),
+                is_enabled: true,
+                settings: None,
+            },
+        ).await.expect("re-enable Blog on mobile");
+    assert_eq!(
+        owner(&db, tenant, Some("mobile"), &requested).await.expect("reenabled mobile"),
+        vec![global_id, mobile_id],
+    );
     assert_eq!(
         owner(&db, tenant, None, &requested).await.expect("unscoped audience"),
         vec![global_id],
