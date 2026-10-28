@@ -790,18 +790,21 @@ fn PublishedPostsList(
                                         unknown_label=unknown_status_label.clone()
                                     />
                                     {post.category_name.as_deref().map(|cat| {
-                                        let cat_link = if let Some(cat_id) = post.category_id {
-                                            format!("?category={}", cat_id)
+                                        if let Some(cat_id) = post.category_id.as_deref() {
+                                            view! {
+                                                <a
+                                                    href=core::filter_query_href(None, None, Some(cat_id), None)
+                                                    class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                                                >
+                                                    {cat.to_string()}
+                                                </a>
+                                            }.into_any()
                                         } else {
-                                            format!("?category={}", core::percent_encode(cat))
-                                        };
-                                        view! {
-                                            <a
-                                                href=cat_link
-                                                class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                                            >
-                                                {cat.to_string()}
-                                            </a>
+                                            view! {
+                                                <span class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                                                    {cat.to_string()}
+                                                </span>
+                                            }.into_any()
                                         }
                                     })}
                                 </div>
