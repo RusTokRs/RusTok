@@ -5,12 +5,11 @@
 //! Provider Configuration document because this server does not implement the
 //! complete OIDC ID-token/JWKS surface.
 
-use axum::{Json, extract::State, http::HeaderMap, routing::get};
+use axum::{Json, extract::{Request, State}, http::HeaderMap, routing::get};
 use reqwest::Url;
 use serde::Serialize;
 
-use crate::common::RustokSettings;
-use crate::common::request_trust::extract_effective_proto;
+use crate::common::{RustokSettings, extract_effective_host, extract_effective_proto, peer_ip_from_extensions};
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 
@@ -41,15 +40,19 @@ pub struct OAuthAuthorizationServerMetadata {
 
 async fn get_metadata(
     State(ctx): State<ServerAuthRuntime>,
-    headers: HeaderMap,
+    request: Request,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
     tracing::debug!("oauth_metadata::get_metadata entry");
     let auth_config = ctx
         .auth_config()
         .ok_or_else(|| Error::Message("Auth config error".into()))?;
 
-    let issuer =
-        resolve_metadata_issuer(&auth_config.issuer, &headers, ctx.runtime_ctx().settings());
+    let issuer = resolve_metadata_issuer(
+        &auth_config.issuer,
+        request.headers(),
+        peer_ip_from_extensions(request.extensions()),
+        ctx.runtime_ctx().settings(),
+    );
     Ok(Json(metadata_for_issuer(&issuer)?))
 }
 
@@ -63,17 +66,16 @@ async fn get_metadata(
 fn resolve_metadata_issuer(
     configured: &str,
     headers: &HeaderMap,
+    peer_ip: Option<std::net::IpAddr>,
     settings: &RustokSettings,
 ) -> String {
     if parse_metadata_issuer(configured).is_ok() {
         return configured.to_string();
     }
 
-    let host = headers
-        .get(axum::http::header::HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("localhost");
-    let proto = extract_effective_proto(headers, None, &settings.runtime.request_trust)
+    let host = extract_effective_host(headers, peer_ip, &settings.runtime.request_trust)
+        .unwrap_or_else(|| "localhost".to_string());
+    let proto = extract_effective_proto(headers, peer_ip, &settings.runtime.request_trust)
         .unwrap_or_else(|| "http".to_string());
     tracing::warn!(
         configured_issuer = configured,
@@ -182,6 +184,59 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_fallback_uses_only_trusted_forwarding_context() {
+        use crate::common::{ForwardedHeadersMode, RequestTrustSettings};
+        use std::net::IpAddr;
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::HOST,
+            "backend.internal".parse().unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-host",
+            "evil.example.test, api.example.test".parse().unwrap(),
+        );
+        headers.insert(
+            "x-forwarded-proto",
+            "http, https".parse().unwrap(),
+        );
+
+        assert_eq!(
+            resolve_metadata_issuer(
+                "rustok",
+                &headers,
+                Some(IpAddr::from([10, 0, 0, 2])),
+                &settings,
+            ),
+            "https://api.example.test",
+        );
+        assert_eq!(
+            resolve_metadata_issuer(
+                "rustok",
+                &headers,
+                Some(IpAddr::from([192, 0, 2, 2])),
+                &settings,
+            ),
+            "http://backend.internal",
+        );
+        assert_eq!(
+            resolve_metadata_issuer(
+                "https://issuer.example.test",
+                &headers,
+                Some(IpAddr::from([10, 0, 0, 2])),
+                &settings,
+            ),
+            "https://issuer.example.test",
+        );
+    }
 
     #[test]
     fn metadata_uses_auth_issuer_as_the_single_public_base() {
