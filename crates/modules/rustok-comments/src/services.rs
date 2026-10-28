@@ -304,6 +304,14 @@ impl CommentsService {
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
             let comment = self.find_comment(tenant_id, comment_id, false).await?;
+            // The canonical owner cannot determine whether an arbitrary
+            // consumer target is publicly visible. Generic COMMENTS_READ
+            // therefore authorizes only own comments, not another author's
+            // unpublished/approved content. Consumer public reads must use
+            // the approved-only port and apply their own target visibility.
+            if !self.can_moderate(&security) && security.user_id != Some(comment.author_id) {
+                return Err(CommentsError::CommentNotFound(comment_id));
+            }
             let thread = comment_thread::Entity::find_by_id(comment.thread_id)
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
                 .one(&self.db)
@@ -651,7 +659,9 @@ impl CommentsService {
                     "target_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::List)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
             let requested_limit = Some(filter.per_page);
@@ -835,7 +845,9 @@ impl CommentsService {
                     "tenant_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::List)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
 
             let mut query = comment_thread::Entity::find()
                 .filter(comment_thread::Column::TenantId.eq(tenant_id))
@@ -903,7 +915,9 @@ impl CommentsService {
                     "thread_id cannot be nil".to_string(),
                 ));
             }
-            self.enforce_read_scope(&security, Action::Read)?;
+            // Full thread state contains pending/spam/trash entries, so a
+            // generic read/list grant cannot authorize this owner projection.
+            self.enforce_moderation_scope(&security)?;
             let locale = normalize_locale(&filter.locale)?;
             let fallback_locale = filter
                 .fallback_locale
