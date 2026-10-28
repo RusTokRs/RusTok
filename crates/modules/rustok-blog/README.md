@@ -156,7 +156,11 @@ copy must use the canonical Taxonomy owner contract.
 - Used by `apps/admin` and `apps/storefront` through manifest-driven Leptos
   package composition.
 - Public Blog reads honor channel module bindings and typed post visibility
-  allowlists; authenticated/admin flows bypass the public channel gate.
+  allowlists. **Authentication alone does not bypass** that gate: only a
+  tenant-wide editor may read posts independently of storefront channels.
+  REST and GraphQL authenticated post lists apply public channel filtering in
+  the owner query before cursor/limit calculation for readers without editor
+  authority; direct unscoped public reads see globally visible posts only.
 - Post adapters validate `blog_posts:*`; category adapters validate only
   `blog_categories:*`. Catalog `categories:*` and `blog_posts:*` do not
   authorize Blog Category operations.
@@ -247,8 +251,12 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   neither be born expired nor outlive 30 days; an out-of-range request is refused instead of being
   stored.
 - `get_post_by_token` resolves only an unexpired token whose tenant still has Blog enabled, and
-  loads the post through the draft-only preview accessor. A revoked, expired, foreign, or
-  module-disabled token reads as "not found" rather than as an error.
+  loads the post through the draft-only preview accessor. REST keeps its
+  deliberately unscoped bearer-token contract. GraphQL uses
+  `get_post_by_token_for_tenant`, which additionally restricts the lookup to the
+  current authenticated/request tenant, so a foreign tenant's token cannot
+  leak its draft through a different tenant's GraphQL endpoint. A revoked,
+  expired, foreign (in GraphQL), or module-disabled token reads as "not found".
 - `revoke_token` reports a missing or foreign token as `PreviewTokenNotFound`
   (`PREVIEW_TOKEN_NOT_FOUND`), never as a missing post.
 - A token authorizes a read of a draft only, so leaving the draft state revokes the post's
