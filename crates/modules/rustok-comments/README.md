@@ -18,6 +18,15 @@
 - Reuse shared locale fallback semantics from `rustok-content` so comment reads match other localized content modules.
 - Emit module-level entrypoint/error metrics and bounded read-path telemetry for the comments service surface.
 - Enforce thread and moderation status rules in the service layer instead of treating them as storage-only fields.
+- Full owner moderation queues (`list_comments_for_target`, `list_threads`,
+  `get_thread_detail`) require Comments moderation/management authority; a
+  generic Comments read/list grant cannot disclose pending, spam or trash.
+  Direct `get_comment` grants access to the author or moderator only: the
+  Comments owner cannot know whether another module's target is publicly
+  visible, so consumers must use `list_public_comments_for_target` (approved
+  only) plus their own target-visibility gate.
+- Non-moderators may create only pending comments; pre-approval and spam/trash
+  initial states require moderator authority.
 - Own transactional comment position allocation and explicit thread counter refreshes below transport/service callers.
 - Serialize first-thread creation by tenant/target identity without transport retries.
 - Keep status-only and metadata-only thread updates out of the counter write path.
