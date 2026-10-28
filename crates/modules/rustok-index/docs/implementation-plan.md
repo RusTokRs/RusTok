@@ -1,5 +1,19 @@
 # Implementation plan for `rustok-index`
 
+## FS-07 audit continuation — query cursor bounds (2026-10-28)
+
+- Finding: ordinary/localized query continuation Base64 decode had no input byte
+  limit, whereas source replay cursors have a separate 8 KiB cap.
+- Bounded source remediation: cap encoded query continuations at 64 KiB in query
+  admission and both codecs, including outbound tokens; add rejection tests.
+- No query cursor wire-version change, owner/tenant schema change, or
+  authoritative consumer cutover.
+- Status: **source-only / unverified / not integrated** at initial PR preparation.
+  Maintainer verification: `cargo check -p rustok-index`,
+  `cargo test -p rustok-index --lib`, remediation gate, CI/consumer tests.
+- The 137-file FS-07 audit remains **open**; neither its checkbox nor the
+  `.review_ledger.json` status is advanced by this bounded slice.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`
