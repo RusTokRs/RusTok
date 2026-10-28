@@ -40,6 +40,20 @@
 - The 137-file FS-07 audit remains **open**; neither its checkbox nor the
   `.review_ledger.json` status is advanced by this bounded slice.
 
+### 2026-10-28 review extension (open)
+
+- CI's Index Storage Scale Evidence failure pointed to a stale checker that
+  sought the Index migration provider methods in `src/lib.rs`, not the
+  canonical `src/module.rs`; `scripts/verify/verify-index-storage-migrations.mjs`
+  now matches the actual Rust ownership boundary. A new CI run is required.
+- A read-only survey of 116 Index Rust source files and selected server
+  consumers identified paths for full semantic review rather than proving
+  their correctness. Source replay key admission and transactional rollback
+  diagnostics remain pending.
+- The unrelated Next-admin browser job failed resolving
+  `grapesjs/dist/grapes.min.js`. This is not claimed fixed here.
+- No FS-07 completion, readiness, or runtime/test-success assertion.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`
