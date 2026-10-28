@@ -12,7 +12,11 @@
 - Own the `sys_events` schema (table, claim index, retention index) and related migrations.
 - Own the generic `owner_operation_receipts` schema and fenced idempotency
   admission/replay primitive; owner services retain their domain mutations and
-  semantic side effects.
+  semantic side effects. The owner may persist terminal failures with `fail`,
+  but retryable failures must use `release_retryable` after rolling back (or
+  receiving a commit error). Release requires both a matching lease token and
+  `processing` status, so it cannot delete a completed receipt or a reclaimed
+  operation.
 - Expose the runtime services used by `apps/server` event bootstrap and background delivery.
 - Ship the module-owned Leptos admin UI package for relay visibility with a `core/transport/ui` FFA split.
 
