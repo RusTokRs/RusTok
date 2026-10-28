@@ -197,4 +197,8 @@ pub struct BlogPostDraft {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    /// RFC 3339 timestamp; absent means unscheduled.
+    pub scheduled_at: Option<String>,
+    /// The form may change schedule only while the post is a draft.
+    pub schedule_editable: bool,
 }
