@@ -227,10 +227,19 @@ impl SearchDictionaryService {
             FROM search_documents
             WHERE tenant_id = $1
               AND document_id = $2
+              AND source_module = $3
+              AND entity_type = $4
+              AND ($5 = '' OR locale = $5)
             ORDER BY indexed_at DESC
             LIMIT 1
             "#,
-            vec![tenant_id.into(), document_id.into()],
+            vec![
+                tenant_id.into(),
+                document_id.into(),
+                source_module.to_string().into(),
+                entity_type.to_string().into(),
+                query.locale.clone().unwrap_or_default().into(),
+            ],
         );
         let document_row = db
             .query_one_raw(document_stmt)
@@ -437,15 +446,20 @@ impl SearchDictionaryService {
             return Ok(result);
         }
 
-        let mut by_id = result
-            .items
-            .drain(..)
-            .map(|item| (item.id, item))
-            .collect::<BTreeMap<_, _>>();
+        // Preserve the engine's relevance order and every source/locale
+        // document. Converting this page into a UUID-keyed BTreeMap sorted by
+        // identity instead of score and dropped independent owner documents
+        // whose UUID happened to match.
+        let mut ordered = std::mem::take(&mut result.items);
         let mut pinned = Vec::new();
 
         for rule in &rules {
-            if let Some(existing) = by_id.remove(&rule.document_id) {
+            if let Some(position) = ordered.iter().position(|item| {
+                item.id == rule.document_id
+                    && item.source_module == rule.source_module
+                    && item.entity_type == rule.entity_type
+            }) {
+                let existing = ordered.remove(position);
                 pinned.push((rule.pinned_position.max(1), existing));
                 continue;
             }
@@ -454,14 +468,18 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(item) =
-                Self::load_pinned_item(db, query, rule.document_id, storefront_channel).await?
-            {
+            if let Some(item) = Self::load_pinned_item(
+                db,
+                query,
+                rule.document_id,
+                &rule.source_module,
+                &rule.entity_type,
+                storefront_channel,
+            ).await? {
                 pinned.push((rule.pinned_position.max(1), item));
             }
         }
 
-        let mut ordered = by_id.into_values().collect::<Vec<_>>();
         for (pinned_position, item) in pinned.into_iter().rev() {
             let index = pinned_position.saturating_sub(1) as usize;
             ordered.insert(index.min(ordered.len()), item);
@@ -475,6 +493,8 @@ impl SearchDictionaryService {
         db: &DatabaseConnection,
         query: &SearchQuery,
         document_id: Uuid,
+        source_module: &str,
+        entity_type: &str,
         storefront_channel: Option<&TrustedStorefrontChannel>,
     ) -> Result<Option<SearchResultItem>> {
         let tenant_id = query
