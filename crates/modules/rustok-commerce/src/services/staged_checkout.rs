@@ -14,9 +14,9 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 use super::{
     BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutFulfillmentStageError,
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderStageError,
-    CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
-    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutPaymentStageError,
+    CheckoutPlanBuilder, CheckoutStagePipeline, CheckoutStagePipelineError,
+    DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 #[cfg(feature = "marketplace-financial")]
 use super::{
@@ -572,6 +572,7 @@ fn completed_response(completed: CheckoutCompletedState) -> CompleteCheckoutResp
 
 #[cfg(test)]
 mod tests {
+    use super::super::CheckoutOrderStageError;
     use super::*;
 
     #[test]

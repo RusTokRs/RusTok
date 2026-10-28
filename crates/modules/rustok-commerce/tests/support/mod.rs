@@ -409,8 +409,22 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         .unwrap()
     {
         rustok_product::migrations::migrations()
-            .last()
-            .unwrap()
+            .iter()
+            .find(|m| m.name() == "m20261018_000037_create_product_media_releases")
+            .expect("migration m20261018_000037_create_product_media_releases not found")
+            .up(&SchemaManager::new(db))
+            .await
+            .unwrap();
+    }
+    if !SchemaManager::new(db)
+        .has_table("product_variant_axes")
+        .await
+        .unwrap()
+    {
+        rustok_product::migrations::migrations()
+            .iter()
+            .find(|m| m.name() == "m20261026_000038_create_variant_axes_tables")
+            .expect("migration m20261026_000038_create_variant_axes_tables not found")
             .up(&SchemaManager::new(db))
             .await
             .unwrap();

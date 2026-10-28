@@ -166,18 +166,21 @@ async fn create_protocol_schema(db: &DatabaseConnection) {
         )
         .await
         .unwrap();
-    rustok_product::migrations::migrations()
-        .last()
-        .unwrap()
-        .up(&manager)
-        .await
-        .unwrap();
+    let migrations = rustok_product::migrations::migrations();
+    let migration = migrations
+        .iter()
+        .find(|m| m.name() == "m20261018_000037_create_product_media_releases")
+        .expect("migration m20261018_000037_create_product_media_releases not found");
+    migration.up(&manager).await.unwrap();
 }
 async fn exercise(db: DatabaseConnection) {
     create_protocol_schema(&db).await;
     let manager = SchemaManager::new(&db);
     let migrations = rustok_product::migrations::migrations();
-    let migration = migrations.last().unwrap();
+    let migration = migrations
+        .iter()
+        .find(|m| m.name() == "m20261018_000037_create_product_media_releases")
+        .expect("migration m20261018_000037_create_product_media_releases not found");
     assert_eq!(
         migration.name(),
         "m20261018_000037_create_product_media_releases"

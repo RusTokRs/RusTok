@@ -212,29 +212,20 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Alias::new("product_attribute_group_attributes"))
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Alias::new("tenant_id"))
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("group_id"))
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Alias::new("attribute_id"))
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Alias::new("tenant_id")).uuid().not_null())
+                    .col(ColumnDef::new(Alias::new("group_id")).uuid().not_null())
+                    .col(ColumnDef::new(Alias::new("attribute_id")).uuid().not_null())
                     .col(
                         ColumnDef::new(Alias::new("position"))
                             .integer()
                             .not_null()
                             .default(0),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(Alias::new("tenant_id"))
+                            .col(Alias::new("group_id"))
+                            .col(Alias::new("attribute_id")),
                     )
                     .foreign_key(
                         ForeignKey::create()
