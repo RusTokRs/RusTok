@@ -23,6 +23,21 @@
 ## Related documents
 
 
+## Query continuation admission (FS-07 bounded remediation, 2026-10-28)
+
+The encoded `Pagination::Cursor.after` value is limited to **64 KiB**
+(`MAX_QUERY_CURSOR_BYTES`) at query-shape validation, before any Base64 allocation
+or checksum work. Both ordinary and localized query cursor codecs reject
+oversized encoded inputs and refuse to emit continuations above the same limit.
+This is a request-size admission constraint, independent of the separate 8 KiB
+JSON source-replay cursor budget. Cursor wire versions and query/fingerprint
+semantics are unchanged. Large sortable text values may prevent emitting a
+continuation and surface a typed codec error rather than an unusable token;
+production consumers should avoid ordering by unbounded text.
+
+This is **source-only, unverified** until scoped Rust checks and owner/runtime
+validation execute. It does not establish FS-07 Index crate audit completion.
+
 ## Architectural Comparison Matrix
 
 | Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
