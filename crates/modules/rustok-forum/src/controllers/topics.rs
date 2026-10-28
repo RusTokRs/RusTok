@@ -219,7 +219,23 @@ fn topic_audience_list_service(
 
 #[cfg(test)]
 mod tests {
-    use super::{PaginationParams, clamp_per_page};
+    use super::{ListTopicsQuery, PaginationParams, clamp_per_page};
+    use crate::ForumTopicListOrder;
+    use serde_json::json;
+
+    #[test]
+    fn omitted_rest_topic_sort_is_not_a_synthetic_latest_order() {
+        let omitted: ListTopicsQuery = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(omitted.order, None);
+        let latest: ListTopicsQuery =
+            serde_json::from_value(json!({"order": "latest"})).unwrap();
+        assert_eq!(latest.order, Some(ForumTopicListOrder::Latest));
+        let top: ListTopicsQuery = serde_json::from_value(json!({"order": "top"})).unwrap();
+        assert_eq!(top.order, Some(ForumTopicListOrder::Top));
+        assert!(
+            serde_json::from_value::<ListTopicsQuery>(json!({"order": "votes"})).is_err()
+        );
+    }
 
     #[test]
     fn pagination_params_limit_clamps_large_page_size() {
