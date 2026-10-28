@@ -831,24 +831,26 @@ async fn authorize_gated_candidates(
 
 fn unique_candidate_descriptors(
     candidates: &[SearchCandidateDescriptor],
-) -> Result<BTreeMap<Uuid, SearchCandidateDescriptor>, PortError> {
-    let mut unique: BTreeMap<Uuid, SearchCandidateDescriptor> = BTreeMap::new();
+) -> Result<BTreeMap<(String, Uuid), SearchCandidateDescriptor>, PortError> {
+    // UUID uniqueness is owned by each module, not by the entire platform.
+    // Two modules with an imported/shared entity UUID remain independently
+    // eligible; one module + UUID with conflicting entity types is corrupted.
+    let mut unique: BTreeMap<(String, Uuid), SearchCandidateDescriptor> = BTreeMap::new();
     for candidate in candidates {
-        if let Some(existing) = unique.get(&candidate.document_id) {
-            if existing.source_module != candidate.source_module
-                || existing.entity_type != candidate.entity_type
-            {
+        let key = (candidate.source_module.clone(), candidate.document_id);
+        if let Some(existing) = unique.get(&key) {
+            if existing.entity_type != candidate.entity_type {
                 return Err(PortError::invariant_violation(
                     "search.audience.candidate_conflict",
                     format!(
-                        "Search audience candidate {} was reported with conflicting source module or entity type",
-                        candidate.document_id
+                        "Search audience candidate {} from module {} has conflicting entity types",
+                        candidate.document_id, candidate.source_module
                     ),
                 ));
             }
             continue;
         }
-        unique.insert(candidate.document_id, candidate.clone());
+        unique.insert(key, candidate.clone());
     }
     Ok(unique)
 }
@@ -978,6 +980,40 @@ mod tests {
         assert!(allowed.contains(&allowed_event));
         assert!(!allowed.contains(&denied_event));
         assert!(allowed.contains(&blog_post)); // Blog is declared public
+    }
+
+    #[tokio::test]
+    async fn identical_uuids_from_two_modules_never_share_an_audience_grant() {
+        let shared_id = Uuid::new_v4();
+        let mut registry = public_blog_registry();
+        registry.register(MockEventsPolicy { allowed_id: Uuid::new_v4() })
+            .expect("gated module registered");
+
+        let allowed = resolve_audience_eligible_candidates_by_module(
+            &registry,
+            Uuid::new_v4(),
+            "en",
+            &[
+                SearchCandidateDescriptor::new(shared_id, "blog", "blog_post"),
+                SearchCandidateDescriptor::new(shared_id, "events", "event_announcement"),
+            ],
+            None,
+            None,
+            StorefrontSearchTransport::Graphql,
+        ).await.expect("independent modules may use the same UUID");
+
+        assert_eq!(
+            allowed,
+            HashSet::from([("blog".to_string(), shared_id)]),
+            "the denied Events document must not inherit the Blog approval"
+        );
+        assert!(
+            unique_candidate_descriptors(&[
+                SearchCandidateDescriptor::new(shared_id, "blog", "blog_post"),
+                SearchCandidateDescriptor::new(shared_id, "blog", "other_entity"),
+            ]).is_err(),
+            "conflicting types inside a single owner remain a hard failure"
+        );
     }
 
     #[tokio::test]
