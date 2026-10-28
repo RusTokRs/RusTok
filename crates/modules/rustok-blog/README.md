@@ -201,18 +201,22 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   host owns the poll loop and the deployment stop signal: `blog_scheduled_publish`,
   `blog_preview_token_cleanup` and `blog_route_reconciliation`. A deployment that does not
   run the host's module-work scheduler in `full`/`worker` mode gets no scheduled publishing.
-- Every work item is tenant-scoped. Discovery is a read-only hint (the tenant with the
-  earliest due schedule) and the owner command re-checks the due predicate through the
-  post-version CAS, so one tenant's backlog cannot starve another and a stale hint cannot
-  publish the wrong post.
-- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes the drafts of one
-  tenant whose `scheduled_at` has passed, oldest first, at most
-  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 per call. Each post runs the same
-  transition command as a manual publish in its own transaction: a post edited after the scan
-  fails the CAS and is skipped with a warning instead of being overwritten, and the next
-  scheduler iteration picks it up. The `BlogPostPublished` event is published in the same
-  transaction, under the system actor — which is why this command is never reachable from an
-  end-user transport.
+- Every work item is tenant-scoped. The first discovery chooses the oldest due
+  schedule; later local claims rotate over due tenant ids, even if an earlier
+  tenant has a permanently failing draft. This fairness cursor is an
+  in-memory scheduling hint, **not** durable retry state or a lease; other host
+  instances may claim the same tenant. The authoritative owner command scans
+  due drafts and uses post-version CAS to reject concurrent edits.
+- `PostService::publish_scheduled_posts(tenant_id, limit)` publishes at most
+  `limit.clamp(1, MAX_SCHEDULED_PUBLISH_BATCH)` = 200 **successful** due
+  drafts per call. Database reads are individually bounded and seek forward by
+  `(scheduled_at, id)`; a failing draft is logged, left due for repair/retry,
+  and does not hide healthy drafts behind the first fixed-size page. Because
+  failures do not count against the success budget, a run with many damaged
+  rows can inspect more than 200 candidates. Each post runs the same versioned
+  transition as manual publishing in its own transaction, with
+  `BlogPostPublished` atomically announced under the system actor. The owner
+  command is not reachable from an end-user transport.
 - `scheduled_at` is a draft-only intent on both write paths. On create, setting it together
   with `publish: true` is rejected; on update, a `Set` patch is refused unless the row is a
   draft, and a past timestamp is refused on both. Publishing clears the schedule it consumed,
