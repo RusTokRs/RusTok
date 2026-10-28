@@ -740,6 +740,42 @@ mod scheduled_publish_worker_tests {
         );
     }
 
+    /// Tenant work remains claimable even when an older tenant never makes
+    /// progress. Claims are hints, so the first item is deliberately not
+    /// executed before asking for the second one.
+    #[tokio::test]
+    async fn scheduled_claim_rotates_tenants_when_the_oldest_stays_due() {
+        let (db, events) = setup_hardening_schema().await;
+        let oldest_tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let oldest = create_draft_post(&db, &events, oldest_tenant, "oldest-stuck").await;
+        let other = create_draft_post(&db, &events, other_tenant, "other-still-due").await;
+        make_post_due(&db, oldest, 3).await;
+        make_post_due(&db, other, 1).await;
+
+        let adapter = adapter(&db, &events);
+        let first = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("claim must succeed")
+            .expect("oldest tenant has work");
+        assert_eq!(first.tenant_id, oldest_tenant);
+
+        let second = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("second claim must succeed")
+            .expect("second tenant must not be starved");
+        assert_eq!(second.tenant_id, other_tenant);
+
+        let third = adapter
+            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
+            .await
+            .expect("third claim must succeed")
+            .expect("cycle must wrap back to remaining due work");
+        assert_eq!(third.tenant_id, oldest_tenant);
+    }
+
     /// The oldest due draft can be permanently invalid. The command must walk
     /// beyond the first fixed-size page rather than retrying that row forever.
     #[tokio::test]
