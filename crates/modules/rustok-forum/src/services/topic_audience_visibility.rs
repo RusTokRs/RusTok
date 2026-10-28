@@ -187,13 +187,12 @@ impl ForumTopicAudienceVisibilityService {
             Err(ForumError::TopicNotFound(_)) => return Ok(false),
             Err(error) => return Err(error),
         };
-        if topic.deleted_at.is_some()
-            || (topic.status == TopicStatus::Pending
-                && !can_see_pending(
-                    viewer.security(),
-                    Resource::ForumTopics,
-                    topic.author_id,
-                ))
+        if topic.status == TopicStatus::Pending
+            && !can_see_pending(
+                viewer.security(),
+                Resource::ForumTopics,
+                topic.author_id,
+            )
         {
             return Ok(false);
         }
