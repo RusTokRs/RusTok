@@ -153,6 +153,8 @@ struct UpdatePostInput {
     seo_title: Option<String>,
     #[serde(rename = "seoDescription")]
     seo_description: Option<String>,
+    #[serde(rename = "scheduledAt", skip_serializing_if = "Option::is_none")]
+    scheduled_at: Option<Option<String>>,
     version: i32,
 }
 
@@ -287,7 +289,7 @@ pub async fn create_post(
                 featured_image_url: draft.featured_image_url,
                 seo_title: draft.seo_title,
                 seo_description: draft.seo_description,
-                scheduled_at: None,
+                scheduled_at: draft.scheduled_at,
             },
         },
         token.clone(),
@@ -325,6 +327,7 @@ pub async fn update_post(
                 featured_image_url: draft.featured_image_url,
                 seo_title: draft.seo_title,
                 seo_description: draft.seo_description,
+                scheduled_at: draft.schedule_editable.then_some(draft.scheduled_at),
                 version: draft.version.ok_or_else(|| {
                     GraphqlHttpError::Graphql(
                         "Blog post revision is missing; reload before saving".into(),
