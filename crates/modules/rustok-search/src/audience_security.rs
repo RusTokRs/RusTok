@@ -1590,6 +1590,7 @@ mod tests {
             source_modules,
             statuses: Vec::new(),
             category_ids: Vec::new(),
+            tag: None,
             attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,
