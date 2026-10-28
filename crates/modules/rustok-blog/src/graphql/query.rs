@@ -432,9 +432,15 @@ impl BlogQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
+        let tenant_id = query_tenant_id(ctx, tenant, None)?;
         let service = crate::services::PreviewTokenService::new(db.clone(), event_bus.clone());
         let post = service
-            .get_post_by_token(&token, &locale, Some(tenant.default_locale.as_str()))
+            .get_post_by_token_for_tenant(
+                tenant_id,
+                &token,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
             .await
             .map_err(crate::error::public::to_graphql_error)?;
 
