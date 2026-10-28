@@ -5,6 +5,7 @@ It defines how changes are discovered, designed, implemented, verified, document
 
 The keywords MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
 A repository-local rule may be stricter than this file but may not weaken it unless an accepted architecture decision explicitly changes the platform contract.
+Current code, canonical documentation, and accepted ADRs define existing contracts; their authority does not establish that their design is optimal. Demonstrably flawed decisions MUST be corrected through the owning contract and ADR governance, not perpetuated merely because they are documented.
 
 Do not create numbered, suffixed, legacy, or parallel variants of this governance file.
 Update this canonical AGENTS.md in place.
@@ -32,6 +33,11 @@ An agent MUST NOT invent an exception to a platform rule.
 If two mandatory rules genuinely conflict, surface the conflict and resolve it through the owning contract or an ADR rather than bypassing either rule.
 
 ## 2. Required start protocol
+
+Full-stack (§2.1) and cross-cutting (§2.1.1) audit execution protocols are conditional. They apply only when the user explicitly requests execution or continuation of the corresponding audit plan, including its canonical trigger. Reading this file, requesting an ideal implementation, or performing ordinary development does not activate an audit protocol.
+
+For ordinary features, bug fixes, and targeted refactoring, agents MUST NOT start or advance audit ledger phases, read audit-only ledgers or exhaustive audit runbooks solely because they are referenced here, or silently expand the task into an unrelated full-crate audit. The general start protocol below, all repository-wide engineering rules, root-cause investigation, affected-boundary completeness, and cross-client parity remain mandatory. Only audit-specific exhaustive *whole-crate* inspection, zero-known-defect remediation across unrelated crate functionality, and phase-completion requirements are conditional.
+
 ### 2.1 Full-Stack Audit Execution Contract
 
 The canonical trigger for the repository-wide deep audit is the single instruction:
@@ -87,7 +93,7 @@ Before changing repository content, contributors and agents MUST:
 7. Inspect active ADRs that govern the affected boundary before proposing a competing model.
 8. Capture the current main commit SHA before starting work.
 9. Identify the affected change surface before implementation.
-10. For continuous code quality, debt reduction, and slop remediation sweeps, follow `docs/CONTINUOUS_CODE_REVIEW.md` and update `docs/standards/continuous-review-ledger.md`.
+10. For explicitly activated full-stack audit work, follow `docs/CONTINUOUS_CODE_REVIEW.md` and update `docs/standards/continuous-review-ledger.md`. Ordinary scoped quality improvements MUST follow the applicable engineering and verification rules without activating or advancing an audit ledger.
 
 The minimum change-surface review for a non-trivial change is:
 - canonical owner and source of truth;
@@ -154,8 +160,8 @@ Deliver the coherent target design, not the smallest patch that makes one sympto
 MUST:
 - investigate and address root causes;
 - understand the behavioral purpose of the code and verify its logical correctness, not merely its syntax or formatting;
-- conduct exhaustive, crate-wide analysis across all source files of the target component, remediating all discovered defects to a zero-defect state ("косяков нет") before advancing to the next component;
-- systematically verify the 6 Universal Logic Dimensions (preconditions & bounds, branch completeness & anti-swallowing, state transitions, side-effect completeness, algorithmic/calculation precision, order/concurrency);
+- thoroughly inspect and correct the complete affected functional and architectural boundary, not merely initially reported symptoms or edited files; for an explicitly activated full-stack audit, additionally inspect every source file of the in-scope crate and resolve all discovered crate defects before advancing to the next ledger component;
+- systematically verify the 6 Universal Logic Dimensions (preconditions & bounds, branch completeness & anti-swallowing, state transitions, side-effect completeness, algorithmic/calculation precision, order/concurrency) throughout the affected boundary, and throughout every in-scope component during an activated full-stack audit;
 - preserve clear ownership and dependency direction;
 - keep code, schema, callers, transports, tests, configuration, generated artifacts, and documentation consistent;
 - implement required runtime wiring, not only source markers;
@@ -163,8 +169,8 @@ MUST:
 - run strictly crate-scoped verification: use `cargo check -p <crate>` or `cargo test -p <crate> --lib` targeted to the specific affected crate rather than workspace-wide builds.
 
 MUST NOT:
-- skim only surface files or fix a couple of scanner-reported warnings while leaving the rest of the crate uninspected or broken ("верхоглядство");
-- advance to another component when known defects or unverified source files remain in the current crate;
+- skim only surface files or scanner-reported warnings while leaving affected logic, callers, and contracts uninspected or broken ("верхоглядство"); during an activated full-stack audit, leaving any in-scope source files uninspected is also prohibited;
+- advance an active audit ledger to another component while known defects or unverified source files remain in the audited crate;
 - prioritize cosmetic/syntactic refactoring over behavioral and logical correctness;
 - suppress errors silently via `let _ = ...` or fake `Ok(())` defaults that hide broken execution chains;
 - introduce hidden coupling, special-case branches, fragile workarounds, or knowingly duplicated sources of truth;
@@ -174,6 +180,14 @@ MUST NOT:
 - compile `apps/server` (`-p rustok-server`) when working on an isolated domain module, as server default features pull all 40+ modules.
 
 Prefer designs in which invalid states are unrepresentable through Rust types, database constraints, or both.
+
+### Proactive engineering and architectural self-correction
+
+Existing code, documentation, and ADRs describe prior implementations and decisions; they are not proof that those choices are optimal. Agents MUST critically evaluate relevant patterns and decisions rather than blindly copy a flawed, unnecessarily complex, or inferior design.
+
+When a materially better approach is justified by concrete improvements in correctness, simplicity, maintainability, performance, or extensibility, agents MUST implement it within the assigned change boundary and synchronize affected code, tests, documentation, and architectural contracts. This includes correcting demonstrably flawed ADRs under §11; accepted decisions are subject to improvement, not unquestioning preservation.
+
+Agents MUST explain the engineering rationale and material tradeoffs. If an improvement materially expands beyond the assigned boundary, agents MUST proactively propose it with its impact and verification needs rather than silently launch unrelated work. Speculative abstractions, stylistic preferences, and task-scope arguments MUST NOT justify churn or an incomplete implementation.
 
 ## 5. Ownership, boundaries, and dependency direction
 
@@ -489,6 +503,7 @@ An ADR SHOULD state:
 
 ADR history is preserved by supersession, not by silently rewriting architectural history.
 A later decision may supersede an earlier one; current architecture docs should point to the active decision.
+Agents MUST correct demonstrably incorrect or suboptimal ADR guidance within the affected task boundary, with a concrete technical rationale and synchronization of affected contracts. Factual corrections and clarifications MAY be made in place; replacing an accepted architectural decision MUST preserve its history through a superseding ADR. An agent does not need a separate request merely to correct an ADR within its assigned scope. Substantial unrelated redesigns MUST be proposed rather than silently added to the task.
 
 Implementation plans answer how and in what sequence accepted architecture is delivered.
 They MUST NOT introduce a competing architecture merely because it is easier to implement.
@@ -513,6 +528,7 @@ When changing architecture, APIs, events, modules, tenancy, routing, UI contract
 - delete superseded current-state guidance once replacement is canonical.
 
 Documentation MUST describe the actual current state and, where relevant, clearly distinguish unfinished accepted target work from already implemented behavior.
+Agents MUST evaluate documentation critically. When current guidance is demonstrably wrong, stale, unnecessarily complex, or inferior, agents MUST correct it in the affected scope instead of repeating a known bad design. Update the owning source of truth and all affected projections consistently; changes to accepted ADR decisions follow §11. Documentation authority does not prohibit evidence-based architectural improvement.
 
 ## 13. Initial implementation and zero-legacy policy
 
@@ -555,7 +571,7 @@ Test doubles (such as in-memory repository implementations) are explicitly permi
 
 ### Mandatory documentation of production gaps (Explicit Incompleteness)
 
-Any unfinished functionality, deferred boundary, partial implementation, or known limitation in production runtime MUST be explicitly documented in the owning component's `README.md` (under a dedicated "Known Limitations / Pending Implementation" section) and tracked in the audit ledger/plan. 
+Any unfinished functionality, deferred boundary, partial implementation, or known limitation in production runtime MUST be explicitly documented in the owning component's `README.md` (under a dedicated "Known Limitations / Pending Implementation" section) and tracked in the relevant active implementation plan or existing task record. Audit ledgers are updated only when the corresponding audit protocol is active. 
 Leaving an undocumented gap, hiding incomplete runtime behavior behind silent fallbacks, or claiming completion for a partial implementation is strictly forbidden. An unrecorded incompleteness in production is treated as a defect.
 
 If required target behavior exists but is unwired, either:
@@ -602,6 +618,8 @@ Verification responsibilities:
 
 ## 16. Definition of Done
 
+For ordinary development, completion covers the entire affected functional and architectural boundary, including applicable persistence, events, APIs, Leptos and Next.js implementations, tests, and documentation; it is not limited to the initial files or symptoms. The absence of an active audit plan is never grounds to leave a known defect or inconsistency within that boundary. For an explicitly activated audit, completion additionally requires the exhaustive whole-component inspection, remediation, and ledger integration evidence defined by the audit protocol.
+
 A task is complete only when every applicable item below is true:
 
 - one canonical implementation remains;
@@ -619,7 +637,7 @@ A task is complete only when every applicable item below is true:
 - architecture changes have the required ADR;
 - removed names and obsolete concepts have been searched repository-wide;
 - no task-local placeholder, hidden fallback, unexplained suppression, or known inconsistent path remains;
-- any conscious, partially implemented target or deferred production boundary is explicitly documented in the component's `README.md` and ledger as pending work, rather than left hidden;
+- any consciously deferred production boundary is explicitly documented in the component's `README.md` and applicable active implementation plan or task record (and in the audit ledger when that audit is active), rather than left hidden or reported as complete;
 - applicable verification has passed, or unrun checks and blockers are reported explicitly.
 
 A partially implemented target MUST be described as incomplete.
