@@ -352,25 +352,25 @@ impl CommentService {
             .map_err(comments_port_error_to_blog_error)?;
         let post_id = Self::ensure_blog_target(&record)?;
         self.ensure_post_exists(tenant_id, post_id).await?;
-        if !may_moderate_comments(&security) && security.user_id != Some(record.author_id) {
-            // A valid comment ID is not permission to inspect a pending/spam
-            // entry belonging to someone else. Even approved comments require
-            // a currently public post and enabled discussion policy.
-            if record.status != ApiCommentStatus::Approved {
+        match comment_detail_read_policy(&security, record.author_id, record.status) {
+            CommentDetailReadPolicy::Owner => {}
+            CommentDetailReadPolicy::Denied => {
                 return Err(BlogError::comment_not_found(comment_id));
             }
-            if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
-                return Err(BlogError::comment_not_found(comment_id));
-            }
-            match self
-                .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
-                .await
-            {
-                Ok(()) => {}
-                Err(BlogError::PostNotFound(_)) => {
+            CommentDetailReadPolicy::Public => {
+                if self.public_comments_mode(tenant_id).await? == BlogCommentsMode::Disabled {
                     return Err(BlogError::comment_not_found(comment_id));
                 }
-                Err(error) => return Err(error),
+                match self
+                    .ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(BlogError::PostNotFound(_)) => {
+                        return Err(BlogError::comment_not_found(comment_id));
+                    }
+                    Err(error) => return Err(error),
+                }
             }
         }
         Self::map_comment_record(record)
@@ -827,6 +827,30 @@ impl CommentService {
             parent_comment_id: item.parent_comment_id,
             created_at: item.created_at,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommentDetailReadPolicy {
+    Owner,
+    Public,
+    Denied,
+}
+
+/// An ordinary caller may read their own pending comment, but someone else's
+/// comment is readable only if approved and its post passes current public
+/// visibility. Moderator reads remain independent of the storefront channel.
+fn comment_detail_read_policy(
+    security: &SecurityContext,
+    author_id: Uuid,
+    status: ApiCommentStatus,
+) -> CommentDetailReadPolicy {
+    if may_moderate_comments(security) || security.user_id == Some(author_id) {
+        CommentDetailReadPolicy::Owner
+    } else if status == ApiCommentStatus::Approved {
+        CommentDetailReadPolicy::Public
+    } else {
+        CommentDetailReadPolicy::Denied
     }
 }
 
