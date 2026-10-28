@@ -346,3 +346,4 @@ Forum-draftNotSaved = Черновики не сохраняются, пока �
 Forum-replyingTo = Ответ в теме: { $title }
 Forum-quotes = Цитаты
 Forum-topic = Тема
+Blog-comments-readOnly = Комментарии закрыты для новых ответов.
