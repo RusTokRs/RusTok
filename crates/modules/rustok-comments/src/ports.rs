@@ -750,6 +750,53 @@ mod in_process {
     mod idempotency_tests {
         use super::*;
 
+        #[tokio::test]
+        async fn transient_failure_allows_same_command_id_to_retry_but_terminal_failure_replays() {
+            use rustok_outbox::SysEventsMigration;
+            use sea_orm::Database;
+            use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+            let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
+            SysEventsMigration.up(&SchemaManager::new(&db))
+                .await.expect("receipts migration");
+            let tenant_id = Uuid::new_v4();
+            let request = serde_json::json!({"actor": "commenter", "body": "same"});
+            let receipt = |key: &'static str| idempotency::admit(
+                &db,
+                OwnerOperationScope::Tenant(tenant_id),
+                "comments",
+                key,
+                "create_comment",
+                &request,
+            );
+
+            let lease = match receipt("temporarily-unavailable").await.expect("admit") {
+                Admission::Run(lease) => lease,
+                _ => panic!("first admission must run"),
+            };
+            persist_idempotency_failure(
+                &db, lease,
+                &PortError::unavailable("comments.database", "temporary failure"),
+            ).await;
+            assert!(matches!(
+                receipt("temporarily-unavailable").await.expect("re-admit"),
+                Admission::Run(_)
+            ), "a retryable failure must not poison the durable command identity");
+
+            let lease = match receipt("invalid-input").await.expect("admit") {
+                Admission::Run(lease) => lease,
+                _ => panic!("first admission must run"),
+            };
+            persist_idempotency_failure(
+                &db, lease,
+                &PortError::validation("comments.validation", "invalid rich text"),
+            ).await;
+            assert!(matches!(
+                receipt("invalid-input").await.expect("replay"),
+                Admission::ReplayError(error) if !error.retryable
+            ), "terminal validation failures must still replay deterministically");
+        }
+
         #[test]
         fn idempotency_request_binds_principal_identity() {
             let request = serde_json::json!({
