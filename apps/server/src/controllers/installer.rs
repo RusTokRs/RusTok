@@ -106,11 +106,7 @@ async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallS
                 completed_at: None,
             }));
         }
-        Err(error) => {
-            return Err(internal_error(format!(
-                "failed to read installer completion state: {error}"
-            )));
-        }
+        Err(error) => return Err(installer_storage_failure("status.completion", error)),
     };
 
     match persistence.latest_session().await {
@@ -134,9 +130,7 @@ async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallS
             lock_expires_at: None,
             completed_at: None,
         })),
-        Err(error) => Err(internal_error(format!(
-            "failed to read installer status: {error}"
-        ))),
+        Err(error) => Err(installer_storage_failure("status.latest_session", error)),
     }
 }
 
@@ -314,9 +308,7 @@ async fn ensure_setup_not_completed(ctx: &ServerRuntimeContext) -> Result<()> {
         ))),
         Ok(false) => Ok(()),
         Err(error) if installer_schema_missing(&error) => Ok(()),
-        Err(error) => Err(internal_error(format!(
-            "failed to verify installer setup state: {error}"
-        ))),
+        Err(error) => Err(installer_storage_failure("setup.completion", error)),
     }
 }
 
@@ -353,11 +345,8 @@ async fn bind_host_install_plan(
         ));
     }
     let requested_root = configured_root.unwrap_or_else(|| plan.placement.root.clone());
-    let invocation_dir = std::env::current_dir().map_err(|error| {
-        internal_error(format!(
-            "failed to resolve server invocation directory: {error}"
-        ))
-    })?;
+    let invocation_dir = std::env::current_dir()
+        .map_err(|error| installer_storage_failure("setup.invocation_directory", error))?;
     plan.placement = bind_instance_placement(requested_root, invocation_dir)
         .map_err(|error| bad_request_error(error.to_string()))?;
     Ok(plan)
@@ -507,7 +496,7 @@ async fn receipts(
     let receipts = persistence
         .list_receipts(session_id)
         .await
-        .map_err(|error| internal_error(format!("failed to read installer receipts: {error}")))?;
+        .map_err(|error| installer_storage_failure("session.receipts", error))?;
 
     Ok(Json(InstallReceiptsResponse {
         session_id,
@@ -612,6 +601,16 @@ fn not_found_error(description: impl Into<String>) -> Error {
     http_error(HttpError::not_found("not_found", description))
 }
 
+/// Log operational diagnostics server-side without exposing backend connection
+/// details, filesystem paths or SQL fragments in the public installer response.
+fn installer_storage_failure(
+    operation: &'static str,
+    error: impl std::fmt::Display,
+) -> Error {
+    tracing::error!(%error, operation, "Installer storage/host operation failed");
+    internal_error("Installer state is temporarily unavailable")
+}
+
 fn internal_error(description: impl Into<String>) -> Error {
     http_error(HttpError::new(
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -635,6 +634,23 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use uuid::Uuid;
+
+    #[test]
+    fn installer_storage_errors_do_not_leak_backend_secrets_in_http_responses() {
+        let error = installer_storage_failure(
+            "status.latest_session",
+            "postgres://root:sensitive-password@database/private?sslmode=disable",
+        );
+        match error {
+            Error::Http(response) => {
+                assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+                assert_eq!(response.code, "installer_error");
+                assert!(!response.message.contains("sensitive-password"));
+                assert!(!response.message.contains("database/private"));
+            }
+            other => panic!("unexpected installer error: {other}"),
+        }
+    }
 
     #[test]
     fn installer_job_admission_fails_closed_on_database_error() {
