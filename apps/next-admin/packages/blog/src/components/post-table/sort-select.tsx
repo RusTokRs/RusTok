@@ -16,7 +16,7 @@ import {
   parsePostSortField,
   parsePostSortOrder
 } from '../../api/posts';
-import { SORT_FIELD_OPTIONS, SORT_ORDER_OPTIONS } from './options';
+import { SORT_FIELD_OPTIONS, SORT_ORDER_OPTIONS, STATUS_OPTIONS } from './options';
 
 /**
  * Sort control for the cursor-paged post list.
@@ -87,5 +87,42 @@ export function PostSortSelect() {
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+/** Blog owner accepts exactly one post status. Changing it invalidates keyset cursors. */
+export function PostStatusSelect() {
+  const [filters, setFilters] = useQueryStates(
+    {
+      status: parseAsStringLiteral(['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const),
+      after: parseAsString,
+      history: parseAsString
+    },
+    { shallow: false, history: 'push' }
+  );
+
+  return (
+    <Select
+      value={filters.status ?? 'ALL'}
+      onValueChange={(value) =>
+        void setFilters({
+          status: value === 'ALL' ? null : value as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
+          after: null,
+          history: null
+        })
+      }
+    >
+      <SelectTrigger className='h-8 w-[150px]' aria-label='Filter by status'>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value='ALL'>All statuses</SelectItem>
+        {STATUS_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
