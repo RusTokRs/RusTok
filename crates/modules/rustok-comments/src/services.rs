@@ -1598,28 +1598,52 @@ mod richtext_validation_tests {
     }
 
     #[tokio::test]
-    async fn non_moderator_cannot_create_spam_or_trash_comment() {
+    async fn only_moderators_can_create_an_already_moderated_comment() {
         let service = setup_comments_service().await;
         let tenant_id = Uuid::new_v4();
         let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+        let target = Uuid::new_v4();
 
-        let err = service
+        for status in [
+            crate::dto::CommentStatus::Approved,
+            crate::dto::CommentStatus::Spam,
+            crate::dto::CommentStatus::Trash,
+        ] {
+            let error = service
+                .create_comment(
+                    tenant_id,
+                    customer.clone(),
+                    CreateCommentInput {
+                        target_type: "blog_post".to_string(),
+                        target_id: target,
+                        locale: "en".to_string(),
+                        body: test_document("not pre-approved"),
+                        parent_comment_id: None,
+                        status,
+                    },
+                )
+                .await
+                .expect_err("ordinary user cannot bypass pending moderation");
+            assert!(matches!(error, CommentsError::Forbidden(_)));
+        }
+
+        let moderator = SecurityContext::system();
+        let approved = service
             .create_comment(
                 tenant_id,
-                customer,
+                moderator,
                 CreateCommentInput {
                     target_type: "blog_post".to_string(),
-                    target_id: Uuid::new_v4(),
+                    target_id: target,
                     locale: "en".to_string(),
-                    body: test_document("spam"),
+                    body: test_document("moderator approved"),
                     parent_comment_id: None,
-                    status: crate::dto::CommentStatus::Spam,
+                    status: crate::dto::CommentStatus::Approved,
                 },
             )
             .await
-            .expect_err("non-moderator should not create spam comments");
-
-        assert!(matches!(err, CommentsError::Forbidden(_)));
+            .expect("moderator may explicitly pre-approve");
+        assert_eq!(approved.status, crate::dto::CommentStatus::Approved);
     }
 
     #[tokio::test]
