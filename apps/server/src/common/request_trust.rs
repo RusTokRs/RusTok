@@ -122,7 +122,8 @@ fn client_ip_from_forwarded_chain(
     settings: &RequestTrustSettings,
     parse_hop: fn(&str) -> Option<IpAddr>,
 ) -> Option<IpAddr> {
-    let fields: Vec<_> = headers.get_all(header_name).iter().collect();
+    let values = headers.get_all(header_name);
+    let fields: Vec<_> = values.iter().collect();
     if fields.is_empty() {
         return None;
     }
