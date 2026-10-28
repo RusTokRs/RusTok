@@ -74,6 +74,19 @@ async fn sqlite_enforces_locked_and_moderated_reply_semantics() -> TestResult<()
         )
         .await?;
     assert_public_state(&db, &moderated, 0, 1).await?;
+    // Reappearances repair counters without re-emitting the notification event.
+    moderation
+        .approve_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+        .await?;
+    assert_public_state(&db, &moderated, 1, 1).await?;
+    moderation
+        .reject_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+        .await?;
+    assert_public_state(&db, &moderated, 0, 1).await?;
+    moderation
+        .approve_reply(moderated.tenant_id, reply.id, moderated.topic_id, admin_security())
+        .await?;
+    assert_public_state(&db, &moderated, 1, 1).await?;
 
     Ok(())
 }

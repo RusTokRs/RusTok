@@ -71,8 +71,8 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    from the Forum append-only creation/status journal before the status
    mutation, including `Rejected -> Approved` and `Hidden -> Approved`.
    Repeat visibility cycles must not duplicate `ForumTopicReplied`. SQLite
-   regressions are source-ready; PostgreSQL concurrency, restart and import
-   paths remain unverified.
+   and PostgreSQL semantic regression sources are ready; PostgreSQL concurrency,
+   restart and import paths remain unverified.
 6. **P2, outstanding:** Post-commit read may turn successful vote clearing or
    solution moderation into HTTP 404. Define one acknowledgement contract for
    REST and GraphQL and update all caller DTOs/OpenAPI/UI together, retaining
