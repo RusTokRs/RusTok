@@ -15,7 +15,8 @@ use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
 use crate::dto::PublishedPostCursor;
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
+use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation};
+use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
 use crate::error::{BlogError, BlogResult};
 use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::category_name_projection::{
@@ -187,6 +188,25 @@ impl BlogSearchProjectionSource {
                 .push(vis.channel_slug);
         }
 
+        // Blog owns post/tag attachment state, while Taxonomy owns each
+        // term's stable canonical key, localized slug and display name.
+        // Project all three as normalized *exact* keys: the Blog storefront
+        // accepts tag filters by slug or name and SQL must filter the complete
+        // result set before applying pagination.
+        let tag_relations = blog_post_tag::Entity::find()
+            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_tag::Column::PostId.is_in(post_ids.clone()))
+            .all(&self.db)
+            .await
+            .map_err(Error::Database)?;
+        let mut tag_ids_by_post: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        for relation in tag_relations {
+            tag_ids_by_post.entry(relation.post_id).or_default().push(relation.tag_id);
+        }
+        let mut distinct_tag_ids = tag_ids_by_post.values().flatten().copied().collect::<Vec<_>>();
+        distinct_tag_ids.sort_unstable();
+        distinct_tag_ids.dedup();
+
         // 3. Collect the Category identities of the whole page
         let category_ids: Vec<Uuid> = posts.iter().filter_map(|p| p.category_id).collect();
 
@@ -203,6 +223,7 @@ impl BlogSearchProjectionSource {
             HashMap<Uuid, BlogCategoryProjectionInfo>,
         > = HashMap::new();
         let mut tag_maps_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
+        let mut tag_keys_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
         for locale in &locales {
             let category_map = load_category_projections_map(
                 &self.db,
@@ -220,6 +241,32 @@ impl BlogSearchProjectionSource {
                     .await
                     .map_err(|error| Error::External(error.to_string()))?;
             tag_maps_by_locale.insert(locale.clone(), tag_map);
+            let canonical_terms = TaxonomyOwnerReader::new(self.db.clone())
+                .load_scoped_terms(
+                    tenant_id,
+                    TaxonomyTermKind::Tag,
+                    TaxonomyScopeType::Module,
+                    Some(BLOG_SOURCE_MODULE),
+                    Some(&distinct_tag_ids),
+                    locale,
+                    fallback_locale,
+                )
+                .await
+                .map_err(|error| Error::External(error.to_string()))?;
+            let terms_by_id = canonical_terms.into_iter()
+                .map(|term| (term.id, term)).collect::<HashMap<_, _>>();
+            let mut by_post = HashMap::new();
+            for (post_id, ids) in &tag_ids_by_post {
+                let mut keys = ids.iter().filter_map(|id| terms_by_id.get(id))
+                    .flat_map(|term| [&term.canonical_key, &term.slug, &term.name])
+                    .map(|key| key.trim().to_lowercase())
+                    .filter(|key| !key.is_empty())
+                    .collect::<Vec<_>>();
+                keys.sort();
+                keys.dedup();
+                by_post.insert(*post_id, keys);
+            }
+            tag_keys_by_locale.insert(locale.clone(), by_post);
         }
 
         let mut documents = Vec::new();
@@ -250,6 +297,11 @@ impl BlogSearchProjectionSource {
                 let post_tags = tag_maps_by_locale
                     .get(locale)
                     .and_then(|tags_map| tags_map.get(&post.id))
+                    .cloned()
+                    .unwrap_or_default();
+                let tag_keys = tag_keys_by_locale
+                    .get(locale)
+                    .and_then(|keys| keys.get(&post.id))
                     .cloned()
                     .unwrap_or_default();
 
@@ -307,6 +359,7 @@ impl BlogSearchProjectionSource {
                         "category_id": post.category_id,
                         "has_category": post.category_id.is_some(),
                         "has_tags": !post_tags.is_empty(),
+                        "tag_keys": tag_keys,
                         "has_channels": !post_channels.is_empty(),
                         "channel_slugs": post_channels,
                     }),
