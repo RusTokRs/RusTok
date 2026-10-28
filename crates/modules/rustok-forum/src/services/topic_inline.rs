@@ -168,19 +168,23 @@ impl TopicService {
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, input.category_id, 1, 0).await?;
         UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, security.user_id, 1).await?;
 
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                DomainEvent::ForumTopicCreated {
-                    topic_id,
-                    category_id: input.category_id,
-                    author_id: security.user_id,
-                    locale: locale.clone(),
-                },
-            )
-            .await?;
+        // A held topic is not a publication. The moderation owner emits this
+        // event exactly when Pending -> Open first makes it public.
+        if status == TopicStatus::Open {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    security.user_id,
+                    DomainEvent::ForumTopicCreated {
+                        topic_id,
+                        category_id: input.category_id,
+                        author_id: security.user_id,
+                        locale: locale.clone(),
+                    },
+                )
+                .await?;
+        }
         super::projection_invalidation::publish_forum_category_projection_in_tx(
             &self.event_bus,
             &txn,

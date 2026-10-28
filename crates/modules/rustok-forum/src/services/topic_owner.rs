@@ -272,7 +272,7 @@ impl TopicService {
 
         mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
 
-        UserStatsService::decrement_topic_thread_aggregated_in_tx(
+        UserStatsService::reconcile_topic_thread_user_stats_in_tx(
             &txn,
             tenant_id,
             topic_id,

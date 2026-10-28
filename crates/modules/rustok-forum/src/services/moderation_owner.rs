@@ -14,6 +14,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::audience::SharedForumAudienceFactsPort;
 use crate::entities::{forum_solution, forum_topic_translation};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_audience::lock_category_tree_in_tx;
 use crate::services::moderation_audience_authorization::ForumModerationAudienceAuthorizationService;
 use crate::services::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
@@ -248,32 +249,50 @@ impl ModerationService {
         target: TopicStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
+        // Match create/delete lock order: category scope precedes topic row.
+        // Archiving changes both category counts and all thread author stats.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         let current = topic.status;
         current.validate_transition(&target)?;
 
-        // Counter invariant: category and author topic totals always count
-        // exactly the topics that are neither archived nor deleted. Leaving
-        // `Archived` (only `Pending` -> `Open` is reachable) re-enters the
-        // topic into the aggregates; entering `Archived` releases it.
-        let enters_public = current == TopicStatus::Archived && target == TopicStatus::Open;
-        let leaves_public = current != TopicStatus::Archived && target == TopicStatus::Archived;
+        // Pending topics already contribute to authored/category topic counts,
+        // but have never been published to subscribers. Restoring an archived
+        // topic re-enters the counters without creating a second topic event.
+        let first_publication = current == TopicStatus::Pending && target == TopicStatus::Open;
+        let restores_counted_topic =
+            current == TopicStatus::Archived && target == TopicStatus::Open;
+        let archives_counted_topic =
+            current != TopicStatus::Archived && target == TopicStatus::Archived;
 
         let old_status = current.to_string();
         let new_status = target.to_string();
 
         TopicService::set_status_in_tx(&txn, tenant_id, topic_id, target).await?;
-        if leaves_public {
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, -1, 0)
-                .await?;
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, -1)
-                .await?;
-        }
-        if enters_public {
-            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 1, 0)
-                .await?;
-            UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, topic.author_id, 1)
-                .await?;
+        if archives_counted_topic || restores_counted_topic {
+            // Topic.reply_count counts approved replies even while archived.
+            // Category.reply_count and user statistics only count replies in
+            // non-archived topics; undo/redo the whole thread contribution.
+            let sign = if archives_counted_topic { -1 } else { 1 };
+            let reply_delta = topic.reply_count.checked_mul(sign).ok_or_else(|| {
+                ForumError::Validation("Forum topic reply counter delta overflow".to_string())
+            })?;
+            CategoryService::adjust_counters_in_tx(
+                &txn,
+                tenant_id,
+                topic.category_id,
+                sign,
+                reply_delta,
+            )
+            .await?;
+            UserStatsService::reconcile_topic_thread_user_stats_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                topic.author_id,
+                None,
+            )
+            .await?;
         }
         self.event_bus
             .publish_in_tx(
@@ -288,7 +307,7 @@ impl ModerationService {
                 },
             )
             .await?;
-        if enters_public {
+        if first_publication {
             // A pending topic was created without `ForumTopicCreated` (held
             // for pre-moderation). Approving it through `Pending` -> `Open`
             // publishes the exact creation event now, so category watchers
@@ -316,6 +335,16 @@ impl ModerationService {
                     },
                 )
                 .await?;
+        }
+        if archives_counted_topic || restores_counted_topic {
+            publish_forum_category_projection_in_tx(
+                &self.event_bus,
+                &txn,
+                tenant_id,
+                security.user_id,
+                topic.category_id,
+            )
+            .await?;
         }
         publish_forum_topic_projection_in_tx(
             &self.event_bus,

@@ -125,13 +125,10 @@
 - Per-user forum stats live in forum-owned services and transport adapters; the
   module tracks `topic_count`, `reply_count`, and `solution_count` through topic/reply
   lifecycle and accepted-solution transitions, and exposes a dedicated read-path for
-  user-level stats. Known counter drift: archiving a topic that contains approved
-  replies or a live accepted solution compensates only the category/topic aggregates;
-  the reply authors' and solution author's per-user `reply_count` / `solution_count`
-  stay inflated until the topic is soft-deleted (delete-time user-stat recompute) or
-  the scheduled FORUM-33 counter reconciliation re-enumerates the user. Archival is
-  reversible, so the drift resolves on restore or delete; permanent correction of the
-  archive edge is tracked FORUM-33 follow-up work.
+  user-level stats. Topic archive/reopen now recomputes all affected author
+  topic/reply/solution counts in the write transaction and adjusts category
+  reply counts alongside topic counts. Historical drift predating this change
+  still requires operator reconciliation (FORUM-33).
 - Topic tag write-paths resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.
@@ -285,8 +282,9 @@ wrappers. Each one has an owner decision or a follow-up task in
   moderation scope `All`, on every owner read and list. Storefront reads and storefront search return only `Open` topics
   and `Approved` replies, so held content is excluded there. Moderators approve a pending topic with the reopen
   transition (`Pending` to `Open`, requires `ForumTopics:Moderate`) and reject it with the archive transition
-  (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. Known limitation: approving a held topic
-  does not notify its subscribers, and there is no dedicated approve or reject transport for topics yet. See
+  (`Pending` to `Archived`). A pending topic cannot be promoted to a Blog post. The creation
+  event is emitted on first publication (direct `Open` create or `Pending` to `Open`),
+  never on an archive restore. Dedicated approve/reject transports for topics remain unimplemented. See
   [`DECISIONS/2026-10-09-forum-topic-pre-moderation.md`](../../../DECISIONS/2026-10-09-forum-topic-pre-moderation.md) and
   [`DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`](../../../DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md).
 - `show_locked_topics_in_lists = false` hides locked topics from the storefront topic list. The widget preview
