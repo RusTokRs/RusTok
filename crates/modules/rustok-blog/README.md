@@ -120,6 +120,17 @@ copy must use the canonical Taxonomy owner contract.
 - Routes comment reads, create/update/delete, and moderation through the neutral
   `CommentsThreadPort` contract from `rustok-comments-api`; Blog does not import
   or call `CommentsService` directly.
+- A generic `comments:create` grant never permits comments on drafts, archived
+  or channel-hidden posts or bypasses the Blog comments mode: public REST and
+  GraphQL writes apply the Blog publication/channel/policy gate. The separate
+  owner create command requires `comments:moderate`, and both flows recheck
+  the target after the external owner write; if it disappeared, they issue an
+  idempotent compensating delete.
+- A generic `comments:list` grant serves only Comments' approved public
+  projection after rechecking Blog mode and channel visibility; the full
+  pending/spam/trash queue requires `comments:moderate`. Direct comment
+  details are available to a moderator or to the comment's own author;
+  other readers see only approved comments on currently public posts.
 - The static `blog -> comments` lifecycle edge is removed. Blog owns comment-surface
   policy; Comments owns threads, bodies, moderation, and retention. Provider absence
   fails comment operations closed while Blog publication serving remains available.
