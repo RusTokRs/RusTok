@@ -121,6 +121,10 @@ pub struct BlogPostDetail {
     #[serde(rename = "pinnedAt")]
     pub pinned_at: Option<String>,
     pub tags: Vec<String>,
+    #[serde(rename = "categoryId")]
+    pub category_id: Option<String>,
+    #[serde(rename = "channelSlugs", default)]
+    pub channel_slugs: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,
     #[serde(rename = "seoTitle")]
@@ -180,4 +184,11 @@ pub struct BlogPostDraft {
     pub content: RichTextDocument,
     pub publish: bool,
     pub tags: Vec<String>,
+    /// None is the uncategorized state; an explicit UUID selects a Blog-owned category.
+    pub category_id: Option<String>,
+    /// An empty list means publication to all channels (owner contract).
+    pub channel_slugs: Vec<String>,
+    pub featured_image_url: Option<String>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
 }
