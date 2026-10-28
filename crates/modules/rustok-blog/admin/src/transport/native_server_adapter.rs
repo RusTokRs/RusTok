@@ -308,11 +308,13 @@ async fn blog_admin_create_post_native(
                     slug: optional_text(draft.slug),
                     publish: draft.publish,
                     tags: draft.tags,
-                    category_id: None,
-                    featured_image_url: None,
-                    seo_title: None,
-                    seo_description: None,
-                    channel_slugs: None,
+                    category_id: draft.category_id
+                        .map(|id| parse_uuid(&id, "category_id"))
+                        .transpose()?,
+                    featured_image_url: draft.featured_image_url,
+                    seo_title: draft.seo_title,
+                    seo_description: draft.seo_description,
+                    channel_slugs: Some(draft.channel_slugs),
                     metadata: None,
                     scheduled_at: None,
                 },
@@ -371,11 +373,20 @@ async fn blog_admin_update_post_native(
                     // block the save.
                     slug: optional_text(draft.slug),
                     tags: Some(draft.tags),
-                    category_id: rustok_api::Patch::Keep,
-                    featured_image_url: rustok_api::Patch::Keep,
-                    seo_title: rustok_api::Patch::Keep,
-                    seo_description: rustok_api::Patch::Keep,
-                    channel_slugs: None,
+                    category_id: match draft.category_id {
+                        Some(id) => rustok_api::Patch::Set(parse_uuid(&id, "category_id")?),
+                        None => rustok_api::Patch::Clear,
+                    },
+                    featured_image_url: draft.featured_image_url
+                        .map(rustok_api::Patch::Set)
+                        .unwrap_or(rustok_api::Patch::Clear),
+                    seo_title: draft.seo_title
+                        .map(rustok_api::Patch::Set)
+                        .unwrap_or(rustok_api::Patch::Clear),
+                    seo_description: draft.seo_description
+                        .map(rustok_api::Patch::Set)
+                        .unwrap_or(rustok_api::Patch::Clear),
+                    channel_slugs: Some(draft.channel_slugs),
                     metadata: None,
                     version: draft.version.ok_or_else(|| {
                         ServerFnError::new("Blog post revision is missing; reload before saving")
@@ -707,6 +718,8 @@ fn map_post_detail(post: rustok_blog::PostResponse) -> BlogPostDetail {
         is_pinned: post.is_pinned,
         pinned_at: post.pinned_at.map(|value| value.to_rfc3339()),
         tags: post.tags,
+        category_id: post.category_id.map(|id| id.to_string()),
+        channel_slugs: post.channel_slugs,
         featured_image_url: post.featured_image_url,
         seo_title: post.seo_title,
         seo_description: post.seo_description,
