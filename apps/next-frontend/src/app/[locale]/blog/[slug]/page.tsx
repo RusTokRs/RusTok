@@ -391,7 +391,11 @@ export default async function BlogPostPage({
                   locale={locale}
                 />
 
-                {comments.total > 20 && (
+                {comments.availability !== 'DISABLED' &&
+                  (comments.availability === 'AVAILABLE' ||
+                    comments.availability === 'READ_ONLY' ||
+                    comments.cachedSnapshot) &&
+                  comments.total > 20 && (
                   <CommentsPagination
                     currentPage={commentsPage}
                     totalItems={comments.total}
