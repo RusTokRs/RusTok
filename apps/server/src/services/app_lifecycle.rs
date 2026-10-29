@@ -681,6 +681,13 @@ fn spawn_auth_retention_handle(
     }
 }
 
+fn auth_retention_removed_artifacts(purge: &crate::services::auth_retention::AuthRetentionPurge) -> bool {
+    purge.sessions > 0
+        || purge.invite_consumptions > 0
+        || purge.invites > 0
+        || purge.oauth_tokens > 0
+}
+
 async fn auth_retention_loop(
     db: sea_orm::DatabaseConnection,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
@@ -695,13 +702,12 @@ async fn auth_retention_loop(
         }
 
         match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
-            Ok(purge)
-                if purge.sessions > 0 || purge.invite_consumptions > 0 || purge.invites > 0 =>
-            {
+            Ok(purge) if auth_retention_removed_artifacts(&purge) => {
                 tracing::info!(
                     sessions = purge.sessions,
                     invite_consumptions = purge.invite_consumptions,
                     invites = purge.invites,
+                    oauth_tokens = purge.oauth_tokens,
                     "Purged expired auth artifacts past retention"
                 );
             }
@@ -1165,6 +1171,18 @@ mod tests {
         let res = connect_runtime_workers_with_runtime(runtime_ctx.clone()).await;
         assert!(res.is_ok());
         assert!(!runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>());
+    }
+
+    #[test]
+    fn auth_retention_reports_oauth_only_cleanup() {
+        let oauth_only = crate::services::auth_retention::AuthRetentionPurge {
+            oauth_tokens: 3,
+            ..Default::default()
+        };
+        assert!(super::auth_retention_removed_artifacts(&oauth_only));
+        assert!(!super::auth_retention_removed_artifacts(
+            &crate::services::auth_retention::AuthRetentionPurge::default()
+        ));
     }
 
     #[tokio::test]
