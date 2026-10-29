@@ -145,6 +145,16 @@ REST and cookie-session login audit the effective client IP using the host's
 configured trusted-proxy chain. Untrusted forwarding headers cannot override
 the observed peer address.
 
+OAuth browser-consent forms preserve absent optional `scope` and `state` values
+across GET-to-POST submission, so CSRF-bound data and default requested scopes
+do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`
+are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
+
+Cookie-session logout treats a missing, expired, or already-revoked refresh
+token idempotently, but returns a failure when revocation persistence or
+transactional event publication fails. The server must not claim logout
+success while a refresh token could remain valid.
+
 ## Runtime surface
 
 - `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
