@@ -1,6 +1,6 @@
 # rustok-forms-leptos
 
-Leptos 0.8 SSR-first adapter for the [`rustok-forms`](../) core library.
+Leptos 0.8 SSR-first adapter for the [`rustok-ui-forms`](../) core library.
 
 For public component APIs, contexts, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
 

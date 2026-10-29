@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Module-owned neutral storefront controls for shared Reactions"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 crate-type = ["rlib"]
 

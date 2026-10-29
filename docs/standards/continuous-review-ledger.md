@@ -590,9 +590,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[`crates/ui/leptos-auth`](../../crates/ui/leptos-auth)** (9 files, 1,506 LOC) — Leptos authentication context, protected route wrappers, and token refresh hooks.
 - [ ] **[`crates/ui/leptos-ui`](../../crates/ui/leptos-ui)** (5 files, 415 LOC) — General-purpose Leptos UI components and reactive state utilities.
 - [ ] **[`crates/ui/leptos-ui-routing`](../../crates/ui/leptos-ui-routing)** (1 files, 233 LOC) — Leptos router integration, nested sub-routes, and query parameter synchronizers.
-- [ ] **[`crates/ui/rustok-forms`](../../crates/ui/rustok-forms)** (21 files, 9,244 LOC) — Fluid Frontend Architecture (FFA) headless form engine: schema validation, field dirty state, and submit handlers.
-- [ ] **[`crates/ui/rustok-forms/dioxus`](../../crates/ui/rustok-forms/dioxus)** (6 files, 2,222 LOC) — Dioxus renderer for FFA form schemas and form controls.
-- [ ] **[`crates/ui/rustok-forms/leptos`](../../crates/ui/rustok-forms/leptos)** (6 files, 3,126 LOC) — Leptos renderer for FFA form schemas and form controls.
+- [ ] **[`crates/ui/rustok-ui-forms`](../../crates/ui/rustok-ui-forms)** (21 files, 9,244 LOC) — Fluid Frontend Architecture (FFA) headless form engine: schema validation, field dirty state, and submit handlers.
+- [ ] **[`crates/ui/rustok-ui-forms/dioxus`](../../crates/ui/rustok-ui-forms/dioxus)** (6 files, 2,222 LOC) — Dioxus renderer for FFA form schemas and form controls.
+- [ ] **[`crates/ui/rustok-ui-forms/leptos`](../../crates/ui/rustok-ui-forms/leptos)** (6 files, 3,126 LOC) — Leptos renderer for FFA form schemas and form controls.
 - [ ] **[`crates/ui/rustok-graphql`](../../crates/ui/rustok-graphql)** (1 files, 335 LOC) — Frontend GraphQL client adapter, query builder, and subscription websocket client.
 - [ ] **[`crates/ui/rustok-grid`](../../crates/ui/rustok-grid)** (27 files, 6,864 LOC) — Headless high-performance data grid: sorting, multi-column filtering, pagination, and virtual scrolling.
 - [ ] **[`crates/ui/rustok-grid/dioxus`](../../crates/ui/rustok-grid/dioxus)** (8 files, 1,726 LOC) — Dioxus virtualized table renderer for rustok-grid.
@@ -600,7 +600,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[`crates/ui/rustok-ui`](../../crates/ui/rustok-ui)** (46 files, 5,231 LOC) — Shared UI primitives: icons, modal dialogs, drawer sheets, alert toasts, and loading spinners.
 - [ ] **[`crates/ui/rustok-ui-auth`](../../crates/ui/rustok-ui-auth)** (1 files, 66 LOC) — Frontend user login, logout, and password recovery UI cards.
 - [ ] **[`crates/ui/rustok-ui-core`](../../crates/ui/rustok-ui-core)** (9 files, 2,257 LOC) — Framework-agnostic UI view-models, formatters, and status badge resolvers.
-- [ ] **[`crates/ui/rustok-ui-forms`](../../crates/ui/rustok-ui-forms)** (1 files, 75 LOC) — Standardized form control adapters adhering to the RusToK design token system.
 - [ ] **[`crates/ui/rustok-ui-i18n`](../../crates/ui/rustok-ui-i18n)** (32 files, 6,793 LOC) — Frontend internationalization: locale switcher, message catalogs, and plural formatting.
 - [ ] **[`crates/ui/rustok-ui-transport`](../../crates/ui/rustok-ui-transport)** (1 files, 478 LOC) — Frontend HTTP/GraphQL transport facade abstracting backend API calls.
 - [ ] **[`crates/ui/rustok-ui/dioxus`](../../crates/ui/rustok-ui/dioxus)** (20 files, 1,299 LOC) — Dioxus component adapter package for rustok-ui primitives.
@@ -866,9 +865,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,506 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified auth token, CSRF and session wiring; zero defects. |
 | [x] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 5 | 415 | 2026-10-29 05:33 | Standardized CRATE_API.md, docs.rs metadata, verified Leptos-specific composite re-exports; compiled and verified. |
 | [x] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified route contract; zero defects. |
-| [x] | [rustok-forms](../../crates/ui/rustok-forms) | `ui` | 21 | 9,244 | 2026-10-29 05:15 | Standardized CRATE_API.md, validated all 6 Universal Logic Dimensions; 51/51 unit tests passed, zero defects. |
-| [x] | [dioxus](../../crates/ui/rustok-forms/dioxus) | `ui` | 6 | 2,222 | 2026-10-29 05:15 | Standardized CRATE_API.md, verified Dioxus 0.7 reactive form context and dirty tracking; 2/2 tests passed, zero defects. |
-| [x] | [leptos](../../crates/ui/rustok-forms/leptos) | `ui` | 6 | 3,126 | 2026-10-29 05:10 | Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects. |
+| [x] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 21 | 9,244 | 2026-10-29 05:15 | Standardized CRATE_API.md, validated all 6 Universal Logic Dimensions; 51/51 unit tests passed, zero defects. |
+| [x] | [dioxus](../../crates/ui/rustok-ui-forms/dioxus) | `ui` | 6 | 2,222 | 2026-10-29 05:15 | Standardized CRATE_API.md, verified Dioxus 0.7 reactive form context and dirty tracking; 2/2 tests passed, zero defects. |
+| [x] | [leptos](../../crates/ui/rustok-ui-forms/leptos) | `ui` | 6 | 3,126 | 2026-10-29 05:10 | Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects. |
 | [x] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 335 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified GraphQL endpoint normalization and APQ persistence; 6/6 tests passed, zero defects. |
 | [x] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 27 | 6,864 | 2026-10-29 05:20 | Standardized CRATE_API.md, verified 6 Universal Logic Dimensions across cell ordering, pagination math, facet panel bounding, and resizing bounds; 74/74 tests passed, zero defects. |
 | [x] | [dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 8 | 1,726 | 2026-10-29 05:20 | Standardized CRATE_API.md, verified Dioxus 0.7 grid adapter; compiled cleanly, zero defects. |
@@ -876,7 +875,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 46 | 5,231 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified deterministic Tailwind resolvers and headless state contracts; 16/16 tests passed, zero defects. |
 | [x] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 66 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified auth state bridge; zero defects. |
 | [x] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 9 | 2,257 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified navigation, money formatting, route selection and CSS tokens; 38/38 tests passed, zero defects. |
-| [x] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | 2026-10-29 05:15 | Consolidated into canonical crates/ui/rustok-forms suite; verified zero legacy drift. |
 | [x] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 32 | 6,793 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified Accept-Language parser quality sorting, ISO 639 tag normalization, and Russian plural rules; 16/16 tests passed, zero defects. |
 | [x] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 478 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified fallback policy and dual-path execution safety; 14/14 tests passed, zero defects. |
 | [x] | [dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 20 | 1,299 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified Dioxus 0.7 component adapter; 8/8 tests passed, zero defects. |

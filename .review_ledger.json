@@ -1580,11 +1580,31 @@
       "name": "rustok-ui-forms",
       "path": "crates/ui/rustok-ui-forms",
       "category": "ui",
-      "files": 1,
-      "loc": 75,
+      "files": 21,
+      "loc": 9244,
       "completed": true,
       "completed_at": "2026-10-29 05:15",
-      "notes": "Consolidated into canonical crates/ui/rustok-forms suite; verified zero legacy drift."
+      "notes": "Standardized CRATE_API.md, validated all 6 Universal Logic Dimensions; 51/51 unit tests passed, zero defects."
+    },
+    "crates/ui/rustok-ui-forms/dioxus": {
+      "name": "rustok-forms-dioxus",
+      "path": "crates/ui/rustok-ui-forms/dioxus",
+      "category": "ui",
+      "files": 6,
+      "loc": 2222,
+      "completed": true,
+      "completed_at": "2026-10-29 05:15",
+      "notes": "Standardized CRATE_API.md, verified Dioxus 0.7 reactive form context and dirty tracking; 2/2 tests passed, zero defects."
+    },
+    "crates/ui/rustok-ui-forms/leptos": {
+      "name": "rustok-forms-leptos",
+      "path": "crates/ui/rustok-ui-forms/leptos",
+      "category": "ui",
+      "files": 6,
+      "loc": 3126,
+      "completed": true,
+      "completed_at": "2026-10-29 05:10",
+      "notes": "Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects."
     },
     "crates/ui/rustok-ui-i18n": {
       "name": "rustok-ui-i18n",
@@ -2327,36 +2347,6 @@
       "completed": true,
       "completed_at": "2026-10-29 05:54",
       "notes": "Verified hit testing, coordinate transforms, sandboxed iframe origin checks, and real-DOM inline grants; 30/30 tests passed, zero defects."
-    },
-    "crates/ui/rustok-forms": {
-      "name": "rustok-forms",
-      "path": "crates/ui/rustok-forms",
-      "category": "ui",
-      "files": 21,
-      "loc": 9244,
-      "completed": true,
-      "completed_at": "2026-10-29 05:15",
-      "notes": "Standardized CRATE_API.md, validated all 6 Universal Logic Dimensions; 51/51 unit tests passed, zero defects."
-    },
-    "crates/ui/rustok-forms/dioxus": {
-      "name": "dioxus",
-      "path": "crates/ui/rustok-forms/dioxus",
-      "category": "ui",
-      "files": 6,
-      "loc": 2222,
-      "completed": true,
-      "completed_at": "2026-10-29 05:15",
-      "notes": "Standardized CRATE_API.md, verified Dioxus 0.7 reactive form context and dirty tracking; 2/2 tests passed, zero defects."
-    },
-    "crates/ui/rustok-forms/leptos": {
-      "name": "leptos",
-      "path": "crates/ui/rustok-forms/leptos",
-      "category": "ui",
-      "files": 6,
-      "loc": 3126,
-      "completed": true,
-      "completed_at": "2026-10-29 05:10",
-      "notes": "Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects."
     },
     "crates/ui/rustok-grid": {
       "name": "rustok-grid",

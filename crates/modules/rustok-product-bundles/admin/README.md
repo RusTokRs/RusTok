@@ -19,4 +19,7 @@ The package calls Product Bundles owner contracts and shared UI transport librar
 - `src/transport.rs` — owner transport adapters.
 - `src/ui/leptos.rs` — Leptos UI components and `ProductBundlesAdmin` root view.
 
-See the [Product Bundles documentation](../README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)
+- See the [Product Bundles documentation](../README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).

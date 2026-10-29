@@ -1,4 +1,4 @@
-//! `rustok-forms-leptos` — Leptos 0.8 adapter for the framework-agnostic `rustok-forms` library.
+//! `rustok-forms-leptos` — Leptos 0.8 adapter for the framework-agnostic `rustok-ui-forms` library.
 //!
 //! Provides structural form layout components, accessible input controls,
 //! lifecycle-aware submit buttons, and reactive context coordination.
@@ -6,7 +6,7 @@
 //! # Overview
 //!
 //! `rustok-forms-leptos` bridges the framework-agnostic form primitives of
-//! [`rustok-forms`](https://docs.rs/rustok-forms) with Leptos 0.8 reactive views:
+//! [`rustok-ui-forms`](https://docs.rs/rustok-ui-forms) with Leptos 0.8 reactive views:
 //!
 //! - **Context Coordination**: [`Form`] provides [`FormContext`], [`FormField`] provides [`FieldContext`].
 //! - **Automatic Accessibility**: Propagates `aria-invalid`, `aria-describedby`, and `aria-errormessage` IDs automatically.

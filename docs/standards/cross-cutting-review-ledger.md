@@ -101,7 +101,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [ ] **CC-02.01 — Zero Framework in Core:** Verify every `crates/modules/*/core` crate contains strictly zero imports of `leptos::*`, `dioxus::*`, or other UI frameworks. Models must be pure Rust data types verified by unit tests.
 - [ ] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verify `crates/modules/*/admin` and `storefront` adapters contain zero business calculations, price/discount math, status validations, or command construction inside view templates (`view!`, `rsx!`).
 - [ ] **CC-02.03 — Transport Facade Boundary:** Ensure UI adapters access backend capabilities strictly through module-owned `transport/` facades, never calling raw fetch or ad-hoc API endpoints directly.
-- [ ] **CC-02.04 — Design Token & UI Primitive Reuse:** Verify module UIs consume canonical visual primitives (`rustok-ui`, `rustok-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom styling.
+- [ ] **CC-02.04 — Design Token & UI Primitive Reuse:** Verify module UIs consume canonical visual primitives (`rustok-ui`, `rustok-ui-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom styling.
 - [ ] **CC-02.05 — Dual-Stack UI & Admin Synchronization (Leptos ↔ Next.js Parity):** Verify full parity between Leptos and Next.js frontend/admin implementations for all modules. Check route availability (no 404s on root module paths like `/dashboard/<module>` and `/[locale]/<module>`), operational workspace parity (moderation tables, status filters, taxonomy trees, detail thread previews), and strict GraphQL schema conformance (variable nullability, connection pagination fields).
 
 ---
