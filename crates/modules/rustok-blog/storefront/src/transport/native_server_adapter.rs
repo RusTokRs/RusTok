@@ -231,9 +231,11 @@ async fn storefront_blog_native(
         match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant_id, MODULE_SLUG).await {
             Ok(true) => {}
             Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
-            Err(_) => return Err(ServerFnError::new(
-                "Blog module state is temporarily unavailable",
-            )),
+            Err(_) => {
+                return Err(ServerFnError::new(
+                    "Blog module state is temporarily unavailable",
+                ));
+            }
         }
 
         if request_context
@@ -248,9 +250,11 @@ async fn storefront_blog_native(
         let is_authenticated = auth_context.is_some();
         let profile_audience = auth_context
             .as_ref()
-            .map(|auth| rustok_profiles::ProfileSummaryAudience::Authenticated {
-                actor_id: auth.user_id,
-            })
+            .map(
+                |auth| rustok_profiles::ProfileSummaryAudience::Authenticated {
+                    actor_id: auth.user_id,
+                },
+            )
             .unwrap_or(rustok_profiles::ProfileSummaryAudience::Anonymous);
 
         require_blog_channel_enabled(
@@ -369,7 +373,11 @@ async fn storefront_blog_native(
             .await
             .map_err(public_blog_error)?;
 
-        let author_ids = page.items.iter().map(|post| post.author_id).collect::<Vec<_>>();
+        let author_ids = page
+            .items
+            .iter()
+            .map(|post| post.author_id)
+            .collect::<Vec<_>>();
         let author_profiles = load_author_profiles(
             &runtime_ctx,
             tenant_id,
@@ -383,10 +391,14 @@ async fn storefront_blog_native(
         Ok(StorefrontBlogData {
             selected_post,
             posts: BlogPostList {
-                items: page.items.into_iter().map(|post| {
-                    let author_profile = author_profiles.get(&post.author_id).cloned();
-                    map_post_list_item(post, author_profile)
-                }).collect(),
+                items: page
+                    .items
+                    .into_iter()
+                    .map(|post| {
+                        let author_profile = author_profiles.get(&post.author_id).cloned();
+                        map_post_list_item(post, author_profile)
+                    })
+                    .collect(),
                 next_cursor: page.next_cursor.map(|cursor| cursor.encode()),
             },
         })
@@ -423,7 +435,8 @@ async fn load_author_profiles(
         return HashMap::new();
     }
     // Profiles is optional; missing presentation cannot hide a published post.
-    let Some(reader) = runtime.shared_get::<Arc<dyn rustok_profiles::ProfileSummaryReader>>() else {
+    let Some(reader) = runtime.shared_get::<Arc<dyn rustok_profiles::ProfileSummaryReader>>()
+    else {
         return HashMap::new();
     };
 
@@ -447,15 +460,21 @@ async fn load_author_profiles(
         }
     };
 
-    summaries.into_iter().map(|(id, profile)| {
-        (id, BlogPostAuthorProfile {
-            user_id: profile.user_id.to_string(),
-            handle: profile.handle,
-            display_name: profile.display_name,
-            tags: profile.tags,
-            avatar_media_id: profile.avatar_media_id.map(|id| id.to_string()),
+    summaries
+        .into_iter()
+        .map(|(id, profile)| {
+            (
+                id,
+                BlogPostAuthorProfile {
+                    user_id: profile.user_id.to_string(),
+                    handle: profile.handle,
+                    display_name: profile.display_name,
+                    tags: profile.tags,
+                    avatar_media_id: profile.avatar_media_id.map(|id| id.to_string()),
+                },
+            )
         })
-    }).collect()
+        .collect()
 }
 
 #[cfg(feature = "ssr")]
@@ -638,7 +657,10 @@ fn map_comment_list_item(comment: rustok_blog::CommentListItem) -> BlogCommentLi
 }
 
 #[cfg(feature = "ssr")]
-fn map_post_list_item(post: rustok_blog::PostSummary, author_profile: Option<BlogPostAuthorProfile>) -> BlogPostListItem {
+fn map_post_list_item(
+    post: rustok_blog::PostSummary,
+    author_profile: Option<BlogPostAuthorProfile>,
+) -> BlogPostListItem {
     BlogPostListItem {
         id: post.id.to_string(),
         title: post.title,

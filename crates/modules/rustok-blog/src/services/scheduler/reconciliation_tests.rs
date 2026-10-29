@@ -39,14 +39,10 @@ async fn reconciliation_removes_stale_routes_and_then_stops_claiming() {
         .expect("reconciliation should run");
     assert!(matches!(outcome, ModuleWorkOutcome::Completed));
     assert!(
-        BlogPostRouteOwner::find_redirect(
-            &db,
-            tenant_id,
-            &canonical_post_route("ghost-reconcile")
-        )
-        .await
-        .expect("route read")
-        .is_none(),
+        BlogPostRouteOwner::find_redirect(&db, tenant_id, &canonical_post_route("ghost-reconcile"))
+            .await
+            .expect("route read")
+            .is_none(),
         "reconciliation must remove the stale route"
     );
     assert_eq!(
