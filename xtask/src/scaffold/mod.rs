@@ -41,6 +41,11 @@ pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
 }
 
 pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
+    // This renderer has native-only composition semantics. Never allow a
+    // support crate or Component Model guest into native module registration.
+    if options.profile != options::ScaffoldProfile::NativeModule {
+        anyhow::bail!("cargo xtask scaffold only generates native runtime modules");
+    }
     let root = workspace_root();
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
