@@ -163,6 +163,39 @@ async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position
 }
 
 #[tokio::test]
+async fn move_reorders_siblings_without_changing_their_parent() {
+    let db = setup().await;
+    let (category_service, command_service, _events) = services(&db);
+    let tenant_id = Uuid::new_v4();
+
+    let first = create_category(&category_service, tenant_id, "First", None, 0).await;
+    let second = create_category(&category_service, tenant_id, "Second", None, 1).await;
+    let third = create_category(&category_service, tenant_id, "Third", None, 2).await;
+
+    let reordered = command_service
+        .move_category(
+            tenant_id,
+            third,
+            admin(),
+            MoveCategoryInput {
+                parent_id: None,
+                position: 0,
+            },
+        )
+        .await
+        .expect("same-parent sibling reordering must succeed");
+
+    assert_eq!(reordered.moved.id, third);
+    assert_eq!(reordered.moved.parent_id, None);
+    assert_eq!(reordered.moved.position, 0);
+    for (id, expected_position) in [(third, 0), (first, 1), (second, 2)] {
+        let category = load_category(&db, tenant_id, id).await;
+        assert_eq!(category.parent_id, None);
+        assert_eq!(category.position, expected_position);
+    }
+}
+
+#[tokio::test]
 async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let db = setup().await;
     let (category_service, command_service, _events) = services(&db);
