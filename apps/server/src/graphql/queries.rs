@@ -42,6 +42,27 @@ use rustok_modules::{
     ModuleControlPlane, SharedStaticModuleRegistryReader, StaticModuleRegistryQuery,
 };
 
+async fn require_reporting_permission(
+    ctx: &Context<'_>,
+    permission: Permission,
+    permission_name: &'static str,
+) -> Result<()> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let tenant = ctx.data::<TenantContext>()?;
+    let db = ctx.data::<DatabaseConnection>()?;
+    let allowed = RbacService::has_permission(db, &tenant.id, &auth.user_id, &permission)
+        .await
+        .map_err(|err| graphql_internal_error("GraphQL reporting authorization failed", err))?;
+    if !allowed {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            permission_name,
+        ));
+    }
+    Ok(())
+}
+
 fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldError {
     tracing::error!(%error, message, "GraphQL root query failed");
     <FieldError as GraphQLError>::internal_error(message)
@@ -1003,6 +1024,8 @@ impl RootQuery {
     }
 
     async fn dashboard_stats(&self, ctx: &Context<'_>) -> Result<DashboardStats> {
+        require_reporting_permission(ctx, Permission::ANALYTICS_READ, "analytics:read required")
+            .await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
@@ -1118,6 +1141,8 @@ impl RootQuery {
         ctx: &Context<'_>,
         #[graphql(default)] limit: i64,
     ) -> Result<Vec<ActivityItem>> {
+        require_reporting_permission(ctx, Permission::USERS_LIST, "users:list required")
+            .await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
@@ -1232,6 +1257,31 @@ impl RootQuery {
 mod tests {
     use super::{graphql_internal_error, map_module_operation_recovery_error};
     use crate::services::module_lifecycle::ModuleOperationRecoveryError;
+
+    #[tokio::test]
+    async fn reporting_queries_without_auth_are_denied_before_reading_tenant_data() {
+        let schema = async_graphql::Schema::build(
+            super::QueryRoot,
+            async_graphql::EmptyMutation,
+            async_graphql::EmptySubscription,
+        )
+        .finish();
+
+        for field in ["dashboardStats { totalUsers }", "recentActivity { id }"] {
+            let response = schema
+                .execute(async_graphql::Request::new(format!("{{ {field} }}")))
+                .await;
+            assert!(!response.errors.is_empty(), "{field} must require auth");
+            assert!(
+                response.errors.iter().any(|error| {
+                    error.message.contains("auth")
+                        || error.message.contains("Authentication")
+                }),
+                "expected authentication error for {field}: {:?}",
+                response.errors
+            );
+        }
+    }
 
     #[test]
     fn graphql_internal_error_redacts_backend_diagnostics() {
