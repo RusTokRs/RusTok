@@ -620,6 +620,9 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   responsible for retry after an interrupted provider operation.
   Payment provider recovery additionally checks the shutdown signal between
   tenant work items, without cancelling a recovery operation already underway.
+  Tenant enumeration uses a bounded, UUID-ordered keyset cursor instead of
+  offset pagination, so deletions of earlier tenant rows do not shift pending
+  recovery work out of the current sweep.
 - Embedded admin HTML fallback is limited to SPA navigation paths. Missing
   scripts, stylesheets, fonts, images and other recognized static assets return
   404 rather than HTML with status 200.
