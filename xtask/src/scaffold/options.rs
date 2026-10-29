@@ -134,6 +134,16 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         bail!("--no-ui and --ui are conflicting surface requests");
     }
 
+    if args.iter().filter(|arg| arg.as_str() == "--ui").count() > 1 {
+        bail!("--ui may only be provided once");
+    }
+    if let Some(index) = args.iter().position(|arg| arg == "--ui") {
+        match args.get(index + 1) {
+            Some(value) if !value.starts_with("--") => {}
+            _ => bail!("--ui requires dual, admin, storefront, or none"),
+        }
+    }
+
     let ui = if args.iter().any(|arg| arg == "--no-ui") {
         ScaffoldUi::None
     } else if let Some(ui_val) = cli_option_value(args, "--ui") {
@@ -294,6 +304,17 @@ mod tests {
     fn conflicting_ui_requests_fail_closed() {
         assert!(parse(&["example", "--ui", "admin", "--no-ui"]).is_err());
         assert!(parse(&["example", "--no-ui", "--ui", "dual"]).is_err());
+    }
+
+    #[test]
+    fn missing_or_duplicate_ui_mode_is_not_silently_defaulted() {
+        for args in [
+            vec!["example", "--ui"],
+            vec!["example", "--ui", "--no-db"],
+            vec!["example", "--ui", "dual", "--ui", "admin"],
+        ] {
+            assert!(parse(&args).is_err(), "must reject: {args:?}");
+        }
     }
 
     #[test]
