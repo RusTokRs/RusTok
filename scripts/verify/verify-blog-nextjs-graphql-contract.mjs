@@ -18,6 +18,8 @@ import fs from 'node:fs';
 const BLOG_CRATE = 'crates/modules/rustok-blog';
 const TYPES_PATH = `${BLOG_CRATE}/src/graphql/types.rs`;
 const TAXONOMY_TYPES_PATH = `${BLOG_CRATE}/src/graphql/types/taxonomy.rs`;
+const SEARCH_TYPES_PATH = 'crates/modules/rustok-search/src/graphql/types.rs';
+const SEARCH_QUERY_PATH = 'crates/modules/rustok-search/src/graphql/query.rs';
 const QUERY_PATH = `${BLOG_CRATE}/src/graphql/query.rs`;
 const MUTATION_PATH = `${BLOG_CRATE}/src/graphql/mutation.rs`;
 
@@ -495,6 +497,13 @@ for (const [name, definition] of parseSchemaTypes(requireFile(TAXONOMY_TYPES_PAT
   if (types.has(name)) fail(`duplicate Blog GraphQL type ${name} in ${TAXONOMY_TYPES_PATH}`);
   else types.set(name, definition);
 }
+// Blog's Next.js storefront also intentionally uses Search's public GraphQL
+// root for full-text results. Validate those fields against Search's real
+// schema; never silently allow arbitrary roots outside the Blog owner.
+for (const [name, definition] of parseSchemaTypes(requireFile(SEARCH_TYPES_PATH))) {
+  if (types.has(name)) fail(`duplicate GraphQL type ${name} in ${SEARCH_TYPES_PATH}`);
+  else types.set(name, definition);
+}
 for (const [fieldName, rustType] of parseComplexObjectFields(typesSource, 'GqlPost')) {
   const type = types.get('GqlPost');
   if (type && !type.fields.has(fieldName)) {
@@ -505,6 +514,16 @@ const rootFields = {
   query: parseRootFields(requireFile(QUERY_PATH), 'Query').fields,
   mutation: parseRootFields(requireFile(MUTATION_PATH), 'Mutation').fields
 };
+
+const searchQueryFields = parseRootFields(requireFile(SEARCH_QUERY_PATH), 'Search').fields;
+const storefrontSearchType = searchQueryFields.get('storefrontSearch');
+if (!storefrontSearchType) {
+  fail(`${SEARCH_QUERY_PATH}: missing external Search owner root storefrontSearch`);
+} else if (rootFields.query.has('storefrontSearch')) {
+  fail('Blog cannot shadow the Search owner storefrontSearch GraphQL root');
+} else {
+  rootFields.query.set('storefrontSearch', storefrontSearchType);
+}
 
 if (types.size === 0) {
   fail(`no Blog object/input types were derived from ${TYPES_PATH}`);
