@@ -212,7 +212,7 @@ for (const profile of uiProfiles) {
   // FFA contract tests belong to a dedicated source slot, not a root dump file.
   const uiLib = join(sourceRoot, "lib.rs");
   const uiContractTest = join(sourceRoot, "tests", "contract.rs");
-  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").includes("#[cfg(test)]\\nmod tests;")) {
+  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").includes("#[cfg(test)]\nmod tests;")) {
     fail(`${profile.crate}: lib.rs must wire its dedicated tests/ module`);
   }
   if (!existsSync(uiContractTest)) {
