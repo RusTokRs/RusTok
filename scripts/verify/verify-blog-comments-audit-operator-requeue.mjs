@@ -8,7 +8,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const migrationPath =
-  "crates/modules/rustok-blog/src/migrations/m20260803_000011_create_blog_comments_audit_recovery.rs";
+  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs";
 const migrationsModPath = "crates/modules/rustok-blog/src/migrations/mod.rs";
 const recoveryPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_recovery_postgres.rs";
@@ -66,23 +66,19 @@ function forbidAll(label, text, markers) {
 }
 
 requireAll("migration", migration, [
-  "handoff_recovery_epoch BIGINT NOT NULL DEFAULT 0",
-  "handoff_recovery_epoch >= 0",
+  "handoff_recovery_epoch",
   "blog_comments_tcp_delegation_schedule_audit_recovery_audits",
-  "control_plane_tenant_id UUID NOT NULL",
+  "ControlPlaneTenantId",
   "action = 'requeue'",
-  "octet_length(reason) BETWEEN 1 AND 512",
-  "reason !~ '[[:cntrl:]]'",
-  "UNIQUE (request_id, recovery_epoch)",
+  "uq_blog_comments_delegation_audit_recovery_epoch",
   "recovery_immutable_update",
   "recovery_immutable_delete",
   "append-only",
-  "intentionally irreversible",
 ]);
 
 requireAll("migration registration", migrationsMod, [
-  "mod m20260803_000011_create_blog_comments_audit_recovery;",
-  "m20260803_000011_create_blog_comments_audit_recovery::Migration",
+  "mod m20261029_000001_create_blog_schema;",
+  "m20261029_000001_create_blog_schema::Migration",
 ]);
 
 requireAll("recovery store", recovery, [

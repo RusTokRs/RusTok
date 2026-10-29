@@ -17,14 +17,14 @@ const runtimeSmokePath = 'crates/modules/rustok-blog/contracts/evidence/blog-com
 const consumerRuntimeOrderSmokePath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
 const commentsEventProjectionPath = 'crates/modules/rustok-blog/contracts/evidence/blog-comments-event-projection.json';
 const projectionHandlerPath = 'crates/modules/rustok-blog/src/services/comment_projection.rs';
-const projectionRevisionMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20260922_000026_add_blog_comment_projection_revision.rs';
+const projectionRevisionMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const projectionPostgresHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs';
 const projectionRestartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
 const projectionHarnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const projectionRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const projectionPostgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
-const blogInitialMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs';
+const blogInitialMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const removedRichtextArtifacts = [
   'crates/modules/rustok-blog/src/migrations/m20260730_000006_cutover_blog_article_richtext.rs',
   'crates/modules/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
@@ -324,7 +324,7 @@ hasAll(projectionRestartHarness, [
   'count_outbox_events(&restarted_db).await?, 1',
 ], 'blog comment projection restart target');
 hasNone(projectionRestartHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection restart target');
-const migration = read('crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs');
+const migration = read(blogInitialMigrationPath);
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
 const moduleSource = read('crates/modules/rustok-blog/src/module.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');

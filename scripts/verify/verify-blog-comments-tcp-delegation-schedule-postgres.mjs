@@ -31,7 +31,7 @@ const processTriggerPath =
 const commentsSchedulePath = 'crates/modules/rustok-comments/src/tcp_delegation_schedule.rs';
 const migrationModPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const migrationPath =
-  'crates/modules/rustok-blog/src/migrations/m20260801_000007_create_blog_comments_delegation_schedule_state.rs';
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-82.md';
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-postgres.json';
@@ -149,8 +149,8 @@ hasNone(
 hasAll(
   migrationMod,
   [
-    'mod m20260801_000007_create_blog_comments_delegation_schedule_state;',
-    'm20260801_000007_create_blog_comments_delegation_schedule_state::Migration',
+    'mod m20261029_000001_create_blog_schema;',
+    'm20261029_000001_create_blog_schema::Migration',
   ],
   'Blog migration registry',
 );
@@ -173,8 +173,12 @@ hasAll(
   'Blog PostgreSQL persistence migration',
 );
 
+const scheduleStateDef = migration.slice(
+  migration.indexOf('BlogCommentsTcpDelegationScheduleState::Table'),
+  migration.indexOf('BlogCommentsTcpDelegationScheduleAuditOutbox::Table'),
+);
 hasNone(
-  migration,
+  scheduleStateDef,
   ['Secret', 'KeyId', 'Credential', 'Nonce', 'Token', 'FilePath', 'ActorId', 'RequestId'],
   'persistence table secret and identity columns',
 );

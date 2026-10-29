@@ -598,7 +598,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(BlogCommentProjectionDeliveries::ProjectionRevision)
                             .big_integer()
                             .not_null()
-                            .default(1),
+                            .default(0),
                     )
                     .col(
                         ColumnDef::new(BlogCommentProjectionDeliveries::ProcessedAt)
@@ -628,6 +628,19 @@ impl MigrationTrait for Migration {
                     .table(BlogCommentProjectionDeliveries::Table)
                     .col(BlogCommentProjectionDeliveries::TenantId)
                     .col(BlogCommentProjectionDeliveries::PostId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comment_projection_deliveries_tenant_post_revision")
+                    .table(BlogCommentProjectionDeliveries::Table)
+                    .col(BlogCommentProjectionDeliveries::TenantId)
+                    .col(BlogCommentProjectionDeliveries::PostId)
+                    .col(BlogCommentProjectionDeliveries::ProjectionRevision)
                     .if_not_exists()
                     .to_owned(),
             )

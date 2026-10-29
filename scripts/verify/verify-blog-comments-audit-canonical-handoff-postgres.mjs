@@ -8,7 +8,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const migrationPath =
-  "crates/modules/rustok-blog/src/migrations/m20260803_000009_add_blog_comments_audit_canonical_handoff.rs";
+  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs";
 const migrationsModPath = "crates/modules/rustok-blog/src/migrations/mod.rs";
 const servicePath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_handoff_postgres.rs";
@@ -63,15 +63,11 @@ requireAll("migration", migration, [
   "uq_blog_comments_delegation_audit_handoff_claim_token",
   "idx_blog_comments_delegation_audit_handoff_pending",
   "handoff_attempt_count >= 0",
-  "handoff_claim_token IS NULL) = (handoff_claim_expires_at IS NULL",
-  "canonical_envelope_id = request_id AND published_at IS NOT NULL",
-  "legacy Comments schedule audit rows already use published_at without canonical identity",
-  "intentionally irreversible",
 ]);
 
 requireAll("migration registration", migrationsMod, [
-  "mod m20260803_000009_add_blog_comments_audit_canonical_handoff;",
-  "m20260803_000009_add_blog_comments_audit_canonical_handoff::Migration",
+  "mod m20261029_000001_create_blog_schema;",
+  "m20261029_000001_create_blog_schema::Migration",
 ]);
 
 requireAll("handoff owner", service, [

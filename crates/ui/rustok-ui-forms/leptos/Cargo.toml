@@ -26,4 +26,4 @@ csr = ["leptos/csr"]
 
 [dependencies]
 leptos = { workspace = true }
-rustok-forms = { workspace = true }
+rustok-ui-forms = { workspace = true }

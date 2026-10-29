@@ -76,7 +76,7 @@ function writeBaseline(root) {
 
   write(
     root,
-    "crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+    "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
     [
       "fn migration() { let _ = TaxonomyTerms::Id; }",
       "// .table(BlogPostTags::Table)",

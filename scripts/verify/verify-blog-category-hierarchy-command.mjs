@@ -145,29 +145,27 @@ rejectMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
   "depth",
 ]);
 
-requireMarkers("crates/modules/rustok-blog/src/migrations/m20260916_000022_clean_blog_category_canonical_taxonomy.rs", [
-  "Taxonomy is the canonical owner of Category hierarchy",
-  ".drop_column(BlogCategories::ParentId)",
-  ".drop_column(BlogCategories::Position)",
-  ".drop_column(BlogCategories::Depth)",
-  "Intentionally irreversible under Zero-Legacy Policy",
-]);
-
-const settingsContract = requireMarkers("crates/modules/rustok-blog/src/migrations/m20260924_000029_enforce_blog_category_settings_contract.rs", [
-  "validate_existing_settings",
+const canonicalMigration = requireMarkers("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
+  "Table::create()",
+  ".table(BlogCategories::Table)",
   "jsonb_typeof(settings) = 'object'",
   "octet_length(settings::text)",
-  "json_valid(settings)",
   "blog_categories_settings_contract_insert",
   "blog_categories_settings_contract_update",
 ]);
+const blogCategoryDef = segment(canonicalMigration, ".table(BlogCategories::Table)", ".to_owned()");
+if (blogCategoryDef.includes("ParentId") || blogCategoryDef.includes("Position") || blogCategoryDef.includes("Depth")) {
+  failures.push("BlogCategories table definition must not contain legacy hierarchy columns (ParentId, Position, Depth)");
+}
+
+const settingsContract = canonicalMigration;
 requireMarkers("crates/modules/rustok-blog/src/domain/mod.rs", [
   "BLOG_CATEGORY_SETTINGS_MAX_BYTES: usize = 64 * 1024",
 ]);
 requireMarkers("crates/modules/rustok-blog/src/migrations/mod.rs", [
-  "mod m20260924_000029_enforce_blog_category_settings_contract;",
-  "Box::new(m20260924_000029_enforce_blog_category_settings_contract::Migration)",
-  '"m20260924_000029_enforce_blog_category_settings_contract"',
+  "mod m20261029_000001_create_blog_schema;",
+  "Box::new(m20261029_000001_create_blog_schema::Migration)",
+  '"m20261029_000001_create_blog_schema"',
 ]);
 if (settingsContract.includes("pg_column_size(settings)")) {
   failures.push("Blog Category settings contract must guard logical JSON size, not compressed PostgreSQL storage size");

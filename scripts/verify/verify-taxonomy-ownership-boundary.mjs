@@ -99,10 +99,10 @@ requireMarkers(
 );
 
 requireMarkers(
-  "crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
+  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
   [
     ".table(BlogPostTags::Table)",
-    ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
+    "REFERENCES taxonomy_terms",
   ],
 );
 requireMarkers("crates/modules/rustok-blog/src/entities/blog_post_tag.rs", [

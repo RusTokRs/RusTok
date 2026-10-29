@@ -13,7 +13,7 @@ const files = {
   taxonomyMutation: 'crates/modules/rustok-taxonomy/src/module_term_mutation.rs',
   taxonomyLib: 'crates/modules/rustok-taxonomy/src/lib.rs',
   tagService: 'crates/modules/rustok-blog/src/services/tag.rs',
-  relationMigration: 'crates/modules/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs',
+  relationMigration: 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
   harness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
   current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
@@ -138,10 +138,9 @@ for (const marker of [
 need(tagService, 'pub fn new(db: DatabaseConnection) -> Self', files.tagService);
 
 for (const marker of [
-  '.name("fk_blog_post_tags_tag")',
-  '.from(BlogPostTags::Table, BlogPostTags::TagId)',
-  '.to(TaxonomyTerms::Table, TaxonomyTerms::Id)',
-  '.on_delete(ForeignKeyAction::Cascade)',
+  'fk_blog_post_tags_tag_tenant',
+  'REFERENCES taxonomy_terms',
+  'ON DELETE CASCADE',
 ]) need(relationMigration, marker, files.relationMigration);
 
 for (const marker of [

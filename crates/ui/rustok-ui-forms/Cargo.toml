@@ -1,12 +1,12 @@
 [package]
-name = "rustok-forms"
+name = "rustok-ui-forms"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Framework-agnostic form state, validation, field contracts, and dirty tracking"
 repository = "https://github.com/RusTokRs/RusTok"
-documentation = "https://docs.rs/rustok-forms"
+documentation = "https://docs.rs/rustok-ui-forms"
 readme = "README.md"
 keywords = ["forms", "validation", "state", "dirty-tracking", "schema"]
 categories = ["web-programming", "gui", "data-structures"]

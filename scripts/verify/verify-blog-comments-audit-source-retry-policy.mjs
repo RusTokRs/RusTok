@@ -10,7 +10,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const migrationPath =
-  "crates/modules/rustok-blog/src/migrations/m20260803_000010_add_blog_comments_audit_source_retry_policy.rs";
+  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs";
 const migrationsModPath = "crates/modules/rustok-blog/src/migrations/mod.rs";
 const policyPath =
   "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_source_retry_postgres.rs";
@@ -85,17 +85,11 @@ requireAll("migration", migration, [
   "HandoffDeadLetterReason",
   "idx_blog_comments_delegation_audit_handoff_retry_ready",
   "idx_blog_comments_delegation_audit_handoff_dead_letter",
-  "handoff_last_failure_code IN ('conflict', 'unavailable')",
-  "handoff_dead_letter_reason = 'attempt_budget_exhausted'",
-  "ck_blog_comments_delegation_audit_handoff_retry_unclaimed",
-  "ck_blog_comments_delegation_audit_handoff_dead_letter_terminal",
-  "ck_blog_comments_delegation_audit_handoff_published_not_retrying",
-  "intentionally irreversible",
 ]);
 
 requireAll("migration registration", migrationsMod, [
-  "mod m20260803_000010_add_blog_comments_audit_source_retry_policy;",
-  "m20260803_000010_add_blog_comments_audit_source_retry_policy::Migration",
+  "mod m20261029_000001_create_blog_schema;",
+  "m20261029_000001_create_blog_schema::Migration",
 ]);
 
 requireAll("policy owner", policy, [

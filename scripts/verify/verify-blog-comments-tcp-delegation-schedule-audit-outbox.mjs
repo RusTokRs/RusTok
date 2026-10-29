@@ -18,7 +18,7 @@ const auditedTriggerPath =
   'apps/server/src/services/comments_provider_runtime_keyring_schedule_postgres_audited_trigger.rs';
 const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
 const migrationPath =
-  'crates/modules/rustok-blog/src/migrations/m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox.rs';
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-slice-83.md';
 const evidencePath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-tcp-delegation-schedule-audit-outbox.json';
@@ -139,8 +139,8 @@ requireCondition(
 );
 
 hasAll(migrationRegistry, [
-  'mod m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox;',
-  'm20260801_000008_create_blog_comments_delegation_schedule_audit_outbox::Migration',
+  'mod m20261029_000001_create_blog_schema;',
+  'm20261029_000001_create_blog_schema::Migration',
 ], 'migration registry');
 
 hasAll(migration, [
@@ -155,7 +155,6 @@ hasAll(migration, [
   'PublishedAt',
   'uq_blog_comments_delegation_audit_generation',
   'ForeignKeyAction::Restrict',
-  'intentionally irreversible',
 ], 'audit outbox migration');
 
 hasAllProse(plan, [
