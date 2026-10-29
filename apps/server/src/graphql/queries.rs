@@ -1165,8 +1165,7 @@ impl RootQuery {
         ctx: &Context<'_>,
         #[graphql(default)] limit: i64,
     ) -> Result<Vec<ActivityItem>> {
-        require_reporting_permission(ctx, Permission::USERS_LIST, "users:list required")
-            .await?;
+        require_reporting_permission(ctx, Permission::USERS_LIST, "users:list required").await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
@@ -1298,8 +1297,7 @@ mod tests {
             assert!(!response.errors.is_empty(), "{field} must require auth");
             assert!(
                 response.errors.iter().any(|error| {
-                    error.message.contains("auth")
-                        || error.message.contains("Authentication")
+                    error.message.contains("auth") || error.message.contains("Authentication")
                 }),
                 "expected authentication error for {field}: {:?}",
                 response.errors
