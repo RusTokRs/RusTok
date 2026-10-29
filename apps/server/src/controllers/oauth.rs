@@ -1028,16 +1028,39 @@ fn render_consent_page(
         .collect::<Vec<_>>()
         .join("");
 
+    // An absent OAuth parameter must stay absent on POST. An empty
+    // hidden input changes None to Some(""), invalidating the CSRF binding.
+    let scope_input = request
+        .scope
+        .as_deref()
+        .map(|scope| {
+            format!(
+                "<input type=\"hidden\" name=\"scope\" value=\"{}\">",
+                escape_attr(scope)
+            )
+        })
+        .unwrap_or_default();
+    let state_input = request
+        .state
+        .as_deref()
+        .map(|state| {
+            format!(
+                "<input type=\"hidden\" name=\"state\" value=\"{}\">",
+                escape_attr(state)
+            )
+        })
+        .unwrap_or_default();
+
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\"><input type=\"hidden\" name=\"scope\" value=\"{scope_attr}\"><input type=\"hidden\" name=\"state\" value=\"{state_attr}\"><input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\">{scope_input}{state_input}<input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
         app = escape_html(&validated.app.name),
         user = escape_html(user_email),
         scopes = scopes,
         redirect = escape_html(&validated.redirect_uri),
         client_id = escape_attr(&request.client_id),
         redirect_attr = escape_attr(&request.redirect_uri),
-        scope_attr = escape_attr(request.scope.as_deref().unwrap_or_default()),
-        state_attr = escape_attr(request.state.as_deref().unwrap_or_default()),
+        scope_input = scope_input,
+        state_input = state_input,
         challenge_attr = escape_attr(&request.code_challenge),
         csrf_attr = escape_attr(consent_csrf),
     )
@@ -1526,6 +1549,32 @@ mod tests {
         assert!(html.contains("&lt;unsafe&gt;"));
         assert!(html.contains("challenge&lt;&amp;&gt;"));
         assert!(html.contains("&quot;quoted-state&quot;"));
+    }
+
+    #[test]
+    fn consent_page_preserves_absent_optional_oauth_parameters() {
+        let validated = validated_request("third_party");
+        let request = BrowserAuthorizeRequest {
+            response_type: "code".to_string(),
+            client_id: validated.app.client_id.to_string(),
+            redirect_uri: validated.redirect_uri.clone(),
+            scope: None,
+            state: None,
+            code_challenge: validated.code_challenge.clone(),
+            code_challenge_method: Some("S256".to_string()),
+        };
+
+        let html = render_consent_page(
+            &validated,
+            &request,
+            "user@example.com",
+            "1893456000.deadbeef",
+        );
+        assert!(!html.contains("name=\"scope\""), "{html}");
+        assert!(!html.contains("name=\"state\""), "{html}");
+        assert!(html.contains("name=\"consent_csrf\""));
+        assert!(html.contains("profile"));
+        assert!(html.contains("catalog:read"));
     }
 
     #[test]
