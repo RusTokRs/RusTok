@@ -120,6 +120,25 @@ test("Leptos FFA without any Next.js metadata passes native architecture lint", 
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-state = Pending\n");
     assert.deepEqual(lint(ctx), []);
+
+    // A scaffolded but unmounted FFA development package is still linted.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    assert.deepEqual(lint(ctx), [], "future_ui accepts real draft package files");
+
+    // A no_ui module may not silently hide a physical UI package.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    assert.match(lint(ctx).join("\n"), /undeclared UI package requires explicit/);
+
+    // Draft is not a free pass for a wrong Cargo package name.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "wrong-admin"\n');
+    assert.match(lint(ctx).join("\n"), /Cargo package name differs/);
   });
 });
 

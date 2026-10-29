@@ -88,18 +88,26 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const section = "provides." + (side === "admin" ? "admin_ui" : "storefront_ui");
   const requested = new RegExp("^\\[" + section.replace(".", "\\.") + "\\]$", "m").test(manifest);
   const uiRoot = join(moduleRoot, side);
-  if (!requested) {
+  const futureUi = keyInSection(manifest, "module", "ui_classification") === "future_ui";
+  const draft = !requested && futureUi && existsSync(uiRoot);
+  if (!requested && !draft) {
     if (existsSync(uiRoot)) {
-      diagnostics.push(relative(root, uiRoot) + ": UI package exists but " + section + " is not declared");
+      diagnostics.push(relative(root, uiRoot) +
+        ": undeclared UI package requires explicit module.ui_classification = \"future_ui\"");
     }
     return;
   }
-  const configured = keyInSection(manifest, section, "leptos_crate");
+  // A draft package is not a published provides.*_ui declaration. Still
+  // validate its real files instead of exempting it from source architecture.
+  const name = moduleRoot.split(/[\\/]/).at(-1);
+  const configured = requested
+    ? keyInSection(manifest, section, "leptos_crate")
+    : name + "-" + side;
   if (!configured) diagnostics.push(section + ": leptos_crate must identify the real package");
   const src = join(uiRoot, "src");
   const cargo = readRequired(root, join(uiRoot, "Cargo.toml"), diagnostics);
   if (configured && !cargo.includes('name = "' + configured + '"')) {
-    diagnostics.push(relative(root, uiRoot) + ": Cargo package name differs from " + section + ".leptos_crate");
+    diagnostics.push(relative(root, uiRoot) + ": Cargo package name differs from expected Leptos package " + configured);
   }
   const lib = readRequired(root, join(src, "lib.rs"), diagnostics);
   readRequired(root, join(src, "model.rs"), diagnostics);

@@ -17,6 +17,14 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
     let title_rust = format!("{title:?}");
     let description_rust = format!("{description:?}");
     let module_type = format!("{pascal}Module");
+    let ui_requested = opts.ui != super::options::ScaffoldUi::None;
+    let ui_classification = if ui_requested { "future_ui" } else { "no_ui" };
+    let ui_summary = match opts.ui {
+        super::options::ScaffoldUi::None => "No UI packages requested.",
+        super::options::ScaffoldUi::Admin => "Draft Leptos admin crate created but NOT mounted in the host.",
+        super::options::ScaffoldUi::Storefront => "Draft Leptos storefront crate created but NOT mounted in the host.",
+        super::options::ScaffoldUi::Dual => "Draft Leptos admin and storefront crates created but NOT mounted in hosts.",
+    };
 
     let cargo = format!(
         r#"[package]
@@ -50,7 +58,7 @@ version = "0.1.0"
 description = {description_toml}
 ownership = "first_party"
 trust_level = "private"
-ui_classification = "no_ui"
+ui_classification = "{ui_classification}"
 recommended_admin_surfaces = []
 
 [marketplace]
@@ -77,7 +85,8 @@ Native runtime module identity for {title}. No domain capability has been implem
 
 ## Entry points
 - `{module_type}` implements `RusToKModule` and `MigrationSource`.
-- No services, persistence tables, GraphQL, HTTP, UI or event producers are declared.
+- No services, persistence tables, business GraphQL/HTTP endpoints or event producers are declared.
+- {ui_summary} No `[provides.*_ui]` live surface is declared.
 
 ## Interactions
 - Platform runtime discovery only. No external capability or module dependency is required.
@@ -107,7 +116,8 @@ Domain state, application services and storage have not been defined.
 
 ## Integration
 The module can be registered by the platform runtime; it contributes no
-transport, UI, migrations, outbox producers or external capability adapters.
+business transport, active UI routes, migrations, outbox producers or external capability adapters.
+{ui_summary}
 
 ## Verification
 - `cargo xtask module lint {slug}` — static source architecture
@@ -132,14 +142,16 @@ Establish native ownership before implementing a business capability.
 - Data schema and persistence: not_started
 - FBA status: `not_started`
 - FFA status: `not_started`
-- UI surfaces: none advertised
+- UI surfaces: {ui_summary}
+- UI readiness: draft skeleton, not_started, no live host mount or owner operations
 - No business functionality or runtime transport parity is claimed.
 
 ## Local work phases
 - [x] Define native module runtime metadata and contract tests.
 - [ ] Specify domain rules, owner service/DTO commands and typed context/errors.
 - [ ] Design real persistence and migrations if required.
-- [ ] Add GraphQL/HTTP/Leptos/Next.js transports only for real operations.
+- [ ] Implement owner-specific native and GraphQL transports and mount Leptos UI after real operations.
+- [ ] Implement any independent classic Next.js client separately in its host, if needed.
 - [ ] Verify runtime, FBA/FFA evidence, registration and release readiness.
 
 ## Verification
@@ -358,6 +370,22 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&cargo.1).unwrap();
         assert!(parsed["dependencies"].get("sea-orm").is_none());
         assert!(parsed["dependencies"].get("rustok-outbox").is_none());
+    }
+
+    #[test]
+    fn requested_ui_creates_only_future_ui_metadata_without_live_provides() {
+        for ui in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
+            let mut opts = options();
+            opts.ui = ui;
+            let files = render_backend(&opts, "Example");
+            let manifest = &files.iter().find(|(p, _)| p.to_str() == Some("rustok-module.toml")).unwrap().1;
+            let value: toml::Value = toml::from_str(manifest).unwrap();
+            assert_eq!(value["module"]["ui_classification"].as_str(), Some("future_ui"));
+            assert!(value.get("provides").is_none(), "draft UI must not mount a live surface");
+            let plan = &files.iter().find(|(p, _)| p.to_str() == Some("docs/implementation-plan.md")).unwrap().1;
+            assert!(plan.contains("not_started"));
+            assert!(plan.contains("NOT mounted"));
+        }
     }
 
     #[test]

@@ -63,10 +63,10 @@ does not translate local Cargo execution into that evidence.
 `cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) **improves the existing native module scaffolding**. The default creates a draft native runtime identity, not a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract).
 
 The command:
-- By default creates a **headless, no-DB native runtime identity**. `--with-db` fails before writing. `--ui admin|storefront|dual` is allowed **only with `--dry-run`**, to inspect draft FFA files without creating, registering, or advertising a UI.
+- By default creates a **headless, no-DB native runtime identity**. `--with-db` fails before writing. `--ui admin|storefront|dual` **creates editable Leptos FFA crates** and registers them as Cargo workspace members. The module manifest is `future_ui`, with no live `[provides.*_ui]` or Leptos host mount. Use `--dry-run` to preview without writing.
 - Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
-- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. Its preview now creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The preview is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
+- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. It creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The generated FFA source is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
   - `Cargo.toml` (`[workspace.dependencies]` and `members`);
@@ -78,13 +78,12 @@ The command:
 
 **Remaining limitations:** Registration is not atomic; `--dry-run` does not
 preview all manifest edits. Successful publish-readiness validation does not
-prove a build, native architecture lint, owner business behavior, or FFA/FBA
-transport parity. Post-scaffold validation failure now returns a nonzero error,
-but earlier file writes are not yet rolled back. Writable UI and persistence
-requests remain rejected pending owner contracts, executable native/GraphQL
-adapters. The classic Next.js packages are independent host work. Draft FFA preview is not a working surface
-and does not satisfy live UI architecture lint. Run full scoped verification
-before treating generated code as ready.
+prove compilation, native architecture lint or functional FFA/FBA readiness;
+post-scaffold validation errors return a failure, but earlier writes are not
+rolled back. Persistence needs a real schema. New UI crates are *draft,
+unmounted*; their native and GraphQL adapters fail explicitly until owner
+operations are implemented. Classic Next.js packages remain Next-host owned.
+Run scoped verification before publishing any UI route.
 
 ```powershell
 # Create the minimal native runtime identity (no business CRUD or storage):
@@ -93,7 +92,10 @@ cargo xtask scaffold calls --title "WebRTC Calls & Conferencing" --category coll
 # Create a headless/no-ui ERP module:
 cargo xtask scaffold finance --title "Operational Finance & Banking" --category erp --no-ui
 
-# Preview draft admin/storefront FFA packages WITHOUT writing or registering them:
+# Create unmounted admin/storefront Leptos FFA development crates:
+cargo xtask scaffold party --ui dual
+
+# Preview the same development files without writing:
 cargo xtask scaffold party --ui dual --dry-run
 
 # Preview the default headless module:
