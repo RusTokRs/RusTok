@@ -33,3 +33,4 @@
 
 ### Errors / Failure Codes
 - Transport failures are handled by the transport facade and exposed via Leptos signals.
+

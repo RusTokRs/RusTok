@@ -47,11 +47,13 @@ use owner read/policy ports rather than query those rows directly.
 
 Current writes normalize against the active host-resolved manifest schema, and
 disable retains settings. Retained settings are revalidated against the active
-schema before re-enable hooks, the static rollout guard validates against the real
-predecessor and candidate schema intersection, and dormant settings can be repaired
+schema before ordinary re-enable hooks, and dormant settings can be repaired
 while disabled via `update_static_normalized_settings`. Static rows do not yet
 persist the exact schema digest plus `not_applicable`/`ready`/`migration_required`
-columns.
+columns. The static rollout guard can fall back to the candidate schema when
+predecessor resolution fails, and the reviewed CAS path bypasses it; therefore
+N/N+1 write safety is not yet established. Compensation also requires the same
+enablement preflight and transition fencing as ordinary re-enable.
 
 The canonical current/target contract and gap table are in
 [Settings and Configuration Architecture](../../../../docs/architecture/settings.md),

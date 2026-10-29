@@ -160,6 +160,13 @@ around the owner contracts.
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 
+- OCI admission stores releases under a global digest key and reads by digest
+  without an explicit scope. Tenant admission journal calls also lack an
+  owner transaction with tenant RLS context. Scope isolation and PostgreSQL
+  behavior require an owner-level cutover and verification.
+- Static settings rollout compatibility can fall back to the candidate schema,
+  and the reviewed CAS path bypasses that guard. Compensation and retry paths
+  also need lifecycle and retryable-receipt review before production use.
 - Artifact-data object migration and the physical namespace cutover still need
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest

@@ -19,9 +19,7 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
-use rustok_api::{
-    ModuleRetentionHoldView, ModuleTransitionCheckpointView, ModuleTransitionStateView,
-};
+use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
 use rustok_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
@@ -466,47 +464,89 @@ pub fn ModulesList(
     let enabled_modules = use_enabled_modules_context();
     let is_showcase_surface = admin_surface == "next-admin";
 
-    let (active_transition, set_active_transition) =
-        signal::<Option<ModuleTransitionCheckpointView>>(None);
+    let (active_transitions, set_active_transitions) =
+        signal::<Vec<ModuleTransitionCheckpointView>>(Vec::new());
+    let (transition_error, set_transition_error) = signal::<Option<String>>(None);
+    let (transition_request, set_transition_request) = signal(0_u64);
+    let (transition_scope, set_transition_scope) =
+        signal::<Option<(Option<String>, Option<String>)>>(None);
     let (retention_holds, set_retention_holds) = signal::<Vec<ModuleRetentionHoldView>>(vec![]);
+    let (retention_error, set_retention_error) = signal::<Option<String>>(None);
+    let (retention_scope, set_retention_scope) =
+        signal::<Option<(Option<String>, Option<String>)>>(None);
 
     let refresh_transition_state = move || {
+        let request = transition_request.get_untracked().wrapping_add(1);
+        set_transition_request.set(request);
         let token_val = token.get();
         let tenant_val = tenant.get();
+        let scope = (token_val.clone(), tenant_val.clone());
         let query_map = query.get();
         let op_id_opt = query_map
             .get("op_id")
             .or_else(|| query_map.get("operation_id"));
 
         spawn_local(async move {
-            if let Some(op_id) = op_id_opt {
-                if let Ok(Some(cp)) = transport::fetch_transition_checkpoint(
+            let mut selection_error = None;
+            let selected = if let Some(op_id) = op_id_opt {
+                match transport::fetch_transition_checkpoint(
                     token_val.clone(),
                     tenant_val.clone(),
                     op_id,
                 )
                 .await
                 {
-                    set_active_transition.set(Some(cp));
+                    Ok(Some(checkpoint)) => Some(checkpoint),
+                    Ok(None) => {
+                        selection_error =
+                            Some("The selected transition was not found.".to_string());
+                        None
+                    }
+                    Err(error) => {
+                        selection_error =
+                            Some(format!("Failed to load selected transition: {error}"));
+                        None
+                    }
                 }
-            } else if let Ok(active) =
-                transport::fetch_active_transitions(token_val.clone(), tenant_val.clone()).await
-            {
-                // The page renders one transition control card. Surface an
-                // operator-attention checkpoint ahead of ordinary in-flight
-                // transitions so it cannot be hidden by list order.
-                let intervention_required = active
-                    .iter()
-                    .find(|checkpoint| {
-                        checkpoint.state == ModuleTransitionStateView::InterventionRequired
-                    })
-                    .cloned();
-                set_active_transition
-                    .set(intervention_required.or_else(|| active.into_iter().next()));
+            } else {
+                None
+            };
+            let active_result =
+                transport::fetch_active_transitions(token_val.clone(), tenant_val.clone()).await;
+            if transition_request.get_untracked() != request {
+                return;
             }
+            match active_result {
+                Ok(mut active) => {
+                    if let Some(checkpoint) = selected {
+                        active.retain(|item| item.operation_id != checkpoint.operation_id);
+                        active.insert(0, checkpoint);
+                    }
+                    set_active_transitions.set(active);
+                    set_transition_error.set(selection_error);
+                }
+                Err(error) => {
+                    set_active_transitions.set(Vec::new());
+                    set_transition_error
+                        .set(Some(format!("Failed to load module transitions: {error}")));
+                }
+            }
+            set_transition_scope.set(Some(scope.clone()));
 
-            if let Ok(holds) = transport::fetch_retention_holds(token_val, tenant_val).await {
-                set_retention_holds.set(holds);
+            let holds_result = transport::fetch_retention_holds(token_val, tenant_val).await;
+            if transition_request.get_untracked() == request {
+                match holds_result {
+                    Ok(holds) => {
+                        set_retention_holds.set(holds);
+                        set_retention_error.set(None);
+                    }
+                    Err(error) => {
+                        set_retention_holds.set(Vec::new());
+                        set_retention_error
+                            .set(Some(format!("Failed to load retention holds: {error}")));
+                    }
+                }
+                set_retention_scope.set(Some(scope));
             }
         });
     };
@@ -594,10 +634,13 @@ pub fn ModulesList(
         });
     };
     let enabled_modules_for_orchestration = enabled_modules;
+    let (orchestration_request, set_orchestration_request) = signal(0_u64);
     let refresh_orchestration_state =
         move |token_value: Option<String>,
               tenant_value: Option<String>,
               filters: CatalogFilters| {
+            let request = orchestration_request.get_untracked().wrapping_add(1);
+            set_orchestration_request.set(request);
             let enabled_modules_for_refresh = enabled_modules_for_orchestration;
             spawn_local(async move {
                 enabled_modules_for_refresh.refresh();
@@ -605,6 +648,20 @@ pub fn ModulesList(
                     transport::fetch_modules(token_value.clone(), tenant_value.clone()).await
                 {
                     set_module_list.set(modules);
+                }
+                let installed_result =
+                    transport::fetch_installed_modules(token_value.clone(), tenant_value.clone())
+                        .await;
+                if orchestration_request.get_untracked() == request
+                    && token.get_untracked() == token_value
+                    && tenant.get_untracked() == tenant_value
+                {
+                    match installed_result {
+                        Ok(modules) => set_installed_module_list.set(modules),
+                        Err(error) => set_form_state.set(FormState::with_form_error(format!(
+                            "Failed to refresh installed modules: {error}"
+                        ))),
+                    }
                 }
                 if let Ok(snapshot) = transport::fetch_module_composition_snapshot(
                     token_value.clone(),
@@ -911,52 +968,6 @@ pub fn ModulesList(
         }
     });
 
-    let upsert_installed_module = move |slug: String, version: String| {
-        let registry_module = module_list
-            .get()
-            .iter()
-            .find(|module| module.module_slug == slug)
-            .cloned();
-        let catalog_module = marketplace_catalog
-            .get()
-            .into_iter()
-            .find(|module| module.slug == slug);
-        set_installed_module_list.update(|installed| {
-            if let Some(existing) = installed.iter_mut().find(|module| module.slug == slug) {
-                existing.version = Some(version.clone());
-                return;
-            }
-            installed.push(InstalledModule {
-                slug: slug.clone(),
-                source: catalog_module
-                    .as_ref()
-                    .map(|module| module.source.clone())
-                    .unwrap_or_else(|| "path".to_string()),
-                crate_name: catalog_module
-                    .as_ref()
-                    .map(|module| module.crate_name.clone())
-                    .or_else(|| {
-                        registry_module
-                            .as_ref()
-                            .map(|module| module.module_slug.clone())
-                    })
-                    .unwrap_or_else(|| slug.clone()),
-                version: Some(version),
-                required: false,
-                dependencies: catalog_module
-                    .as_ref()
-                    .map(|module| module.dependencies.clone())
-                    .or_else(|| {
-                        registry_module
-                            .as_ref()
-                            .map(|module| module.dependencies.clone())
-                    })
-                    .unwrap_or_default(),
-            });
-            installed.sort_by(|left, right| left.slug.cmp(&right.slug));
-        });
-    };
-
     let module_list_for_toggle = module_list;
     let on_toggle = Callback::new(move |(slug, enabled): (String, bool)| {
         let Some(expected_revision) = module_list_for_toggle
@@ -1167,7 +1178,6 @@ pub fn ModulesList(
 
     let on_install = Callback::new(move |(slug, version): (String, String)| {
         let slug_clone = slug.clone();
-        let version_clone = version.clone();
         set_platform_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
@@ -1198,7 +1208,6 @@ pub fn ModulesList(
             {
                 Ok(build) => {
                     set_composition_revision.set(Some(build.manifest_revision));
-                    upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
                     set_selected_tab.set(ModulesTab::Installed);
                     set_success_message.set(Some(format!("Install queued for {}", slug_clone)));
@@ -1244,16 +1253,6 @@ pub fn ModulesList(
             {
                 Ok(build) => {
                     set_composition_revision.set(Some(build.manifest_revision));
-                    set_installed_module_list
-                        .update(|modules| modules.retain(|module| module.slug != slug_clone));
-                    set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
-                        if let Some(module) = modules
-                            .iter_mut()
-                            .find(|module| module.module_slug == slug_clone)
-                        {
-                            module.enabled = false;
-                        }
-                    });
                     push_build_job(build);
                     set_success_message.set(Some(format!("Uninstall queued for {}", slug_clone)));
                     refresh_orchestration_state(
@@ -1270,7 +1269,6 @@ pub fn ModulesList(
 
     let on_upgrade = Callback::new(move |(slug, version): (String, String)| {
         let slug_clone = slug.clone();
-        let version_clone = version.clone();
         set_platform_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
@@ -1301,7 +1299,6 @@ pub fn ModulesList(
             {
                 Ok(build) => {
                     set_composition_revision.set(Some(build.manifest_revision));
-                    upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
                     set_success_message.set(Some(format!("Upgrade queued for {}", slug_clone)));
                     refresh_orchestration_state(
@@ -2082,18 +2079,25 @@ pub fn ModulesList(
                     <div class="space-y-6">
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm"><div class="space-y-2"><h3 class="text-base font-semibold text-card-foreground">"Versioned updates"</h3><p class="text-sm text-muted-foreground">"Only modules with an explicit installed version and a newer registry version appear here."</p></div></div>
 
-                        {move || active_transition.get().map(|checkpoint| {
+                        {move || (transition_scope.get() == Some((token.get(), tenant.get()))).then(|| transition_error.get()).flatten().map(|message| view! {
+                            <div role="alert" class="text-destructive text-sm">{message}</div>
+                        })}
+                        {move || (retention_scope.get() == Some((token.get(), tenant.get()))).then(|| retention_error.get()).flatten().map(|message| view! {
+                            <div role="alert" class="text-destructive text-sm">{message}</div>
+                        })}
+                        {move || (transition_scope.get() == Some((token.get(), tenant.get()))).then(|| active_transitions.get()).unwrap_or_default().into_iter().map(|checkpoint| {
                             let refresh = refresh_transition_state;
                             view! {
                                 <TransitionControlCard
                                     checkpoint=checkpoint
-                                    retention_holds=retention_holds.get()
+                                    retention_holds=if retention_scope.get() == Some((token.get(), tenant.get())) { retention_holds.get() } else { Vec::new() }
+                                    retention_holds_available=retention_scope.get() == Some((token.get(), tenant.get())) && retention_error.get().is_none()
                                     on_refresh=Callback::new(move |()| refresh())
                                 />
                             }
-                        })}
+                        }).collect_view()}
 
-                        {move || if active_transition.get().is_none() && !retention_holds.get().is_empty() {
+                        {move || if transition_scope.get() == Some((token.get(), tenant.get())) && retention_scope.get() == Some((token.get(), tenant.get())) && active_transitions.get().is_empty() && !retention_holds.get().is_empty() {
                             Some(view! {
                                 <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                                     <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">

@@ -91,7 +91,7 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Disable | Only `enabled` changes; settings JSON remains | Configuration survives disable |
 | Edit while disabled | Generic owner writer admits and validates dormant settings updates against active schema; preserves disabled state | Dormant settings can be repaired before re-enable without premature runtime activation |
 | Re-enable | Active-schema preflight validates and normalizes retained settings against the active schema before hooks | Modules fail closed with actionable `settings_migration_required` before pre-enable hooks |
-| Static rollout write | Observing checkpoint resolves real predecessor descriptor/schema and validates proposed writes against the N/N+1 schema intersection | Writes during open rollout window are proven safe for both N and N+1 versions |
+| Static rollout write | The ordinary write path attempts to resolve a predecessor schema, but falls back to the candidate schema on lookup or parsing failure; the reviewed CAS path does not use that guard | N/N+1 safety is not established; owner-controlled, fail-closed guarding of all writers and transition races is required |
 | Uninstall/purge | Tenant disable is not deletion; accepted release policy retains native/static data/settings | Safe retention, but operator state needs clearer presentation |
 
 ## Settings ownership matrix
@@ -438,7 +438,7 @@ Owners must document:
 | Priority | Gap | Required outcome |
 | --- | --- | --- |
 | P0 | Re-enable does not validate retained static settings before hooks | Resolved: Active-schema preflight and `SettingsMigrationRequired` in `toggle_module` |
-| P0 | Static N/N+1 guard validates the same schema twice | Resolved: Load real predecessor descriptor/schema and validate against N/N+1 intersection |
+| P0 | Static N/N+1 guard can fall back to the candidate schema and the reviewed CAS path bypasses it | Resolve the exact predecessor through the owner, fail closed, and guard all writes atomically against rollout transitions |
 | P0 | Generic email settings can diverge from runtime and historically hold secrets | Email-owned typed settings, secret handles, data scrub/rotation, `snake_case` cutover |
 | P0 | Platform settings event is published after save on a best-effort path | Resolved: Owner transaction and transactional outbox `publish_in_tx` in `SettingsService::update` |
 | P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | Resolved: `deny_unknown_fields` on `ModuleSettingSpec`, strict `snake_case` guardrails, SEO manifest migration, and negative tests |

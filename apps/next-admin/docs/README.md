@@ -57,10 +57,19 @@ Local documentation for `apps/next-admin`.
   result; tenant, actor, permission, correlation, replay, and lifecycle error
   semantics remain authenticated server and owner responsibilities rather than
   Next-local state;
+- opening module settings reads the current tenant module snapshot and its
+  revision together; a failed or missing read blocks editing instead of
+  substituting empty settings, and responses from a previous session are ignored;
 - module transition finalization forwards the owner-issued checkpoint revision
   with a fresh UUID idempotency key; dynamic rollback is invoked only from the
   selected active installation contract, never by changing a transition label;
 - code must go through canonical FSD paths and shared package boundaries.
+
+The module operator surface is not yet at parity: governance actions currently
+use the module slug where a publish-request ID is required, and the UI does not
+expose the lifecycle recovery actions available in Leptos. These are outstanding
+production gaps. Both admin hosts display all active transition checkpoints,
+plus a distinct checkpoint selected by URL when present, and surface read errors.
 
 ## Ownership contract for module UI
 

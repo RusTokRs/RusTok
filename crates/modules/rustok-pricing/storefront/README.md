@@ -47,4 +47,7 @@ public pricing discovery.
 - `PricingView`
 - `api::fetch_storefront_pricing`
 
-See also `../README.md` and `../docs/README.md`.
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)
+- See also `../README.md` and `../docs/README.md`.
