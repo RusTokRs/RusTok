@@ -51,8 +51,13 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     if options.with_db {
         anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
     }
+    // UI shell templates can be inspected using dry-run, but cannot be
+    // registered until a genuine owner API and both transport paths exist.
+    if options.ui != ScaffoldUi::None && !options.dry_run {
+        anyhow::bail!("--ui cannot be published without real native/GraphQL adapters and matching Next.js routes; use --dry-run to preview the draft FFA package");
+    }
     if options.ui != ScaffoldUi::None {
-        anyhow::bail!("--ui requires defined owner operations and real native/GraphQL/Next.js adapters; use --no-ui until FFA scaffolding is implemented");
+        println!("  [DRAFT UI] Leptos shell preview only; no owner API, CRUD, Next.js package or registered route");
     }
 
     let root = workspace_root();
@@ -91,7 +96,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     // 1. Generate a native runtime identity only (no FBA readiness claim)
     backend::generate_backend(options, &module_dir, &pascal_name, &snake_name)?;
 
-    // 2. UI generation is blocked until real owner adapters are available.
+    // 2. Preview FFA shells only; writable UI remains blocked above.
     ui::generate_ui(options, &module_dir, &pascal_name)?;
 
     // 3. Update manifests and global registration
@@ -149,16 +154,21 @@ mod tests {
     }
 
     #[test]
-    fn unfinished_schema_and_ui_requests_fail_before_writes() {
+    fn database_requests_fail_even_in_preview_mode() {
         let mut request = options();
         request.with_db = true;
         assert!(scaffold(&request).unwrap_err().to_string().contains("--with-db"));
-        request.with_db = false;
-        request.ui = ScaffoldUi::Admin;
-        assert!(scaffold(&request).unwrap_err().to_string().contains("--ui"));
-        request.ui = ScaffoldUi::Storefront;
-        assert!(scaffold(&request).is_err());
-        request.ui = ScaffoldUi::Dual;
-        assert!(scaffold(&request).is_err());
+    }
+
+    #[test]
+    fn draft_ui_modes_are_previewable_but_never_writable() {
+        let mut request = options();
+        for mode in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
+            request.ui = mode;
+            assert!(scaffold(&request).is_ok(), "UI preview must be inspectable");
+            request.dry_run = false;
+            assert!(scaffold(&request).unwrap_err().to_string().contains("--ui"));
+            request.dry_run = true;
+        }
     }
 }

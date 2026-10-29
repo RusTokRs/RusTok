@@ -228,3 +228,25 @@ The structural shape taxonomy used in
 | [Transport Contract](./graphql-architecture.md) | Transport dual-path rules |
 | [ADR: SSR-first + headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md) | Governing decision |
 | [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Creating a new module UI |
+
+## Existing scaffold: draft UI preview versus live surface
+
+The `cargo xtask scaffold` / `cargo xtask module new` generator is a long-lived
+workspace entrypoint, not a new competing scaffolding system. Its native backend
+now starts without invented domain state. A requested `--ui admin|storefront|dual`
+can be inspected through `--dry-run` before implementation; it must not be
+installed into a host, exposed in `rustok-module.toml`, or described as working.
+The preview now includes matching Next.js admin/storefront package drafts in
+the same package-directory conventions as Blog. These are intentionally not
+imported into the Next.js module registry, and no routes are announced.
+
+The generated Leptos draft keeps `core.rs`, `model.rs`, `transport/mod.rs`,
+`ui/mod.rs`, and `ui/leptos.rs`. The transport seam returns a typed, explicit
+`MissingOwnerContract` error; it is **not** a native or GraphQL adapter and
+must never be treated as evidence of a live API. The draft UI displays an
+unavailable state and offers no fake records or success-only CRUD controls.
+Before activation, implement the real owner operation, native server and
+headless GraphQL adapters, authorized tenant/locale/error semantics, and the
+Next.js counterpart with actual package import and host route/slot wiring.
+Blog remains the production reference for these boundaries; its existing
+Leptos adapters are not modified by scaffold changes.

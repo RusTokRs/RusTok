@@ -210,8 +210,8 @@ pub fn print_scaffold_usage() {
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
     println!("  --no-db                  No storage schema (default)");
     println!("  --with-db                Requires a defined owner schema; unsupported until DB template cutover");
-    println!("  --ui <mode>              UI request: none (default); working FFA templates pending");
-    println!("  --with-ui                Reserved until a real UI transport contract exists");
+    println!("  --ui <mode>              none (default), admin, storefront, dual; UI drafts previewable only with --dry-run");
+    println!("  --with-ui                Alias for --ui dual; draft preview only with --dry-run");
     println!("  --no-ui                  Explicit headless module (same as default)");
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
