@@ -473,6 +473,17 @@ async fn session_refresh(
     Ok(cookie_session_response(user, tokens, cookie))
 }
 
+fn cookie_logout_revocation_result(
+    result: std::result::Result<(), AuthLifecycleError>,
+) -> Result<()> {
+    match result {
+        Ok(()) | Err(AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::SessionExpired) => {
+            Ok(())
+        }
+        Err(error) => Err(Error::from(error)),
+    }
+}
+
 #[utoipa::path(post, path = "/api/auth/session/logout", tag = "auth",
     responses((status = 200, description = "Logout successful; session cookie cleared", body = LogoutResponse)))]
 async fn session_logout(
@@ -484,18 +495,17 @@ async fn session_logout(
     tracing::debug!("auth::session_logout entry");
     require_session_request_header(&headers)?;
 
-    // Idempotent: an absent or already-dead cookie still results in a
-    // cleared cookie and a successful logout response.
+    // An absent or already-revoked cookie is an idempotent logout.
+    // A persistence or event-publication failure is not: the refresh token
+    // might still be live, so never report a successful server-side logout.
     if let Some(refresh_token) = parse_session_cookie(&headers) {
-        if let Err(error) = AuthLifecycleService::logout_by_refresh_token_runtime(
+        let revocation = AuthLifecycleService::logout_by_refresh_token_runtime(
             ctx.runtime_ctx(),
             tenant.id,
             &refresh_token,
         )
-        .await
-        {
-            tracing::warn!(%error, "cookie session logout revocation failed; clearing cookie anyway");
-        }
+        .await;
+        cookie_logout_revocation_result(revocation)?;
     }
 
     let cookie = build_session_cookie(
@@ -1074,6 +1084,27 @@ mod tests {
             super::login_client_ip(&headers, trusted_peer, &settings),
             trusted_peer,
         );
+    }
+
+    #[test]
+    fn cookie_logout_is_idempotent_but_fails_closed_on_revocation_outage() {
+        assert!(super::cookie_logout_revocation_result(Ok(())).is_ok());
+        assert!(super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::InvalidRefreshToken
+        ))
+        .is_ok());
+        assert!(super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::SessionExpired
+        ))
+        .is_ok());
+
+        let result = super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::Internal(crate::error::Error::InternalServerError),
+        ));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::InternalServerError)
+        ));
     }
 
     #[test]
