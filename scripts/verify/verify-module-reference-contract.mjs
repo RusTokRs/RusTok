@@ -48,6 +48,11 @@ function forbid(path, markers) {
     if (source.includes(marker)) fail(`${path}: forbidden reference-module pattern ${marker}`);
   }
 }
+function forbidSource(path, source, markers) {
+  for (const marker of markers) {
+    if (source.includes(marker)) fail(`${path}: forbidden reference-module pattern ${marker}`);
+  }
+}
 function requireOrdered(path, before, after) {
   const source = read(path);
   const beforeIndex = source.indexOf(before);
@@ -71,6 +76,15 @@ function rustFiles(path) {
   }
   return out;
 }
+
+const commentServiceSource =
+  read("crates/modules/rustok-blog/src/services/comment.rs") +
+  "\n" +
+  readTree("crates/modules/rustok-blog/src/services/comment");
+const tagServiceSource =
+  read("crates/modules/rustok-blog/src/services/tag.rs") +
+  "\n" +
+  readTree("crates/modules/rustok-blog/src/services/tag");
 
 const legacyCategoryTranslationEntity =
   join(repoRoot, "crates/modules/rustok-blog/src/entities/blog_category_translation.rs");
@@ -295,7 +309,7 @@ forbid("crates/modules/rustok-blog/src/services/post/repository.rs", [
   "baseline.as_ref()",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "load_term_names_strict",
   "TaxonomyTermKind::Tag",
   "resolve_name_for_locale_chain",
@@ -572,24 +586,24 @@ requireAll("crates/modules/rustok-blog/src/dto/comment.rs", [
   "pub command_id: Uuid",
   "Stable identity of this logical create command. Reuse across retries.",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/comment.rs", commentServiceSource, [
   "input.command_id",
   ".with_idempotency_key(",
   "Self::ensure_blog_target(&existing)?;",
   "comments_read_port_context(",
 ]);
 requireOrdered(
-  "crates/modules/rustok-blog/src/services/comment.rs",
+  "crates/modules/rustok-blog/src/services/comment/commands.rs",
   "enforce_scope(&security, Resource::Comments, Action::Create)?;",
   "self.ensure_post_exists(tenant_id, post_id).await?;",
 );
 requireOrdered(
-  "crates/modules/rustok-blog/src/services/comment.rs",
+  "crates/modules/rustok-blog/src/services/comment/commands.rs",
   "enforce_scope(&security, Resource::Comments, Action::Update)?;",
   "let existing = self",
 );
 requireOrdered(
-  "crates/modules/rustok-blog/src/services/comment.rs",
+  "crates/modules/rustok-blog/src/services/comment/commands.rs",
   "enforce_scope(&security, Resource::Comments, Action::Delete)?;",
   "let existing = self",
 );
@@ -859,16 +873,16 @@ requireAll("crates/modules/rustok-taxonomy/src/owner_read.rs", [
   "TaxonomyScopeType::Module",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "load_term_names_strict_for_module(",
   "BLOG_SCOPE_VALUE",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "enforce_scope(&security, Resource::Tags, Action::Create)?;",
   ".create_module_term_in_tx(",
   "publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)",
 ]);
-forbid("crates/modules/rustok-blog/src/services/tag.rs", [
+forbidSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "CreateTaxonomyTermInput",
   ".create_term(",
 ]);
@@ -933,7 +947,7 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
   "sync_post_tags_in_tx(",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "ensure_module_terms_for_owner_in_tx(",
   "allow_create",
 ]);
@@ -952,7 +966,7 @@ requireAll("crates/modules/rustok-taxonomy/src/services.rs", [
   "Module-owned Taxonomy terms must be created by the owning module",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSource, [
   "enforce_scope(&security, Resource::Tags, Action::Update)?;",
   "enforce_scope(&security, Resource::Tags, Action::Delete)?;",
   "lock_module_term_in_tx(",
@@ -966,6 +980,7 @@ const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/repository.rs",
   "crates/modules/rustok-blog/src/services/post/pin.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",
+  "crates/modules/rustok-blog/src/services/tag/relations.rs",
   "crates/modules/rustok-blog/src/services/category_delete.rs",
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
 ]);
