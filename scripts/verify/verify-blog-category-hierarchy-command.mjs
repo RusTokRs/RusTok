@@ -145,20 +145,28 @@ rejectMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
   "depth",
 ]);
 
-const canonicalMigration = requireMarkers("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
+// The registered migration delegates the schema to table and backend owners.
+// Check each invariant at its actual source rather than relying on the obsolete
+// all-in-one migration file (which would reject the canonical split).
+const migrationSchema = "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema";
+const categoryTable = requireMarkers(`${migrationSchema}/tables/categories.rs`, [
   "Table::create()",
   ".table(BlogCategories::Table)",
+]);
+const postgresSettings = requireMarkers(`${migrationSchema}/postgres.rs`, [
   "jsonb_typeof(settings) = 'object'",
   "octet_length(settings::text)",
+]);
+const sqliteSettings = requireMarkers(`${migrationSchema}/sqlite.rs`, [
   "blog_categories_settings_contract_insert",
   "blog_categories_settings_contract_update",
 ]);
-const blogCategoryDef = segment(canonicalMigration, ".table(BlogCategories::Table)", ".to_owned()");
+const blogCategoryDef = segment(categoryTable, ".table(BlogCategories::Table)", ".to_owned()");
 if (blogCategoryDef.includes("ParentId") || blogCategoryDef.includes("Position") || blogCategoryDef.includes("Depth")) {
   failures.push("BlogCategories table definition must not contain legacy hierarchy columns (ParentId, Position, Depth)");
 }
 
-const settingsContract = canonicalMigration;
+const settingsContract = postgresSettings + '\n' + sqliteSettings;
 requireMarkers("crates/modules/rustok-blog/src/domain/mod.rs", [
   "BLOG_CATEGORY_SETTINGS_MAX_BYTES: usize = 64 * 1024",
 ]);
