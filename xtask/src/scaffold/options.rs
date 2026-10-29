@@ -1,6 +1,37 @@
 use crate::module_cli_args::cli_option_value;
 use anyhow::{bail, Result};
 
+/// Architectural roles are distinct even when their output is a Rust crate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScaffoldProfile {
+    NativeModule,
+    SupportCrate,
+    StandaloneWasi,
+}
+
+impl ScaffoldProfile {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "native" => Ok(Self::NativeModule),
+            "support" => Ok(Self::SupportCrate),
+            "wasi" => Ok(Self::StandaloneWasi),
+            other => bail!("Unknown scaffold profile '{other}'; expected native, support, or wasi"),
+        }
+    }
+
+    fn require_native(self) -> Result<Self> {
+        match self {
+            Self::NativeModule => Ok(self),
+            Self::SupportCrate => bail!(
+                "The native module generator cannot scaffold a support crate: support crates have no module lifecycle or rustok-module.toml"
+            ),
+            Self::StandaloneWasi => bail!(
+                "The native module generator cannot scaffold standalone WASI; use rustok-module-template instead"
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScaffoldUi {
     None,
@@ -29,6 +60,7 @@ impl ScaffoldUi {
 }
 
 pub struct ScaffoldOptions {
+    pub profile: ScaffoldProfile,
     pub slug: String,
     pub title: String,
     pub description: String,
@@ -58,6 +90,20 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     // Canonical slug format is snake_case per RusToK Naming Contract (docs/standards/coding.md)
     let slug = raw_slug.replace('-', "_");
 
+    if args.iter().filter(|arg| arg.as_str() == "--profile").count() > 1 {
+        bail!("--profile may only be provided once");
+    }
+    let profile = match args.iter().position(|arg| arg == "--profile") {
+        Some(index) => {
+            let value = args
+                .get(index + 1)
+                .filter(|value| !value.starts_with("--"))
+                .ok_or_else(|| anyhow::anyhow!("--profile requires native, support, or wasi"))?;
+            ScaffoldProfile::parse(value)?.require_native()?
+        }
+        None => ScaffoldProfile::NativeModule,
+    };
+
     let dry_run = args.iter().any(|arg| arg == "--dry-run");
     let skip_server_wire = args.iter().any(|arg| arg == "--skip-server-wire");
     let skip_validate = args.iter().any(|arg| arg == "--skip-validate");
@@ -82,6 +128,22 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     let no_db = args.iter().any(|arg| arg == "--no-db");
     let with_db = !no_db;
 
+    if args.iter().any(|arg| arg == "--no-ui")
+        && args.iter().any(|arg| arg == "--ui")
+    {
+        bail!("--no-ui and --ui are conflicting surface requests");
+    }
+
+    if args.iter().filter(|arg| arg.as_str() == "--ui").count() > 1 {
+        bail!("--ui may only be provided once");
+    }
+    if let Some(index) = args.iter().position(|arg| arg == "--ui") {
+        match args.get(index + 1) {
+            Some(value) if !value.starts_with("--") => {}
+            _ => bail!("--ui requires dual, admin, storefront, or none"),
+        }
+    }
+
     let ui = if args.iter().any(|arg| arg == "--no-ui") {
         ScaffoldUi::None
     } else if let Some(ui_val) = cli_option_value(args, "--ui") {
@@ -99,6 +161,7 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     };
 
     Ok(Some(ScaffoldOptions {
+        profile,
         slug,
         title,
         description,
@@ -129,6 +192,7 @@ pub fn print_scaffold_usage() {
     println!("  cargo xtask module new <slug> [OPTIONS]");
     println!();
     println!("Options:");
+    println!("  --profile native         Native runtime module (default); support/WASI are separate workflows");
     println!("  --title <title>          Human-readable title (defaults to Title Case of slug)");
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
@@ -176,4 +240,94 @@ pub fn default_title_from_slug(slug: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(arguments: &[&str]) -> Result<ScaffoldOptions> {
+        let args = arguments.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+        parse_options(&args)?.ok_or_else(|| anyhow::anyhow!("expected a scaffold request"))
+    }
+
+    #[test]
+    fn current_defaults_are_explicitly_native() {
+        let request = parse(&["example"]).expect("valid native request");
+        assert_eq!(request.profile, ScaffoldProfile::NativeModule);
+        assert!(request.with_db, "existing default remains until backend cutover");
+        assert_eq!(request.ui, ScaffoldUi::Dual);
+    }
+
+    #[test]
+    fn native_no_db_no_ui_request_keeps_both_capabilities_absent() {
+        let request = parse(&[
+            "sample-module", "--profile", "native", "--no-db", "--no-ui",
+        ]).expect("valid native request");
+        assert_eq!(request.slug, "sample_module");
+        assert_eq!(request.crate_name(), "rustok-sample-module");
+        assert_eq!(request.profile, ScaffoldProfile::NativeModule);
+        assert!(!request.with_db);
+        assert_eq!(request.ui, ScaffoldUi::None);
+    }
+
+    #[test]
+    fn support_and_wasi_are_not_native_modules() {
+        for (profile, explanation) in [
+            ("support", "support crate"),
+            ("wasi", "standalone WASI"),
+        ] {
+            let error = match parse(&["example", "--profile", profile]) {
+                Ok(_) => panic!("profile {profile} must be rejected"),
+                Err(error) => error,
+            };
+            assert!(
+                error.to_string().contains(explanation),
+                "unexpected profile error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_profile_inputs_fail_closed() {
+        for args in [
+            vec!["example", "--profile"],
+            vec!["example", "--profile", "--no-ui"],
+            vec!["example", "--profile", "unknown"],
+            vec!["example", "--profile", "native", "--profile", "native"],
+        ] {
+            assert!(parse(&args).is_err(), "must reject: {args:?}");
+        }
+    }
+
+    #[test]
+    fn conflicting_ui_requests_fail_closed() {
+        assert!(parse(&["example", "--ui", "admin", "--no-ui"]).is_err());
+        assert!(parse(&["example", "--no-ui", "--ui", "dual"]).is_err());
+    }
+
+    #[test]
+    fn missing_or_duplicate_ui_mode_is_not_silently_defaulted() {
+        for args in [
+            vec!["example", "--ui"],
+            vec!["example", "--ui", "--no-db"],
+            vec!["example", "--ui", "dual", "--ui", "admin"],
+        ] {
+            assert!(parse(&args).is_err(), "must reject: {args:?}");
+        }
+    }
+
+    #[test]
+    fn all_ui_modes_are_requests_not_readiness_grades() {
+        for (mode, expected) in [
+            ("none", ScaffoldUi::None),
+            ("admin", ScaffoldUi::Admin),
+            ("storefront", ScaffoldUi::Storefront),
+            ("dual", ScaffoldUi::Dual),
+        ] {
+            let request = parse(&["example", "--profile", "native", "--ui", mode])
+                .expect("valid requested surface");
+            assert_eq!(request.ui, expected);
+        }
+    }
 }

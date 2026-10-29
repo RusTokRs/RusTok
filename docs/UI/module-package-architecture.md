@@ -172,6 +172,26 @@ Host-level FFA slices (navigation policy, header route/link policy) are enforced
 
 ---
 
+## UI scaffolding: request is not readiness
+
+The native generator's `--ui admin`, `--ui storefront`, and `--ui dual`
+options request module-owned surfaces. They do not establish functional routes,
+transport coverage, parity or FFA status. No UI route or `[provides.*_ui]`
+entry should be published for placeholder CRUD or missing owner operations.
+When the backend contract is not implemented, the owner README and plan must
+describe UI as pending instead of rendering demo records or log-only actions.
+
+When real operations exist, a generated Leptos UI adapter uses a thin `lib.rs`,
+transport-neutral `model`, pure tested `core`, working `transport`, render-only
+`ui`, and interface-copy-only `i18n`. The adapter cannot substitute
+an empty transport facade for the two real native/GraphQL paths, subject to the
+documented operator/bootstrap exception. `--no-ui` means no UI packages.
+
+A functional UI publication also requires applicable Next.js admin/frontend
+route and capability parity through the public transport. Leptos-only source
+or compilation is not proof of Next.js parity or `parity_verified` status.
+The current scaffold renderer does not yet meet this target contract.
+
 ## What Counts as a Correctly Structured UI Package
 
 A module UI package is considered correctly structured when:

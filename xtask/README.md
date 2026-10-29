@@ -58,9 +58,10 @@ does not translate local Cargo execution into that evidence.
 
 ## Scaffolding (FBA / FFA / i18n / docs.rs)
 
-`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
+`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a **draft native runtime module**, not yet a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract); current renderer defects remain open.
 
 The command:
+- Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
 - Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
   - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
@@ -74,7 +75,19 @@ The command:
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
-- Automatically executes `cargo xtask module validate <slug>` at the end to ensure the generated module is valid out-of-the-box.
+- Runs `cargo xtask module validate <slug>` unless skipped. This validates publish-readiness metadata/registration, **not** full source architecture, compilation, running transports or FFA/FBA readiness.
+
+**Known Limitations / Pending Implementation:** The renderer currently puts
+`contract_tests.rs` in the source root, publicly exports persistence entities,
+generates speculative backend layers and a sample migration, and emits UI with
+sample rows, fake CRUD actions and empty transport. It does not establish
+Next.js route parity. The current write process is non-atomic; dry-run omits
+registration changes; unsuccessful post-scaffold validation can print a warning
+and return success. Generated readiness rows can be optimistic. Subsequent
+phases must fix those failures and add an architecture validator and golden
+tests. Do **not** treat existing scaffold output as verified or publishable.
+The phase-1 profile guard and tests only prevent mixing native, support and WASI
+generation workflows.
 
 ```powershell
 # Create a collaboration module with dual surface UI and DB migrations:
