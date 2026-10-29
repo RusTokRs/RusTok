@@ -2,10 +2,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use rustok_tenant::entities::tenant;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use rustok_tenant::entities::tenant;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -135,7 +135,9 @@ async fn sweep_tenants(
         // Capture the cursor before consuming the batch; deletion of an earlier
         // tenant cannot shift future pages as it did under offset pagination.
         let batch_size = items.len();
-        let last_tenant_id = items.last().expect("nonempty recovery batch").id;
+        let Some(last_tenant_id) = items.last().map(|tenant| tenant.id) else {
+            return;
+        };
         for tenant in items {
             if *stop_rx.borrow() {
                 return;
@@ -222,16 +224,16 @@ mod tests {
 
     #[tokio::test]
     async fn recovery_tenant_scan_does_not_skip_after_previous_tenant_is_deleted() {
-        use sea_orm::{ActiveModelTrait, Database, EntityTrait, Set};
-        use sea_orm_migration::{MigrationTrait, SchemaManager};
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
-        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
-        rustok_migrations::SqliteTestMigrator::up(&db, None)
-            .await
-            .expect("test tenant schema");
+        let db = rustok_test_utils::db::setup_test_db_with_migrations::<
+            rustok_migrations::SqliteTestMigrator,
+        >()
+        .await;
 
         for i in 1..=3_u128 {
-            let mut tenant = tenant::ActiveModel::new(&format!("Tenant {i}"), &format!("worker-tenant-{i}"));
+            let mut tenant =
+                tenant::ActiveModel::new(&format!("Tenant {i}"), &format!("worker-tenant-{i}"));
             tenant.id = Set(uuid::Uuid::from_u128(i));
             tenant.insert(&db).await.expect("tenant inserted");
         }
