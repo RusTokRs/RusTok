@@ -8,8 +8,8 @@ use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    Set, Value,
+    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, Value,
     sea_query::{Expr, SimpleExpr},
 };
 use serde::{Deserialize, Serialize};
@@ -350,8 +350,8 @@ mod tests {
 
     #[tokio::test]
     async fn dlq_total_counts_matches_beyond_bounded_page() {
-        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
         use super::sys_event_tenant_condition;
+        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 
         let db = Database::connect("sqlite::memory:")
             .await
