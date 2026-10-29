@@ -89,7 +89,9 @@ const storefrontModel = read(storefrontModelPath);
 const storefrontGraphql = read(storefrontGraphqlPath);
 const storefrontNative = read(storefrontNativePath);
 const storefrontCommentsListPath = 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs';
-const storefrontUi = read(storefrontUiPath) + '\n' + read(storefrontCommentsListPath);
+const storefrontSelectedPostPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs';
+const storefrontUi = read(storefrontUiPath) + '\n' + read(storefrontCommentsListPath)
+  + (existsSync(repoPath(storefrontSelectedPostPath)) ? '\n' + read(storefrontSelectedPostPath) : '');
 const hostSnapshotAdapter = read(hostSnapshotAdapterPath);
 const hostRuntimeComposition = read(hostRuntimeCompositionPath);
 const plan = read(planPath);
