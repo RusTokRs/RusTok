@@ -2142,14 +2142,10 @@ mod tests {
             .insert(&db)
             .await
             .expect("create tenant B");
-        let user_b = users::ActiveModel::new(
-            tenant_b.id,
-            "refresh-boundary@example.com",
-            "hash",
-        )
-        .insert(&db)
-        .await
-        .expect("create tenant B user");
+        let user_b = users::ActiveModel::new(tenant_b.id, "refresh-boundary@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("create tenant B user");
 
         let refresh_token = "cross-tenant-refresh-token";
         sessions::ActiveModel::new(
