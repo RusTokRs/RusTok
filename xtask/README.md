@@ -10,6 +10,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 
 - Validate the central module composition contract in `modules.toml`.
 - Validate each scoped path module from `modules.toml` against its publish, runtime, UI, documentation, dependency, permission, and server-wiring contracts.
+- Run native architecture lint with `cargo xtask module lint <slug>`, using the existing source-layout verifier. This is a static gate, not compile/runtime evidence.
 - Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
@@ -23,6 +24,7 @@ Run commands from the repository root:
 
 ```powershell
 cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]
+cargo xtask module lint <slug>
 cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
@@ -58,9 +60,10 @@ does not translate local Cargo execution into that evidence.
 
 ## Scaffolding (FBA / FFA / i18n / docs.rs)
 
-`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
+`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a **draft native runtime module**, not yet a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract); current renderer defects remain open.
 
 The command:
+- Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
 - Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
   - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
@@ -74,7 +77,19 @@ The command:
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
-- Automatically executes `cargo xtask module validate <slug>` at the end to ensure the generated module is valid out-of-the-box.
+- Runs `cargo xtask module validate <slug>` unless skipped. This validates publish-readiness metadata/registration, **not** full source architecture, compilation, running transports or FFA/FBA readiness.
+
+**Known Limitations / Pending Implementation:** The renderer currently puts
+`contract_tests.rs` in the source root, publicly exports persistence entities,
+generates speculative backend layers and a sample migration, and emits UI with
+sample rows, fake CRUD actions and empty transport. It does not establish
+Next.js route parity. The current write process is non-atomic; dry-run omits
+registration changes; unsuccessful post-scaffold validation can print a warning
+and return success. Generated readiness rows can be optimistic. Subsequent
+phases must fix those failures and add an architecture validator and golden
+tests. Do **not** treat existing scaffold output as verified or publishable.
+The phase-1 profile guard and tests only prevent mixing native, support and WASI
+generation workflows.
 
 ```powershell
 # Create a collaboration module with dual surface UI and DB migrations:
@@ -142,6 +157,7 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
+- `cargo xtask module lint <slug>` checks its native source layout and declared FFA package shape. This is independent of publish-readiness; it is not yet implicitly run by `module validate` or by the old scaffold command.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.
 - A crate under `crates/` is treated as a support/capability crate until it is added to `modules.toml`.

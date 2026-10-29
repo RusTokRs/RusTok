@@ -26,9 +26,24 @@ guard for every enrolled reference module:
 npm run verify:module-source-layout
 ```
 
-The initial strict reference is `rustok-blog`. A module should be enrolled only
-after its physical move is complete; enrollment is a one-way architecture gate,
-not an opt-in alternate style.
+The default reference remains `rustok-blog`. The shared structural validator
+also supports any registered native path module:
+
+```bash
+cargo xtask module lint <slug>
+node scripts/verify/verify-module-source-layout.mjs --module <slug>
+```
+
+Both entrypoints invoke the same generic source-layout rules. The default Blog
+run adds Blog-owned strict reference checks (including retired-path evidence).
+Native lint checks canonical file responsibility, thin facades, private entities,
+source size, FFA source boundaries, declaration-to-package alignment, and
+suspicious scaffold placeholders. It is static: it cannot prove behavioral
+correctness, Next.js parity, live FBA transport, or registration readiness.
+Existing unconverted native modules may fail the canonical lint; findings are
+migration tasks, not opt-in exceptions. Node verifier fixture tests live in
+`scripts/verify/native-module-layout.test.mjs`; run them with
+`node --test scripts/verify/native-module-layout.test.mjs`.
 
 ## Canonical reference-contract verification
 
