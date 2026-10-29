@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, test } from 'node:test';
 import { validateNativeModule } from './verify-native-module-architecture.mjs';
 
@@ -147,6 +148,12 @@ test('missing native transport path and demo-only CRUD fail', () => {
   rejects(root, 'must wire both GraphQL and native transport adapters');
   rejects(root, 'synthetic data or log-only CRUD is forbidden');
 });
+test('empty FFA source slots are not accepted as module boundaries', () => {
+  const root = fixture('admin_only');
+  rmSync(join(root, 'admin/src/core/mod.rs'));
+  rejects(root, 'missing core/mod.rs');
+});
+
 test('comment-only trait wiring and forbidden imports are not executable evidence', () => {
   const root = fixture();
   put(root, 'src/module.rs', '// impl RusToKModule for ExampleModule {}\n');
@@ -156,7 +163,7 @@ test('comment-only trait wiring and forbidden imports are not executable evidenc
 });
 
 test('CLI reports only static evidence and rejects directory traversal slugs', () => {
-  const script = new URL('./verify-native-module-architecture.mjs', import.meta.url).pathname;
+  const script = fileURLToPath(new URL('./verify-native-module-architecture.mjs', import.meta.url));
   const ok = spawnSync(process.execPath, [script, '--module-root', fixture()], { encoding: 'utf8' });
   assert.equal(ok.status, 0, ok.stderr);
   assert.match(ok.stdout, /static architecture only; no FBA\/FFA runtime verification/);
