@@ -636,3 +636,7 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 This section describes only the affected host boundaries, not an exhaustive
 whole-crate or workspace audit. Changes require scoped Rust checks and tests
 plus any applicable CI gates before integration.
+
+- The outbox relay supervisor handles both a panicked child task and an
+  unexpected normal task exit before applying its bounded restart delay;
+  it no longer assumes the join result must be an error.
