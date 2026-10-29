@@ -34,7 +34,7 @@ function need(source, marker, label) { if (!source.includes(marker)) failures.pu
 function forbid(source, marker, label) { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); }
 
 const evidence = json(files.evidence);
-const tagService = read(files.tagService);
+const tagService = read(files.tagService) + '\n' + read('crates/modules/rustok-blog/src/services/tag/relations.rs');
 const taxonomyOwnerRead = read(files.taxonomyOwnerRead);
 const taxonomyService = read(files.taxonomyService);
 const taxonomyTranslationTests = read(files.taxonomyTranslationTests);
