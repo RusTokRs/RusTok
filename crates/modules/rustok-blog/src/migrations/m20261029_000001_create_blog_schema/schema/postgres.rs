@@ -14,7 +14,10 @@ pub(super) async fn up(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             "status IN ('draft', 'published', 'archived')",
         ),
         ("ck_blog_posts_version_positive", "version > 0"),
-        ("ck_blog_posts_comment_count_non_negative", "comment_count >= 0"),
+        (
+            "ck_blog_posts_comment_count_non_negative",
+            "comment_count >= 0",
+        ),
         (
             "ck_blog_posts_pin_state_coherent",
             "(is_pinned AND pinned_at IS NOT NULL) OR (NOT is_pinned AND pinned_at IS NULL)",

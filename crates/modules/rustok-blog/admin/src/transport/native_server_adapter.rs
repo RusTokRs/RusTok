@@ -3,12 +3,12 @@ use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
-#[cfg(feature = "ssr")]
-use crate::model::{BlogModerationComment, BlogPostListItem};
 use crate::model::{
     BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
     BlogPostDraft, BlogPostList,
 };
+#[cfg(feature = "ssr")]
+use crate::model::{BlogModerationComment, BlogPostListItem};
 
 pub(super) async fn fetch_categories(
     locale: Option<String>,
@@ -191,7 +191,9 @@ fn public_internal_error() -> ServerFnError {
 fn parse_schedule(value: String) -> Result<chrono::DateTime<chrono::Utc>, ServerFnError> {
     chrono::DateTime::parse_from_rfc3339(value.trim())
         .map(|date| date.with_timezone(&chrono::Utc))
-        .map_err(|_| ServerFnError::new("scheduled_at requires an RFC 3339 timestamp with timezone"))
+        .map_err(|_| {
+            ServerFnError::new("scheduled_at requires an RFC 3339 timestamp with timezone")
+        })
 }
 
 #[cfg(feature = "ssr")]
@@ -381,7 +383,8 @@ async fn blog_admin_create_post_native(
                     slug: optional_text(draft.slug),
                     publish: draft.publish,
                     tags: draft.tags,
-                    category_id: draft.category_id
+                    category_id: draft
+                        .category_id
                         .map(|id| parse_uuid(&id, "category_id"))
                         .transpose()?,
                     featured_image_url: draft.featured_image_url,
@@ -450,13 +453,16 @@ async fn blog_admin_update_post_native(
                         Some(id) => rustok_api::Patch::Set(parse_uuid(&id, "category_id")?),
                         None => rustok_api::Patch::Clear,
                     },
-                    featured_image_url: draft.featured_image_url
+                    featured_image_url: draft
+                        .featured_image_url
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
-                    seo_title: draft.seo_title
+                    seo_title: draft
+                        .seo_title
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
-                    seo_description: draft.seo_description
+                    seo_description: draft
+                        .seo_description
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
                     channel_slugs: Some(draft.channel_slugs),
@@ -545,7 +551,9 @@ async fn blog_admin_pin_post_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (id, locale);
-        Err(ServerFnError::new("blog/admin/pin-post requires the `ssr` feature"))
+        Err(ServerFnError::new(
+            "blog/admin/pin-post requires the `ssr` feature",
+        ))
     }
 }
 
@@ -561,7 +569,9 @@ async fn blog_admin_unpin_post_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (id, locale);
-        Err(ServerFnError::new("blog/admin/unpin-post requires the `ssr` feature"))
+        Err(ServerFnError::new(
+            "blog/admin/unpin-post requires the `ssr` feature",
+        ))
     }
 }
 
@@ -635,11 +645,7 @@ async fn update_status_and_reload(
                 .unpublish_post(context.tenant.id, post_id, security)
                 .await
         }
-        StatusMutation::Pin => {
-            service
-                .pin_post(context.tenant.id, post_id, security)
-                .await
-        }
+        StatusMutation::Pin => service.pin_post(context.tenant.id, post_id, security).await,
         StatusMutation::Unpin => {
             service
                 .unpin_post(context.tenant.id, post_id, security)

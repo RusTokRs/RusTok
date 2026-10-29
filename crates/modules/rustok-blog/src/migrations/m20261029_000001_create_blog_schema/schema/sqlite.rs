@@ -40,7 +40,10 @@ END;
     // 2. Settings contract triggers on blog_categories
     for (trigger, timing) in [
         ("blog_categories_settings_contract_insert", "BEFORE INSERT"),
-        ("blog_categories_settings_contract_update", "BEFORE UPDATE OF settings"),
+        (
+            "blog_categories_settings_contract_update",
+            "BEFORE UPDATE OF settings",
+        ),
     ] {
         connection
             .execute_unprepared(&format!(
