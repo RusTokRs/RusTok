@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Shared credential and signing boundary for RusToK build publication"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true

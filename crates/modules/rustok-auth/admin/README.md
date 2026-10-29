@@ -1,5 +1,7 @@
 # rustok-auth-admin
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
 > [Architecture](../../../../docs/UI/module-package-architecture.md) |
 > [Implementation](../../../../docs/UI/module-package-implementation.md) |

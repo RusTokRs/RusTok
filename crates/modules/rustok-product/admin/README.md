@@ -7,6 +7,8 @@
 
 Leptos admin UI package for the `rustok-product` module.
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Responsibilities
 
 - Exposes the product catalog admin root view used by `apps/admin`.

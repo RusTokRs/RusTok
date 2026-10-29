@@ -1,5 +1,7 @@
 # rustok-build
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-build` owns immutable platform build-plan construction, queued build

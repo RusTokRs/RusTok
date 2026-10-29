@@ -2,7 +2,7 @@
 /**
  * Verification Gate & Audit Scanner for docs.rs & Public Crate Documentation
  *
- * Scans crates in crates/modules/, crates/libs/, and crates/ui/ to verify:
+ * Scans crates in crates/modules/, crates/libs/, crates/ui/, and crates/utils/ to verify:
  * 1. src/lib.rs contains substantive top-level crate documentation (//! or #![doc = ...])
  * 2. Absence of wildcard re-exports (pub use ...::*) in src/lib.rs
  * 3. Module separation: native modules must place RusToKModule in src/module.rs instead of src/lib.rs
@@ -17,6 +17,7 @@
  *   node scripts/verify/verify-docs-rs.mjs --modules      # Scan crates/modules only
  *   node scripts/verify/verify-docs-rs.mjs --libs         # Scan crates/libs only
  *   node scripts/verify/verify-docs-rs.mjs --ui           # Scan crates/ui only
+ *   node scripts/verify/verify-docs-rs.mjs --utils        # Scan crates/utils only
  */
 
 import fs from 'node:fs';
@@ -33,14 +34,17 @@ if (crateArgIdx !== -1 && args[crateArgIdx + 1]) {
   targetCrate = args[crateArgIdx + 1];
 }
 
-const scanModules = args.includes('--modules') || (!args.includes('--libs') && !args.includes('--ui'));
-const scanLibs = args.includes('--libs') || (!args.includes('--modules') && !args.includes('--ui'));
-const scanUi = args.includes('--ui') || (!args.includes('--modules') && !args.includes('--libs'));
+const hasSpecificFlag = args.includes('--modules') || args.includes('--libs') || args.includes('--ui') || args.includes('--utils');
+const scanModules = args.includes('--modules') || !hasSpecificFlag;
+const scanLibs = args.includes('--libs') || !hasSpecificFlag;
+const scanUi = args.includes('--ui') || !hasSpecificFlag;
+const scanUtils = args.includes('--utils') || !hasSpecificFlag;
 
 const searchDirs = [];
 if (scanModules) searchDirs.push({ type: 'module', dir: path.join(repoRoot, 'crates/modules') });
 if (scanLibs) searchDirs.push({ type: 'lib', dir: path.join(repoRoot, 'crates/libs') });
 if (scanUi) searchDirs.push({ type: 'ui', dir: path.join(repoRoot, 'crates/ui') });
+if (scanUtils) searchDirs.push({ type: 'util', dir: path.join(repoRoot, 'crates/utils') });
 
 const results = [];
 const targets = [];
@@ -73,36 +77,53 @@ for (const { type, dir } of searchDirs) {
 
 for (const { type, crateDir } of targets) {
   const cargoTomlPath = path.join(crateDir, 'Cargo.toml');
+  const hasCargoToml = fs.existsSync(cargoTomlPath);
   let crateName = path.basename(crateDir);
-  if (fs.existsSync(cargoTomlPath)) {
+  let libRsPath = path.join(crateDir, 'src/lib.rs');
+
+  if (hasCargoToml) {
     const cargoContent = fs.readFileSync(cargoTomlPath, 'utf8');
     const nameMatch = cargoContent.match(/name\s*=\s*["']([^"']+)["']/);
     if (nameMatch) {
       crateName = nameMatch[1];
     }
+    const libSectionMatch = cargoContent.match(/\[lib\]([^\[]+)/);
+    if (libSectionMatch) {
+      const pathMatch = libSectionMatch[1].match(/^\s*path\s*=\s*["']([^"']+)["']/m);
+      if (pathMatch) {
+        const customPath = path.join(crateDir, pathMatch[1]);
+        if (fs.existsSync(customPath) && fs.statSync(customPath).isFile()) {
+          libRsPath = customPath;
+        }
+      }
+    }
+  }
+  const mainRsPath = path.join(crateDir, 'src/main.rs');
+  let isBinaryCrate = false;
+  if (!fs.existsSync(libRsPath) && fs.existsSync(mainRsPath)) {
+    libRsPath = mainRsPath;
+    isBinaryCrate = true;
   }
   if (targetCrate && crateName !== targetCrate && path.basename(crateDir) !== targetCrate) continue;
 
-  const libRsPath = path.join(crateDir, 'src/lib.rs');
   const moduleRsPath = path.join(crateDir, 'src/module.rs');
   const moduleTomlPath = path.join(crateDir, 'rustok-module.toml');
-    const crateApiPath = path.join(crateDir, 'CRATE_API.md');
-    const readmePath = path.join(crateDir, 'README.md');
-    const srcContractTestsPath = path.join(crateDir, 'src/contract_tests.rs');
-    const testsContractTestsPath = path.join(crateDir, 'tests/contract_tests.rs');
+  const crateApiPath = path.join(crateDir, 'CRATE_API.md');
+  const readmePath = path.join(crateDir, 'README.md');
+  const srcContractTestsPath = path.join(crateDir, 'src/contract_tests.rs');
+  const testsContractTestsPath = path.join(crateDir, 'tests/contract_tests.rs');
 
-    const hasCargoToml = fs.existsSync(cargoTomlPath);
-    const hasLibRs = fs.existsSync(libRsPath);
-    const isNativeModule = fs.existsSync(moduleTomlPath);
-    const hasModuleRs = fs.existsSync(moduleRsPath);
-    const hasCrateApi = fs.existsSync(crateApiPath);
-    const hasReadme = fs.existsSync(readmePath);
-    const hasContractTests = fs.existsSync(srcContractTestsPath) || fs.existsSync(testsContractTestsPath);
+  const hasLibRs = fs.existsSync(libRsPath);
+  const isNativeModule = fs.existsSync(moduleTomlPath);
+  const hasModuleRs = fs.existsSync(moduleRsPath);
+  const hasCrateApi = fs.existsSync(crateApiPath);
+  const hasReadme = fs.existsSync(readmePath);
+  const hasContractTests = fs.existsSync(srcContractTestsPath) || fs.existsSync(testsContractTestsPath);
 
-    if (!hasCargoToml && !hasLibRs) {
-      // Not a Rust crate directory (e.g. docs, assets, or scripts)
-      continue;
-    }
+  if (!hasCargoToml && !hasLibRs) {
+    // Not a Rust crate directory (e.g. docs, assets, or scripts)
+    continue;
+  }
 
     const issues = [];
 

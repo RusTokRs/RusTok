@@ -1,3 +1,9 @@
+//! # RusToK Product Catalog Service
+//!
+//! Standalone authenticated gRPC service host for the RusToK Product catalog read port.
+//!
+//! Provides out-of-process `ProductCatalogReadPort` access over TLS/loopback gRPC.
+
 use std::{
     env, fmt,
     net::SocketAddr,

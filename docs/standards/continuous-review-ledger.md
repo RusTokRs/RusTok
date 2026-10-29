@@ -881,9 +881,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 478 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified fallback policy and dual-path execution safety; 14/14 tests passed, zero defects. |
 | [x] | [dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 20 | 1,299 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified Dioxus 0.7 component adapter; 8/8 tests passed, zero defects. |
 | [x] | [leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 20 | 2,046 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified SSR-first Leptos 0.8 design system adapter; 15/15 tests passed, zero defects. |
-| [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,109 | None |  |
-| [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 4 | 874 | None |  |
-| [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | None |  |
+| [x] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,109 | 2026-10-29 06:41 | Standardized CRATE_API.md, docs.rs metadata, verified immutable execution identity deduplication and build execution plans; 9/9 tests passed, zero defects. |
+| [x] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 4 | 874 | 2026-10-29 06:41 | Standardized CRATE_API.md, docs.rs metadata, verified digest-pinned program validation, in-memory credential leases, and Cosign artifact signing; 4/4 tests passed, zero defects. |
+| [x] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | 2026-10-29 06:41 | Standardized CRATE_API.md, docs.rs metadata, verified deterministic source archives, CAS immutability, and path traversal protection; 7/7 tests passed, zero defects. |
 | [ ] | [rustok-cli](../../crates/utils/rustok-cli) | `utils` | 3 | 1,328 | None |  |
 | [ ] | [rustok-cli-core](../../crates/utils/rustok-cli-core) | `utils` | 1 | 120 | None |  |
 | [ ] | [rustok-cli-platform](../../crates/utils/rustok-cli-platform) | `utils` | 3 | 466 | None |  |

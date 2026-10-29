@@ -1,5 +1,13 @@
+//! # RusToK Product Admin
+//!
+//! Leptos operator and administration UI package for the `rustok-product` module,
+//! managing product catalogs, editors, categories, and attributes.
+
 #![recursion_limit = "512"]
 #![allow(clippy::too_many_arguments)]
+
+#[cfg(test)]
+mod contract_tests;
 
 pub mod catalog_controls;
 pub mod catalog_transport;

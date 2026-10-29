@@ -1,4 +1,7 @@
-//! Leptos adapter crate root.
+//! # Fly Leptos Adapter
+//!
+//! Leptos 0.8 adapter foundation for Fly visual editors, providing SSR-first
+//! editor component shells and browser runtime integration.
 //!
 //! `Cargo.toml` declares `[lib] path = "src/root.rs"`, so this file is the crate root and
 //! `foundation` is an ordinary module. It used to be reached through
@@ -17,8 +20,22 @@
 mod editor;
 mod foundation;
 
-pub use editor::*;
-pub use foundation::*;
+pub use editor::{
+    FlyAssets, FlyCanvasPreview, FlyComponentProperties, FlyContributionSummary,
+    FlyEditorWorkspace, FlyLayerTree, FlyPageProperties, FlyPageTabs, FlyPalette,
+    FlyStyleRules, FlyThemeTokenEditor, FlyThemeTokens,
+};
+pub use foundation::{
+    AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,
+    AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint, BrowserRect,
+    CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy, FLY_IFRAME_PROTOCOL,
+    FLY_REAL_DOM_COMPONENT_ATTRIBUTE, FLY_REAL_DOM_INLINE_ATTRIBUTE, FlyFullEditor,
+    FlyInlineEditor, FlyPreview, FlyReadOnly, IframeBridgeEnvelope, IframeBridgeMessage,
+    InlineEditContractError, InlineEditableField, MAX_INLINE_TEXT_BYTES, OPAQUE_ORIGIN,
+    PointerKind, PointerSample, auto_scroll_delta, hit_test_drop_targets,
+    normalize_expected_origin, normalize_hit_targets, outbound_target_origin,
+    resolve_drop_position,
+};
 
 // The browser surface is re-exported through explicit, feature-gated modules rather than left to
 // the `fly_web::*` glob in `foundation`, so the SSR-first contract is visible in this file: the
@@ -29,11 +46,17 @@ pub use foundation::*;
 mod browser_interaction;
 #[allow(unused_imports)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-pub use browser_interaction::*;
+pub use browser_interaction::{
+    BrowserResizeSession, key_stroke_from_event, prevent_editor_shortcut_default,
+    shortcut_from_event,
+};
 
 #[allow(unused_imports)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 mod browser_runtime;
 #[allow(unused_imports)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
-pub use browser_runtime::*;
+pub use browser_runtime::{
+    BrowserRuntimeError, EventListenerHandle, IframeJsonSubscription, IframeMessagePort,
+    ResizeObserverHandle, WindowMessageSubscription, release_pointer_capture, set_pointer_capture,
+};

@@ -1,5 +1,7 @@
 # rustok-build-publication
 
+For full public interface and credential contracts, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-build-publication` owns the shared secret-minimizing credential and

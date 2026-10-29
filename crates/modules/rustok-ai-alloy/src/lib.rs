@@ -1,4 +1,15 @@
+//! # RusToK AI Alloy
+//!
+//! Domain-owned AI code-agent descriptors, workflow policies, and operations
+//! for the Alloy automation environment.
+//!
+//! Exposes agent roles, multi-stage review workflows, and script execution
+//! policy bindings to the RusToK AI orchestrator.
+
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
+
+#[cfg(test)]
+mod contract_tests;
 
 pub const ALLOY_CODE_TASK_SLUG: &str = "alloy_code";
 pub const ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script";

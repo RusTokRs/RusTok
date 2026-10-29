@@ -1,4 +1,12 @@
-//! External operational command adapters for `rustok-profiles`.
+//! # RusToK Profiles CLI
+//!
+//! Operational command adapters for the RusToK profiles module.
+//!
+//! Exposes CLI commands for profile batch operations, identity backfill,
+//! and profile data maintenance.
+
+#[cfg(test)]
+mod contract_tests;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 

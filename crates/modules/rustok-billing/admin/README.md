@@ -1,5 +1,7 @@
 # rustok-billing-admin
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Admin UI package for `billing`, following Fluid Frontend Architecture (FFA).
 
 ## Responsibilities

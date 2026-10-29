@@ -489,6 +489,7 @@ fn user_from_mutation_record(record: rustok_auth::UserMutationRecord) -> Graphql
     }
 }
 
+#[cfg(feature = "ssr")]
 fn invite_from_record(record: rustok_auth::UserInviteRecord) -> crate::model::UserInvite {
     crate::model::UserInvite {
         id: record.id.to_string(),

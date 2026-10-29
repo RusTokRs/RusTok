@@ -1,5 +1,7 @@
 # rustok-build-source
 
+For full public interface and deterministic archive contracts, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-build-source` owns deterministic construction, read-only inspection,

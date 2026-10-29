@@ -1,3 +1,5 @@
+//! # RusToK Build Publication
+//!
 //! Shared secret-minimizing publication adapters for isolated build workers.
 
 mod credentials;

@@ -1,5 +1,7 @@
 # RusToK Profiles CLI
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Operational command adapters for the Profiles module.
 
 ## Responsibilities

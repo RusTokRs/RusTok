@@ -1,3 +1,5 @@
+//! # RusToK Build Source Archives
+//!
 //! Deterministic immutable source archives shared by authoring and build workers.
 
 mod writer;

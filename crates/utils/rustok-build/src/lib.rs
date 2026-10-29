@@ -1,3 +1,5 @@
+//! # RusToK Build Engine
+//!
 //! Platform-owned immutable build-plan and build-history contracts.
 
 pub mod build;

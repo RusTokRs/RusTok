@@ -8,7 +8,16 @@
 //! `fly-ui`, and the authoring surfaces that need them drive those crates directly — see
 //! `crates/modules/rustok-page-builder/admin`.
 
-pub use fly_web::*;
+pub use fly_web::{
+    AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,
+    AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint, BrowserRect,
+    CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy, FLY_IFRAME_PROTOCOL,
+    FLY_REAL_DOM_COMPONENT_ATTRIBUTE, FLY_REAL_DOM_INLINE_ATTRIBUTE, IframeBridgeEnvelope,
+    IframeBridgeMessage, InlineEditContractError, InlineEditableField, MAX_INLINE_TEXT_BYTES,
+    OPAQUE_ORIGIN, PointerKind, PointerSample, auto_scroll_delta, hit_test_drop_targets,
+    normalize_expected_origin, normalize_hit_targets, outbound_target_origin,
+    resolve_drop_position,
+};
 use leptos::prelude::*;
 
 #[component]

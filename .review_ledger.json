@@ -1612,9 +1612,9 @@
       "category": "utils",
       "files": 12,
       "loc": 2109,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-29 06:41",
+      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified immutable execution identity deduplication and build execution plans; 9/9 tests passed, zero defects."
     },
     "crates/utils/rustok-build-publication": {
       "name": "rustok-build-publication",
@@ -1622,9 +1622,9 @@
       "category": "utils",
       "files": 4,
       "loc": 874,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-29 06:41",
+      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified digest-pinned program validation, in-memory credential leases, and Cosign artifact signing; 4/4 tests passed, zero defects."
     },
     "crates/utils/rustok-build-source": {
       "name": "rustok-build-source",
@@ -1632,9 +1632,9 @@
       "category": "utils",
       "files": 2,
       "loc": 1570,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-29 06:41",
+      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified deterministic source archives, CAS immutability, and path traversal protection; 7/7 tests passed, zero defects."
     },
     "crates/utils/rustok-cli": {
       "name": "rustok-cli",

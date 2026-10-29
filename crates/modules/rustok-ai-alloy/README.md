@@ -1,5 +1,7 @@
 # rustok-ai-alloy
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ai-alloy` owns the Alloy-specific code-agent descriptors and policy

@@ -1,5 +1,7 @@
 # `rustok-profiles-storefront`
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Module-owned storefront surface for public profiles and follow/unfollow controls.
 
 ## Contract

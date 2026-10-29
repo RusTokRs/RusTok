@@ -1,4 +1,12 @@
-//! External operational command adapters for `rustok-auth`.
+//! # RusToK Auth CLI
+//!
+//! Operational command adapters for the RusToK authentication module.
+//!
+//! Exposes administrative CLI commands for OAuth application registration,
+//! credential management, and expired session cleanup.
+
+#[cfg(test)]
+mod contract_tests;
 
 use rustok_auth::{generate_refresh_token, hash_password};
 use rustok_cli_core::{

@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Deterministic digest-addressed source archives for RusToK module builds"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 hex.workspace = true
 serde.workspace = true

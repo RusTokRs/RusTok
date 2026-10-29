@@ -7,6 +7,8 @@
 
 ## Purpose
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `rustok-product-storefront` provides the module-owned Leptos storefront route for
 published catalog discovery.
 

@@ -1,5 +1,7 @@
 # RusTok Product catalog service
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `rustok-product-catalog-service` is the standalone provider-side deployment unit for `ProductCatalogReadPort`.
 
 The binary composes the canonical Product owner service and the replaceable tonic adapter:
