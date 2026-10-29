@@ -186,7 +186,7 @@ if (runtimeSmoke.compile_policy !== 'not_run_by_request' || runtimeSmoke.runtime
 if (runtimeSmoke.fallback_smoke?.status !== 'source_verified_no_compile' || runtimeSmoke.fallback_smoke?.runtime_evidence !== 'pending') fail('runtime smoke degraded-mode status drift');
 sameSet(runtimeSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'runtime smoke profiles');
 sameSet(runtimeSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'runtime smoke degraded modes');
-const service = read(runtimeSmoke.source_contract.consumer_service);
+const service = read(runtimeSmoke.source_contract.consumer_service) + '\n' + read('crates/modules/rustok-blog/src/services/comment/commands.rs');
 const errorMapping = read(runtimeSmoke.source_contract.consumer_error_mapping);
 const providerRegistryPath = runtimeSmoke.source_contract.provider_port_registry;
 if (providerRegistryPath !== providerPath) fail('runtime smoke provider registry drift');
