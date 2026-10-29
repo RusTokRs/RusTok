@@ -1,6 +1,7 @@
 use super::*;
 
 impl PostService {
+    #[instrument(skip(self))]
     pub async fn get_post(
         &self,
         tenant_id: Uuid,
@@ -203,5 +204,4 @@ impl PostService {
         .map(Some)
     }
 
-    #[instrument(skip(self, security))]
 }

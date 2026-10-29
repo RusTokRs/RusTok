@@ -1,6 +1,7 @@
 use super::*;
 
 impl PostService {
+    #[instrument(skip(self, security, input))]
     pub async fn create_post(
         &self,
         tenant_id: Uuid,
@@ -209,5 +210,4 @@ impl PostService {
         Ok(post_id)
     }
 
-    #[instrument(skip(self, security, input))]
 }

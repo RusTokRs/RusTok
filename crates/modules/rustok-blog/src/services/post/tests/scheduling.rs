@@ -1,3 +1,6 @@
+/// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
+/// already published is refused, and publishing a scheduled draft clears the field.
+
 #[tokio::test]
 async fn published_posts_reject_a_schedule_patch() {
     let db = setup_test_db().await;
@@ -115,10 +118,3 @@ async fn published_posts_reject_a_schedule_patch() {
         .expect_err("a published post must not take a schedule");
     assert!(matches!(refused, BlogError::Validation(_)));
 }
-
-/// The customer-facing list is a public surface, so it applies the same corpus
-/// rule as the public keyset list, the SEO scan and the comment target gate.
-///
-/// A published row whose `published_at` was lost is damaged state: an editor with
-/// tenant-wide read authority still sees it (that is how it gets repaired), a
-/// customer does not — the list used to filter on `status` only and showed it.

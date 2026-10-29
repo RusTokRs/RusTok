@@ -154,6 +154,3 @@ fn schedule_patch_is_bounded_to_drafts_and_the_future() {
         Ok(Patch::Keep)
     ));
 }
-
-/// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
-/// already published is refused, and publishing a scheduled draft clears the field.

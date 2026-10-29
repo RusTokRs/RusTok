@@ -1,3 +1,10 @@
+/// The customer-facing list is a public surface, so it applies the same corpus
+/// rule as the public keyset list, the SEO scan and the comment target gate.
+///
+/// A published row whose `published_at` was lost is damaged state: an editor with
+/// tenant-wide read authority still sees it (that is how it gets repaired), a
+/// customer does not — the list used to filter on `status` only and showed it.
+
 #[tokio::test]
 async fn public_visible_listing_filters_by_typed_channel_relation() {
     let db = setup_test_db().await;
@@ -548,7 +555,3 @@ async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
         "empty channel does not inherit another channel's authorization"
     );
 }
-
-/// Search must not treat a stale indexed `blog_post` row as authority: the
-/// Blog owner supplies current published/channel eligibility independently of
-/// whatever was previously projected into Search storage.

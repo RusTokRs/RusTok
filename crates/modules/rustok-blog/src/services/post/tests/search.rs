@@ -1,3 +1,7 @@
+/// Search must not treat a stale indexed `blog_post` row as authority: the
+/// Blog owner supplies current published/channel eligibility independently of
+/// whatever was previously projected into Search storage.
+
 #[tokio::test]
 async fn search_audience_rechecks_live_publication_and_channel_binding() {
     let db = setup_test_db().await;

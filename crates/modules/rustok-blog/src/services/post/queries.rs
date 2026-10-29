@@ -6,7 +6,7 @@ mod related;
 use super::*;
 
 impl PostService {
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn list_posts(
         &self,
         tenant_id: Uuid,
