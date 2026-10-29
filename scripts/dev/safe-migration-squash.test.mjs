@@ -28,6 +28,14 @@ test('safe-migration-squash succeeds on canonical rustok-blog consolidated basel
   assert.match(result.stdout, /Zero obsolete migration references detected/);
 });
 
+test('safe-migration-squash succeeds on canonical rustok-cart consolidated baseline', () => {
+  const result = run(['--module', 'cart']);
+  assert.equal(result.status, 0, `Expected status 0, got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+  assert.match(result.stdout, /PARITY PERFECT/);
+  assert.match(result.stdout, /All 7 tables and columns strictly verified/);
+  assert.match(result.stdout, /Zero obsolete migration references detected/);
+});
+
 test('safe-migration-squash succeeds on multi-migration rustok-channel module', () => {
   const result = run(['--module', 'channel']);
   assert.equal(result.status, 0, `Expected status 0, got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
