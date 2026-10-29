@@ -443,10 +443,9 @@ mod tests {
 
     #[test]
     fn reports_and_user_activity_are_classified_as_sensitive_root_fields() {
-        let document = async_graphql::parser::parse_query(
-            "query { dashboardStats recentActivity }",
-        )
-        .expect("reporting query should parse");
+        let document =
+            async_graphql::parser::parse_query("query { dashboardStats recentActivity }")
+                .expect("reporting query should parse");
 
         assert_eq!(
             sensitive_graphql_fields(&document),
@@ -477,9 +476,7 @@ mod tests {
             assert!(anonymous.errors[0].message.contains(hint), "{field}");
 
             let wrong_role = schema
-                .execute(
-                    Request::new(&query).data(auth_context(vec![Permission::MODULES_READ])),
-                )
+                .execute(Request::new(&query).data(auth_context(vec![Permission::MODULES_READ])))
                 .await;
             assert_eq!(wrong_role.errors.len(), 1, "unauthorized {field}");
             assert!(wrong_role.errors[0].message.contains(hint), "{field}");
