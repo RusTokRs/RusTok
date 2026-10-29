@@ -261,13 +261,16 @@ mod tests {
         let state_signal = Signal::derive(move || state.clone());
         let form_ctx = FormContext::new(state_signal);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
-                <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
-            </div>
-        }
-        .to_html();
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            provide_context(form_ctx);
+            view! {
+                <div>
+                    <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
+                </div>
+            }
+            .to_html()
+        });
 
         assert!(html.contains("disabled"));
         assert!(html.contains("aria-busy=\"true\""));

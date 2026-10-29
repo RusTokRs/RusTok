@@ -2,6 +2,8 @@
 
 SSR-first Leptos 0.8 adapter for [`rustok-grid`](..).
 
+For component contracts, public interfaces, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
+
 Provides the interactive `<DataGrid />` component, resizable column headers, a per-column filter row, a toolbar with column visibility, selection management, and pagination (classic or infinite scroll).
 
 The crate is a *thin* adapter: it owns no business rules, all state transitions come from `rustok-grid`.

@@ -1,3 +1,5 @@
+//! # RusToK Grid Dioxus
+//!
 //! Dioxus 0.7 DataGrid adapter for RusToK.
 //!
 //! This crate is a thin **adapter**: every piece of state and all the maths
@@ -64,11 +66,24 @@ pub use resize_handle::ColumnResizeHandle;
 pub use row::GridRow;
 pub use toolbar::GridToolbar;
 
-pub use rustok_grid::*;
+pub use rustok_grid::{
+    CHECKBOX_COLUMN_ID, CellValue, ColumnAlign, ColumnFilters, ColumnId, ColumnWidth,
+    ColumnWidths, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS as GRID_DEFAULT_PAGE_SIZE_OPTIONS,
+    FacetDomain, FacetPanel, FacetValue, FilterOption, FilterValue, GridColumnDef, GridFacet,
+    GridFilterType, GridPagination, GridState, PaginationMode, PinnedSide, RowSelection,
+    SortDirection, SortState,
+};
 
 /// Everything needed to render a grid, in one import.
 pub mod prelude {
-    pub use rustok_grid::prelude::*;
+    pub use rustok_grid::prelude::{
+        CHECKBOX_COLUMN_ID, CellValue, ColumnAlign, ColumnFilters, ColumnId, ColumnWidth,
+        ColumnWidths, DEFAULT_PAGE_SIZE,
+        DEFAULT_PAGE_SIZE_OPTIONS as GRID_DEFAULT_PAGE_SIZE_OPTIONS, FacetDomain, FacetPanel,
+        FacetValue, FilterOption, FilterValue, GridColumnDef, GridFacet, GridFilterType,
+        GridPagination, GridState, PaginationMode, PinnedSide, RowSelection, SortDirection,
+        SortState,
+    };
 
     pub use crate::filter_inputs::{FilterCommitMode, GridFilterCell};
     pub use crate::grid::{DataGrid, GridCell};

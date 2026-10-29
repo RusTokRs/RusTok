@@ -2,6 +2,8 @@
 
 Leptos 0.8 SSR-first adapter for the [`rustok-forms`](../) core library.
 
+For public component APIs, contexts, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
+
 ## Overview
 
 `rustok-forms-leptos` provides structural form layout components, accessible input controls, lifecycle-aware buttons, and reactive context coordination designed for Leptos 0.8 and styled using RusToK design tokens.

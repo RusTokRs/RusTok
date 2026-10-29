@@ -621,7 +621,11 @@ pub fn validate_target_id(value: &str) -> Result<Uuid, String> {
         return Err("Target id is required.".to_string());
     }
 
-    Uuid::parse_str(value.trim()).map_err(|_| "Invalid target id.".to_string())
+    let id = Uuid::parse_str(value.trim()).map_err(|_| "Invalid target id.".to_string())?;
+    if id.is_nil() {
+        return Err("Invalid target id.".to_string());
+    }
+    Ok(id)
 }
 
 fn non_empty_option(value: &str) -> Option<String> {

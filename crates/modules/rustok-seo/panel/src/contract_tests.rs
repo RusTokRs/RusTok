@@ -47,3 +47,22 @@ fn public_surface_matches_contract() {
     assert_eq!(hint.action, crate::model::SeoRemediationAction::OpenBulkJob);
     assert_eq!(hint.reason_key, "bulk_consistency_fix");
 }
+
+#[test]
+fn crate_api_defines_minimal_contract_sections() {
+    let api = include_str!("../CRATE_API.md");
+    for marker in [
+        "## Platform Capability Bindings",
+        "## Domain Collaborations",
+        "## Minimum Contract Set",
+        "### Input DTOs/Commands",
+        "### Domain Invariants",
+        "### Events / Outbox Side Effects",
+        "### Errors / Failure Codes",
+    ] {
+        assert!(
+            api.contains(marker),
+            "CRATE_API.md must contain section: {marker}"
+        );
+    }
+}

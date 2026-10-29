@@ -2,6 +2,8 @@
 
 Dioxus 0.7 DataGrid adapter for RusToK.
 
+For component contracts, public interfaces, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
+
 The crate is a thin **adapter** over [`rustok-grid`](../): all state and all the
 maths (widths, clamping, pagination, filter normalization, selection) live in
 the framework-agnostic core, here we only turn them into markup and DOM events.

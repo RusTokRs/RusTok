@@ -103,20 +103,20 @@ impl Contract {
             ));
         }
 
-        if let Some(to) = valid_to {
-            if to < valid_from {
-                return Err(PartyError::Validation(format!(
-                    "Contract valid_to date ({to}) cannot precede valid_from date ({valid_from})"
-                )));
-            }
+        if let Some(to) = valid_to
+            && to < valid_from
+        {
+            return Err(PartyError::Validation(format!(
+                "Contract valid_to date ({to}) cannot precede valid_from date ({valid_from})"
+            )));
         }
 
-        if let Some(limit) = credit_limit {
-            if limit < Decimal::ZERO {
-                return Err(PartyError::Validation(format!(
-                    "Credit limit cannot be negative, got {limit}"
-                )));
-            }
+        if let Some(limit) = credit_limit
+            && limit < Decimal::ZERO
+        {
+            return Err(PartyError::Validation(format!(
+                "Credit limit cannot be negative, got {limit}"
+            )));
         }
 
         Ok(Self {
@@ -141,10 +141,8 @@ impl Contract {
         if date < self.valid_from {
             return false;
         }
-        if let Some(to) = self.valid_to {
-            if date > to {
-                return false;
-            }
+        if self.valid_to.is_some_and(|to| date > to) {
+            return false;
         }
         true
     }

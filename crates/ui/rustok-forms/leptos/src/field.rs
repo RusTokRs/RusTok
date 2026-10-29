@@ -376,6 +376,7 @@ mod tests {
         }
         .to_html();
 
+        eprintln!("RENDERED HTML: {html}");
         assert!(html.contains("for=\"email\""));
         assert!(html.contains("id=\"email-description\""));
         assert!(html.contains("Email"));

@@ -2,6 +2,8 @@
 
 Dioxus 0.7 adapter for the [`rustok-forms`](../) core library.
 
+For public component APIs, contexts, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
+
 ## Overview
 
 `rustok-forms-dioxus` provides structural form layout components, accessible input controls, lifecycle-aware buttons, and reactive context coordination designed for Dioxus 0.7 and styled using RusToK design tokens.

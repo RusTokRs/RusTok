@@ -7,6 +7,8 @@
 
 Leptos admin UI for `rustok-seo`.
 
+For full public surface, architectural invariants, and minimum contract sets, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 This package ships the module-owned admin surface for cross-cutting SEO infrastructure.

@@ -2,6 +2,8 @@
 
 Framework-agnostic DataGrid state machine, column math, and filtering engine for the RusToK platform.
 
+For full contract specifications, public types, and invariants, see [CRATE_API.md](CRATE_API.md).
+
 ## Architecture
 
 Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure Rust with zero web framework dependencies. Runtime code depends only on `serde`; `serde_json` is a development-only dependency for serialization-normalization tests.

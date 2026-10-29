@@ -7,6 +7,8 @@
 
 ## Purpose
 
+For full API contracts, minimum contract sets, and invariants, see [CRATE_API.md](CRATE_API.md).
+
 `rustok-seo-panel` provides reusable SEO authoring panels, widgets, and transport helpers for entity editors across admin and author-facing surfaces.
 
 ## Responsibilities

@@ -47,7 +47,13 @@ export default async function ProductPage({ searchParams }: PageProps) {
   let error: string | null = null;
 
   try {
-    result = await listProducts(opts, { page, perPage, search, status, vendor });
+    result = await listProducts(opts, {
+      page,
+      perPage,
+      search,
+      status,
+      vendor
+    });
   } catch (err) {
     error = err instanceof Error ? err.message : 'Failed to load products.';
   }

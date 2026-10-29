@@ -1,3 +1,5 @@
+//! # RusToK Grid
+//!
 //! Framework-agnostic DataGrid core for the RusToK platform.
 //!
 //! This crate owns the *state machine* of a data grid — columns, widths,
