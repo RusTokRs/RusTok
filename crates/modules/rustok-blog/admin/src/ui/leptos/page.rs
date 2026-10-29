@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use super::*;
+use leptos::prelude::*;
 
 pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
     let BlogAdminPageState {
@@ -69,7 +69,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         publish_now: set_publish_now,
     } = form_setters;
 
-view! {
+    view! {
             <div class=shell_classes.page>
                 <BlogPostsPageHeader />
 

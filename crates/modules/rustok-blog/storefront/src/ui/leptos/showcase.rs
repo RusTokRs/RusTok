@@ -1,7 +1,7 @@
-use leptos::prelude::*;
-use super::*;
 use super::published_posts_list::PublishedPostsList;
 use super::selected_post_card::SelectedPostCard;
+use super::*;
+use leptos::prelude::*;
 
 #[component]
 pub(super) fn BlogShowcase(
@@ -42,7 +42,10 @@ pub(super) fn BlogShowcase(
             .or_insert_with(|| name.clone());
     }
 
-    let other_posts = if let Some(slug) = selected_post_slug.as_deref().filter(|_| search_total.is_none()) {
+    let other_posts = if let Some(slug) = selected_post_slug
+        .as_deref()
+        .filter(|_| search_total.is_none())
+    {
         data.posts
             .items
             .into_iter()
@@ -59,17 +62,28 @@ pub(super) fn BlogShowcase(
     let category_query = use_route_query_value("category");
     let active_search = search_query.get().filter(|value| !value.trim().is_empty());
     let active_tag = tag_query.get().filter(|value| !value.trim().is_empty());
-    let active_category = category_query.get().filter(|value| !value.trim().is_empty());
+    let active_category = category_query
+        .get()
+        .filter(|value| !value.trim().is_empty());
 
     let selected_slug = selected_post_slug.as_deref();
     let remove_category_href = core::filter_query_href(
-        selected_slug, active_tag.as_deref(), None, active_search.as_deref(),
+        selected_slug,
+        active_tag.as_deref(),
+        None,
+        active_search.as_deref(),
     );
     let remove_tag_href = core::filter_query_href(
-        selected_slug, None, active_category.as_deref(), active_search.as_deref(),
+        selected_slug,
+        None,
+        active_category.as_deref(),
+        active_search.as_deref(),
     );
     let remove_search_href = core::filter_query_href(
-        selected_slug, active_tag.as_deref(), active_category.as_deref(), None,
+        selected_slug,
+        active_tag.as_deref(),
+        active_category.as_deref(),
+        None,
     );
     let clear_filters_href = core::filter_query_href(selected_slug, None, None, None);
     let all_categories_href = remove_category_href.clone();

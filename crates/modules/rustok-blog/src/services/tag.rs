@@ -30,8 +30,7 @@ use crate::services::rbac::enforce_scope;
 mod relations;
 
 pub(crate) use relations::{
-    initialize_tag_usage_in_tx, load_post_tags_map, resolve_tag_id_for_posts,
-    sync_post_tags_in_tx,
+    initialize_tag_usage_in_tx, load_post_tags_map, resolve_tag_id_for_posts, sync_post_tags_in_tx,
 };
 pub use relations::{remove_post_tag_links_in_tx, replace_post_tag_links_in_tx};
 
@@ -398,16 +397,6 @@ impl TagService {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
 
 fn bounded_tag_page_size(value: u64) -> u64 {
     value.clamp(1, MAX_TAGS_PER_PAGE)

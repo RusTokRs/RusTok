@@ -131,10 +131,6 @@ impl CommentService {
             .await
     }
 
-
-
-
-
     #[instrument(skip(self, security))]
     pub async fn get_comment(
         &self,
@@ -157,7 +153,12 @@ impl CommentService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<CommentResponse> {
         self.get_comment_with_locale_fallback_on_channel(
-            tenant_id, security, comment_id, locale, fallback_locale, None,
+            tenant_id,
+            security,
+            comment_id,
+            locale,
+            fallback_locale,
+            None,
         )
         .await
     }
@@ -218,9 +219,6 @@ impl CommentService {
         }
         Self::map_comment_record(record)
     }
-
-
-
 
     #[instrument(skip(self, security))]
     pub async fn list_for_post(
@@ -656,7 +654,11 @@ mod comment_access_tests {
         let reader = SecurityContext::from_permissions(
             UserRole::Customer,
             Some(commenter),
-            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_CREATE],
+            [
+                Permission::COMMENTS_READ,
+                Permission::COMMENTS_LIST,
+                Permission::COMMENTS_CREATE,
+            ],
         );
         assert!(!may_moderate_comments(&reader));
         assert_eq!(
@@ -688,7 +690,11 @@ mod comment_access_tests {
         let moderator = SecurityContext::from_permissions(
             UserRole::Manager,
             Some(Uuid::new_v4()),
-            [Permission::COMMENTS_READ, Permission::COMMENTS_LIST, Permission::COMMENTS_MODERATE],
+            [
+                Permission::COMMENTS_READ,
+                Permission::COMMENTS_LIST,
+                Permission::COMMENTS_MODERATE,
+            ],
         );
         assert!(may_moderate_comments(&moderator));
         assert_eq!(

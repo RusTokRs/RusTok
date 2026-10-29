@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use super::*;
+use leptos::prelude::*;
 
 #[component]
 pub(super) fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl IntoView {

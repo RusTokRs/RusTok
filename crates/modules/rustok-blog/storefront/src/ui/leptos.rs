@@ -17,11 +17,11 @@ use super::share::{BlogShareButtons, BlogStatusBadge};
 
 use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
-    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList, BlogPostListItem,
-    StorefrontBlogData,
+    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList,
+    BlogPostListItem, StorefrontBlogData,
 };
-use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
+use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 
 const BLOG_SEARCH_PAGE_SIZE: usize = 9;
 
@@ -58,9 +58,12 @@ pub fn BlogView() -> impl IntoView {
                 .get()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
-            let q = search_query.get().map(|q| q.trim().to_owned())
+            let q = search_query
+                .get()
+                .map(|q| q.trim().to_owned())
                 .filter(|q| !q.is_empty());
-            let search_page = search_page_query.get()
+            let search_page = search_page_query
+                .get()
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(1)
                 .clamp(1, 100);
@@ -79,7 +82,8 @@ pub fn BlogView() -> impl IntoView {
         },
         move |(request, comments_page, query, search_page)| async move {
             let mut data = transport::fetch_blog(request.clone(), comments_page)
-                .await.map_err(|error| error.to_string())?;
+                .await
+                .map_err(|error| error.to_string())?;
             let Some(query) = query else {
                 return Ok::<_, String>((data, None, search_page));
             };
@@ -98,7 +102,9 @@ pub fn BlogView() -> impl IntoView {
                 request.tag,
                 BLOG_SEARCH_PAGE_SIZE,
                 (search_page - 1) * BLOG_SEARCH_PAGE_SIZE,
-            ).await.map_err(|error| error.to_string())?;
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             let total = result.total;
             data.posts = map_blog_search_results(result)?;
             Ok((data, Some(total), search_page))
@@ -156,7 +162,6 @@ pub fn BlogView() -> impl IntoView {
     }
 }
 
-
 /// Convert Search's public projection into Blog's canonical presentation
 /// model without requerying/locally filtering a limited Blog page. An invalid
 /// owner projection is an error, never silently shown as zero matches.
@@ -168,15 +173,24 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
         }
         let payload: serde_json::Value = serde_json::from_str(&item.payload)
             .map_err(|_| "Search returned malformed Blog metadata".to_owned())?;
-        let get_string = |key: &str| payload.get(key)
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned);
+        let get_string = |key: &str| {
+            payload
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        };
         let slug = get_string("slug")
             .filter(|value| !value.is_empty())
             .ok_or_else(|| "Search result has no canonical Blog slug".to_owned())?;
-        let tags = payload.get("tags").and_then(serde_json::Value::as_array)
-            .map(|values| values.iter().filter_map(|value| value.as_str().map(ToOwned::to_owned))
-                .collect::<Vec<_>>())
+        let tags = payload
+            .get("tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         let author_profile = match (get_string("author_id"), get_string("author_name")) {
             (Some(user_id), Some(display_name)) if !display_name.trim().is_empty() => {
@@ -205,10 +219,11 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
             category_name: get_string("category_name"),
         });
     }
-    Ok(BlogPostList { items, next_cursor: None })
+    Ok(BlogPostList {
+        items,
+        next_cursor: None,
+    })
 }
-
-
 
 #[cfg(test)]
 mod blog_search_mapping_tests {
@@ -216,38 +231,40 @@ mod blog_search_mapping_tests {
 
     #[test]
     fn search_result_projection_keeps_cross_page_fulltext_metadata() {
-        let result = serde_json::from_value::<SearchPreviewPayload>(
-            serde_json::json!({
-                "queryLogId": null,
-                "presetKey": null,
-                "total": 51,
-                "tookMs": 3,
-                "engine": "postgres",
-                "rankingProfile": "balanced",
-                "facets": [],
-                "items": [{
-                    "id": "c293edb7-4f5b-432b-9011-096354ba8ba6",
-                    "entityType": "blog_post",
-                    "sourceModule": "blog",
-                    "title": "Article with searchable body",
-                    "snippet": "A matching word from the body",
-                    "score": 0.9,
-                    "locale": "ru",
-                    "url": "/modules/blog?slug=search-guide",
-                    "payload": serde_json::json!({
-                        "slug": "search-guide",
-                        "excerpt": "Excerpt",
-                        "category_id": "4c66bc80-d348-44a9-bce6-a43d74832adf",
-                        "category_name": "Tutorials",
-                        "featured_image_url": "/media/example.webp",
-                        "tags": ["rust", "search"],
-                        "published_at": "2026-10-28T13:00:00Z"
-                    }).to_string()
-                }]
-            }),
-        ).expect("Search GraphQL response must deserialize");
+        let result = serde_json::from_value::<SearchPreviewPayload>(serde_json::json!({
+            "queryLogId": null,
+            "presetKey": null,
+            "total": 51,
+            "tookMs": 3,
+            "engine": "postgres",
+            "rankingProfile": "balanced",
+            "facets": [],
+            "items": [{
+                "id": "c293edb7-4f5b-432b-9011-096354ba8ba6",
+                "entityType": "blog_post",
+                "sourceModule": "blog",
+                "title": "Article with searchable body",
+                "snippet": "A matching word from the body",
+                "score": 0.9,
+                "locale": "ru",
+                "url": "/modules/blog?slug=search-guide",
+                "payload": serde_json::json!({
+                    "slug": "search-guide",
+                    "excerpt": "Excerpt",
+                    "category_id": "4c66bc80-d348-44a9-bce6-a43d74832adf",
+                    "category_name": "Tutorials",
+                    "featured_image_url": "/media/example.webp",
+                    "tags": ["rust", "search"],
+                    "published_at": "2026-10-28T13:00:00Z"
+                }).to_string()
+            }]
+        }))
+        .expect("Search GraphQL response must deserialize");
         let page = map_blog_search_results(result).expect("Blog page projection");
-        assert!(page.next_cursor.is_none(), "Search uses offsets, not Blog cursors");
+        assert!(
+            page.next_cursor.is_none(),
+            "Search uses offsets, not Blog cursors"
+        );
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].slug.as_deref(), Some("search-guide"));
         assert_eq!(page.items[0].effective_locale, "ru");

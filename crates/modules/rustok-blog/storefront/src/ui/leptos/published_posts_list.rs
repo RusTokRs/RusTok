@@ -1,5 +1,5 @@
-use leptos::prelude::*;
 use super::*;
+use leptos::prelude::*;
 
 #[component]
 pub(super) fn PublishedPostsList(

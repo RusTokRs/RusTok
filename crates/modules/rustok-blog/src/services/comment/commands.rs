@@ -134,9 +134,8 @@ impl CommentService {
                 // The Comments write already crossed an owner boundary. Any failure in
                 // the final Blog target check means the create command cannot report
                 // success without leaving a committed foreign-side effect behind.
-                if let Err(compensation_error) = self
-                    .compensate_created_comment(tenant_id, record.id)
-                    .await
+                if let Err(compensation_error) =
+                    self.compensate_created_comment(tenant_id, record.id).await
                 {
                     return Err(BlogError::invariant(format!(
                         "Blog post {post_id} target policy could not be confirmed after comment creation and the compensating comment delete failed: {compensation_error}"

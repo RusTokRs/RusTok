@@ -18,7 +18,6 @@ use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
 use crate::{core, transport};
 
-
 struct BlogAdminPageState {
     ui_locale: Option<String>,
     host_locale_for_seo: String,
@@ -46,7 +45,8 @@ struct BlogAdminPageState {
     archive_post: Callback<(String, String)>,
     restore_post: Callback<(String, String)>,
     delete_post: Callback<String>,
-    categories_resource: LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
+    categories_resource:
+        LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
     categories_unavailable_label: String,
     form_setters: BlogPostFormSetters,
     editing_post_id: ReadSignal<Option<String>>,
@@ -310,13 +310,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                         content: set_content,
                                         locale: set_locale,
                                         tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
+                                        category_id: set_category_id,
+                                        channel_slugs_input: set_channel_slugs_input,
+                                        featured_image_url: set_featured_image_url,
+                                        seo_title: set_seo_title,
+                                        seo_description: set_seo_description,
+                                        scheduled_at: set_scheduled_at,
+                                        schedule_editable: set_schedule_editable,
                                         publish_now: set_publish_now,
                                     },
                                     &post,
@@ -446,13 +446,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
+                                category_id: set_category_id,
+                                channel_slugs_input: set_channel_slugs_input,
+                                featured_image_url: set_featured_image_url,
+                                seo_title: set_seo_title,
+                                seo_description: set_seo_description,
+                                scheduled_at: set_scheduled_at,
+                                schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -531,13 +531,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                     content: set_content,
                                     locale: set_locale,
                                     tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
+                                    category_id: set_category_id,
+                                    channel_slugs_input: set_channel_slugs_input,
+                                    featured_image_url: set_featured_image_url,
+                                    seo_title: set_seo_title,
+                                    seo_description: set_seo_description,
+                                    scheduled_at: set_scheduled_at,
+                                    schedule_editable: set_schedule_editable,
                                     publish_now: set_publish_now,
                                 },
                                 &post,
@@ -565,84 +565,81 @@ pub fn BlogAdmin() -> impl IntoView {
     );
 
     let toggle_pin_locale = ui_locale.clone();
-    let toggle_pin = Callback::new(
-        move |(post_id, pin, post_locale): (String, bool, String)| {
-            let token_value = token.get_untracked();
-            let tenant_value = tenant.get_untracked();
-            let ui_locale = toggle_pin_locale.clone();
-            let command =
-                core::prepare_blog_post_pin_command(post_id, pin, post_locale.as_str());
-            set_submit_error.set(None);
-            set_busy_key.set(Some(command.busy_key.clone()));
+    let toggle_pin = Callback::new(move |(post_id, pin, post_locale): (String, bool, String)| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let ui_locale = toggle_pin_locale.clone();
+        let command = core::prepare_blog_post_pin_command(post_id, pin, post_locale.as_str());
+        set_submit_error.set(None);
+        set_busy_key.set(Some(command.busy_key.clone()));
 
-            spawn_local(async move {
-                let result = if command.pin {
-                    transport::pin_post(
-                        token_value,
-                        tenant_value,
-                        command.post_id.clone(),
-                        command.locale.clone(),
-                    )
-                    .await
-                } else {
-                    transport::unpin_post(
-                        token_value,
-                        tenant_value,
-                        command.post_id.clone(),
-                        command.locale.clone(),
-                    )
-                    .await
-                };
+        spawn_local(async move {
+            let result = if command.pin {
+                transport::pin_post(
+                    token_value,
+                    tenant_value,
+                    command.post_id.clone(),
+                    command.locale.clone(),
+                )
+                .await
+            } else {
+                transport::unpin_post(
+                    token_value,
+                    tenant_value,
+                    command.post_id.clone(),
+                    command.locale.clone(),
+                )
+                .await
+            };
 
-                match result {
-                    Ok(post) => {
-                        let result_view = core::blog_post_mutation_result_view(
-                            editing_post_id.get_untracked().as_deref(),
-                            post.id.as_str(),
+            match result {
+                Ok(post) => {
+                    let result_view = core::blog_post_mutation_result_view(
+                        editing_post_id.get_untracked().as_deref(),
+                        post.id.as_str(),
+                    );
+                    if result_view.apply_returned_post_to_form {
+                        apply_post_to_form(
+                            BlogPostFormSetters {
+                                editing_post_id: set_editing_post_id,
+                                editing_version: set_editing_version,
+                                title: set_title,
+                                slug: set_slug,
+                                excerpt: set_excerpt,
+                                content: set_content,
+                                locale: set_locale,
+                                tags_input: set_tags_input,
+                                category_id: set_category_id,
+                                channel_slugs_input: set_channel_slugs_input,
+                                featured_image_url: set_featured_image_url,
+                                seo_title: set_seo_title,
+                                seo_description: set_seo_description,
+                                scheduled_at: set_scheduled_at,
+                                schedule_editable: set_schedule_editable,
+                                publish_now: set_publish_now,
+                            },
+                            &post,
                         );
-                        if result_view.apply_returned_post_to_form {
-                            apply_post_to_form(
-                                BlogPostFormSetters {
-                                    editing_post_id: set_editing_post_id,
-                                    editing_version: set_editing_version,
-                                    title: set_title,
-                                    slug: set_slug,
-                                    excerpt: set_excerpt,
-                                    content: set_content,
-                                    locale: set_locale,
-                                    tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
-                                    publish_now: set_publish_now,
-                                },
-                                &post,
-                            );
-                        }
-                        if result_view.refresh_posts {
-                            set_refresh_nonce.update(|value| *value += 1);
-                        }
                     }
-                    Err(err) => {
-                        set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                            &t(
-                                ui_locale.as_deref(),
-                                "blog.error.updatePin",
-                                "Failed to change post pin state",
-                            ),
-                            &err.to_string(),
-                        )));
+                    if result_view.refresh_posts {
+                        set_refresh_nonce.update(|value| *value += 1);
                     }
                 }
+                Err(err) => {
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
+                        &t(
+                            ui_locale.as_deref(),
+                            "blog.error.updatePin",
+                            "Failed to change post pin state",
+                        ),
+                        &err.to_string(),
+                    )));
+                }
+            }
 
-                set_busy_key.set(None);
-            });
-        },
-    );
+            set_busy_key.set(None);
+        });
+    });
 
     let archive_post_locale = ui_locale.clone();
     let archive_post = Callback::new(move |(post_id, post_locale): (String, String)| {
@@ -678,13 +675,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
+                                category_id: set_category_id,
+                                channel_slugs_input: set_channel_slugs_input,
+                                featured_image_url: set_featured_image_url,
+                                seo_title: set_seo_title,
+                                seo_description: set_seo_description,
+                                scheduled_at: set_scheduled_at,
+                                schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -744,13 +741,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                 content: set_content,
                                 locale: set_locale,
                                 tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
+                                category_id: set_category_id,
+                                channel_slugs_input: set_channel_slugs_input,
+                                featured_image_url: set_featured_image_url,
+                                seo_title: set_seo_title,
+                                seo_description: set_seo_description,
+                                scheduled_at: set_scheduled_at,
+                                schedule_editable: set_schedule_editable,
                                 publish_now: set_publish_now,
                             },
                             &post,
@@ -904,5 +901,6 @@ pub fn BlogAdmin() -> impl IntoView {
         publish_now,
         busy_key,
         submit_post,
-    }).into_any()
+    })
+    .into_any()
 }
