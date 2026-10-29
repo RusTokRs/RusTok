@@ -176,7 +176,7 @@ requireAll("crates/modules/rustok-blog/src/controllers/comments.rs", [
   "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
   "ensure_blog_permission(",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/comment.rs", [
+requireAllSource("crates/modules/rustok-blog/src/services/comment.rs", commentServiceSource, [
   "pub async fn get_comment(",
   "security: SecurityContext",
   "enforce_scope(&security, Resource::Comments, Action::Read)?;",
@@ -832,7 +832,7 @@ requireAll("crates/modules/rustok-blog/src/error/public.rs", [
 
 requireAll("crates/modules/rustok-taxonomy/src/owner_category_hierarchy_mutation.rs", [
   "pub async fn reorder_module_category_siblings_in_tx(",
-  "Module Category sibling order does not cover the complete canonical sibling set",
+  "Module Category sibling order must match the canonical sibling set exactly",
   "pub async fn delete_module_category_placement_and_compact_in_tx(",
   "Category must be a leaf before deletion; move or delete its children first",
   "Module Category hierarchy coverage is incomplete during deletion",
