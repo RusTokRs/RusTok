@@ -119,6 +119,27 @@ impl From<rustok_commerce::CommerceError> for ApiErrorResponse {
             rustok_commerce::CommerceError::CannotDeletePublished => {
                 (StatusCode::CONFLICT, "CANNOT_DELETE_PUBLISHED")
             }
+            rustok_commerce::CommerceError::Rich(rich) => {
+                use rustok_core::error::ErrorKind;
+
+                match rich.kind {
+                    ErrorKind::Validation | ErrorKind::BusinessLogic => {
+                        (StatusCode::BAD_REQUEST, "VALIDATION_ERROR")
+                    }
+                    ErrorKind::Unauthenticated => (StatusCode::UNAUTHORIZED, "UNAUTHENTICATED"),
+                    ErrorKind::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN"),
+                    ErrorKind::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND"),
+                    ErrorKind::Conflict => (StatusCode::CONFLICT, "CONFLICT"),
+                    ErrorKind::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
+                    ErrorKind::ExternalService => {
+                        (StatusCode::SERVICE_UNAVAILABLE, "EXTERNAL_SERVICE_ERROR")
+                    }
+                    ErrorKind::Timeout => (StatusCode::GATEWAY_TIMEOUT, "TIMEOUT"),
+                    ErrorKind::Database | ErrorKind::Internal => {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR")
+                    }
+                }
+            }
             rustok_commerce::CommerceError::Core(core) => match core {
                 rustok_core::Error::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
                 rustok_core::Error::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
@@ -137,6 +158,13 @@ impl From<rustok_commerce::CommerceError> for ApiErrorResponse {
         let message = if status.is_server_error() {
             tracing::error!(error = %err, "Commerce request failed");
             "Internal server error".to_string()
+        } else if let rustok_commerce::CommerceError::Rich(rich) = &err {
+            // RichError::Display contains internal context and metadata even
+            // for client-category errors. Only its explicitly safe message
+            // belongs in a public transport response.
+            rich.user_message
+                .clone()
+                .unwrap_or_else(|| "Request could not be completed".to_string())
         } else {
             err.to_string()
         };
@@ -172,6 +200,34 @@ mod tests {
         assert_eq!(payload["error"]["message"], "Internal server error");
         assert!(!payload.to_string().contains("secret"));
         assert!(!payload.to_string().contains("db.internal"));
+    }
+
+    #[tokio::test]
+    async fn commerce_rich_errors_preserve_typed_status_without_leaking_internal_context() {
+        use rustok_core::error::{ErrorKind, RichError};
+
+        let rich = RichError::new(ErrorKind::Validation, "sql password=secret")
+            .with_user_message("Invalid product input")
+            .with_field("dsn", "postgres://admin:secret@db");
+        let (status, payload) =
+            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(payload["error"]["code"], "VALIDATION_ERROR");
+        assert_eq!(payload["error"]["message"], "Invalid product input");
+        assert!(!payload.to_string().contains("secret"));
+
+        let rich = RichError::new(ErrorKind::NotFound, "internal row ID");
+        let (status, payload) =
+            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(payload["error"]["message"], "Request could not be completed");
+
+        let rich = RichError::new(ErrorKind::Database, "postgres://admin:secret@db");
+        let (status, payload) =
+            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(payload["error"]["message"], "Internal server error");
+        assert!(!payload.to_string().contains("secret"));
     }
 
     #[tokio::test]
