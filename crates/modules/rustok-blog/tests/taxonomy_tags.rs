@@ -650,7 +650,12 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
     let forged_usage = Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO blog_tag_usage (tenant_id, tag_id, canonical_key, use_count) VALUES (?, ?, ?, ?)",
-        [other_tenant.into(), tag_id.into(), "forged".into(), 0_i32.into()],
+        [
+            other_tenant.into(),
+            tag_id.into(),
+            "forged".into(),
+            0_i32.into(),
+        ],
     );
     assert!(
         db.execute(forged_usage).await.is_err(),
