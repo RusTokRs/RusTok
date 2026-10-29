@@ -7,7 +7,10 @@ use axum::{
 use rustok_api::{Permission, has_effective_permission};
 pub use rustok_auth::{UserItem, UsersListParams, UsersResponse};
 use rustok_web::json_response;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    sea_query::{Expr, LikeExpr},
+};
 use uuid::Uuid;
 
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
@@ -28,6 +31,25 @@ pub fn normalize_page_params(page: Option<u64>, page_size: Option<u64>) -> (u64,
     let page = page.unwrap_or(1).max(1);
     let page_size = page_size.unwrap_or(20).clamp(1, 100);
     (page, page_size)
+}
+
+/// Treat the search box as literal text: SQL LIKE wildcards in a user
+/// email/name must not silently turn a filtered list into a broad query.
+fn literal_search_pattern(search: &str) -> String {
+    let mut pattern = String::with_capacity(search.len() + 2);
+    pattern.push('%');
+    for ch in search.chars() {
+        if matches!(ch, '|' | '%' | '_') {
+            pattern.push('|');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('%');
+    pattern
+}
+
+fn page_out_of_range(page: u64, page_size: u64, total: u64) -> bool {
+    page > total.div_ceil(page_size)
 }
 
 fn ordered_tenant_users_query(tenant_id: Uuid) -> sea_orm::Select<users::Entity> {
@@ -75,11 +97,11 @@ async fn list_users(
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        let pattern = format!("%{}%", search);
+        let pattern = literal_search_pattern(search);
         query = query.filter(
             sea_orm::Condition::any()
-                .add(UserColumn::Email.like(&pattern))
-                .add(UserColumn::Name.like(&pattern)),
+                .add(Expr::col(UserColumn::Email).like(LikeExpr::new(pattern.clone()).escape('|')))
+                .add(Expr::col(UserColumn::Name).like(LikeExpr::new(pattern).escape('|'))),
         );
     }
 
@@ -94,7 +116,13 @@ async fn list_users(
 
     let paginator = query.paginate(ctx.db(), page_size);
     let total = paginator.num_items().await?;
-    let rows = paginator.fetch_page(page - 1).await?;
+    // Avoid enormous offsets (and possible backend integer overflows) for a
+    // syntactically valid but out-of-range page number.
+    let rows = if page_out_of_range(page, page_size, total) {
+        Vec::new()
+    } else {
+        paginator.fetch_page(page - 1).await?
+    };
 
     Ok(json_response(UsersResponse {
         users: rows.into_iter().map(map_user).collect(),
@@ -165,6 +193,30 @@ mod tests {
         let id_position = order_by.find("id").expect("unique tie-breaker");
         assert!(timestamp_position < id_position);
         assert_eq!(order_by.matches("ASC").count(), 2);
+    }
+
+    #[test]
+    fn user_search_escapes_like_wildcards_instead_of_matching_everything() {
+        assert_eq!(literal_search_pattern("ann"), "%ann%");
+        assert_eq!(literal_search_pattern("a_b%|"), "%a|_b|%||%");
+        assert_eq!(literal_search_pattern("Иван"), "%Иван%");
+
+        use sea_orm::{DbBackend, QueryTrait};
+        let pattern = literal_search_pattern("%");
+        let statement = ordered_tenant_users_query(Uuid::new_v4())
+            .filter(Expr::col(UserColumn::Email).like(LikeExpr::new(pattern).escape('|')))
+            .build(DbBackend::Sqlite);
+        let sql = statement.to_string();
+        assert!(sql.contains("ESCAPE '|'"), "{sql}");
+    }
+
+    #[test]
+    fn out_of_range_pages_are_empty_without_large_sql_offsets() {
+        assert!(page_out_of_range(u64::MAX, 20, 100));
+        assert!(page_out_of_range(1, 20, 0));
+        assert!(!page_out_of_range(1, 20, 20));
+        assert!(!page_out_of_range(5, 20, 100));
+        assert!(page_out_of_range(6, 20, 100));
     }
 
     #[test]
