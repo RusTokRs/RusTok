@@ -3,6 +3,11 @@ name = "rustok-blog-storefront"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Leptos storefront UI package for the rustok-blog module"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
@@ -40,6 +45,7 @@ rustok-ui-transport.workspace = true
 leptos-ui-routing.workspace = true
 leptos-ui.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }

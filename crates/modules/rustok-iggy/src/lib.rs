@@ -1,3 +1,5 @@
+//! # rustok-iggy
+//!
 //! Iggy-based event transport for RusToK platform.
 //!
 //! This crate provides a streaming event transport implementation using [Iggy](https://iggy.rs),

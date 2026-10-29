@@ -124,6 +124,11 @@ All facades choose exactly one transport through `execute_selected_transport`; a
 owner denial, timeout, conflict, or unavailable result never triggers implicit retry
 through another path.
 
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
+- See [platform docs](../../../../docs/index.md).
+
 ## Compatibility and open gates
 
 The older unconditional policy-save and candidate-submit methods remain in the

@@ -8,11 +8,19 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Finance Admin
+//!
+//! Leptos admin UI package for Operational Finance & Cash Desks in the `rustok-finance` module.
+//! Provides finance listing table rows, in-memory search filtering, and admin page components.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+pub use core::{filter_rows, FinanceAdminTableRow};
+pub use transport::FinanceAdminTransport;
 pub use ui::{FinanceAdmin, FinanceAdminPage};
+
+#[cfg(test)]
+mod contract_tests;

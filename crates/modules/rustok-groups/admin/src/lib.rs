@@ -1,20 +1,20 @@
-mod application_bulk_core;
-mod application_bulk_transport;
-mod application_core;
-mod application_model;
-mod core;
+//! # RusToK Groups Admin
+//!
+//! Leptos admin FFA package for social group administration in the `rustok-groups` module.
+//! Provides group directory, governance, membership application review, and visual policy editors.
+
+pub mod application_bulk_core;
+pub mod application_bulk_transport;
+pub mod application_core;
+pub mod application_model;
+pub mod core;
 mod i18n;
-mod model;
-mod policy_locale_compat;
-mod transport;
+pub mod model;
+pub mod policy_locale_compat;
+pub mod transport;
 mod ui;
 
-pub use application_bulk_core::*;
-pub use application_bulk_transport::*;
-pub use application_core::*;
-pub use application_model::*;
-pub use core::*;
-pub use model::*;
-pub use policy_locale_compat::*;
-pub use transport::*;
 pub use ui::root::GroupsAdmin;
+
+#[cfg(test)]
+mod contract_tests;

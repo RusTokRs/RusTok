@@ -34,3 +34,7 @@ distribution build.
 - `rustok-modules` supplies an owner-validated, digest-pinned distribution work
   item to `generate_static_distribution`; the generator performs no source
   fetching, compilation, publication, or runtime mutation.
+
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.

@@ -77,6 +77,7 @@ Slug rename uses the additive FORUM-24F GraphQL mutation in all Leptos build pro
 
 ## Documentation
 
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).
 - See [FORUM-21N admin merge UI](../docs/forum-21n-topic-merge-admin-ui.md).
 - See [FORUM-21O native admin merge transport](../docs/forum-21o-topic-merge-native-admin.md).

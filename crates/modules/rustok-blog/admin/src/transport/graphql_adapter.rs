@@ -219,7 +219,7 @@ pub async fn fetch_categories(
         if items.len() as u64 >= result.blog_categories.total {
             return Ok(items);
         }
-        if items.len() as u64 < page * 100 {
+        if (items.len() as u64) < page * 100 {
             return Err(GraphqlHttpError::Graphql(
                 "Blog categories pagination returned incomplete rows".into(),
             ));

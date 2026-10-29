@@ -1,5 +1,13 @@
 # rustok-iggy / CRATE_API
 
+## Platform Capability Bindings
+- Implements `EventTransport` contract from `rustok-core` and `rustok-events`.
+- Integrates with `rustok-iggy-connector` for bundled server lifecycle and TCP client connection pooling.
+
+## Domain Collaborations
+- Collaborates with `rustok-outbox` for event publishing.
+- Collaborates with RusToK domain modules (e.g. `rustok-social-graph`, `rustok-commerce`) via persistent consumer groups.
+
 ## Public Modules
 `config`, `consumer`, `contract_consumer`, `contract_decode_failure`, `dlq`, `health`, `partitioning`, `position` behind feature `iggy`, `producer`, `serialization`, `topology`, `transport`.
 

@@ -28,6 +28,9 @@ for the event capability. Canonical event contracts remain in
 - `admin/`
 - `next-admin/`
 
-See the [local module contract](docs/README.md), the
-[adapter implementation plan](docs/implementation-plan.md), and the
-[canonical Events capability plan](../../libs/rustok-events/docs/implementation-plan.md).
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
+- See the [local module contract](docs/README.md), the
+  [adapter implementation plan](docs/implementation-plan.md), and the
+  [canonical Events capability plan](../../libs/rustok-events/docs/implementation-plan.md).

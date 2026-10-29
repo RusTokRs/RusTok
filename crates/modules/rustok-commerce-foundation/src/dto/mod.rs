@@ -6,4 +6,7 @@
 
 pub mod variant;
 
-pub use variant::*;
+pub use variant::{
+    AdjustInventoryInput, CreateVariantInput, PriceInput, PriceResponse, VariantResponse,
+    VariantTranslationResponse,
+};

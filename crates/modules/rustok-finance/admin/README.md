@@ -7,3 +7,8 @@ Admin UI package for `finance`, following Fluid Frontend Architecture (FFA).
 - Decoupled backend communication via `transport`
 - Leptos UI components and shared `DataGrid` in `ui`
 - Localization catalog in `locales/`
+
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
+- See [platform docs](../../../../docs/index.md).

@@ -43,4 +43,5 @@ Current native read coverage includes:
 
 ## Documentation
 
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).

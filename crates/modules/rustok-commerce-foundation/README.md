@@ -22,4 +22,7 @@
 - `CommerceError`
 - `CommerceResult`
 
-See also `docs/README.md`.
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
+- See also `docs/README.md`.

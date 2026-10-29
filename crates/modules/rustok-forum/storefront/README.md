@@ -82,6 +82,7 @@ No search/ranking predicate runs in this package. See the
 
 ## Documentation
 
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - [FORUM-24I canonical topic route mount](../docs/forum-24i-topic-route-storefront-mount.md)
 - See [platform docs](../../../../docs/index.md).
 

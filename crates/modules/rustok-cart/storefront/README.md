@@ -37,4 +37,5 @@ Leptos storefront UI package for the `rustok-cart` module.
 
 ## Documentation
 
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).

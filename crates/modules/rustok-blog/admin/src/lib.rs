@@ -1,3 +1,8 @@
+//! # RusToK Blog Admin
+//!
+//! Leptos admin UI package for the `rustok-blog` module.
+//! Provides post authoring, category management, comment moderation panels, and Fly page-builder integrations.
+
 #![recursion_limit = "512"]
 
 mod core;
@@ -28,3 +33,6 @@ pub fn BlogAdmin() -> impl IntoView {
         </div>
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Shared commerce DTOs, entities, and errors for split RusToK commerce modules"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-core.workspace = true
 sea-orm.workspace = true

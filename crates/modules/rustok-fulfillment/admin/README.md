@@ -29,4 +29,5 @@ Leptos admin UI package for the `rustok-fulfillment` module.
 
 ## Documentation
 
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).

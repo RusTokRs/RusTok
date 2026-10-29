@@ -1,14 +1,17 @@
-mod application_core;
-mod application_model;
-mod core;
+//! # RusToK Groups Storefront
+//!
+//! Leptos storefront FFA package for social group discovery and membership applications in the `rustok-groups` module.
+//! Provides public group browsing, membership application forms, and invitation acceptance.
+
+pub mod application_core;
+pub mod application_model;
+pub mod core;
 mod i18n;
-mod model;
-mod transport;
+pub mod model;
+pub mod transport;
 mod ui;
 
-pub use application_core::*;
-pub use application_model::*;
-pub use core::*;
-pub use model::*;
-pub use transport::*;
 pub use ui::leptos::GroupsView;
+
+#[cfg(test)]
+mod contract_tests;

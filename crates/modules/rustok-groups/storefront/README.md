@@ -87,6 +87,11 @@ The package does not resolve notification recipients, publish notification event
 own inbox, preference, email, push, retry, or delivery state. Those responsibilities
 remain in the Groups backend source provider and the Notifications owner.
 
+## Documentation
+
+- See [CRATE_API.md](CRATE_API.md) for full contract specification.
+- See [platform docs](../../../../docs/index.md).
+
 ## Readiness
 
 Build, runtime, native/GraphQL stable-code and lifecycle parity, idempotent replay,

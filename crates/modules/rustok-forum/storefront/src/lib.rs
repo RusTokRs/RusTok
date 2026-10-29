@@ -1,3 +1,8 @@
+//! # RusToK Forum Storefront
+//!
+//! Leptos storefront UI package for the `rustok-forum` module.
+//! Provides forum discussion feeds, topic and reply views, and canonical route resolution.
+
 pub mod core;
 mod i18n;
 mod model;
@@ -16,3 +21,6 @@ pub use transport::{
     resolve_storefront_category_route, resolve_storefront_topic_route,
 };
 pub use ui::ForumView;
+
+#[cfg(test)]
+mod contract_tests;

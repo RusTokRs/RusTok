@@ -26,4 +26,5 @@ Leptos admin UI package for the `rustok-outbox` module.
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md)
 - See [platform docs](../../../../docs/index.md).

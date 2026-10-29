@@ -1,3 +1,8 @@
+//! # RusToK Customer Admin
+//!
+//! Leptos admin UI package for the `rustok-customer` module.
+//! Provides customer administration views, customer directory grid, and profile management.
+
 #![recursion_limit = "256"]
 
 pub mod core;
@@ -8,3 +13,6 @@ pub mod ui;
 
 pub use core::{customer_grid_columns, filter_customers};
 pub use ui::CustomerAdmin;
+
+#[cfg(test)]
+mod contract_tests;

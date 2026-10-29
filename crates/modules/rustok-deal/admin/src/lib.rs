@@ -8,11 +8,19 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Deal Admin
+//!
+//! Leptos admin UI package for CRM Deals & Pipelines in the `rustok-deal` module.
+//! Provides deal listing table rows, in-memory search filtering, and admin page components.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+pub use core::{filter_rows, DealAdminTableRow};
+pub use transport::DealAdminTransport;
 pub use ui::{DealAdmin, DealAdminPage};
+
+#[cfg(test)]
+mod contract_tests;

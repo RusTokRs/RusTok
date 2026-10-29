@@ -1,22 +1,7 @@
 # Crate API: rustok-product-relations-admin
 
-## Minimum Contract Set
-- **Fluid Frontend Architecture (FFA)**: Strict separation between framework-agnostic domain logic in `core` and Leptos view components in `ui`.
-- **Pure Rust Domain Logic**: View-model construction, data filtering, UUID validation, and copy resolution are verified with standard unit tests without requiring a Leptos or browser runtime.
-- **Dual-Path Transport**: Supports both direct native SSR server functions and headless GraphQL transport via `ProductRelationsTransportContext`.
-- **Zero Fallbacks**: Transport routes fail explicitly; no silent fallback masks errors.
+## Public surface
 
-## Platform Capability Bindings
-- **`rustok-grid`**: Declarative table and grid definitions (`relation_grid_columns`) with sorting and text filtering.
-- **`rustok-ui-core`**: String normalization via `normalize_ui_text`.
-- **`rustok-ui-i18n`**: Bilingual support (`en`, `ru`) for relations panel labels and actions.
-- **`rustok-ui-transport`**: Dual transport execution via `execute_selected_transport`.
-
-## Domain Collaborations
-- **`rustok-product-relations`**: Interacts with the backend product relations service and DTO models.
-- **`rustok-product`**: References product catalog IDs for source and target relation associations.
-
-## Public Surface
 ### Core
 - `ProductRelationsTransportProfile`: Transport profile enum (`Native`, `Graphql`).
 - `selected_transport_profile`: Resolves transport profile from string option.
@@ -44,3 +29,33 @@
 ### UI Components
 - `ProductRelationsAdmin`: Standalone full-page admin view component for product relations.
 - `ProductRelationsPanel`: Embeddable component for managing product relations within a product detail view.
+
+## Platform Capability Bindings
+- **`rustok-grid`**: Declarative table and grid definitions (`relation_grid_columns`) with sorting and text filtering.
+- **`rustok-ui-core`**: String normalization via `normalize_ui_text`.
+- **`rustok-ui-i18n`**: Bilingual support (`en`, `ru`) for relations panel labels and actions.
+- **`rustok-ui-transport`**: Dual transport execution via `execute_selected_transport`.
+
+## Domain Collaborations
+- **`rustok-product-relations`**: Interacts with the backend product relations service and DTO models.
+- **`rustok-product`**: References product catalog IDs for source and target relation associations.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `ProductRelationsAdminFilters`: Filter parameters for relation lists.
+- `CreateProductRelationDraft`: Input draft for creating relations.
+- `ProductRelationsAdminCommand`: Command enum (`Add`, `Remove`, `Reorder`).
+
+### Domain Invariants
+- **Fluid Frontend Architecture (FFA)**: Strict separation between framework-agnostic domain logic in `core` and Leptos view components in `ui`.
+- **Pure Rust Domain Logic**: View-model construction, data filtering, UUID validation, and copy resolution are verified with standard unit tests without requiring a Leptos or browser runtime.
+- **Dual-Path Transport**: Supports both direct native SSR server functions and headless GraphQL transport via `ProductRelationsTransportContext`.
+- **Zero Fallbacks**: Transport routes fail explicitly; no silent fallback masks errors.
+
+### Events / Outbox Side Effects
+- Emits product relation updates and mutations to backend services.
+
+### Errors / Failure Codes
+- Validation failures returned as typed results without panics.
+- Transport failures surface accessible error notices to operators.

@@ -1,3 +1,5 @@
+//! # RusToK Events Module
+//!
 //! Runtime registration adapter for the `rustok-events` capability.
 //!
 //! Event contracts and transport-facing types remain owned by
@@ -5,80 +7,12 @@
 //! consumes those contracts; keeping the runtime implementation in a separate
 //! crate preserves the dependency direction and avoids a cycle.
 
-use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+pub mod module;
 
-/// Core runtime module for the platform event capability.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct EventsModule;
-
-impl MigrationSource for EventsModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
-    }
-}
-
-#[async_trait]
-impl RusToKModule for EventsModule {
-    fn slug(&self) -> &'static str {
-        "events"
-    }
-
-    fn name(&self) -> &'static str {
-        "Events"
-    }
-
-    fn description(&self) -> &'static str {
-        "Platform event contracts, delivery profile control, and transport orchestration."
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["outbox"]
-    }
-
-    async fn health(&self) -> HealthStatus {
-        // Concrete readiness is reported by the server event runtime because
-        // this module-level hook has no host runtime context.
-        HealthStatus::Degraded
-    }
-}
+pub use module::EventsModule;
 
 #[cfg(test)]
-mod tests {
-    use super::EventsModule;
-    use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+mod tests;
 
-    #[tokio::test]
-    async fn events_module_defers_runtime_health_to_host() {
-        assert_eq!(EventsModule.health().await, HealthStatus::Degraded);
-    }
-
-    #[test]
-    fn events_module_metadata_and_dependencies() {
-        let module = EventsModule;
-        assert_eq!(module.slug(), "events");
-        assert_eq!(module.name(), "Events");
-        assert_eq!(module.kind(), ModuleKind::Core);
-        assert_eq!(module.dependencies(), &["outbox"]);
-        assert!(!module.description().is_empty());
-        assert!(!module.version().is_empty());
-        assert!(module.migrations().is_empty());
-    }
-
-    #[test]
-    fn events_module_implements_standard_traits() {
-        let module: EventsModule = Default::default();
-        let cloned = module;
-        assert_eq!(module, cloned);
-        assert_eq!(format!("{module:?}"), "EventsModule");
-    }
-}
+#[cfg(test)]
+mod contract_tests;

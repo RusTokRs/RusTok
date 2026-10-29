@@ -1,3 +1,8 @@
+//! # RusToK Forum Admin
+//!
+//! Leptos admin UI package for the `rustok-forum` module.
+//! Provides topic moderation, reply splitting/merging, category administration, and Fly page-builder integrations.
+
 #![recursion_limit = "256"]
 
 mod core;
@@ -32,3 +37,6 @@ pub use widget_property_transport::{
     ForumWidgetPropertyValidationTransportResponse, load_forum_page_builder_widget_property_schema,
     validate_forum_page_builder_widget_properties,
 };
+
+#[cfg(test)]
+mod contract_tests;

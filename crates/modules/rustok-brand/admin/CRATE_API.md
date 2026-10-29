@@ -1,22 +1,7 @@
 # Crate API: rustok-brand-admin
 
-## Minimum Contract Set
-- **Fluid Frontend Architecture (FFA)**: Strict decoupling of domain logic, slug/name validation, and shell formatting in `core` from Leptos template rendering.
-- **Pure Rust Domain Invariants**: Verification of brand slug and name rules via unit tests without Leptos or DOM runtime.
-- **Dual-Path Transport**: Seamless support for both direct native SSR server functions and headless GraphQL transports via `BrandAdminTransportContext`.
-- **Zero Fallbacks**: Explicit transport failure reporting without silent fallback masks.
+## Public surface
 
-## Platform Capability Bindings
-- **`rustok-grid`**: Declarative grid columns for brand list with name search and active status filters (`brand_grid_columns`).
-- **`rustok-ui-core`**: Text normalization via `normalize_ui_text`.
-- **`rustok-ui-i18n`**: Bilingual support (`en`, `ru`) for brand admin shell titles and column headers.
-- **`rustok-ui-transport`**: Dual transport execution via `execute_selected_transport`.
-
-## Domain Collaborations
-- **`rustok-brand`**: Interacts with the backend brand service, migrations, and DTO structures.
-- **`rustok-product`**: Associates catalog products with brand manufacturers.
-
-## Public Surface
 ### Core
 - `BrandAdminTransportProfile`: Transport profile enum (`Native`, `Graphql`).
 - `selected_transport_profile`: Resolves transport profile from string option.
@@ -46,3 +31,34 @@
 
 ### UI Components
 - `BrandAdmin`: Standalone full-page admin view component for brand catalog management.
+
+## Platform Capability Bindings
+- **`rustok-grid`**: Declarative grid columns for brand list with name search and active status filters (`brand_grid_columns`).
+- **`rustok-ui-core`**: Text normalization via `normalize_ui_text`.
+- **`rustok-ui-i18n`**: Bilingual support (`en`, `ru`) for brand admin shell titles and column headers.
+- **`rustok-ui-transport`**: Dual transport execution via `execute_selected_transport`.
+
+## Domain Collaborations
+- **`rustok-brand`**: Interacts with the backend brand service, migrations, and DTO structures.
+- **`rustok-product`**: Associates catalog products with brand manufacturers.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- `BrandAdminFilters`: Filter parameters for brand listing.
+- `BrandAdminCreateDraft`: Payload for brand creation.
+- `BrandAdminUpdateDraft`: Payload for brand update.
+- `BrandAdminCommand`: Admin mutation commands.
+
+### Domain Invariants
+- **Fluid Frontend Architecture (FFA)**: Strict decoupling of domain logic, slug/name validation, and shell formatting in `core` from Leptos template rendering.
+- **Pure Rust Domain Invariants**: Verification of brand slug and name rules via unit tests without Leptos or DOM runtime.
+- **Dual-Path Transport**: Seamless support for both direct native SSR server functions and headless GraphQL transports via `BrandAdminTransportContext`.
+- **Zero Fallbacks**: Explicit transport failure reporting without silent fallback masks.
+
+### Events / Outbox Side Effects
+- Dispatches brand administration mutations to backend transport endpoints.
+
+### Errors / Failure Codes
+- Validation failures returned as structured errors.
+- Network and GraphQL errors propagated to UI state without panicking.
