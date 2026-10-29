@@ -75,6 +75,7 @@ function checkUi(root, name, errors) {
   if (!isFile(join(src, 'lib.rs'))) errors.push(src + ': missing UI facade lib.rs');
   for (const slot of UI_SLOTS) {
     if (!isDir(join(src, slot))) errors.push(src + ': missing FFA ' + slot + '/');
+    else if (!isFile(join(src, slot, 'mod.rs'))) errors.push(src + ': missing ' + slot + '/mod.rs');
   }
   if (!isFile(join(src, 'i18n.rs')) && !isFile(join(src, 'i18n', 'mod.rs'))) {
     errors.push(src + ': missing module-owned i18n entrypoint');
