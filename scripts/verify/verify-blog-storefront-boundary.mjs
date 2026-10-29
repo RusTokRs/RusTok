@@ -183,7 +183,9 @@ assertNotContains(model, "pub body_format: String", `${files.model}: storefront 
 
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
 assertContains(uiCombined, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
-assertContains(ui, "transport::fetch_blog(request.clone(), comments_page)", `${files.ui}: UI must pass the current comments page through transport`);
+if (!/transport::fetch_blog\(request(?:\.clone\(\))?,\s*comments_page\)/.test(ui)) {
+  fail(`${files.ui}: UI must pass the current comments page through transport`);
+}
 assertContains(selectedPostUi, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
 assertContains(uiCombined, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
 assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
