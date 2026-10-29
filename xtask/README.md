@@ -66,11 +66,9 @@ The command:
 - By default creates a **headless, no-DB native runtime identity**. `--with-db` or a non-none `--ui` request currently fails before file creation; a schema or business transport cannot be inferred from the slug.
 - Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
-- Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
-  - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
-  - `transport/`: Facade for server communications.
-  - `ui/`: Leptos component views.
-  - `i18n.rs` and `locales/` (`en.ftl`, `ru.ftl` Fluent catalogs).
+- Does **not** generate or advertise UI packages until the module has a real
+  backend contract; the historical UI renderer is unreachable from supported
+  scaffold options. Existing Blog admin/Leptos adapters are unaffected.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
   - `Cargo.toml` (`[workspace.dependencies]` and `members`);
@@ -80,20 +78,16 @@ The command:
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
 - Runs `cargo xtask module validate <slug>` unless skipped. This validates publish-readiness metadata/registration, **not** full source architecture, compilation, running transports or FFA/FBA readiness.
 
-**Known Limitations / Pending Implementation:** The renderer currently puts
-`contract_tests.rs` in the source root, publicly exports persistence entities,
-generates speculative backend layers and a sample migration, and emits UI with
-sample rows, fake CRUD actions and empty transport. It does not establish
-Next.js route parity. The current write process is non-atomic; dry-run omits
-registration changes; unsuccessful post-scaffold validation can print a warning
-and return success. Generated readiness rows can be optimistic. Subsequent
-phases must fix those failures and add an architecture validator and golden
-tests. Do **not** treat existing scaffold output as verified or publishable.
-The phase-1 profile guard and tests only prevent mixing native, support and WASI
-generation workflows.
+**Remaining limitations:** Registration is not atomic; `--dry-run` does not
+preview all manifest edits. Successful publish-readiness validation does not
+prove a build, native architecture lint, owner business behavior, or FFA/FBA
+transport parity. Post-scaffold validation failure now returns a nonzero error,
+but earlier file writes are not yet rolled back. UI and persistence requests
+are explicitly rejected pending actual owner contracts. Run full scoped
+verification before treating generated code as ready.
 
 ```powershell
-# Create a collaboration module with dual surface UI and DB migrations:
+# Create the minimal native runtime identity (no business CRUD or storage):
 cargo xtask scaffold calls --title "WebRTC Calls & Conferencing" --category collaboration
 
 # Create a headless/no-ui ERP module:

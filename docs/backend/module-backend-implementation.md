@@ -81,9 +81,10 @@ synthetic services, persistence or fabricated migration. Requests for
 `--with-db` or non-headless `--ui` fail before writing files until actual
 owner schemas and FFA contracts can be rendered. The retired UI renderer
 still contains `sample_rows`, log-only CRUD and empty transport facades,
-but is not reachable via supported scaffold options. Registration may be optimistic and a
-failed post-scaffold validation can still return success. The profile guard
-and parser unit tests delivered in phase 1 do not validate generated source.
+but is not reachable via supported scaffold options. Newly generated
+readiness rows stay at `not_started`, and a failed post-scaffold validation
+returns an error. The current writer still lacks atomic rollback, and the
+registration dry-run does not yet preview every manifest edit.
 Architecture validation, template cutover, Next.js parity, atomic
 registration and executable golden tests are subsequent phases.
 Generated modules must not be treated as reference-ready yet.

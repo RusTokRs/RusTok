@@ -131,6 +131,12 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         bail!("--with-db and --no-db are conflicting persistence requests");
     }
 
+    let with_ui_alias = args.iter().any(|arg| arg == "--with-ui");
+    if with_ui_alias && (args.iter().any(|arg| arg == "--no-ui")
+        || args.iter().any(|arg| arg == "--ui"))
+    {
+        bail!("--with-ui cannot be combined with --ui or --no-ui");
+    }
     if args.iter().any(|arg| arg == "--no-ui")
         && args.iter().any(|arg| arg == "--ui")
     {
@@ -147,7 +153,9 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         }
     }
 
-    let ui = if args.iter().any(|arg| arg == "--no-ui") {
+    let ui = if with_ui_alias {
+        ScaffoldUi::Dual
+    } else if args.iter().any(|arg| arg == "--no-ui") {
         ScaffoldUi::None
     } else if let Some(ui_val) = cli_option_value(args, "--ui") {
         match ui_val.trim().to_ascii_lowercase().as_str() {
@@ -315,6 +323,13 @@ mod tests {
     fn conflicting_ui_requests_fail_closed() {
         assert!(parse(&["example", "--ui", "admin", "--no-ui"]).is_err());
         assert!(parse(&["example", "--no-ui", "--ui", "dual"]).is_err());
+    }
+
+    #[test]
+    fn with_ui_alias_never_silently_downgrades_to_headless() {
+        assert_eq!(parse(&["example", "--with-ui"]).unwrap().ui, ScaffoldUi::Dual);
+        assert!(parse(&["example", "--with-ui", "--no-ui"]).is_err());
+        assert!(parse(&["example", "--with-ui", "--ui", "dual"]).is_err());
     }
 
     #[test]

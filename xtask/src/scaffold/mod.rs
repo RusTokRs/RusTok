@@ -88,10 +88,10 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
     }
 
-    // 1. Generate backend files (FBA)
+    // 1. Generate a native runtime identity only (no FBA readiness claim)
     backend::generate_backend(options, &module_dir, &pascal_name, &snake_name)?;
 
-    // 2. Generate UI packages (FFA: core, transport, ui, i18n)
+    // 2. UI generation is blocked until real owner adapters are available.
     ui::generate_ui(options, &module_dir, &pascal_name)?;
 
     // 3. Update manifests and global registration
