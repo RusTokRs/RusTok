@@ -1,18 +1,5 @@
 use super::options::{ScaffoldOptions, ScaffoldUi};
-use super::write_file_content;
-use anyhow::Result;
-use std::path::{Path, PathBuf};
-
-/// Creates Leptos FFA *development skeletons* that compile independently
-/// without mounting routes or claiming native/GraphQL business operations.
-/// Domain-specific services, transport calls and UI flows are authored later
-/// by each module owner; missing operations remain explicit errors.
-pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
-    for (relative, contents) in render_ui_templates(opts, pascal) {
-        write_file_content(&module_dir.join(relative), &contents, opts.dry_run)?;
-    }
-    Ok(())
-}
+use std::path::PathBuf;
 
 /// Pure renderer used for both dry-run and writable Leptos skeleton creation.
 /// No host mount or live [provides.*_ui] metadata is produced.
@@ -343,6 +330,8 @@ mod tests {
             description: "New module UI without a live business owner yet".to_string(),
             category: "collaboration".to_string(),
             with_db: false,
+            with_fba: false,
+            with_cli: false,
             ui,
             dry_run: true,
             skip_server_wire: false,

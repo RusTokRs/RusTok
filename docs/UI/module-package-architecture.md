@@ -240,29 +240,12 @@ The structural shape taxonomy used in
 
 ## Existing scaffold: draft UI preview versus live surface
 
-The `cargo xtask scaffold` / `cargo xtask module new` generator is a long-lived
-workspace entrypoint, not a new competing scaffolding system. Its native backend
-now starts without invented domain state. A requested `--ui admin|storefront|dual`
-creates unmounted Cargo workspace Leptos packages for later module-owned work.
-Use `--dry-run` to inspect without writing. The manifest uses `future_ui`
-and does not declare any live `[provides.*_ui]` until the module owner
-implements real operations and host wiring.
-The generated draft contains only Leptos FFA files. Classic Next.js packages are
-independent React packages inside Next hosts, not FFA adapters and not part
-of the Rust scaffolding output.
+The cargo xtask scaffold and cargo xtask module new commands are the long-lived native-module generator, not a competing UI-specific scaffold. The backend runtime identity is always generated. UI is independently optional: --ui admin, --ui storefront, or --ui dual creates the requested unmounted Leptos FFA workspace packages; no UI is the default. The module manifest uses future_ui and does not declare live provides.*_ui metadata or mount host routes.
 
-The generated Leptos draft keeps `core/mod.rs`, `model.rs`,
-`transport/mod.rs`, `transport/native_server_adapter.rs`,
-`transport/graphql_adapter.rs`, `ui/mod.rs`, and `ui/leptos.rs`.
-It uses the canonical `rustok-ui-transport` path selection, but both
-owner-specific adapters explicitly fail with `MissingOwnerContract` until
-real operations are implemented. This is **structural FFA scaffolding**, not
-a working business API or a verified runtime transport. The generated shell
-shows an unavailable state without simulated CRUD.
-Before activation, implement actual owner operations and context-aware
-native/GraphQL adapters. Future `ui/dioxus.rs` must share the same
-framework-independent core/model and transport facade, keeping Leptos intact.
-Any Next.js product features must be built in their Next host packages.
+Use --dry-run to inspect the complete generated-source and repository-registration plan without writing. The planner includes root Cargo workspace changes, modules.toml, server/distribution wiring, CLI registry changes when selected, and central docs. Writable runs stage changes and roll back the whole plan if a write or post-scaffold metadata validation fails.
 
-Blog remains the production reference for these boundaries; its existing
-Leptos adapters are not modified by scaffold changes.
+The generated Leptos draft keeps core/mod.rs, model.rs, transport/mod.rs, transport/native_server_adapter.rs, transport/graphql_adapter.rs, ui/mod.rs, and ui/leptos.rs. Both owner-specific adapters explicitly fail with MissingOwnerContract until real operations are implemented. This is structural FFA scaffolding, not a working business API or verified runtime transport. Classic Next.js packages remain independent React packages inside Next hosts and are not generated here.
+
+The optional --with-fba flag adds the shared rustok-fba library to the backend module; it does not generate speculative FBA ports or registries. The optional --with-cli flag creates a module-owned CLI provider package and registers it with the platform CLI registry. The initial command catalog is empty until owner operations and their safety contracts exist.
+
+Blog remains the production reference for these boundaries; its existing Leptos/native/GraphQL/Next.js adapters are not modified by scaffold changes.

@@ -66,6 +66,10 @@ pub struct ScaffoldOptions {
     pub description: String,
     pub category: String,
     pub with_db: bool,
+    /// Add the shared rustok-fba contract library and a module-owned boundary helper.
+    pub with_fba: bool,
+    /// Add and register an optional module-owned CLI provider crate.
+    pub with_cli: bool,
     pub ui: ScaffoldUi,
     pub dry_run: bool,
     pub skip_server_wire: bool,
@@ -107,6 +111,14 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     let dry_run = args.iter().any(|arg| arg == "--dry-run");
     let skip_server_wire = args.iter().any(|arg| arg == "--skip-server-wire");
     let skip_validate = args.iter().any(|arg| arg == "--skip-validate");
+
+    for flag in ["--with-fba", "--with-cli"] {
+        if args.iter().filter(|arg| arg.as_str() == flag).count() > 1 {
+            bail!("{flag} may only be provided once");
+        }
+    }
+    let with_fba = args.iter().any(|arg| arg == "--with-fba");
+    let with_cli = args.iter().any(|arg| arg == "--with-cli");
 
     let title = cli_option_value(args, "--title")
         .or_else(|| cli_option_value(args, "--name"))
@@ -179,6 +191,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         description,
         category,
         with_db,
+        with_fba,
+        with_cli,
         ui,
         dry_run,
         skip_server_wire,
@@ -210,13 +224,15 @@ pub fn print_scaffold_usage() {
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
     println!("  --no-db                  No storage schema (default)");
     println!("  --with-db                Requires a defined owner schema; unsupported until DB template cutover");
+    println!("  --with-fba               Add shared rustok-fba library integration; no fake provider registry");
+    println!("  --with-cli               Add and register an optional empty module CLI provider");
     println!("  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates");
     println!("  --with-ui                Alias for --ui dual; draft crates are created unmounted");
     println!("  --no-ui                  Explicit headless module (same as default)");
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
     println!(
-        "  --dry-run                Preview generated source files (registration edits not shown)"
+        "  --dry-run                Preview generated files and all manifest/registration edits"
     );
     println!();
     println!("Examples:");
@@ -228,6 +244,7 @@ pub fn print_scaffold_usage() {
         "  cargo xtask scaffold page_builder --title \"Visual Page Builder\" --category content"
     );
     println!("  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech");
+    println!("  cargo xtask scaffold invoices --with-fba --with-cli --ui admin");
 }
 
 pub fn is_valid_slug(slug: &str) -> bool {
@@ -269,6 +286,8 @@ mod tests {
         let request = parse(&["example"]).expect("valid native request");
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
         assert!(!request.with_db);
+        assert!(!request.with_fba);
+        assert!(!request.with_cli);
         assert_eq!(request.ui, ScaffoldUi::None);
     }
 
@@ -317,6 +336,22 @@ mod tests {
         ] {
             assert!(parse(&args).is_err(), "must reject: {args:?}");
         }
+    }
+
+    #[test]
+    fn fba_cli_and_ui_options_are_independent() {
+        let request = parse(&[
+            "example", "--with-fba", "--with-cli", "--ui", "admin",
+        ]).expect("valid optional components");
+        assert!(request.with_fba);
+        assert!(request.with_cli);
+        assert_eq!(request.ui, ScaffoldUi::Admin);
+    }
+
+    #[test]
+    fn duplicate_fba_and_cli_flags_fail_closed() {
+        assert!(parse(&["example", "--with-fba", "--with-fba"]).is_err());
+        assert!(parse(&["example", "--with-cli", "--with-cli"]).is_err());
     }
 
     #[test]

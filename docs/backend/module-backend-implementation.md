@@ -75,20 +75,16 @@ roll back failed writes, and never return success after failed validation.
 
 ### Current implementation gap
 
-The existing `cargo xtask scaffold` renderer emits a minimal native runtime
-and internal contract tests without invented services, schema, migrations or
-business operations. `--with-db` remains unsupported until an owner schema
-exists. `--ui admin|storefront|dual` now creates unmounted Leptos FFA
-development packages within the Cargo workspace, with independent core/model,
-a shared transport-selection facade, two explicitly unavailable owner adapters,
-`ui/leptos.rs`, i18n and contract tests.
-The module manifest is `future_ui` with **no** live `[provides.*_ui]`.
-The central readiness board remains `not_started` even though source shape
-is `core_transport_ui`. No Leptos host route is mounted.
-Classic Next.js packages belong to their own hosts and are not FFA.
-Successful publish metadata validation does not imply runtime or UI readiness.
-Atomic rollback, complete manifest-edit dry-run and an executable golden
-generation matrix remain future improvements.
+The native generator always creates the backend runtime identity and internal contract tests without inventing domain services, schema, migrations, events, or business operations. Backend ownership is the mandatory base; all other responsibilities are selected independently.
+
+- --with-fba adds the shared rustok-fba library dependency, a typed module helper, and contract guidance. It deliberately does not emit a provider/consumer registry: the shared schema requires real ports, consumers, operations, and evidence. FBA readiness remains not_started.
+- --with-cli creates a module-owned cli/ package, declares its factory in rustok-module.toml, and registers the package in the workspace and platform CLI registry. The generated provider exposes zero commands until the module owner adds real operations and their safety contracts.
+- --ui admin|storefront|dual creates unmounted Leptos FFA development packages marked future_ui. No live provides.*_ui metadata or host routes are generated. The default is no UI. Classic Next.js packages remain host-owned.
+- --with-db still fails before writes until an actual owner schema and migration contract are supplied.
+
+All generated source and repository registration changes are planned and preflighted in memory. --dry-run lists every planned file and prints changed lines for existing manifests, registry files, and central documentation. Writable runs stage temporary sibling files, preserve backups, and roll back the complete file plan if a write or post-scaffold metadata validation fails. This is rollback-based transactionality across files, not one filesystem-wide atomic rename.
+
+The generated backend and optional FBA/CLI/UI shells do not imply implemented business operations, runtime FBA transport, FFA parity, or readiness. FFA and FBA remain not_started until owner behavior and executable evidence exist.
 
 ## Target Module Layout
 

@@ -1,7 +1,5 @@
 use super::options::ScaffoldOptions;
-use super::write_file_content;
-use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Render an intentionally minimal native runtime module. There is no generic
 /// business entity, CRUD contract or persistence schema that can be generated
@@ -26,6 +24,11 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
         super::options::ScaffoldUi::Dual => "Draft Leptos admin and storefront crates created but NOT mounted in hosts.",
     };
 
+    let fba_dependency = if opts.with_fba {
+        "rustok-fba.workspace = true\n"
+    } else {
+        ""
+    };
     let cargo = format!(
         r#"[package]
 name = "{crate_name}"
@@ -42,13 +45,31 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-trait.workspace = true
-rustok-core.workspace = true
+{fba_dependency}rustok-core.workspace = true
 sea-orm-migration.workspace = true
 
 [features]
 default = []
 "#
     );
+
+    let cli_crate_ident = opts.kebab_name().replace('-', "_");
+    let cli_namespace = if slug.chars().next().map(|character| character.is_ascii_lowercase()).unwrap_or(false) {
+        slug.clone()
+    } else {
+        format!("module_{slug}")
+    };
+    let cli_manifest = if opts.with_cli {
+        format!(
+            r#"
+[provides.cli]
+namespace = "{cli_namespace}"
+factory = "rustok_{cli_crate_ident}_cli::command_provider"
+"#
+        )
+    } else {
+        String::new()
+    };
 
     let manifest = format!(
         r#"[module]
@@ -67,8 +88,20 @@ tags = ["{slug}"]
 
 [crate]
 entry_type = "{module_type}"
+{cli_manifest}
 "#
     );
+
+    let fba_summary = if opts.with_fba {
+        "The optional integration uses the shared rustok-fba library; no provider or operation is claimed yet."
+    } else {
+        "No FBA library dependency or provider contract is generated."
+    };
+    let cli_summary = if opts.with_cli {
+        "The optional CLI provider is registered but exposes zero commands until the module owner adds real operations."
+    } else {
+        "No CLI package is generated unless --with-cli is requested."
+    };
 
     let readme = format!(
         r#"# {crate_name}
@@ -86,10 +119,13 @@ Native runtime module identity for {title}. No domain capability has been implem
 ## Entry points
 - `{module_type}` implements `RusToKModule` and `MigrationSource`.
 - No services, persistence tables, business GraphQL/HTTP endpoints or event producers are declared.
-- {ui_summary} No `[provides.*_ui]` live surface is declared.
+- {ui_summary} No [provides.*_ui] live surface is declared.
+- {fba_summary}
+- {cli_summary}
 
 ## Interactions
-- Platform runtime discovery only. No external capability or module dependency is required.
+- Platform runtime discovery only; the optional FBA helper uses the shared library without declaring a cross-module provider or consumer.
+- The optional CLI adapter is discoverable but exposes zero commands until owner operations exist.
 
 ## Verification
 - `cargo xtask module lint {slug}`
@@ -118,6 +154,8 @@ Domain state, application services and storage have not been defined.
 The module can be registered by the platform runtime; it contributes no
 business transport, active UI routes, migrations, outbox producers or external capability adapters.
 {ui_summary}
+{fba_summary}
+{cli_summary}
 
 ## Verification
 - `cargo xtask module lint {slug}` — static source architecture
@@ -140,8 +178,10 @@ Establish native ownership before implementing a business capability.
 - Runtime identity: scaffolded, not independently verified
 - Domain operations: not_started
 - Data schema and persistence: not_started
-- FBA status: `not_started`
-- FFA status: `not_started`
+- FBA status: not_started
+- FBA integration: {fba_summary}
+- CLI integration: {cli_summary}
+- FFA status: not_started
 - UI surfaces: {ui_summary}
 - UI readiness: draft skeleton, not_started, no live host mount or owner operations
 - No business functionality or runtime transport parity is claimed.
@@ -150,6 +190,8 @@ Establish native ownership before implementing a business capability.
 - [x] Define native module runtime metadata and contract tests.
 - [ ] Specify domain rules, owner service/DTO commands and typed context/errors.
 - [ ] Design real persistence and migrations if required.
+- [ ] If FBA was selected, define real owner ports and a schema-valid provider/consumer registry using the shared rustok-fba library.
+- [ ] If CLI was selected, add owner-backed commands only after authorization, tenant/context, idempotency, dry-run and error contracts are specified.
 - [ ] Implement owner-specific native and GraphQL transports and mount Leptos UI after real operations.
 - [ ] Implement any independent classic Next.js client separately in its host, if needed.
 - [ ] Verify runtime, FBA/FFA evidence, registration and release readiness.
@@ -181,7 +223,9 @@ Native runtime owner identity for {title}. No business API is published yet.
 
 ## Platform Capability Bindings
 - Runtime module registration through `RusToKModule`.
-- `MigrationSource` returns no migrations because no owner schema exists.
+- MigrationSource returns no migrations because no owner schema exists.
+- {fba_summary}
+- {cli_summary}
 
 ## Domain Collaborations
 - None. External capabilities are not declared speculatively.
@@ -202,13 +246,14 @@ Native runtime owner identity for {title}. No business API is published yet.
 "#
     );
 
+    let fba_module = if opts.with_fba { "pub mod fba;\n" } else { "" };
     let lib = format!(
         r#"//! Native runtime module for {title}.
 //!
 //! Business API and persistence are intentionally absent until specified.
 
 mod module;
-
+{fba_module}
 pub use module::{module_type};
 
 #[cfg(test)]
@@ -293,7 +338,13 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
 "#
     );
 
-    [
+    let test_modules = if opts.with_fba {
+        "mod contract;\nmod fba;\n"
+    } else {
+        "mod contract;\n"
+    };
+
+    let mut files = vec![
         ("Cargo.toml", cargo),
         ("rustok-module.toml", manifest),
         ("README.md", readme),
@@ -302,24 +353,61 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
         ("CRATE_API.md", api),
         ("src/lib.rs", lib),
         ("src/module.rs", module),
-        ("src/tests/mod.rs", "mod contract;\n".to_string()),
+        ("src/tests/mod.rs", test_modules.to_string()),
         ("src/tests/contract.rs", tests),
     ]
     .into_iter()
     .map(|(file, content)| (PathBuf::from(file), content))
-    .collect()
-}
+    .collect::<Vec<_>>();
 
-pub(crate) fn generate_backend(
-    opts: &ScaffoldOptions,
-    module_dir: &Path,
-    pascal: &str,
-    _snake: &str,
-) -> Result<()> {
-    for (path, content) in render_backend(opts, pascal) {
-        write_file_content(&module_dir.join(path), &content, opts.dry_run)?;
+    if opts.with_fba {
+        files.push((
+            PathBuf::from("src/fba.rs"),
+            format!(
+                r#"//! Typed integration surface for the shared FBA contract library.
+//!
+//! No provider capability is advertised until the owner defines real ports.
+
+pub use rustok_fba as shared;
+pub use rustok_fba::{{BackendTopology, CapabilityId, FbaCallContext, FbaConsumerDependency, FbaProviderDescriptor, FbaResult, TransportProfile}};
+
+pub const MODULE_SLUG: &str = "{slug}";
+
+pub fn capability_id(capability: impl Into<String>, version: impl Into<String>) -> CapabilityId {{
+    CapabilityId::new(MODULE_SLUG, capability, version)
+}}
+"#
+            ),
+        ));
+        files.push((
+            PathBuf::from("contracts/README.md"),
+            format!(
+                r#"# {crate_name} FBA contracts
+
+This module opted into the shared rustok-fba library and the src/fba.rs boundary helper.
+
+**No provider or consumer registry is generated yet.** The module has no specified owner ports or cross-module operations, so creating a registry now would invent contracts or violate the shared registry schema.
+
+When real ports are defined, add the owner registry and reference it from rustok-module.toml under [fba.provider] or [fba.consumer]. Follow the shared schema at crates/libs/rustok-fba/contracts/provider-registry-v1.schema.json (../../../libs/rustok-fba/contracts/provider-registry-v1.schema.json), and record evidence in docs/implementation-plan.md.
+"#
+            ),
+        ));
+        files.push((
+            PathBuf::from("src/tests/fba.rs"),
+            format!(
+                r#"#[test]
+fn capability_identity_uses_the_canonical_module_slug() {{
+    let id = crate::fba::capability_id("sample_capability", "1.0.0");
+    assert_eq!(id.module, "{slug}");
+    assert_eq!(id.capability, "sample_capability");
+    assert_eq!(id.version, "1.0.0");
+}}
+"#
+            ),
+        ));
     }
-    Ok(())
+
+    files
 }
 
 #[cfg(test)]
@@ -335,6 +423,8 @@ mod tests {
             description: "A native example module without business logic".into(),
             category: "collaboration".into(),
             with_db: false,
+            with_fba: false,
+            with_cli: false,
             ui: ScaffoldUi::None,
             dry_run: true,
             skip_server_wire: false,
@@ -386,6 +476,33 @@ mod tests {
             assert!(plan.contains("not_started"));
             assert!(plan.contains("NOT mounted"));
         }
+    }
+
+    #[test]
+    fn fba_is_opt_in_and_uses_the_shared_library_without_fake_registry() {
+        let mut opts = options();
+        opts.with_fba = true;
+        let files = render_backend(&opts, "Example");
+        let cargo = &files.iter().find(|(path, _)| path.to_str() == Some("Cargo.toml")).unwrap().1;
+        assert!(cargo.contains("rustok-fba.workspace = true"));
+        let manifest = &files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap().1;
+        assert!(!manifest.contains("[fba.provider]"));
+        assert!(files.iter().any(|(path, _)| path.to_str() == Some("src/fba.rs")));
+        assert!(files.iter().any(|(path, _)| path.to_str() == Some("contracts/README.md")));
+        let test_modules = &files.iter().find(|(path, _)| path.to_str() == Some("src/tests/mod.rs")).unwrap().1;
+        assert!(test_modules.contains("mod fba;"));
+    }
+
+    #[test]
+    fn cli_manifest_binding_is_opt_in_and_uses_canonical_factory_path() {
+        let mut opts = options();
+        opts.with_cli = true;
+        let files = render_backend(&opts, "Example");
+        let manifest = &files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap().1;
+        assert!(manifest.contains("[provides.cli]"));
+        assert!(manifest.contains("namespace = \"example\""));
+        assert!(manifest.contains("factory = \"rustok_example_cli::command_provider\""));
+        assert!(!files.iter().any(|(path, _)| path.to_str() == Some("src/fba.rs")));
     }
 
     #[test]

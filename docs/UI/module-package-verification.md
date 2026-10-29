@@ -184,3 +184,18 @@ Classic Next.js packages belong to their hosts and are not generated here.
 Do not claim runtime readiness. Template structure is checked by the
 unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
 requires real owner contracts and the commands earlier in this guide.
+
+
+## Optional FBA and CLI scaffold checks
+
+When --with-fba is selected, the backend crate depends on the shared rustok-fba library and exposes a typed module helper. No provider/consumer registry is generated until real ports and operations exist.
+
+When --with-cli is selected, the generator creates a module-owned CLI crate, registers its factory in rustok-module.toml, and updates the platform CLI registry. The provider starts with zero commands by design.
+
+For a module named example, the owner can run:
+
+    cargo check -p rustok-example
+    cargo check -p rustok-example-cli
+    node scripts/generate/generate-cli-registry.mjs --check
+
+Add the FBA-specific library tests and module-scoped tests to the owner verification run when those components are selected. A successful scaffold metadata validation is not a substitute for compilation or tests.
