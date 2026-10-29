@@ -408,6 +408,21 @@ impl MigrationTrait for Migration {
                             .col(BlogTagUsage::TenantId)
                             .col(BlogTagUsage::TagId),
                     )
+                    .check(Expr::cust("use_count >= 0"))
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_tag_usage_list")
+                    .table(BlogTagUsage::Table)
+                    .col(BlogTagUsage::TenantId)
+                    .col((BlogTagUsage::UseCount, IndexOrder::Desc))
+                    .col((BlogTagUsage::CanonicalKey, IndexOrder::Asc))
+                    .col((BlogTagUsage::TagId, IndexOrder::Asc))
+                    .if_not_exists()
                     .to_owned(),
             )
             .await?;
@@ -421,12 +436,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(BlogPostRoutes::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(BlogPostRoutes::SourceRoute)
-                            .string_len(255)
+                            .string_len(512)
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(BlogPostRoutes::TargetKind)
-                            .string_len(32)
+                            .string_len(64)
                             .not_null(),
                     )
                     .col(ColumnDef::new(BlogPostRoutes::TargetId).uuid().not_null())
@@ -451,6 +466,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_post_routes_target")
+                    .table(BlogPostRoutes::Table)
+                    .col(BlogPostRoutes::TenantId)
+                    .col(BlogPostRoutes::TargetKind)
+                    .col(BlogPostRoutes::TargetId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
         // 8. Create blog_preview_tokens table
         manager
             .create_table(
@@ -471,7 +499,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(BlogPreviewTokens::PostId).uuid().not_null())
                     .col(
                         ColumnDef::new(BlogPreviewTokens::Token)
-                            .string_len(64)
+                            .string_len(128)
                             .not_null()
                             .unique_key(),
                     )
@@ -495,6 +523,17 @@ impl MigrationTrait for Migration {
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_preview_tokens_token")
+                    .table(BlogPreviewTokens::Table)
+                    .col(BlogPreviewTokens::Token)
+                    .if_not_exists()
                     .to_owned(),
             )
             .await?;
@@ -594,6 +633,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comment_projection_deliveries_comment")
+                    .table(BlogCommentProjectionDeliveries::Table)
+                    .col(BlogCommentProjectionDeliveries::TenantId)
+                    .col(BlogCommentProjectionDeliveries::CommentId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
         // 10. Create blog_comments_tcp_delegation_schedule_state table
         manager
             .create_table(
@@ -607,23 +658,23 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::SchemaVersion)
+                            .small_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::Source)
+                            .string_len(16)
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(BlogCommentsTcpDelegationScheduleState::Generation)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::ActorId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::RequestId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::OccurredAtUnixMs)
-                            .big_integer()
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleState::ScheduleDigestHex)
+                            .string_len(64)
                             .not_null(),
                     )
                     .col(
@@ -632,6 +683,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    .check(Expr::cust("schema_version = 1"))
+                    .check(Expr::cust("source IN ('host_provided', 'file')"))
+                    .check(Expr::cust("generation > 0"))
+                    .check(Expr::cust("length(schedule_digest_hex) = 64"))
                     .to_owned(),
             )
             .await?;
@@ -643,20 +698,34 @@ impl MigrationTrait for Migration {
                     .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::Id)
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::RequestId)
                             .uuid()
                             .not_null()
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::TenantId)
-                            .uuid()
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::StateKey)
+                            .string_len(64)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::RequestId)
-                            .uuid()
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::AuditSchemaVersion,
+                        )
+                        .small_integer()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::EventType)
+                            .string_len(64)
                             .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::OccurredAtUnixMs,
+                        )
+                        .big_integer()
+                        .not_null(),
                     )
                     .col(
                         ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::ActorId)
@@ -664,13 +733,20 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::PrincipalKind,
+                        )
+                        .string_len(16)
+                        .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::Operation)
-                            .string_len(64)
+                            .string_len(32)
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::Source)
-                            .string_len(64)
+                            .string_len(16)
                             .not_null(),
                     )
                     .col(
@@ -688,11 +764,9 @@ impl MigrationTrait for Migration {
                         .not_null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            BlogCommentsTcpDelegationScheduleAuditOutbox::OccurredAtUnixMs,
-                        )
-                        .big_integer()
-                        .not_null(),
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::Outcome)
+                            .string_len(32)
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::CreatedAt)
@@ -701,20 +775,102 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::RelayState)
-                            .string_len(32)
-                            .not_null()
-                            .default("pending"),
+                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::PublishedAt)
+                            .timestamp_with_time_zone(),
                     )
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::AttemptCount)
-                            .integer()
-                            .not_null()
-                            .default(0),
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::CanonicalEnvelopeId,
+                        )
+                        .uuid(),
                     )
-                    .col(ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::LastError).text())
-                    .col(ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::NextAttemptAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::RelayedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimToken,
+                        )
+                        .uuid(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimExpiresAt,
+                        )
+                        .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffAttemptCount,
+                        )
+                        .big_integer()
+                        .not_null()
+                        .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffNextAttemptAt,
+                        )
+                        .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffLastFailureAt,
+                        )
+                        .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffLastFailureCode,
+                        )
+                        .string_len(32),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffDeadLetteredAt,
+                        )
+                        .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffDeadLetterReason,
+                        )
+                        .string_len(64),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffRecoveryEpoch,
+                        )
+                        .big_integer()
+                        .not_null()
+                        .default(0),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_blog_comments_delegation_audit_state")
+                            .from(
+                                BlogCommentsTcpDelegationScheduleAuditOutbox::Table,
+                                BlogCommentsTcpDelegationScheduleAuditOutbox::StateKey,
+                            )
+                            .to(
+                                BlogCommentsTcpDelegationScheduleState::Table,
+                                BlogCommentsTcpDelegationScheduleState::StateKey,
+                            )
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .check(Expr::cust("audit_schema_version = 1"))
+                    .check(Expr::cust("state_key = 'comments_tcp_delegation_schedule'"))
+                    .check(Expr::cust(
+                        "event_type = 'comments_tcp_delegation_schedule_replaced'",
+                    ))
+                    .check(Expr::cust("occurred_at_unix_ms > 0"))
+                    .check(Expr::cust("principal_kind IN ('direct_user', 'service')"))
+                    .check(Expr::cust(
+                        "operation IN ('reload_file', 'replace_host_schedule')",
+                    ))
+                    .check(Expr::cust("source IN ('host_provided', 'file')"))
+                    .check(Expr::cust("previous_generation > 0"))
+                    .check(Expr::cust("candidate_generation > previous_generation"))
+                    .check(Expr::cust("outcome = 'replacement_succeeded'"))
+                    .check(Expr::cust("handoff_attempt_count >= 0"))
+                    .check(Expr::cust("handoff_recovery_epoch >= 0"))
                     .to_owned(),
             )
             .await?;
@@ -722,10 +878,74 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_blog_comments_tcp_audit_outbox_relay")
+                    .name("uq_blog_comments_delegation_audit_generation")
                     .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
-                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::RelayState)
-                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::NextAttemptAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::StateKey)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::CandidateGeneration)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_blog_comments_delegation_audit_canonical_envelope")
+                    .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::CanonicalEnvelopeId)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_blog_comments_delegation_audit_handoff_claim_token")
+                    .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimToken)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comments_delegation_audit_handoff_pending")
+                    .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::PublishedAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimExpiresAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::CreatedAt)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comments_delegation_audit_handoff_retry_ready")
+                    .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::PublishedAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffDeadLetteredAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffNextAttemptAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::CreatedAt)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comments_delegation_audit_handoff_dead_letter")
+                    .table(BlogCommentsTcpDelegationScheduleAuditOutbox::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffDeadLetteredAt)
+                    .col(BlogCommentsTcpDelegationScheduleAuditOutbox::CreatedAt)
                     .if_not_exists()
                     .to_owned(),
             )
@@ -738,14 +958,23 @@ impl MigrationTrait for Migration {
                     .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::AuditId,
+                        )
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
                     )
                     .col(
                         ColumnDef::new(
-                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::OutboxId,
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId,
+                        )
+                        .uuid()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId,
                         )
                         .uuid()
                         .not_null(),
@@ -761,7 +990,28 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(
                             BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Action,
                         )
-                        .string_len(64)
+                        .string_len(32)
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Reason,
+                        )
+                        .string_len(512)
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::PriorAttemptCount,
+                        )
+                        .big_integer()
+                        .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RecoveryEpoch,
+                        )
+                        .big_integer()
                         .not_null(),
                     )
                     .col(
@@ -772,20 +1022,37 @@ impl MigrationTrait for Migration {
                         .not_null()
                         .default(Expr::current_timestamp()),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_blog_comments_audit_recovery_outbox")
-                            .from(
-                                BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table,
-                                BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::OutboxId,
-                            )
-                            .to(
-                                BlogCommentsTcpDelegationScheduleAuditOutbox::Table,
-                                BlogCommentsTcpDelegationScheduleAuditOutbox::Id,
-                            )
-                            .on_delete(ForeignKeyAction::Cascade)
-                            .on_update(ForeignKeyAction::Cascade),
+                    .check(Expr::cust("action = 'requeue'"))
+                    .check(Expr::cust("prior_attempt_count > 0"))
+                    .check(Expr::cust("recovery_epoch > 0"))
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_blog_comments_delegation_audit_recovery_epoch")
+                    .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
+                    .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                    .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RecoveryEpoch)
+                    .unique()
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_blog_comments_delegation_audit_recovery_request")
+                    .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
+                    .col(
+                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId,
                     )
+                    .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                    .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt)
+                    .if_not_exists()
                     .to_owned(),
             )
             .await?;
@@ -953,6 +1220,28 @@ ALTER TABLE blog_comment_projection_deliveries
     REFERENCES blog_posts (tenant_id, id)
     ON UPDATE CASCADE
     ON DELETE CASCADE;
+"#,
+        )
+        .await?;
+
+    // 8. Comments schedule audit recovery facts immutability triggers (Postgres)
+    connection
+        .execute_unprepared(
+            r#"
+CREATE OR REPLACE FUNCTION blog_comments_delegation_audit_recovery_reject_mutation()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'Comments schedule audit recovery facts are append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER blog_comments_delegation_audit_recovery_immutable_update
+BEFORE UPDATE ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
+FOR EACH ROW EXECUTE FUNCTION blog_comments_delegation_audit_recovery_reject_mutation();
+
+CREATE TRIGGER blog_comments_delegation_audit_recovery_immutable_delete
+BEFORE DELETE ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
+FOR EACH ROW EXECUTE FUNCTION blog_comments_delegation_audit_recovery_reject_mutation();
 "#,
         )
         .await?;
@@ -1198,6 +1487,36 @@ WHEN NOT EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'blog comment projection delivery references post of another tenant');
 END;
+
+CREATE TRIGGER blog_posts_delete_comment_projection_deliveries
+AFTER DELETE ON blog_posts
+FOR EACH ROW
+BEGIN
+    DELETE FROM blog_comment_projection_deliveries
+    WHERE tenant_id = OLD.tenant_id
+      AND post_id = OLD.id;
+END;
+"#,
+        )
+        .await?;
+
+    // 8. Comments schedule audit recovery facts immutability triggers (SQLite)
+    connection
+        .execute_unprepared(
+            r#"
+CREATE TRIGGER blog_comments_delegation_audit_recovery_immutable_update
+BEFORE UPDATE ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'Comments schedule audit recovery facts are append-only');
+END;
+
+CREATE TRIGGER blog_comments_delegation_audit_recovery_immutable_delete
+BEFORE DELETE ON blog_comments_tcp_delegation_schedule_audit_recovery_audits
+FOR EACH ROW
+BEGIN
+    SELECT RAISE(ABORT, 'Comments schedule audit recovery facts are append-only');
+END;
 "#,
         )
         .await?;
@@ -1329,11 +1648,17 @@ enum BlogCommentProjectionDeliveries {
 enum BlogCommentsTcpDelegationScheduleState {
     #[iden = "blog_comments_tcp_delegation_schedule_state"]
     Table,
+    #[iden = "state_key"]
     StateKey,
+    #[iden = "schema_version"]
+    SchemaVersion,
+    #[iden = "source"]
+    Source,
+    #[iden = "generation"]
     Generation,
-    ActorId,
-    RequestId,
-    OccurredAtUnixMs,
+    #[iden = "schedule_digest_hex"]
+    ScheduleDigestHex,
+    #[iden = "updated_at"]
     UpdatedAt,
 }
 
@@ -1341,30 +1666,76 @@ enum BlogCommentsTcpDelegationScheduleState {
 enum BlogCommentsTcpDelegationScheduleAuditOutbox {
     #[iden = "blog_comments_tcp_delegation_schedule_audit_outbox"]
     Table,
-    Id,
-    TenantId,
+    #[iden = "request_id"]
     RequestId,
-    ActorId,
-    Operation,
-    Source,
-    PreviousGeneration,
-    CandidateGeneration,
+    #[iden = "state_key"]
+    StateKey,
+    #[iden = "audit_schema_version"]
+    AuditSchemaVersion,
+    #[iden = "event_type"]
+    EventType,
+    #[iden = "occurred_at_unix_ms"]
     OccurredAtUnixMs,
+    #[iden = "actor_id"]
+    ActorId,
+    #[iden = "principal_kind"]
+    PrincipalKind,
+    #[iden = "operation"]
+    Operation,
+    #[iden = "source"]
+    Source,
+    #[iden = "previous_generation"]
+    PreviousGeneration,
+    #[iden = "candidate_generation"]
+    CandidateGeneration,
+    #[iden = "outcome"]
+    Outcome,
+    #[iden = "created_at"]
     CreatedAt,
-    RelayState,
-    AttemptCount,
-    LastError,
-    NextAttemptAt,
-    RelayedAt,
+    #[iden = "published_at"]
+    PublishedAt,
+    #[iden = "canonical_envelope_id"]
+    CanonicalEnvelopeId,
+    #[iden = "handoff_claim_token"]
+    HandoffClaimToken,
+    #[iden = "handoff_claim_expires_at"]
+    HandoffClaimExpiresAt,
+    #[iden = "handoff_attempt_count"]
+    HandoffAttemptCount,
+    #[iden = "handoff_next_attempt_at"]
+    HandoffNextAttemptAt,
+    #[iden = "handoff_last_failure_at"]
+    HandoffLastFailureAt,
+    #[iden = "handoff_last_failure_code"]
+    HandoffLastFailureCode,
+    #[iden = "handoff_dead_lettered_at"]
+    HandoffDeadLetteredAt,
+    #[iden = "handoff_dead_letter_reason"]
+    HandoffDeadLetterReason,
+    #[iden = "handoff_recovery_epoch"]
+    HandoffRecoveryEpoch,
 }
 
 #[derive(Iden)]
 enum BlogCommentsTcpDelegationScheduleAuditRecoveryAudits {
     #[iden = "blog_comments_tcp_delegation_schedule_audit_recovery_audits"]
     Table,
-    Id,
-    OutboxId,
+    #[iden = "audit_id"]
+    AuditId,
+    #[iden = "control_plane_tenant_id"]
+    ControlPlaneTenantId,
+    #[iden = "request_id"]
+    RequestId,
+    #[iden = "actor_id"]
     ActorId,
+    #[iden = "action"]
     Action,
+    #[iden = "reason"]
+    Reason,
+    #[iden = "prior_attempt_count"]
+    PriorAttemptCount,
+    #[iden = "recovery_epoch"]
+    RecoveryEpoch,
+    #[iden = "created_at"]
     CreatedAt,
 }
