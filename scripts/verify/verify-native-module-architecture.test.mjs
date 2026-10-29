@@ -149,8 +149,8 @@ test('missing native transport path and demo-only CRUD fail', () => {
 });
 test('comment-only trait wiring and forbidden imports are not executable evidence', () => {
   const root = fixture();
-  put(root, 'src/module.rs', '// impl RusToKModule for ExampleModule {}\\n');
-  put(root, 'src/domain/mod.rs', '/* use sea_orm::DatabaseConnection; */\\npub struct Pure;\\n');
+  put(root, 'src/module.rs', '// impl RusToKModule for ExampleModule {}\n');
+  put(root, 'src/domain/mod.rs', '/* use sea_orm::DatabaseConnection; */\npub struct Pure;\n');
   rejects(root, 'missing RusToKModule implementation');
   assert.ok(!validateNativeModule(root).some(error => error.includes('domain must not import')));
 });
