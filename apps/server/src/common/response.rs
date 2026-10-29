@@ -154,7 +154,9 @@ mod tests {
     async fn commerce_error_payload(error: CommerceError) -> (StatusCode, serde_json::Value) {
         let response = ApiErrorResponse::from(error).into_response();
         let status = response.status();
-        let bytes = to_bytes(response.into_body(), 4096).await.expect("read response");
+        let bytes = to_bytes(response.into_body(), 4096)
+            .await
+            .expect("read response");
         let payload = serde_json::from_slice(&bytes).expect("decode response");
         (status, payload)
     }
