@@ -3,18 +3,18 @@
 use super::*;
 use sea_orm_migration::prelude::*;
 
-mod posts;
-mod translations;
-mod channel_visibility;
 mod categories;
-mod post_tags;
-mod tag_usage;
-mod routes;
-mod preview_tokens;
+mod channel_visibility;
 mod comment_projection_deliveries;
-mod schedule_state;
+mod post_tags;
+mod posts;
+mod preview_tokens;
+mod routes;
 mod schedule_audit_outbox;
 mod schedule_audit_recovery;
+mod schedule_state;
+mod tag_usage;
+mod translations;
 
 pub(super) async fn up(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     posts::create(manager).await?;

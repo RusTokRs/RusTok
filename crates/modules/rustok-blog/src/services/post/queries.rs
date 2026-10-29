@@ -1,7 +1,7 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
-mod single;
 mod related;
+mod single;
 
 use super::*;
 
