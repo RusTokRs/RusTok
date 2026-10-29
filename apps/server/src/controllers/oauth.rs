@@ -38,7 +38,9 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         "invalid_client" => StatusCode::UNAUTHORIZED,
         "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
         "invalid_scope" => StatusCode::BAD_REQUEST,
-        "insufficient_scope" => StatusCode::FORBIDDEN,
+        "insufficient_scope" | "access_denied" => StatusCode::FORBIDDEN,
+        "server_error" => StatusCode::INTERNAL_SERVER_ERROR,
+        "temporarily_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::BAD_REQUEST,
     };
     let mut response = (status, Json(error)).into_response();
@@ -50,6 +52,13 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         .headers_mut()
         .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
     response
+}
+
+fn oauth_client_lookup_error() -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "server_error".to_string(),
+        error_description: "OAuth client lookup is temporarily unavailable".to_string(),
+    }
 }
 
 fn direct_user_required_error() -> TokenErrorResponse {
@@ -737,10 +746,7 @@ async fn validate_authorize_request(
 
     let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
+        .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
@@ -1028,16 +1034,39 @@ fn render_consent_page(
         .collect::<Vec<_>>()
         .join("");
 
+    // An absent OAuth parameter must stay absent on POST. An empty
+    // hidden input changes None to Some(""), invalidating the CSRF binding.
+    let scope_input = request
+        .scope
+        .as_deref()
+        .map(|scope| {
+            format!(
+                "<input type=\"hidden\" name=\"scope\" value=\"{}\">",
+                escape_attr(scope)
+            )
+        })
+        .unwrap_or_default();
+    let state_input = request
+        .state
+        .as_deref()
+        .map(|state| {
+            format!(
+                "<input type=\"hidden\" name=\"state\" value=\"{}\">",
+                escape_attr(state)
+            )
+        })
+        .unwrap_or_default();
+
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\"><input type=\"hidden\" name=\"scope\" value=\"{scope_attr}\"><input type=\"hidden\" name=\"state\" value=\"{state_attr}\"><input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\">{scope_input}{state_input}<input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><input type=\"hidden\" name=\"consent_csrf\" value=\"{csrf_attr}\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
         app = escape_html(&validated.app.name),
         user = escape_html(user_email),
         scopes = scopes,
         redirect = escape_html(&validated.redirect_uri),
         client_id = escape_attr(&request.client_id),
         redirect_attr = escape_attr(&request.redirect_uri),
-        scope_attr = escape_attr(request.scope.as_deref().unwrap_or_default()),
-        state_attr = escape_attr(request.state.as_deref().unwrap_or_default()),
+        scope_input = scope_input,
+        state_input = state_input,
         challenge_attr = escape_attr(&request.code_challenge),
         csrf_attr = escape_attr(consent_csrf),
     )
@@ -1139,10 +1168,7 @@ async fn revoke_handler_inner(
 
     let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
+        .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
@@ -1284,6 +1310,24 @@ fn oauth_scope_contains(scopes: &[String], required_scope: &str) -> bool {
     scopes.iter().any(|scope| scope == required_scope)
 }
 
+/// Authorization codes, identity claims and consent forms must not be cached
+/// by browsers or shared intermediaries, including on error and redirect paths.
+async fn disable_oauth_caching(
+    request: Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
+}
+
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(
@@ -1301,6 +1345,7 @@ pub fn router() -> crate::routes::ServerRouter {
             get(userinfo_handler).post(userinfo_post_handler),
         )
         .route("/api/oauth/revoke", post(revoke_handler))
+        .layer(axum::middleware::from_fn(disable_oauth_caching))
 }
 
 #[cfg(test)]
@@ -1529,6 +1574,32 @@ mod tests {
     }
 
     #[test]
+    fn consent_page_preserves_absent_optional_oauth_parameters() {
+        let validated = validated_request("third_party");
+        let request = BrowserAuthorizeRequest {
+            response_type: "code".to_string(),
+            client_id: validated.app.client_id.to_string(),
+            redirect_uri: validated.redirect_uri.clone(),
+            scope: None,
+            state: None,
+            code_challenge: validated.code_challenge.clone(),
+            code_challenge_method: Some("S256".to_string()),
+        };
+
+        let html = render_consent_page(
+            &validated,
+            &request,
+            "user@example.com",
+            "1893456000.deadbeef",
+        );
+        assert!(!html.contains("name=\"scope\""), "{html}");
+        assert!(!html.contains("name=\"state\""), "{html}");
+        assert!(html.contains("name=\"consent_csrf\""));
+        assert!(html.contains("profile"));
+        assert!(html.contains("catalog:read"));
+    }
+
+    #[test]
     fn userinfo_scope_checks_require_openid_and_gate_claims() {
         assert!(oauth_scope_contains(
             &["openid".to_string(), "profile".to_string()],
@@ -1545,6 +1616,54 @@ mod tests {
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());
         assert!(!validated_request("first_party").app.requires_user_consent());
+    }
+
+    #[tokio::test]
+    async fn oauth_cache_policy_covers_success_redirects_and_errors() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let router = axum::Router::new()
+            .route("/ok", get(|| async { StatusCode::OK }))
+            .route("/redirect", get(|| async { StatusCode::FOUND }))
+            .route("/error", get(|| async { StatusCode::BAD_REQUEST }))
+            .layer(axum::middleware::from_fn(disable_oauth_caching));
+
+        for path in ["/ok", "/redirect", "/error"] {
+            let response = router
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("OAuth response");
+            assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+            assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
+        }
+    }
+
+    #[test]
+    fn oauth_client_lookup_outage_is_not_misreported_as_bad_credentials() {
+        let error = oauth_client_lookup_error();
+        assert_eq!(error.error, "server_error");
+        let response = oauth_error_response(error);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn oauth_error_response_distinguishes_provider_failures_from_bad_requests() {
+        for (error, expected_status) in [
+            ("server_error", StatusCode::INTERNAL_SERVER_ERROR),
+            ("temporarily_unavailable", StatusCode::SERVICE_UNAVAILABLE),
+            ("access_denied", StatusCode::FORBIDDEN),
+            ("invalid_scope", StatusCode::BAD_REQUEST),
+        ] {
+            let response = oauth_error_response(TokenErrorResponse {
+                error: error.to_string(),
+                error_description: "An OAuth request failed".to_string(),
+            });
+            assert_eq!(response.status(), expected_status, "{error}");
+            assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+        }
     }
 
     #[test]

@@ -114,6 +114,21 @@ async fn register(
     }))
 }
 
+/// Audit the verified client address, not the load balancer, while refusing
+/// forwarding headers supplied by peers outside the configured proxy CIDRs.
+fn login_client_ip(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> std::net::IpAddr {
+    crate::common::extract_effective_client_ip(
+        headers,
+        Some(peer_ip),
+        &settings.runtime.request_trust,
+    )
+    .unwrap_or(peer_ip)
+}
+
 #[utoipa::path(post, path = "/api/auth/login", tag = "auth", request_body = LoginParams,
     responses((status = 200, description = "Login successful", body = AuthResponse),(status = 401, description = "Unauthorized")))]
 async fn login(
@@ -141,7 +156,7 @@ async fn login(
         tenant.id,
         email,
         &params.password,
-        Some(addr.ip().to_string()),
+        Some(login_client_ip(&headers, addr.ip(), runtime_ctx.settings()).to_string()),
         user_agent,
         runtime_ctx.settings().features.email_verification,
     )
@@ -358,7 +373,7 @@ async fn session_login(
         tenant.id,
         email,
         &params.password,
-        Some(addr.ip().to_string()),
+        Some(login_client_ip(&headers, addr.ip(), runtime_ctx.settings()).to_string()),
         user_agent,
         runtime_ctx.settings().features.email_verification,
     )
@@ -458,6 +473,17 @@ async fn session_refresh(
     Ok(cookie_session_response(user, tokens, cookie))
 }
 
+fn cookie_logout_revocation_result(
+    result: std::result::Result<(), AuthLifecycleError>,
+) -> Result<()> {
+    match result {
+        Ok(()) | Err(AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::SessionExpired) => {
+            Ok(())
+        }
+        Err(error) => Err(Error::from(error)),
+    }
+}
+
 #[utoipa::path(post, path = "/api/auth/session/logout", tag = "auth",
     responses((status = 200, description = "Logout successful; session cookie cleared", body = LogoutResponse)))]
 async fn session_logout(
@@ -469,18 +495,17 @@ async fn session_logout(
     tracing::debug!("auth::session_logout entry");
     require_session_request_header(&headers)?;
 
-    // Idempotent: an absent or already-dead cookie still results in a
-    // cleared cookie and a successful logout response.
+    // An absent or already-revoked cookie is an idempotent logout.
+    // A persistence or event-publication failure is not: the refresh token
+    // might still be live, so never report a successful server-side logout.
     if let Some(refresh_token) = parse_session_cookie(&headers) {
-        if let Err(error) = AuthLifecycleService::logout_by_refresh_token_runtime(
+        let revocation = AuthLifecycleService::logout_by_refresh_token_runtime(
             ctx.runtime_ctx(),
             tenant.id,
             &refresh_token,
         )
-        .await
-        {
-            tracing::warn!(%error, "cookie session logout revocation failed; clearing cookie anyway");
-        }
+        .await;
+        cookie_logout_revocation_result(revocation)?;
     }
 
     let cookie = build_session_cookie(
@@ -1025,6 +1050,60 @@ mod tests {
             untrusted_peer,
             &settings,
             false,
+        ));
+    }
+
+    #[test]
+    fn login_audit_ip_uses_only_a_verified_forwarded_client() {
+        use crate::common::{ForwardedHeadersMode, RequestTrustSettings};
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_owned()],
+        };
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.51.100.44, 203.0.113.9".parse().unwrap(),
+        );
+        let trusted_peer = std::net::IpAddr::from([10, 0, 0, 4]);
+        let untrusted_peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert_eq!(
+            super::login_client_ip(&headers, trusted_peer, &settings),
+            std::net::IpAddr::from([203, 0, 113, 9]),
+        );
+        assert_eq!(
+            super::login_client_ip(&headers, untrusted_peer, &settings),
+            untrusted_peer,
+        );
+
+        settings.runtime.request_trust = RequestTrustSettings::default();
+        assert_eq!(
+            super::login_client_ip(&headers, trusted_peer, &settings),
+            trusted_peer,
+        );
+    }
+
+    #[test]
+    fn cookie_logout_is_idempotent_but_fails_closed_on_revocation_outage() {
+        assert!(super::cookie_logout_revocation_result(Ok(())).is_ok());
+        assert!(super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::InvalidRefreshToken
+        ))
+        .is_ok());
+        assert!(super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::SessionExpired
+        ))
+        .is_ok());
+
+        let result = super::cookie_logout_revocation_result(Err(
+            super::AuthLifecycleError::Internal(crate::error::Error::InternalServerError),
+        ));
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::InternalServerError)
         ));
     }
 

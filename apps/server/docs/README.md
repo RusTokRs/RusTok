@@ -128,6 +128,40 @@ agent transport is deployed independently through
 `rustok-artifact-node-controller`; deployment topology and agent materialization
 remain separate unfinished control-plane work.
 
+## REST transport correctness
+
+The legacy commerce `ApiErrorResponse` adapter returns actionable client HTTP
+statuses for invalid price/options/variants (400), missing products, variants,
+or shipping profiles (404), and duplicate identifiers or shipping-profile
+slugs (409). Server-side commerce failures are logged internally; their
+HTTP 500 payloads contain no raw database/provider diagnostics. Wrapped
+`RichError` categories retain meaningful HTTP status codes, but only the
+explicitly declared safe `user_message` is returned to clients; internal
+message text and structured metadata remain private.
+
+`GET /api/users?search=...` matches user-supplied percent signs, underscores,
+and escape characters literally, rather than interpreting them as SQL LIKE
+wildcards. Pages past the result count return an empty `users` array without
+issuing an oversized OFFSET query.
+
+REST and cookie-session login audit the effective client IP using the host's
+configured trusted-proxy chain. Untrusted forwarding headers cannot override
+the observed peer address.
+
+OAuth browser-consent forms preserve absent optional `scope` and `state` values
+across GET-to-POST submission, so CSRF-bound data and default requested scopes
+do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`
+are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
+OAuth client database lookup failures also become sanitized HTTP 500 errors, not
+misleading `invalid_client` / HTTP 401 responses.
+All `/api/oauth/*` responses, including consent HTML, authorization redirects,
+userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
+
+Cookie-session logout treats a missing, expired, or already-revoked refresh
+token idempotently, but returns a failure when revocation persistence or
+transactional event publication fails. The server must not claim logout
+success while a refresh token could remain valid.
+
 ## Runtime surface
 
 - `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
