@@ -359,7 +359,7 @@ async fn storefront_blog_native(
                     category_id: category_uuid,
                     tag: tag_normalized,
                     author_id: None,
-                    locale: Some(requested_locale),
+                    locale: Some(requested_locale.clone()),
                     per_page: Some(6),
                     after: posts_after,
                 },
