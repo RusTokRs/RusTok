@@ -21,7 +21,7 @@ pub use model::{
     MarketplaceListingAdminFilters, MarketplaceListingAdminListItem,
     MarketplaceListingAdminRecord, MarketplaceListingAdminShell, MarketplaceListingAdminTerms,
 };
-pub use transport::{MarketplaceListingAdminTransportContext, load_listing_directory};
+pub use transport::{MarketplaceListingAdminTransportContext, load_marketplace_listing_directory};
 pub use ui::leptos::MarketplaceListingAdmin;
 
 #[cfg(test)]

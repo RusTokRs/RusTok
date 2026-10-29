@@ -1,5 +1,5 @@
 use rustok_api::{ModuleOperationRecoveryPlanView, StaticModuleSettingsReader};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use thiserror::Error;
 
 use crate::backend::SupportedBackend;
@@ -18,6 +18,7 @@ use crate::{
 pub(crate) struct ModuleOperationOverrideState {
     pub previous_enabled: Option<bool>,
     pub requested_enabled: Option<bool>,
+    pub hook_settings_digest_recorded: bool,
 }
 
 /// Transport-neutral recovery view of a failed lifecycle operation.
@@ -29,6 +30,8 @@ pub struct ModuleOperationRecoveryPlan {
     pub requested_enabled: bool,
     pub previous_effective_enabled: bool,
     pub override_state_recorded: bool,
+    /// Whether the original hook input has durable comparison evidence.
+    pub hook_settings_digest_recorded: bool,
     pub previous_override_enabled: Option<bool>,
     pub requested_override_enabled: Option<bool>,
     pub status: ModuleOperationStatus,
@@ -76,7 +79,13 @@ impl ModuleOperationRecoveryPlan {
             }
             (ModuleOperationStatus::Failed, Some(message))
                 if message.starts_with("state-commit:")
-                    || message.starts_with("recovery-state:") =>
+                    || message.starts_with("recovery-state:")
+                    || message.starts_with("settings-preflight:")
+                    || message.starts_with("transition-fence:")
+                    || message.starts_with("transition-read:")
+                    || message.starts_with("settings-read:")
+                    || message.starts_with("module operation is not retryable:")
+                    || message.starts_with("aggregate-claim:") =>
             {
                 ModuleOperationIssue::OtherFailed
             }
@@ -88,7 +97,10 @@ impl ModuleOperationRecoveryPlan {
             _ => ModuleOperationIssue::None,
         };
         let override_state_recorded = override_state.is_some();
-        let retryable = issue.retryable() && override_state_recorded;
+        let hook_settings_digest_recorded =
+            override_state.is_some_and(|state| state.hook_settings_digest_recorded);
+        let retryable =
+            issue.retryable() && override_state_recorded && hook_settings_digest_recorded;
         let recommended_action = if retryable {
             ModuleOperationRecoveryAction::RetryPostHook
         } else if matches!(
@@ -106,6 +118,7 @@ impl ModuleOperationRecoveryPlan {
             requested_enabled: operation.requested_enabled,
             previous_effective_enabled: operation.previous_effective_enabled,
             override_state_recorded,
+            hook_settings_digest_recorded,
             previous_override_enabled: override_state.and_then(|state| state.previous_enabled),
             requested_override_enabled: override_state.and_then(|state| state.requested_enabled),
             status: operation.status,
@@ -244,6 +257,7 @@ fn retry_operation_request(
         trace_id: Some(context.trace_id.clone()),
         correlation_id: context.correlation_id.to_string(),
         idempotency_key: Some(context.idempotency_key),
+        recovery_source_id: Some(plan.operation_id),
         expected_revision: Some(expected_revision),
     }
 }
@@ -271,11 +285,21 @@ pub(crate) async fn retry_failed_post_hook_operation(
             error => ModuleOperationRecoveryError::Persistence(error.to_string()),
         })?
     {
-        return Ok(operation);
+        return replay_post_hook_recovery(db, operation).await;
     }
     if !plan.override_state_recorded {
         return Err(ModuleOperationRecoveryError::NotRetryable(
             "selected_intent_state_unavailable".to_string(),
+        ));
+    }
+    if !plan.issue.retryable() {
+        return Err(ModuleOperationRecoveryError::NotRetryable(
+            plan.issue.to_string(),
+        ));
+    }
+    if !plan.hook_settings_digest_recorded {
+        return Err(ModuleOperationRecoveryError::NotRetryable(
+            "hook_settings_evidence_unavailable".to_string(),
         ));
     }
     if !plan.retryable {
@@ -297,7 +321,9 @@ pub(crate) async fn retry_failed_post_hook_operation(
             error => ModuleOperationRecoveryError::Persistence(error.to_string()),
         })? {
         ModuleOperationRecordOutcome::Recorded(operation) => operation,
-        ModuleOperationRecordOutcome::Replayed(operation) => return Ok(operation),
+        ModuleOperationRecordOutcome::Replayed(operation) => {
+            return replay_post_hook_recovery(db, operation).await;
+        }
     };
     if let Err(error) = StaticTenantLifecycleStore::claim(
         db,
@@ -401,6 +427,24 @@ async fn retry_failed_post_hook_operation_claimed(
         )
         .await);
     }
+    if !plan.issue.retryable() {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable(plan.issue.to_string()),
+        )
+        .await);
+    }
+    if !plan.hook_settings_digest_recorded {
+        return Err(discard_unstarted_recovery_operation(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable(
+                "hook_settings_evidence_unavailable".to_string(),
+            ),
+        )
+        .await);
+    }
     if !plan.retryable {
         return Err(discard_unstarted_recovery_operation(
             db,
@@ -456,29 +500,91 @@ async fn retry_failed_post_hook_operation_claimed(
             }
         };
 
-    if let Err(error) = record_operation_override_state(
-        db,
-        operation.id,
-        plan.previous_override_enabled,
-        plan.requested_override_enabled,
-    )
-    .await
-    {
-        let error = ModuleOperationRecoveryError::Persistence(format!("recovery-state: {error}"));
-        return Err(mark_recovery_operation_failed(db, operation.id, error).await);
+    let recorded_digest = match load_hook_settings_digest(db, plan.operation_id).await {
+        Ok(Some(digest)) => digest,
+        Ok(None) => {
+            return Err(mark_recovery_operation_failed(
+                db,
+                operation.id,
+                ModuleOperationRecoveryError::NotRetryable(
+                    "hook_settings_evidence_unavailable".to_string(),
+                ),
+            )
+            .await);
+        }
+        Err(error) => {
+            return Err(mark_recovery_operation_failed(
+                db,
+                operation.id,
+                ModuleOperationRecoveryError::Persistence(error.to_string()),
+            )
+            .await);
+        }
+    };
+    let current_digest = match hook_settings_digest(&current_settings) {
+        Ok(digest) => digest,
+        Err(error) => {
+            return Err(mark_recovery_operation_failed(
+                db,
+                operation.id,
+                ModuleOperationRecoveryError::Persistence(error.to_string()),
+            )
+            .await);
+        }
+    };
+    if current_digest != recorded_digest {
+        return Err(mark_recovery_operation_failed(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable("hook_settings_changed".to_string()),
+        )
+        .await);
     }
-    ModuleOperationJournal::mark_running(db, operation.id)
-        .await
-        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+
     // The state this hook belongs to was committed by the original
     // operation, so the retry enters the same durable shape the executor
     // uses between state commit and post-hook completion. A crash or
     // claim loss from here leaves a stale pending operation that the
     // journal reaper routes back into committed-hook recovery instead of
     // a plain failure.
-    ModuleOperationJournal::mark_committed_hook_pending(db, operation.id)
-        .await
-        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+    let prepared = db
+        .transaction::<_, (), ModuleOperationRecoveryError>(|transaction| {
+            Box::pin(async move {
+                record_operation_override_state(
+                    transaction,
+                    operation.id,
+                    plan.previous_override_enabled,
+                    plan.requested_override_enabled,
+                )
+                .await
+                .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+                store_hook_settings_digest(transaction, operation.id, &recorded_digest)
+                    .await
+                    .map_err(|error| {
+                        ModuleOperationRecoveryError::Persistence(error.to_string())
+                    })?;
+                ModuleOperationJournal::mark_running(transaction, operation.id)
+                    .await
+                    .map_err(|error| {
+                        ModuleOperationRecoveryError::Persistence(error.to_string())
+                    })?;
+                ModuleOperationJournal::mark_committed_hook_pending(transaction, operation.id)
+                    .await
+                    .map_err(|error| {
+                        ModuleOperationRecoveryError::Persistence(error.to_string())
+                    })?;
+                Ok(())
+            })
+        })
+        .await;
+    if let Err(error) = prepared {
+        return Err(mark_recovery_operation_failed(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::Persistence(error.to_string()),
+        )
+        .await);
+    }
 
     let phase = if plan.requested_enabled {
         ModuleLifecycleHookPhase::PostEnable
@@ -525,26 +631,64 @@ async fn retry_failed_post_hook_operation_claimed(
             }
         });
     }
-    ModuleOperationJournal::mark_committed(db, operation.id)
-        .await
-        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
-    if plan.issue == ModuleOperationIssue::PostHookFailed {
-        // The original operation's state was already committed; the hook
-        // has now succeeded, so resolve it instead of leaving it in the
-        // attention-needed list forever. This covers both the typed
-        // `CommittedHookFailed` originals and legacy `Failed` rows whose
-        // post-hook classification came from the pre-split message
-        // prefix.
-        let resolved = ModuleOperationJournal::resolve_post_hook_failure(db, plan.operation_id)
-            .await
-            .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
-        if !resolved {
-            return Err(ModuleOperationRecoveryError::Persistence(
-                "original operation was not in a resolvable post-hook-failed state".to_string(),
-            ));
-        }
-    }
+    db.transaction::<_, (), ModuleOperationRecoveryError>(|transaction| {
+        Box::pin(async move {
+            ModuleOperationJournal::mark_committed(transaction, operation.id)
+                .await
+                .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
+            let resolved =
+                ModuleOperationJournal::resolve_post_hook_failure(transaction, plan.operation_id)
+                    .await
+                    .map_err(|error| {
+                        ModuleOperationRecoveryError::Persistence(error.to_string())
+                    })?;
+            if !resolved {
+                return Err(ModuleOperationRecoveryError::Persistence(
+                    "original operation was not in a resolvable post-hook-failed state".to_string(),
+                ));
+            }
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?;
     Ok(operation)
+}
+
+async fn replay_post_hook_recovery(
+    db: &DatabaseConnection,
+    operation: ModuleOperationRecord,
+) -> Result<ModuleOperationRecord, ModuleOperationRecoveryError> {
+    let snapshot = ModuleOperationJournal::find(db, operation.id)
+        .await
+        .map_err(|error| ModuleOperationRecoveryError::Persistence(error.to_string()))?
+        .ok_or(ModuleOperationRecoveryError::OperationNotFound)?;
+    match snapshot.status {
+        ModuleOperationStatus::Committed => Ok(operation),
+        ModuleOperationStatus::CommittedHookFailed => {
+            Err(ModuleOperationRecoveryError::PostHookFailed(
+                snapshot
+                    .error_message
+                    .unwrap_or_else(|| "post-hook failed".to_string()),
+            ))
+        }
+        ModuleOperationStatus::Validated
+        | ModuleOperationStatus::Running
+        | ModuleOperationStatus::CommittedHookPending => {
+            Err(ModuleOperationRecoveryError::OperationInProgress)
+        }
+        ModuleOperationStatus::Failed => Err(ModuleOperationRecoveryError::NotRetryable(
+            snapshot
+                .error_message
+                .as_deref()
+                .and_then(|message| message.strip_prefix("module operation is not retryable: "))
+                .unwrap_or("failed")
+                .to_string(),
+        )),
+        ModuleOperationStatus::Orphaned => Err(ModuleOperationRecoveryError::NotRetryable(
+            "orphaned".to_string(),
+        )),
+    }
 }
 
 async fn discard_unstarted_recovery_operation(
@@ -600,11 +744,11 @@ pub(crate) async fn operation_override_state<C: ConnectionTrait>(
     let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
     let sql = match backend {
         SupportedBackend::Postgres => {
-            "SELECT previous_override_enabled, requested_override_enabled \
+            "SELECT previous_override_enabled, requested_override_enabled, hook_settings_digest \
              FROM module_operation_override_states WHERE operation_id = $1 LIMIT 1"
         }
         SupportedBackend::Sqlite => {
-            "SELECT previous_override_enabled, requested_override_enabled \
+            "SELECT previous_override_enabled, requested_override_enabled, hook_settings_digest \
              FROM module_operation_override_states WHERE operation_id = ?1 LIMIT 1"
         }
     };
@@ -616,6 +760,17 @@ pub(crate) async fn operation_override_state<C: ConnectionTrait>(
     .await
     .map_err(store_database_error)?
     .map(|row| {
+        let digest: Option<String> = row
+            .try_get("", "hook_settings_digest")
+            .map_err(store_database_error)?;
+        if digest
+            .as_deref()
+            .is_some_and(|digest| !crate::trust::is_sha256_digest(digest))
+        {
+            return Err(ModuleOperationStoreError::Database(
+                "invalid lifecycle hook settings digest".to_string(),
+            ));
+        }
         Ok(ModuleOperationOverrideState {
             previous_enabled: row
                 .try_get("", "previous_override_enabled")
@@ -623,9 +778,86 @@ pub(crate) async fn operation_override_state<C: ConnectionTrait>(
             requested_enabled: row
                 .try_get("", "requested_override_enabled")
                 .map_err(store_database_error)?,
+            hook_settings_digest_recorded: digest.is_some(),
         })
     })
     .transpose()
+}
+
+pub(crate) fn hook_settings_digest(
+    settings: &serde_json::Value,
+) -> Result<String, ModuleOperationStoreError> {
+    let canonical =
+        rustok_api::manifest_hash::canonical_json_bytes(settings).map_err(store_database_error)?;
+    Ok(crate::installation::sha256_digest(&canonical))
+}
+
+pub(crate) async fn store_hook_settings_digest<C: ConnectionTrait>(
+    db: &C,
+    operation_id: uuid::Uuid,
+    digest: &str,
+) -> Result<(), ModuleOperationStoreError> {
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
+    let sql = match backend {
+        SupportedBackend::Postgres => {
+            "UPDATE module_operation_override_states SET hook_settings_digest = $1 WHERE operation_id = $2 AND hook_settings_digest IS NULL"
+        }
+        SupportedBackend::Sqlite => {
+            "UPDATE module_operation_override_states SET hook_settings_digest = ?1 WHERE operation_id = ?2 AND hook_settings_digest IS NULL"
+        }
+    };
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            vec![digest.into(), operation_id.into()],
+        ))
+        .await
+        .map_err(store_database_error)?;
+    if result.rows_affected() != 1 {
+        return Err(ModuleOperationStoreError::Database(
+            "lifecycle hook settings evidence missing or already recorded".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn load_hook_settings_digest<C: ConnectionTrait>(
+    db: &C,
+    operation_id: uuid::Uuid,
+) -> Result<Option<String>, ModuleOperationStoreError> {
+    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
+    let sql = match backend {
+        SupportedBackend::Postgres => {
+            "SELECT hook_settings_digest FROM module_operation_override_states WHERE operation_id = $1"
+        }
+        SupportedBackend::Sqlite => {
+            "SELECT hook_settings_digest FROM module_operation_override_states WHERE operation_id = ?1"
+        }
+    };
+    let Some(row) = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend.db_backend(),
+            sql,
+            vec![operation_id.into()],
+        ))
+        .await
+        .map_err(store_database_error)?
+    else {
+        return Ok(None);
+    };
+    let digest: Option<String> = row
+        .try_get("", "hook_settings_digest")
+        .map_err(store_database_error)?;
+    if digest
+        .as_deref()
+        .is_some_and(|digest| !crate::trust::is_sha256_digest(digest))
+    {
+        return Err(ModuleOperationStoreError::Database(
+            "invalid lifecycle hook settings digest".to_string(),
+        ));
+    }
+    Ok(digest)
 }
 
 pub(crate) async fn record_operation_override_state<C: ConnectionTrait>(
@@ -758,6 +990,7 @@ mod tests {
             trace_id: Some("test:recovery".to_string()),
             correlation_id: Some(Uuid::new_v4().to_string()),
             idempotency_key: None,
+            recovery_source_id: None,
             expected_revision: None,
             error_message: error_message.map(str::to_string),
             created_at: Utc::now(),
@@ -765,10 +998,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn preflight_and_transition_failures_are_not_reported_as_hook_failures() {
+        for message in [
+            "settings-preflight: invalid setting",
+            "transition-fence: transition is unresolved",
+            "transition-read: database unavailable",
+            "settings-read: database unavailable",
+            "aggregate-claim: database unavailable",
+        ] {
+            let plan = ModuleOperationRecoveryPlan::from_snapshot(snapshot(Some(message)), None);
+            assert_eq!(plan.issue, ModuleOperationIssue::OtherFailed);
+            assert!(!plan.retryable);
+            assert_eq!(plan.recommended_action, ModuleOperationRecoveryAction::None);
+        }
+    }
+
     fn override_state() -> ModuleOperationOverrideState {
         ModuleOperationOverrideState {
             previous_enabled: Some(false),
             requested_enabled: Some(true),
+            hook_settings_digest_recorded: true,
         }
     }
 
@@ -784,6 +1034,18 @@ mod tests {
         assert_eq!(
             post_hook.recommended_action,
             ModuleOperationRecoveryAction::RetryPostHook
+        );
+
+        let mut legacy_state = override_state();
+        legacy_state.hook_settings_digest_recorded = false;
+        let legacy = ModuleOperationRecoveryPlan::from_snapshot(
+            snapshot(Some("post-hook: timeout")),
+            Some(legacy_state),
+        );
+        assert!(!legacy.retryable);
+        assert_eq!(
+            legacy.recommended_action,
+            ModuleOperationRecoveryAction::None
         );
 
         let legacy_post_hook =
@@ -904,6 +1166,7 @@ mod tests {
             Some(ModuleOperationOverrideState {
                 previous_enabled: None,
                 requested_enabled: Some(true),
+                hook_settings_digest_recorded: true,
             }),
         );
 

@@ -38,7 +38,10 @@ impl RusToKModule for IggyConnectorModule {
     }
 
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Extension
+        // Runtime extensions are deployment-scoped; `ModuleKind` has only
+        // the two tenant-lifecycle variants. Like the AI extension, expose
+        // the non-toggleable variant when this trait is inspected.
+        ModuleKind::Core
     }
 
     async fn health(&self) -> HealthStatus {
@@ -46,3 +49,12 @@ impl RusToKModule for IggyConnectorModule {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extension_trait_kind_is_non_toggleable() {
+        assert!(matches!(IggyConnectorModule.kind(), ModuleKind::Core));
+    }
+}

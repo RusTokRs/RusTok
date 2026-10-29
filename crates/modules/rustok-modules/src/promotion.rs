@@ -469,7 +469,7 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
         .query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
-                "SELECT release_digest FROM module_external_prebuilt_ingress WHERE release_digest = {}",
+                "SELECT release_digest FROM module_external_prebuilt_ingress WHERE release_digest = {} AND scope_kind = 'platform' AND scope_tenant_key = 'platform'",
                 backend.placeholder(1),
             ),
             vec![release_id.to_owned().into()],

@@ -285,7 +285,7 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
 
     // 3. Verify querying admitted release
     let looked_up = admission
-        .get_admitted_release(&reference.digest)
+        .get_admitted_release(&ModuleInstallationScope::Platform, &reference.digest)
         .await
         .expect("query should succeed")
         .expect("receipt must exist");
@@ -293,13 +293,17 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
     assert_eq!(looked_up.payload_digest, descriptor.artifact_digest);
 
     // 4. Verify CAS presence query
-    assert!(admission.has_cas_payload(&descriptor.artifact_digest).await);
     assert!(
-        !admission
-            .has_cas_payload(
-                "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-            )
+        blobs
+            .get_verified(&descriptor.artifact_digest)
             .await
+            .is_ok()
+    );
+    assert!(
+        blobs
+            .get_verified("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+            .await
+            .is_err()
     );
 
     // A stored descriptor is revalidated and bound back to the admission
@@ -319,7 +323,9 @@ async fn test_digest_pinned_oci_validation_and_streamed_cas_publication() {
     .await
     .expect("corrupt stored descriptor fixture");
     assert!(matches!(
-        admission.get_admitted_release(&reference.digest).await,
+        admission
+            .get_admitted_release(&ModuleInstallationScope::Platform, &reference.digest)
+            .await,
         Err(OciReleaseAdmissionError::InvalidDescriptor(_))
     ));
 }
@@ -757,5 +763,84 @@ async fn test_recovery_reads_cas_only_and_never_falls_back_to_oci() {
         spy_registry.call_count(),
         0,
         "Recovery must NEVER contact OCI registry"
+    );
+}
+
+#[tokio::test]
+async fn tenant_admissions_of_identical_manifest_are_isolated() {
+    let db = setup_test_db().await;
+    let blobs = Arc::new(InMemoryArtifactBlobStore::default());
+    let bytes = b"fn main() { return 42; }";
+    let (descriptor, _, _) = build_test_descriptor("tenant_sample", "1.0.0", bytes);
+    let reference = OciArtifactReference {
+        registry: "registry.example.com".to_string(),
+        repository: "tenant/sample".to_string(),
+        digest: sha256_digest(b"tenant-oci-manifest"),
+    };
+    let mut registry = SpyRegistry::new();
+    registry.add_package(rustok_modules::ModuleArtifactPackage {
+        reference: reference.clone(),
+        media_type: descriptor.payload_kind.oci_layer_media_type().to_string(),
+        descriptor: descriptor.clone(),
+        payload: ArtifactPayloadSource::Bytes(bytes.to_vec()),
+    });
+    let service = OciReleaseAdmissionService::new(db.clone(), blobs, Arc::new(registry));
+    let tenant_a = Uuid::new_v4();
+    let tenant_b = Uuid::new_v4();
+    for tenant_id in [tenant_a, tenant_b] {
+        service
+            .admit_release(OciReleaseAdmissionCommand {
+                reference: reference.clone(),
+                scope: ModuleInstallationScope::Tenant { tenant_id },
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: Some(tenant_id),
+                    idempotency_key: Uuid::new_v4(),
+                    trace_id: "test".into(),
+                    correlation_id: Uuid::new_v4(),
+                },
+                trust_policy_revision: 1,
+                capability_policy_revision: 1,
+            })
+            .await
+            .expect("each tenant can independently admit identical content");
+    }
+    let absent = ModuleInstallationScope::Tenant {
+        tenant_id: Uuid::new_v4(),
+    };
+    assert!(
+        service
+            .get_admitted_release(&absent, &reference.digest)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let mut corrupt = descriptor;
+    corrupt.slug = "corrupt".into();
+    db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "UPDATE module_admitted_oci_releases SET descriptor_json = ?1 WHERE scope_kind = 'tenant' AND scope_tenant_key = ?2 AND release_digest = ?3",
+        vec![serde_json::to_string(&corrupt).unwrap().into(), tenant_a.to_string().into(), reference.digest.clone().into()])).await.unwrap();
+    assert!(matches!(
+        service
+            .get_admitted_release(
+                &ModuleInstallationScope::Tenant {
+                    tenant_id: tenant_a
+                },
+                &reference.digest
+            )
+            .await,
+        Err(OciReleaseAdmissionError::InvalidDescriptor(_))
+    ));
+    assert!(
+        service
+            .get_admitted_release(
+                &ModuleInstallationScope::Tenant {
+                    tenant_id: tenant_b
+                },
+                &reference.digest
+            )
+            .await
+            .unwrap()
+            .is_some()
     );
 }

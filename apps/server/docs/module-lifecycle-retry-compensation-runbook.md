@@ -31,7 +31,7 @@ Legacy failed operations without a `module_operation_override_states` row fail c
 1. **Committed tenant intent is not rolled back automatically.**
 2. **`module_operations` remains the audit trail** for operation direction, correlation, actor and historical effective availability. `previous_effective_enabled` is an availability fact, not the selected-intent recovery predecessor.
 3. **`module_operation_override_states` is immutable recovery evidence** for the exact explicit-override predecessor and target.
-4. **Retry repeats only the post-hook** after proving the current explicit override still equals the original requested override. It does not require serving availability to equal `requested_enabled`.
+4. **Retry repeats only the post-hook** after proving the current explicit override and settings still match the original operation's recorded evidence. It does not require serving availability to equal `requested_enabled`. Operations without a recorded hook-settings digest cannot be retried automatically; use the separately guarded compensation flow or investigate explicitly.
 5. **Compensation is a new canonical lifecycle operation** in the inverse hook/dependency-order direction. Its state target is the exact recorded predecessor; `inherit` removes the explicit tenant override row.
 6. **Policy revision remains canonical and co-requisite-aware.** Compensation computes the next policy from the exact restored override set and publishes the normal owner policy transition/outbox revision.
 
@@ -81,7 +81,7 @@ WHERE tenant_id = '<TENANT_UUID>'
   AND module_slug = '<MODULE_SLUG>';
 ```
 
-No row means current selected intent is `inherit`. A row means explicit `enabled` or `disabled`. If this exact state does not match the operation's `requested_override_enabled`, retry/compensation must fail with a state mismatch and the incident needs separate triage.
+No row or a row with `enabled = NULL` means current selected intent is `inherit`; a row may still retain settings. Non-null `enabled` records explicit enabled or disabled intent. If this exact state does not match the operation's `requested_override_enabled`, retry/compensation must fail with a state mismatch and the incident needs separate triage.
 
 Do not substitute `EffectiveModulePolicyService` availability for this check: Product may be explicitly enabled while intentionally unavailable until Inventory/Pricing co-requisites are also selected.
 
@@ -97,7 +97,7 @@ Use if cause is transient and the post-hook is idempotent.
 2. Get `ModuleOperationRecoveryPlan` via GraphQL query `moduleOperationRecoveryPlan(operationId: ...)`, the failed candidate list, or the service owner API.
 3. Confirm the plan is retryable. Operations without recorded selected-intent state are deliberately not retryable through this contract.
 4. Call `retryFailedModuleOperationPostHook` or `ModuleLifecycleService::retry_failed_post_hook_operation(...)`.
-5. The owner verifies the exact current override equals the original requested override, creates a new journal attempt, copies the original selected-intent predecessor/target recovery evidence, and dispatches only the post-hook. It does not re-run pre-hook or persist tenant state again.
+5. The owner verifies the exact current override and the canonical digest of the current settings, creates a new journal attempt bound to the original operation, copies the recovery evidence, and dispatches only the post-hook. Changed settings or missing historical digest reject retry; repair the discrepancy or use the guarded compensation path. It does not re-run pre-hook or persist tenant state again.
 6. Verify the new operation record is `committed`, or `failed` with a new post-hook error and correlation id.
 
 Expected result: successful retry **should not** create duplicate side effects, and the new journal attempt retains enough selected-intent evidence to be compensated later if its own post-hook fails.
@@ -118,7 +118,10 @@ Steps:
 5. The owner runs the inverse lifecycle hook/dependency-order direction and restores `previous_override_enabled` exactly:
    - `Some(true)` -> explicit enabled row;
    - `Some(false)` -> explicit disabled row;
-   - `None` -> remove the explicit row and return to inherited/default selection.
+   - `None` -> clear explicit intent and return to inherited/default selection while retaining any settings row.
+   If the inverse direction enables a static module, the owner validates the
+   retained settings against the host-supplied active schema under the lifecycle
+   claim before hooks. Incompatible settings require repair before a new command.
 6. The owner computes/publishes the resulting canonical effective-policy revision from that exact restored override set.
 7. Check the new `module_operations` trail and the current `tenant_modules` row/absence. Serving availability may still differ from selected intent because co-requisites or other policy context can make the module unavailable.
 
@@ -127,7 +130,7 @@ Steps:
 - [ ] For each failed post-hook case, `correlation_id` and root cause are recorded.
 - [ ] Recovery plan has selected-intent evidence; legacy rows without it were not guessed from effective availability.
 - [ ] Retry or compensation was performed through the canonical lifecycle entrypoint, not bypass SQL.
-- [ ] The exact explicit override after recovery is correct, including expected row absence for inherited selection.
+- [ ] The exact explicit override after recovery is correct, including nullable intent and retained settings for inherited selection.
 - [ ] Canonical effective-policy revision/outbox reflects the resulting selection.
 - [ ] Journal contains the final operation record explaining final lifecycle direction and result.
 - [ ] If failure is systemic/recurring, a task exists for the module owner with references to failed operations.

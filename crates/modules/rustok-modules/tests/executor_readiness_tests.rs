@@ -275,7 +275,7 @@ fn readiness_command(
     policy: OwnerPlacementPolicy,
 ) -> EvaluateReadinessCommand {
     EvaluateReadinessCommand {
-        operation_id: Uuid::new_v4(),
+        operation_id: Uuid::from_u128(1),
         target,
         policy,
         context: ModuleCommandContext {
@@ -389,7 +389,8 @@ async fn test_engine_change_invalidates_readiness_receipts() {
     // Automatic mode is DENIED because current engine has no receipt
     let auto_err = service
         .check_automatic_mode_eligibility(
-            &target.release_digest,
+            Uuid::from_u128(1),
+            &target.installed_artifact,
             None,
             std::slice::from_ref(&pool_updated_engine),
             &policy,
@@ -419,7 +420,8 @@ async fn test_engine_change_invalidates_readiness_receipts() {
     // Automatic mode is now allowed
     service
         .check_automatic_mode_eligibility(
-            &target.release_digest,
+            Uuid::from_u128(1),
+            &target.installed_artifact,
             None,
             &[pool_updated_engine],
             &policy,
@@ -477,7 +479,8 @@ async fn test_monotonic_pool_generation_gating() {
     // Automatic mode is denied on new pool generation until smoke readiness is repeated
     let auto_denied = service
         .check_automatic_mode_eligibility(
-            &target.release_digest,
+            Uuid::from_u128(1),
+            &target.installed_artifact,
             None,
             &[pool_gen2.clone()],
             &policy,
@@ -499,7 +502,13 @@ async fn test_monotonic_pool_generation_gating() {
     assert_eq!(receipt_gen2.pool_generation, 2);
 
     service
-        .check_automatic_mode_eligibility(&target.release_digest, None, &[pool_gen2], &policy)
+        .check_automatic_mode_eligibility(
+            Uuid::from_u128(1),
+            &target.installed_artifact,
+            None,
+            &[pool_gen2],
+            &policy,
+        )
         .await
         .expect("automatic mode approved after generation 2 readiness");
 }
@@ -700,8 +709,9 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
 
     let err_missing_candidate = service
         .check_automatic_mode_eligibility(
-            &candidate.release_digest,
-            Some(&predecessor.release_digest),
+            Uuid::from_u128(1),
+            &candidate.installed_artifact,
+            Some(&predecessor.installed_artifact),
             std::slice::from_ref(&pool),
             &policy,
         )
@@ -732,8 +742,9 @@ async fn test_dual_candidate_and_predecessor_smoke_readiness_for_automatic_mode(
     // Both candidate and predecessor now hold valid receipts on active pool generation -> APPROVED
     service
         .check_automatic_mode_eligibility(
-            &candidate.release_digest,
-            Some(&predecessor.release_digest),
+            Uuid::from_u128(1),
+            &candidate.installed_artifact,
+            Some(&predecessor.installed_artifact),
             std::slice::from_ref(&pool),
             &policy,
         )

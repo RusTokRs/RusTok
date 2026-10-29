@@ -440,6 +440,7 @@ async fn resolve_post_hook_failure_accepts_typed_and_legacy_shapes_only() {
         trace_id: None,
         correlation_id: Uuid::new_v4().to_string(),
         idempotency_key: None,
+        recovery_source_id: None,
         expected_revision: Some(1),
     };
 
@@ -525,6 +526,7 @@ async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
         trace_id: None,
         correlation_id: Uuid::new_v4().to_string(),
         idempotency_key: None,
+        recovery_source_id: None,
         expected_revision: Some(1),
     };
 

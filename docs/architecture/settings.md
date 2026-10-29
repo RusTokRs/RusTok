@@ -86,12 +86,12 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Phase | Current behavior | Consequence |
 | --- | --- | --- |
 | Schema discovery | Server parses `[settings]` and maps to `ModuleSettingSpec` | Schema is available to Admin and write validation |
-| First toggle | `tenant_modules` can be inserted with `{}` | Defaults are not necessarily materialized on enable |
+| First toggle | Server-composed enables validate and persist normalized defaults under the lifecycle claim; installer seed toggles lack schema composition | Installer enablement does not yet guarantee default materialization |
 | Settings save | Active schema validates and fills defaults, then owner revision/CAS persists the full JSON | Saved documents are normalized at write time |
 | Disable | Only `enabled` changes; settings JSON remains | Configuration survives disable |
 | Edit while disabled | Generic owner writer admits and validates dormant settings updates against active schema; preserves disabled state | Dormant settings can be repaired before re-enable without premature runtime activation |
-| Re-enable | Active-schema preflight validates and normalizes retained settings against the active schema before hooks | Modules fail closed with actionable `settings_migration_required` before pre-enable hooks |
-| Static rollout write | Observing checkpoint resolves real predecessor descriptor/schema and validates proposed writes against the N/N+1 schema intersection | Writes during open rollout window are proven safe for both N and N+1 versions |
+| Re-enable | Server-composed enables and enable-direction compensation validate retained settings under the lifecycle claim before hooks and commit the normalized document | Incompatible settings fail closed; standalone installer schema composition remains open |
+| Static rollout write | The owner rejects both settings write paths when an unresolved tenant or platform transition with a predecessor is detected; static distribution rollout state is not checked | N/N+1 safety is not established; exact schema evidence and an atomic owner-controlled fence covering static rollout transitions are required |
 | Uninstall/purge | Tenant disable is not deletion; accepted release policy retains native/static data/settings | Safe retention, but operator state needs clearer presentation |
 
 ## Settings ownership matrix
@@ -438,7 +438,7 @@ Owners must document:
 | Priority | Gap | Required outcome |
 | --- | --- | --- |
 | P0 | Re-enable does not validate retained static settings before hooks | Resolved: Active-schema preflight and `SettingsMigrationRequired` in `toggle_module` |
-| P0 | Static N/N+1 guard validates the same schema twice | Resolved: Load real predecessor descriptor/schema and validate against N/N+1 intersection |
+| P0 | Static N/N+1 schema evidence and an atomic rollout fence are absent | Resolve exact schemas through the owner and guard all writes atomically against static rollout transitions |
 | P0 | Generic email settings can diverge from runtime and historically hold secrets | Email-owned typed settings, secret handles, data scrub/rotation, `snake_case` cutover |
 | P0 | Platform settings event is published after save on a best-effort path | Resolved: Owner transaction and transactional outbox `publish_in_tx` in `SettingsService::update` |
 | P0 | Unknown manifest schema keywords are ignored; live SEO metadata uses unsupported nested-shape names | Resolved: `deny_unknown_fields` on `ModuleSettingSpec`, strict `snake_case` guardrails, SEO manifest migration, and negative tests |

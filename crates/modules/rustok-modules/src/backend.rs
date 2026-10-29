@@ -361,3 +361,16 @@ pub(crate) async fn set_platform_scope<C: ConnectionTrait>(connection: &C) -> Re
     }
     Ok(())
 }
+
+/// Apply the installation scope to an owner transaction before any scoped SQL.
+pub(crate) async fn set_installation_scope<C: ConnectionTrait>(
+    connection: &C,
+    scope: &crate::ModuleInstallationScope,
+) -> Result<(), DbErr> {
+    match scope {
+        crate::ModuleInstallationScope::Platform => set_platform_scope(connection).await,
+        crate::ModuleInstallationScope::Tenant { tenant_id } => {
+            set_tenant_scope(connection, *tenant_id).await
+        }
+    }
+}

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslations } from '@rustok/next-fluent';
 import {
   IconAlertTriangle,
   IconCheck,
@@ -12,6 +13,7 @@ import {
 
 import { Badge } from '@/shared/ui/shadcn/badge';
 import { Button } from '@/shared/ui/shadcn/button';
+import { Input } from '@/shared/ui/shadcn/input';
 import {
   Card,
   CardContent,
@@ -21,6 +23,7 @@ import {
 } from '@/shared/ui/shadcn/card';
 import {
   finalizeModuleTransition,
+  rollbackModuleTransition,
   type GqlOpts,
   type ModuleTransitionCheckpoint,
   type RetentionHold
@@ -43,18 +46,27 @@ interface TransitionControlCardProps {
 
 export function TransitionControlCard({
   checkpoint,
-  retentionHolds = [],
+  retentionHolds,
   onRefresh,
   apiOpts = {}
 }: TransitionControlCardProps) {
+  const t = useTranslations('modules');
   const [isBusy, setIsBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showHolds, setShowHolds] = useState(false);
+  const [showRollback, setShowRollback] = useState(false);
+  const [rollbackReason, setRollbackReason] = useState('');
+  const pendingKeys = useRef(new Map<string, string>());
 
   const isObserving = checkpoint.state === 'OBSERVING';
   const isInterventionRequired = checkpoint.state === 'INTERVENTION_REQUIRED';
   const isConverged = checkpoint.state === 'CONVERGED';
   const recoveryLimitReached = checkpoint.recoveryAttemptCount >= 1;
+  const isPastPointOfNoReturn = checkpoint.state === 'POINT_OF_NO_RETURN';
+  const canRollback =
+    (isObserving || isInterventionRequired) &&
+    Boolean(checkpoint.predecessorDigest) &&
+    !recoveryLimitReached;
 
   const stateBadgeVariant = (() => {
     switch (checkpoint.state) {
@@ -74,19 +86,66 @@ export function TransitionControlCard({
   const handleFinalizeTransition = async () => {
     setIsBusy(true);
     setActionError(null);
+    const signature = JSON.stringify([
+      'finalize',
+      checkpoint.operationId,
+      checkpoint.revision,
+      apiOpts.tenantId,
+      apiOpts.tenantSlug,
+      apiOpts.token
+    ]);
+    const key = pendingKeys.current.get(signature) ?? crypto.randomUUID();
+    pendingKeys.current.set(signature, key);
 
     try {
       await finalizeModuleTransition(
         checkpoint.operationId,
         checkpoint.revision,
-        crypto.randomUUID(),
+        key,
         apiOpts
       );
+      pendingKeys.current.delete(signature);
       toast.success('Module transition finalized successfully');
       onRefresh?.();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Finalization failed';
+      setActionError(message);
+      toast.error(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleRollback = async () => {
+    const reason = rollbackReason.trim();
+    if (!canRollback || !reason) return;
+    setIsBusy(true);
+    setActionError(null);
+    const signature = JSON.stringify([
+      'rollback',
+      checkpoint.operationId,
+      reason,
+      apiOpts.tenantId,
+      apiOpts.tenantSlug,
+      apiOpts.token
+    ]);
+    const key = pendingKeys.current.get(signature) ?? crypto.randomUUID();
+    pendingKeys.current.set(signature, key);
+    try {
+      await rollbackModuleTransition(
+        checkpoint.operationId,
+        reason,
+        key,
+        apiOpts
+      );
+      pendingKeys.current.delete(signature);
+      setShowRollback(false);
+      toast.success(t('rollback.success'));
+      onRefresh?.();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t('rollback.error');
       setActionError(message);
       toast.error(message);
     } finally {
@@ -200,15 +259,20 @@ export function TransitionControlCard({
             ) : (
               <IconChevronRight className='h-3.5 w-3.5' />
             )}
-            <span>Active Retention Holds ({retentionHolds.length})</span>
+            <span>
+              {t('holds.tenant.title')} (
+              {retentionHolds?.length ?? t('governance.unavailable')})
+            </span>
           </button>
 
           {showHolds && (
             <div className='bg-background/50 mt-2.5 rounded-md border p-3 text-xs'>
-              {retentionHolds.length === 0 ? (
+              {!retentionHolds ? (
                 <p className='text-muted-foreground'>
-                  No active GC retention holds.
+                  {t('holds.unavailable')}
                 </p>
+              ) : retentionHolds.length === 0 ? (
+                <p className='text-muted-foreground'>{t('holds.empty')}</p>
               ) : (
                 <div className='space-y-2'>
                   {retentionHolds.map((hold) => (
@@ -233,7 +297,7 @@ export function TransitionControlCard({
         {/* Transition action */}
         <div className='flex flex-wrap items-center justify-between gap-3 border-t pt-3'>
           <div className='flex items-center gap-2'>
-            {isObserving && (
+            {(isObserving || isPastPointOfNoReturn) && (
               <Button
                 variant='default'
                 size='sm'
@@ -245,14 +309,45 @@ export function TransitionControlCard({
                 {isBusy ? 'Finalizing...' : 'Finalize Convergence'}
               </Button>
             )}
+            {canRollback && (
+              <Button
+                variant='destructive'
+                size='sm'
+                disabled={isBusy}
+                onClick={() => setShowRollback((value) => !value)}
+              >
+                {showRollback ? t('rollback.cancel') : t('rollback.action')}
+              </Button>
+            )}
           </div>
 
           <p className='text-muted-foreground text-[11px]'>
-            Rollback is executed from the selected active installation so the
-            owner can verify its retained direct predecessor and capability
-            grant.
+            {t('rollback.owner.detail')}
           </p>
         </div>
+        {showRollback && canRollback && (
+          <div className='space-y-2 rounded-md border p-3'>
+            <label
+              htmlFor={`rollback-reason-${checkpoint.operationId}`}
+              className='text-xs font-medium'
+            >
+              {t('rollback.reason')}
+            </label>
+            <Input
+              id={`rollback-reason-${checkpoint.operationId}`}
+              value={rollbackReason}
+              onChange={(event) => setRollbackReason(event.target.value)}
+            />
+            <Button
+              variant='destructive'
+              size='sm'
+              disabled={isBusy || !rollbackReason.trim()}
+              onClick={() => void handleRollback()}
+            >
+              {t('rollback.confirm')}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -93,6 +93,8 @@ fn literal_user_search_pattern(search: &str) -> String {
 }
 
 fn user_directory_search_condition(search: &str) -> Condition {
+    use sea_orm::ExprTrait;
+
     let pattern = literal_user_search_pattern(search);
     Condition::any()
         .add(Expr::col(UsersColumn::Email).like(LikeExpr::new(pattern.clone()).escape('|')))

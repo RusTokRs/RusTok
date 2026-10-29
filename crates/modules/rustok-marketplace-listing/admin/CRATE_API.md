@@ -11,7 +11,7 @@
 ## Public surface
 - `pub mod core`: Pure Rust view-models and transport profile selectors.
 - `pub mod model`: Transport DTOs (`MarketplaceListingAdminListItem`, `MarketplaceListingAdminDirectory`, `MarketplaceListingAdminFilters`, `MarketplaceListingAdminTerms`, `MarketplaceListingAdminRecord`).
-- `pub mod transport`: Native and GraphQL transport adapters (`MarketplaceListingAdminTransportContext`, `load_listing_directory`).
+- Native and GraphQL transport facade (`MarketplaceListingAdminTransportContext`, `load_marketplace_listing_directory`).
 - `pub use ui::leptos::MarketplaceListingAdmin`: Root admin view component.
 
 ## Minimum Contract Set

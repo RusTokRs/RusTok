@@ -73,6 +73,8 @@ async fn list_users(
     current: CurrentUser,
     Query(params): Query<UsersListParams>,
 ) -> Result<Response> {
+    use sea_orm::ExprTrait;
+
     if !has_effective_permission(&current.permissions, &Permission::USERS_LIST) {
         return Err(forbidden_error("Permission denied: users:list required"));
     }
