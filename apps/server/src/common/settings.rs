@@ -868,6 +868,13 @@ impl RustokSettings {
             )));
         }
 
+        if parsed.events.relay_interval_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_interval_ms must be > 0",
+            )));
+        }
+
         if parsed.events.relay_batch_size == 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -1652,6 +1659,29 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("rustok.events.channel_capacity must be > 0")
+        );
+    }
+
+    #[test]
+    fn rejects_zero_event_relay_interval_to_prevent_busy_polling() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_interval_ms": 0
+                }
+            }
+        });
+
+        let err = RustokSettings::from_settings(&Some(raw))
+            .expect_err("zero relay interval must not start a busy polling worker");
+        assert!(
+            err.to_string()
+                .contains("rustok.events.relay_interval_ms must be > 0")
         );
     }
 
