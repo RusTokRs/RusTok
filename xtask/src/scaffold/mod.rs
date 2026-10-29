@@ -57,7 +57,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         anyhow::bail!("--ui cannot be published without real native/GraphQL adapters and matching Next.js routes; use --dry-run to preview the draft FFA package");
     }
     if options.ui != ScaffoldUi::None {
-        println!("  [DRAFT UI] Leptos shell preview only; no owner API, CRUD, Next.js package or registered route");
+        println!("  [DRAFT UI] Leptos and Next.js packages preview only; no owner API, CRUD, host import or registered route");
     }
 
     let root = workspace_root();
