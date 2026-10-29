@@ -80,7 +80,7 @@ function writeBaseline(root) {
     [
       "fn migration() { let _ = TaxonomyTerms::Id; }",
       "// .table(BlogPostTags::Table)",
-      "// .to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
+      "// REFERENCES taxonomy_terms",
       "",
     ].join("\n"),
   );
