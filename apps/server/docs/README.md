@@ -607,6 +607,8 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - A healthy outbox with zero pending events reports a pending lag of zero and
   a successful metric collection status; database failures still yield unknown
   metrics instead of false success.
+- Tenant-scoped DLQ listing reports the total matching failed events independently
+  of its bounded response page, and resolves equal timestamps with stable ID ordering.
 - Embedded admin HTML fallback is limited to SPA navigation paths. Missing
   scripts, stylesheets, fonts, images and other recognized static assets return
   404 rather than HTML with status 200.
