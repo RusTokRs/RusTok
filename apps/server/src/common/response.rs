@@ -175,14 +175,46 @@ mod tests {
     #[tokio::test]
     async fn commerce_user_errors_have_actionable_statuses() {
         let cases = [
-            (CommerceError::InvalidPrice("negative amount".into()), StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-            (CommerceError::InvalidOptionCombination, StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-            (CommerceError::Core(rustok_core::Error::NotFound("missing".into())), StatusCode::NOT_FOUND, "NOT_FOUND"),
-            (CommerceError::Core(rustok_core::Error::Forbidden("blocked".into())), StatusCode::FORBIDDEN, "FORBIDDEN"),
-            (CommerceError::Core(rustok_core::Error::Validation("bad".into())), StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-            (CommerceError::NoVariants, StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-            (CommerceError::ShippingProfileNotFound(uuid::Uuid::new_v4()), StatusCode::NOT_FOUND, "SHIPPING_PROFILE_NOT_FOUND"),
-            (CommerceError::DuplicateShippingProfileSlug("duplicate".into()), StatusCode::CONFLICT, "DUPLICATE_SHIPPING_PROFILE_SLUG"),
+            (
+                CommerceError::InvalidPrice("negative amount".into()),
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_ERROR",
+            ),
+            (
+                CommerceError::InvalidOptionCombination,
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_ERROR",
+            ),
+            (
+                CommerceError::Core(rustok_core::Error::NotFound("missing".into())),
+                StatusCode::NOT_FOUND,
+                "NOT_FOUND",
+            ),
+            (
+                CommerceError::Core(rustok_core::Error::Forbidden("blocked".into())),
+                StatusCode::FORBIDDEN,
+                "FORBIDDEN",
+            ),
+            (
+                CommerceError::Core(rustok_core::Error::Validation("bad".into())),
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_ERROR",
+            ),
+            (
+                CommerceError::NoVariants,
+                StatusCode::BAD_REQUEST,
+                "VALIDATION_ERROR",
+            ),
+            (
+                CommerceError::ShippingProfileNotFound(uuid::Uuid::new_v4()),
+                StatusCode::NOT_FOUND,
+                "SHIPPING_PROFILE_NOT_FOUND",
+            ),
+            (
+                CommerceError::DuplicateShippingProfileSlug("duplicate".into()),
+                StatusCode::CONFLICT,
+                "DUPLICATE_SHIPPING_PROFILE_SLUG",
+            ),
         ];
         for (error, expected_status, code) in cases {
             let (status, payload) = commerce_error_payload(error).await;
