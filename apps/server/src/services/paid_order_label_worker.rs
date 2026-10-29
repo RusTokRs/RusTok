@@ -23,6 +23,11 @@ impl PaidOrderCreateLabelWorkerHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+    /// Await a durable worker's current operation after the shutdown signal.
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
+
 }
 
 pub fn spawn_paid_order_create_label_worker(
