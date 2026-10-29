@@ -109,9 +109,10 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     join(src, "transport", "mod.rs");
   readRequired(root, core, diagnostics);
   const transportSource = readRequired(root, transport, diagnostics);
-  if (transportSource && !/\b(?:async\s+)?fn\s+[a-z_][a-z0-9_]*\s*\(|\bpub\s+use\s+/.test(transportSource)) {
+  if (transportSource &&
+      !/\b(?:async\s+)?fn\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\s*\(|\b(?:pub\s+)?mod\s+(?:native_server_adapter|graphql_adapter)\b/.test(transportSource)) {
     diagnostics.push(relative(root, transport) +
-      ": empty transport facade without executable operations or an adapter re-export");
+      ": empty transport facade without an owner operation or a real adapter module");
   }
   readRequired(root, join(src, "ui", "mod.rs"), diagnostics);
   if (!hasSource(join(src, "ui", "leptos.rs")) &&
@@ -242,6 +243,23 @@ export function lintNativeModule(root, modulePath, slug) {
     if (file.isFile() && file.name.endsWith(".rs") && !allowedRoot.has(file.name)) {
       diagnostics.push(relative(repo, join(src, file.name)) +
         ": noncanonical src/ root Rust file; move into its responsibility slot");
+    }
+  }
+  // A generated directory with comment-only code is not an implemented layer.
+  for (const slot of [
+    "domain", "dto", "entities", "services", "ports", "integrations",
+    "graphql", "controllers", "rest", "migrations", "events", "error"
+  ]) {
+    const dir = join(src, slot);
+    if (!existsSync(dir)) continue;
+    const files = rustFiles(dir);
+    const payload = files.map((file) => readFileSync(file, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .trim()).join("");
+    if (!files.length || !payload) {
+      diagnostics.push(relative(repo, dir) +
+        ": empty responsibility slot is forbidden; remove or implement it");
     }
   }
   checkImports(repo, join(src, "domain"), FORBIDDEN_DOMAIN, diagnostics);
