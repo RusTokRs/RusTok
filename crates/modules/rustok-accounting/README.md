@@ -26,6 +26,10 @@
 - **`rustok-party`:** Validates and indexes counterparty subconto references (`party_id`).
 - **`rustok-marketplace-balance`:** Receives translated order settlement, commission revenue, and payout clearing entries from marketplace operations.
 
+## API Documentation
+
+See [CRATE_API.md](CRATE_API.md) for full public contract details, DTOs, domain invariants, and outbox side effects.
+
 ## Invariants
 
 1. **Double-Entry Balance:** Every journal transaction must satisfy $\sum \text{Debit} = \sum \text{Credit}$. Unbalanced transactions are rejected.

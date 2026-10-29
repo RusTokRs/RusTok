@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK UI i18n
+//!
+//! Framework-agnostic Project Fluent message catalogs, locale normalization,
+//! Accept-Language parsing, and UI message translation helpers for RusToK.
+
 mod accept_language;
 pub mod bundle;
 pub mod error;

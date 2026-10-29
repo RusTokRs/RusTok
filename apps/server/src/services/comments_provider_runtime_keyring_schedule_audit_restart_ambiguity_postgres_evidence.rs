@@ -29,12 +29,8 @@ const SOURCE_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_outbox";
 const RECOVERY_AUDIT_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_recovery_audits";
 const STATE_KEY: &str = "comments_tcp_delegation_schedule";
 const CANONICAL_EVENT_TYPE: &str = "blog.comments_delegation_schedule.replacement_succeeded";
-const SELECTED_MIGRATIONS: [&str; 5] = [
-    "m20260801_000007_create_blog_comments_delegation_schedule_state",
-    "m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox",
-    "m20260803_000009_add_blog_comments_audit_canonical_handoff",
-    "m20260803_000010_add_blog_comments_audit_source_retry_policy",
-    "m20260803_000011_create_blog_comments_audit_recovery",
+const SELECTED_MIGRATIONS: [&str; 1] = [
+    "m20261029_000001_create_blog_schema",
 ];
 
 struct PostgresRestartEvidenceDb {

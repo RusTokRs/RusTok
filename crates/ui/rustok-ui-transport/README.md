@@ -1,5 +1,7 @@
 # RusToK UI Transport
 
+For the complete public API and transport invariant definitions, see [CRATE_API.md](CRATE_API.md).
+
 Framework-agnostic transport result and error-evidence contracts for module-owned UI packages.
 
 ## Responsibilities

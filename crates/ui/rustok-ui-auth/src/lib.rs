@@ -1,5 +1,9 @@
-//! Shared client authentication values and expiry policy.
-//! Server authentication and authorization remain owned by Auth and RBAC.
+//! # RusToK UI Auth
+//!
+//! Framework-neutral client authentication contracts, session lifecycle models,
+//! and token expiration evaluation shared across RusToK UI adapters.
+//!
+//! Server authentication and authorization remain owned by Auth and RBAC modules.
 
 use serde::{Deserialize, Serialize};
 

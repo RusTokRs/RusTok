@@ -1,5 +1,7 @@
 # leptos-ui-routing
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `leptos-ui-routing` is a thin shared Leptos routing/query helper crate for RusToK UI packages.

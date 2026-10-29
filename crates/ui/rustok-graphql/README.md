@@ -1,5 +1,7 @@
 # rustok-graphql
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `rustok-graphql` owns the framework-agnostic GraphQL HTTP client contracts for
 RusToK UI adapters.
 

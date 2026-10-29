@@ -1,5 +1,7 @@
 # RusToK UI Core
 
+For the full public surface and invariant definitions, see [CRATE_API.md](CRATE_API.md).
+
 Framework-agnostic route, input, busy-state, and presentation contracts shared by RusToK UI packages.
 
 ## Responsibilities

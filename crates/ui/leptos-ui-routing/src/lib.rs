@@ -1,3 +1,8 @@
+//! # Leptos UI Routing
+//!
+//! Shared Leptos URL and query routing helpers, route query policies,
+//! and reactive signal hooks for host-owned and module-owned UI packages.
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 

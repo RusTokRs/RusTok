@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK GraphQL Client
+//!
+//! Framework-agnostic GraphQL HTTP client contracts, transport helpers, and error mapping
+//! for RusToK UI adapters without direct framework dependencies.
+
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;

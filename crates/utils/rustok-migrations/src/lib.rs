@@ -1212,7 +1212,7 @@ mod tests {
                 "m20250130_000012_create_commerce_products",
             ),
             (
-                "m20260328_000002_create_blog_taxonomy_tables",
+                "m20261029_000001_create_blog_schema",
                 "m20260329_000001_create_taxonomy_tables",
             ),
             (
@@ -1298,7 +1298,7 @@ mod tests {
             .collect();
 
         assert!(
-            names.contains(&"m20260328_000001_create_blog_post_tables".to_string()),
+            names.contains(&"m20261029_000001_create_blog_schema".to_string()),
             "server migrator must include blog post tables"
         );
         assert!(

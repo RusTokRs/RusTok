@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK UI Transport
+//!
+//! Framework-agnostic transport result types, error evidence, and fallback contracts
+//! for RusToK FFA UI packages across native server and GraphQL adapters.
+
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 

@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK UI Core
+//!
+//! Framework-agnostic route, input, busy-state, pagination, and presentation contracts
+//! shared across RusToK UI adapters and module surfaces.
+
 pub mod badges;
 pub mod css;
 pub mod money;

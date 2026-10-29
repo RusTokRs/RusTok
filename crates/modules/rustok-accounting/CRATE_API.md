@@ -4,7 +4,7 @@
 `domain`, `dto`, `error`, `events`, `module`, `ports`.
 
 ## Platform Capability Bindings
-- **Core Module Registration**: Exposes `AccountingModule` implementing `RusToKModule` (slug `"accounting"`, kind `ModuleKind::Core`, dependencies `["outbox"]`) and `MigrationSource`.
+- **Module Registration**: Exposes `AccountingModule` implementing `RusToKModule` (slug `"accounting"`, kind `ModuleKind::Optional`, dependencies `["outbox"]`) and `MigrationSource`.
 - **Double-Entry General Ledger**:
   - Balanced multi-currency journal posting (`AccountingJournalPort::post_transaction`).
   - Immutable reverse storno transactions (`AccountingJournalPort::post_storno_reversal`).

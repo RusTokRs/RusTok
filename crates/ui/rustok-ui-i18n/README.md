@@ -1,5 +1,7 @@
 # rustok-ui-i18n
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ui-i18n` provides framework-agnostic UI message catalog helpers for

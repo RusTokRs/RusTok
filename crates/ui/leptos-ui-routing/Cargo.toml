@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Shared Leptos URL/query routing helpers for host-owned and module-owned UI"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 crate-type = ["rlib"]
 

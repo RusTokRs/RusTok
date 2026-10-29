@@ -1,3 +1,8 @@
+//! # Leptos Auth
+//!
+//! Shared authentication UI and runtime boundary for Leptos applications,
+//! including auth context, reactive hooks, route guards, and cookie helpers.
+
 mod client;
 pub mod components;
 pub mod context;

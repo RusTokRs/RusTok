@@ -148,6 +148,7 @@ async fn a_published_post_without_a_publication_timestamp_is_not_projectable() {
         .await
         .expect("post read should not fail")
         .expect("post should exist");
+    crate::tests::hardening::allow_legacy_invalid_post_fixture(&db).await;
     let mut active: blog_post::ActiveModel = row.into();
     active.published_at = Set(None);
     active.update(&db).await.expect("damage should persist");

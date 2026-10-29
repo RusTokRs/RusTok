@@ -1,5 +1,7 @@
 # leptos-auth
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `leptos-auth` owns the shared authentication UI/runtime boundary for Leptos-based RusToK applications.

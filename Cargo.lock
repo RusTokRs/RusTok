@@ -14088,6 +14088,7 @@ dependencies = [
 name = "rustok-blog-admin"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "fly",
  "fly-ui",
  "leptos",
@@ -14131,12 +14132,16 @@ dependencies = [
  "rustok-core",
  "rustok-graphql",
  "rustok-outbox",
+ "rustok-profiles",
+ "rustok-search-storefront",
  "rustok-tenant",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "serde",
+ "url",
  "uuid",
+ "web-sys",
 ]
 
 [[package]]

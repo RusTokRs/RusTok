@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Framework-neutral client authentication contracts for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true

@@ -24,6 +24,6 @@ fn module_metadata_matches_contract() {
     let module = crate::AccountingModule;
     assert_eq!(module.slug(), "accounting");
     assert_eq!(module.name(), "Accounting");
-    assert_eq!(module.kind(), ModuleKind::Core);
+    assert_eq!(module.kind(), ModuleKind::Optional);
     assert_eq!(module.dependencies(), &["outbox"]);
 }

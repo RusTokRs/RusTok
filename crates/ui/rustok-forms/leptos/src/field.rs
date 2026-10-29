@@ -360,23 +360,23 @@ mod tests {
 
     #[test]
     fn test_form_field_renders_label_and_for_attr() {
-        let state = FormState::idle();
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            let state = FormState::idle();
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
+            provide_context(form_ctx);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
+            view! {
                 <FormField name="email">
                     <FormLabel required=true>"Email"</FormLabel>
                     <FormDescription>"Enter your corporate email"</FormDescription>
                     <FormMessage />
                 </FormField>
-            </div>
-        }
-        .to_html();
+            }
+            .to_html()
+        });
 
-        eprintln!("RENDERED HTML: {html}");
         assert!(html.contains("for=\"email\""));
         assert!(html.contains("id=\"email-description\""));
         assert!(html.contains("Email"));
@@ -388,20 +388,21 @@ mod tests {
 
     #[test]
     fn test_form_field_renders_error_message_when_invalid() {
-        let state = FormState::idle().with_field_error("email", "Email is required");
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            let state = FormState::idle().with_field_error("email", "Email is required");
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
+            provide_context(form_ctx);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
+            view! {
                 <FormField name="email">
                     <FormLabel>"Email"</FormLabel>
                     <FormMessage />
                 </FormField>
-            </div>
-        }
-        .to_html();
+            }
+            .to_html()
+        });
 
         assert!(html.contains("text-destructive"));
         assert!(html.contains("id=\"email-message\""));
@@ -411,17 +412,18 @@ mod tests {
 
     #[test]
     fn test_form_error_renders_form_level_message_and_title() {
-        let state = FormState::with_form_error("Server unavailable");
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            let state = FormState::with_form_error("Server unavailable");
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
+            provide_context(form_ctx);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
+            view! {
                 <FormError title="Submission Failed" />
-            </div>
-        }
-        .to_html();
+            }
+            .to_html()
+        });
 
         assert!(html.contains("role=\"alert\""));
         assert!(html.contains("Submission Failed"));

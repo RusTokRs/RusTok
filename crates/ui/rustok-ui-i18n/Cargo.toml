@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Framework-agnostic locale, Accept-Language, and UI message helpers for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 fluent-bundle.workspace = true
 fluent-syntax.workspace = true

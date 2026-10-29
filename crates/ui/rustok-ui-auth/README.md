@@ -1,5 +1,7 @@
 # RusToK UI Auth
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `rustok-ui-auth` owns framework-neutral client authentication values and expiry
 policy shared by RusToK UI adapters.
 

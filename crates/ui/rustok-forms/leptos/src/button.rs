@@ -236,17 +236,20 @@ mod tests {
 
     #[test]
     fn test_submit_button_idle_renders_children() {
-        let state = FormState::idle();
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            let state = FormState::idle();
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
+            provide_context(form_ctx);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
-                <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
-            </div>
-        }
-        .to_html();
+            view! {
+                <div>
+                    <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
+                </div>
+            }
+            .to_html()
+        });
 
         assert!(html.contains("type=\"submit\""));
         assert!(html.contains("Save Changes"));
@@ -257,13 +260,13 @@ mod tests {
 
     #[test]
     fn test_submit_button_submitting_shows_spinner_and_disabled() {
-        let state = FormState::submitting();
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
-
         let owner = Owner::new();
         let html = owner.with(|| {
+            let state = FormState::submitting();
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
             provide_context(form_ctx);
+
             view! {
                 <div>
                     <SubmitButton submitting_text="Saving...">"Save Changes"</SubmitButton>
@@ -280,17 +283,20 @@ mod tests {
 
     #[test]
     fn test_reset_button_renders_type_button() {
-        let state = FormState::idle();
-        let state_signal = Signal::derive(move || state.clone());
-        let form_ctx = FormContext::new(state_signal);
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            let state = FormState::idle();
+            let state_signal = Signal::derive(move || state.clone());
+            let form_ctx = FormContext::new(state_signal);
+            provide_context(form_ctx);
 
-        let html = view! {
-            <div>
-                {provide_context(form_ctx)}
-                <ResetButton variant=ButtonVariant::Destructive full_width=true>"Cancel"</ResetButton>
-            </div>
-        }
-        .to_html();
+            view! {
+                <div>
+                    <ResetButton variant=ButtonVariant::Destructive full_width=true>"Cancel"</ResetButton>
+                </div>
+            }
+            .to_html()
+        });
 
         assert!(html.contains("type=\"button\""));
         assert!(html.contains("Cancel"));

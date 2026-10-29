@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Accounting
+//!
 //! Canonical platform owner of universal double-entry bookkeeping, Chart of Accounts,
 //! balanced journal transactions, posting rules, and relational subconto analytics across RusToK.
 

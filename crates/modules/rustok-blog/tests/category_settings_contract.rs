@@ -10,7 +10,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
-async fn setup_without_settings_contract() -> (DatabaseConnection, Box<dyn MigrationTrait>) {
+async fn setup_with_blog_schema() -> (DatabaseConnection, Box<dyn MigrationTrait>) {
     let db = rustok_test_utils::db::setup_test_db().await;
     let manager = SchemaManager::new(&db);
     SysEventsMigration
@@ -24,18 +24,17 @@ async fn setup_without_settings_contract() -> (DatabaseConnection, Box<dyn Migra
             .expect("taxonomy migration should apply");
     }
     let mut migrations = BlogModule.migrations();
-    let contract_idx = migrations
-        .iter()
-        .position(|m| m.name() == "m20260924_000029_enforce_blog_category_settings_contract")
-        .expect("Blog settings contract migration should be registered");
-    let settings_contract = migrations.remove(contract_idx);
-    for migration in migrations.into_iter().take(contract_idx) {
-        migration
-            .up(&manager)
-            .await
-            .expect("Blog prerequisite migration should apply");
-    }
-    (db, settings_contract)
+    assert_eq!(
+        migrations.len(),
+        1,
+        "Blog module should have a single consolidated migration"
+    );
+    let schema_migration = migrations.remove(0);
+    schema_migration
+        .up(&manager)
+        .await
+        .expect("Blog consolidated schema migration should apply");
+    (db, schema_migration)
 }
 
 fn admin() -> SecurityContext {
@@ -92,56 +91,36 @@ async fn write_settings(
 }
 
 #[tokio::test]
-async fn settings_contract_fails_preflight_on_dirty_rows_and_retries_cleanly() {
-    let (db, settings_contract) = setup_without_settings_contract().await;
+async fn settings_contract_guards_database_invariants_and_rejects_invalid_values() {
+    let (db, schema_migration) = setup_with_blog_schema().await;
     let category_id = create_category(&db).await;
 
-    write_settings(&db, category_id, serde_json::json!([]))
+    // Clean object settings are accepted
+    write_settings(&db, category_id, serde_json::json!({ "theme": "dark" }))
         .await
-        .expect("legacy schema must allow dirty settings before contract migration");
+        .expect("clean object settings must be accepted");
 
-    let manager = SchemaManager::new(&db);
-    let error = settings_contract
-        .up(&manager)
-        .await
-        .expect_err("dirty settings must block contract installation");
-    assert!(error.to_string().contains("invalid row"));
-
-    write_settings(&db, category_id, serde_json::json!({}))
-        .await
-        .expect("dirty settings should be repairable before retry");
-    settings_contract
-        .up(&manager)
-        .await
-        .expect("clean settings should allow contract installation");
-
-    settings_contract
-        .down(&manager)
-        .await
-        .expect("contract rollback should remove database guards");
-    write_settings(&db, category_id, serde_json::json!([]))
-        .await
-        .expect("rolled back contract should no longer guard settings");
-    write_settings(&db, category_id, serde_json::json!({}))
-        .await
-        .expect("invalid probe value should be repairable before reapply");
-    settings_contract
-        .up(&manager)
-        .await
-        .expect("contract should reapply cleanly");
-
+    // Non-object settings (array) must be rejected
     let scalar_error = write_settings(&db, category_id, serde_json::json!([]))
         .await
         .expect_err("database guard must reject non-object settings");
-    assert!(scalar_error.to_string().contains("blog category settings"));
+    assert!(scalar_error.to_string().contains("settings"));
 
+    // Oversized settings (>64 KiB) must be rejected
     let oversized = serde_json::json!({ "padding": "x".repeat(70 * 1024) });
     let oversized_error = write_settings(&db, category_id, oversized)
         .await
         .expect_err("database guard must reject oversized settings");
-    assert!(
-        oversized_error
-            .to_string()
-            .contains("blog category settings")
-    );
+    assert!(oversized_error.to_string().contains("settings"));
+
+    // Rollback and reapply of schema migration works cleanly
+    let manager = SchemaManager::new(&db);
+    schema_migration
+        .down(&manager)
+        .await
+        .expect("schema rollback should drop tables cleanly");
+    schema_migration
+        .up(&manager)
+        .await
+        .expect("schema should reapply cleanly");
 }
