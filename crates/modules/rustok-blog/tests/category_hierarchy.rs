@@ -173,6 +173,8 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let child = create_category(&category_service, tenant_id, "Child", Some(root_a), 0).await;
     let grandchild =
         create_category(&category_service, tenant_id, "Grandchild", Some(child), 0).await;
+    let destination_sibling =
+        create_category(&category_service, tenant_id, "Destination", Some(root_b), 0).await;
 
     assert_eq!(load_category(&db, tenant_id, child).await.depth, 1);
     assert_eq!(load_category(&db, tenant_id, grandchild).await.depth, 2);
@@ -210,6 +212,10 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
         .expect("child should move under the second root");
     assert_eq!(moved.moved.parent_id, Some(root_b));
     assert_eq!(moved.moved.depth, 1);
+    assert_eq!(moved.moved.position, 0);
+    let displaced = load_category(&db, tenant_id, destination_sibling).await;
+    assert_eq!(displaced.parent_id, Some(root_b));
+    assert_eq!(displaced.position, 1, "existing destination siblings must shift");
 
     let child_after_reparent = load_category(&db, tenant_id, child).await;
     let grandchild_after_reparent = load_category(&db, tenant_id, grandchild).await;
