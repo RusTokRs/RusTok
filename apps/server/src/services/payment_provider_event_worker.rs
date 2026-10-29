@@ -92,7 +92,7 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                sweep_tenants(instance_id, &tenants, &recovery).await;
+                sweep_tenants(instance_id, &tenants, &recovery, &stop_rx).await;
             }
         }
     }
@@ -105,9 +105,15 @@ async fn sweep_tenants(
     instance_id: u64,
     tenants: &rustok_tenant::TenantService,
     recovery: &rustok_payment::PaymentProviderEventRecoveryService,
+    stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) {
     let mut page = 1;
     loop {
+        if *stop_rx.borrow() {
+            // Finish the current durable recovery call, then stop before
+            // selecting more tenants or starting new provider work.
+            return;
+        }
         let (items, total) = match tenants
             .list_tenants(page, PAYMENT_PROVIDER_EVENT_TENANT_PAGE)
             .await
@@ -128,6 +134,9 @@ async fn sweep_tenants(
         }
 
         for tenant in items {
+            if *stop_rx.borrow() {
+                return;
+            }
             let worker_id = format!(
                 "payment-provider-event-worker:{instance_id}:tenant:{}",
                 tenant.id
