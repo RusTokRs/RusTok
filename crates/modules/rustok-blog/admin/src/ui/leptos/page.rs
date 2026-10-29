@@ -173,7 +173,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                             />
                         </Show>
 
-                        <form class="mt-5 space-y-4" on:submit=submit_post>
+                        <form class="mt-5 space-y-4" on:submit=move |event: SubmitEvent| submit_post.run(event)>
                             <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.title_label.clone()}
