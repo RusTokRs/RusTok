@@ -1261,7 +1261,7 @@ mod tests {
     #[tokio::test]
     async fn reporting_queries_without_auth_are_denied_before_reading_tenant_data() {
         let schema = async_graphql::Schema::build(
-            super::QueryRoot,
+            super::RootQuery,
             async_graphql::EmptyMutation,
             async_graphql::EmptySubscription,
         )
