@@ -6,7 +6,8 @@ use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect,
+    QueryOrder, QuerySelect,
+    sea_query::{Expr, LikeExpr},
 };
 use std::fmt::Display;
 use std::time::Instant;
@@ -74,6 +75,28 @@ fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
         .ok_or_else(|| {
             <FieldError as GraphQLError>::internal_error("build control is not configured")
         })
+}
+
+/// User directory searches are literal substrings, not user-controlled LIKE
+/// patterns. The pipe escape is explicit so %, _ and | keep their meaning.
+fn literal_user_search_pattern(search: &str) -> String {
+    let mut pattern = String::with_capacity(search.len() + 2);
+    pattern.push('%');
+    for ch in search.chars() {
+        if matches!(ch, '|' | '%' | '_') {
+            pattern.push('|');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('%');
+    pattern
+}
+
+fn user_directory_search_condition(search: &str) -> Condition {
+    let pattern = literal_user_search_pattern(search);
+    Condition::any()
+        .add(Expr::col(UsersColumn::Email).like(LikeExpr::new(pattern.clone()).escape('|')))
+        .add(Expr::col(UsersColumn::Name).like(LikeExpr::new(pattern).escape('|')))
 }
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
@@ -944,7 +967,11 @@ impl RootQuery {
 
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
-        let mut query = users::Entity::find().filter(UsersColumn::TenantId.eq(tenant.id));
+        let mut query = users::Entity::find()
+            .filter(UsersColumn::TenantId.eq(tenant.id))
+            // Stable cursor order needs a unique tie-breaker for equal timestamps.
+            .order_by_asc(UsersColumn::CreatedAt)
+            .order_by_asc(UsersColumn::Id);
 
         if let Some(filter) = filter {
             if let Some(role) = filter.role {
@@ -964,10 +991,7 @@ impl RootQuery {
         if let Some(search) = search {
             let search = search.trim();
             if !search.is_empty() {
-                let condition = Condition::any()
-                    .add(UsersColumn::Email.contains(search))
-                    .add(UsersColumn::Name.contains(search));
-                query = query.filter(condition);
+                query = query.filter(user_directory_search_condition(search));
             }
         }
         let count_started_at = Instant::now();
@@ -1281,6 +1305,23 @@ mod tests {
                 response.errors
             );
         }
+    }
+
+    #[test]
+    fn user_search_treats_sql_wildcards_as_literal_text() {
+        use sea_orm::{DbBackend, EntityTrait, QueryFilter, QueryOrder, QueryTrait};
+
+        assert_eq!(super::literal_user_search_pattern("a%_b|c"), "%a|%|_b||c%");
+        let query = crate::models::users::Entity::find()
+            .filter(super::user_directory_search_condition("test_%"))
+            .order_by_asc(super::UsersColumn::CreatedAt)
+            .order_by_asc(super::UsersColumn::Id);
+        let sql = query.build(DbBackend::Sqlite).to_string();
+        assert!(sql.contains("ESCAPE '|'"), "{sql}");
+        assert!(sql.contains("|_"), "{sql}");
+        assert!(sql.contains("|%"), "{sql}");
+        let order = sql.split("ORDER BY").nth(1).expect("deterministic order");
+        assert!(order.find("created_at").unwrap() < order.find("id").unwrap());
     }
 
     #[test]
