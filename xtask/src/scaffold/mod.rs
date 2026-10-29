@@ -46,6 +46,18 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     if options.profile != options::ScaffoldProfile::NativeModule {
         anyhow::bail!("cargo xtask scaffold only generates native runtime modules");
     }
+    // There is no safe generic owner schema or UI business contract. Fail
+    // before writing anything instead of registering fake storage or routes.
+    if options.with_db {
+        anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
+    }
+    // Generating an editable Leptos FFA package is not publishing a working
+    // UI. Requested crates join Cargo workspace only; host mounting and
+    // manifest [provides.*_ui] metadata are deferred to module owners.
+    if options.ui != ScaffoldUi::None {
+        println!("  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD");
+    }
+
     let root = workspace_root();
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
@@ -79,10 +91,10 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
     }
 
-    // 1. Generate backend files (FBA)
+    // 1. Generate a native runtime identity only (no FBA readiness claim)
     backend::generate_backend(options, &module_dir, &pascal_name, &snake_name)?;
 
-    // 2. Generate UI packages (FFA: core, transport, ui, i18n)
+    // 2. Create requested Leptos FFA development packages; no host mounting.
     ui::generate_ui(options, &module_dir, &pascal_name)?;
 
     // 3. Update manifests and global registration
@@ -95,7 +107,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
             println!("\nVerifying module publish-readiness contracts for '{slug}'...");
             match module_validate_command(std::slice::from_ref(slug)) {
                 Ok(_) => {
-                    println!("\n  SUCCESS: Module '{slug}' created and verified!");
+                    println!("\n  SCAFFOLDED: Module '{slug}' registered; publish metadata checked, business/UI readiness remains not_started.");
                     println!("  Next steps:");
                     println!("    cargo check -p {crate_name}");
                     if options.ui.has_admin() {
@@ -106,8 +118,9 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
                     }
                 }
                 Err(err) => {
-                    println!("\n  WARNING: Module files created, but verification reported:");
-                    println!("    {err:#}");
+                    return Err(err).with_context(|| format!(
+                        "Module '{slug}' files were written but publish-readiness validation failed; scaffold is NOT verified"
+                    ));
                 }
             }
         }
@@ -116,4 +129,46 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{scaffold, ScaffoldOptions, ScaffoldUi};
+    use super::options::ScaffoldProfile;
+
+    fn options() -> ScaffoldOptions {
+        ScaffoldOptions {
+            profile: ScaffoldProfile::NativeModule,
+            slug: "example".into(),
+            title: "Example".into(),
+            description: "An example native runtime identity".into(),
+            category: "collaboration".into(),
+            with_db: false,
+            ui: ScaffoldUi::None,
+            dry_run: true,
+            skip_server_wire: false,
+            skip_validate: false,
+        }
+    }
+
+    #[test]
+    fn database_requests_fail_even_in_preview_mode() {
+        let mut request = options();
+        request.with_db = true;
+        assert!(scaffold(&request).unwrap_err().to_string().contains("--with-db"));
+    }
+
+    #[test]
+    fn every_requested_ui_mode_has_a_writable_render_plan() {
+        let mut request = options();
+        for mode in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
+            request.ui = mode;
+            let planned = super::ui::render_ui_templates(
+                &request, "Example"
+            );
+            assert!(!planned.is_empty());
+            assert!(planned.iter().any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
+            assert!(scaffold(&request).is_ok(), "dry-run must preview every UI mode");
+        }
+    }
 }

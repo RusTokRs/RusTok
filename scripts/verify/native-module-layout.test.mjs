@@ -84,7 +84,7 @@ test("source file size and module registration are checked", () => {
   });
 });
 
-test("declared UI requires actual FFA structure and Next package metadata", () => {
+test("declared UI requires actual FFA structure independent of Next.js", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
@@ -92,7 +92,53 @@ test("declared UI requires actual FFA structure and Next package metadata", () =
     const failures = lint(ctx).join("\n");
     assert.match(failures, /admin\/Cargo.toml.*required file missing/);
     assert.match(failures, /model.rs.*required file missing/);
-    assert.match(failures, /Next.js package metadata/);
+    assert.doesNotMatch(failures, /Next.js package metadata/);
+  });
+});
+
+test("Leptos FFA without any Next.js metadata passes native architecture lint", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("admin/src/lib.rs",
+      'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/core/mod.rs", "pub enum State { Pending }\n");
+    ctx.write("admin/src/model.rs", "pub struct OwnerModel;\n");
+    ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/transport/mod.rs",
+      'mod graphql_adapter;\nmod native_server_adapter;\n' +
+      'pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n');
+    ctx.write("admin/src/transport/graphql_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
+    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
+    ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("admin/locales/en.ftl", "sample-state = Pending\n");
+    assert.deepEqual(lint(ctx), []);
+
+    // A scaffolded but unmounted FFA development package is still linted.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    assert.deepEqual(lint(ctx), [], "future_ui accepts real draft package files");
+
+    // A no_ui module may not silently hide a physical UI package.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    assert.match(lint(ctx).join("\n"), /undeclared UI package requires explicit/);
+
+    // Draft is not a free pass for a wrong Cargo package name.
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "wrong-admin"\n');
+    assert.match(lint(ctx).join("\n"), /Cargo package name differs/);
   });
 });
 
@@ -100,7 +146,7 @@ test("fake UI actions and Leptos in pure core fail FFA lint", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
-      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\nnext_package = "@rustok/sample-admin"\n');
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
       'mod model;\nmod core;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');

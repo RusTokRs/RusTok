@@ -1,706 +1,465 @@
-use super::options::ScaffoldOptions;
+use super::options::{ScaffoldOptions, ScaffoldUi};
 use super::write_file_content;
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+/// Creates Leptos FFA *development skeletons* that compile independently
+/// without mounting routes or claiming native/GraphQL business operations.
+/// Domain-specific services, transport calls and UI flows are authored later
+/// by each module owner; missing operations remain explicit errors.
 pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
+    for (relative, contents) in render_ui_templates(opts, pascal) {
+        write_file_content(&module_dir.join(relative), &contents, opts.dry_run)?;
+    }
+    Ok(())
+}
+
+/// Pure renderer used for both dry-run and writable Leptos skeleton creation.
+/// No host mount or live [provides.*_ui] metadata is produced.
+pub(crate) fn render_ui_templates(
+    opts: &ScaffoldOptions,
+    pascal: &str,
+) -> Vec<(PathBuf, String)> {
+    let mut files = Vec::new();
     if opts.ui.has_admin() {
-        generate_admin_ui(opts, module_dir, pascal)?;
+        files.extend(render_ui_package(opts, pascal, "admin"));
     }
     if opts.ui.has_storefront() {
-        generate_storefront_ui(opts, module_dir, pascal)?;
+        files.extend(render_ui_package(opts, pascal, "storefront"));
     }
-    Ok(())
+    files
 }
 
-fn generate_admin_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
+fn render_ui_package(
+    opts: &ScaffoldOptions,
+    pascal: &str,
+    side: &str,
+) -> Vec<(PathBuf, String)> {
     let slug = &opts.slug;
-    let title = &opts.title;
-    let desc = &opts.description;
     let crate_name = opts.crate_name();
-    let admin_crate_name = format!("{crate_name}-admin");
-    let admin_dir = module_dir.join("admin");
+    let ui_crate = format!("{crate_name}-{side}");
+    let page = if side == "admin" {
+        format!("{pascal}AdminPage")
+    } else {
+        format!("{pascal}StorefrontView")
+    };
+    let side_name = if side == "admin" { "Admin" } else { "Storefront" };
+    let side_key = format!("{slug}-{side}-unavailable");
+    let title_rust = format!("{:?}", opts.title);
+    let description_rust = format!("{:?}", opts.description);
+    let cargo_description = toml::Value::String(format!(
+        "{side_name} FFA adapter for {crate_name} (owner API pending)"
+    )).to_string();
 
-    // Cargo.toml
-    let cargo_toml = format!(
+    // No unused graphql, native-server, grid, database or module dependencies:
+    // adding any of them requires implementing an actual adapter.
+    let cargo = format!(
         r#"[package]
-name = "{admin_crate_name}"
+name = "{ui_crate}"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Admin FFA package for {title}"
+description = {cargo_description}
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
-
-[lib]
-crate-type = ["rlib"]
-
-[features]
-default = []
-csr = ["leptos/csr", "rustok-grid-leptos/csr"]
-hydrate = ["leptos/hydrate", "rustok-grid-leptos/hydrate"]
-ssr = [
-  "leptos/ssr",
-  "rustok-grid-leptos/ssr",
-  "dep:leptos_axum",
-  "dep:rustok-core",
-  "dep:{crate_name}",
-  "rustok-api/server",
-]
-
-[dependencies]
-rustok-ui-core.workspace = true
-rustok-ui-transport.workspace = true
-rustok-ui-i18n.workspace = true
-rustok-grid.workspace = true
-rustok-grid-leptos = {{ workspace = true, default-features = false }}
-leptos-ui.workspace = true
-leptos.workspace = true
-leptos_axum = {{ workspace = true, optional = true }}
-leptos-auth.workspace = true
-rustok-graphql.workspace = true
-leptos-ui-routing.workspace = true
-leptos_router.workspace = true
-rustok-api = {{ workspace = true, default-features = false }}
-
-rustok-core = {{ workspace = true, optional = true }}
-{crate_name} = {{ path = "..", default-features = false, optional = true }}
-chrono = {{ workspace = true, features = ["serde"] }}
-thiserror = {{ workspace = true }}
-serde = {{ workspace = true, features = ["derive"] }}
-serde_json.workspace = true
-uuid = {{ workspace = true, features = ["serde"] }}
-tracing.workspace = true
-
-[package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui", "leptos-ui-routing", "leptos_axum", "{crate_name}", "rustok-core", "rustok-graphql", "leptos-auth"]
-"#
-    );
-    write_file_content(&admin_dir.join("Cargo.toml"), &cargo_toml, opts.dry_run)?;
-
-    // README.md
-    let readme = format!(
-        r#"# {admin_crate_name}
-
-Admin UI package for `{slug}`, following Fluid Frontend Architecture (FFA).
-
-## Responsibilities
-- Pure Rust view-models and search filtering in `core`
-- Decoupled backend communication via `transport`
-- Leptos UI components and shared `DataGrid` in `ui`
-- Localization catalog in `locales/`
-"#
-    );
-    write_file_content(&admin_dir.join("README.md"), &readme, opts.dry_run)?;
-
-    // locales/en.ftl
-    let en_ftl = format!(
-        r#"{slug}-title = {title}
-{slug}-description = Manage {title} configuration and operational workflows
-{slug}-empty = No records found
-{slug}-save = Save
-{slug}-cancel = Cancel
-{slug}-success = Operation completed successfully
-{slug}-error = An error occurred
-{slug}-search-placeholder = Search {title} records...
-{slug}-col-title = Title
-{slug}-col-status = Status
-{slug}-col-created = Created At
-{slug}-col-actions = Actions
-{slug}-action-create = Create New
-{slug}-action-edit = Edit
-{slug}-action-delete = Delete
-"#
-    );
-    write_file_content(
-        &admin_dir.join("locales").join("en.ftl"),
-        &en_ftl,
-        opts.dry_run,
-    )?;
-
-    // locales/ru.ftl
-    let ru_ftl = format!(
-        r#"{slug}-title = {title}
-{slug}-description = Управление настройками и рабочими процессами {title}
-{slug}-empty = Записи не найдены
-{slug}-save = Сохранить
-{slug}-cancel = Отмена
-{slug}-success = Операция успешно выполнена
-{slug}-error = Произошла ошибка
-{slug}-search-placeholder = Поиск записей {title}...
-{slug}-col-title = Название
-{slug}-col-status = Статус
-{slug}-col-created = Дата создания
-{slug}-col-actions = Действия
-{slug}-action-create = Создать
-{slug}-action-edit = Изменить
-{slug}-action-delete = Удалить
-"#
-    );
-    write_file_content(
-        &admin_dir.join("locales").join("ru.ftl"),
-        &ru_ftl,
-        opts.dry_run,
-    )?;
-
-    // src/i18n.rs
-    let i18n_rs = "rustok_ui_i18n::declare_module_i18n!();\n";
-    write_file_content(
-        &admin_dir.join("src").join("i18n.rs"),
-        i18n_rs,
-        opts.dry_run,
-    )?;
-
-    // src/core/mod.rs
-    let core_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
-
-//! Pure Rust view-models, search filters, and state machines for {title} admin UI.
-//!
-//! INVARIANT (FFA): This module MUST NOT import any UI framework types.
-//! All validation, search filtering, and state transition logic must be testable with pure #[test].
-
-use serde::{{Deserialize, Serialize}};
-
-/// Table row representation for {title} admin DataGrid.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct {pascal}AdminTableRow {{
-    pub id: String,
-    pub title: String,
-    pub status: String,
-    pub created_at: String,
-    pub can_edit: bool,
-    pub can_delete: bool,
-}}
-
-impl {pascal}AdminTableRow {{
-    pub fn new(
-        id: impl Into<String>,
-        title: impl Into<String>,
-        status: impl Into<String>,
-        created_at: impl Into<String>,
-    ) -> Self {{
-        Self {{
-            id: id.into(),
-            title: title.into(),
-            status: status.into(),
-            created_at: created_at.into(),
-            can_edit: true,
-            can_delete: true,
-        }}
-    }}
-}}
-
-/// Pure in-memory search filter for {title} admin records.
-pub fn filter_rows(
-    rows: &[{pascal}AdminTableRow],
-    query: Option<&str>,
-) -> Vec<{pascal}AdminTableRow> {{
-    match query {{
-        Some(q) if !q.trim().is_empty() => {{
-            let normalized = q.trim().to_lowercase();
-            rows.iter()
-                .filter(|r| {{
-                    r.title.to_lowercase().contains(&normalized)
-                        || r.status.to_lowercase().contains(&normalized)
-                }})
-                .cloned()
-                .collect()
-        }}
-        _ => rows.to_vec(),
-    }}
-}}
-
-#[cfg(test)]
-mod tests {{
-    use super::*;
-
-    #[test]
-    fn test_filter_rows_matches_title_and_status() {{
-        let rows = vec![
-            {pascal}AdminTableRow::new("1", "Production Workspace", "active", "2026-01-01"),
-            {pascal}AdminTableRow::new("2", "Archived Channel", "archived", "2026-01-02"),
-        ];
-
-        let filtered = filter_rows(&rows, Some("production"));
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].id, "1");
-
-        let status_filtered = filter_rows(&rows, Some("archived"));
-        assert_eq!(status_filtered.len(), 1);
-        assert_eq!(status_filtered[0].id, "2");
-
-        let all = filter_rows(&rows, None);
-        assert_eq!(all.len(), 2);
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &admin_dir.join("src").join("core").join("mod.rs"),
-        &core_rs,
-        opts.dry_run,
-    )?;
-
-    // src/transport/mod.rs
-    let transport_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
-
-//! Transport facade connecting UI to backend capabilities.
-//! UI components must NEVER call raw endpoints directly.
-
-#[derive(Clone, Debug, Default)]
-pub struct {pascal}AdminTransport;
-
-impl {pascal}AdminTransport {{
-    pub fn new() -> Self {{
-        Self
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &admin_dir.join("src").join("transport").join("mod.rs"),
-        &transport_rs,
-        opts.dry_run,
-    )?;
-
-    // src/ui/mod.rs
-    let ui_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
-
-//! UI components, shared DataGrid, and search integration for {title} admin.
-
-use leptos::prelude::*;
-use rustok_grid::column::GridColumnDef;
-use rustok_grid::filter::GridFilterType;
-use rustok_grid::pagination::GridPagination;
-use rustok_grid_leptos::prelude::*;
-
-use crate::core::{{filter_rows, {pascal}AdminTableRow}};
-use crate::i18n::t;
-
-#[component]
-pub fn {pascal}AdminPage() -> impl IntoView {{
-    let (search_query, set_search_query) = signal(String::new());
-    let pagination = RwSignal::new(GridPagination::default());
-
-    // Sample/initial data rows — in production, loaded via transport facade
-    let sample_rows = vec![
-        {pascal}AdminTableRow::new("rec-1", "Default {title} Workspace", "active", "2026-01-01"),
-        {pascal}AdminTableRow::new("rec-2", "Secondary {title} Profile", "draft", "2026-01-02"),
-    ];
-    let rows_store = StoredValue::new(sample_rows);
-
-    let filtered_rows = Memo::new(move |_| {{
-        let query = search_query.get();
-        let rows = rows_store.get_value();
-        filter_rows(&rows, if query.trim().is_empty() {{ None }} else {{ Some(&query) }})
-    }});
-
-    // Columns specification for shared DataGrid
-    let columns = vec![
-        GridColumnDef::checkbox(),
-        GridColumnDef::new("title", t(None, "{slug}-col-title", "Title")).filter(GridFilterType::text()),
-        GridColumnDef::new("status", t(None, "{slug}-col-status", "Status")),
-        GridColumnDef::new("created_at", t(None, "{slug}-col-created", "Created At")),
-        GridColumnDef::new("actions", t(None, "{slug}-col-actions", "Actions")),
-    ];
-
-    let cell_renderer = Callback::new(move |(row, col_id): ({pascal}AdminTableRow, String)| {{
-        let row_id = row.id.clone();
-        match col_id.as_str() {{
-            "title" => view! {{
-                <span class="font-medium text-foreground">{{row.title}}</span>
-            }}.into_any(),
-            "status" => view! {{
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground">
-                    {{row.status}}
-                </span>
-            }}.into_any(),
-            "created_at" => view! {{
-                <span class="text-xs text-muted-foreground">{{row.created_at}}</span>
-            }}.into_any(),
-            "actions" => view! {{
-                <div class="flex items-center gap-2">
-                    // RBAC-guarded action buttons
-                    <button
-                        type="button"
-                        class="text-xs text-primary hover:underline font-medium"
-                        disabled=!row.can_edit
-                        on:click=move |_| {{
-                            tracing::info!(id = %row_id, "edit action triggered");
-                        }}
-                    >
-                        {{t(None, "{slug}-action-edit", "Edit")}}
-                    </button>
-                    <button
-                        type="button"
-                        class="text-xs text-destructive hover:underline font-medium"
-                        disabled=!row.can_delete
-                        on:click=move |_| {{
-                            tracing::info!(id = %row_id, "delete action triggered");
-                        }}
-                    >
-                        {{t(None, "{slug}-action-delete", "Delete")}}
-                    </button>
-                </div>
-            }}.into_any(),
-            _ => ().into_any(),
-        }}
-    }});
-
-    view! {{
-        <div class="p-6 space-y-6">
-            // Header with RBAC create button & title
-            <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-foreground">"{title}"</h1>
-                    <p class="text-sm text-muted-foreground">"{desc}"</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button
-                        type="button"
-                        class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-                        on:click=move |_| {{
-                            tracing::info!("create new {slug} record initiated");
-                        }}
-                    >
-                        {{t(None, "{slug}-action-create", "Create New")}}
-                    </button>
-                </div>
-            </div>
-
-            // Toolbar: Local table search & filter input
-            <div class="flex items-center justify-between gap-4">
-                <div class="relative w-72">
-                    <input
-                        type="text"
-                        placeholder={{t(None, "{slug}-search-placeholder", "Search records...")}}
-                        prop:value=move || search_query.get()
-                        on:input=move |ev| set_search_query.set(event_target_value(&ev))
-                        class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary transition-all"
-                    />
-                </div>
-                <div class="text-xs text-muted-foreground">
-                    "Search indexed globally via "
-                    <code class="px-1 py-0.5 bg-muted rounded">"rustok-search"</code>
-                </div>
-            </div>
-
-            // Shared platform DataGrid
-            <div class="rounded-xl border border-border overflow-hidden bg-card shadow-sm">
-                <DataGrid
-                    columns=columns
-                    data=Signal::derive(move || filtered_rows.get())
-                    key_fn=|row: &{pascal}AdminTableRow| row.id.clone()
-                    cell_renderer=cell_renderer
-                    empty_message=t(None, "{slug}-empty", "No records found")
-                    pagination=pagination
-                    on_row_click=Callback::new(|_: {pascal}AdminTableRow| ())
-                />
-            </div>
-        </div>
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &admin_dir.join("src").join("ui").join("mod.rs"),
-        &ui_rs,
-        opts.dry_run,
-    )?;
-
-    // src/lib.rs
-    let lib_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
-
-pub mod core;
-pub mod i18n;
-pub mod transport;
-pub mod ui;
-
-pub use core::*;
-pub use transport::*;
-pub use ui::{pascal}AdminPage;
-"#
-    );
-    write_file_content(&admin_dir.join("src").join("lib.rs"), &lib_rs, opts.dry_run)?;
-
-    Ok(())
-}
-
-fn generate_storefront_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
-    let slug = &opts.slug;
-    let title = &opts.title;
-    let desc = &opts.description;
-    let crate_name = opts.crate_name();
-    let sf_crate_name = format!("{crate_name}-storefront");
-    let sf_dir = module_dir.join("storefront");
-
-    // Cargo.toml
-    let cargo_toml = format!(
-        r#"[package]
-name = "{sf_crate_name}"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Storefront FFA package for {title}"
-
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
-[lib]
-crate-type = ["rlib"]
 
 [features]
 default = []
 csr = ["leptos/csr"]
 hydrate = ["leptos/hydrate"]
-ssr = [
-  "leptos/ssr",
-  "dep:leptos_axum",
-  "dep:rustok-core",
-  "dep:{crate_name}",
-  "rustok-api/server",
-]
+ssr = ["leptos/ssr"]
 
 [dependencies]
-rustok-ui-core.workspace = true
-rustok-ui-transport.workspace = true
-rustok-ui-i18n.workspace = true
-leptos-ui.workspace = true
 leptos.workspace = true
-leptos_axum = {{ workspace = true, optional = true }}
-leptos-auth.workspace = true
-rustok-graphql.workspace = true
-leptos-ui-routing.workspace = true
-leptos_router.workspace = true
-rustok-api = {{ workspace = true, default-features = false }}
-
-rustok-core = {{ workspace = true, optional = true }}
-{crate_name} = {{ path = "..", default-features = false, optional = true }}
-chrono = {{ workspace = true, features = ["serde"] }}
-thiserror = {{ workspace = true }}
-serde = {{ workspace = true, features = ["derive"] }}
-serde_json.workspace = true
-uuid = {{ workspace = true, features = ["serde"] }}
-tracing.workspace = true
-
-[package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui", "leptos-auth", "rustok-graphql", "leptos-ui-routing", "leptos_axum", "{crate_name}", "rustok-core"]
+rustok-ui-i18n.workspace = true
+rustok-ui-transport.workspace = true
 "#
     );
-    write_file_content(&sf_dir.join("Cargo.toml"), &cargo_toml, opts.dry_run)?;
 
-    // README.md
     let readme = format!(
-        r#"# {sf_crate_name}
+        r#"# {ui_crate}
 
-Storefront UI package for `{slug}`, following Fluid Frontend Architecture (FFA).
+Draft Leptos {side} UI adapter for the {slug} native module.
 
-## Responsibilities
-- Pure Rust view-models in `core`
-- Decoupled backend communication via `transport`
-- Leptos UI components and templates in `ui`
-- Localization catalog in `locales/`
+## Responsibility
+- Keep UI rendering and bindings in src/ui/leptos.rs.
+- Keep pure, framework-independent presentation state in src/core/mod.rs.
+- Keep all future backend calls behind src/transport/mod.rs.
+- Do not claim that CRUD, GraphQL, or native server transport exists.
+
+## Current state
+This is an **unmounted development package**, not a registered functional route.
+There is no owner operation to read or mutate. The transport facade fails
+closed until a genuine backend API and its transport-specific adapters exist.
+No business data, permissions, tenant context or mutation outcomes are invented.
+
+The scaffold command writes this development package into the Cargo workspace
+without mounting it in a Leptos host or advertising a live UI in rustok-module.toml.
+After the module owner implements business operations, complete and verify the
+native and GraphQL adapters, then add Leptos host composition and live UI
+manifest metadata in a separate feature change before promoting readiness. Next.js applications own any separate classic packages in their hosts
+and are not a generated FFA adapter.
+
+## Reference
+- [Blog's production Leptos package](../../rustok-blog/{side}/README.md)
+- [FFA implementation guide](../../../../docs/UI/module-package-implementation.md)
+
+## Verification
+- cargo check -p {ui_crate}
+- cargo test -p {ui_crate}
+- cargo xtask module lint {slug}
 "#
     );
-    write_file_content(&sf_dir.join("README.md"), &readme, opts.dry_run)?;
 
-    // locales/en.ftl
-    let en_ftl = format!(
-        r#"{slug}-storefront-title = {title}
-{slug}-storefront-description = {desc}
-{slug}-storefront-empty = No items available
+    let api = format!(
+        r#"# {ui_crate} / CRATE_API
+
+## Role
+Draft {side} Leptos adapter for {slug}. Not published as a working FFA surface.
+
+## Public surface
+- {page} renders an explicit unavailability message.
+- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
+
+## Platform Capability Bindings
+- Transport selection uses rustok-ui-transport; both owner-specific adapters explicitly reject calls until implemented.
+
+## Domain Collaborations
+- None; an owner API and context invariants must be specified first.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- None. No CRUD or owner business operation is available.
+
+### Domain Invariants
+- Missing transport is always reported as unavailable.
+
+### Events / Outbox Side Effects
+- None. The UI never simulates successful mutations.
+
+### Errors / Failure Codes
+- MissingOwnerContract is a typed unavailable result for each adapter, not an empty success.
 "#
     );
-    write_file_content(
-        &sf_dir.join("locales").join("en.ftl"),
-        &en_ftl,
-        opts.dry_run,
-    )?;
 
-    // locales/ru.ftl
-    let ru_ftl = format!(
-        r#"{slug}-storefront-title = {title}
-{slug}-storefront-description = {desc}
-{slug}-storefront-empty = Нет доступных элементов
-"#
-    );
-    write_file_content(
-        &sf_dir.join("locales").join("ru.ftl"),
-        &ru_ftl,
-        opts.dry_run,
-    )?;
+    let model = r#"//! Framework- and transport-independent owner-boundary error type.
 
-    // src/i18n.rs
-    let i18n_rs = "rustok_ui_i18n::declare_module_i18n!();\n";
-    write_file_content(&sf_dir.join("src").join("i18n.rs"), i18n_rs, opts.dry_run)?;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MissingOwnerContract;
 
-    // src/core.rs
-    let core_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
+impl std::fmt::Display for MissingOwnerContract {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("owner API not implemented; FFA transport unavailable")
+    }
+}
 
-//! Pure Rust view-models and input validation for {title} storefront UI.
+impl std::error::Error for MissingOwnerContract {}
+"#.to_string();
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct {pascal}StorefrontViewModel {{
-    pub title: String,
-}}
+    let core = r#"//! Pure presentation policy: reusable by a future Dioxus adapter.
+//! Do not put Leptos signals, framework resources or GraphQL requests here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiCapabilityState {
+    Unavailable,
+}
 
-impl {pascal}StorefrontViewModel {{
-    pub fn new(title: String) -> Self {{
-        Self {{ title }}
+pub const fn owner_capability_state() -> UiCapabilityState {
+    UiCapabilityState::Unavailable
+}
+"#.to_string();
+
+    // This is a real FFA selection facade through the existing platform
+    // transport owner. Each adapter explicitly reports missing business logic:
+    // no invented GraphQL document, server function or fake successful result.
+    let transport = format!(
+        r#"//! Leptos/Dioxus-neutral owner transport facade.
+//! Neither adapter implements a business operation until the owner API exists.
+
+mod graphql_adapter;
+mod native_server_adapter;
+
+use rustok_ui_transport::{{execute_selected_transport, UiTransportError, UiTransportPath}};
+
+pub type ApiError = UiTransportError;
+
+pub fn selected_transport_path() -> UiTransportPath {{
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {{
+        UiTransportPath::NativeServer
+    }}
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {{
+        UiTransportPath::Graphql
     }}
 }}
+
+/// Explicit path injection makes the facade usable by future Dioxus bindings
+/// without coupling the pure model or core to a Leptos build profile.
+pub async fn fetch_owner_capability_for(
+    path: UiTransportPath,
+) -> Result<(), ApiError> {{
+    execute_selected_transport(
+        "{slug}/{side}",
+        path,
+        native_server_adapter::fetch_owner_capability,
+        graphql_adapter::fetch_owner_capability,
+    )
+    .await
+}}
+
+pub async fn fetch_owner_capability() -> Result<(), ApiError> {{
+    fetch_owner_capability_for(selected_transport_path()).await
+}}
+"#
+    );
+    let adapter_error = r#"//! Draft adapter: no owner service or GraphQL schema is declared.
+//! Never substitute a simulated record or Ok(()) for missing API behavior.
+use crate::model::MissingOwnerContract;
+
+pub(super) async fn fetch_owner_capability() -> Result<(), MissingOwnerContract> {
+    Err(MissingOwnerContract)
+}
+"#.to_string();
+
+    let leptos = format!(
+        r#"use leptos::prelude::*;
+use crate::{{core, i18n::t}};
+
+/// Render-only adapter. Future Dioxus UI binds the same core/transport.
+#[component]
+pub fn {page}() -> impl IntoView {{
+    let _state = core::owner_capability_state();
+    view! {{
+        <section class="p-6 space-y-3" aria-live="polite">
+            <h1 class="text-2xl font-semibold">{title_rust}</h1>
+            <p class="text-muted-foreground">{description_rust}</p>
+            <p role="status">
+                {{t(None, "{side_key}", "This module's UI is not available until its owner API is implemented.")}}
+            </p>
+        </section>
+    }}
+}}
+"#
+    );
+    let lib = format!(
+        r#"//! Draft FFA {side} package for {slug}.
+
+mod core;
+mod i18n;
+mod model;
+mod transport;
+mod ui;
+
+pub use ui::{page};
 
 #[cfg(test)]
-mod tests {{
-    use super::*;
+mod tests;
+"#
+    );
+
+    let tests = r#"#[test]
+fn pure_presentation_state_does_not_fake_a_connected_owner() {
+    assert_eq!(
+        crate::core::owner_capability_state(),
+        crate::core::UiCapabilityState::Unavailable
+    );
+    assert_eq!(
+        crate::model::MissingOwnerContract.to_string(),
+        "owner API not implemented; FFA transport unavailable"
+    );
+}
+
+#[test]
+fn both_paths_have_an_explicit_selection_contract() {
+    use rustok_ui_transport::UiTransportPath;
+    assert_eq!(UiTransportPath::NativeServer.as_str(), "native_server");
+    assert_eq!(UiTransportPath::Graphql.as_str(), "graphql");
+}
+
+#[test]
+fn documented_ui_is_not_a_fake_business_api() {
+    let docs = include_str!("../../CRATE_API.md");
+    for section in [
+        "## Platform Capability Bindings",
+        "## Domain Collaborations",
+        "## Minimum Contract Set",
+        "### Input DTOs/Commands",
+        "### Domain Invariants",
+        "### Events / Outbox Side Effects",
+        "### Errors / Failure Codes",
+    ] {
+        assert!(docs.contains(section), "Missing UI contract: {section}");
+    }
+    assert!(docs.contains("No CRUD or owner business operation is available"));
+}
+"#.to_string();
+
+    let translations_en = format!(
+        "{side_key} = This module's UI is not available until its owner API is implemented.\n"
+    );
+    let translations_ru = format!(
+        "{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n"
+    );
+
+    [
+        ("Cargo.toml", cargo),
+        ("README.md", readme),
+        ("CRATE_API.md", api),
+        ("locales/en.ftl", translations_en),
+        ("locales/ru.ftl", translations_ru),
+        ("src/lib.rs", lib),
+        ("src/core/mod.rs", core),
+        ("src/model.rs", model),
+        ("src/i18n.rs", "rustok_ui_i18n::declare_module_i18n!();\n".to_string()),
+        ("src/transport/mod.rs", transport),
+        ("src/transport/native_server_adapter.rs", adapter_error.clone()),
+        ("src/transport/graphql_adapter.rs", adapter_error),
+        ("src/ui/mod.rs", format!("mod leptos;\npub use leptos::{page};\n")),
+        ("src/ui/leptos.rs", leptos),
+        ("src/tests/mod.rs", "mod contract;\n".to_string()),
+        ("src/tests/contract.rs", tests),
+    ]
+    .into_iter()
+    .map(|(file, source)| (PathBuf::from(side).join(file), source))
+    .collect()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::render_ui_templates;
+    use crate::scaffold::options::{ScaffoldOptions, ScaffoldProfile, ScaffoldUi};
+    use std::path::PathBuf;
+
+    fn options(ui: ScaffoldUi) -> ScaffoldOptions {
+        ScaffoldOptions {
+            profile: ScaffoldProfile::NativeModule,
+            slug: "module_example".to_string(),
+            title: "Module \"Example\"".to_string(),
+            description: "New module UI without a live business owner yet".to_string(),
+            category: "collaboration".to_string(),
+            with_db: false,
+            ui,
+            dry_run: true,
+            skip_server_wire: false,
+            skip_validate: false,
+        }
+    }
+
+    fn content<'a>(files: &'a [(PathBuf, String)], path: &str) -> &'a str {
+        &files.iter().find(|(entry, _)| entry == &PathBuf::from(path))
+            .unwrap_or_else(|| panic!("missing {path}")).1
+    }
 
     #[test]
-    fn test_storefront_view_model() {{
-        let vm = {pascal}StorefrontViewModel::new("Sample Title".to_string());
-        assert_eq!(vm.title, "Sample Title");
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &sf_dir.join("src").join("core").join("mod.rs"),
-        &core_rs,
-        opts.dry_run,
-    )?;
+    fn scaffolded_ui_is_documented_as_unmounted_until_owner_wiring_exists() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        for side in ["admin", "storefront"] {
+            let docs = content(&files, &format!("{side}/README.md"));
+            assert!(docs.contains("unmounted development package"));
+            assert!(docs.contains("Cargo workspace"));
+            assert!(docs.contains("native and GraphQL adapters"));
+        }
+    }
 
-    // src/transport/mod.rs
-    let transport_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
+    #[test]
+    fn no_ui_emits_no_packages() {
+        assert!(render_ui_templates(&options(ScaffoldUi::None), "ModuleExample").is_empty());
+    }
 
-//! Transport facade for {title} storefront.
+    #[test]
+    fn each_ui_mode_has_pure_core_and_separate_leptos_adapter() {
+        for (ui, side) in [
+            (ScaffoldUi::Admin, "admin"),
+            (ScaffoldUi::Storefront, "storefront"),
+        ] {
+            let files = render_ui_templates(&options(ui), "ModuleExample");
+            assert!(files.iter().all(|(path, _)| path.starts_with(side)));
+            assert_eq!(files.len(), 16);
+            let root = format!("{side}/");
+            let lib = content(&files, &format!("{root}src/lib.rs"));
+            assert!(!lib.contains("#[component]"));
+            assert!(!lib.contains("pub mod transport"));
+            assert!(lib.contains("mod core;"));
+            let core = content(&files, &format!("{root}src/core/mod.rs"));
+            assert!(!core.contains("leptos::"));
+            assert!(!core.contains("dioxus::"));
+            assert!(!core.contains("rustok_graphql::"));
+            let leptos = content(&files, &format!("{root}src/ui/leptos.rs"));
+            assert!(leptos.contains("#[component]"));
+            assert!(leptos.contains("Module \\\"Example\\\""));
+            assert!(!leptos.contains("native_server_adapter::"));
+            assert!(!leptos.contains("graphql_adapter::"));
+        }
+    }
 
-#[derive(Clone, Debug, Default)]
-pub struct {pascal}StorefrontTransport;
+    #[test]
+    fn dual_path_transport_is_real_selection_but_unimplemented_business_io() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        assert_eq!(files.len(), 32);
+        for side in ["admin", "storefront"] {
+            let root = format!("{side}/");
+            let facade = content(&files, &format!("{root}src/transport/mod.rs"));
+            assert!(facade.contains("execute_selected_transport("));
+            assert!(facade.contains("UiTransportPath::NativeServer"));
+            assert!(facade.contains("UiTransportPath::Graphql"));
+            assert!(facade.contains("pub async fn fetch_owner_capability_for("));
+            for path in ["native_server_adapter.rs", "graphql_adapter.rs"] {
+                let adapter = content(&files, &format!("{root}src/transport/{path}"));
+                assert!(adapter.contains("Err(MissingOwnerContract)"));
+                assert!(!adapter.contains("Ok(())"));
+            }
+            let cargo = content(&files, &format!("{root}Cargo.toml"));
+            let parsed: toml::Value = toml::from_str(cargo).unwrap();
+            assert!(parsed["dependencies"].get("rustok-ui-transport").is_some());
+            assert!(parsed["dependencies"].get("rustok-graphql").is_none());
+            assert!(parsed["dependencies"].get("sea-orm").is_none());
+        }
+    }
 
-impl {pascal}StorefrontTransport {{
-    pub fn new() -> Self {{
-        Self
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &sf_dir.join("src").join("transport").join("mod.rs"),
-        &transport_rs,
-        opts.dry_run,
-    )?;
+    #[test]
+    fn no_nextjs_or_fake_crud_are_generated_by_ffa() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        let all = files.iter().map(|(p, s)| format!("{}:\n{s}", p.display()))
+            .collect::<Vec<_>>().join("\n");
+        assert!(!all.contains("apps/next-"));
+        for forbidden in [
+            "sample_rows", "rec-1", "tracing::info!", "create new module_example record",
+            "can_edit: true", "can_delete: true", "DataGrid", "rustok-grid-leptos",
+            "registerAdminModule(", "registerStorefrontModule(", "GraphqlRequest::new(",
+        ] {
+            assert!(!all.contains(forbidden), "fake UI pattern: {forbidden}");
+        }
+    }
 
-    // src/ui/mod.rs
-    let ui_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
+    #[test]
+    fn future_dioxus_can_share_pure_core_model_and_transport() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        for (path, source) in &files {
+            let pure = path.ends_with("src/model.rs")
+                || path.ends_with("src/core/mod.rs")
+                || path.to_string_lossy().contains("/src/transport/");
+            if pure {
+                for framework in ["leptos::", "dioxus::", "leptos_ui::"] {
+                    assert!(!source.contains(framework),
+                        "{framework} must not leak into {}", path.display());
+                }
+            }
+            assert!(!path.ends_with("src/ui/dioxus.rs"),
+                "Dioxus is a future sibling adapter, not a replacement yet");
+        }
+        assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
+        assert!(files.iter().any(|(p, _)| p.ends_with("src/transport/mod.rs")));
+    }
 
-use leptos::prelude::*;
-use crate::i18n::t;
-
-#[component]
-pub fn {pascal}StorefrontView() -> impl IntoView {{
-    view! {{
-        <div class="rustok-{slug}-storefront-widget p-4">
-            <h2 class="text-xl font-semibold">{{t(None, "{slug}-storefront-title", "{title}")}}</h2>
-            <p class="text-muted-foreground">{{t(None, "{slug}-storefront-description", "{desc}")}}</p>
-        </div>
-    }}
-}}
-"#
-    );
-    write_file_content(
-        &sf_dir.join("src").join("ui").join("mod.rs"),
-        &ui_rs,
-        opts.dry_run,
-    )?;
-
-    // src/lib.rs
-    let lib_rs = format!(
-        r#"/*
- * Copyright (c) 2026 RusTokRs.
- *
- * This file is part of RusTok.
- * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
- * See the LICENSE file in the project root for full license terms.
- *
- * You may not remove or alter this copyright notice or license header.
- */
-
-pub mod core;
-pub mod i18n;
-pub mod transport;
-pub mod ui;
-
-pub use core::*;
-pub use transport::*;
-pub use ui::{pascal}StorefrontView;
-"#
-    );
-    write_file_content(&sf_dir.join("src").join("lib.rs"), &lib_rs, opts.dry_run)?;
-
-    Ok(())
+    #[test]
+    fn result_does_not_claim_transport_or_business_readiness() {
+        for (_, source) in render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample") {
+            assert!(!source.contains("Owner API is connected."));
+        }
+    }
 }

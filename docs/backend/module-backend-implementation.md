@@ -75,15 +75,20 @@ roll back failed writes, and never return success after failed validation.
 
 ### Current implementation gap
 
-At phase 1 the backend renderer still emits `src/contract_tests.rs`,
-public `entities`, placeholder service/integration/event layers and a
-fabricated migration. The UI renderer still emits `sample_rows`, log-only
-CRUD and empty transport facades. Registration may be optimistic and a
-failed post-scaffold validation can still return success. The profile guard
-and parser unit tests delivered in phase 1 do not validate generated source.
-Architecture validation, template cutover, Next.js parity, atomic
-registration and executable golden tests are subsequent phases.
-Generated modules must not be treated as reference-ready yet.
+The existing `cargo xtask scaffold` renderer emits a minimal native runtime
+and internal contract tests without invented services, schema, migrations or
+business operations. `--with-db` remains unsupported until an owner schema
+exists. `--ui admin|storefront|dual` now creates unmounted Leptos FFA
+development packages within the Cargo workspace, with independent core/model,
+a shared transport-selection facade, two explicitly unavailable owner adapters,
+`ui/leptos.rs`, i18n and contract tests.
+The module manifest is `future_ui` with **no** live `[provides.*_ui]`.
+The central readiness board remains `not_started` even though source shape
+is `core_transport_ui`. No Leptos host route is mounted.
+Classic Next.js packages belong to their own hosts and are not FFA.
+Successful publish metadata validation does not imply runtime or UI readiness.
+Atomic rollback, complete manifest-edit dry-run and an executable golden
+generation matrix remain future improvements.
 
 ## Target Module Layout
 

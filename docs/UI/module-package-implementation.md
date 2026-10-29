@@ -15,6 +15,19 @@ For verification commands, see [Module UI Package Verification](./module-package
 
 ---
 
+### FFA scope versus classical Next.js packages
+
+This guide governs module-owned Rust UI packages under `admin/` and
+`storefront/`, their existing Leptos render adapter `ui/leptos.rs`,
+and the planned Dioxus sibling `ui/dioxus.rs`. Both should call the same
+framework-neutral core, model and transport facade.
+
+Classic Next.js packages are separate React packages, owned by their
+respective Next hosts. They do not follow this FFA layout and are not
+generated or validated by the Rust FFA scaffolding command. Shared
+business capabilities and backend APIs can still require functional
+cross-client checks when both are actually implemented.
+
 ## Required File Structure
 
 Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate) should follow

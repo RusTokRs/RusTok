@@ -126,8 +126,17 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         cli_option_value(args, "--category").unwrap_or_else(|| "collaboration".to_string());
 
     let no_db = args.iter().any(|arg| arg == "--no-db");
-    let with_db = !no_db;
+    let with_db = args.iter().any(|arg| arg == "--with-db");
+    if no_db && with_db {
+        bail!("--with-db and --no-db are conflicting persistence requests");
+    }
 
+    let with_ui_alias = args.iter().any(|arg| arg == "--with-ui");
+    if with_ui_alias && (args.iter().any(|arg| arg == "--no-ui")
+        || args.iter().any(|arg| arg == "--ui"))
+    {
+        bail!("--with-ui cannot be combined with --ui or --no-ui");
+    }
     if args.iter().any(|arg| arg == "--no-ui")
         && args.iter().any(|arg| arg == "--ui")
     {
@@ -144,7 +153,9 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         }
     }
 
-    let ui = if args.iter().any(|arg| arg == "--no-ui") {
+    let ui = if with_ui_alias {
+        ScaffoldUi::Dual
+    } else if args.iter().any(|arg| arg == "--no-ui") {
         ScaffoldUi::None
     } else if let Some(ui_val) = cli_option_value(args, "--ui") {
         match ui_val.trim().to_ascii_lowercase().as_str() {
@@ -157,7 +168,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
             ),
         }
     } else {
-        ScaffoldUi::Dual
+        // A new module has no service/transport contract to advertise yet.
+        ScaffoldUi::None
     };
 
     Ok(Some(ScaffoldOptions {
@@ -196,14 +208,15 @@ pub fn print_scaffold_usage() {
     println!("  --title <title>          Human-readable title (defaults to Title Case of slug)");
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
-    println!("  --no-db                  Omit SeaORM persistence entities and migrations");
-    println!("  --ui <mode>              UI classification: dual, admin, storefront, or none (default: dual)");
-    println!("  --with-ui                Alias for --ui dual");
-    println!("  --no-ui                  Alias for --ui none (headless module)");
+    println!("  --no-db                  No storage schema (default)");
+    println!("  --with-db                Requires a defined owner schema; unsupported until DB template cutover");
+    println!("  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates");
+    println!("  --with-ui                Alias for --ui dual; draft crates are created unmounted");
+    println!("  --no-ui                  Explicit headless module (same as default)");
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
     println!(
-        "  --dry-run                Preview generated files and updates without writing to disk"
+        "  --dry-run                Preview generated source files (registration edits not shown)"
     );
     println!();
     println!("Examples:");
@@ -252,11 +265,11 @@ mod tests {
     }
 
     #[test]
-    fn current_defaults_are_explicitly_native() {
+    fn default_creates_only_native_runtime_identity() {
         let request = parse(&["example"]).expect("valid native request");
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
-        assert!(request.with_db, "existing default remains until backend cutover");
-        assert_eq!(request.ui, ScaffoldUi::Dual);
+        assert!(!request.with_db);
+        assert_eq!(request.ui, ScaffoldUi::None);
     }
 
     #[test]
@@ -269,6 +282,12 @@ mod tests {
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
         assert!(!request.with_db);
         assert_eq!(request.ui, ScaffoldUi::None);
+    }
+
+    #[test]
+    fn explicit_storage_request_is_never_implicit_or_conflicting() {
+        assert!(parse(&["example", "--with-db"]).unwrap().with_db);
+        assert!(parse(&["example", "--with-db", "--no-db"]).is_err());
     }
 
     #[test]
@@ -304,6 +323,13 @@ mod tests {
     fn conflicting_ui_requests_fail_closed() {
         assert!(parse(&["example", "--ui", "admin", "--no-ui"]).is_err());
         assert!(parse(&["example", "--no-ui", "--ui", "dual"]).is_err());
+    }
+
+    #[test]
+    fn with_ui_alias_never_silently_downgrades_to_headless() {
+        assert_eq!(parse(&["example", "--with-ui"]).unwrap().ui, ScaffoldUi::Dual);
+        assert!(parse(&["example", "--with-ui", "--no-ui"]).is_err());
+        assert!(parse(&["example", "--with-ui", "--ui", "dual"]).is_err());
     }
 
     #[test]

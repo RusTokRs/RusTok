@@ -18,15 +18,20 @@ For verification commands, see [Module UI Package Verification](./module-package
 
 ## What Is FFA
 
-**FFA — Fluid Frontend Architecture** is the RusTok-specific model that allows the same UI
-code to run as an embedded monolith (SSR/hydrate inside `apps/server`) and as a standalone
-headless client (Trunk/CSR, Next.js, mobile) without rewriting the UI layer.
+**FFA — Fluid Frontend Architecture** is the RusTok-specific model for
+framework-separated **Rust UI**: pure core/model, transport facade and a
+replaceable Leptos adapter (SSR/hydrate or CSR/headless). Dioxus is a planned
+second Rust render adapter that will reuse core/model and transport.
+Classic React/Next.js modules are independent UI implementations owned
+inside their Next hosts; they do not execute or implement the FFA Rust layer.
 
 Full definition: [`docs/research/fluid-frontend-architecture.md`](../research/fluid-frontend-architecture.md)
 
-The core claim: **deployment topology changes the transport and packaging, but never the
-components, routes, or state logic.** If switching from monolith to headless requires
-rewriting UI, the package is not FFA-compliant.
+The core claim for Rust FFA is that switching Leptos SSR/hydrate to
+CSR/headless changes only the selected transport, not domain presentation
+logic or the Leptos components. A later Dioxus render adapter shares the
+same pure state and backend facades but provides its own components.
+A classic Next.js host independently composes React components and routes.
 
 ---
 
@@ -43,7 +48,7 @@ ui/leptos         — thin Leptos render/bind adapter
 ### Why three layers?
 
 **`core` is framework-agnostic** so that when the platform moves from Leptos to Dioxus,
-only `ui/leptos.rs` needs to be replaced with `ui/dioxus.rs`. View-models, state transitions,
+only a new `ui/dioxus.rs` render adapter needs to be added alongside `ui/leptos.rs`. View-models, state transitions,
 validation, and display policy are reused unchanged across frameworks and across transport
 profiles.
 Framework-agnostic UI route/query contracts (`UiRouteContext`, `UiRouteQueryUpdate`,
@@ -82,11 +87,11 @@ Both paths must work. Neither cancels the other.
 | Adding a `#[server]` path | GraphQL path stays; both coexist |
 | SSR monolith deployment | `native_server_adapter` is preferred |
 | CSR/Trunk debug | `graphql_adapter` is used; `/api/fn/*` must not be required |
-| Next.js or mobile host | GraphQL/REST only; `#[server]` is never involved |
+| Classic Next.js host or mobile client | Uses public GraphQL/REST; not a Rust FFA adapter and never calls `#[server]` |
 
 The reason for both paths: in monolith deployment `apps/admin` and `apps/storefront` run
 same-origin with `apps/server`, so native server functions provide a short internal Rust
-path. But headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
+path. But independent headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
 and must not depend on Leptos runtime.
 
 Shared transport path/error evidence and build-profile selected transport orchestration for module facades belongs
@@ -187,10 +192,14 @@ transport-neutral `model`, pure tested `core`, working `transport`, render-only
 an empty transport facade for the two real native/GraphQL paths, subject to the
 documented operator/bootstrap exception. `--no-ui` means no UI packages.
 
-A functional UI publication also requires applicable Next.js admin/frontend
-route and capability parity through the public transport. Leptos-only source
-or compilation is not proof of Next.js parity or `parity_verified` status.
-The current scaffold renderer does not yet meet this target contract.
+A functional **Leptos FFA publication** requires actual native and GraphQL
+transport implementations and the relevant Leptos host registration. It does
+not structurally require a classic Next.js package. Where the same business
+feature is independently exposed by a Next host, the feature's API and
+capability compatibility must be reviewed in that host's own scope; such
+verification is not a prerequisite for the FFA source-layout lint and cannot
+be inferred from Leptos compilation. The current scaffold preview does not
+yet meet the functional-publication contract.
 
 ## What Counts as a Correctly Structured UI Package
 
@@ -228,3 +237,32 @@ The structural shape taxonomy used in
 | [Transport Contract](./graphql-architecture.md) | Transport dual-path rules |
 | [ADR: SSR-first + headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md) | Governing decision |
 | [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Creating a new module UI |
+
+## Existing scaffold: draft UI preview versus live surface
+
+The `cargo xtask scaffold` / `cargo xtask module new` generator is a long-lived
+workspace entrypoint, not a new competing scaffolding system. Its native backend
+now starts without invented domain state. A requested `--ui admin|storefront|dual`
+creates unmounted Cargo workspace Leptos packages for later module-owned work.
+Use `--dry-run` to inspect without writing. The manifest uses `future_ui`
+and does not declare any live `[provides.*_ui]` until the module owner
+implements real operations and host wiring.
+The generated draft contains only Leptos FFA files. Classic Next.js packages are
+independent React packages inside Next hosts, not FFA adapters and not part
+of the Rust scaffolding output.
+
+The generated Leptos draft keeps `core/mod.rs`, `model.rs`,
+`transport/mod.rs`, `transport/native_server_adapter.rs`,
+`transport/graphql_adapter.rs`, `ui/mod.rs`, and `ui/leptos.rs`.
+It uses the canonical `rustok-ui-transport` path selection, but both
+owner-specific adapters explicitly fail with `MissingOwnerContract` until
+real operations are implemented. This is **structural FFA scaffolding**, not
+a working business API or a verified runtime transport. The generated shell
+shows an unavailable state without simulated CRUD.
+Before activation, implement actual owner operations and context-aware
+native/GraphQL adapters. Future `ui/dioxus.rs` must share the same
+framework-independent core/model and transport facade, keeping Leptos intact.
+Any Next.js product features must be built in their Next host packages.
+
+Blog remains the production reference for these boundaries; its existing
+Leptos adapters are not modified by scaffold changes.

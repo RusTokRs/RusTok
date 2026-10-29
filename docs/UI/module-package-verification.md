@@ -165,3 +165,22 @@ same operation.
 | [FFA Migration Plan](../research/dioxus-ffa-ui-migration-plan.md) | Phase-gate criteria |
 | [FFA Parity Checklist](../verification/ffa-ui-parity-checklist.md) | Phase-gate evidence tracker |
 | [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Step-by-step for new packages |
+
+## Draft scaffolding UI preview
+
+The existing generator creates unmounted Leptos FFA development packages;
+add `--dry-run` to preview the file set without writing:
+
+```bash
+cargo xtask scaffold example --ui dual
+cargo xtask scaffold example --ui dual --dry-run
+```
+
+The generated crates are **unmounted development skeletons**; no UI
+surface is registered and no business operation is implemented. The Leptos FFA preview includes real
+native/GraphQL selection wiring, but each owner adapter returns a typed
+missing-owner error. Neither adapter performs a business operation.
+Classic Next.js packages belong to their hosts and are not generated here.
+Do not claim runtime readiness. Template structure is checked by the
+unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
+requires real owner contracts and the commands earlier in this guide.
