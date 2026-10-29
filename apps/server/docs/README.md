@@ -134,7 +134,10 @@ The legacy commerce `ApiErrorResponse` adapter returns actionable client HTTP
 statuses for invalid price/options/variants (400), missing products, variants,
 or shipping profiles (404), and duplicate identifiers or shipping-profile
 slugs (409). Server-side commerce failures are logged internally; their
-HTTP 500 payloads contain no raw database/provider diagnostics.
+HTTP 500 payloads contain no raw database/provider diagnostics. Wrapped
+`RichError` categories retain meaningful HTTP status codes, but only the
+explicitly declared safe `user_message` is returned to clients; internal
+message text and structured metadata remain private.
 
 `GET /api/users?search=...` matches user-supplied percent signs, underscores,
 and escape characters literally, rather than interpreting them as SQL LIKE
