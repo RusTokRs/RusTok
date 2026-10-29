@@ -15,6 +15,8 @@ use rustok_api::graphql::GraphQLError;
 enum SensitiveGraphqlField {
     User,
     Users,
+    DashboardStats,
+    RecentActivity,
     CreateUser,
     UpdateUser,
     DisableUser,
@@ -26,6 +28,8 @@ impl SensitiveGraphqlField {
         match (operation_type, field_name) {
             (OperationType::Query, "user") => Some(Self::User),
             (OperationType::Query, "users") => Some(Self::Users),
+            (OperationType::Query, "dashboardStats") => Some(Self::DashboardStats),
+            (OperationType::Query, "recentActivity") => Some(Self::RecentActivity),
             (OperationType::Mutation, "createUser") => Some(Self::CreateUser),
             (OperationType::Mutation, "updateUser") => Some(Self::UpdateUser),
             (OperationType::Mutation, "disableUser") => Some(Self::DisableUser),
@@ -38,6 +42,8 @@ impl SensitiveGraphqlField {
         match self {
             Self::User => "user",
             Self::Users => "users",
+            Self::DashboardStats => "dashboardStats",
+            Self::RecentActivity => "recentActivity",
             Self::CreateUser => "createUser",
             Self::UpdateUser => "updateUser",
             Self::DisableUser => "disableUser",
@@ -49,6 +55,8 @@ impl SensitiveGraphqlField {
         match self {
             Self::User => "users:read (or users:manage)",
             Self::Users => "users:list (or users:manage)",
+            Self::DashboardStats => "analytics:read (or analytics:manage)",
+            Self::RecentActivity => "users:list (or users:manage)",
             Self::CreateUser => "users:create (or users:manage)",
             Self::UpdateUser => "users:update (or users:manage)",
             Self::DisableUser | Self::DeleteUser => "users:manage",
@@ -59,6 +67,8 @@ impl SensitiveGraphqlField {
         let required_permission = match self {
             Self::User => Permission::USERS_READ,
             Self::Users => Permission::USERS_LIST,
+            Self::DashboardStats => Permission::ANALYTICS_READ,
+            Self::RecentActivity => Permission::USERS_LIST,
             Self::CreateUser => Permission::USERS_CREATE,
             Self::UpdateUser => Permission::USERS_UPDATE,
             Self::DisableUser | Self::DeleteUser => Permission::USERS_MANAGE,
@@ -258,6 +268,14 @@ mod tests {
         async fn users(&self) -> Vec<i32> {
             vec![1, 2, 3]
         }
+
+        async fn dashboard_stats(&self) -> i32 {
+            42
+        }
+
+        async fn recent_activity(&self) -> Vec<i32> {
+            vec![1, 2]
+        }
     }
 
     struct MutationRoot;
@@ -420,6 +438,51 @@ mod tests {
                 field,
                 required_permission
             );
+        }
+    }
+
+    #[test]
+    fn reports_and_user_activity_are_classified_as_sensitive_root_fields() {
+        let document = async_graphql::parser::parse_query(
+            "query { dashboardStats recentActivity }",
+        )
+        .expect("reporting query should parse");
+
+        assert_eq!(
+            sensitive_graphql_fields(&document),
+            vec![
+                SensitiveGraphqlField::DashboardStats,
+                SensitiveGraphqlField::RecentActivity,
+            ]
+        );
+        assert!(!SensitiveGraphqlField::DashboardStats.allows(&[]));
+        assert!(!SensitiveGraphqlField::RecentActivity.allows(&[]));
+        assert!(SensitiveGraphqlField::DashboardStats.allows(&[Permission::ANALYTICS_READ]));
+        assert!(SensitiveGraphqlField::RecentActivity.allows(&[Permission::USERS_LIST]));
+    }
+
+    #[tokio::test]
+    async fn blocks_reporting_fields_before_execution_without_correct_permissions() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+
+        for (field, hint) in [
+            ("dashboardStats", "analytics:read"),
+            ("recentActivity", "users:list"),
+        ] {
+            let query = format!("query {{ {field} }}");
+            let anonymous = schema.execute(Request::new(&query)).await;
+            assert_eq!(anonymous.errors.len(), 1, "anonymous {field}");
+            assert!(anonymous.errors[0].message.contains(hint), "{field}");
+
+            let wrong_role = schema
+                .execute(
+                    Request::new(&query).data(auth_context(vec![Permission::MODULES_READ])),
+                )
+                .await;
+            assert_eq!(wrong_role.errors.len(), 1, "unauthorized {field}");
+            assert!(wrong_role.errors[0].message.contains(hint), "{field}");
         }
     }
 
