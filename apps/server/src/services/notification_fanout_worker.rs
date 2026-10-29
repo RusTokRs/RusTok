@@ -42,6 +42,11 @@ impl NotificationFanoutWorkerHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+
+    /// Await a durable worker's current operation after the shutdown signal.
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._handle.await
+    }
 }
 
 pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> Result<()> {
