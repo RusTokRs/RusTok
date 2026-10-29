@@ -63,8 +63,23 @@ fn is_admin_static_asset_path(path: &str) -> bool {
     };
     matches!(
         extension.to_ascii_lowercase().as_str(),
-        "js" | "mjs" | "css" | "wasm" | "map" | "json" | "svg" | "png" | "jpg" | "jpeg"
-            | "gif" | "webp" | "avif" | "ico" | "woff" | "woff2" | "ttf" | "otf"
+        "js" | "mjs"
+            | "css"
+            | "wasm"
+            | "map"
+            | "json"
+            | "svg"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "avif"
+            | "ico"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
     )
 }
 
@@ -642,7 +657,13 @@ mod admin_asset_path_tests {
         ] {
             assert!(is_admin_static_asset_path(asset), "{asset}");
         }
-        for route in ["", "dashboard", "users/john.doe", "posts/new", "settings/account"] {
+        for route in [
+            "",
+            "dashboard",
+            "users/john.doe",
+            "posts/new",
+            "settings/account",
+        ] {
             assert!(!is_admin_static_asset_path(route), "{route}");
         }
     }
