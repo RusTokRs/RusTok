@@ -114,6 +114,21 @@ async fn register(
     }))
 }
 
+/// Audit the verified client address, not the load balancer, while refusing
+/// forwarding headers supplied by peers outside the configured proxy CIDRs.
+fn login_client_ip(
+    headers: &axum::http::HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> std::net::IpAddr {
+    crate::common::extract_effective_client_ip(
+        headers,
+        Some(peer_ip),
+        &settings.runtime.request_trust,
+    )
+    .unwrap_or(peer_ip)
+}
+
 #[utoipa::path(post, path = "/api/auth/login", tag = "auth", request_body = LoginParams,
     responses((status = 200, description = "Login successful", body = AuthResponse),(status = 401, description = "Unauthorized")))]
 async fn login(
@@ -141,7 +156,7 @@ async fn login(
         tenant.id,
         email,
         &params.password,
-        Some(addr.ip().to_string()),
+        Some(login_client_ip(&headers, addr.ip(), runtime_ctx.settings()).to_string()),
         user_agent,
         runtime_ctx.settings().features.email_verification,
     )
@@ -358,7 +373,7 @@ async fn session_login(
         tenant.id,
         email,
         &params.password,
-        Some(addr.ip().to_string()),
+        Some(login_client_ip(&headers, addr.ip(), runtime_ctx.settings()).to_string()),
         user_agent,
         runtime_ctx.settings().features.email_verification,
     )
@@ -1026,6 +1041,39 @@ mod tests {
             &settings,
             false,
         ));
+    }
+
+    #[test]
+    fn login_audit_ip_uses_only_a_verified_forwarded_client() {
+        use crate::common::{ForwardedHeadersMode, RequestTrustSettings};
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_owned()],
+        };
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "198.51.100.44, 203.0.113.9".parse().unwrap(),
+        );
+        let trusted_peer = std::net::IpAddr::from([10, 0, 0, 4]);
+        let untrusted_peer = std::net::IpAddr::from([192, 0, 2, 4]);
+
+        assert_eq!(
+            super::login_client_ip(&headers, trusted_peer, &settings),
+            std::net::IpAddr::from([203, 0, 113, 9]),
+        );
+        assert_eq!(
+            super::login_client_ip(&headers, untrusted_peer, &settings),
+            untrusted_peer,
+        );
+
+        settings.runtime.request_trust = RequestTrustSettings::default();
+        assert_eq!(
+            super::login_client_ip(&headers, trusted_peer, &settings),
+            trusted_peer,
+        );
     }
 
     #[test]
