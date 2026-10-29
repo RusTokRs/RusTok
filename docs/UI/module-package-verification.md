@@ -165,3 +165,20 @@ same operation.
 | [FFA Migration Plan](../research/dioxus-ffa-ui-migration-plan.md) | Phase-gate criteria |
 | [FFA Parity Checklist](../verification/ffa-ui-parity-checklist.md) | Phase-gate evidence tracker |
 | [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Step-by-step for new packages |
+
+## Draft scaffolding UI preview
+
+The existing generator can preview a not-yet-implemented FFA package without
+writing to the repository:
+
+```bash
+cargo xtask scaffold example --ui dual --dry-run
+```
+
+This is **only a template inspection**; neither frontend is registered and no
+business operation is implemented. The preview lists Leptos and Next.js
+draft package files, but no Next.js route/import or executable native/GraphQL
+adapter exists, so do **not** claim runtime parity or run live module
+architecture checks against the preview as though it were an installed module. The generator's template shape is guarded by the scoped
+Rust unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
+requires real owner contracts and the commands earlier in this guide.
