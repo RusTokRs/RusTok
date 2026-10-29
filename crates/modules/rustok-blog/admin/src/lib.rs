@@ -35,4 +35,4 @@ pub fn BlogAdmin() -> impl IntoView {
 }
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

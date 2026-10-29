@@ -1,6 +1,6 @@
 #[test]
 fn test_crate_api_compliance() {
-    let api_doc = include_str!("../CRATE_API.md");
+    let api_doc = include_str!("../../CRATE_API.md");
     assert!(api_doc.contains("## Platform Capability Bindings"));
     assert!(api_doc.contains("## Domain Collaborations"));
     assert!(api_doc.contains("## Minimum Contract Set"));

@@ -21,4 +21,4 @@ pub use ui::BlogView;
 pub use transport::feed::render_rss_feed;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;
