@@ -8,18 +8,10 @@ use std::path::{Path, PathBuf};
 /// The public scaffold command rejects non-none UI modes before any writes.
 pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
     if opts.ui != ScaffoldUi::None && !opts.dry_run {
-        anyhow::bail!("draft FFA packages can be previewed but cannot be registered without owner APIs and Next.js routes");
+        anyhow::bail!("draft FFA packages can be previewed but cannot be registered without owner APIs and real native/GraphQL adapters");
     }
     for (relative, contents) in render_ui_templates(opts, pascal) {
         write_file_content(&module_dir.join(relative), &contents, opts.dry_run)?;
-    }
-    // These follow the existing Blog Next.js package paths. Preview them
-    // without importing, routing, or registering modules in either Next host.
-    if opts.dry_run {
-        let root = crate::manifest_io::workspace_root();
-        for (relative, contents) in render_next_ui_templates(opts, pascal) {
-            write_file_content(&root.join(relative), &contents, true)?;
-        }
     }
     Ok(())
 }
@@ -85,6 +77,7 @@ ssr = ["leptos/ssr"]
 [dependencies]
 leptos.workspace = true
 rustok-ui-i18n.workspace = true
+rustok-ui-transport.workspace = true
 "#
     );
 
@@ -95,9 +88,9 @@ Draft Leptos {side} UI adapter for the {slug} native module.
 
 ## Responsibility
 - Keep UI rendering and bindings in src/ui/leptos.rs.
-- Keep pure, framework-independent presentation state in src/core.rs.
+- Keep pure, framework-independent presentation state in src/core/mod.rs.
 - Keep all future backend calls behind src/transport/mod.rs.
-- Do not claim that CRUD, GraphQL, native server transport, or Next.js parity exists.
+- Do not claim that CRUD, GraphQL, or native server transport exists.
 
 ## Current state
 This is an **unavailable UI preview**, not a registered functional route.
@@ -107,8 +100,9 @@ No business data, permissions, tenant context or mutation outcomes are invented.
 
 The normal scaffold command does not currently activate UI generation.
 After a real module owner contract exists, implement both native and GraphQL
-adapters and the corresponding Next.js package/route before registering UI
-surfaces in rustok-module.toml or promoting readiness.
+adapters before registering Leptos surfaces in rustok-module.toml or promoting
+readiness. Next.js applications own any separate classic packages in their hosts
+and are not a generated FFA adapter.
 
 ## Reference
 - [Blog's production Leptos package](../../rustok-blog/{side}/README.md)
@@ -129,10 +123,10 @@ Draft {side} Leptos adapter for {slug}. Not published as a working FFA surface.
 
 ## Public surface
 - {page} renders an explicit unavailability message.
-- Pure readiness model in src/core.rs; render/bind in src/ui/leptos.rs.
+- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
 
 ## Platform Capability Bindings
-- None. Native and GraphQL transports are not implemented.
+- Transport selection uses rustok-ui-transport; both owner-specific adapters explicitly reject calls until implemented.
 
 ## Domain Collaborations
 - None; an owner API and context invariants must be specified first.
@@ -149,47 +143,85 @@ Draft {side} Leptos adapter for {slug}. Not published as a working FFA surface.
 - None. The UI never simulates successful mutations.
 
 ### Errors / Failure Codes
-- MissingOwnerContract is a typed unavailable result, not an empty success.
+- MissingOwnerContract is a typed unavailable result for each adapter, not an empty success.
 "#
     );
 
-    let model = r#"//! Framework- and transport-independent availability contract.
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SurfaceReadiness {
-    AwaitingOwnerContract,
-    OwnerContractConnected,
-}
-"#.to_string();
-
-    let core = r#"//! Pure FFA presentation policy, independent of Leptos and transport.
-use crate::model::SurfaceReadiness;
-
-pub const fn classify_owner_contract(available: bool) -> SurfaceReadiness {
-    if available {
-        SurfaceReadiness::OwnerContractConnected
-    } else {
-        SurfaceReadiness::AwaitingOwnerContract
-    }
-}
-"#.to_string();
-
-    let transport = r#"//! No backend operation is configured. This boundary refuses all calls
-//! until the owner module provides a real native and GraphQL contract.
-//! Do not add fake reads, static sample data or log-only write handlers.
+    let model = r#"//! Framework- and transport-independent owner-boundary error type.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MissingOwnerContract;
 
 impl std::fmt::Display for MissingOwnerContract {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("owner transport contract has not been implemented")
+        formatter.write_str("owner API not implemented; FFA transport unavailable")
     }
 }
 
 impl std::error::Error for MissingOwnerContract {}
+"#.to_string();
 
-pub fn require_owner_adapter() -> Result<(), MissingOwnerContract> {
+    let core = r#"//! Pure presentation policy: reusable by a future Dioxus adapter.
+//! Do not put Leptos signals, framework resources or GraphQL requests here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiCapabilityState {
+    Unavailable,
+}
+
+pub const fn owner_capability_state() -> UiCapabilityState {
+    UiCapabilityState::Unavailable
+}
+"#.to_string();
+
+    // This is a real FFA selection facade through the existing platform
+    // transport owner. Each adapter explicitly reports missing business logic:
+    // no invented GraphQL document, server function or fake successful result.
+    let transport = format!(
+        r#"//! Leptos/Dioxus-neutral owner transport facade.
+//! Neither adapter implements a business operation until the owner API exists.
+
+mod graphql_adapter;
+mod native_server_adapter;
+
+use rustok_ui_transport::{{execute_selected_transport, UiTransportError, UiTransportPath}};
+
+pub type ApiError = UiTransportError;
+
+pub fn selected_transport_path() -> UiTransportPath {{
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {{
+        UiTransportPath::NativeServer
+    }}
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {{
+        UiTransportPath::Graphql
+    }}
+}}
+
+/// Explicit path injection makes the facade usable by future Dioxus bindings
+/// without coupling the pure model or core to a Leptos build profile.
+pub async fn fetch_owner_capability_for(
+    path: UiTransportPath,
+) -> Result<(), ApiError> {{
+    execute_selected_transport(
+        "{slug}/{side}",
+        path,
+        native_server_adapter::fetch_owner_capability,
+        graphql_adapter::fetch_owner_capability,
+    )
+    .await
+}}
+
+pub async fn fetch_owner_capability() -> Result<(), ApiError> {{
+    fetch_owner_capability_for(selected_transport_path()).await
+}}
+"#
+    );
+    let adapter_error = r#"//! Draft adapter: no owner service or GraphQL schema is declared.
+//! Never substitute a simulated record or Ok(()) for missing API behavior.
+use crate::model::MissingOwnerContract;
+
+pub(super) async fn fetch_owner_capability() -> Result<(), MissingOwnerContract> {
     Err(MissingOwnerContract)
 }
 "#.to_string();
@@ -198,24 +230,16 @@ pub fn require_owner_adapter() -> Result<(), MissingOwnerContract> {
         r#"use leptos::prelude::*;
 use crate::{{core, i18n::t}};
 
-/// Shell-only adapter; the module has no owner read/write API yet.
+/// Render-only adapter. Future Dioxus UI binds the same core/transport.
 #[component]
 pub fn {page}() -> impl IntoView {{
-    let state = core::classify_owner_contract(
-        crate::transport::require_owner_adapter().is_ok()
-    );
-    let message = match state {{
-        crate::model::SurfaceReadiness::AwaitingOwnerContract =>
-            t(None, "{side_key}", "This module's UI is not available until its owner API is implemented."),
-        crate::model::SurfaceReadiness::OwnerContractConnected =>
-            t(None, "{slug}-{side}-connected", "Owner API is connected."),
-    }};
+    let _state = core::owner_capability_state();
     view! {{
         <section class="p-6 space-y-3" aria-live="polite">
             <h1 class="text-2xl font-semibold">{title_rust}</h1>
             <p class="text-muted-foreground">{description_rust}</p>
             <p role="status">
-                {{message}}
+                {{t(None, "{side_key}", "This module's UI is not available until its owner API is implemented.")}}
             </p>
         </section>
     }}
@@ -238,21 +262,27 @@ mod tests;
 "#
     );
 
-    let tests = format!(
-        r#"#[test]
-fn owner_contract_must_be_implemented_before_ui_is_ready() {{
+    let tests = r#"#[test]
+fn pure_presentation_state_does_not_fake_a_connected_owner() {
     assert_eq!(
-        crate::core::classify_owner_contract(false),
-        crate::model::SurfaceReadiness::AwaitingOwnerContract
+        crate::core::owner_capability_state(),
+        crate::core::UiCapabilityState::Unavailable
     );
     assert_eq!(
-        crate::transport::require_owner_adapter(),
-        Err(crate::transport::MissingOwnerContract)
+        crate::model::MissingOwnerContract.to_string(),
+        "owner API not implemented; FFA transport unavailable"
     );
-}}
+}
 
 #[test]
-fn documented_ui_is_not_a_fake_business_api() {{
+fn both_paths_have_an_explicit_selection_contract() {
+    use rustok_ui_transport::UiTransportPath;
+    assert_eq!(UiTransportPath::NativeServer.as_str(), "native_server");
+    assert_eq!(UiTransportPath::Graphql.as_str(), "graphql");
+}
+
+#[test]
+fn documented_ui_is_not_a_fake_business_api() {
     let docs = include_str!("../../CRATE_API.md");
     for section in [
         "## Platform Capability Bindings",
@@ -262,19 +292,18 @@ fn documented_ui_is_not_a_fake_business_api() {{
         "### Domain Invariants",
         "### Events / Outbox Side Effects",
         "### Errors / Failure Codes",
-    ] {{
-        assert!(docs.contains(section), "Missing UI contract: {{section}}");
-    }}
+    ] {
+        assert!(docs.contains(section), "Missing UI contract: {section}");
+    }
     assert!(docs.contains("No CRUD or owner business operation is available"));
-}}
-"#
-    );
+}
+"#.to_string();
 
     let translations_en = format!(
-        "{side_key} = This module's UI is not available until its owner API is implemented.\n{slug}-{side}-connected = Owner API is connected.\n"
+        "{side_key} = This module's UI is not available until its owner API is implemented.\n"
     );
     let translations_ru = format!(
-        "{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n{slug}-{side}-connected = Серверный API подключён.\n"
+        "{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n"
     );
 
     [
@@ -284,10 +313,12 @@ fn documented_ui_is_not_a_fake_business_api() {{
         ("locales/en.ftl", translations_en),
         ("locales/ru.ftl", translations_ru),
         ("src/lib.rs", lib),
-        ("src/core.rs", core),
+        ("src/core/mod.rs", core),
         ("src/model.rs", model),
         ("src/i18n.rs", "rustok_ui_i18n::declare_module_i18n!();\n".to_string()),
         ("src/transport/mod.rs", transport),
+        ("src/transport/native_server_adapter.rs", adapter_error.clone()),
+        ("src/transport/graphql_adapter.rs", adapter_error),
         ("src/ui/mod.rs", format!("mod leptos;\npub use leptos::{page};\n")),
         ("src/ui/leptos.rs", leptos),
         ("src/tests/mod.rs", "mod contract;\n".to_string()),
@@ -299,108 +330,9 @@ fn documented_ui_is_not_a_fake_business_api() {{
 }
 
 
-/// Preview the matching Next.js package boundary without mounting it in a host.
-/// The actual entrypoint/route is intentionally not registered until backend
-/// owner operations and a real API contract exist.
-pub(crate) fn render_next_ui_templates(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-) -> Vec<(PathBuf, String)> {
-    let mut files = Vec::new();
-    if opts.ui.has_admin() {
-        files.extend(render_next_package(opts, pascal, "admin"));
-    }
-    if opts.ui.has_storefront() {
-        files.extend(render_next_package(opts, pascal, "storefront"));
-    }
-    files
-}
-
-fn render_next_package(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-    side: &str,
-) -> Vec<(PathBuf, String)> {
-    let kebab = opts.kebab_name();
-    let (directory, package_name, component) = if side == "admin" {
-        (
-            PathBuf::from(format!("apps/next-admin/packages/{kebab}")),
-            format!("@rustok/{kebab}-admin"),
-            format!("{pascal}AdminPage"),
-        )
-    } else {
-        (
-            PathBuf::from(format!("apps/next-frontend/packages/rustok-{kebab}")),
-            format!("@rustok/{kebab}-frontend"),
-            format!("{pascal}StorefrontView"),
-        )
-    };
-
-    let package_json = serde_json::to_string_pretty(&serde_json::json!({
-        "name": package_name,
-        "version": "0.1.0",
-        "private": true,
-        "main": "./src/index.tsx",
-        "types": "./src/index.tsx",
-        "dependencies": { "react": "^19.2.0" },
-        "license": "BUSL-1.1",
-    }))
-    .expect("serializing static Next.js package metadata cannot fail");
-
-    let title = serde_json::to_string(&opts.title)
-        .expect("serializing a title as JSON string cannot fail");
-    let description = serde_json::to_string(&opts.description)
-        .expect("serializing a description as JSON string cannot fail");
-    let page = format!(
-        r#"// Draft Next.js {side} adapter. No route or module registry entry is installed.
-// Replace this shell only after implementing the same owner read/write contract
-// as the native/GraphQL Leptos adapters.
-const title = {title};
-const description = {description};
-const unavailableCopy = {{
-  en: "This module's UI is not available until its owner API is implemented.",
-  ru: "Интерфейс модуля недоступен до реализации серверного контракта.",
-}} as const;
-
-export function {component}({{ locale = "en" }}: {{ locale?: string }}) {{
-  const message = locale.toLowerCase().startsWith("ru")
-    ? unavailableCopy.ru
-    : unavailableCopy.en;
-  return (
-    <section className="space-y-3 p-6" aria-live="polite">
-      <h1 className="text-2xl font-semibold">{{title}}</h1>
-      <p className="text-muted-foreground">{{description}}</p>
-      <p role="status">{{message}}</p>
-    </section>
-  );
-}}
-"#
-    );
-    let readme = format!(
-        r#"# {package_name}
-
-Draft Next.js {side} module adapter for {kebab}.
-
-This is **not** a registered Next.js route or working GraphQL client.
-The existing Blog Next.js packages are the reference for module ownership,
-host composition, tenant/auth/locale context, and real service-backed reads.
-Do not add the host package import or route until the owner API, GraphQL/REST
-operations, and corresponding Leptos native/GraphQL adapters are functional.
-"#
-    );
-    [
-        ("package.json", package_json + "\n"),
-        ("README.md", readme),
-        ("src/index.tsx", page),
-    ]
-    .into_iter()
-    .map(|(file, content)| (directory.join(file), content))
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{render_next_ui_templates, render_ui_templates};
+    use super::render_ui_templates;
     use crate::scaffold::options::{ScaffoldOptions, ScaffoldProfile, ScaffoldUi};
     use std::path::PathBuf;
 
@@ -419,95 +351,85 @@ mod tests {
         }
     }
 
+    fn content<'a>(files: &'a [(PathBuf, String)], path: &str) -> &'a str {
+        &files.iter().find(|(entry, _)| entry == &PathBuf::from(path))
+            .unwrap_or_else(|| panic!("missing {path}")).1
+    }
+
     #[test]
-    fn no_ui_generates_no_ui_packages() {
+    fn no_ui_emits_no_packages() {
         assert!(render_ui_templates(&options(ScaffoldUi::None), "ModuleExample").is_empty());
     }
 
     #[test]
-    fn admin_and_storefront_modes_preserve_distinct_leptos_adapters() {
-        for (ui, expected_root) in [
+    fn each_ui_mode_has_pure_core_and_separate_leptos_adapter() {
+        for (ui, side) in [
             (ScaffoldUi::Admin, "admin"),
             (ScaffoldUi::Storefront, "storefront"),
         ] {
-            let rendered = render_ui_templates(&options(ui), "ModuleExample");
-            assert!(rendered.iter().all(|(p, _)| p.starts_with(expected_root)));
-            for relative in [
-                "src/core.rs",
-                "src/model.rs",
-                "src/ui/mod.rs",
-                "src/ui/leptos.rs",
-                "src/transport/mod.rs",
-                "src/tests/contract.rs",
-                "CRATE_API.md",
-            ] {
-                assert!(rendered.iter().any(|(path, _)| path == &PathBuf::from(expected_root).join(relative)),
-                    "Missing {expected_root}/{relative}");
-            }
-            let lib = rendered.iter().find(|(path, _)| path.ends_with("src/lib.rs")).unwrap();
-            assert!(!lib.1.contains("#[component]"));
-            let leptos = rendered.iter().find(|(path, _)| path.ends_with("src/ui/leptos.rs")).unwrap();
-            assert!(leptos.1.contains("#[component]"));
-            assert!(leptos.1.contains("Module \\\"Example\\\""));
+            let files = render_ui_templates(&options(ui), "ModuleExample");
+            assert!(files.iter().all(|(path, _)| path.starts_with(side)));
+            assert_eq!(files.len(), 16);
+            let root = format!("{side}/");
+            let lib = content(&files, &format!("{root}src/lib.rs"));
+            assert!(!lib.contains("#[component]"));
+            assert!(!lib.contains("pub mod transport"));
+            assert!(lib.contains("mod core;"));
+            let core = content(&files, &format!("{root}src/core/mod.rs"));
+            assert!(!core.contains("leptos::"));
+            assert!(!core.contains("dioxus::"));
+            assert!(!core.contains("rustok_graphql::"));
+            let leptos = content(&files, &format!("{root}src/ui/leptos.rs"));
+            assert!(leptos.contains("#[component]"));
+            assert!(leptos.contains("Module \\\"Example\\\""));
+            assert!(!leptos.contains("native_server_adapter::"));
+            assert!(!leptos.contains("graphql_adapter::"));
         }
     }
 
     #[test]
-    fn dual_mode_is_only_a_request_and_does_not_invent_crud_or_transport() {
-        let rendered = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
-        assert_eq!(rendered.len(), 28);
-        let text = rendered.iter().map(|(_, source)| source.as_str()).collect::<Vec<_>>().join("\n");
+    fn dual_path_transport_is_real_selection_but_unimplemented_business_io() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        assert_eq!(files.len(), 32);
+        for side in ["admin", "storefront"] {
+            let root = format!("{side}/");
+            let facade = content(&files, &format!("{root}src/transport/mod.rs"));
+            assert!(facade.contains("execute_selected_transport("));
+            assert!(facade.contains("UiTransportPath::NativeServer"));
+            assert!(facade.contains("UiTransportPath::Graphql"));
+            assert!(facade.contains("pub async fn fetch_owner_capability_for("));
+            for path in ["native_server_adapter.rs", "graphql_adapter.rs"] {
+                let adapter = content(&files, &format!("{root}src/transport/{path}"));
+                assert!(adapter.contains("Err(MissingOwnerContract)"));
+                assert!(!adapter.contains("Ok(())"));
+            }
+            let cargo = content(&files, &format!("{root}Cargo.toml"));
+            let parsed: toml::Value = toml::from_str(cargo).unwrap();
+            assert!(parsed["dependencies"].get("rustok-ui-transport").is_some());
+            assert!(parsed["dependencies"].get("rustok-graphql").is_none());
+            assert!(parsed["dependencies"].get("sea-orm").is_none());
+        }
+    }
+
+    #[test]
+    fn no_nextjs_or_fake_crud_are_generated_by_ffa() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        let all = files.iter().map(|(p, s)| format!("{}:\n{s}", p.display()))
+            .collect::<Vec<_>>().join("\n");
+        assert!(!all.contains("apps/next-"));
         for forbidden in [
             "sample_rows", "rec-1", "tracing::info!", "create new module_example record",
             "can_edit: true", "can_delete: true", "DataGrid", "rustok-grid-leptos",
+            "registerAdminModule(", "registerStorefrontModule(", "GraphqlRequest::new(",
         ] {
-            assert!(!text.contains(forbidden), "Generated fake UI pattern: {forbidden}");
+            assert!(!all.contains(forbidden), "fake UI pattern: {forbidden}");
         }
-        assert!(text.contains("MissingOwnerContract"));
-        assert!(text.contains("Err(MissingOwnerContract)"));
-        assert!(text.contains("Next.js parity"));
     }
 
     #[test]
-    fn next_drafts_match_blog_package_locations_without_fake_host_wiring() {
-        let opts = options(ScaffoldUi::Dual);
-        let rendered = render_next_ui_templates(&opts, "ModuleExample");
-        assert_eq!(rendered.len(), 6);
-        assert!(rendered.iter().any(|(path, _)| path ==
-            &PathBuf::from("apps/next-admin/packages/module-example/src/index.tsx")));
-        assert!(rendered.iter().any(|(path, _)| path ==
-            &PathBuf::from("apps/next-frontend/packages/rustok-module-example/src/index.tsx")));
-        for (path, contents) in &rendered {
-            if path.ends_with("package.json") {
-                let meta: serde_json::Value = serde_json::from_str(contents).unwrap();
-                assert!(meta["name"].as_str().unwrap().starts_with("@rustok/"));
-            }
-            assert!(!contents.contains("registerAdminModule("));
-            assert!(!contents.contains("registerStorefrontModule("));
-            assert!(!contents.contains("fetch("));
-            assert!(!contents.contains("graphql("));
-            if path.ends_with("src/index.tsx") {
-                assert!(contents.contains("locale?: string"));
-                assert!(contents.contains("Интерфейс модуля недоступен"));
-            }
-        }
-        assert!(render_next_ui_templates(&options(ScaffoldUi::None), "ModuleExample").is_empty());
-    }
-
-    #[test]
-    fn generated_cargo_and_i18n_keys_are_well_formed() {
-        let rendered = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
-        for (path, source) in rendered {
-            if path.ends_with("Cargo.toml") {
-                let cargo: toml::Value = toml::from_str(&source).unwrap();
-                let deps = &cargo["dependencies"];
-                assert!(deps.get("rustok-graphql").is_none());
-                assert!(deps.get("leptos").is_some());
-                assert!(deps.get("sea-orm").is_none());
-            }
-            if path.ends_with("locales/en.ftl") {
-                assert!(source.contains("not available"));
-            }
+    fn result_does_not_claim_transport_or_business_readiness() {
+        for (_, source) in render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample") {
+            assert!(!source.contains("Owner API is connected."));
         }
     }
 }

@@ -54,10 +54,10 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     // UI shell templates can be inspected using dry-run, but cannot be
     // registered until a genuine owner API and both transport paths exist.
     if options.ui != ScaffoldUi::None && !options.dry_run {
-        anyhow::bail!("--ui cannot be published without real native/GraphQL adapters and matching Next.js routes; use --dry-run to preview the draft FFA package");
+        anyhow::bail!("--ui cannot be published without owner API and real native/GraphQL adapters; use --dry-run to preview the Leptos FFA draft");
     }
     if options.ui != ScaffoldUi::None {
-        println!("  [DRAFT UI] Leptos and Next.js packages preview only; no owner API, CRUD, host import or registered route");
+        println!("  [DRAFT FFA] Leptos adapter preview only; no owner API, CRUD or registered route");
     }
 
     let root = workspace_root();

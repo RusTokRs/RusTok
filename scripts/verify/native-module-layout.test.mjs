@@ -84,7 +84,7 @@ test("source file size and module registration are checked", () => {
   });
 });
 
-test("declared UI requires actual FFA structure and Next package metadata", () => {
+test("declared UI requires actual FFA structure independent of Next.js", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
@@ -92,7 +92,7 @@ test("declared UI requires actual FFA structure and Next package metadata", () =
     const failures = lint(ctx).join("\n");
     assert.match(failures, /admin\/Cargo.toml.*required file missing/);
     assert.match(failures, /model.rs.*required file missing/);
-    assert.match(failures, /Next.js package metadata/);
+    assert.doesNotMatch(failures, /Next.js package metadata/);
   });
 });
 
@@ -100,7 +100,7 @@ test("fake UI actions and Leptos in pure core fail FFA lint", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
-      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\nnext_package = "@rustok/sample-admin"\n');
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
       'mod model;\nmod core;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');

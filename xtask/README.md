@@ -66,7 +66,7 @@ The command:
 - By default creates a **headless, no-DB native runtime identity**. `--with-db` fails before writing. `--ui admin|storefront|dual` is allowed **only with `--dry-run`**, to inspect draft FFA files without creating, registering, or advertising a UI.
 - Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
 - Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
-- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. Its preview now creates pure `core.rs` / `model.rs`, an explicit fail-closed `transport/` seam, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The preview also shows matching **draft Next.js packages** in the canonical admin/storefront package directories, with localized unavailable views. These previews are not written, imported, routed or registered; parity with a real owner API is still unverified. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
+- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. Its preview now creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The preview is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
   - `Cargo.toml` (`[workspace.dependencies]` and `members`);
@@ -82,7 +82,7 @@ prove a build, native architecture lint, owner business behavior, or FFA/FBA
 transport parity. Post-scaffold validation failure now returns a nonzero error,
 but earlier file writes are not yet rolled back. Writable UI and persistence
 requests remain rejected pending owner contracts, executable native/GraphQL
-adapters, and Next.js route parity. Draft UI preview is not a working surface
+adapters. The classic Next.js packages are independent host work. Draft FFA preview is not a working surface
 and does not satisfy live UI architecture lint. Run full scoped verification
 before treating generated code as ready.
 

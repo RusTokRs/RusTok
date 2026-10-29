@@ -154,10 +154,8 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (/\#\s*\[\s*component\s*\]/.test(lib)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) + ": UI components belong in ui/, not lib.rs");
   }
-  const nextPackage = keyInSection(manifest, section, "next_package");
-  if (!nextPackage) {
-    diagnostics.push(section + ": declared UI lacks Next.js package metadata; parity is unverified");
-  }
+  // Classic Next.js UI packages are independently owned by Next hosts.
+  // Their presence is neither required nor proven by this Leptos FFA lint.
 }
 
 export function resolveNativeModule(root, slug) {
