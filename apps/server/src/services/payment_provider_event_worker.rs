@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use rustok_tenant::entities::tenant;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -48,7 +50,7 @@ pub fn spawn_payment_provider_event_worker(
             observers,
         )),
     );
-    let tenants = rustok_tenant::TenantService::new(db);
+    let tenants = db;
 
     tracing::info!(
         worker = "payment_provider_event_recovery",
@@ -63,7 +65,7 @@ pub fn spawn_payment_provider_event_worker(
 
 async fn worker_loop(
     instance_id: u64,
-    tenants: rustok_tenant::TenantService,
+    tenants: DatabaseConnection,
     recovery: rustok_payment::PaymentProviderEventRecoveryService,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
@@ -103,21 +105,18 @@ async fn worker_loop(
 /// verified provider event or leave captured/authorized state unresolved.
 async fn sweep_tenants(
     instance_id: u64,
-    tenants: &rustok_tenant::TenantService,
+    tenants: &DatabaseConnection,
     recovery: &rustok_payment::PaymentProviderEventRecoveryService,
     stop_rx: &tokio::sync::watch::Receiver<bool>,
 ) {
-    let mut page = 1;
+    let mut after_tenant_id = None;
     loop {
         if *stop_rx.borrow() {
             // Finish the current durable recovery call, then stop before
             // selecting more tenants or starting new provider work.
             return;
         }
-        let (items, total) = match tenants
-            .list_tenants(page, PAYMENT_PROVIDER_EVENT_TENANT_PAGE)
-            .await
-        {
+        let items = match next_recovery_tenant_batch(tenants, after_tenant_id).await {
             Ok(result) => result,
             Err(error) => {
                 tracing::error!(
@@ -133,6 +132,10 @@ async fn sweep_tenants(
             return;
         }
 
+        // Capture the cursor before consuming the batch; deletion of an earlier
+        // tenant cannot shift future pages as it did under offset pagination.
+        let batch_size = items.len();
+        let last_tenant_id = items.last().expect("nonempty recovery batch").id;
         for tenant in items {
             if *stop_rx.borrow() {
                 return;
@@ -178,16 +181,79 @@ async fn sweep_tenants(
             }
         }
 
-        if page.saturating_mul(PAYMENT_PROVIDER_EVENT_TENANT_PAGE) >= total {
+        after_tenant_id = Some(last_tenant_id);
+        if batch_size < PAYMENT_PROVIDER_EVENT_TENANT_PAGE as usize {
             return;
         }
-        page = page.saturating_add(1);
     }
+}
+
+fn recovery_tenant_query(after: Option<uuid::Uuid>) -> sea_orm::Select<tenant::Entity> {
+    let mut query = tenant::Entity::find().order_by_asc(tenant::Column::Id);
+    if let Some(id) = after {
+        query = query.filter(tenant::Column::Id.gt(id));
+    }
+    query.limit(PAYMENT_PROVIDER_EVENT_TENANT_PAGE)
+}
+
+async fn next_recovery_tenant_batch(
+    db: &DatabaseConnection,
+    after: Option<uuid::Uuid>,
+) -> Result<Vec<tenant::Model>, sea_orm::DbErr> {
+    recovery_tenant_query(after).all(db).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_tenant_scan_has_stable_keyset_cursor_and_bounded_batch() {
+        use sea_orm::{DbBackend, QueryTrait};
+        let cursor = uuid::Uuid::from_u128(42);
+        let sql = super::recovery_tenant_query(Some(cursor))
+            .build(DbBackend::Sqlite)
+            .to_string();
+        assert!(sql.contains("ORDER BY"), "{sql}");
+        assert!(sql.contains("id"), "{sql}");
+        assert!(sql.contains(" > "), "{sql}");
+        assert!(sql.contains("LIMIT"), "{sql}");
+    }
+
+    #[tokio::test]
+    async fn recovery_tenant_scan_does_not_skip_after_previous_tenant_is_deleted() {
+        use sea_orm::{ActiveModelTrait, Database, EntityTrait, Set};
+        use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
+        rustok_migrations::SqliteTestMigrator::up(&db, None)
+            .await
+            .expect("test tenant schema");
+
+        for i in 1..=3_u128 {
+            let mut tenant = tenant::ActiveModel::new(&format!("Tenant {i}"), &format!("worker-tenant-{i}"));
+            tenant.id = Set(uuid::Uuid::from_u128(i));
+            tenant.insert(&db).await.expect("tenant inserted");
+        }
+
+        let first = super::next_recovery_tenant_batch(&db, None)
+            .await
+            .expect("load recovery page");
+        assert_eq!(first.len(), 3);
+        let last_seen = first[0].id;
+        tenant::Entity::delete_by_id(last_seen)
+            .exec(&db)
+            .await
+            .expect("delete preceding tenant");
+
+        let remaining = super::next_recovery_tenant_batch(&db, Some(last_seen))
+            .await
+            .expect("resume after deleted cursor");
+        assert_eq!(
+            remaining.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![uuid::Uuid::from_u128(2), uuid::Uuid::from_u128(3)]
+        );
+    }
 
     #[test]
     fn worker_contract_is_bounded() {
