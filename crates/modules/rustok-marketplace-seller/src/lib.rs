@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Marketplace Seller
+//!
+//! Native module owner for Marketplace Family seller identity, onboarding, lifecycle, and membership rosters.
+//! Coordinates seller statuses, onboarding review, membership roles, and localized translation projections.
 
 mod command_receipts;
 mod external_events;
@@ -30,13 +30,30 @@ pub mod graphql_events;
 #[cfg(feature = "graphql")]
 pub mod graphql_root;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod service;
 
-pub use dto::*;
-pub use entities::*;
+pub use dto::{
+    AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput,
+    ListMarketplaceSellerEventsRequest, ListMarketplaceSellerMembersRequest,
+    ListMarketplaceSellersInput, MarketplaceSellerEventKind, MarketplaceSellerEventProvenance,
+    MarketplaceSellerEventResponse, MarketplaceSellerMemberResponse, MarketplaceSellerMemberRole,
+    MarketplaceSellerMemberStatus, MarketplaceSellerOnboardingStatus, MarketplaceSellerResponse,
+    MarketplaceSellerStatus, ReadMarketplaceSellerMembershipRequest, ReadMarketplaceSellerRequest,
+    ReviewMarketplaceSellerOnboardingInput, SubmitMarketplaceSellerOnboardingInput,
+    SuspendMarketplaceSellerInput, UpdateMarketplaceSellerMemberInput,
+    UpdateMarketplaceSellerProfileInput,
+};
 pub use error::{MarketplaceSellerError, MarketplaceSellerResult};
-pub use ports::*;
+pub use module::MarketplaceSellerModule;
+pub use ports::{
+    AddMarketplaceSellerMemberRequest, MarketplaceSellerCommandPort,
+    MarketplaceSellerListResponse, MarketplaceSellerReadPort, MarketplaceSellerRuntime,
+    ReactivateMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingRequest,
+    SubmitMarketplaceSellerOnboardingRequest, SuspendMarketplaceSellerRequest,
+    UpdateMarketplaceSellerMemberRequest, UpdateMarketplaceSellerProfileRequest,
+};
 pub use service::MarketplaceSellerService;
 pub use translation::{
     MarketplaceSellerTranslationExactLocaleApply,
@@ -53,42 +70,5 @@ pub use translation_target::{
     register_marketplace_seller_translation_target_provider,
 };
 
-/// Seller identity, lifecycle, onboarding, and membership owner for the
-/// Marketplace Family.
-pub struct MarketplaceSellerModule;
-
-#[async_trait]
-impl RusToKModule for MarketplaceSellerModule {
-    fn slug(&self) -> &'static str {
-        "marketplace_seller"
-    }
-
-    fn name(&self) -> &'static str {
-        "Marketplace Seller"
-    }
-
-    fn description(&self) -> &'static str {
-        "Marketplace Family seller identity, lifecycle, onboarding, and membership owner"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::MARKETPLACE_SELLERS_CREATE,
-            Permission::MARKETPLACE_SELLERS_READ,
-            Permission::MARKETPLACE_SELLERS_UPDATE,
-            Permission::MARKETPLACE_SELLERS_DELETE,
-            Permission::MARKETPLACE_SELLERS_LIST,
-            Permission::MARKETPLACE_SELLERS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for MarketplaceSellerModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

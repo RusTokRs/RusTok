@@ -557,3 +557,4 @@ mod tests {
         assert_eq!(opts.limit, 42);
     }
 }
+

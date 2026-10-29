@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
-use sea_orm_migration::MigrationTrait;
+pub use sea_orm_migration::MigrationTrait;
 
 use crate::events::EventHandler;
 use crate::migrations::{MigrationDependencyDescriptor, MigrationSafetyMetadata};

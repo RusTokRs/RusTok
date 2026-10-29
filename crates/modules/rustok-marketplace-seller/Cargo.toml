@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family seller identity, lifecycle, and membership owner module"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true

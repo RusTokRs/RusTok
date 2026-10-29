@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family order-line seller and listing allocation owner"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true

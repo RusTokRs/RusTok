@@ -66,3 +66,5 @@ no cross-module database foreign keys. `rustok-marketplace` consumes its read
 projections through a typed port. External consumers receive sealed listing lifecycle
 contracts through the transactional outbox and refresh owner state through
 `MarketplaceListingReadPort`.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

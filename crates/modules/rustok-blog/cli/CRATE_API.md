@@ -30,3 +30,4 @@
 
 ### Errors / Failure Codes
 - Validation, database, and transaction errors map to typed `CliCoreError` outcomes.
+
