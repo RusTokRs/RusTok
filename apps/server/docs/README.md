@@ -149,6 +149,8 @@ OAuth browser-consent forms preserve absent optional `scope` and `state` values
 across GET-to-POST submission, so CSRF-bound data and default requested scopes
 do not diverge. OAuth protocol `server_error` and `temporarily_unavailable`
 are emitted as HTTP 500/503, rather than misleading client-side 400 responses.
+All `/api/oauth/*` responses, including consent HTML, authorization redirects,
+userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
