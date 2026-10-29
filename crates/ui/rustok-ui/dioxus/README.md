@@ -1,5 +1,7 @@
 # rustok-ui-dioxus
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Dioxus 0.7 design system component adapter for the RusToK platform.
 
 ## Overview

@@ -1,5 +1,7 @@
 # leptos-ui
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 RusToK's stable Leptos package boundary for shared UI components and Leptos-only composites.
 
 ## Overview

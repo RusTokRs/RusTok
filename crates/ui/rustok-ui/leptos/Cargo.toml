@@ -6,6 +6,10 @@ license.workspace = true
 authors = ["RusToK Team"]
 description = "SSR-first Leptos 0.8 design system adapter for RusToK UI"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

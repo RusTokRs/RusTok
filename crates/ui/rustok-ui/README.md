@@ -1,5 +1,7 @@
 # rustok-ui
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Framework-agnostic design system primitives, variants, contracts, and styling resolvers for the RusToK platform.
 
 ## Overview

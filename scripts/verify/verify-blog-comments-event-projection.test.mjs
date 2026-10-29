@@ -55,7 +55,7 @@ function fixture({
   const restartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
   const serviceExportPath = 'crates/modules/rustok-blog/src/services/mod.rs';
   const entityPath = 'crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs';
-  const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs';
+  const migrationPath = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
   const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs';
   const modulePath = 'crates/modules/rustok-blog/src/module.rs';
   const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
@@ -260,8 +260,8 @@ BlogCommentProjectionDeliveries::PostId
 idx_blog_comment_projection_deliveries_tenant_post
 `);
   write(root, migrationRegistryPath, `
-mod m20260716_000001_create_blog_comment_projection_deliveries;
-Box::new(m20260716_000001_create_blog_comment_projection_deliveries::Migration)
+pub mod m20261029_000001_create_blog_schema;
+Box::new(m20261029_000001_create_blog_schema::Migration)
 `);
 
   const registrationSource = missingRegistration

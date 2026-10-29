@@ -6,6 +6,10 @@ license.workspace = true
 authors = ["RusToK Team"]
 description = "Dioxus 0.7 component adapter for RusToK UI"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 dioxus = { workspace = true }
 rustok-ui = { path = ".." }

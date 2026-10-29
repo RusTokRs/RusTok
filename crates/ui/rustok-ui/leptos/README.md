@@ -1,5 +1,7 @@
 # rustok-ui-leptos
 
+For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 SSR-first Leptos 0.8 design system component adapter for the RusToK platform.
 
 ## Overview

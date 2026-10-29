@@ -17,11 +17,11 @@
     "handler": "crates/modules/rustok-blog/src/services/comment_projection.rs",
     "service_export": "crates/modules/rustok-blog/src/services/mod.rs",
     "delivery_entity": "crates/modules/rustok-blog/src/entities/blog_comment_projection_delivery.rs",
-    "delivery_migration": "crates/modules/rustok-blog/src/migrations/m20260716_000001_create_blog_comment_projection_deliveries.rs",
+    "delivery_migration": "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
     "migration_registry": "crates/modules/rustok-blog/src/migrations/mod.rs",
     "module_registration": "crates/modules/rustok-blog/src/module.rs",
     "consumer_registry": "crates/modules/rustok-blog/contracts/blog-fba-registry.json",
-    "cursor_revision_migration": "crates/modules/rustok-blog/src/migrations/m20260922_000026_add_blog_comment_projection_revision.rs",
+    "cursor_revision_migration": "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
     "snapshot_cursor": {
       "field": "projection_revision",
       "scope": "tenant/post",

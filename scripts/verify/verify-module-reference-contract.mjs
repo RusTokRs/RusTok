@@ -177,33 +177,18 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
   '"Blog Category Taxonomy projection contains duplicate identities"',
   '"Blog Category Taxonomy projection contains Category without localized copy"',
 ]);
-requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
+requireAll("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
   "fk_blog_posts_tenant_category",
   "uq_blog_categories_tenant_id",
   "blog_posts_category_tenant_insert",
   "blog_posts_category_tenant_update",
   "blog_categories_delete_null_post_category",
-  "invalid relations exist",
+  "ON DELETE SET NULL (category_id)",
 ]);
 requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
-  "mod m20260919_000023_enforce_blog_post_category_tenant_integrity;",
-  "mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;",
-  "mod m20260919_000025_fix_blog_post_category_tenant_delete_action;",
-  "Box::new(m20260919_000023_enforce_blog_post_category_tenant_integrity::Migration)",
-  "Box::new(m20260919_000025_fix_blog_post_category_tenant_delete_action::Migration)",
-  '"m20260919_000023_enforce_blog_post_category_tenant_integrity"',
-  '"m20260919_000025_fix_blog_post_category_tenant_delete_action"',
-]);
-
-requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000025_fix_blog_post_category_tenant_delete_action.rs", [
-  "fk_blog_posts_tenant_category",
-  "ON DELETE SET NULL (category_id)",
-  "DROP CONSTRAINT IF EXISTS",
-  "Intentionally irreversible",
-  "Err(DbErr::Migration(",
-]);
-forbid("crates/modules/rustok-blog/src/migrations/m20260919_000023_enforce_blog_post_category_tenant_integrity.rs", [
-  "ON DELETE SET NULL;\n",
+  "pub mod m20261029_000001_create_blog_schema;",
+  "Box::new(m20261029_000001_create_blog_schema::Migration)",
+  '"m20261029_000001_create_blog_schema"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/category_name_projection.rs", [
@@ -403,16 +388,10 @@ forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   "BlogError::Validation(format!(",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/migrations/m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity.rs", [
+requireAll("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
   "fk_blog_post_channel_visibility_tenant_post",
   "blog_post_channel_visibility_tenant_insert",
   "blog_post_channel_visibility_tenant_update",
-  "invalid relations exist",
-]);
-requireAll("crates/modules/rustok-blog/src/migrations/mod.rs", [
-  "mod m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity;",
-  "Box::new(m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity::Migration)",
-  '"m20260919_000024_enforce_blog_post_channel_visibility_tenant_integrity"',
 ]);
 
 requireAll("crates/modules/rustok-blog/src/services/comment_projection.rs", [

@@ -6,6 +6,10 @@ license.workspace = true
 authors = ["RusToK Team"]
 description = "Framework-agnostic UI design system core: variants, sizes, headless contracts and deterministic Tailwind CSS class resolvers"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 
