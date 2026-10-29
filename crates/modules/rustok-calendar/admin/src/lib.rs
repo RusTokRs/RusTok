@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Calendar Admin
+//!
+//! Administrator user interface and appointment management package for `rustok-calendar`.
+//!
+//! Provides appointment calendars, booking overviews, time slot configuration,
+//! and schedule management following Fluid Frontend Architecture.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use core::{CalendarAdminTableRow, filter_rows};
+pub use transport::CalendarAdminTransport;
 pub use ui::{CalendarAdmin, CalendarAdminPage};

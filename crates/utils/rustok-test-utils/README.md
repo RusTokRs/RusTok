@@ -1,5 +1,7 @@
 # rustok-test-utils
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-test-utils` owns shared fixtures, mocks, and test helpers for RusToK workspace tests.

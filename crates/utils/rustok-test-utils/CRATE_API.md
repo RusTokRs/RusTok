@@ -1,7 +1,13 @@
 # rustok-test-utils / CRATE_API
 
-## Public Modules
+## Public surface
+
+### Public Modules
 `db`, `events`, `fixtures`, `helpers`.
+
+## Invariants
+- Dev-only dependency: never included in production server bundles.
+- Isolated test databases: each test run uses an isolated database instance.
 
 ## Primary Public Types and Signatures
 - `pub async fn setup_test_db(...)`

@@ -1,4 +1,4 @@
-//! RusToK Test Utilities
+//! # RusToK Test Utilities
 //!
 //! This crate provides testing utilities for RusToK modules:
 //! - Database setup and teardown utilities
@@ -33,7 +33,10 @@ pub use db::{
     setup_test_db, unique_postgres_database_name,
 };
 pub use events::{MockEventBus, MockEventTransport, mock_event_bus, mock_transactional_event_bus};
-pub use helpers::*;
+pub use helpers::{
+    admin_context, customer_context, json_payload, manager_context, super_admin_context,
+    unique_email, unique_slug, unique_test_id, user_context, wait_for, with_roles,
+};
 
 #[cfg(test)]
 mod contract_tests;

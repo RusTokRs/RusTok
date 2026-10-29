@@ -1,5 +1,7 @@
 # rustok-calendar-admin
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Admin UI package for `calendar`, following Fluid Frontend Architecture (FFA).
 
 ## Responsibilities

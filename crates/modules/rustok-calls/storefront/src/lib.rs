@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Calls Storefront
+//!
+//! Storefront user interface and peer conferencing package for `rustok-calls`.
+//!
+//! Provides public WebRTC call views, media controls, peer connection state displays,
+//! and room participation interfaces following Fluid Frontend Architecture.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use core::CallsViewModel;
+pub use transport::CallsStorefrontTransport;
 pub use ui::CallsView;

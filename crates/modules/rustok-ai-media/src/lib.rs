@@ -1,3 +1,13 @@
+//! # RusToK AI Media
+//!
+//! Domain-owned AI verticals for media asset generation and dimension validation.
+//!
+//! Exposes image generation vertical descriptors and dimension normalizers
+//! for the RusToK AI orchestrator.
+
+#[cfg(test)]
+mod contract_tests;
+
 pub const IMAGE_ASSET_TASK_SLUG: &str = "image_asset";
 pub const IMAGE_ASSET_TOOL_NAME: &str = "direct.media.generate_image";
 

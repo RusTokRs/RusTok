@@ -1,5 +1,7 @@
 # rustok-ai-product
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ai-product` is a domain-owned AI support crate for product verticals.

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Stateless machine-translation bridge between RusToK Translation and AI contracts"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = []
 server = ["rustok-ai/server", "rustok-api/runtime", "rustok-translation/runtime"]

@@ -1,4 +1,14 @@
+//! # RusToK AI Content
+//!
+//! Domain-owned AI verticals for content moderation and blog drafting flows.
+//!
+//! Exposes content moderation policies, generated draft validation, and direct
+//! AI tool bindings for the RusToK AI orchestrator.
+
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
+
+#[cfg(test)]
+mod contract_tests;
 
 use serde::{Deserialize, Serialize};
 

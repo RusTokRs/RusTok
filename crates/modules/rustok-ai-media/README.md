@@ -1,5 +1,7 @@
 # rustok-ai-media
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ai-media` owns media-specific AI descriptors and pure validation for

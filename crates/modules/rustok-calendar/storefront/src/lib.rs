@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Calendar Storefront
+//!
+//! Storefront user interface and appointment booking package for `rustok-calendar`.
+//!
+//! Provides public calendar views, availability displays, time slot selection,
+//! and appointment booking controls following Fluid Frontend Architecture.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use core::CalendarViewModel;
+pub use transport::CalendarStorefrontTransport;
 pub use ui::CalendarView;

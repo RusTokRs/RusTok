@@ -1,5 +1,7 @@
 # rustok-calls-storefront
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 Storefront UI package for `calls`, following Fluid Frontend Architecture (FFA).
 
 ## Responsibilities

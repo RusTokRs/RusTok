@@ -1,4 +1,14 @@
+//! # RusToK AI Product
+//!
+//! Domain-owned AI verticals for product copywriting and attribute enrichment flows.
+//!
+//! Exposes product agent descriptors, multi-stage enrichment workflows, and
+//! payload validation for the RusToK AI orchestrator.
+
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
+
+#[cfg(test)]
+mod contract_tests;
 
 use serde::{Deserialize, Serialize};
 

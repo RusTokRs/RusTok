@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # RusToK Calls Admin
+//!
+//! Administrator user interface and session management package for `rustok-calls`.
+//!
+//! Provides WebRTC call administration, room lifecycle management, active session review,
+//! and conference settings following Fluid Frontend Architecture.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+#[cfg(test)]
+mod contract_tests;
+
+pub use core::{CallsAdminTableRow, filter_rows};
+pub use transport::CallsAdminTransport;
 pub use ui::{CallsAdmin, CallsAdminPage};

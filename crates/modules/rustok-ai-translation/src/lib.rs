@@ -1,3 +1,13 @@
+//! # RusToK AI Translation
+//!
+//! Stateless machine-translation bridge between RusToK Translation and AI contracts.
+//!
+//! Exposes provider SPI adapters, prompt-policy digests, schema validators,
+//! and protected-token preservation checks for AI translation execution.
+
+#[cfg(test)]
+mod contract_tests;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;

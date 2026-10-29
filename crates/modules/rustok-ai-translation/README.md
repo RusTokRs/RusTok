@@ -1,5 +1,7 @@
 # rustok-ai-translation
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ai-translation` is the stateless bridge between the Translation-owned

@@ -1,4 +1,14 @@
+//! # RusToK AI Order
+//!
+//! Domain-owned AI verticals for order analytics and operations assistant flows.
+//!
+//! Exposes advisory order analysis, operator assistance suggestions, and payload
+//! validation for the RusToK AI orchestrator.
+
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
+
+#[cfg(test)]
+mod contract_tests;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

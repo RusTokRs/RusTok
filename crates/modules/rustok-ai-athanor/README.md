@@ -1,5 +1,7 @@
 # rustok-ai-athanor
 
+For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-ai-athanor` is the first-party adapter between the RusToK AI retrieval
