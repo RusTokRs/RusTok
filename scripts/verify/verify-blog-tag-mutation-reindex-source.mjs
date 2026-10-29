@@ -52,7 +52,7 @@ function between(source, startMarker, endMarker) {
 const evidence = json(files.evidence);
 const taxonomyMutation = read(files.taxonomyMutation);
 const taxonomyLib = read(files.taxonomyLib);
-const tagService = read(files.tagService);
+const tagService = read(files.tagService) + '\n' + readTree('crates/modules/rustok-blog/src/services/tag');
 const relationMigration = read(files.relationMigration) + '\n' + readTree('crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema');
 const postTagsMigration = read(files.postTagsMigration);
 const tagUsageMigration = read(files.tagUsageMigration);
