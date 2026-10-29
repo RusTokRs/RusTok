@@ -623,6 +623,12 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   Tenant enumeration uses a bounded, UUID-ordered keyset cursor instead of
   offset pagination, so deletions of earlier tenant rows do not shift pending
   recovery work out of the current sweep.
+- Relay polling rejects `relay_interval_ms = 0` instead of starting an
+  unthrottled polling loop. Retry backoff requires a nonzero base and a
+  maximum at least as large as the base; malformed policies fail at config
+  load rather than causing a retry storm.
+- Auth retention cleanup logs include OAuth token rows. A sweep that only
+  prunes expired OAuth tokens is a reportable cleanup, not an invisible no-op.
 - Embedded admin HTML fallback is limited to SPA navigation paths. Missing
   scripts, stylesheets, fonts, images and other recognized static assets return
   404 rather than HTML with status 200.
