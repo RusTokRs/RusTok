@@ -91,6 +91,12 @@ Native runtime module identity for {title}. No domain capability has been implem
 ## Interactions
 - Platform runtime discovery only. No external capability or module dependency is required.
 
+## Known Limitations / Pending Implementation
+- There are no domain commands, durable persistence, migrations or business transports yet.
+- A requested UI package is unmounted development code, not a live route.
+- Compilation, runtime composition and FBA/FFA readiness require separate evidence.
+- Track owner operations and verification in [the implementation plan](./docs/implementation-plan.md).
+
 ## Verification
 - `cargo xtask module lint {slug}`
 - `cargo xtask module validate {slug}`

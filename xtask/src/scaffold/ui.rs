@@ -103,6 +103,12 @@ native and GraphQL adapters, then add Leptos host composition and live UI
 manifest metadata in a separate feature change before promoting readiness. Next.js applications own any separate classic packages in their hosts
 and are not a generated FFA adapter.
 
+## Known Limitations / Pending Implementation
+- No owner business operation or usable native/GraphQL adapter exists yet.
+- This Leptos package has no host route and advertises no live UI capability.
+- Client parity and real transport behavior remain pending owner implementation.
+- Track subsequent implementation in the module's docs/implementation-plan.md.
+
 ## Reference
 - [Blog's production Leptos package](../../rustok-blog/{side}/README.md)
 - [FFA implementation guide](../../../../docs/UI/module-package-implementation.md)
