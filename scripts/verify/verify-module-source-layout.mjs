@@ -9,6 +9,34 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+// Shared generic rules apply before Blog's additional reference-v1 constraints.
+import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mjs";
+
+const parameters = process.argv.slice(2);
+if (parameters.length !== 0 &&
+    (parameters.length !== 2 || parameters[0] !== "--module" || !parameters[1])) {
+  console.error("Usage: node scripts/verify/verify-module-source-layout.mjs [--module <slug>]");
+  process.exit(2);
+}
+const selectedModule = parameters.length ? parameters[1] : "blog";
+let modulePath;
+try {
+  modulePath = resolveNativeModule(repoRoot, selectedModule);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule);
+if (architectureFailures.length) {
+  console.error("Native module architecture verification failed:");
+  for (const failure of architectureFailures) console.error("- " + failure);
+  process.exit(1);
+}
+if (selectedModule !== "blog") {
+  console.log("Native module architecture verification passed for " + selectedModule + ".");
+  process.exit(0);
+}
+
 const profiles = [
   {
     crate: "rustok-blog",
