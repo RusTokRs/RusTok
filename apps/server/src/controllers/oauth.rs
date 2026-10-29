@@ -1309,6 +1309,24 @@ fn oauth_scope_contains(scopes: &[String], required_scope: &str) -> bool {
     scopes.iter().any(|scope| scope == required_scope)
 }
 
+/// Authorization codes, identity claims and consent forms must not be cached
+/// by browsers or shared intermediaries, including on error and redirect paths.
+async fn disable_oauth_caching(
+    request: Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
+}
+
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(
@@ -1326,6 +1344,7 @@ pub fn router() -> crate::routes::ServerRouter {
             get(userinfo_handler).post(userinfo_post_handler),
         )
         .route("/api/oauth/revoke", post(revoke_handler))
+        .layer(axum::middleware::from_fn(disable_oauth_caching))
 }
 
 #[cfg(test)]
@@ -1596,6 +1615,29 @@ mod tests {
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());
         assert!(!validated_request("first_party").app.requires_user_consent());
+    }
+
+    #[tokio::test]
+    async fn oauth_cache_policy_covers_success_redirects_and_errors() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let router = axum::Router::new()
+            .route("/ok", get(|| async { StatusCode::OK }))
+            .route("/redirect", get(|| async { StatusCode::FOUND }))
+            .route("/error", get(|| async { StatusCode::BAD_REQUEST }))
+            .layer(axum::middleware::from_fn(disable_oauth_caching));
+
+        for path in ["/ok", "/redirect", "/error"] {
+            let response = router
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("OAuth response");
+            assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+            assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
+        }
     }
 
     #[test]
