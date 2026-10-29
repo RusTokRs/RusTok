@@ -9,6 +9,16 @@ use tokio::{
 pub struct ProductMediaReleaseWorkerHandle {
     _task: JoinHandle<()>,
 }
+
+impl ProductMediaReleaseWorkerHandle {
+    pub fn is_finished(&self) -> bool {
+        self._task.is_finished()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self._task.await
+    }
+}
 pub fn spawn_product_media_release_worker(
     ctx: ServerRuntimeContext,
     mut stop: tokio::sync::watch::Receiver<bool>,
