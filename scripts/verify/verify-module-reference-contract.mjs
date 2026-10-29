@@ -887,7 +887,8 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
   "Blog category Taxonomy hierarchy coverage is incomplete before create",
   "Blog category Taxonomy projection contains Category without localized copy before create",
 ]);
-requireAll("crates/modules/rustok-blog/src/services/post/commands.rs", [
+requireAll("crates/modules/rustok-blog/src/services/post/commands/create.rs", [
+  "pub async fn create_post(",
   "if publish {",
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
 ]);
