@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Operational command adapters for the RusToK RBAC module"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 rustok-cli-core.workspace = true

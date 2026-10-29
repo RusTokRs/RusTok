@@ -1,4 +1,9 @@
+//! # rustok-rbac-cli
+//!
 //! External operational command adapters for `rustok-rbac`.
+//!
+//! Exposes CLI commands for RBAC persistence consistency reports and system
+//! role permissions repair.
 
 use std::fs;
 
@@ -340,3 +345,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
