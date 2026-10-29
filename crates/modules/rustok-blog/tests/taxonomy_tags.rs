@@ -644,6 +644,19 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         .expect("post should expose the rust tag")
         .id;
 
+    // A forged usage projection for another tenant must fail at the database
+    // boundary even if the referenced Taxonomy Tag ID exists.
+    let other_tenant = Uuid::new_v4();
+    let forged_usage = Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO blog_tag_usage (tenant_id, tag_id, canonical_key, use_count) VALUES (?, ?, ?, ?)",
+        [other_tenant.into(), tag_id.into(), "forged".into(), 0_i32.into()],
+    );
+    assert!(
+        db.execute(forged_usage).await.is_err(),
+        "a projection row cannot reference another tenant's Taxonomy Tag",
+    );
+
     tag_service
         .delete_tag(tenant_id, tag_id, security)
         .await
