@@ -38,7 +38,7 @@ function lint(ctx) {
 
 test("a minimal native module omits unused responsibility directories", () => {
   fixture((ctx) => {
-    assert.equal(resolveNativeModule(ctx.root, "sample"), ctx.path(".").slice(0, -2));
+    assert.equal(resolveNativeModule(ctx.root, "sample"), ctx.path(""));
     assert.deepEqual(lint(ctx), []);
   });
 });
@@ -46,7 +46,7 @@ test("a minimal native module omits unused responsibility directories", () => {
 test("unknown and non-path module registry entries are rejected", () => {
   fixture((ctx) => {
     assert.throws(() => resolveNativeModule(ctx.root, "missing"), /Unknown native/);
-    ctx.write("../../../../modules.toml",
+    ctx.write("../../../modules.toml",
       '[modules]\nsample = { crate = "rustok-sample", source = "registry" }\n');
     assert.throws(() => resolveNativeModule(ctx.root, "sample"), /not a native local path/);
   });
@@ -73,13 +73,14 @@ test("domain and application boundaries reject transport dependencies", () => {
   });
 });
 
-test("source file size and internal contract tests are required", () => {
+test("source file size and module registration are checked", () => {
   fixture((ctx) => {
     ctx.write("src/module.rs", " ".repeat(32769));
     ctx.write("src/tests/contract.rs", "");
     const failures = lint(ctx).join("\n");
     assert.match(failures, /exceeds canonical source limit/);
     assert.match(failures, /missing native RusToKModule implementation/);
+    assert.match(failures, /contract test file has no tests/);
   });
 });
 
@@ -108,6 +109,7 @@ test("fake UI actions and Leptos in pure core fail FFA lint", () => {
     ctx.write("admin/src/core.rs", "use leptos::prelude::*;\n");
     ctx.write("admin/src/transport/mod.rs", "pub fn fetch() {}\n");
     ctx.write("admin/src/ui/mod.rs", "let sample_rows = vec![];\n");
+    ctx.write("admin/src/ui/leptos.rs", "pub fn render() {}\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     const failures = lint(ctx).join("\n");

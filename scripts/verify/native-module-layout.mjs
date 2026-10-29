@@ -71,9 +71,17 @@ function readRequired(root, path, diagnostics) {
 }
 
 function keyInSection(source, section, key) {
-  const escaped = section.replace(/[.*+?^$()|[\]{}\\]/g, "\\$&");
-  const group = source.match(new RegExp("^\\[" + escaped + "\\]\\s*\\n([\\s\\S]*?)(?=^\\[|$(?![\\s\\S]))", "m"));
-  return group?.[1]?.match(new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\"", "m"))?.[1] ?? null;
+  let active = false;
+  for (const line of source.split(/\r?\n/)) {
+    if (/^\s*\[/.test(line)) {
+      active = line.trim() === "[" + section + "]";
+      continue;
+    }
+    if (!active) continue;
+    const match = line.match(new RegExp("^\\s*" + key + "\\s*=\\s*\"([^\"]+)\""));
+    if (match) return match[1];
+  }
+  return null;
 }
 
 function checkUi(root, moduleRoot, side, manifest, diagnostics) {
@@ -100,8 +108,17 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const transport = hasSource(join(src, "transport.rs")) ? join(src, "transport.rs") :
     join(src, "transport", "mod.rs");
   readRequired(root, core, diagnostics);
-  readRequired(root, transport, diagnostics);
+  const transportSource = readRequired(root, transport, diagnostics);
+  if (transportSource && !/\b(?:async\s+)?fn\s+[a-z_][a-z0-9_]*\s*\(|\bpub\s+use\s+/.test(transportSource)) {
+    diagnostics.push(relative(root, transport) +
+      ": empty transport facade without executable operations or an adapter re-export");
+  }
   readRequired(root, join(src, "ui", "mod.rs"), diagnostics);
+  if (!hasSource(join(src, "ui", "leptos.rs")) &&
+      !hasSource(join(src, "ui", "leptos", "mod.rs"))) {
+    diagnostics.push(relative(root, join(src, "ui")) +
+      ": declared Leptos UI has no dedicated render adapter");
+  }
   if (!existsSync(join(uiRoot, "locales"))) {
     diagnostics.push(relative(root, join(uiRoot, "locales")) + ": declared UI has no localization bundles");
   }
@@ -119,7 +136,6 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   }
   checkImports(root, join(src, "core"), FORBIDDEN_CORE, diagnostics);
   if (hasSource(join(src, "core.rs"))) {
-    checkImports(root, src, [], diagnostics);
     const coreSource = readFileSync(core, "utf8");
     for (const [name, regex] of FORBIDDEN_CORE) {
       if (regex.test(coreSource)) {
@@ -145,8 +161,10 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
 
 export function resolveNativeModule(root, slug) {
   const manifest = readFileSync(join(root, "modules.toml"), "utf8");
-  const block = manifest.match(/^\[modules\]\s*\n([\s\S]*?)(?=^\[|\s*$\z)/m)?.[1] ??
-    manifest.split("[modules]")[1]?.split(/\n\[/)[0] ?? "";
+  const moduleHeader = manifest.match(/^\[modules\]\s*$/m);
+  if (!moduleHeader) throw new Error("Missing [modules] section in modules.toml");
+  const afterHeader = manifest.slice(moduleHeader.index + moduleHeader[0].length);
+  const block = afterHeader.split(/\n\s*\[/)[0];
   for (const line of block.split("\n")) {
     const match = line.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*\{(.+)\}\s*$/);
     if (match?.[1] !== slug) continue;
@@ -210,9 +228,12 @@ export function lintNativeModule(root, modulePath, slug) {
   if (existsSync(join(src, "migrations")) && !/\bimpl\s+MigrationSource\s+for\b/.test(module)) {
     diagnostics.push(relative(repo, join(src, "module.rs")) + ": migration source must be wired in module.rs");
   }
-  if (!hasSource(join(src, "tests", "contract.rs"))) {
-    diagnostics.push(relative(repo, join(src, "tests", "contract.rs")) +
+  const contractPath = join(src, "tests", "contract.rs");
+  if (!hasSource(contractPath)) {
+    diagnostics.push(relative(repo, contractPath) +
       ": native contract tests belong in src/tests/contract.rs");
+  } else if (!/#\s*\[\s*(?:tokio::)?test\s*\]/.test(readFileSync(contractPath, "utf8"))) {
+    diagnostics.push(relative(repo, contractPath) + ": contract test file has no tests");
   }
   if (!/#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*mod\s+tests\s*;/.test(lib)) {
     diagnostics.push(relative(repo, join(src, "lib.rs")) + ": missing cfg(test) tests module");
