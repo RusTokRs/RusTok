@@ -16,6 +16,75 @@ Before changing backend code:
 4. Check `docs/modules/registry.md` and `docs/modules/implementation-plans-registry.md`.
 5. If naming changes are involved, follow the naming contract in `docs/standards/coding.md`.
 
+## Scaffold profiles and generation contract
+
+This section defines the **target** for `cargo xtask module new` and
+`cargo xtask scaffold`, not proof that the current renderer complies.
+`module validate` checks publish-readiness and registration today; full
+architecture, compilation, and runtime evidence remain distinct checks.
+
+| Profile | Canonical owner | Required baseline | Must not inherit |
+|---|---|---|---|
+| Native module | `modules.toml`, module-local `rustok-module.toml` and `RusToKModule` | Cargo manifest, thin `src/lib.rs`, `src/module.rs`, owner README, local docs and contract tests | unimplemented domain/persistence/ports/UI merely to fill directories |
+| Support crate | actual consumer/owner, without module lifecycle by default | Cargo manifest, narrow public API and owner docs | module manifest, native registration, synthetic migrations |
+| Standalone WASI | `rustok-module-template` Component Model workflow | guest/WIT contracts and its separate packaging | native `module.rs`, native host wiring or SeaORM setup |
+
+The native scaffold command accepts optional `--profile native` and rejects
+`--profile support` and `--profile wasi`. The other profiles are **not**
+supported modes of the native renderer; the WASI template remains separate.
+
+For a newly generated native module, only `src/lib.rs` (facade) and
+`src/module.rs` (metadata, migrations and runtime composition) are required
+runtime source files at the root. Crate-private contract tests belong in
+`src/tests/contract.rs` with a `src/tests/mod.rs` entrypoint; public API
+integration tests belong in top-level `tests/`. Put persistence entities in a
+private `src/entities/` module without public re-exports. Do not emit empty
+responsibility slots. Backend source files have the reference ceiling of
+32 KiB; any exception requires an explicit documented rationale.
+
+Additional slots depend on **implemented responsibilities**:
+
+- `domain/` — actual state machines and invariants, independent of persistence and transports;
+- `dto/` — real owner command, query and response types;
+- `entities/` and `migrations/` — actual owner mappings and concrete schema changes;
+- `services/` — executable use cases and transactional ownership;
+- `ports/` — stable cross-owner contracts with a real consumer;
+- `integrations/` — concrete adapters to another capability;
+- `graphql/` — published GraphQL mapping into owner services/ports;
+- `controllers/` or `rest/` — published HTTP transport mapping.
+
+Error and event modules appear only with real owner error/event contracts.
+A file containing only a comment, a no-op adapter, speculative search
+projection, invented records table, or fake CRUD is **not** a layer.
+
+`--no-db` must produce no entities, migrations or durable storage claims. A
+DB request authorizes persistence only once an actual owner schema and
+migration contract exist. `--no-ui` must produce no UI packages or advertised
+routes. `--ui admin|storefront|dual` requests UI, not an entitlement to publish
+a Leptos/Next.js route without a working backend and transport contract.
+
+**Created** means the files and requested composition were written;
+**verified scaffold** requires successful appropriate compilation, module
+registration, structural validation and tests. These do **not** imply
+implemented business operations, FBA `boundary_ready` /
+`transport_verified` or FFA `parity_verified`. Record actual readiness in
+the owner implementation plan and only project evidenced states into the
+registry. Known gaps must be declared in the owner README/plan. The future
+generator must preflight a complete edit plan, show all edits in dry-run,
+roll back failed writes, and never return success after failed validation.
+
+### Current implementation gap
+
+At phase 1 the backend renderer still emits `src/contract_tests.rs`,
+public `entities`, placeholder service/integration/event layers and a
+fabricated migration. The UI renderer still emits `sample_rows`, log-only
+CRUD and empty transport facades. Registration may be optimistic and a
+failed post-scaffold validation can still return success. The profile guard
+and parser unit tests delivered in phase 1 do not validate generated source.
+Architecture validation, template cutover, Next.js parity, atomic
+registration and executable golden tests are subsequent phases.
+Generated modules must not be treated as reference-ready yet.
+
 ## Target Module Layout
 
 Native platform modules use one responsibility-oriented physical vocabulary. Small
