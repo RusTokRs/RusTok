@@ -64,3 +64,4 @@ It coordinates multi-seller order workflows, initial financial allocations, comm
 - `MarketplaceFinancialOrchestrationError::AmountMismatch`: Reconciled totals between stages do not match.
 - `MarketplaceFinancialOrchestrationError::InvalidInput`: Input payload failed schema or business validation constraints.
 - `MarketplaceFinancialOrchestrationError::PortError`: Port invocation failed across module boundary.
+

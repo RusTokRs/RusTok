@@ -14,3 +14,4 @@ fn test_blog_crate_api_compliance() {
         assert!(api.contains(section), "CRATE_API.md must contain '{section}'");
     }
 }
+

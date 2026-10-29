@@ -67,3 +67,4 @@ It records balanced debit/credit transactions for marketplace orders, append-onl
 - `MarketplaceLedgerError::CapacityExceeded`: Reversal amount or transfer amount exceeds original entry limit.
 - `MarketplaceLedgerError::Conflict`: Duplicate posting for commission order or conflicting idempotency key.
 - `MarketplaceLedgerError::Database`: Underlying persistence error wrapped cleanly.
+

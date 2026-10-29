@@ -27,4 +27,4 @@ providers.
 - The user-facing binary crate is `rustok-cli`.
 - `apps/server` must not depend on this crate for production HTTP runtime behavior.
 
-See [docs](docs/README.md).
+See [docs](docs/README.md) and [CRATE_API.md](CRATE_API.md).

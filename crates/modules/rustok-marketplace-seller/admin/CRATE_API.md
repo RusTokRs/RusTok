@@ -74,3 +74,4 @@ It provides seller profile directory views, detail records, onboarding approvals
 
 - Transport failures return typed `UiTransportResult` errors preserving HTTP/GraphQL failure diagnostics.
 - Validation failures surface field-level errors to the admin operator without data loss.
+

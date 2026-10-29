@@ -78,3 +78,4 @@ mod tests {
         assert_eq!(module.kind(), ModuleKind::Core);
     }
 }
+

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "User-facing RusToK platform CLI runner"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 rustok-cli-core.workspace = true

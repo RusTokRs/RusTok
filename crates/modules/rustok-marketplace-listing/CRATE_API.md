@@ -72,3 +72,4 @@ It links seller organizations to master product variants while enforcing commerc
 - `MarketplaceListingError::Validation`: Input payload failed schema or business validation constraints.
 - `MarketplaceListingError::SellerInactive`: Owning seller is suspended or not in active state.
 - `MarketplaceListingError::Database`: Underlying persistence error wrapped cleanly.
+

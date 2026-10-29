@@ -1,3 +1,8 @@
+//! # RusToK CLI Core
+//!
+//! Core traits and data structures for the RusToK platform CLI runner and module command providers.
+//! Decouples command discovery and execution semantics from terminal argument parsing.
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

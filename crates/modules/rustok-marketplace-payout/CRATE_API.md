@@ -56,3 +56,4 @@ It groups payable sub-ledger entries into immutable payout batches for outbound 
 - `MarketplacePayoutError::Conflict`: Ledger entry has already been claimed by another payout or idempotency conflict.
 - `MarketplacePayoutError::Validation`: Currency mismatch across items, empty entry list, or batch size exceeds `MAX_PAYOUT_ITEMS_PER_BATCH`.
 - `MarketplacePayoutError::Database`: Underlying persistence error wrapped cleanly.
+

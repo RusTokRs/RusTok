@@ -61,3 +61,4 @@ It records the binding between checkout order lines, winning sellers, listing ID
 - `MarketplaceAllocationError::Conflict`: Order line is already allocated or idempotency conflict detected.
 - `MarketplaceAllocationError::Validation`: Line count exceeded `MAX_ALLOCATION_LINES_PER_COMMAND` or amounts are negative.
 - `MarketplaceAllocationError::Database`: Underlying persistence error wrapped cleanly.
+

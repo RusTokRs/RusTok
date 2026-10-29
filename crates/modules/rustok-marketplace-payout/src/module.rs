@@ -50,3 +50,4 @@ impl MigrationSource for MarketplacePayoutModule {
         migrations::migrations()
     }
 }
+

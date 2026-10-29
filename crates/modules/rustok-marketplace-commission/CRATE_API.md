@@ -62,3 +62,4 @@ It calculates platform fee splits and seller proceeds based on deterministic pri
 - `MarketplaceCommissionError::Conflict`: Duplicate assessment attempt or conflicting idempotency key.
 - `MarketplaceCommissionError::Validation`: Rate exceeds 10,000 bps (100%) or currency mismatch on fixed component.
 - `MarketplaceCommissionError::Database`: Underlying persistence error wrapped cleanly.
+

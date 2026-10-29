@@ -48,3 +48,4 @@ impl MigrationSource for MarketplaceSellerModule {
         migrations::migrations()
     }
 }
+

@@ -30,3 +30,4 @@
 
 ### Errors / Failure Codes
 - Transport and validation failures produce typed `UiTransportResult` error outcomes.
+

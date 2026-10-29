@@ -28,3 +28,4 @@
 
 ### Errors / Failure Codes
 - Network, validation, and connection errors are surfaced through typed UI notices.
+

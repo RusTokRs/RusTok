@@ -1,3 +1,8 @@
+//! # RusToK CLI Platform
+//!
+//! Platform-level command provider for the RusToK CLI runner.
+//! Exposes maintenance commands including version inspection, database baselines, manifest rebuilds, and schema migrations.
+
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };

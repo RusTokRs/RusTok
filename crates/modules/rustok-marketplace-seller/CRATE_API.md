@@ -78,3 +78,4 @@ It maintains tenant-scoped seller profiles, membership roles, and localized disp
 - `MarketplaceSellerError::Validation`: Input payload failed schema or business validation constraints.
 - `MarketplaceSellerError::Unauthorized`: Actor does not possess necessary seller-level or platform permissions.
 - `MarketplaceSellerError::Database`: Underlying persistence error wrapped cleanly.
+

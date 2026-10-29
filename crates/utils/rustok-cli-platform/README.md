@@ -25,4 +25,4 @@ of a domain module and do not belong in the terminal runner.
   `rustok-cli-registry`.
 - Is consumed by `rustok-cli` only through the selected registry.
 
-See [docs](docs/README.md).
+See [docs](docs/README.md) and [CRATE_API.md](CRATE_API.md).

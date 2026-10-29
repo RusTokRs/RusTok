@@ -1,3 +1,8 @@
+//! # RusToK CLI
+//!
+//! Terminal-facing platform CLI runner for RusToK maintenance, distribution, and module workflows.
+//! Dispatches namespaced commands across registered providers with unified argument normalization and exit codes.
+
 use std::collections::BTreeSet;
 
 use rustok_cli_core::{

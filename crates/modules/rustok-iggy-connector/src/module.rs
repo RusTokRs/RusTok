@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, MigrationTrait, ModuleKind, RusToKModule};
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 /// Native module definition for Iggy Connector.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -37,10 +38,11 @@ impl RusToKModule for IggyConnectorModule {
     }
 
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Optional
+        ModuleKind::Extension
     }
 
     async fn health(&self) -> HealthStatus {
         HealthStatus::Healthy
     }
 }
+

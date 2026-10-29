@@ -38,3 +38,4 @@
 
 ### Errors / Failure Codes
 - Provider failures, egress denials, and schema validation errors produce typed `AiError` variants.
+
