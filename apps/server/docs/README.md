@@ -609,6 +609,15 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   metrics instead of false success.
 - Tenant-scoped DLQ listing reports the total matching failed events independently
   of its bounded response page, and resolves equal timestamps with stable ID ordering.
+- Refresh-token rotation verifies that the referenced user belongs to the
+  same tenant as the selected refresh session, preventing a malformed
+  cross-tenant reference from issuing a token with inconsistent authority.
+- Host shutdown now awaits the payment-provider, paid-order-label,
+  marketplace-financial, notification intake/candidate/fanout, Forum search
+  inbox, and Product media-release worker handles after broadcasting stop.
+  Each module drain retains the host's five-second timeout; failures and
+  timeouts remain visible to operators. Durable owner-managed work is still
+  responsible for retry after an interrupted provider operation.
 - Embedded admin HTML fallback is limited to SPA navigation paths. Missing
   scripts, stylesheets, fonts, images and other recognized static assets return
   404 rather than HTML with status 200.
