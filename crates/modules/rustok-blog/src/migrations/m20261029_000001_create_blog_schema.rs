@@ -911,6 +911,20 @@ ALTER TABLE blog_post_tags
     REFERENCES blog_posts (tenant_id, id)
     ON UPDATE CASCADE
     ON DELETE CASCADE;
+
+ALTER TABLE blog_post_tags
+    ADD CONSTRAINT fk_blog_post_tags_tag_tenant
+    FOREIGN KEY (tenant_id, tag_id)
+    REFERENCES taxonomy_terms (tenant_id, id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE;
+
+ALTER TABLE blog_tag_usage
+    ADD CONSTRAINT fk_blog_tag_usage_taxonomy_term_tenant
+    FOREIGN KEY (tenant_id, tag_id)
+    REFERENCES taxonomy_terms (tenant_id, id)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE;
 "#,
         )
         .await?;
@@ -1092,6 +1106,11 @@ WHEN NEW.tenant_id IS NULL
       WHERE post.id = NEW.post_id
         AND post.tenant_id = NEW.tenant_id
   )
+  OR NOT EXISTS (
+      SELECT 1 FROM taxonomy_terms term
+      WHERE term.id = NEW.tag_id
+        AND term.tenant_id = NEW.tenant_id
+  )
 BEGIN
     SELECT RAISE(ABORT, 'blog post tag tenant mismatch');
 END;
@@ -1104,6 +1123,11 @@ WHEN NEW.tenant_id IS NULL
       SELECT 1 FROM blog_posts post
       WHERE post.id = NEW.post_id
         AND post.tenant_id = NEW.tenant_id
+  )
+  OR NOT EXISTS (
+      SELECT 1 FROM taxonomy_terms term
+      WHERE term.id = NEW.tag_id
+        AND term.tenant_id = NEW.tenant_id
   )
 BEGIN
     SELECT RAISE(ABORT, 'blog post tag tenant mismatch');
