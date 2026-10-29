@@ -308,11 +308,15 @@ pub fn spawn_outbox_relay_worker(
                         return;
                     }
                     OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
-                    let Err(panic) = result;
-                    tracing::error!(
-                        "Outbox relay worker panicked: {:?}. Restarting in 5s.",
-                        panic
-                    );
+                    match result {
+                        Err(error) => tracing::error!(
+                            "Outbox relay worker failed: {:?}. Restarting in 5s.",
+                            error
+                        ),
+                        Ok(()) => tracing::error!(
+                            "Outbox relay worker exited unexpectedly. Restarting in 5s."
+                        ),
+                    }
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(5)) => {}
                         _ = stop_rx.changed() => {

@@ -451,6 +451,16 @@ pub struct PathRateLimitPolicy {
     pub prefixes: Arc<Vec<&'static str>>,
 }
 
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    // A group prefix must stop on a path-segment boundary. Otherwise an
+    // /api/auth limiter also affects unrelated /api/authentication routes.
+    path == prefix
+        || (prefix.ends_with('/') && path.starts_with(prefix))
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|remaining| remaining.starts_with('/'))
+}
+
 fn matching_path_policy<'a>(
     policies: &'a [PathRateLimitPolicy],
     path: &str,
@@ -459,7 +469,7 @@ fn matching_path_policy<'a>(
         policy
             .prefixes
             .iter()
-            .any(|prefix| path.starts_with(prefix))
+            .any(|prefix| path_matches_prefix(path, prefix))
     })
 }
 
@@ -734,8 +744,9 @@ pub async fn rate_limit_middleware(
 
 /// Path-aware rate limiting middleware.
 ///
-/// Applies rate limiting only to requests whose URI path starts with one of the
-/// provided `prefixes`. All other requests are passed through unchanged.
+/// Applies rate limiting only to paths within one of the provided `prefixes`
+/// (matching an exact path or a slash-delimited descendant). Unrelated paths
+/// with the same character prefix are passed through unchanged.
 ///
 /// This is useful to protect specific endpoint groups (e.g. `/api/auth`) without
 /// creating separate Axum sub-routers for each group.

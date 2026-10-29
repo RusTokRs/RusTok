@@ -529,6 +529,75 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    #[cfg(feature = "mod-commerce")]
+    let paid_order_label_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>() {
+            await_module_worker_shutdown("Paid-order label", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-commerce"))]
+    let paid_order_label_drain = std::future::ready(());
+
+    #[cfg(feature = "commerce-marketplace-financial")]
+    let marketplace_financial_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>() {
+            await_module_worker_shutdown("Marketplace financial", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "commerce-marketplace-financial"))]
+    let marketplace_financial_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-payment")]
+    let payment_provider_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>() {
+            await_module_worker_shutdown("Payment provider event", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-payment"))]
+    let payment_provider_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-product")]
+    let product_media_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>() {
+            await_module_worker_shutdown("Product media release", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-product"))]
+    let product_media_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-notifications")]
+    let notification_outbox_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>() {
+            await_module_worker_shutdown("Notification outbox intake", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-notifications"))]
+    let notification_outbox_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-notifications")]
+    let notification_candidate_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>() {
+            await_module_worker_shutdown("Notification candidate", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-notifications"))]
+    let notification_candidate_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-notifications")]
+    let notification_fanout_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>() {
+            await_module_worker_shutdown("Notification fanout", worker.join()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-notifications"))]
+    let notification_fanout_drain = std::future::ready(());
+
+    let forum_search_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
+            await_module_worker_shutdown("Forum search inbox", worker.join()).await;
+        }
+    };
+
     tokio::join!(
         relay_drain,
         retention_drain,
@@ -538,8 +607,30 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         module_work_drain,
         workflow_drain,
         watchdog_drain,
-        module_artifact_maintenance_drain
+        module_artifact_maintenance_drain,
+        paid_order_label_drain,
+        marketplace_financial_drain,
+        payment_provider_drain,
+        product_media_drain,
+        notification_outbox_drain,
+        notification_candidate_drain,
+        notification_fanout_drain,
+        forum_search_drain,
     );
+}
+
+/// Drain module-owned workers after broadcasting the shutdown signal. The
+/// timeout mirrors host worker drains; durable recovery state survives a
+/// process exit even if a provider or database call is still blocked.
+async fn await_module_worker_shutdown(
+    worker: &'static str,
+    join: impl std::future::Future<Output = std::result::Result<(), tokio::task::JoinError>>,
+) {
+    match tokio::time::timeout(Duration::from_secs(5), join).await {
+        Ok(Ok(())) => tracing::info!(worker, "Module worker stopped gracefully"),
+        Ok(Err(error)) => tracing::warn!(worker, ?error, "Module worker exited with error"),
+        Err(_) => tracing::warn!(worker, "Module worker shutdown timed out after 5s"),
+    }
 }
 
 fn spawn_relay_worker_handle(
@@ -590,6 +681,13 @@ fn spawn_auth_retention_handle(
     }
 }
 
+fn auth_retention_removed_artifacts(purge: &crate::services::auth_retention::AuthRetentionPurge) -> bool {
+    purge.sessions > 0
+        || purge.invite_consumptions > 0
+        || purge.invites > 0
+        || purge.oauth_tokens > 0
+}
+
 async fn auth_retention_loop(
     db: sea_orm::DatabaseConnection,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
@@ -604,13 +702,12 @@ async fn auth_retention_loop(
         }
 
         match crate::services::auth_retention::purge_expired_auth_artifacts(&db).await {
-            Ok(purge)
-                if purge.sessions > 0 || purge.invite_consumptions > 0 || purge.invites > 0 =>
-            {
+            Ok(purge) if auth_retention_removed_artifacts(&purge) => {
                 tracing::info!(
                     sessions = purge.sessions,
                     invite_consumptions = purge.invite_consumptions,
                     invites = purge.invites,
+                    oauth_tokens = purge.oauth_tokens,
                     "Purged expired auth artifacts past retention"
                 );
             }
@@ -1074,6 +1171,63 @@ mod tests {
         let res = connect_runtime_workers_with_runtime(runtime_ctx.clone()).await;
         assert!(res.is_ok());
         assert!(!runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>());
+    }
+
+    #[test]
+    fn auth_retention_reports_oauth_only_cleanup() {
+        let oauth_only = crate::services::auth_retention::AuthRetentionPurge {
+            oauth_tokens: 3,
+            ..Default::default()
+        };
+        assert!(super::auth_retention_removed_artifacts(&oauth_only));
+        assert!(!super::auth_retention_removed_artifacts(
+            &crate::services::auth_retention::AuthRetentionPurge::default()
+        ));
+    }
+
+    #[tokio::test]
+    async fn module_worker_join_finishes_after_watched_shutdown() {
+        let (stop, mut rx) = super::StopHandle::new();
+        let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = complete.clone();
+        let handle = tokio::spawn(async move {
+            rx.changed().await.expect("shutdown broadcast");
+            assert!(*rx.borrow());
+            observed.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        stop.stop().await;
+        super::await_module_worker_shutdown("shutdown-regression", handle).await;
+        assert!(complete.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn shutdown_drains_payment_provider_event_recovery_worker() {
+        let db = setup_test_db().await;
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let stop = super::StopHandle::ensure(&runtime_ctx);
+        let worker =
+            crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
+                runtime_ctx.clone(),
+                stop.subscribe(),
+            );
+        assert!(worker.instance_id() > 0);
+        runtime_ctx.shared_insert(worker);
+        assert!(runtime_ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            super::shutdown_runtime_workers(&runtime_ctx),
+        )
+        .await
+        .expect("payment recovery task must drain on shutdown");
+        assert!(stop.is_stopping());
+        assert!(!runtime_ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
     }
 
     #[tokio::test]

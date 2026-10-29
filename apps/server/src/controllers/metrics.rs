@@ -351,9 +351,10 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         .order_by_asc(SysEventsColumn::CreatedAt)
         .one(ctx.db())
         .await
-        .ok()
-        .flatten()
-        .map(|event| (Utc::now() - event.created_at).num_seconds().max(0));
+        // No pending event is a healthy empty queue (lag = 0), not a
+        // metrics query failure. Preserve None only for actual DB errors.
+        .map(|event| pending_event_lag_seconds(event.map(|event| event.created_at), Utc::now()))
+        .ok();
 
     if backlog_size.is_none()
         || dlq_total.is_none()
@@ -384,6 +385,13 @@ async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
         .unwrap_or_default();
     payload.push_str(&format_outbox_relay_runtime_metrics(relay_metrics));
     payload
+}
+
+fn pending_event_lag_seconds(
+    oldest_pending_created_at: Option<chrono::DateTime<Utc>>,
+    now: chrono::DateTime<Utc>,
+) -> i64 {
+    oldest_pending_created_at.map_or(0, |created_at| (now - created_at).num_seconds().max(0))
 }
 
 fn format_metric_u64(value: Option<u64>) -> String {
@@ -1173,6 +1181,23 @@ mod tests {
     fn metric_formatters_render_unknown_values_as_nan() {
         assert_eq!(super::format_metric_u64(None), "NaN");
         assert_eq!(super::format_metric_i64(None), "NaN");
+    }
+
+    #[test]
+    fn empty_outbox_is_healthy_and_has_zero_pending_lag() {
+        let now = Utc::now();
+        assert_eq!(super::pending_event_lag_seconds(None, now), 0);
+        assert_eq!(
+            super::pending_event_lag_seconds(Some(now - chrono::Duration::seconds(12)), now),
+            12
+        );
+        assert_eq!(
+            super::pending_event_lag_seconds(Some(now + chrono::Duration::seconds(30)), now),
+            0
+        );
+        let payload = super::format_outbox_metrics_optional(Some(0), Some(0), Some(0), Some(0));
+        assert!(payload.contains("rustok_outbox_metrics_collection_status 1"));
+        assert!(payload.contains("rustok_outbox_pending_lag_seconds 0"));
     }
 
     #[test]

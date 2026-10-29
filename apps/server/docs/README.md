@@ -625,3 +625,52 @@ Media reference port. Absent capability or an external Product profile does not 
 local fallback. Pending owner replacement requires an explicit drain/cutover, not hot
 repointing. See the [Product retention runbook](../../../crates/modules/rustok-product/docs/media-reference-retention.md)
 for caller identity, bounded IO, operator permissions and unexecuted runtime gates.
+
+## Bounded server review: route policies, reporting, static assets, metrics (2026-10-29)
+
+- Path-scoped rate limit policies match only the configured route and its
+  slash-delimited descendants. Similar-looking unrelated paths never consume
+  an authentication or readiness-specific quota.
+- The root GraphQL `dashboardStats` query requires an authenticated caller
+  with current `analytics:read` authority. `recentActivity`, which contains
+  user email addresses, requires current `users:list` authority. Both are
+  guarded in the GraphQL document preflight policy and in the resolvers.
+- The root GraphQL user connection orders results by creation time then
+  immutable user ID, and treats search text literally rather than allowing
+  SQL LIKE wildcards to expand the result set.
+- A healthy outbox with zero pending events reports a pending lag of zero and
+  a successful metric collection status; database failures still yield unknown
+  metrics instead of false success.
+- Tenant-scoped DLQ listing reports the total matching failed events independently
+  of its bounded response page, and resolves equal timestamps with stable ID ordering.
+- Refresh-token rotation verifies that the referenced user belongs to the
+  same tenant as the selected refresh session, preventing a malformed
+  cross-tenant reference from issuing a token with inconsistent authority.
+- Host shutdown now awaits the payment-provider, paid-order-label,
+  marketplace-financial, notification intake/candidate/fanout, Forum search
+  inbox, and Product media-release worker handles after broadcasting stop.
+  Each module drain retains the host's five-second timeout; failures and
+  timeouts remain visible to operators. Durable owner-managed work is still
+  responsible for retry after an interrupted provider operation.
+  Payment provider recovery additionally checks the shutdown signal between
+  tenant work items, without cancelling a recovery operation already underway.
+  Tenant enumeration uses a bounded, UUID-ordered keyset cursor instead of
+  offset pagination, so deletions of earlier tenant rows do not shift pending
+  recovery work out of the current sweep.
+- Relay polling rejects `relay_interval_ms = 0` instead of starting an
+  unthrottled polling loop. Retry backoff requires a nonzero base and a
+  maximum at least as large as the base; malformed policies fail at config
+  load rather than causing a retry storm.
+- Auth retention cleanup logs include OAuth token rows. A sweep that only
+  prunes expired OAuth tokens is a reportable cleanup, not an invisible no-op.
+- Embedded admin HTML fallback is limited to SPA navigation paths. Missing
+  scripts, stylesheets, fonts, images and other recognized static assets return
+  404 rather than HTML with status 200.
+
+This section describes only the affected host boundaries, not an exhaustive
+whole-crate or workspace audit. Changes require scoped Rust checks and tests
+plus any applicable CI gates before integration.
+
+- The outbox relay supervisor handles both a panicked child task and an
+  unexpected normal task exit before applying its bounded restart delay;
+  it no longer assumes the join result must be an error.

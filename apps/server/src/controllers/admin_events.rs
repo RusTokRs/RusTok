@@ -8,8 +8,8 @@ use rustok_api::{Action, Permission, Resource, has_effective_permission};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Set, Value,
+    ColumnTrait, DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, Value,
     sea_query::{Expr, SimpleExpr},
 };
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,7 @@ pub async fn list_dlq(
             tenant.id,
         ))
         .order_by_desc(entity::Column::CreatedAt)
-        .limit(limit);
+        .order_by_desc(entity::Column::Id);
 
     if let Some(event_type) = query
         .event_type
@@ -105,7 +105,18 @@ pub async fn list_dlq(
     }
 
     let query_started_at = Instant::now();
-    let models = db_query.all(ctx.db()).await.map_err(Error::Database)?;
+    // `total` is the number of matching DLQ events, not the number of
+    // rows returned in the limited page.
+    let total = db_query
+        .clone()
+        .count(ctx.db())
+        .await
+        .map_err(Error::Database)?;
+    let models = db_query
+        .limit(limit)
+        .all(ctx.db())
+        .await
+        .map_err(Error::Database)?;
     metrics::record_read_path_query(
         "http",
         "admin.list_dlq",
@@ -135,7 +146,7 @@ pub async fn list_dlq(
     );
 
     Ok(Json(DlqListResponse {
-        total: items.len(),
+        total: usize::try_from(total).unwrap_or(usize::MAX),
         items,
     }))
 }
@@ -335,6 +346,52 @@ mod tests {
             assert!(sql.contains("tenant_id"));
             assert!(sql.contains("event"));
         }
+    }
+
+    #[tokio::test]
+    async fn dlq_total_counts_matches_beyond_bounded_page() {
+        use super::sys_event_tenant_condition;
+        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create sys_events");
+        let tenant_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        for _ in 0..3 {
+            entity::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                event_type: Set("sample.failed".to_string()),
+                schema_version: Set(1),
+                payload: Set(serde_json::json!({"tenant_id": tenant_id})),
+                status: Set(SysEventStatus::Failed),
+                retry_count: Set(1),
+                next_attempt_at: Set(None),
+                last_error: Set(None),
+                claimed_by: Set(None),
+                claimed_at: Set(None),
+                created_at: Set(now),
+                dispatched_at: Set(None),
+            }
+            .insert(&db)
+            .await
+            .expect("insert failed event");
+        }
+
+        let query = entity::Entity::find()
+            .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+            .filter(sys_event_tenant_condition(DbBackend::Sqlite, tenant_id))
+            .order_by_desc(entity::Column::CreatedAt)
+            .order_by_desc(entity::Column::Id);
+        let total = query.clone().count(&db).await.expect("total matched");
+        let limited = query.limit(2).all(&db).await.expect("bounded page");
+        assert_eq!(total, 3);
+        assert_eq!(limited.len(), 2);
     }
 
     #[test]

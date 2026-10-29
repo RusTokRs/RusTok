@@ -52,6 +52,38 @@ use sha2::{Digest, Sha256};
 struct AdminAssets;
 
 #[cfg(feature = "embed-admin")]
+fn is_admin_static_asset_path(path: &str) -> bool {
+    // SPA routes get index.html, but missing JS/CSS/fonts/images must be 404,
+    // not a successful HTML response that breaks client asset loading.
+    if path.starts_with("pkg/") || path.starts_with("assets/") || path.starts_with("static/") {
+        return true;
+    }
+    let Some((_, extension)) = path.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "js" | "mjs"
+            | "css"
+            | "wasm"
+            | "map"
+            | "json"
+            | "svg"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "avif"
+            | "ico"
+            | "woff"
+            | "woff2"
+            | "ttf"
+            | "otf"
+    )
+}
+
+#[cfg(feature = "embed-admin")]
 pub fn build_admin_router() -> AxumRouter {
     AxumRouter::new().fallback(move |request: axum::extract::Request| async move {
         if request.method() != axum::http::Method::GET
@@ -84,6 +116,9 @@ pub fn build_admin_router() -> AxumRouter {
                 if_none_match.as_deref(),
                 is_head,
             ),
+            None if is_admin_static_asset_path(path) => {
+                (axum::http::StatusCode::NOT_FOUND, "Admin asset not found").into_response()
+            }
             None => match AdminAssets::get("index.html") {
                 Some(content) => admin_asset_response(
                     "index.html",
@@ -604,6 +639,34 @@ pub fn compose_application_router(
     Ok(router.layer(axum_middleware::from_fn(
         middleware::security_headers::security_headers,
     )))
+}
+
+#[cfg(all(test, feature = "embed-admin"))]
+mod admin_asset_path_tests {
+    use super::is_admin_static_asset_path;
+
+    #[test]
+    fn spa_navigation_paths_remain_spa_routes_but_missing_assets_do_not() {
+        for asset in [
+            "pkg/app.js",
+            "pkg/app_bg.wasm",
+            "assets/logo.svg",
+            "favicon.ico",
+            "styles/site.CSS",
+            "nested/fonts/ui.woff2",
+        ] {
+            assert!(is_admin_static_asset_path(asset), "{asset}");
+        }
+        for route in [
+            "",
+            "dashboard",
+            "users/john.doe",
+            "posts/new",
+            "settings/account",
+        ] {
+            assert!(!is_admin_static_asset_path(route), "{route}");
+        }
+    }
 }
 
 #[cfg(test)]

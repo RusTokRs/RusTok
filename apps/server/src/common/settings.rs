@@ -854,6 +854,16 @@ impl RustokSettings {
             )));
         }
 
+        let relay_backoff = &parsed.events.relay_retry_policy;
+        if relay_backoff.base_backoff_ms == 0
+            || relay_backoff.max_backoff_ms < relay_backoff.base_backoff_ms
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_retry_policy requires positive base_backoff_ms and max_backoff_ms >= base_backoff_ms",
+            )));
+        }
+
         if parsed.events.dlq.max_attempts <= 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -865,6 +875,13 @@ impl RustokSettings {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "rustok.events.channel_capacity must be > 0",
+            )));
+        }
+
+        if parsed.events.relay_interval_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_interval_ms must be > 0",
             )));
         }
 
@@ -1653,6 +1670,69 @@ mod tests {
             err.to_string()
                 .contains("rustok.events.channel_capacity must be > 0")
         );
+    }
+
+    #[test]
+    fn rejects_zero_event_relay_interval_to_prevent_busy_polling() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_interval_ms": 0
+                }
+            }
+        });
+
+        let err = RustokSettings::from_settings(&Some(raw))
+            .expect_err("zero relay interval must not start a busy polling worker");
+        assert!(
+            err.to_string()
+                .contains("rustok.events.relay_interval_ms must be > 0")
+        );
+    }
+
+    #[test]
+    fn rejects_zero_or_inverted_event_retry_backoff() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        for (base_ms, max_ms) in [(0, 1000), (1000, 0), (2000, 1000)] {
+            let raw = serde_json::json!({
+                "rustok": {
+                    "events": {
+                        "relay_retry_policy": {
+                            "base_backoff_ms": base_ms,
+                            "max_backoff_ms": max_ms
+                        }
+                    }
+                }
+            });
+            let err = RustokSettings::from_settings(&Some(raw))
+                .expect_err("relay retry bounds must prevent busy or inverted backoff");
+            assert!(
+                err.to_string().contains("base_backoff_ms"),
+                "{base_ms}..{max_ms}: {err}"
+            );
+        }
+
+        let equal = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_retry_policy": {
+                        "base_backoff_ms": 100,
+                        "max_backoff_ms": 100
+                    }
+                }
+            }
+        });
+        RustokSettings::from_settings(&Some(equal))
+            .expect("equal positive backoff bounds must be accepted");
     }
 
     #[test]

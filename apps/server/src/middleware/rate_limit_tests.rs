@@ -441,6 +441,39 @@ fn matching_path_policy_uses_first_matching_policy_order() {
 }
 
 #[test]
+fn matching_path_policy_does_not_overmatch_unrelated_path_segments() {
+    let policies = vec![PathRateLimitPolicy {
+        limiter: Arc::new(RateLimiter::new_with_namespace(
+            RateLimitConfig::new(1, 60),
+            "auth",
+        )),
+        prefixes: Arc::new(vec!["/api/auth", "/health/ready"]),
+    }];
+
+    assert!(matching_path_policy(&policies, "/api/auth").is_some());
+    assert!(matching_path_policy(&policies, "/api/auth/login").is_some());
+    assert!(matching_path_policy(&policies, "/health/ready").is_some());
+    assert!(matching_path_policy(&policies, "/api/authentication").is_none());
+    assert!(matching_path_policy(&policies, "/api/auth2/login").is_none());
+    assert!(matching_path_policy(&policies, "/health/readiness").is_none());
+}
+
+#[test]
+fn matching_path_policy_respects_explicit_trailing_slash_prefixes() {
+    let policies = vec![PathRateLimitPolicy {
+        limiter: Arc::new(RateLimiter::new_with_namespace(
+            RateLimitConfig::new(1, 60),
+            "api",
+        )),
+        prefixes: Arc::new(vec!["/api/"]),
+    }];
+
+    assert!(matching_path_policy(&policies, "/api/graphql").is_some());
+    assert!(matching_path_policy(&policies, "/api/").is_some());
+    assert!(matching_path_policy(&policies, "/apiculture").is_none());
+}
+
+#[test]
 fn matching_path_policy_returns_none_for_unmatched_path() {
     let policies = vec![PathRateLimitPolicy {
         limiter: Arc::new(RateLimiter::new_with_namespace(
