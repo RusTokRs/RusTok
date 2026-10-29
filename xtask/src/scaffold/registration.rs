@@ -118,7 +118,7 @@ fn register_in_modules_toml(root: &Path, slug: &str, crate_name: &str) -> Result
     }
 
     let entry = format!(
-        "{slug} = {{ crate = \"{crate_name}\", source = \"path\", path = \"crates/modules/{crate_name}\", depends_on = [\"outbox\"] }}"
+        "{slug} = {{ crate = \"{crate_name}\", source = \"path\", path = \"crates/modules/{crate_name}\" }}"
     );
 
     let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
@@ -162,7 +162,7 @@ fn register_in_registry_md(
         ScaffoldUi::None => ("none", "`not_started`", "`no_ui_boundary`"),
     };
     let board_row = format!(
-        "| `{slug}` | {ui_surfaces} | {ffa_status} | `boundary_ready` | {shape} | [Live plan](../../crates/modules/{crate_name}/docs/implementation-plan.md); {desc} |"
+        "| `{slug}` | {ui_surfaces} | {ffa_status} | `not_started` | {shape} | [Live plan](../../crates/modules/{crate_name}/docs/implementation-plan.md); {desc} |"
     );
 
     let mut board_insert_pos = None;
@@ -184,7 +184,7 @@ fn register_in_registry_md(
     }
 
     // 2. Insert into Table 2: ### Optional Modules
-    let optional_row = format!("| `{slug}` | `{crate_name}` | `outbox` | {desc} |");
+    let optional_row = format!("| `{slug}` | `{crate_name}` | none | {desc} |");
     let mut optional_insert_pos = None;
     let mut in_optional = false;
     for (i, line) in lines.iter().enumerate() {

@@ -46,6 +46,15 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     if options.profile != options::ScaffoldProfile::NativeModule {
         anyhow::bail!("cargo xtask scaffold only generates native runtime modules");
     }
+    // There is no safe generic owner schema or UI business contract. Fail
+    // before writing anything instead of registering fake storage or routes.
+    if options.with_db {
+        anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
+    }
+    if options.ui != ScaffoldUi::None {
+        anyhow::bail!("--ui requires defined owner operations and real native/GraphQL/Next.js adapters; use --no-ui until FFA scaffolding is implemented");
+    }
+
     let root = workspace_root();
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
@@ -79,10 +88,10 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
     }
 
-    // 1. Generate backend files (FBA)
+    // 1. Generate a native runtime identity only (no FBA readiness claim)
     backend::generate_backend(options, &module_dir, &pascal_name, &snake_name)?;
 
-    // 2. Generate UI packages (FFA: core, transport, ui, i18n)
+    // 2. UI generation is blocked until real owner adapters are available.
     ui::generate_ui(options, &module_dir, &pascal_name)?;
 
     // 3. Update manifests and global registration
@@ -106,8 +115,9 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
                     }
                 }
                 Err(err) => {
-                    println!("\n  WARNING: Module files created, but verification reported:");
-                    println!("    {err:#}");
+                    return Err(err).with_context(|| format!(
+                        "Module '{slug}' files were written but publish-readiness validation failed; scaffold is NOT verified"
+                    ));
                 }
             }
         }
@@ -116,4 +126,39 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{scaffold, ScaffoldOptions, ScaffoldUi};
+    use super::options::ScaffoldProfile;
+
+    fn options() -> ScaffoldOptions {
+        ScaffoldOptions {
+            profile: ScaffoldProfile::NativeModule,
+            slug: "example".into(),
+            title: "Example".into(),
+            description: "An example native runtime identity".into(),
+            category: "collaboration".into(),
+            with_db: false,
+            ui: ScaffoldUi::None,
+            dry_run: true,
+            skip_server_wire: false,
+            skip_validate: false,
+        }
+    }
+
+    #[test]
+    fn unfinished_schema_and_ui_requests_fail_before_writes() {
+        let mut request = options();
+        request.with_db = true;
+        assert!(scaffold(&request).unwrap_err().to_string().contains("--with-db"));
+        request.with_db = false;
+        request.ui = ScaffoldUi::Admin;
+        assert!(scaffold(&request).unwrap_err().to_string().contains("--ui"));
+        request.ui = ScaffoldUi::Storefront;
+        assert!(scaffold(&request).is_err());
+        request.ui = ScaffoldUi::Dual;
+        assert!(scaffold(&request).is_err());
+    }
 }
