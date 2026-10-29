@@ -1,3 +1,5 @@
+//! # rustok-iggy-connector
+//!
 //! Connector layer for Iggy transports.
 //!
 //! This module provides two connector implementations:
@@ -41,6 +43,8 @@ use tokio::{
 };
 
 mod control;
+pub mod module;
+pub use module::IggyConnectorModule;
 #[cfg(feature = "migrations")]
 pub mod migrations;
 

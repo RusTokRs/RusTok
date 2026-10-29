@@ -74,7 +74,12 @@ mod tests {
         let commands = registry.commands();
 
         assert!(!registry.is_empty());
-        assert_eq!(registry.providers().len(), 8);
+        assert_eq!(registry.providers().len(), 9);
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.namespace == "blog" && command.name == "publish-scheduled")
+        );
         assert!(
             commands
                 .iter()

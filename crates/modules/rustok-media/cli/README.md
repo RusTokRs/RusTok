@@ -16,4 +16,7 @@ This crate depends on `rustok-media`, `rustok-storage`, and `rustok-cli-core`; i
 
 - `src/lib.rs` — command registration and dispatch.
 
+## Documentation
+- [CRATE_API.md](CRATE_API.md)
+
 See the [Media documentation](../docs/README.md) and the [module documentation map](../../../../docs/modules/_index.md).

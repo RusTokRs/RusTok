@@ -479,3 +479,6 @@ mod tests {
         assert!(error.to_string().contains("non-existent-action"));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

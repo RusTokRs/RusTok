@@ -410,6 +410,34 @@ impl PreviewTokenService {
 
         Ok(result.rows_affected)
     }
+
+    /// Count expired preview tokens for one tenant.
+    #[instrument(skip(self))]
+    pub async fn count_expired(&self, tenant_id: Uuid) -> BlogResult<u64> {
+        use sea_orm::PaginatorTrait;
+        let now = Utc::now();
+        blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::TenantId.eq(tenant_id))
+            .filter(blog_preview_token::Column::ExpiresAt.lte(now))
+            .count(&self.db)
+            .await
+            .map_err(BlogError::from)
+    }
+
+    /// List all distinct tenants with expired preview tokens.
+    #[instrument(skip(self))]
+    pub async fn list_tenants_with_expired_tokens(&self) -> BlogResult<Vec<Uuid>> {
+        let now = Utc::now();
+        let tokens = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::ExpiresAt.lte(now))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+        let mut tenants: Vec<Uuid> = tokens.into_iter().map(|t| t.tenant_id).collect();
+        tenants.sort_unstable();
+        tenants.dedup();
+        Ok(tenants)
+    }
 }
 
 /// Deletes every preview token of a post inside the caller's transaction. A deleted

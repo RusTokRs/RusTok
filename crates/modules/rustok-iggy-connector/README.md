@@ -36,6 +36,7 @@
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - No-compile source guardrail: `node scripts/verify/verify-iggy-connector-source.mjs` from the repository root

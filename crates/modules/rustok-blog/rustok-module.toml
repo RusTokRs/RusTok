@@ -34,6 +34,10 @@ runtime_data_factory = "graphql::attach_schema_data"
 [provides.http]
 axum_router = "controllers::axum_router"
 
+[provides.cli]
+namespace = "blog"
+factory = "rustok_blog_cli::command_provider"
+
 [provides.admin_ui]
 leptos_crate = "rustok-blog-admin"
 route_segment = "blog"

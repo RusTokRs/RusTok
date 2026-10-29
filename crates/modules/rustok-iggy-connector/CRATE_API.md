@@ -1,5 +1,13 @@
 # rustok-iggy-connector / CRATE_API
 
+## Platform Capability Bindings
+- Implements `RusToKModule` via `IggyConnectorModule`.
+- Implements low-level connection lifecycle management for bundled and external Iggy servers.
+
+## Domain Collaborations
+- Collaborates with `rustok-iggy` as the low-level connection and socket streaming layer.
+- Collaborates with `rustok-iggy-connector-admin` for administrative mode selection.
+
 ## Public Modules
 - API is declared in `lib.rs`.
 - Feature `migrations` exposes connector migrations, the neutral consumer-poison receipt store, and read-only aggregate inspection through `rustok_iggy_connector::migrations`.

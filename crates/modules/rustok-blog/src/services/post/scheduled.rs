@@ -144,4 +144,34 @@ impl PostService {
 
         Ok(published)
     }
+
+    /// Count due drafts for one tenant.
+    pub async fn count_due_scheduled_posts(&self, tenant_id: Uuid) -> BlogResult<u64> {
+        use sea_orm::PaginatorTrait;
+        let now = chrono::Utc::now();
+        blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
+            .filter(blog_post::Column::ScheduledAt.is_not_null())
+            .filter(blog_post::Column::ScheduledAt.lte(now))
+            .count(&self.db)
+            .await
+            .map_err(BlogError::from)
+    }
+
+    /// List all distinct tenants with due scheduled drafts.
+    pub async fn list_tenants_with_due_scheduled_posts(&self) -> BlogResult<Vec<Uuid>> {
+        let now = chrono::Utc::now();
+        let posts = blog_post::Entity::find()
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
+            .filter(blog_post::Column::ScheduledAt.is_not_null())
+            .filter(blog_post::Column::ScheduledAt.lte(now))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+        let mut tenants: Vec<Uuid> = posts.into_iter().map(|p| p.tenant_id).collect();
+        tenants.sort_unstable();
+        tenants.dedup();
+        Ok(tenants)
+    }
 }

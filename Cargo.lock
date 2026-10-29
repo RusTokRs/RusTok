@@ -14117,6 +14117,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-blog-cli"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-blog",
+ "rustok-cli-core",
+ "rustok-outbox",
+ "rustok-runtime",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-blog-storefront"
 version = "0.1.0"
 dependencies = [
@@ -14578,6 +14593,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "rustok-auth-cli",
+ "rustok-blog-cli",
  "rustok-cli-core",
  "rustok-cli-platform",
  "rustok-installer-cli",
@@ -15542,6 +15558,7 @@ dependencies = [
  "async-trait",
  "futures-util",
  "iggy",
+ "rustok-core",
  "sea-orm",
  "sea-orm-migration",
  "serde",
