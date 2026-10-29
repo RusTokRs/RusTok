@@ -151,7 +151,8 @@ impl CategoryCommandService {
                 category_id,
                 crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
                 input.parent_id,
-                input.position,
+                i32::try_from(input.position)
+                    .map_err(|_| BlogError::validation("Category position exceeds i32 range"))?,
             )
             .await
             .map_err(BlogError::from)?;
