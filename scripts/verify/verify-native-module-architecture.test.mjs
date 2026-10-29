@@ -88,7 +88,7 @@ test('rejects root dumping grounds and missing test wiring', () => {
   rejects(root, 'must wire the contract tests');
 });
 test('module composition and persistence entities cannot escape lib.rs', () => {
-  const root = fixture(true);
+  const root = fixture('no_ui', true);
   put(root, 'src/lib.rs', 'mod module;\npub mod entities;\nimpl RusToKModule for ExampleModule {}\n');
   rejects(root, 'persistence entities must remain private');
   rejects(root, 'runtime composition belongs to module.rs');
