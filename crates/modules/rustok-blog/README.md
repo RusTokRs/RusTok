@@ -33,6 +33,17 @@ Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
 
+The baseline Blog migration keeps the **single registered**
+`m20261029_000001_create_blog_schema` identity. Its responsibilities are
+split below `src/migrations/m20261029_000001_create_blog_schema/schema/`:
+ordered table builders, PostgreSQL constraints and SQLite triggers. No
+new migration identity or upgrade/compatibility path is introduced. Tag
+attachments (`blog_post_tags`) and their usage projection
+(`blog_tag_usage`) declare composite `(tenant_id, tag_id)` foreign keys to
+`taxonomy_terms(tenant_id, id)` with `ON DELETE CASCADE` in their shared
+table builders, so term deletion enforces the same tenant-scoped cleanup on
+PostgreSQL and SQLite.
+
 The source shape is guarded by `npm run verify:module-source-layout`. That profile
 admits only `lib.rs` and `module.rs` at the source root, so Blog has no root
 `runtime.rs`: a runtime handle bundle belongs in `src/module.rs` or an existing
