@@ -231,14 +231,17 @@ pub fn print_scaffold_usage() {
 }
 
 pub fn is_valid_slug(slug: &str) -> bool {
-    !slug.is_empty()
-        && slug
+    // Enforce snake_case after CLI kebab-case normalization. Repeated
+    // separators and leading digits do not form canonical module identities.
+    let normalized = slug.replace('-', "_");
+    normalized
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_lowercase())
+        && normalized
             .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-        && !slug.starts_with('-')
-        && !slug.ends_with('-')
-        && !slug.starts_with('_')
-        && !slug.ends_with('_')
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && normalized.split('_').all(|part| !part.is_empty())
 }
 
 pub fn default_title_from_slug(slug: &str) -> String {
@@ -262,6 +265,16 @@ mod tests {
     fn parse(arguments: &[&str]) -> Result<ScaffoldOptions> {
         let args = arguments.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
         parse_options(&args)?.ok_or_else(|| anyhow::anyhow!("expected a scaffold request"))
+    }
+
+    #[test]
+    fn native_slug_input_normalizes_to_one_valid_registry_identity() {
+        for valid in ["example", "page_builder", "page-builder", "v2_calls"] {
+            assert!(parse(&[valid]).is_ok(), "expected valid slug: {valid}");
+        }
+        for invalid in ["2example", "page__builder", "page--builder", "page-_builder", "_example", "example-"] {
+            assert!(parse(&[invalid]).is_err(), "must reject invalid slug: {invalid}");
+        }
     }
 
     #[test]

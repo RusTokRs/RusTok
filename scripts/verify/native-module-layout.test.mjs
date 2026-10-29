@@ -18,7 +18,7 @@ function fixture(run) {
     '[modules]\nsample = { crate = "rustok-sample", source = "path", path = "' + modulePath + '" }\n');
   write(path("Cargo.toml"), '[package]\nname = "rustok-sample"\n');
   write(path("rustok-module.toml"),
-    '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n');
+    '[module]\nslug = "sample"\nui_classification = "no_ui"\n[crate]\nentry_type = "SampleModule"\n');
   write(path("src/lib.rs"),
     'mod module;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
   write(path("src/module.rs"),
@@ -87,7 +87,7 @@ test("source file size and module registration are checked", () => {
 test("declared UI requires actual FFA structure independent of Next.js", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n[crate]\nentry_type = "SampleModule"\n' +
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     const failures = lint(ctx).join("\n");
     assert.match(failures, /admin\/Cargo.toml.*required file missing/);
@@ -99,7 +99,7 @@ test("declared UI requires actual FFA structure independent of Next.js", () => {
 test("Leptos FFA without any Next.js metadata passes native architecture lint", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n[crate]\nentry_type = "SampleModule"\n' +
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
@@ -145,7 +145,7 @@ test("Leptos FFA without any Next.js metadata passes native architecture lint", 
 test("fake UI actions and Leptos in pure core fail FFA lint", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\n[crate]\nentry_type = "SampleModule"\n' +
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n[crate]\nentry_type = "SampleModule"\n' +
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
@@ -167,5 +167,46 @@ test("fake UI actions and Leptos in pure core fail FFA lint", () => {
 test("path traversal is never accepted as a module root", () => {
   fixture((ctx) => {
     assert.match(lintNativeModule(ctx.root, "../outside", "sample").join("\n"), /escapes/);
+  });
+});
+
+test("live UI classification requires both its package and provides metadata", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /declared admin UI package is missing/);
+    assert.match(failures, /live admin UI requires \[provides\.admin_ui\]/);
+  });
+});
+
+test("future_ui cannot claim live provides metadata", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
+    assert.match(lint(ctx).join("\n"), /\[provides\.admin_ui\] contradicts future_ui/);
+  });
+});
+
+test("no_ui rejects both unadvertised packages and invented live provides metadata", () => {
+  fixture((ctx) => {
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /\[provides\.admin_ui\] contradicts no_ui/);
+    assert.match(failures, /no_ui forbids unadvertised admin UI package/);
+  });
+});
+
+test("native Cargo identity matches registered snake_case slug", () => {
+  fixture((ctx) => {
+    ctx.write("Cargo.toml", '[package]\nname = "rustok-other"\n');
+    assert.match(lint(ctx).join("\n"), /Cargo package.name must match module slug/);
   });
 });

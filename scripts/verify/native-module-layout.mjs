@@ -198,8 +198,16 @@ export function lintNativeModule(root, modulePath, slug) {
   if (!cargo.includes("[package]")) {
     diagnostics.push(relative(repo, moduleRoot) + ": missing Cargo package contract");
   }
-  if (manifest && keyInSection(manifest, "module", "slug") !== slug) {
+  const manifestSlug = keyInSection(manifest, "module", "slug");
+  if (manifest && manifestSlug !== slug) {
     diagnostics.push(relative(repo, moduleRoot) + ": module.slug does not match '" + slug + "'");
+  }
+  if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(slug)) {
+    diagnostics.push(relative(repo, moduleRoot) + ": module slug must use canonical snake_case");
+  }
+  const packageName = keyInSection(cargo, "package", "name");
+  if (packageName !== "rustok-" + slug.replaceAll("_", "-")) {
+    diagnostics.push(relative(repo, moduleRoot) + ": Cargo package.name must match module slug");
   }
   const entryType = keyInSection(manifest, "crate", "entry_type");
   if (!entryType || !/^[A-Za-z][A-Za-z0-9_]*$/.test(entryType)) {
@@ -271,6 +279,39 @@ export function lintNativeModule(root, modulePath, slug) {
   checkImports(repo, join(src, "domain"), FORBIDDEN_DOMAIN, diagnostics);
   checkImports(repo, join(src, "services"), FORBIDDEN_SERVICE, diagnostics);
   checkSizes(repo, src, BACKEND_LIMIT, diagnostics);
+
+  // An unmounted future_ui draft is not evidence for live provides.*_ui.
+  const classification = keyInSection(manifest, "module", "ui_classification");
+  const liveProfiles = {
+    no_ui: [],
+    future_ui: [],
+    admin_only: ["admin"],
+    storefront_only: ["storefront"],
+    dual_surface: ["admin", "storefront"],
+  };
+  if (!Object.hasOwn(liveProfiles, classification)) {
+    diagnostics.push(relative(repo, moduleRoot) + ": unknown module.ui_classification");
+  } else {
+    for (const side of ["admin", "storefront"]) {
+      const packageExists = existsSync(join(moduleRoot, side));
+      const declared = manifest.split(/\r?\n/).some(
+        (line) => line.trim() === "[provides." + side + "_ui]"
+      );
+      const live = liveProfiles[classification].includes(side);
+      if (live && !packageExists) {
+        diagnostics.push(relative(repo, moduleRoot) + ": declared " + side + " UI package is missing");
+      }
+      if (live && !declared) {
+        diagnostics.push(relative(repo, moduleRoot) + ": live " + side + " UI requires [provides." + side + "_ui]");
+      }
+      if (!live && declared) {
+        diagnostics.push(relative(repo, moduleRoot) + ": [provides." + side + "_ui] contradicts " + classification);
+      }
+      if (packageExists && !live && classification !== "future_ui") {
+        diagnostics.push(relative(repo, moduleRoot) + ": " + classification + " forbids unadvertised " + side + " UI package");
+      }
+    }
+  }
   checkUi(repo, moduleRoot, "admin", manifest, diagnostics);
   checkUi(repo, moduleRoot, "storefront", manifest, diagnostics);
   return diagnostics.sort();
