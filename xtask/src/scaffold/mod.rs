@@ -127,3 +127,38 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{scaffold, ScaffoldOptions, ScaffoldUi};
+    use super::options::ScaffoldProfile;
+
+    fn options() -> ScaffoldOptions {
+        ScaffoldOptions {
+            profile: ScaffoldProfile::NativeModule,
+            slug: "example".into(),
+            title: "Example".into(),
+            description: "An example native runtime identity".into(),
+            category: "collaboration".into(),
+            with_db: false,
+            ui: ScaffoldUi::None,
+            dry_run: true,
+            skip_server_wire: false,
+            skip_validate: false,
+        }
+    }
+
+    #[test]
+    fn unfinished_schema_and_ui_requests_fail_before_writes() {
+        let mut request = options();
+        request.with_db = true;
+        assert!(scaffold(&request).unwrap_err().to_string().contains("--with-db"));
+        request.with_db = false;
+        request.ui = ScaffoldUi::Admin;
+        assert!(scaffold(&request).unwrap_err().to_string().contains("--ui"));
+        request.ui = ScaffoldUi::Storefront;
+        assert!(scaffold(&request).is_err());
+        request.ui = ScaffoldUi::Dual;
+        assert!(scaffold(&request).is_err());
+    }
+}
