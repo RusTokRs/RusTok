@@ -591,3 +591,26 @@ Media reference port. Absent capability or an external Product profile does not 
 local fallback. Pending owner replacement requires an explicit drain/cutover, not hot
 repointing. See the [Product retention runbook](../../../crates/modules/rustok-product/docs/media-reference-retention.md)
 for caller identity, bounded IO, operator permissions and unexecuted runtime gates.
+
+## Bounded server review: route policies, reporting, static assets, metrics (2026-10-29)
+
+- Path-scoped rate limit policies match only the configured route and its
+  slash-delimited descendants. Similar-looking unrelated paths never consume
+  an authentication or readiness-specific quota.
+- The root GraphQL `dashboardStats` query requires an authenticated caller
+  with current `analytics:read` authority. `recentActivity`, which contains
+  user email addresses, requires current `users:list` authority. Both are
+  guarded in the GraphQL document preflight policy and in the resolvers.
+- The root GraphQL user connection orders results by creation time then
+  immutable user ID, and treats search text literally rather than allowing
+  SQL LIKE wildcards to expand the result set.
+- A healthy outbox with zero pending events reports a pending lag of zero and
+  a successful metric collection status; database failures still yield unknown
+  metrics instead of false success.
+- Embedded admin HTML fallback is limited to SPA navigation paths. Missing
+  scripts, stylesheets, fonts, images and other recognized static assets return
+  404 rather than HTML with status 200.
+
+This section describes only the affected host boundaries, not an exhaustive
+whole-crate or workspace audit. Changes require scoped Rust checks and tests
+plus any applicable CI gates before integration.
