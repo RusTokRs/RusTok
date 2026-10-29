@@ -31,11 +31,9 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditOutbox::OccurredAtUnixMs,
-                    )
-                    .big_integer()
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::OccurredAtUnixMs)
+                        .big_integer()
+                        .not_null(),
                 )
                 .col(
                     ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::ActorId)
@@ -43,11 +41,9 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditOutbox::PrincipalKind,
-                    )
-                    .string_len(16)
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::PrincipalKind)
+                        .string_len(16)
+                        .not_null(),
                 )
                 .col(
                     ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::Operation)
@@ -95,10 +91,8 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     .uuid(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimToken,
-                    )
-                    .uuid(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditOutbox::HandoffClaimToken)
+                        .uuid(),
                 )
                 .col(
                     ColumnDef::new(

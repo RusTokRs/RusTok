@@ -8,12 +8,10 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
                 .if_not_exists()
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::AuditId,
-                    )
-                    .uuid()
-                    .not_null()
-                    .primary_key(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::AuditId)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
                 )
                 .col(
                     ColumnDef::new(
@@ -23,32 +21,24 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId,
-                    )
-                    .uuid()
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                        .uuid()
+                        .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ActorId,
-                    )
-                    .uuid()
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ActorId)
+                        .uuid()
+                        .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Action,
-                    )
-                    .string_len(32)
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Action)
+                        .string_len(32)
+                        .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Reason,
-                    )
-                    .string_len(512)
-                    .not_null(),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Reason)
+                        .string_len(512)
+                        .not_null(),
                 )
                 .col(
                     ColumnDef::new(
@@ -65,12 +55,10 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     .not_null(),
                 )
                 .col(
-                    ColumnDef::new(
-                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt,
-                    )
-                    .timestamp_with_time_zone()
-                    .not_null()
-                    .default(Expr::current_timestamp()),
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
                 )
                 .check(Expr::cust("action = 'requeue'"))
                 .check(Expr::cust("prior_attempt_count > 0"))
@@ -97,9 +85,7 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             Index::create()
                 .name("idx_blog_comments_delegation_audit_recovery_request")
                 .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
-                .col(
-                    BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId,
-                )
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId)
                 .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
                 .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt)
                 .if_not_exists()

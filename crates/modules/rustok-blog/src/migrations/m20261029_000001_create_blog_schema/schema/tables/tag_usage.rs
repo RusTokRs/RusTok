@@ -26,7 +26,6 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         .col(BlogTagUsage::TagId),
                 )
                 .check(Expr::cust("use_count >= 0"))
-
                 // Enforce tenant-correct Taxonomy ownership on both PostgreSQL and SQLite.
                 // A dictionary deletion must also delete its Blog attachments.
                 .foreign_key(

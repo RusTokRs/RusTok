@@ -26,7 +26,11 @@ impl PostService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostListResponse> {
         self.list_posts_with_locale_fallback_on_channel(
-            tenant_id, security, query, fallback_locale, None,
+            tenant_id,
+            security,
+            query,
+            fallback_locale,
+            None,
         )
         .await
     }
@@ -98,7 +102,10 @@ impl PostService {
             return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
         }
         if !can_read_non_public {
-            if !self.channel_is_public_visible(tenant_id, channel_slug).await? {
+            if !self
+                .channel_is_public_visible(tenant_id, channel_slug)
+                .await?
+            {
                 return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
             }
             select = apply_public_post_channel_filter(select, tenant_id, channel_slug);

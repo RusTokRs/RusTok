@@ -13,7 +13,11 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                         .not_null()
                         .primary_key(),
                 )
-                .col(ColumnDef::new(BlogPostTranslations::PostId).uuid().not_null())
+                .col(
+                    ColumnDef::new(BlogPostTranslations::PostId)
+                        .uuid()
+                        .not_null(),
+                )
                 .col(
                     ColumnDef::new(BlogPostTranslations::Locale)
                         .string_len(16)

@@ -105,7 +105,6 @@ async fn seed_channel(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
         .expect("channel should be created");
 }
 
-
 // Include focused test groups here to preserve the established test path namespace.
 include!("tests/unit.rs");
 include!("tests/lifecycle.rs");

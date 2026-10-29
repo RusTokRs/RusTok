@@ -23,7 +23,12 @@ impl PostService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
         self.get_post_with_locale_fallback_on_channel(
-            tenant_id, security, post_id, locale, fallback_locale, None,
+            tenant_id,
+            security,
+            post_id,
+            locale,
+            fallback_locale,
+            None,
         )
         .await
     }
@@ -62,7 +67,9 @@ impl PostService {
         let translations = self.load_translations(tenant_id, post_id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, post_id).await?;
         if !can_read_non_public_posts(&security)
-            && (!self.channel_is_public_visible(tenant_id, channel_slug).await?
+            && (!self
+                .channel_is_public_visible(tenant_id, channel_slug)
+                .await?
                 || !is_post_visible_for_channel(&channel_slugs, channel_slug))
         {
             return Err(BlogError::forbidden("Permission denied"));
@@ -203,5 +210,4 @@ impl PostService {
         .await
         .map(Some)
     }
-
 }
