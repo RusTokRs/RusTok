@@ -618,6 +618,8 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
   Each module drain retains the host's five-second timeout; failures and
   timeouts remain visible to operators. Durable owner-managed work is still
   responsible for retry after an interrupted provider operation.
+  Payment provider recovery additionally checks the shutdown signal between
+  tenant work items, without cancelling a recovery operation already underway.
 - Embedded admin HTML fallback is limited to SPA navigation paths. Missing
   scripts, stylesheets, fonts, images and other recognized static assets return
   404 rather than HTML with status 200.
