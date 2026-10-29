@@ -89,7 +89,7 @@ impl TagService {
         .next()
         .ok_or_else(|| BlogError::invariant("Created Blog tag is missing from Taxonomy"))?;
         initialize_tag_usage_in_tx(&txn, tenant_id, tag_id, &term.canonical_key).await?;
-        relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        relations::relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(tag_id)
     }
@@ -176,8 +176,8 @@ impl TagService {
         // repair and re-count, not a re-sort: a row created by the backfill, or
         // left behind by a writer outside this service, is brought back to the
         // projection invariant on the next tag write.
-        relations::refresh_tag_usage_in_tx(&txn, tenant_id, &[tag_id]).await?;
-        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        relations::relations::refresh_tag_usage_in_tx(&txn, tenant_id, &[tag_id]).await?;
+        relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
         let use_count = self.load_tag_usage_count(tenant_id, tag_id, true).await?;
@@ -220,7 +220,7 @@ impl TagService {
             BLOG_SCOPE_VALUE,
         )
         .await?;
-        publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
+        relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
