@@ -46,6 +46,15 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     if options.profile != options::ScaffoldProfile::NativeModule {
         anyhow::bail!("cargo xtask scaffold only generates native runtime modules");
     }
+    // There is no safe generic owner schema or UI business contract. Fail
+    // before writing anything instead of registering fake storage or routes.
+    if options.with_db {
+        anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
+    }
+    if options.ui != ScaffoldUi::None {
+        anyhow::bail!("--ui requires defined owner operations and real native/GraphQL/Next.js adapters; use --no-ui until FFA scaffolding is implemented");
+    }
+
     let root = workspace_root();
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
@@ -106,8 +115,9 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
                     }
                 }
                 Err(err) => {
-                    println!("\n  WARNING: Module files created, but verification reported:");
-                    println!("    {err:#}");
+                    return Err(err).with_context(|| format!(
+                        "Module '{slug}' files were written but publish-readiness validation failed; scaffold is NOT verified"
+                    ));
                 }
             }
         }

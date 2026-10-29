@@ -126,7 +126,10 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         cli_option_value(args, "--category").unwrap_or_else(|| "collaboration".to_string());
 
     let no_db = args.iter().any(|arg| arg == "--no-db");
-    let with_db = !no_db;
+    let with_db = args.iter().any(|arg| arg == "--with-db");
+    if no_db && with_db {
+        bail!("--with-db and --no-db are conflicting persistence requests");
+    }
 
     if args.iter().any(|arg| arg == "--no-ui")
         && args.iter().any(|arg| arg == "--ui")
@@ -157,7 +160,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
             ),
         }
     } else {
-        ScaffoldUi::Dual
+        // A new module has no service/transport contract to advertise yet.
+        ScaffoldUi::None
     };
 
     Ok(Some(ScaffoldOptions {
@@ -196,10 +200,11 @@ pub fn print_scaffold_usage() {
     println!("  --title <title>          Human-readable title (defaults to Title Case of slug)");
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
-    println!("  --no-db                  Omit SeaORM persistence entities and migrations");
-    println!("  --ui <mode>              UI classification: dual, admin, storefront, or none (default: dual)");
-    println!("  --with-ui                Alias for --ui dual");
-    println!("  --no-ui                  Alias for --ui none (headless module)");
+    println!("  --no-db                  No storage schema (default)");
+    println!("  --with-db                Requires a defined owner schema; unsupported until DB template cutover");
+    println!("  --ui <mode>              UI request: none (default); working FFA templates pending");
+    println!("  --with-ui                Reserved until a real UI transport contract exists");
+    println!("  --no-ui                  Explicit headless module (same as default)");
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
     println!(
@@ -252,11 +257,11 @@ mod tests {
     }
 
     #[test]
-    fn current_defaults_are_explicitly_native() {
+    fn default_creates_only_native_runtime_identity() {
         let request = parse(&["example"]).expect("valid native request");
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
-        assert!(request.with_db, "existing default remains until backend cutover");
-        assert_eq!(request.ui, ScaffoldUi::Dual);
+        assert!(!request.with_db);
+        assert_eq!(request.ui, ScaffoldUi::None);
     }
 
     #[test]
@@ -269,6 +274,12 @@ mod tests {
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
         assert!(!request.with_db);
         assert_eq!(request.ui, ScaffoldUi::None);
+    }
+
+    #[test]
+    fn explicit_storage_request_is_never_implicit_or_conflicting() {
+        assert!(parse(&["example", "--with-db"]).unwrap().with_db);
+        assert!(parse(&["example", "--with-db", "--no-db"]).is_err());
     }
 
     #[test]

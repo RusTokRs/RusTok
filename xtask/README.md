@@ -63,8 +63,9 @@ does not translate local Cargo execution into that evidence.
 `cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a **draft native runtime module**, not yet a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract); current renderer defects remain open.
 
 The command:
+- By default creates a **headless, no-DB native runtime identity**. `--with-db` or a non-none `--ui` request currently fails before file creation; a schema or business transport cannot be inferred from the slug.
 - Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
-- Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
+- Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
 - Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
   - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
   - `transport/`: Facade for server communications.
