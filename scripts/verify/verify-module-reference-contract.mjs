@@ -961,6 +961,7 @@ requireAll("crates/modules/rustok-blog/src/services/tag.rs", [
 
 const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/commands.rs",
+  "crates/modules/rustok-blog/src/services/post/commands/create.rs",
   "crates/modules/rustok-blog/src/services/post/repository.rs",
   "crates/modules/rustok-blog/src/services/post/pin.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",
@@ -968,7 +969,7 @@ const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
 ]);
 for (const path of rustFiles("crates/modules/rustok-blog/src/services")) {
-  if (path.endsWith("_tests.rs") || path.endsWith("/tests.rs")) continue;
+  if (path.endsWith("_tests.rs") || path.endsWith("/tests.rs") || path.includes("/tests/")) continue;
   if (allowedBlogPostMutationSources.has(path)) continue;
   forbid(path, [
     "blog_post::Entity::update_many",
