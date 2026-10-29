@@ -17,6 +17,7 @@ import fs from 'node:fs';
 
 const BLOG_CRATE = 'crates/modules/rustok-blog';
 const TYPES_PATH = `${BLOG_CRATE}/src/graphql/types.rs`;
+const TAXONOMY_TYPES_PATH = `${BLOG_CRATE}/src/graphql/types/taxonomy.rs`;
 const QUERY_PATH = `${BLOG_CRATE}/src/graphql/query.rs`;
 const MUTATION_PATH = `${BLOG_CRATE}/src/graphql/mutation.rs`;
 
@@ -487,6 +488,13 @@ function checkClientInputs(path, source, types) {
 
 const typesSource = requireFile(TYPES_PATH);
 const types = parseSchemaTypes(typesSource);
+// Taxonomy is a real nested Rust module, not an imported GraphQL schema.
+// Its BlogCategoriesFilter / BlogTagsFilter inputs contain offset pagination
+// keys used by both Next.js clients; do not report those as absent.
+for (const [name, definition] of parseSchemaTypes(requireFile(TAXONOMY_TYPES_PATH))) {
+  if (types.has(name)) fail(`duplicate Blog GraphQL type ${name} in ${TAXONOMY_TYPES_PATH}`);
+  else types.set(name, definition);
+}
 for (const [fieldName, rustType] of parseComplexObjectFields(typesSource, 'GqlPost')) {
   const type = types.get('GqlPost');
   if (type && !type.fields.has(fieldName)) {
