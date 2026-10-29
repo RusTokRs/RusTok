@@ -1,5 +1,7 @@
 # Fly UI
 
+For full public interface and state contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `fly-ui` contains framework-neutral visual-editor behaviour. It depends only on `fly` and standard
 serialization/error crates. It does not contain DOM code, Leptos or Dioxus types, RusTok transport,
 routing, tenant loading, RBAC implementation, or module-specific widgets.

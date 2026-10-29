@@ -1,5 +1,7 @@
 # Fly Browser
 
+For full public interface and protocol definitions, see [CRATE_API.md](CRATE_API.md).
+
 SSR-first browser adapter assets and protocol contracts for Fly editors.
 
 ## Responsibilities

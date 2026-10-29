@@ -1,4 +1,6 @@
-//! SSR-first browser adapter distribution for Fly.
+//! # Fly Browser Adapter & Protocol
+//!
+//! SSR-first browser adapter distribution, intent protocols, and JavaScript runtime assets for Fly.
 //!
 //! This crate deliberately contains no WASM bindings, web platform APIs, Leptos, or DOM dependency.
 //! Server-rendered hosts can embed the JavaScript asset and keep project state, commands,

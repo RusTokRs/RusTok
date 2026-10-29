@@ -1,5 +1,7 @@
 # Fly Web
 
+For full public interface and web runtime definitions, see [CRATE_API.md](CRATE_API.md).
+
 `fly-web` is the framework-neutral browser runtime, geometry, hit-testing, and iframe bridge for Fly visual editors.
 
 ## Responsibilities

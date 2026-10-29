@@ -1,4 +1,7 @@
-//! Framework-neutral visual-editor state, intents, policies, and contribution contracts.
+//! # Fly UI State & Contribution Contracts
+//!
+//! Framework-neutral visual-editor state machine, intents, effects,
+//! capability policies, and component contribution contracts.
 
 // The entire Fly stack is safe Rust. `forbid` (not `deny`) so it cannot be re-enabled
 // locally with an `allow` attribute.

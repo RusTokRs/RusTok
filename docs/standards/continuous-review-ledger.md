@@ -854,33 +854,33 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | None |  |
 | [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 52 | 7,715 | 2026-10-18T05:00:00Z | Remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed. |
 | [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 14 | 1,501 | 2026-10-18T05:35:00Z | Audited Leptos admin UI package; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed. |
-| [ ] | [fly](../../crates/ui/fly) | `ui` | 111 | 43,169 | None |  |
-| [ ] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | None |  |
-| [ ] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | None |  |
-| [ ] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | None |  |
-| [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 12 | 1,585 | None |  |
-| [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 2 | 393 | None |  |
-| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 5 | 2,434 | None |  |
-| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 22 | 6,289 | None |  |
-| [ ] | [web](../../crates/ui/fly/web) | `ui` | 6 | 2,234 | None |  |
-| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,506 | None |  |
-| [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 5 | 415 | None |  |
-| [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | None |  |
-| [ ] | [rustok-forms](../../crates/ui/rustok-forms) | `ui` | 21 | 9,244 | None |  |
-| [ ] | [dioxus](../../crates/ui/rustok-forms/dioxus) | `ui` | 6 | 2,222 | None |  |
-| [ ] | [leptos](../../crates/ui/rustok-forms/leptos) | `ui` | 6 | 3,126 | None |  |
-| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 335 | None |  |
-| [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 27 | 6,864 | None |  |
-| [ ] | [dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 8 | 1,726 | None |  |
-| [ ] | [leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 8 | 1,499 | None |  |
-| [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 46 | 5,231 | None |  |
-| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 66 | None |  |
-| [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 9 | 2,257 | None |  |
-| [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | None |  |
-| [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 32 | 6,793 | None |  |
-| [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 478 | None |  |
-| [ ] | [dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 20 | 1,299 | None |  |
-| [ ] | [leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 20 | 2,046 | None |  |
+| [x] | [fly](../../crates/ui/fly) | `ui` | 111 | 43,169 | 2026-10-29 05:48 | Standardized CRATE_API.md, docs.rs metadata, verified lossless GrapesJS codec, history budget, runtime binding and SSR rendering; 301/301 tests passed, zero defects. |
+| [x] | [fly-browser](../../crates/ui/fly-browser) | `ui` | 9 | 816 | 2026-10-29 05:54 | Verified browser config, CSRF derivation, cross-protocol rejection and server dispatch; 11/11 tests passed, zero defects. |
+| [x] | [fly-leptos](../../crates/ui/fly-leptos) | `ui` | 5 | 1,691 | 2026-10-29 05:54 | Verified Leptos 0.8 visual editor workspace, preview canvas, and layer hierarchy; 4/4 tests passed, zero defects. |
+| [x] | [fly-ui](../../crates/ui/fly-ui) | `ui` | 20 | 5,225 | 2026-10-29 05:53 | Standardized CRATE_API.md, docs.rs metadata, verified capability policies, drag-and-drop contracts, and state machine; 74/74 tests passed, zero defects. |
+| [x] | [browser](../../crates/ui/fly/browser) | `ui` | 12 | 1,585 | 2026-10-29 05:54 | Consolidated browser runtime adapter; 11/11 tests passed, zero defects. |
+| [x] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 2 | 393 | 2026-10-29 05:54 | Verified Dioxus 0.7 visual editor type re-exports; 1/1 test passed, zero defects. |
+| [x] | [leptos](../../crates/ui/fly/leptos) | `ui` | 5 | 2,434 | 2026-10-29 05:54 | Consolidated Leptos visual editor adapter; 4/4 tests passed, zero defects. |
+| [x] | [ui](../../crates/ui/fly/ui) | `ui` | 22 | 6,289 | 2026-10-29 05:53 | Consolidated UI state & contribution contracts; 74/74 tests passed, zero defects. |
+| [x] | [web](../../crates/ui/fly/web) | `ui` | 6 | 2,234 | 2026-10-29 05:54 | Verified hit testing, coordinate transforms, sandboxed iframe origin checks, and real-DOM inline grants; 30/30 tests passed, zero defects. |
+| [x] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 9 | 1,506 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified auth token, CSRF and session wiring; zero defects. |
+| [x] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 5 | 415 | 2026-10-29 05:33 | Standardized CRATE_API.md, docs.rs metadata, verified Leptos-specific composite re-exports; compiled and verified. |
+| [x] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 1 | 233 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified route contract; zero defects. |
+| [x] | [rustok-forms](../../crates/ui/rustok-forms) | `ui` | 21 | 9,244 | 2026-10-29 05:15 | Standardized CRATE_API.md, validated all 6 Universal Logic Dimensions; 51/51 unit tests passed, zero defects. |
+| [x] | [dioxus](../../crates/ui/rustok-forms/dioxus) | `ui` | 6 | 2,222 | 2026-10-29 05:15 | Standardized CRATE_API.md, verified Dioxus 0.7 reactive form context and dirty tracking; 2/2 tests passed, zero defects. |
+| [x] | [leptos](../../crates/ui/rustok-forms/leptos) | `ui` | 6 | 3,126 | 2026-10-29 05:10 | Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects. |
+| [x] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 1 | 335 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified GraphQL endpoint normalization and APQ persistence; 6/6 tests passed, zero defects. |
+| [x] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 27 | 6,864 | 2026-10-29 05:20 | Standardized CRATE_API.md, verified 6 Universal Logic Dimensions across cell ordering, pagination math, facet panel bounding, and resizing bounds; 74/74 tests passed, zero defects. |
+| [x] | [dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 8 | 1,726 | 2026-10-29 05:20 | Standardized CRATE_API.md, verified Dioxus 0.7 grid adapter; compiled cleanly, zero defects. |
+| [x] | [leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 8 | 1,499 | 2026-10-29 05:20 | Standardized CRATE_API.md, verified Leptos 0.8 grid adapter; compiled cleanly, zero defects. |
+| [x] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 46 | 5,231 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified deterministic Tailwind resolvers and headless state contracts; 16/16 tests passed, zero defects. |
+| [x] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 1 | 66 | 2026-10-29 05:00 | Standardized CRATE_API.md, docs.rs metadata, verified auth state bridge; zero defects. |
+| [x] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 9 | 2,257 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified navigation, money formatting, route selection and CSS tokens; 38/38 tests passed, zero defects. |
+| [x] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 1 | 75 | 2026-10-29 05:15 | Consolidated into canonical crates/ui/rustok-forms suite; verified zero legacy drift. |
+| [x] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 32 | 6,793 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified Accept-Language parser quality sorting, ISO 639 tag normalization, and Russian plural rules; 16/16 tests passed, zero defects. |
+| [x] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 1 | 478 | 2026-10-29 05:24 | Standardized CRATE_API.md, docs.rs metadata, verified fallback policy and dual-path execution safety; 14/14 tests passed, zero defects. |
+| [x] | [dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 20 | 1,299 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified Dioxus 0.7 component adapter; 8/8 tests passed, zero defects. |
+| [x] | [leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 20 | 2,046 | 2026-10-29 05:23 | Standardized CRATE_API.md, docs.rs metadata, verified SSR-first Leptos 0.8 design system adapter; 15/15 tests passed, zero defects. |
 | [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 12 | 2,109 | None |  |
 | [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 4 | 874 | None |  |
 | [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 2 | 1,570 | None |  |

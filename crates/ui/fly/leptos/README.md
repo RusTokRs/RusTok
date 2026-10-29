@@ -1,5 +1,7 @@
 # Fly Leptos
 
+For full public interface and component definitions, see [CRATE_API.md](CRATE_API.md).
+
 `fly-leptos` is the first browser/framework adapter for Fly. It provides a clean
 Leptos-only dependency boundary, reusable full/inline/preview/read-only shells, browser
 coordinate value types, hit-test normalization, and lifecycle cleanup registration — plus

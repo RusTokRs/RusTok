@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "SSR and Web/Desktop Dioxus 0.7 adapter foundation for Fly visual editors"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 # No renderer by default, unlike `fly-leptos` which defaults to `ssr`.
 #

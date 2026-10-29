@@ -1,3 +1,5 @@
+//! # Fly Visual Editor Engine
+//!
 //! Framework-neutral page-builder engine and lossless GrapesJS compatibility model.
 //!
 //! The crate is deliberately independent from UI frameworks, browser APIs, RusTok modules,

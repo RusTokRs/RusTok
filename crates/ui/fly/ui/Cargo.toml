@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Framework-neutral visual editor state, intents, policies, and contribution contracts"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 
 [dependencies]
 fly = { path = ".." }

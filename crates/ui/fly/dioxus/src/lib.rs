@@ -1,3 +1,5 @@
+//! # Fly Dioxus Adapter
+//!
 //! Dioxus 0.7 adapter foundation for Fly visual editors.
 //!
 //! This crate owns Dioxus component shells, DOM element rendering, and event bindings.
@@ -13,7 +15,16 @@ mod editor;
 
 use dioxus::prelude::*;
 pub use editor::FlyEditorWorkspace;
-pub use fly_web::*;
+pub use fly_web::{
+    AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,
+    AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint, BrowserRect,
+    CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy, FLY_IFRAME_PROTOCOL,
+    FLY_REAL_DOM_COMPONENT_ATTRIBUTE, FLY_REAL_DOM_INLINE_ATTRIBUTE, IframeBridgeEnvelope,
+    IframeBridgeMessage, InlineEditContractError, InlineEditableField, MAX_INLINE_TEXT_BYTES,
+    OPAQUE_ORIGIN, PointerKind, PointerSample, auto_scroll_delta, hit_test_drop_targets,
+    normalize_expected_origin, normalize_hit_targets, outbound_target_origin,
+    resolve_drop_position,
+};
 
 #[component]
 pub fn FlyFullEditor(children: Element) -> Element {

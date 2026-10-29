@@ -1,5 +1,7 @@
 # Fly Dioxus
 
+For full public interface and component definitions, see [CRATE_API.md](CRATE_API.md).
+
 > **Status (2026-10-14): parked.** This adapter is frozen at the current parity snapshot (workspace with contribution access, SSR intent dispatch incl. theme intents, host-resolved messages). All editor development proceeds on the Leptos adapter until stabilization; Dioxus parity resumes afterwards in one pass.
 
 

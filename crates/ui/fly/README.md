@@ -1,5 +1,7 @@
 # Fly — Framework-Neutral Visual Editor Monorepo
 
+For full public interface and engine contract definitions, see [CRATE_API.md](CRATE_API.md).
+
 `fly` is an extensible, framework-neutral visual page builder and component-editor engine for Rust.
 Its core owns the project model, the lossless GrapesJS codec, commands, history, validation and SSR
 rendering, with zero UI-framework coupling.

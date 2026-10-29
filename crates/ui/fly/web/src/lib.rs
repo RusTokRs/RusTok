@@ -1,3 +1,5 @@
+//! # Fly Web Browser Runtime & Geometry
+//!
 //! Framework-neutral browser runtime, geometry, hit-testing, and iframe bridge for Fly visual editors.
 //!
 //! This crate owns browser geometry, pointer interactions, drop target resolution, iframe protocol
