@@ -1,5 +1,4 @@
 use super::super::*;
-use sea_orm_migration::prelude::*;
 
 pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     // 4. Create blog_categories table

@@ -1,5 +1,4 @@
 use super::super::*;
-use sea_orm_migration::prelude::*;
 
 pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     // 11. Create blog_comments_tcp_delegation_schedule_audit_outbox table

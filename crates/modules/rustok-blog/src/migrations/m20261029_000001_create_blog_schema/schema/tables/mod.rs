@@ -1,7 +1,6 @@
 //! Table creation and teardown for the canonical Blog schema migration.
 
 use super::*;
-use sea_orm_migration::prelude::*;
 
 mod categories;
 mod channel_visibility;

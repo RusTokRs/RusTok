@@ -3,7 +3,6 @@
 use super::*;
 use crate::domain::BLOG_CATEGORY_SETTINGS_MAX_BYTES;
 use sea_orm::ConnectionTrait;
-use sea_orm_migration::prelude::*;
 
 pub(super) async fn up(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();

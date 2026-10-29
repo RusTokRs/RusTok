@@ -1,5 +1,4 @@
 use super::super::*;
-use sea_orm_migration::prelude::*;
 
 pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     // 10. Create blog_comments_tcp_delegation_schedule_state table
