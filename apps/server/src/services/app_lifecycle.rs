@@ -1168,6 +1168,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn module_worker_join_finishes_after_watched_shutdown() {
+        let (stop, mut rx) = super::StopHandle::new();
+        let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = complete.clone();
+        let handle = tokio::spawn(async move {
+            rx.changed().await.expect("shutdown broadcast");
+            assert!(*rx.borrow());
+            observed.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        stop.stop().await;
+        super::await_module_worker_shutdown("shutdown-regression", handle).await;
+        assert!(complete.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn shutdown_drains_payment_provider_event_recovery_worker() {
+        let db = setup_test_db().await;
+        let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let stop = super::StopHandle::ensure(&runtime_ctx);
+        let worker =
+            crate::services::payment_provider_event_worker::spawn_payment_provider_event_worker(
+                runtime_ctx.clone(),
+                stop.subscribe(),
+            );
+        assert!(worker.instance_id() > 0);
+        runtime_ctx.shared_insert(worker);
+        assert!(runtime_ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            super::shutdown_runtime_workers(&runtime_ctx),
+        )
+        .await
+        .expect("payment recovery task must drain on shutdown");
+        assert!(stop.is_stopping());
+        assert!(!runtime_ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+    }
+
+    #[tokio::test]
     async fn shutdown_runtime_workers_concurrently_drains_module_work_handle() {
         let db = setup_test_db().await;
         let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
