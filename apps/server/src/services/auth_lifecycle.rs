@@ -787,7 +787,11 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::SessionExpired);
         }
 
+        // The refresh session and the referenced user must belong to the
+        // same tenant. A stale or inconsistent cross-tenant foreign key must
+        // never be exchanged for an access token in the session tenant.
         let user = users::Entity::find_by_id(session.user_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await
             .map_err(AuthLifecycleError::from)?
@@ -2125,6 +2129,55 @@ mod tests {
             result,
             Err(AuthLifecycleError::InvalidRefreshToken)
         ));
+    }
+
+    #[tokio::test]
+    async fn refresh_never_issues_token_for_user_from_other_tenant() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_a = tenants::ActiveModel::new("Refresh Tenant A", "refresh-boundary-a")
+            .insert(&db)
+            .await
+            .expect("create tenant A");
+        let tenant_b = tenants::ActiveModel::new("Refresh Tenant B", "refresh-boundary-b")
+            .insert(&db)
+            .await
+            .expect("create tenant B");
+        let user_b = users::ActiveModel::new(
+            tenant_b.id,
+            "refresh-boundary@example.com",
+            "hash",
+        )
+        .insert(&db)
+        .await
+        .expect("create tenant B user");
+
+        let refresh_token = "cross-tenant-refresh-token";
+        sessions::ActiveModel::new(
+            tenant_a.id,
+            user_b.id,
+            hash_refresh_token(refresh_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("insert mismatched session for boundary test");
+
+        let config = test_auth_config("refresh-boundary-secret", 600, 3600);
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant_a.id,
+            refresh_token,
+            false,
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(AuthLifecycleError::UserNotFound)),
+            "a refresh session must never authorize a user from another tenant"
+        );
     }
 
     #[tokio::test]
