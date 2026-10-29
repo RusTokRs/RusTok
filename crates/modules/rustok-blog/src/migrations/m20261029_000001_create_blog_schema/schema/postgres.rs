@@ -79,7 +79,7 @@ ALTER TABLE blog_post_channel_visibility
         )
         .await?;
 
-    // 5. Post tags composite tenant foreign key
+    // 5. Post-to-post composite tenant foreign key; Taxonomy FKs live in CREATE TABLE
     connection
         .execute_unprepared(
             r#"
@@ -90,19 +90,6 @@ ALTER TABLE blog_post_tags
     ON UPDATE CASCADE
     ON DELETE CASCADE;
 
-ALTER TABLE blog_post_tags
-    ADD CONSTRAINT fk_blog_post_tags_tag_tenant
-    FOREIGN KEY (tenant_id, tag_id)
-    REFERENCES taxonomy_terms (tenant_id, id)
-    ON UPDATE CASCADE
-    ON DELETE CASCADE;
-
-ALTER TABLE blog_tag_usage
-    ADD CONSTRAINT fk_blog_tag_usage_taxonomy_term_tenant
-    FOREIGN KEY (tenant_id, tag_id)
-    REFERENCES taxonomy_terms (tenant_id, id)
-    ON UPDATE CASCADE
-    ON DELETE CASCADE;
 "#,
         )
         .await?;

@@ -30,6 +30,21 @@ pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
                     )
+
+                    // Enforce tenant-correct Taxonomy ownership on both PostgreSQL and SQLite.
+                    // A dictionary deletion must also delete its Blog attachments.
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_blog_post_tags_tag_tenant")
+                            .from_tbl(BlogPostTags::Table)
+                            .from_col(BlogPostTags::TenantId)
+                            .from_col(BlogPostTags::TagId)
+                            .to_tbl(Alias::new("taxonomy_terms"))
+                            .to_col(Alias::new("tenant_id"))
+                            .to_col(Alias::new("id"))
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await?;

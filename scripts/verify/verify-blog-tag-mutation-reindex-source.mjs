@@ -14,6 +14,8 @@ const files = {
   taxonomyLib: 'crates/modules/rustok-taxonomy/src/lib.rs',
   tagService: 'crates/modules/rustok-blog/src/services/tag.rs',
   relationMigration: 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
+  postTagsMigration: 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/post_tags.rs',
+  tagUsageMigration: 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/tag_usage.rs',
   harness: 'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   slice: 'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
   current: 'crates/modules/rustok-blog/docs/implementation-plan-current.md',
@@ -52,6 +54,8 @@ const taxonomyMutation = read(files.taxonomyMutation);
 const taxonomyLib = read(files.taxonomyLib);
 const tagService = read(files.tagService);
 const relationMigration = read(files.relationMigration) + '\n' + readTree('crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema');
+const postTagsMigration = read(files.postTagsMigration);
+const tagUsageMigration = read(files.tagUsageMigration);
 const harness = read(files.harness);
 const slice = read(files.slice);
 const current = read(files.current);
@@ -148,11 +152,21 @@ for (const marker of [
 ]) need(tagService, marker, files.tagService);
 need(tagService, 'pub fn new(db: DatabaseConnection) -> Self', files.tagService);
 
-for (const marker of [
-  'fk_blog_post_tags_tag_tenant',
-  'REFERENCES taxonomy_terms',
-  'ON DELETE CASCADE',
-]) need(relationMigration, marker, files.relationMigration);
+for (const [source, label, name, owner] of [
+  [postTagsMigration, files.postTagsMigration, 'fk_blog_post_tags_tag_tenant', 'BlogPostTags'],
+  [tagUsageMigration, files.tagUsageMigration, 'fk_blog_tag_usage_taxonomy_term_tenant', 'BlogTagUsage'],
+]) {
+  for (const marker of [
+    name,
+    '.from_tbl(' + owner + '::Table)',
+    '.from_col(' + owner + '::TenantId)',
+    '.from_col(' + owner + '::TagId)',
+    '.to_tbl(Alias::new("taxonomy_terms"))',
+    '.to_col(Alias::new("tenant_id"))',
+    '.to_col(Alias::new("id"))',
+    '.on_delete(ForeignKeyAction::Cascade)',
+  ]) need(source, marker, label);
+}
 
 for (const marker of [
   'SysEventsMigration',

@@ -661,6 +661,25 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         .await
         .expect("post should still be readable after tag deletion");
     assert!(post.tags.is_empty());
+    // The dictionary owner delete must cascade through both Blog-owned tables.
+    // Reading only the projected post tags is insufficient: stale usage rows
+    // can leave the list/search projections inconsistent after deletion.
+    for table in ["blog_post_tags", "blog_tag_usage"] {
+        let statement = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            format!("SELECT COUNT(*) AS count FROM {table} WHERE tenant_id = ? AND tag_id = ?"),
+            [tenant_id.into(), tag_id.into()],
+        );
+        let result = db
+            .query_one(statement)
+            .await
+            .expect("tag attachment count query should succeed")
+            .expect("count query must return one row");
+        let count: i64 = result
+            .try_get("", "count")
+            .expect("count must be an integer");
+        assert_eq!(count, 0, "{table} must not retain a deleted taxonomy term");
+    }
     assert_eq!(
         SysEvents::find()
             .all(&db)
