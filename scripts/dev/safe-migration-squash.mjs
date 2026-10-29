@@ -39,8 +39,16 @@ function toPascalCase(str) {
     .join('');
 }
 
-// Normalize module name (e.g., 'blog' -> 'rustok-blog', 'rustok-blog' -> 'rustok-blog')
+// Normalize module name (e.g., 'blog' -> 'rustok-blog', 'rustok-blog' -> 'rustok-blog', or direct path)
 function resolveModuleDir(moduleInput) {
+  if (path.isAbsolute(moduleInput) && fs.existsSync(moduleInput)) {
+    return moduleInput;
+  }
+  const cwdPath = path.resolve(process.cwd(), moduleInput);
+  if (fs.existsSync(cwdPath) && fs.statSync(cwdPath).isDirectory()) {
+    return cwdPath;
+  }
+
   const directPath = path.join(REPO_ROOT, 'crates', 'modules', moduleInput);
   if (fs.existsSync(directPath)) return directPath;
 
@@ -152,21 +160,50 @@ function parseMigrations(moduleDir) {
 
   const tables = new Map();
   const rawSqlTables = new Set();
+  const idenToTableName = new Map();
   const errors = [];
 
+  // Pass 1: Collect all Iden -> table_name mappings across all migration files
   for (const file of files) {
     const filePath = path.join(migrationsDir, file);
     const content = fs.readFileSync(filePath, 'utf8');
 
+    const idenMatches = content.matchAll(/enum\s+([a-zA-Z0-9_]+)\s*\{([\s\S]*?)\}/g);
+    for (const idenMatch of idenMatches) {
+      const enumName = idenMatch[1];
+      const enumBody = idenMatch[2];
+      const tableVariantMatch = enumBody.match(/#\[iden\s*=\s*"([^"]+)"\]\s*Table/);
+      if (tableVariantMatch) {
+        idenToTableName.set(enumName, tableVariantMatch[1]);
+      }
+    }
+    const enumLevelIden = content.matchAll(/#\[iden\s*=\s*"([^"]+)"\]\s*enum\s+([a-zA-Z0-9_]+)/g);
+    for (const match of enumLevelIden) {
+      idenToTableName.set(match[2], match[1]);
+    }
+  }
+
+  // Pass 2: Parse table creations and alterations in `async fn up`
+  for (const file of files) {
+    const filePath = path.join(migrationsDir, file);
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    // Extract only fn up(...) body so we don't parse rollback drops/adds in fn down(...)
+    const upMatch = content.match(
+      /async\s+fn\s+up\s*\([\s\S]*?\)\s*->\s*Result<[\s\S]*?>\s*\{([\s\S]*?)\n\s*(?:async\s+fn\s+down|impl|enum|struct|$)/,
+    );
+    const upContent = upMatch ? upMatch[1] : content;
+
     // 1. Parse SeaQuery Table::create() blocks
     // Pattern: Table::create().table(TableIden::Table).col(ColumnDef::new(TableIden::Col)...)
-    const tableCreateMatches = content.matchAll(
+    const tableCreateMatches = upContent.matchAll(
       /Table::create\(\)\s*[\s\S]*?\.table\((?:([a-zA-Z0-9_]+)::Table|[a-zA-Z0-9_]+)\)([\s\S]*?)\.to_owned\(\)/g,
     );
 
     for (const match of tableCreateMatches) {
       const idenName = match[1];
       const tableBody = match[2];
+      const resolvedTableName = idenToTableName.get(idenName) || idenName;
 
       // Extract column definitions: ColumnDef::new(ColIden::ColName)...
       const colMatches = tableBody.matchAll(
@@ -222,16 +259,82 @@ function parseMigrations(moduleDir) {
         }
       }
 
-      tables.set(idenName, {
-        file,
-        idenName,
-        columns,
-        rawBody: tableBody,
-      });
+      const existing = tables.get(resolvedTableName) || tables.get(idenName);
+      if (existing) {
+        for (const [colK, colV] of columns.entries()) {
+          existing.columns.set(colK, colV);
+        }
+      } else {
+        const entry = {
+          file,
+          idenName,
+          tableName: resolvedTableName,
+          columns,
+          rawBody: tableBody,
+        };
+        tables.set(idenName, entry);
+        if (resolvedTableName !== idenName) {
+          tables.set(resolvedTableName, entry);
+        }
+      }
     }
 
-    // 2. Parse raw SQL CREATE TABLE blocks
-    const sqlTableMatches = content.matchAll(
+    // 2. Parse SeaQuery Table::alter() blocks (add_column, drop_column)
+    const alterMatches = upContent.matchAll(
+      /Table::alter\(\)\s*[\s\S]*?\.table\((?:([a-zA-Z0-9_]+)::Table|[a-zA-Z0-9_]+)\)([\s\S]*?)\.to_owned\(\)/g,
+    );
+    for (const match of alterMatches) {
+      const idenName = match[1];
+      const alterBody = match[2];
+      const resolvedTableName = idenToTableName.get(idenName) || idenName;
+
+      let tableEntry = tables.get(resolvedTableName) || tables.get(idenName) || tables.get(toPascalCase(resolvedTableName));
+      if (!tableEntry) {
+        tableEntry = {
+          file,
+          idenName,
+          tableName: resolvedTableName,
+          columns: new Map(),
+          rawBody: '',
+        };
+        tables.set(idenName, tableEntry);
+        if (resolvedTableName !== idenName) {
+          tables.set(resolvedTableName, tableEntry);
+        }
+      }
+
+      const addedColMatches = alterBody.matchAll(
+        /\.add_column\(\s*(?:&mut\s*)?ColumnDef::new\((?:[a-zA-Z0-9_]+::)?([a-zA-Z0-9_]+)\)([\s\S]*?)(?=(?:\.add_column|\.drop_column|\.modify_column|\.to_owned|\)\s*;|$))/g,
+      );
+      for (const colMatch of addedColMatches) {
+        const colIden = colMatch[1];
+        const colChain = colMatch[2];
+        const colSnake = colIden.replace(/([A-Z])/g, (g, i) => (i === 0 ? g.toLowerCase() : `_${g.toLowerCase()}`));
+        const isNotNull = colChain.includes('.not_null()');
+        const isNull = colChain.includes('.null()');
+        const isPrimaryKey = colChain.includes('.primary_key()');
+
+        tableEntry.columns.set(colSnake, {
+          colIden,
+          isNotNull,
+          isNull,
+          isPrimaryKey,
+          chain: colChain,
+        });
+      }
+
+      const droppedColMatches = alterBody.matchAll(
+        /\.drop_column\((?:[a-zA-Z0-9_]+::)?([a-zA-Z0-9_]+)\)/g,
+      );
+      for (const dropMatch of droppedColMatches) {
+        const colIden = dropMatch[1];
+        const colSnake = colIden.replace(/([A-Z])/g, (g, i) => (i === 0 ? g.toLowerCase() : `_${g.toLowerCase()}`));
+        tableEntry.columns.delete(colSnake);
+      }
+    }
+
+    // 3. Parse raw SQL CREATE TABLE blocks
+    const sqlTableMatches = upContent.matchAll(
       /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)\s*\(([\s\S]*?)\);/gi,
     );
     for (const sqlMatch of sqlTableMatches) {
@@ -269,13 +372,44 @@ function parseMigrations(moduleDir) {
         }
       }
 
-      tables.set(sqlTableName, {
-        file,
-        idenName: toPascalCase(sqlTableName),
-        tableName: sqlTableName,
-        columns: sqlCols,
-        isRawSql: true,
-      });
+      const existing = tables.get(sqlTableName);
+      if (existing) {
+        for (const [colK, colV] of sqlCols.entries()) {
+          existing.columns.set(colK, colV);
+        }
+      } else {
+        const entry = {
+          file,
+          idenName: toPascalCase(sqlTableName),
+          tableName: sqlTableName,
+          columns: sqlCols,
+          isRawSql: true,
+        };
+        tables.set(sqlTableName, entry);
+        tables.set(toPascalCase(sqlTableName), entry);
+      }
+    }
+
+    // 4. Parse raw SQL ALTER TABLE blocks
+    const sqlAlterMatches = upContent.matchAll(
+      /ALTER\s+TABLE\s+(?:ONLY\s+)?([a-zA-Z0-9_]+)\s+ADD\s+(?:COLUMN\s+)?([a-zA-Z0-9_]+)\s+([^;,\n]+)/gi,
+    );
+    for (const match of sqlAlterMatches) {
+      const sqlTableName = match[1].toLowerCase();
+      const colName = match[2].toLowerCase();
+      const colDef = match[3];
+
+      let tableEntry = tables.get(sqlTableName) || tables.get(toPascalCase(sqlTableName));
+      if (tableEntry) {
+        const isNotNull = colDef.toUpperCase().includes('NOT NULL');
+        tableEntry.columns.set(colName, {
+          colName,
+          isNotNull,
+          isNull: !isNotNull,
+          isPrimaryKey: colDef.toUpperCase().includes('PRIMARY KEY'),
+          chain: colDef,
+        });
+      }
     }
   }
 
@@ -295,9 +429,11 @@ function checkMigrationRegistry(moduleDir) {
   const migrationsDir = path.join(moduleDir, 'src', 'migrations');
   const filesOnDisk = fs
     .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.rs') && f !== 'mod.rs');
+    .filter((f) => f.endsWith('.rs') && f !== 'mod.rs' && /^m[0-9]{4}/.test(f));
 
-  const declaredMods = [...modContent.matchAll(/(?:pub\s+)?mod\s+([a-zA-Z0-9_]+);/g)].map((m) => m[1]);
+  const declaredMods = [...modContent.matchAll(/(?:pub\s+)?mod\s+([a-zA-Z0-9_]+);/g)]
+    .map((m) => m[1])
+    .filter((mod) => /^m[0-9]{4}/.test(mod));
   const registeredInFn = [...modContent.matchAll(/Box::new\(([a-zA-Z0-9_]+)::Migration\)/g)].map((m) => m[1]);
 
   const missingFiles = declaredMods.filter((mod) => !filesOnDisk.includes(`${mod}.rs`));

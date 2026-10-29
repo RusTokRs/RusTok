@@ -34,6 +34,7 @@
     "verify:page-builder:contract-registry": "node scripts/verify/verify-page-builder-contract-registry.mjs",
     "verify:schema-parity": "node scripts/dev/safe-migration-squash.mjs",
     "verify:schema-parity:all": "node scripts/dev/safe-migration-squash.mjs --all",
+    "test:verify:schema-parity": "node --test scripts/dev/safe-migration-squash.test.mjs",
     "verify:page-builder:fallback-profiles": "node scripts/verify/verify-page-builder-fallback-profiles.mjs",
     "verify:page-builder:toggle-profiles": "node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs",
     "verify:page-builder:fba:baseline": "node scripts/verify/verify-page-builder-fba-baseline.mjs",

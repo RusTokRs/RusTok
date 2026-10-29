@@ -47,6 +47,23 @@ owner-service integration seams, and FBA write command identity.
 
 A clean layout with a failing reference-contract guard is not a canonical module.
 
+## Database Schema and Migration Parity Verification
+
+When creating, altering, or squashing database migrations in a module, verify 100% schema parity between SeaORM entities (`src/entities/*.rs`) and migrations (`src/migrations/*.rs`):
+
+```bash
+# Verify schema parity for a specific module:
+npm run verify:schema-parity -- --module <module-slug>
+
+# Verify across all modules:
+npm run verify:schema-parity:all
+
+# Run the test suite for the parity engine:
+npm run test:verify:schema-parity
+```
+
+This guard verifies table existence, column parity, nullability (`Option<T>` vs `NOT NULL`), primary keys, migration registry consistency (`mod.rs`), and detects obsolete migration references in `scripts/verify/`. See the [Safe Database Migrations and Squashing Guide](../guides/safe-database-migrations-and-squashing.md) for full instructions.
+
 ## Module Validation
 
 For module manifest or ownership changes:

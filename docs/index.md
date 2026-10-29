@@ -238,6 +238,7 @@ from complete operation safety and retention through serving cutover.
 - [Testing](./guides/testing.md)
 - [Observability Quick Start](./guides/observability-quickstart.md)
 - [Runtime Guardrails](./guides/runtime-guardrails.md)
+- [Safe Database Migrations and Squashing Guide](./guides/safe-database-migrations-and-squashing.md)
 - [Alloy Runtime Hardening Contract](../crates/modules/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Input Validation](./guides/input-validation.md)
@@ -257,6 +258,7 @@ from complete operation safety and retention through serving cutover.
 - [Athanor Operations Documentation](./operations/README.md)
 - [Main Verification README](./verification/README.md)
 - [Platform Hardening and Canonical Code Cleanup Plan](./verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md) - production hardening plus the repository-wide atomic removal plan for internal versions, compatibility paths, suppressed dead code, placeholders, and duplicate implementations.
+- [Database Schema & Migration Parity Guard](../scripts/dev/safe-migration-squash.mjs)
 - [Cross-platform OpenAPI/GraphQL Reference Artifacts Export](../scripts/verify/export-reference-artifacts.mjs)
 - [OpenAPI/GraphQL Reference Artifacts Verification](../scripts/verify/verify-reference-artifacts.mjs)
 - [Flex Multilingual Contract Verification](../scripts/verify/verify-flex-multilingual-contract.mjs)
