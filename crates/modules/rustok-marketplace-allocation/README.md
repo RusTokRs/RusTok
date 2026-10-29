@@ -39,3 +39,5 @@ order line to the seller and listing that won selection at checkout.
 
 Commission calculation, ledger posting, payout scheduling, refund attribution, and
 seller settlement consume allocation projections but remain separate owners.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

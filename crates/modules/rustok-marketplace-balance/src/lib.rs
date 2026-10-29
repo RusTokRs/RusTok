@@ -1,9 +1,9 @@
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Marketplace Balance
+//!
+//! Native module owner for Marketplace Family seller balances, escrow holds, and ledger postings.
+//! Maintains double-entry seller sub-ledger accounting, escrow bucket transitions, and financial reversals.
 
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 mod balance;
 mod balance_transfer;
@@ -17,66 +17,40 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod service;
 
-pub use accounting_bridge::*;
-pub use dto::*;
+pub use accounting_bridge::{
+    ACCOUNT_COMMISSION_REVENUE, ACCOUNT_MARKETPLACE_CLEARING, ACCOUNT_SELLER_PAYABLE,
+    MarketplaceAccountingBridge,
+};
+pub use dto::{
+    ListMarketplaceSellerLedgerEntriesRequest, MAX_LEDGER_BALANCE_TRANSFER_LINES,
+    MAX_LEDGER_ENTRIES_PER_PAGE, MAX_LEDGER_REVERSAL_LINES, MarketplaceLedgerAccountCode,
+    MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryListResponse,
+    MarketplaceLedgerEntryResponse, MarketplaceLedgerReversalEntryResponse,
+    MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
+    MarketplaceLedgerReversalResponse, MarketplaceLedgerTransactionResponse,
+    MarketplaceLedgerTransactionStatus, MarketplaceSellerBalanceBucket,
+    MarketplaceSellerBalanceResponse, MarketplaceSellerBalanceTransferKind,
+    MarketplaceSellerBalanceTransferLineInput, MarketplaceSellerBalanceTransferLineResponse,
+    MarketplaceSellerBalanceTransferResponse, MarketplaceSellerPayableBalanceResponse,
+    PostMarketplaceLedgerReversalInput, PostMarketplaceOrderLedgerInput,
+    PostMarketplaceSellerBalanceTransferInput, ReadMarketplaceOrderLedgerRequest,
+    ReadMarketplaceSellerBalanceRequest, RebuildMarketplaceSellerBalanceInput,
+};
 pub use error::{MarketplaceLedgerError, MarketplaceLedgerResult};
-pub use ports::*;
+pub use module::{MarketplaceBalanceModule, Marketplace_balanceModule};
+pub use ports::{
+    MarketplaceLedgerCommandPort, MarketplaceLedgerReadPort,
+    in_process_marketplace_ledger_command_port,
+};
 pub use service::MarketplaceLedgerService;
 
 pub type MarketplaceBalanceError = MarketplaceLedgerError;
 pub type MarketplaceBalanceResult<T> = MarketplaceLedgerResult<T>;
 pub type MarketplaceBalanceService = MarketplaceLedgerService;
 
-/// Owns seller balances, escrow holds, and financial bucket transitions.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MarketplaceBalanceModule;
-
-impl MarketplaceBalanceModule {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[allow(non_camel_case_types)]
-pub type Marketplace_balanceModule = MarketplaceBalanceModule;
-
-#[async_trait]
-impl RusToKModule for MarketplaceBalanceModule {
-    fn slug(&self) -> &'static str {
-        "marketplace_balance"
-    }
-
-    fn name(&self) -> &'static str {
-        "Marketplace Balance"
-    }
-
-    fn description(&self) -> &'static str {
-        "Marketplace Family seller balance, escrow hold, and financial tracking owner"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_commission", "accounting"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::ORDERS_READ,
-            Permission::ORDERS_LIST,
-            Permission::ORDERS_MANAGE,
-            Permission::MARKETPLACE_SELLERS_READ,
-        ]
-    }
-}
-
-impl MigrationSource for MarketplaceBalanceModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

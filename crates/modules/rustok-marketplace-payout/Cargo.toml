@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family seller payout scheduling owner"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true
 

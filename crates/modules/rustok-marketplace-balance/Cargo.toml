@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family seller balance, escrow hold, and balance operations owner"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true
 

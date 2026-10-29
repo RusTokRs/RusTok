@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Marketplace Family versioned commission rule and assessment owner"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints]
 workspace = true
 
