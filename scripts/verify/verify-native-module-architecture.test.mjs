@@ -147,6 +147,14 @@ test('missing native transport path and demo-only CRUD fail', () => {
   rejects(root, 'must wire both GraphQL and native transport adapters');
   rejects(root, 'synthetic data or log-only CRUD is forbidden');
 });
+test('comment-only trait wiring and forbidden imports are not executable evidence', () => {
+  const root = fixture();
+  put(root, 'src/module.rs', '// impl RusToKModule for ExampleModule {}\\n');
+  put(root, 'src/domain/mod.rs', '/* use sea_orm::DatabaseConnection; */\\npub struct Pure;\\n');
+  rejects(root, 'missing RusToKModule implementation');
+  assert.ok(!validateNativeModule(root).some(error => error.includes('domain must not import')));
+});
+
 test('CLI reports only static evidence and rejects directory traversal slugs', () => {
   const script = new URL('./verify-native-module-architecture.mjs', import.meta.url).pathname;
   const ok = spawnSync(process.execPath, [script, '--module-root', fixture()], { encoding: 'utf8' });
