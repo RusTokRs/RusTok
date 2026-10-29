@@ -64,8 +64,8 @@ test('a drifted Search-owned storefront selection is rejected', () => {
   );
   const original = fs.readFileSync(storefrontFile, 'utf8');
   const drifted = original.replace(
-    '          total\\n          items { id entityType sourceModule title locale payload }',
-    '          total\\n          inventedSearchField\\n          items { id entityType sourceModule title locale payload }'
+    '          total\n          items { id entityType sourceModule title locale payload }',
+    '          total\n          inventedSearchField\n          items { id entityType sourceModule title locale payload }'
   );
   assert.notEqual(drifted, original, 'the fixture must alter the Search-owned selection');
   try {
