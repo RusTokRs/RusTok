@@ -1,6 +1,6 @@
 use super::*;
 
-async fn bump_posts_for_tag_relation_removal_in_tx(
+pub(super) async fn bump_posts_for_tag_relation_removal_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_id: Uuid,
@@ -74,7 +74,7 @@ async fn bump_posts_for_tag_relation_removal_in_tx(
     Ok(())
 }
 
-async fn publish_blog_reindex_in_tx(
+pub(super) async fn publish_blog_reindex_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
@@ -180,7 +180,7 @@ async fn validate_post_tag_terms_in_tx(
 /// `list_tags` pages over this table (a tag with no posts must remain
 /// listable); projection rows of global terms are removed at zero, exactly as
 /// the previous decrement path did.
-async fn refresh_tag_usage_in_tx(
+pub(super) async fn refresh_tag_usage_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_ids: &[Uuid],
