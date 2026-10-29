@@ -15,17 +15,19 @@ use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
 use crate::dto::PublishedPostCursor;
-use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation};
-use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
+use crate::entities::{
+    blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
+};
 use crate::error::{BlogError, BlogResult};
-use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
+use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::post::{
     order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,
 };
 use crate::services::tag::load_post_tags_map;
+use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
 
 pub const BLOG_SOURCE_MODULE: &str = "blog";
 pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
@@ -55,14 +57,18 @@ pub async fn filter_public_search_post_ids(
     let normalized_channel = normalize_public_channel_slug(channel_slug);
     if let Some(slug) = normalized_channel.as_deref() {
         let channels = rustok_channel::ChannelService::new(db.clone());
-        let Some(channel) = channels.get_channel_by_slug(tenant_id, slug)
-            .await.map_err(BlogError::from)?
+        let Some(channel) = channels
+            .get_channel_by_slug(tenant_id, slug)
+            .await
+            .map_err(BlogError::from)?
         else {
             return Ok(Vec::new());
         };
         if !channel.is_active
-            || !channels.is_module_enabled_for_tenant(tenant_id, channel.id, BLOG_SOURCE_MODULE)
-                .await.map_err(BlogError::from)?
+            || !channels
+                .is_module_enabled_for_tenant(tenant_id, channel.id, BLOG_SOURCE_MODULE)
+                .await
+                .map_err(BlogError::from)?
         {
             return Ok(Vec::new());
         }
@@ -73,33 +79,46 @@ pub async fn filter_public_search_post_ids(
         .filter(blog_post::Column::Id.is_in(candidate_ids.to_vec()))
         .filter(blog_post::Column::Status.eq("published"))
         .filter(blog_post::Column::PublishedAt.is_not_null())
-        .all(db).await.map_err(BlogError::from)?;
+        .all(db)
+        .await
+        .map_err(BlogError::from)?;
     if published.is_empty() {
         return Ok(Vec::new());
     }
-    let published_ids = published.iter().map(|post| post.id)
+    let published_ids = published
+        .iter()
+        .map(|post| post.id)
         .collect::<std::collections::HashSet<_>>();
     let visibility = blog_post_channel_visibility::Entity::find()
         .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
-        .filter(blog_post_channel_visibility::Column::PostId.is_in(
-            published_ids.iter().copied().collect::<Vec<_>>()
-        ))
-        .all(db).await.map_err(BlogError::from)?;
+        .filter(
+            blog_post_channel_visibility::Column::PostId
+                .is_in(published_ids.iter().copied().collect::<Vec<_>>()),
+        )
+        .all(db)
+        .await
+        .map_err(BlogError::from)?;
     let mut channels_by_post = HashMap::<Uuid, Vec<String>>::new();
     for visibility_row in visibility {
-        channels_by_post.entry(visibility_row.post_id)
-            .or_default().push(visibility_row.channel_slug);
+        channels_by_post
+            .entry(visibility_row.post_id)
+            .or_default()
+            .push(visibility_row.channel_slug);
     }
     // Return only IDs that were actually requested; the Search SPI verifies
     // this invariant too, independently of Blog.
-    Ok(candidate_ids.iter().copied().filter(|id| {
-        published_ids.contains(id) && is_post_visible_for_channel(
-            channels_by_post.get(id).map(Vec::as_slice).unwrap_or(&[]),
-            normalized_channel.as_deref(),
-        )
-    }).collect())
+    Ok(candidate_ids
+        .iter()
+        .copied()
+        .filter(|id| {
+            published_ids.contains(id)
+                && is_post_visible_for_channel(
+                    channels_by_post.get(id).map(Vec::as_slice).unwrap_or(&[]),
+                    normalized_channel.as_deref(),
+                )
+        })
+        .collect())
 }
-
 
 #[derive(Clone, Default)]
 pub struct BlogSearchProjectionSourceFactory;
@@ -201,9 +220,16 @@ impl BlogSearchProjectionSource {
             .map_err(Error::Database)?;
         let mut tag_ids_by_post: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for relation in tag_relations {
-            tag_ids_by_post.entry(relation.post_id).or_default().push(relation.tag_id);
+            tag_ids_by_post
+                .entry(relation.post_id)
+                .or_default()
+                .push(relation.tag_id);
         }
-        let mut distinct_tag_ids = tag_ids_by_post.values().flatten().copied().collect::<Vec<_>>();
+        let mut distinct_tag_ids = tag_ids_by_post
+            .values()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
         distinct_tag_ids.sort_unstable();
         distinct_tag_ids.dedup();
 
@@ -253,11 +279,15 @@ impl BlogSearchProjectionSource {
                 )
                 .await
                 .map_err(|error| Error::External(error.to_string()))?;
-            let terms_by_id = canonical_terms.into_iter()
-                .map(|term| (term.id, term)).collect::<HashMap<_, _>>();
+            let terms_by_id = canonical_terms
+                .into_iter()
+                .map(|term| (term.id, term))
+                .collect::<HashMap<_, _>>();
             let mut by_post = HashMap::new();
             for (post_id, ids) in &tag_ids_by_post {
-                let mut keys = ids.iter().filter_map(|id| terms_by_id.get(id))
+                let mut keys = ids
+                    .iter()
+                    .filter_map(|id| terms_by_id.get(id))
                     .flat_map(|term| [&term.canonical_key, &term.slug, &term.name])
                     .map(|key| key.trim().to_lowercase())
                     .filter(|key| !key.is_empty())

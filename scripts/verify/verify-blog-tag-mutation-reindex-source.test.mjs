@@ -16,6 +16,9 @@ const files = [
   'crates/modules/rustok-taxonomy/src/lib.rs',
   'crates/modules/rustok-blog/src/services/tag.rs',
   'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/postgres.rs',
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/post_tags.rs',
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/tag_usage.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
   'crates/modules/rustok-blog/docs/implementation-plan-current.md',
@@ -131,4 +134,14 @@ test('rejects premature runtime promotion', () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /identity\/status drift|harness\/planning\/execution drift/);
+});
+
+test('rejects loss of SQLite-compatible Taxonomy FK cascade for Blog tag usage', () => {
+  const result = rejects((root) => {
+    const file = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/tag_usage.rs';
+    const source = readFileSync(absolute(root, file), 'utf8');
+    write(root, file, source.replace('.on_delete(ForeignKeyAction::Cascade)', '.on_delete(ForeignKeyAction::Restrict)'));
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /fk_blog_tag_usage_taxonomy_term_tenant|on_delete/);
 });

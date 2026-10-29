@@ -58,6 +58,26 @@ test('a drifted client selection set is rejected', () => {
   }
 });
 
+test('a drifted Search-owned storefront selection is rejected', () => {
+  const storefrontFile = path.join(
+    repoRoot, 'apps', 'next-frontend', 'packages', 'rustok-blog', 'src', 'api', 'posts.ts'
+  );
+  const original = fs.readFileSync(storefrontFile, 'utf8');
+  const drifted = original.replace(
+    '          total\n          items { id entityType sourceModule title locale payload }',
+    '          total\n          inventedSearchField\n          items { id entityType sourceModule title locale payload }'
+  );
+  assert.notEqual(drifted, original, 'the fixture must alter the Search-owned selection');
+  try {
+    fs.writeFileSync(storefrontFile, drifted);
+    const result = runVerifier();
+    assert.notEqual(result.code, 0, 'Search-owned selections must also be validated');
+    assert.match(result.output, /inventedSearchField is not a field of SearchPreviewPayload/);
+  } finally {
+    fs.writeFileSync(storefrontFile, original);
+  }
+});
+
 test('a drifted client input object is rejected', () => {
   const original = fs.readFileSync(clientFile, 'utf8');
   const drifted = original.replace(

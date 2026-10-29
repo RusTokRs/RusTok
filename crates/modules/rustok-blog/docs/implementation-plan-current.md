@@ -11,6 +11,28 @@ pending slice-98 PostgreSQL execution gate are superseded by this file. The
 owner-scoped documentation cleanup that followed the source cutover is complete
 through TAXONOMY-CAT-17.
 
+## 2026-10-29 Blog schema composition and tag integrity follow-up
+
+- The Blog baseline remains one registered migration,
+  `m20261029_000001_create_blog_schema`, with distinct table, PostgreSQL,
+  and SQLite responsibilities below its `schema/` module.
+- A cross-backend defect was identified: PostgreSQL enforced cascades from
+  `taxonomy_terms` into `blog_post_tags` and `blog_tag_usage`, but
+  SQLite's baseline did not declare the corresponding Taxonomy foreign keys.
+  Both tables now declare tenant-scoped composite foreign keys in their shared
+  `CREATE TABLE` definitions; redundant PostgreSQL post-create declarations
+  were removed.
+- The existing SQLite tag-deletion integration harness now checks for zero
+  dangling attachment and usage rows after deleting a Blog-owned Taxonomy Tag.
+  Source verifiers also require the two real composite FK definitions.
+- **Execution status:** source changes only in this environment. Rust/Cargo,
+  SQLite migration tests, PostgreSQL migration smoke, and the affected
+  integration suite have not been run locally. No runtime certification is
+  claimed until CI/maintainer execution evidence exists.
+- PR: [Blog canonical reference hardening](https://github.com/RusTokRs/RusTok/pull/4664).
+  This is a draft follow-up, not a declaration that the whole Blog module is
+  complete or ideal.
+
 ## Canonical reference v1 hardening
 
 The first post-layout certification audit found semantic defects that are unsafe
