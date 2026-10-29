@@ -427,6 +427,26 @@ mod tests {
     }
 
     #[test]
+    fn future_dioxus_can_share_pure_core_model_and_transport() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        for (path, source) in &files {
+            let pure = path.ends_with("src/model.rs")
+                || path.ends_with("src/core/mod.rs")
+                || path.to_string_lossy().contains("/src/transport/");
+            if pure {
+                for framework in ["leptos::", "dioxus::", "leptos_ui::"] {
+                    assert!(!source.contains(framework),
+                        "{framework} must not leak into {}", path.display());
+                }
+            }
+            assert!(!path.ends_with("src/ui/dioxus.rs"),
+                "Dioxus is a future sibling adapter, not a replacement yet");
+        }
+        assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
+        assert!(files.iter().any(|(p, _)| p.ends_with("src/transport/mod.rs")));
+    }
+
+    #[test]
     fn result_does_not_claim_transport_or_business_readiness() {
         for (_, source) in render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample") {
             assert!(!source.contains("Owner API is connected."));
