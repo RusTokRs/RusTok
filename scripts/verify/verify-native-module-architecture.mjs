@@ -47,9 +47,14 @@ function rustFiles(directory, failures) {
   }
   return files;
 }
+function withoutComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+}
 function layer(files, pattern, label, errors) {
   for (const file of files) {
-    const source = read(file).split('\n').filter(line => !/^\s*(?:\/\/|\*)/.test(line)).join('\n');
+    const source = withoutComments(read(file));
     if (pattern.test(source)) errors.push(file + ': ' + label + ' must not import forbidden runtime types');
   }
 }
@@ -91,7 +96,7 @@ function checkUi(root, name, errors) {
   size(files, 40 * 1024, errors);
   layer(files.filter(file => file.startsWith(join(src, 'core') + sep)), CORE_IMPORT, 'FFA core', errors);
   for (const file of files.filter(file => file.startsWith(join(src, 'ui') + sep))) {
-    const code = read(file);
+    const code = withoutComments(read(file));
     if (/\b(?:graphql_adapter|native_server_adapter)\s*::|\brustok_graphql\s*::|#\s*\[\s*server\b/.test(code)) {
       errors.push(file + ': UI must use the module transport facade');
     }
@@ -134,8 +139,8 @@ export function validateNativeModule(moduleRoot) {
       errors.push(path + ': unrecognized backend responsibility slot');
     }
   }
-  const lib = isFile(join(src, 'lib.rs')) ? read(join(src, 'lib.rs')) : '';
-  const moduleSource = isFile(join(src, 'module.rs')) ? read(join(src, 'module.rs')) : '';
+  const lib = isFile(join(src, 'lib.rs')) ? withoutComments(read(join(src, 'lib.rs'))) : '';
+  const moduleSource = isFile(join(src, 'module.rs')) ? withoutComments(read(join(src, 'module.rs'))) : '';
   if (!/\bmod\s+module\s*;/.test(lib)) errors.push(src + '/lib.rs: must declare module.rs');
   if (!/\bmod\s+tests\s*;/.test(lib)) errors.push(src + '/lib.rs: must wire the contract tests');
   if (!/\bimpl\s+RusToKModule\s+for\s+\w+/.test(moduleSource)) {
@@ -160,7 +165,7 @@ export function validateNativeModule(moduleRoot) {
     if (!isFile(mod)) errors.push(path + ': missing mod.rs');
     const contents = rustFiles(path, errors);
     if (contents.length < 2 && isFile(mod)) {
-      const code = read(mod).replace(/\/\/[^\n]*/g, '');
+      const code = withoutComments(read(mod));
       if (!/\b(?:pub|async|fn|struct|enum|trait|impl|type|const|static|use|mod)\b/.test(code)) {
         errors.push(path + ': empty responsibility slot is forbidden');
       }
