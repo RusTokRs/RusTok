@@ -54,6 +54,13 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
     response
 }
 
+fn oauth_client_lookup_error() -> TokenErrorResponse {
+    TokenErrorResponse {
+        error: "server_error".to_string(),
+        error_description: "OAuth client lookup is temporarily unavailable".to_string(),
+    }
+}
+
 fn direct_user_required_error() -> TokenErrorResponse {
     TokenErrorResponse {
         error: "access_denied".to_string(),
@@ -739,10 +746,7 @@ async fn validate_authorize_request(
 
     let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
+        .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
@@ -1164,10 +1168,7 @@ async fn revoke_handler_inner(
 
     let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
-        .map_err(|_| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Internal error".to_string(),
-        })?
+        .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
@@ -1638,6 +1639,14 @@ mod tests {
             assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
             assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
         }
+    }
+
+    #[test]
+    fn oauth_client_lookup_outage_is_not_misreported_as_bad_credentials() {
+        let error = oauth_client_lookup_error();
+        assert_eq!(error.error, "server_error");
+        let response = oauth_error_response(error);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
