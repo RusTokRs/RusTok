@@ -58,7 +58,7 @@ const graphql = read(files.graphql);
 const native = read(files.native);
 const facade = read(files.facade);
 const model = read(files.model);
-const commentService = read('crates/modules/rustok-blog/src/services/comment.rs');
+const commentService = read('crates/modules/rustok-blog/src/services/comment.rs') + '\n' + read('crates/modules/rustok-blog/src/services/comment/commands.rs');
 // The pre-create admission and the post-create revalidation both go through
 // ensure_public_comment_creation_allowed (comments mode + public post
 // visibility), which itself delegates to ensure_public_post_visible.
