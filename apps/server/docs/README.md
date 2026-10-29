@@ -128,6 +128,23 @@ agent transport is deployed independently through
 `rustok-artifact-node-controller`; deployment topology and agent materialization
 remain separate unfinished control-plane work.
 
+## REST transport correctness
+
+The legacy commerce `ApiErrorResponse` adapter returns actionable client HTTP
+statuses for invalid price/options/variants (400), missing products, variants,
+or shipping profiles (404), and duplicate identifiers or shipping-profile
+slugs (409). Server-side commerce failures are logged internally; their
+HTTP 500 payloads contain no raw database/provider diagnostics.
+
+`GET /api/users?search=...` matches user-supplied percent signs, underscores,
+and escape characters literally, rather than interpreting them as SQL LIKE
+wildcards. Pages past the result count return an empty `users` array without
+issuing an oversized OFFSET query.
+
+REST and cookie-session login audit the effective client IP using the host's
+configured trusted-proxy chain. Untrusted forwarding headers cannot override
+the observed peer address.
+
 ## Runtime surface
 
 - `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
