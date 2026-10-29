@@ -175,10 +175,11 @@ writing to the repository:
 cargo xtask scaffold example --ui dual --dry-run
 ```
 
-This is **only a template inspection**; neither frontend is registered and no
-business operation is implemented. The preview lists Leptos and Next.js
-draft package files, but no Next.js route/import or executable native/GraphQL
-adapter exists, so do **not** claim runtime parity or run live module
-architecture checks against the preview as though it were an installed module. The generator's template shape is guarded by the scoped
-Rust unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
+This is **only a template inspection**; no UI surface is registered and no
+business operation is implemented. The Leptos FFA preview includes real
+native/GraphQL selection wiring, but each owner adapter returns a typed
+missing-owner error. Neither adapter performs a business operation.
+Classic Next.js packages belong to their hosts and are not generated here.
+Do not claim runtime readiness. Template structure is checked by the
+unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
 requires real owner contracts and the commands earlier in this guide.

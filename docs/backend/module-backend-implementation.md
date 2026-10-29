@@ -79,17 +79,17 @@ From phase 3 onward, the backend renderer emits only a minimal
 runtime module and contract tests under `src/tests/contract.rs`, with no
 synthetic services, persistence or fabricated migration. Requests for
 `--with-db` or non-headless `--ui` fail before writing files until actual
-owner schemas and FFA contracts can be rendered. The existing UI renderer is being improved, not replaced: `--ui admin|storefront|dual
---dry-run` previews explicit **nonoperational** FFA Leptos packages (pure core/model,
-honest missing-owner transport result, separate `ui/leptos.rs`, i18n, contract tests).
-No simulated CRUD or sample data are emitted. UI writes/registration remain blocked,
-and live Next.js package installation, host route activation, real native/GraphQL
-transport parity and the full golden matrix remain incomplete. Draft Next.js
-package components are previewed in the Blog-compatible package locations,
-with the same unavailable state and en/ru copy, without host registration. Newly generated
-readiness rows stay at `not_started`, and failed post-scaffold validation
-returns an error. The current writer still lacks atomic rollback, and the
-registration dry-run does not preview every manifest edit.
+owner schemas and FFA contracts can be rendered. The existing UI renderer is improved rather than replaced:
+`--ui admin|storefront|dual --dry-run` previews nonoperational Leptos
+FFA packages with framework-independent core/model, a shared
+`rustok-ui-transport` selection facade, separate native/GraphQL adapter
+seams, `ui/leptos.rs`, i18n and contract tests.
+Both adapters return an explicit missing-owner error, not invented CRUD.
+Writable UI and registration remain blocked until real owner operations,
+authorization and transport contracts exist. Classic Next.js packages belong
+to Next hosts and are not generated or structurally validated as FFA.
+Readiness stays `not_started` and post-scaffold validation errors propagate.
+Atomic rollback and full manifest dry-run remain future work.
 Architecture validation, template cutover, Next.js parity, atomic
 registration and executable golden tests are subsequent phases.
 Generated modules must not be treated as reference-ready yet.
