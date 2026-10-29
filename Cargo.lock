@@ -13595,7 +13595,6 @@ dependencies = [
  "rustok-deal-admin",
  "rustok-events-admin",
  "rustok-finance-admin",
- "rustok-forms",
  "rustok-forms-admin",
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
@@ -13638,6 +13637,7 @@ dependencies = [
  "rustok-translation-admin",
  "rustok-ui-auth",
  "rustok-ui-core",
+ "rustok-ui-forms",
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "rustok-web",
@@ -13947,11 +13947,11 @@ dependencies = [
  "rustok-api",
  "rustok-auth",
  "rustok-core",
- "rustok-forms",
  "rustok-graphql",
  "rustok-grid",
  "rustok-grid-leptos",
  "rustok-ui-core",
+ "rustok-ui-forms",
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
@@ -15000,7 +15000,7 @@ dependencies = [
  "rustok-email",
  "rustok-events-module",
  "rustok-finance",
- "rustok-forms-module",
+ "rustok-forms",
  "rustok-forum",
  "rustok-fulfillment",
  "rustok-groups",
@@ -15204,45 +15204,6 @@ dependencies = [
 name = "rustok-forms"
 version = "0.1.0"
 dependencies = [
- "regex",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "rustok-forms-admin"
-version = "0.1.0"
-dependencies = [
- "leptos",
- "leptos-auth",
- "rustok-graphql",
- "rustok-ui-i18n",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "rustok-forms-dioxus"
-version = "0.1.0"
-dependencies = [
- "dioxus",
- "rustok-forms",
- "serde",
-]
-
-[[package]]
-name = "rustok-forms-leptos"
-version = "0.1.0"
-dependencies = [
- "leptos",
- "rustok-forms",
-]
-
-[[package]]
-name = "rustok-forms-module"
-version = "0.1.0"
-dependencies = [
  "async-graphql",
  "async-trait",
  "axum",
@@ -15266,6 +15227,36 @@ dependencies = [
  "tracing",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "rustok-forms-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos-auth",
+ "rustok-graphql",
+ "rustok-ui-i18n",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-forms-dioxus"
+version = "0.1.0"
+dependencies = [
+ "dioxus",
+ "rustok-ui-forms",
+ "serde",
+]
+
+[[package]]
+name = "rustok-forms-leptos"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "rustok-ui-forms",
 ]
 
 [[package]]
@@ -17800,7 +17791,7 @@ dependencies = [
  "rustok-email",
  "rustok-events",
  "rustok-finance",
- "rustok-forms-module",
+ "rustok-forms",
  "rustok-forum",
  "rustok-fulfillment",
  "rustok-groups",
@@ -18020,7 +18011,6 @@ dependencies = [
  "rustok-commerce-storefront",
  "rustok-content",
  "rustok-core",
- "rustok-forms",
  "rustok-forum-storefront",
  "rustok-fulfillment-storefront",
  "rustok-graphql",
@@ -18044,6 +18034,7 @@ dependencies = [
  "rustok-seo-storefront",
  "rustok-tenant",
  "rustok-ui-core",
+ "rustok-ui-forms",
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "rustok-web",
@@ -18341,6 +18332,15 @@ dependencies = [
  "dioxus",
  "rustok-ui",
  "serde",
+]
+
+[[package]]
+name = "rustok-ui-forms"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

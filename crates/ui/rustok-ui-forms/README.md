@@ -1,4 +1,4 @@
-# rustok-forms
+# rustok-ui-forms
 
 Framework-agnostic form state management, validation rule engine, value sanitization, and field descriptor contracts for the RusToK platform.
 
@@ -6,7 +6,7 @@ For full contract specifications, public types, and invariants, see [CRATE_API.m
 
 ## Overview
 
-`rustok-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` and `serde_json` for serialization.
+`rustok-ui-forms` is a pure **Framework-Free Core (FFA)** crate designed with zero DOM, zero UI framework dependencies, and zero RusToK-specific internal dependencies. It depends only on `serde` and `serde_json` for serialization.
 
 It acts as the single canonical source of truth for:
 - Form submission lifecycle (`FormState`, `FormSubmissionStatus`)

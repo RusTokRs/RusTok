@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::DirtyTracker;
+/// use rustok_ui_forms::DirtyTracker;
 ///
 /// let mut tracker = DirtyTracker::new();
 /// assert!(!tracker.is_any_dirty());

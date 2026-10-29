@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Module-owned Leptos storefront package for notifications"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 crate-type = ["rlib"]
 

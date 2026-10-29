@@ -18,7 +18,7 @@
 //!
 //! ```rust,ignore
 //! use leptos::prelude::*;
-//! use rustok_forms::{FormState, FormValidator};
+//! use rustok_ui_forms::{FormState, FormValidator};
 //! use rustok_forms_leptos::*;
 //!
 //! #[component]

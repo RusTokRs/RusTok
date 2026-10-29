@@ -222,3 +222,4 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+

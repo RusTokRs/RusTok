@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::step::FormStepTracker;
+/// use rustok_ui_forms::step::FormStepTracker;
 ///
 /// let mut tracker = FormStepTracker::new(["Personal", "Address", "Payment", "Review"]);
 /// assert_eq!(tracker.current_step_index(), 0);

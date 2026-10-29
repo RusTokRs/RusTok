@@ -103,7 +103,7 @@ mod-notifications = ["dep:rustok-notifications", "rustok-notifications/server", 
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
 mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "rustok-distribution/mod-navigation"]
-mod-forms     = ["dep:rustok-forms-module", "rustok-distribution/mod-forms"]
+mod-forms     = ["dep:rustok-forms", "rustok-distribution/mod-forms"]
 mod-newsletter = ["dep:rustok-newsletter", "rustok-newsletter/server", "rustok-distribution/mod-newsletter"]
 mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "dep:rustok-translation-targets", "mod-content", "rustok-distribution/mod-taxonomy"]
@@ -195,7 +195,7 @@ rustok-finance = { workspace = true, optional = true }
 rustok-billing = { workspace = true, optional = true }
 rustok-deal = { workspace = true, optional = true }
 rustok-party = { workspace = true, optional = true }
-rustok-forms-module = { workspace = true, optional = true }
+rustok-forms = { workspace = true, optional = true }
 rustok-newsletter = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }

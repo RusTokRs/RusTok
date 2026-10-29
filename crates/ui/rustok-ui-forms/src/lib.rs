@@ -1,4 +1,4 @@
-//! # `rustok-forms`
+//! # `rustok-ui-forms`
 //!
 //! Framework-agnostic form state management, declarative validation engine, field descriptor schemas,
 //! and dirty tracking for the RusToK platform and modern Rust web applications.
@@ -29,7 +29,7 @@
 //! ## Basic Usage
 //!
 //! ```rust
-//! use rustok_forms::{FormState, FormValidator, form_sanitizer};
+//! use rustok_ui_forms::{FormState, FormValidator, form_sanitizer};
 //!
 //! // 1. Create initial form state
 //! let mut state = FormState::idle();
@@ -66,7 +66,7 @@
 //! ## Schema-Driven Validation
 //!
 //! ```rust
-//! use rustok_forms::{FieldDescriptor, FieldKind, FormSchema};
+//! use rustok_ui_forms::{FieldDescriptor, FieldKind, FormSchema};
 //! use std::collections::HashMap;
 //!
 //! let schema = FormSchema::new("login")

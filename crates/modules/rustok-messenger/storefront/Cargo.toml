@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Storefront FFA package for full-page workstation and contextual floating chat widget"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 crate-type = ["rlib"]
 

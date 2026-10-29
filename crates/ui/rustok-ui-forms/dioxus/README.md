@@ -50,7 +50,7 @@ Features:
 
 ```rust,ignore
 use dioxus::prelude::*;
-use rustok_forms::{DirtyTracker, FormState, FormValidator};
+use rustok_ui_forms::{DirtyTracker, FormState, FormValidator};
 use rustok_forms_dioxus::*;
 
 #[component]

@@ -15,7 +15,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::trim;
+    /// use rustok_ui_forms::sanitize::trim;
     ///
     /// assert_eq!(trim("  hello world \n "), "hello world");
     /// ```
@@ -31,7 +31,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::slugify;
+    /// use rustok_ui_forms::sanitize::slugify;
     ///
     /// assert_eq!(slugify("Hello, World! 2026"), "hello-world-2026");
     /// assert_eq!(slugify("  --multi---dash-- "), "multi-dash");
@@ -65,7 +65,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::normalize_email;
+    /// use rustok_ui_forms::sanitize::normalize_email;
     ///
     /// assert_eq!(normalize_email(" User.Name@Example.COM  "), "user.name@example.com");
     /// ```
@@ -80,7 +80,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::normalize_phone;
+    /// use rustok_ui_forms::sanitize::normalize_phone;
     ///
     /// assert_eq!(normalize_phone("+1 (555) 234-5678"), "+15552345678");
     /// assert_eq!(normalize_phone("8 (800) 555-35-35"), "88005553535");
@@ -109,7 +109,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::collapse_whitespace;
+    /// use rustok_ui_forms::sanitize::collapse_whitespace;
     ///
     /// assert_eq!(collapse_whitespace("hello   \t\n  world"), "hello world");
     /// ```
@@ -137,7 +137,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::clamp_number;
+    /// use rustok_ui_forms::sanitize::clamp_number;
     ///
     /// assert_eq!(clamp_number(15.0, 0.0, 10.0), 10.0);
     /// assert_eq!(clamp_number(-5.0, 0.0, 10.0), 0.0);
@@ -161,7 +161,7 @@ pub mod sanitize {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::sanitize::strip_tags;
+    /// use rustok_ui_forms::sanitize::strip_tags;
     ///
     /// assert_eq!(strip_tags("<p>Hello <b>World</b>!</p>"), "Hello World!");
     /// ```

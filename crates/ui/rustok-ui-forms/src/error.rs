@@ -19,7 +19,7 @@ impl FieldError {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::FieldError;
+    /// use rustok_ui_forms::FieldError;
     ///
     /// let err = FieldError::new("email", "Please enter a valid email address");
     /// assert_eq!(err.field, "email");
@@ -37,7 +37,7 @@ impl FieldError {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::FieldError;
+    /// use rustok_ui_forms::FieldError;
     ///
     /// let err = FieldError::form("Server unreachable, please try again later.");
     /// assert!(err.is_form_level());
@@ -122,7 +122,7 @@ impl ValidationIssue {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::ValidationIssue;
+    /// use rustok_ui_forms::ValidationIssue;
     ///
     /// let issue = ValidationIssue::nested(["addresses", "0", "city"], "City is required");
     /// assert_eq!(issue.joined_path(), "addresses.0.city");
@@ -172,7 +172,7 @@ impl From<ValidationIssue> for FieldError {
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::parse_field_path;
+/// use rustok_ui_forms::parse_field_path;
 ///
 /// assert_eq!(parse_field_path("users[0].address.city"), vec!["users", "0", "address", "city"]);
 /// ```
@@ -218,7 +218,7 @@ pub fn parse_field_path(path: &str) -> Vec<String> {
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::format_field_path;
+/// use rustok_ui_forms::format_field_path;
 ///
 /// let formatted = format_field_path(&["users", "0", "name"]);
 /// assert_eq!(formatted, "users.0.name");

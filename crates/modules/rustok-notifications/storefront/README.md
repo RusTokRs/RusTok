@@ -105,3 +105,6 @@ Public entry points include `NotificationsView`, `NotificationNavigation`,
 `NotificationUnreadBadge`, the reactive current transport-context resolver, compatibility
 read/open functions, explicit-context selected read/open/group-state functions, raw native
 functions, and the serializable storefront request/page models exported from the crate root.
+
+## Documentation
+- [CRATE_API.md](CRATE_API.md)

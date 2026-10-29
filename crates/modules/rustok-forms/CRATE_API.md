@@ -1,4 +1,4 @@
-# rustok-forms-module / CRATE_API
+# rustok-forms / CRATE_API
 
 ## Platform Capability Bindings
 - `FormsModule` implements `rustok_core::module::RusToKModule` and `MigrationSource`.

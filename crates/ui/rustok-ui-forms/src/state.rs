@@ -51,7 +51,7 @@ impl FormState {
     /// # Example
     ///
     /// ```rust
-    /// use rustok_forms::FormState;
+    /// use rustok_ui_forms::FormState;
     ///
     /// let state = FormState::idle();
     /// assert!(!state.is_submitting);

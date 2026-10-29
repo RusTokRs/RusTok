@@ -5,7 +5,7 @@
 //! error display and accessibility attributes.
 
 use leptos::prelude::*;
-use rustok_forms::FormState;
+use rustok_ui_forms::FormState;
 
 use crate::context::{FieldContext, FormContext};
 
@@ -356,7 +356,7 @@ pub fn FormError(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_forms::FormState;
+    use rustok_ui_forms::FormState;
 
     #[test]
     fn test_form_field_renders_label_and_for_attr() {

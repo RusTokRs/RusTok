@@ -31,4 +31,5 @@ Leptos storefront UI package for the `rustok-region` module.
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md)
 - See [platform docs](../../../../docs/index.md).

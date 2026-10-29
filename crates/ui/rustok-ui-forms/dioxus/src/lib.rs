@@ -18,7 +18,7 @@
 //!
 //! ```rust,ignore
 //! use dioxus::prelude::*;
-//! use rustok_forms::{FormState, FormValidator};
+//! use rustok_ui_forms::{FormState, FormValidator};
 //! use rustok_forms_dioxus::*;
 //!
 //! #[component]

@@ -18,8 +18,8 @@ use crate::validation::rules;
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::schema::FormSchema;
-/// use rustok_forms::field::{FieldDescriptor, FieldKind};
+/// use rustok_ui_forms::schema::FormSchema;
+/// use rustok_ui_forms::field::{FieldDescriptor, FieldKind};
 /// use std::collections::HashMap;
 ///
 /// let mut schema = FormSchema::new("user_registration")

@@ -1,4 +1,4 @@
-//! # rustok-forms-module
+//! # rustok-forms
 //!
 //! Form submission intake, abuse controls, spam mitigation, and lead triage inbox for the RusToK platform.
 //!

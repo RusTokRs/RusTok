@@ -7,7 +7,7 @@
 
 use leptos::ev::Event;
 use leptos::prelude::*;
-use rustok_forms::FieldOption;
+use rustok_ui_forms::FieldOption;
 
 use crate::context::FieldContext;
 
@@ -1738,7 +1738,7 @@ pub fn FormFileInput(
 mod tests {
     use super::*;
     use crate::context::FormContext;
-    use rustok_forms::FormState;
+    use rustok_ui_forms::FormState;
 
     #[test]
     fn test_form_input_renders_attributes_and_aria() {

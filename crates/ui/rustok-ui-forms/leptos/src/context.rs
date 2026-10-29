@@ -6,7 +6,7 @@
 //! and input controls.
 
 use leptos::prelude::*;
-use rustok_forms::{DirtyTracker, FormState};
+use rustok_ui_forms::{DirtyTracker, FormState};
 
 /// Shared form state provided to all descendant components via Leptos context.
 ///

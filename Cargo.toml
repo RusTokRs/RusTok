@@ -6,8 +6,8 @@ members = [
     "apps/storefront",
     "crates/libs/*",
     "crates/ui/*",
-    "crates/ui/rustok-forms/leptos",
-    "crates/ui/rustok-forms/dioxus",
+    "crates/ui/rustok-ui-forms/leptos",
+    "crates/ui/rustok-ui-forms/dioxus",
     "crates/ui/rustok-grid/leptos",
     "crates/ui/rustok-grid/dioxus",
     "crates/ui/rustok-ui/leptos",
@@ -244,9 +244,9 @@ rustok-ui = { path = "crates/ui/rustok-ui" }
 rustok-ui-leptos = { path = "crates/ui/rustok-ui/leptos" }
 rustok-ui-dioxus = { path = "crates/ui/rustok-ui/dioxus" }
 dioxus = { version = "0.7" }
-rustok-forms = { path = "crates/ui/rustok-forms" }
-rustok-forms-leptos = { path = "crates/ui/rustok-forms/leptos" }
-rustok-forms-dioxus = { path = "crates/ui/rustok-forms/dioxus" }
+rustok-ui-forms = { path = "crates/ui/rustok-ui-forms" }
+rustok-forms-leptos = { path = "crates/ui/rustok-ui-forms/leptos" }
+rustok-forms-dioxus = { path = "crates/ui/rustok-ui-forms/dioxus" }
 rustok-ui-auth = { path = "crates/ui/rustok-ui-auth" }
 leptos-use = "0.19.0"
 gloo-storage = "0.4.0"
@@ -315,7 +315,7 @@ rig-vertexai = "=0.42.0"
 rustok-core = { path = "crates/libs/rustok-core" }
 rustok-modules = { path = "crates/modules/rustok-modules", default-features = false }
 rustok-events = { path = "crates/libs/rustok-events" }
-rustok-forms-module = { path = "crates/modules/rustok-forms" }
+rustok-forms = { path = "crates/modules/rustok-forms" }
 rustok-forms-admin = { path = "crates/modules/rustok-forms/admin" }
 rustok-events-module = { path = "crates/modules/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/modules/rustok-commerce-foundation" }
