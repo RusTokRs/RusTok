@@ -119,6 +119,15 @@ impl From<rustok_commerce::CommerceError> for ApiErrorResponse {
             rustok_commerce::CommerceError::CannotDeletePublished => {
                 (StatusCode::CONFLICT, "CANNOT_DELETE_PUBLISHED")
             }
+            rustok_commerce::CommerceError::Core(core) => match core {
+                rustok_core::Error::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
+                rustok_core::Error::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
+                rustok_core::Error::Validation(_) | rustok_core::Error::InvalidIdFormat(_) => {
+                    (StatusCode::BAD_REQUEST, "VALIDATION_ERROR")
+                }
+                rustok_core::Error::Auth(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
+            },
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         };
 
@@ -168,6 +177,9 @@ mod tests {
         let cases = [
             (CommerceError::InvalidPrice("negative amount".into()), StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
             (CommerceError::InvalidOptionCombination, StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
+            (CommerceError::Core(rustok_core::Error::NotFound("missing".into())), StatusCode::NOT_FOUND, "NOT_FOUND"),
+            (CommerceError::Core(rustok_core::Error::Forbidden("blocked".into())), StatusCode::FORBIDDEN, "FORBIDDEN"),
+            (CommerceError::Core(rustok_core::Error::Validation("bad".into())), StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
             (CommerceError::NoVariants, StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
             (CommerceError::ShippingProfileNotFound(uuid::Uuid::new_v4()), StatusCode::NOT_FOUND, "SHIPPING_PROFILE_NOT_FOUND"),
             (CommerceError::DuplicateShippingProfileSlug("duplicate".into()), StatusCode::CONFLICT, "DUPLICATE_SHIPPING_PROFILE_SLUG"),
