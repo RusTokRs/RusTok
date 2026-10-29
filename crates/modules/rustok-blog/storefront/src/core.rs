@@ -526,7 +526,12 @@ pub fn filter_query_href(
     search: Option<&str>,
 ) -> String {
     let mut pairs = Vec::new();
-    for (key, value) in [("slug", slug), ("tag", tag), ("category", category), ("q", search)] {
+    for (key, value) in [
+        ("slug", slug),
+        ("tag", tag),
+        ("category", category),
+        ("q", search),
+    ] {
         if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
             pairs.push(format!("{key}={}", percent_encode(value)));
         }

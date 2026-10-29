@@ -35,13 +35,13 @@ const uiProfiles = [
   {
     crate: "rustok-blog-admin",
     source: "crates/modules/rustok-blog/admin/src",
-    requiredDirectories: ["core", "transport", "ui"],
+    requiredDirectories: ["core", "transport", "ui", "tests"],
     maxRustFileBytes: 40 * 1024,
   },
   {
     crate: "rustok-blog-storefront",
     source: "crates/modules/rustok-blog/storefront/src",
-    requiredDirectories: ["core", "transport", "ui"],
+    requiredDirectories: ["core", "transport", "ui", "tests"],
     maxRustFileBytes: 40 * 1024,
   },
 ];
@@ -207,6 +207,19 @@ for (const profile of uiProfiles) {
     if (!existsSync(path) || !statSync(path).isDirectory()) {
       fail(`${profile.crate}: missing canonical UI source slot ${directory}/`);
     }
+  }
+
+  // FFA contract tests belong to a dedicated source slot, not a root dump file.
+  const uiLib = join(sourceRoot, "lib.rs");
+  const uiContractTest = join(sourceRoot, "tests", "contract.rs");
+  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").includes("#[cfg(test)]\nmod tests;")) {
+    fail(`${profile.crate}: lib.rs must wire its dedicated tests/ module`);
+  }
+  if (!existsSync(uiContractTest)) {
+    fail(`${profile.crate}: missing tests/contract.rs for the module-owned API contract`);
+  }
+  if (existsSync(join(sourceRoot, "contract_tests.rs"))) {
+    fail(`${profile.crate}: contract tests must not live at the UI source root`);
   }
 
   for (const file of rustFiles(sourceRoot)) {

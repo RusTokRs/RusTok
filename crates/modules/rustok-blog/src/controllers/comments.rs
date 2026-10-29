@@ -128,23 +128,23 @@ pub async fn create_comment(
     // Only a Comments moderator may take the owner-only exception.
     let service = runtime.comment_service();
     let security = security_context(&auth);
-    let comment = if has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::COMMENTS_MODERATE],
-    ) {
-        service.create_comment(tenant.id, security, post_id, input).await
-    } else {
-        service
-            .create_public_comment(
-                tenant.id,
-                security,
-                post_id,
-                request_context.channel_slug.as_deref(),
-                input,
-            )
-            .await
-    }
-    .map_err(crate::error::public::to_http_error)?;
+    let comment =
+        if has_any_effective_permission(&auth.permissions, &[Permission::COMMENTS_MODERATE]) {
+            service
+                .create_comment(tenant.id, security, post_id, input)
+                .await
+        } else {
+            service
+                .create_public_comment(
+                    tenant.id,
+                    security,
+                    post_id,
+                    request_context.channel_slug.as_deref(),
+                    input,
+                )
+                .await
+        }
+        .map_err(crate::error::public::to_http_error)?;
     Ok((StatusCode::CREATED, Json(comment)))
 }
 

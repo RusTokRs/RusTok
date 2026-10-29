@@ -96,6 +96,7 @@ const commandService = requireMarkers("crates/modules/rustok-blog/src/services/c
   "lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?",
   "TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(",
   "reorder_module_category_siblings_in_tx(",
+  "move_module_category_in_tx(",
   "validate_and_compute_depths(&parent_by_id)",
   "parent_by_id.insert(category_id, input.parent_id)",
   "persist_sibling_order(",
@@ -105,6 +106,19 @@ const commandService = requireMarkers("crates/modules/rustok-blog/src/services/c
   "publish_in_tx(",
   "txn.commit().await?",
 ]);
+// Reparenting must call the Taxonomy move command; the sibling reorder API
+// intentionally refuses to admit identities from another parent.
+const crossParentMove = segment(
+  commandService,
+  "if source_parent_id == input.parent_id {",
+  "updated.extend(persist_descendant_depth_changes(",
+);
+if (!crossParentMove.includes("rustok_taxonomy::move_module_category_in_tx(")) {
+  failures.push("category move must delegate cross-parent mutations to Taxonomy owner");
+}
+if (crossParentMove.includes("source_siblings,") || crossParentMove.includes("target_siblings,")) {
+  failures.push("category move must not reparent through sibling reorder snapshots");
+}
 rejectMarkers("crates/modules/rustok-blog/src/services/category_command.rs", [
   "lock_category_tree_in_tx",
   "pg_advisory_xact_lock",
@@ -145,20 +159,28 @@ rejectMarkers("crates/modules/rustok-blog/src/entities/blog_category.rs", [
   "depth",
 ]);
 
-const canonicalMigration = requireMarkers("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
+// The registered migration delegates the schema to table and backend owners.
+// Check each invariant at its actual source rather than relying on the obsolete
+// all-in-one migration file (which would reject the canonical split).
+const migrationSchema = "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema";
+const categoryTable = requireMarkers(`${migrationSchema}/tables/categories.rs`, [
   "Table::create()",
   ".table(BlogCategories::Table)",
+]);
+const postgresSettings = requireMarkers(`${migrationSchema}/postgres.rs`, [
   "jsonb_typeof(settings) = 'object'",
   "octet_length(settings::text)",
+]);
+const sqliteSettings = requireMarkers(`${migrationSchema}/sqlite.rs`, [
   "blog_categories_settings_contract_insert",
   "blog_categories_settings_contract_update",
 ]);
-const blogCategoryDef = segment(canonicalMigration, ".table(BlogCategories::Table)", ".to_owned()");
+const blogCategoryDef = segment(categoryTable, ".table(BlogCategories::Table)", ".to_owned()");
 if (blogCategoryDef.includes("ParentId") || blogCategoryDef.includes("Position") || blogCategoryDef.includes("Depth")) {
   failures.push("BlogCategories table definition must not contain legacy hierarchy columns (ParentId, Position, Depth)");
 }
 
-const settingsContract = canonicalMigration;
+const settingsContract = postgresSettings + '\n' + sqliteSettings;
 requireMarkers("crates/modules/rustok-blog/src/domain/mod.rs", [
   "BLOG_CATEGORY_SETTINGS_MAX_BYTES: usize = 64 * 1024",
 ]);

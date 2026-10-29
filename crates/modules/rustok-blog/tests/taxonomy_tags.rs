@@ -644,6 +644,24 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         .expect("post should expose the rust tag")
         .id;
 
+    // A forged usage projection for another tenant must fail at the database
+    // boundary even if the referenced Taxonomy Tag ID exists.
+    let other_tenant = Uuid::new_v4();
+    let forged_usage = Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO blog_tag_usage (tenant_id, tag_id, canonical_key, use_count) VALUES (?, ?, ?, ?)",
+        [
+            other_tenant.into(),
+            tag_id.into(),
+            "forged".into(),
+            0_i32.into(),
+        ],
+    );
+    assert!(
+        db.execute(forged_usage).await.is_err(),
+        "a projection row cannot reference another tenant's Taxonomy Tag",
+    );
+
     tag_service
         .delete_tag(tenant_id, tag_id, security)
         .await
@@ -661,6 +679,25 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         .await
         .expect("post should still be readable after tag deletion");
     assert!(post.tags.is_empty());
+    // The dictionary owner delete must cascade through both Blog-owned tables.
+    // Reading only the projected post tags is insufficient: stale usage rows
+    // can leave the list/search projections inconsistent after deletion.
+    for table in ["blog_post_tags", "blog_tag_usage"] {
+        let statement = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            format!("SELECT COUNT(*) AS count FROM {table} WHERE tenant_id = ? AND tag_id = ?"),
+            [tenant_id.into(), tag_id.into()],
+        );
+        let result = db
+            .query_one(statement)
+            .await
+            .expect("tag attachment count query should succeed")
+            .expect("count query must return one row");
+        let count: i64 = result
+            .try_get("", "count")
+            .expect("count must be an integer");
+        assert_eq!(count, 0, "{table} must not retain a deleted taxonomy term");
+    }
     assert_eq!(
         SysEvents::find()
             .all(&db)

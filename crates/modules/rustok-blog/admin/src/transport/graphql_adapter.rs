@@ -7,8 +7,7 @@ use crate::model::{BlogCategoryOption, BlogPostDetail, BlogPostDraft, BlogPostLi
 
 pub type ApiError = GraphqlHttpError;
 
-const BLOG_CATEGORIES_QUERY: &str =
-    "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
+const BLOG_CATEGORIES_QUERY: &str = "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
 const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
@@ -442,7 +441,9 @@ pub async fn unpin_post(
     )
     .await?;
     if !response.unpin_post {
-        return Err(GraphqlHttpError::Graphql("Unpin post returned false".into()));
+        return Err(GraphqlHttpError::Graphql(
+            "Unpin post returned false".into(),
+        ));
     }
     fetch_post(token, tenant_slug, id, locale)
         .await?

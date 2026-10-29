@@ -26,6 +26,7 @@ const files = [
   'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
   'crates/modules/rustok-blog/storefront/src/model.rs',
   'crates/modules/rustok-blog/src/services/comment.rs',
+  'crates/modules/rustok-blog/src/services/comment/commands.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
 ];
 
@@ -97,7 +98,7 @@ test('rejects loss of post-create public visibility revalidation', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/modules/rustok-blog/src/services/comment.rs',
+      'crates/modules/rustok-blog/src/services/comment/commands.rs',
       (source) =>
         source.replace(
           'match self\n            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)',
@@ -112,7 +113,7 @@ test('rejects removal of public-target compensation after visibility loss', () =
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/modules/rustok-blog/src/services/comment.rs',
+      'crates/modules/rustok-blog/src/services/comment/commands.rs',
       (source) => source.replaceAll('"delete-after-public-target-loss"', '"delete-after-target-loss"'),
     ),
   );
@@ -123,7 +124,7 @@ test('rejects narrowing compensation to only target-loss failures', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/modules/rustok-blog/src/services/comment.rs',
+      'crates/modules/rustok-blog/src/services/comment/commands.rs',
       (source) =>
         source
           .replace(
@@ -143,7 +144,7 @@ test('rejects caller-owned security context for compensation', () => {
   const result = rejects((root) =>
     mutate(
       root,
-      'crates/modules/rustok-blog/src/services/comment.rs',
+      'crates/modules/rustok-blog/src/services/comment/commands.rs',
       (source) =>
         source.replace(
           'let system_security = SecurityContext::system();',

@@ -626,7 +626,11 @@ pub struct BlogPostPinCommand {
     pub busy_key: String,
 }
 
-pub fn prepare_blog_post_pin_command(post_id: String, pin: bool, post_locale: &str) -> BlogPostPinCommand {
+pub fn prepare_blog_post_pin_command(
+    post_id: String,
+    pin: bool,
+    post_locale: &str,
+) -> BlogPostPinCommand {
     BlogPostPinCommand {
         busy_key: busy_key_for_pin(&post_id),
         post_id,

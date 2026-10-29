@@ -10,6 +10,9 @@ const files = {
   model: "crates/modules/rustok-blog/storefront/src/model.rs",
   ui: "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
   commentsListUi: "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
+  selectedPostUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs",
+  showcaseUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/showcase.rs",
+  publishedPostsUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/published_posts_list.rs",
   transport: "crates/modules/rustok-blog/storefront/src/transport/mod.rs",
   native: "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
   graphql: "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
@@ -111,7 +114,11 @@ const pagination = text(files.pagination);
 const model = text(files.model);
 const ui = text(files.ui);
 const commentsListUi = existsSync(files.commentsListUi) ? text(files.commentsListUi) : "";
-const uiCombined = `${ui}\n${commentsListUi}`;
+const uiExtensions = [files.selectedPostUi, files.showcaseUi, files.publishedPostsUi]
+  .filter(existsSync)
+  .map(text)
+  .join("\n");
+const uiCombined = `${ui}\n${commentsListUi}\n${uiExtensions}`;
 const transport = text(files.transport);
 const native = text(files.native);
 const graphql = text(files.graphql);
@@ -123,12 +130,9 @@ const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
 const pkg = JSON.parse(text(files.packageJson));
 // PublicCommentsList moved to ui/comments_list.rs; the selected post section ends at the next component.
-const selectedPostUi = between(
-  ui,
-  "fn SelectedPostCard",
-  "fn PublishedPostsList",
-  files.ui,
-);
+const selectedPostUi = existsSync(files.selectedPostUi)
+  ? text(files.selectedPostUi)
+  : between(ui, "fn SelectedPostCard", "fn PublishedPostsList", files.ui);
 
 if (existsSync(files.legacyApi)) {
   fail(`${files.legacyApi}: legacy api.rs must stay removed; transport adapters own native/GraphQL endpoints`);
@@ -179,13 +183,15 @@ assertNotContains(model, "pub body_format: String", `${files.model}: storefront 
 
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
 assertContains(uiCombined, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
-assertContains(ui, "transport::fetch_blog(request, comments_page)", `${files.ui}: UI must pass the current comments page through transport`);
+if (!/transport::fetch_blog\(request(?:\.clone\(\))?,\s*comments_page\)/.test(ui)) {
+  fail(`${files.ui}: UI must pass the current comments page through transport`);
+}
 assertContains(selectedPostUi, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
 assertContains(uiCombined, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
 assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
 assertContains(selectedPostUi, "post.content_plain_text", `${files.ui}: selected post must retain server-derived plain-text fallback`);
 assertContains(selectedPostUi, expectedRenderContract.fallback_sink, `${files.ui}: selected post must render the server-derived plain-text fallback`);
-assertContains(ui, "RichTextHtml", `${files.ui}: UI must use the shared server-projection renderer`);
+assertContains(uiCombined, "RichTextHtml", `${files.ui}: UI must use the shared server-projection renderer`);
 assertContains(selectedPostUi, "<CommentComposer", `${files.ui}: selected Blog post must compose the Comments-owned editor`);
 const richTextHtmlSinks = [...selectedPostUi.matchAll(/<RichTextHtml\b/g)];
 if (richTextHtmlSinks.length !== 1) {
@@ -195,9 +201,9 @@ assertContains(selectedPostUi, "view=content", `${files.ui}: RichTextHtml must r
 assertContains(selectedPostUi, "content_locale=effective_locale.clone()", `${files.ui}: RichTextHtml must receive the owner effective locale`);
 assertNotContains(selectedPostUi, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
 assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
-assertNotContains(ui, "post.body", `${files.ui}: UI must not read legacy body`);
-assertNotContains(ui, "body_format", `${files.ui}: UI must not read legacy body format`);
-assertNotContains(ui, "crate::api", `${files.ui}: UI must not call legacy api module`);
+assertNotContains(uiCombined, "post.body", `${files.ui}: UI must not read legacy body`);
+assertNotContains(uiCombined, "body_format", `${files.ui}: UI must not read legacy body format`);
+assertNotContains(uiCombined, "crate::api", `${files.ui}: UI must not call legacy api module`);
 
 assertContains(transport, "pub mod graphql_adapter;", `${files.transport}: transport facade must wire GraphQL adapter`);
 assertContains(transport, "pub mod native_server_adapter;", `${files.transport}: transport facade must wire native adapter`);

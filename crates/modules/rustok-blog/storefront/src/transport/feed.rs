@@ -96,7 +96,11 @@ pub async fn render_rss_feed(
         .map_err(|_| "Blog feed cannot be loaded")?;
 
     let is_ru = locale.starts_with("ru");
-    let title = if is_ru { "Блог RusToK" } else { "RusToK Blog" };
+    let title = if is_ru {
+        "Блог RusToK"
+    } else {
+        "RusToK Blog"
+    };
     let description = if is_ru {
         "Последние статьи и публикации RusToK"
     } else {
