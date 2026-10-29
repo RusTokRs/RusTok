@@ -23,6 +23,17 @@ function read(relativePath) {
   if (!fs.existsSync(target)) { failures.push(`${relativePath}: missing file`); return ''; }
   return fs.readFileSync(target, 'utf8');
 }
+function readTree(relativePath) {
+  const target = path.join(repoRoot, relativePath);
+  if (!fs.existsSync(target)) return '';
+  const out = [];
+  for (const entry of fs.readdirSync(target, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const child = path.join(relativePath, entry.name);
+    if (entry.isDirectory()) out.push(readTree(child));
+    else if (entry.isFile() && entry.name.endsWith('.rs')) out.push(read(child));
+  }
+  return out.join('\n');
+}
 function json(relativePath) {
   try { return JSON.parse(read(relativePath)); }
   catch (error) { failures.push(`${relativePath}: invalid JSON: ${error.message}`); return null; }
@@ -40,7 +51,7 @@ const evidence = json(files.evidence);
 const taxonomyMutation = read(files.taxonomyMutation);
 const taxonomyLib = read(files.taxonomyLib);
 const tagService = read(files.tagService);
-const relationMigration = read(files.relationMigration);
+const relationMigration = read(files.relationMigration) + '\n' + readTree('crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema');
 const harness = read(files.harness);
 const slice = read(files.slice);
 const current = read(files.current);

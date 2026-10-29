@@ -11,6 +11,27 @@ function read(path) {
 function fail(message) {
   failures.push(message);
 }
+function readTree(path) {
+  const root = join(repoRoot, path);
+  if (!existsSync(root)) return "";
+  const out = [];
+  for (const entry of readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const full = join(repoRoot, path, entry.name);
+    if (entry.isDirectory()) out.push(readTree(join(path, entry.name)));
+    else if (entry.isFile() && entry.name.endsWith(".rs")) out.push(readFileSync(full, "utf8"));
+  }
+  return out.join("\n");
+}
+function requireAllSource(path, source, markers) {
+  for (const marker of markers) {
+    if (marker instanceof RegExp) {
+      if (!marker.test(source)) fail(`${path}: missing reference invariant marker ${marker}`);
+      continue;
+    }
+    if (!source.includes(marker)) fail(`${path}: missing reference invariant marker ${marker}`);
+  }
+}
+
 function requireAll(path, markers) {
   const source = read(path);
   for (const marker of markers) {
@@ -177,7 +198,7 @@ requireAll("crates/modules/rustok-blog/src/services/category_owner.rs", [
   '"Blog Category Taxonomy projection contains duplicate identities"',
   '"Blog Category Taxonomy projection contains Category without localized copy"',
 ]);
-requireAll("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
+requireAllSource("canonical Blog schema migration", read("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs") + "\n" + readTree("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema"), [
   "fk_blog_posts_tenant_category",
   "uq_blog_categories_tenant_id",
   "blog_posts_category_tenant_insert",
@@ -388,7 +409,7 @@ forbid("crates/modules/rustok-blog/src/services/category_taxonomy_sync.rs", [
   "BlogError::Validation(format!(",
 ]);
 
-requireAll("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs", [
+requireAllSource("canonical Blog schema migration", read("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs") + "\n" + readTree("crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema"), [
   "fk_blog_post_channel_visibility_tenant_post",
   "blog_post_channel_visibility_tenant_insert",
   "blog_post_channel_visibility_tenant_update",

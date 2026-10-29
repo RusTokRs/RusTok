@@ -16,6 +16,7 @@ const files = [
   'crates/modules/rustok-taxonomy/src/lib.rs',
   'crates/modules/rustok-blog/src/services/tag.rs',
   'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/postgres.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-104.md',
   'crates/modules/rustok-blog/docs/implementation-plan-current.md',
