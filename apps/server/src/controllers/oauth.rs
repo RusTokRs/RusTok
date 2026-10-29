@@ -38,7 +38,9 @@ fn oauth_error_response(error: TokenErrorResponse) -> axum::response::Response {
         "invalid_client" => StatusCode::UNAUTHORIZED,
         "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
         "invalid_scope" => StatusCode::BAD_REQUEST,
-        "insufficient_scope" => StatusCode::FORBIDDEN,
+        "insufficient_scope" | "access_denied" => StatusCode::FORBIDDEN,
+        "server_error" => StatusCode::INTERNAL_SERVER_ERROR,
+        "temporarily_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::BAD_REQUEST,
     };
     let mut response = (status, Json(error)).into_response();
@@ -1594,6 +1596,23 @@ mod tests {
     fn consent_requirement_depends_on_app_type() {
         assert!(validated_request("third_party").app.requires_user_consent());
         assert!(!validated_request("first_party").app.requires_user_consent());
+    }
+
+    #[test]
+    fn oauth_error_response_distinguishes_provider_failures_from_bad_requests() {
+        for (error, expected_status) in [
+            ("server_error", StatusCode::INTERNAL_SERVER_ERROR),
+            ("temporarily_unavailable", StatusCode::SERVICE_UNAVAILABLE),
+            ("access_denied", StatusCode::FORBIDDEN),
+            ("invalid_scope", StatusCode::BAD_REQUEST),
+        ] {
+            let response = oauth_error_response(TokenErrorResponse {
+                error: error.to_string(),
+                error_description: "An OAuth request failed".to_string(),
+            });
+            assert_eq!(response.status(), expected_status, "{error}");
+            assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+        }
     }
 
     #[test]
