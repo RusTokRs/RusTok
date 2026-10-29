@@ -7,7 +7,7 @@ pub(crate) fn register_module(
     root: &Path,
     opts: &ScaffoldOptions,
     pascal: &str,
-    snake: &str,
+    _snake: &str,
 ) -> Result<()> {
     let slug = &opts.slug;
     let crate_name = opts.crate_name();
@@ -34,13 +34,10 @@ pub(crate) fn register_module(
     if !opts.skip_server_wire {
         register_in_server_cargo_toml(root, slug, &crate_name)?;
         register_in_distribution_cargo_toml(root, slug, &crate_name)?;
-        register_in_distribution_lib_rs(root, slug, pascal, snake)?;
-        if opts.ui.has_admin() {
-            register_in_admin_cargo_toml(root, &crate_name)?;
-        }
-        if opts.ui.has_storefront() {
-            register_in_storefront_cargo_toml(root, &crate_name)?;
-        }
+        // Cargo package uses kebab-case; Rust paths use underscores.
+        register_in_distribution_lib_rs(root, slug, pascal, &opts.kebab_name().replace('-', "_"))?;
+        // Draft UI crates join Cargo workspace only. They do not add live
+        // Leptos host dependencies/features/route composition.
     }
 
     Ok(())
@@ -135,6 +132,16 @@ fn register_in_modules_toml(root: &Path, slug: &str, crate_name: &str) -> Result
     Ok(())
 }
 
+/// A created UI package is not a published surface or FFA readiness evidence.
+fn draft_readiness(ui: ScaffoldUi) -> (&'static str, &'static str, &'static str) {
+    match ui {
+        ScaffoldUi::Dual => ("admin + storefront (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
+        ScaffoldUi::Admin => ("admin (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
+        ScaffoldUi::Storefront => ("storefront (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
+        ScaffoldUi::None => ("none", "`not_started`", "`no_ui_boundary`"),
+    }
+}
+
 fn register_in_registry_md(
     root: &Path,
     slug: &str,
@@ -155,14 +162,9 @@ fn register_in_registry_md(
     let mut modified = false;
 
     // 1. Insert into Table 1: ## FFA/FBA Readiness Board (Module-owned UI)
-    let (ui_surfaces, ffa_status, shape) = match ui {
-        ScaffoldUi::Dual => ("admin + storefront", "`in_progress`", "`core_transport_ui`"),
-        ScaffoldUi::Admin => ("admin", "`in_progress`", "`core_transport_ui`"),
-        ScaffoldUi::Storefront => ("storefront", "`in_progress`", "`core_transport_ui`"),
-        ScaffoldUi::None => ("none", "`not_started`", "`no_ui_boundary`"),
-    };
+    let (ui_surfaces, ffa_status, shape) = draft_readiness(ui);
     let board_row = format!(
-        "| `{slug}` | {ui_surfaces} | {ffa_status} | `not_started` | {shape} | [Live plan](../../crates/modules/{crate_name}/docs/implementation-plan.md); {desc} |"
+        "| `{slug}` | {ui_surfaces} | {ffa_status} | `not_started` | {shape} | [Implementation plan](../../crates/modules/{crate_name}/docs/implementation-plan.md); {desc} |"
     );
 
     let mut board_insert_pos = None;
@@ -253,7 +255,7 @@ fn register_in_docs_index_md(
 
     if has_admin {
         let admin_needle = format!(
-            "- `{crate_name}`: [README](../../crates/modules/{crate_name}/admin/README.md)"
+            "- `{crate_name}` (draft, unmounted): [README](../../crates/modules/{crate_name}/admin/README.md)"
         );
         if !content.contains(&admin_needle) {
             let mut insert_pos = None;
@@ -277,7 +279,7 @@ fn register_in_docs_index_md(
 
     if has_storefront {
         let sf_needle = format!(
-            "- `{crate_name}`: [README](../../crates/modules/{crate_name}/storefront/README.md)"
+            "- `{crate_name}` (draft, unmounted): [README](../../crates/modules/{crate_name}/storefront/README.md)"
         );
         if !content.contains(&sf_needle) {
             let mut insert_pos = None;
@@ -325,7 +327,7 @@ fn register_in_ui_packages_index_md(
     let mut modified = false;
 
     if has_admin {
-        let admin_needle = format!("- `{crate_name}` admin UI: [README](../../crates/modules/{crate_name}/admin/README.md)");
+        let admin_needle = format!("- `{crate_name}` admin UI (draft, unmounted): [README](../../crates/modules/{crate_name}/admin/README.md)");
         if !content.contains(&admin_needle) {
             let mut insert_pos = None;
             let mut in_admin = false;
@@ -347,7 +349,7 @@ fn register_in_ui_packages_index_md(
     }
 
     if has_storefront {
-        let sf_needle = format!("- `{crate_name}` storefront UI: [README](../../crates/modules/{crate_name}/storefront/README.md)");
+        let sf_needle = format!("- `{crate_name}` storefront UI (draft, unmounted): [README](../../crates/modules/{crate_name}/storefront/README.md)");
         if !content.contains(&sf_needle) {
             let mut insert_pos = None;
             let mut in_sf = false;
@@ -690,4 +692,23 @@ pub(crate) fn find_closing_bracket_after(lines: &[String], section_prefix: &str)
         }
     }
     None
+}
+
+#[cfg(test)]
+mod scaffold_registration_tests {
+    use super::{draft_readiness, ScaffoldUi};
+
+    #[test]
+    fn draft_packages_remain_unmounted_and_not_started() {
+        for mode in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
+            let (surfaces, ffa, shape) = draft_readiness(mode);
+            assert!(surfaces.contains("draft, unmounted"));
+            assert_eq!(ffa, "`not_started`");
+            assert_eq!(shape, "`core_transport_ui`");
+        }
+        let (surfaces, ffa, shape) = draft_readiness(ScaffoldUi::None);
+        assert_eq!(surfaces, "none");
+        assert_eq!(ffa, "`not_started`");
+        assert_eq!(shape, "`no_ui_boundary`");
+    }
 }

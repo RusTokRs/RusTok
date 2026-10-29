@@ -3,21 +3,19 @@ use super::write_file_content;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-/// The existing UI scaffold is retained as an extension point, but now emits
-/// only an honest, non-operational FFA package until an owner API is designed.
-/// The public scaffold command rejects non-none UI modes before any writes.
+/// Creates Leptos FFA *development skeletons* that compile independently
+/// without mounting routes or claiming native/GraphQL business operations.
+/// Domain-specific services, transport calls and UI flows are authored later
+/// by each module owner; missing operations remain explicit errors.
 pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
-    if opts.ui != ScaffoldUi::None && !opts.dry_run {
-        anyhow::bail!("draft FFA packages can be previewed but cannot be registered without owner APIs and real native/GraphQL adapters");
-    }
     for (relative, contents) in render_ui_templates(opts, pascal) {
         write_file_content(&module_dir.join(relative), &contents, opts.dry_run)?;
     }
     Ok(())
 }
 
-/// Pure renderer makes it possible to inspect the proposed Leptos packages
-/// without registering UI routes or requiring a workspace mutation.
+/// Pure renderer used for both dry-run and writable Leptos skeleton creation.
+/// No host mount or live [provides.*_ui] metadata is produced.
 pub(crate) fn render_ui_templates(
     opts: &ScaffoldOptions,
     pascal: &str,
@@ -93,15 +91,16 @@ Draft Leptos {side} UI adapter for the {slug} native module.
 - Do not claim that CRUD, GraphQL, or native server transport exists.
 
 ## Current state
-This is an **unavailable UI preview**, not a registered functional route.
+This is an **unmounted development package**, not a registered functional route.
 There is no owner operation to read or mutate. The transport facade fails
 closed until a genuine backend API and its transport-specific adapters exist.
 No business data, permissions, tenant context or mutation outcomes are invented.
 
-The normal scaffold command does not currently activate UI generation.
-After a real module owner contract exists, implement both native and GraphQL
-adapters before registering Leptos surfaces in rustok-module.toml or promoting
-readiness. Next.js applications own any separate classic packages in their hosts
+The scaffold command writes this development package into the Cargo workspace
+without mounting it in a Leptos host or advertising a live UI in rustok-module.toml.
+After the module owner implements business operations, complete and verify the
+native and GraphQL adapters, then add Leptos host composition and live UI
+manifest metadata in a separate feature change before promoting readiness. Next.js applications own any separate classic packages in their hosts
 and are not a generated FFA adapter.
 
 ## Reference
@@ -354,6 +353,17 @@ mod tests {
     fn content<'a>(files: &'a [(PathBuf, String)], path: &str) -> &'a str {
         &files.iter().find(|(entry, _)| entry == &PathBuf::from(path))
             .unwrap_or_else(|| panic!("missing {path}")).1
+    }
+
+    #[test]
+    fn scaffolded_ui_is_documented_as_unmounted_until_owner_wiring_exists() {
+        let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
+        for side in ["admin", "storefront"] {
+            let docs = content(&files, &format!("{side}/README.md"));
+            assert!(docs.contains("unmounted development package"));
+            assert!(docs.contains("Cargo workspace"));
+            assert!(docs.contains("native and GraphQL adapters"));
+        }
     }
 
     #[test]

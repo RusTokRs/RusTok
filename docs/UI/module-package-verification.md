@@ -168,15 +168,16 @@ same operation.
 
 ## Draft scaffolding UI preview
 
-The existing generator can preview a not-yet-implemented FFA package without
-writing to the repository:
+The existing generator creates unmounted Leptos FFA development packages;
+add `--dry-run` to preview the file set without writing:
 
 ```bash
+cargo xtask scaffold example --ui dual
 cargo xtask scaffold example --ui dual --dry-run
 ```
 
-This is **only a template inspection**; no UI surface is registered and no
-business operation is implemented. The Leptos FFA preview includes real
+The generated crates are **unmounted development skeletons**; no UI
+surface is registered and no business operation is implemented. The Leptos FFA preview includes real
 native/GraphQL selection wiring, but each owner adapter returns a typed
 missing-owner error. Neither adapter performs a business operation.
 Classic Next.js packages belong to their hosts and are not generated here.

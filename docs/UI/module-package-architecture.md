@@ -243,9 +243,11 @@ The structural shape taxonomy used in
 The `cargo xtask scaffold` / `cargo xtask module new` generator is a long-lived
 workspace entrypoint, not a new competing scaffolding system. Its native backend
 now starts without invented domain state. A requested `--ui admin|storefront|dual`
-can be inspected through `--dry-run` before implementation; it must not be
-installed into a host, exposed in `rustok-module.toml`, or described as working.
-The preview contains only Leptos FFA files. Classic Next.js packages are
+creates unmounted Cargo workspace Leptos packages for later module-owned work.
+Use `--dry-run` to inspect without writing. The manifest uses `future_ui`
+and does not declare any live `[provides.*_ui]` until the module owner
+implements real operations and host wiring.
+The generated draft contains only Leptos FFA files. Classic Next.js packages are
 independent React packages inside Next hosts, not FFA adapters and not part
 of the Rust scaffolding output.
 
@@ -255,7 +257,7 @@ The generated Leptos draft keeps `core/mod.rs`, `model.rs`,
 It uses the canonical `rustok-ui-transport` path selection, but both
 owner-specific adapters explicitly fail with `MissingOwnerContract` until
 real operations are implemented. This is **structural FFA scaffolding**, not
-a working business API or a verified runtime transport. The preview
+a working business API or a verified runtime transport. The generated shell
 shows an unavailable state without simulated CRUD.
 Before activation, implement actual owner operations and context-aware
 native/GraphQL adapters. Future `ui/dioxus.rs` must share the same

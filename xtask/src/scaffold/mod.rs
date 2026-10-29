@@ -51,13 +51,11 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     if options.with_db {
         anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
     }
-    // UI shell templates can be inspected using dry-run, but cannot be
-    // registered until a genuine owner API and both transport paths exist.
-    if options.ui != ScaffoldUi::None && !options.dry_run {
-        anyhow::bail!("--ui cannot be published without owner API and real native/GraphQL adapters; use --dry-run to preview the Leptos FFA draft");
-    }
+    // Generating an editable Leptos FFA package is not publishing a working
+    // UI. Requested crates join Cargo workspace only; host mounting and
+    // manifest [provides.*_ui] metadata are deferred to module owners.
     if options.ui != ScaffoldUi::None {
-        println!("  [DRAFT FFA] Leptos adapter preview only; no owner API, CRUD or registered route");
+        println!("  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD");
     }
 
     let root = workspace_root();
@@ -96,7 +94,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     // 1. Generate a native runtime identity only (no FBA readiness claim)
     backend::generate_backend(options, &module_dir, &pascal_name, &snake_name)?;
 
-    // 2. Preview FFA shells only; writable UI remains blocked above.
+    // 2. Create requested Leptos FFA development packages; no host mounting.
     ui::generate_ui(options, &module_dir, &pascal_name)?;
 
     // 3. Update manifests and global registration
@@ -109,7 +107,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
             println!("\nVerifying module publish-readiness contracts for '{slug}'...");
             match module_validate_command(std::slice::from_ref(slug)) {
                 Ok(_) => {
-                    println!("\n  SUCCESS: Module '{slug}' created and verified!");
+                    println!("\n  SCAFFOLDED: Module '{slug}' registered; publish metadata checked, business/UI readiness remains not_started.");
                     println!("  Next steps:");
                     println!("    cargo check -p {crate_name}");
                     if options.ui.has_admin() {
@@ -161,14 +159,16 @@ mod tests {
     }
 
     #[test]
-    fn draft_ui_modes_are_previewable_but_never_writable() {
+    fn every_requested_ui_mode_has_a_writable_render_plan() {
         let mut request = options();
         for mode in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
             request.ui = mode;
-            assert!(scaffold(&request).is_ok(), "UI preview must be inspectable");
-            request.dry_run = false;
-            assert!(scaffold(&request).unwrap_err().to_string().contains("--ui"));
-            request.dry_run = true;
+            let planned = super::ui::render_ui_templates(
+                &request, "Example"
+            );
+            assert!(!planned.is_empty());
+            assert!(planned.iter().any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
+            assert!(scaffold(&request).is_ok(), "dry-run must preview every UI mode");
         }
     }
 }

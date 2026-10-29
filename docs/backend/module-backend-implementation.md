@@ -75,24 +75,20 @@ roll back failed writes, and never return success after failed validation.
 
 ### Current implementation gap
 
-From phase 3 onward, the backend renderer emits only a minimal
-runtime module and contract tests under `src/tests/contract.rs`, with no
-synthetic services, persistence or fabricated migration. Requests for
-`--with-db` or non-headless `--ui` fail before writing files until actual
-owner schemas and FFA contracts can be rendered. The existing UI renderer is improved rather than replaced:
-`--ui admin|storefront|dual --dry-run` previews nonoperational Leptos
-FFA packages with framework-independent core/model, a shared
-`rustok-ui-transport` selection facade, separate native/GraphQL adapter
-seams, `ui/leptos.rs`, i18n and contract tests.
-Both adapters return an explicit missing-owner error, not invented CRUD.
-Writable UI and registration remain blocked until real owner operations,
-authorization and transport contracts exist. Classic Next.js packages belong
-to Next hosts and are not generated or structurally validated as FFA.
-Readiness stays `not_started` and post-scaffold validation errors propagate.
-Atomic rollback and full manifest dry-run remain future work.
-Architecture validation, template cutover, Next.js parity, atomic
-registration and executable golden tests are subsequent phases.
-Generated modules must not be treated as reference-ready yet.
+The existing `cargo xtask scaffold` renderer emits a minimal native runtime
+and internal contract tests without invented services, schema, migrations or
+business operations. `--with-db` remains unsupported until an owner schema
+exists. `--ui admin|storefront|dual` now creates unmounted Leptos FFA
+development packages within the Cargo workspace, with independent core/model,
+a shared transport-selection facade, two explicitly unavailable owner adapters,
+`ui/leptos.rs`, i18n and contract tests.
+The module manifest is `future_ui` with **no** live `[provides.*_ui]`.
+The central readiness board remains `not_started` even though source shape
+is `core_transport_ui`. No Leptos host route is mounted.
+Classic Next.js packages belong to their own hosts and are not FFA.
+Successful publish metadata validation does not imply runtime or UI readiness.
+Atomic rollback, complete manifest-edit dry-run and an executable golden
+generation matrix remain future improvements.
 
 ## Target Module Layout
 
