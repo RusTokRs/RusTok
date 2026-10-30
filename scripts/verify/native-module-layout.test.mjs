@@ -280,6 +280,7 @@ test("the opposite-side support crate is valid beside a single live surface", ()
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("docs/implementation-plan.md", "single-adapter state, GraphQL, native parity plan pending\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     ctx.write("storefront/Cargo.toml",
       '[package]\nname = "rustok-sample-storefront-support"\n');
@@ -392,6 +393,7 @@ test("Leptos UI code cannot bypass the transport facade through raw adapters", (
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("docs/implementation-plan.md", "single-adapter state, GraphQL, native parity plan pending\n");
     ctx.write("admin/src/contract_tests.rs", "#[test]\nfn legacy_contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     const failures = lint(ctx).join("\n");
@@ -447,6 +449,7 @@ test("FFA model remains framework-independent", () => {
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("docs/implementation-plan.md", "single-adapter state, GraphQL, native parity plan pending\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     assert.match(lint(ctx).join("\n"), /forbidden Leptos dependency in FFA model/);
     assert.match(lint(ctx).join("\n"), /forbidden SeaORM dependency in FFA model/);
@@ -645,6 +648,52 @@ test("future_ui support packages are not misclassified as FFA draft surfaces", (
       '[package]\nname = "rustok-sample-storefront-support"\n');
     ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
     assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("future_ui drafts must retain both native and GraphQL adapters", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    assert.match(lint(ctx).join("\n"), /future_ui FFA draft must retain both native and GraphQL adapter boundaries/);
+  });
+});
+
+test("a live single-adapter UI requires the documented exception", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
+    assert.match(lint(ctx).join("\n"), /live single-adapter FFA package must document the canonical single-adapter exception/);
+  });
+});
+
+test("live adapters cannot retain MissingOwnerContract or unfinished macro stubs", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/graphql_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(MissingOwnerContract) }\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { todo!() }\n");
+    writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /live UI transport adapter still returns the MissingOwnerContract scaffold placeholder/);
+    assert.match(failures, /transport adapter contains an unfinished todo!\\/unimplemented! stub/);
   });
 });
 

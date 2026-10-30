@@ -491,6 +491,22 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const adapterNames = ["native_server_adapter", "graphql_adapter"].filter((adapter) =>
     new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + adapter + "\\s*;").test(transportCode),
   );
+  if (draft && adapterNames.length !== 2) {
+    diagnostics.push(relative(root, transport) +
+      ": an unmounted future_ui FFA draft must retain both native and GraphQL adapter boundaries");
+  }
+  if (requested && adapterNames.length === 1) {
+    const planPath = join(moduleRoot, "docs", "implementation-plan.md");
+    const plan = hasSource(planPath) ? readFileSync(planPath, "utf8") : "";
+    const normalizedPlan = plan.replace(/\\s+/g, " ");
+    const documentedException =
+      normalizedPlan.includes("single-adapter state, GraphQL, native parity plan pending") ||
+      normalizedPlan.includes("single-adapter state, native-only internal operator/bootstrap surface, no GraphQL/REST contract yet, parity or exemption plan pending");
+    if (!documentedException) {
+      diagnostics.push(relative(root, planPath) +
+        ": a live single-adapter FFA package must document the canonical single-adapter exception");
+    }
+  }
   const hasOwnerOperation = /\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\s*\(/.test(transportCode) &&
     /\b(?:native_server_adapter|graphql_adapter)\s*::/.test(transportCode);
   if (transportSource && (!adapterNames.length || !hasOwnerOperation)) {
@@ -511,6 +527,13 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     if (!/\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(adapterCode)) {
       diagnostics.push(relative(root, adapterPath) +
         ": declared transport adapter has no callable owner operation");
+    }
+    if (/\b(?:todo|unimplemented)!\s*\(/.test(adapterCode)) {
+      diagnostics.push(relative(root, adapterPath) + ": transport adapter contains an unfinished todo!/unimplemented! stub");
+    }
+    if (requested && /\bErr\s*\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*MissingOwnerContract\s*\)/.test(adapterCode)) {
+      diagnostics.push(relative(root, adapterPath) +
+        ": live UI transport adapter still returns the MissingOwnerContract scaffold placeholder");
     }
   }
 
