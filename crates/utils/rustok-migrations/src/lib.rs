@@ -46,6 +46,8 @@ pub use schema_diff::*;
 
 #[cfg(test)]
 mod rbac_system_role_repair_tests;
+#[cfg(test)]
+mod contract_tests;
 
 pub struct Migrator;
 

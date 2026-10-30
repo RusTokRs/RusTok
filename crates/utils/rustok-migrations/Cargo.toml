@@ -1,14 +1,20 @@
 [package]
-
 name = "rustok-migrations"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
-license = "BUSL-1.1"
-description.workspace = true
+license.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Global SeaORM migration orchestrator and schema definitions for RusToK"
 
 [[bin]]
 name = "rustok-migrate"
 path = "src/bin/rustok_migrate.rs"
+
+[[bin]]
+name = "export-migration-plan"
+path = "src/bin/export_migration_plan.rs"
 
 [dependencies]
 rustok-api.workspace = true
@@ -77,3 +83,8 @@ rustok-test-utils.workspace = true
 sea-orm.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
