@@ -50,14 +50,6 @@ impl ScaffoldUi {
         matches!(self, Self::Storefront | Self::Dual)
     }
 
-    pub fn classification_str(&self) -> &'static str {
-        match self {
-            Self::None => "no_ui",
-            Self::Admin => "admin_only",
-            Self::Storefront => "storefront_only",
-            Self::Dual => "dual_surface",
-        }
-    }
 }
 
 pub struct ScaffoldOptions {

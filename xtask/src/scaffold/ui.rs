@@ -1,5 +1,4 @@
-use super::options::{ScaffoldOptions, ScaffoldUi};
-use anyhow::Result;
+use super::options::ScaffoldOptions;
 use std::path::PathBuf;
 
 /// Creates Leptos FFA *development skeletons* that compile independently
@@ -362,8 +361,11 @@ mod tests {
     }
 
     fn content<'a>(files: &'a [(PathBuf, String)], path: &str) -> &'a str {
-        &files.iter().find(|(entry, _)| entry == &PathBuf::from(path))
-            .unwrap_or_else(|| panic!("missing {path}")).1
+        &files
+            .iter()
+            .find(|(entry, _)| entry == &PathBuf::from(path))
+            .unwrap_or_else(|| panic!("missing {path}"))
+            .1
     }
 
     fn golden_options(ui: ScaffoldUi) -> ScaffoldOptions {

@@ -1,5 +1,4 @@
 use super::options::ScaffoldOptions;
-use anyhow::Result;
 use std::path::PathBuf;
 
 /// Render an intentionally minimal native runtime module. There is no generic
