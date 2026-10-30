@@ -507,11 +507,18 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
         ": a live single-adapter FFA package must document the canonical single-adapter exception");
     }
   }
+  const referencedAdapters = adapterNames.filter((adapter) =>
+    new RegExp("\\b" + adapter + "\\s*::").test(transportCode),
+  );
   const hasOwnerOperation = /\bpub(?:\([^)]*\))?\s+(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(transportCode) &&
-    /\b(?:native_server_adapter|graphql_adapter)\s*::/.test(transportCode);
+    referencedAdapters.length > 0;
   if (transportSource && (!adapterNames.length || !hasOwnerOperation)) {
     diagnostics.push(relative(root, transport) +
       ": transport facade must expose an owner operation delegated to a declared native/GraphQL adapter");
+  }
+  if (transportSource && adapterNames.some((adapter) => !referencedAdapters.includes(adapter))) {
+    diagnostics.push(relative(root, transport) +
+      ": every declared native/GraphQL adapter must be reached by an owner operation in the transport facade");
   }
 
   const transportDir = join(src, "transport");

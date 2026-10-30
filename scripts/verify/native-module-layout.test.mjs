@@ -52,7 +52,8 @@ function writeFfaSurface(ctx, side) {
   ctx.write(side + "/src/i18n.rs", "pub fn t() {}\n");
   ctx.write(side + "/src/transport/mod.rs",
     'mod graphql_adapter;\nmod native_server_adapter;\n' +
-    'pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n');
+    'pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n' +
+    'pub async fn fetch_native_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n');
   ctx.write(side + "/src/transport/graphql_adapter.rs",
     "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
   ctx.write(side + "/src/transport/native_server_adapter.rs",
@@ -697,6 +698,19 @@ test("live adapters cannot retain MissingOwnerContract or unfinished macro stubs
   });
 });
 
+test("a declared adapter that the transport facade never reaches is rejected", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod graphql_adapter;\nmod native_server_adapter;\n" +
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n");
+    assert.match(lint(ctx).join("\n"), /every declared native\/GraphQL adapter must be reached by an owner operation/);
+  });
+});
+
 test("declared transport adapters must contain callable operations", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
@@ -717,7 +731,8 @@ test("the compact transport.rs facade resolves sibling adapter modules", () => {
     rmSync(join(ctx.root, ctx.path("admin/transport")), { recursive: true, force: true });
     ctx.write("admin/src/transport.rs",
       'mod graphql_adapter;\nmod native_server_adapter;\n' +
-      'pub async fn reconcile_catalog() -> Result<(), ()> { graphql_adapter::reconcile_catalog().await }\n');
+      'pub async fn reconcile_catalog() -> Result<(), ()> { graphql_adapter::reconcile_catalog().await }\n' +
+      'pub async fn reconcile_catalog_native() -> Result<(), ()> { native_server_adapter::reconcile_catalog().await }\n');
     ctx.write("admin/src/graphql_adapter.rs",
       "pub async fn reconcile_catalog() -> Result<(), ()> { Err(()) }\n");
     ctx.write("admin/src/native_server_adapter.rs",
