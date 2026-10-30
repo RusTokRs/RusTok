@@ -1,7 +1,6 @@
 use super::options::ScaffoldOptions;
-use super::write_file_content;
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Render an intentionally minimal native runtime module. There is no generic
 /// business entity, CRUD contract or persistence schema that can be generated
@@ -314,18 +313,6 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
     .into_iter()
     .map(|(file, content)| (PathBuf::from(file), content))
     .collect()
-}
-
-pub(crate) fn generate_backend(
-    opts: &ScaffoldOptions,
-    module_dir: &Path,
-    pascal: &str,
-    _snake: &str,
-) -> Result<()> {
-    for (path, content) in render_backend(opts, pascal) {
-        write_file_content(&module_dir.join(path), &content, opts.dry_run)?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
