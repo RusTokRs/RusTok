@@ -502,3 +502,13 @@ test("service dependency direction ignores test-only migration fixtures", () => 
     assert.deepEqual(lint(ctx), []);
   });
 });
+
+
+test("test-named files without cfg(test) wiring remain production dependencies", () => {
+  fixture((ctx) => {
+    ctx.write("src/services/mod.rs", "mod tag_tenant_integrity_tests;\n");
+    ctx.write("src/services/tag_tenant_integrity_tests.rs",
+      "use sea_orm_migration::SchemaManager;\n");
+    assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
+  });
+});
