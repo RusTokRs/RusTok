@@ -239,9 +239,13 @@ registration placement, private persistence entities, test location, dependency
 direction, bounded Rust file sizes, FFA package structure, and consistency
 between `module.ui_classification`, UI package presence and
 `[provides.*_ui]`. A `future_ui` package remains an unmounted draft, not a
-live UI surface. `no_ui` forbids UI packages, while `admin_only`,
-`storefront_only` and `dual_surface` require the corresponding actual
-package and live manifest declaration.
+live UI surface. Publish validation permits a physical admin/storefront
+package without `[provides.*_ui]` or support metadata only when the manifest
+explicitly says `future_ui`; even then, its Cargo package name must match
+`rustok-<slug>-admin` or `rustok-<slug>-storefront`. This preserves package
+identity without advertising a live route. `no_ui` forbids UI packages, while
+`admin_only`, `storefront_only` and `dual_surface` require the corresponding
+actual package and live manifest declaration.
 
 The generic lint recognizes all six manifest classifications, including
 `capability_only`, and distinguishes live UI surfaces, unmounted

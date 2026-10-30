@@ -122,6 +122,59 @@ pub(crate) fn validate_module_ui_surface_contract(
     let crate_name = crate_name.map(str::trim).filter(|value| !value.is_empty());
 
     if has_subcrate && crate_name.is_none() {
+        // A future_ui module may carry an unmounted draft package before it
+        // publishes a live UI surface or a reusable support crate. Keep the
+        // package identity canonical without inventing provides metadata.
+        let module_manifest_path = module_root.join("rustok-module.toml");
+        let module_source = std::fs::read_to_string(&module_manifest_path).map_err(|error| {
+            anyhow::anyhow!(
+                "Failed to read {} while validating draft UI package: {error}",
+                module_manifest_path.display()
+            )
+        })?;
+        let module_manifest = toml::from_str::<toml::Value>(&module_source).map_err(|error| {
+            anyhow::anyhow!(
+                "Failed to parse {} while validating draft UI package: {error}",
+                module_manifest_path.display()
+            )
+        })?;
+        let classification = module_manifest
+            .get("module")
+            .and_then(|module| module.get("ui_classification"))
+            .and_then(toml::Value::as_str)
+            .unwrap_or_default()
+            .trim();
+
+        if classification == "future_ui" {
+            let cargo_source = std::fs::read_to_string(&manifest_path).map_err(|error| {
+                anyhow::anyhow!(
+                    "Failed to read draft UI package {}: {error}",
+                    manifest_path.display()
+                )
+            })?;
+            let cargo_manifest = toml::from_str::<toml::Value>(&cargo_source).map_err(|error| {
+                anyhow::anyhow!(
+                    "Failed to parse draft UI package {}: {error}",
+                    manifest_path.display()
+                )
+            })?;
+            let package_name = cargo_manifest
+                .get("package")
+                .and_then(|package| package.get("name"))
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            let expected_name = format!("rustok-{}-{surface}", slug.replace('_', "-"));
+
+            if package_name != expected_name {
+                anyhow::bail!(
+                    "Module '{slug}' future_ui draft {surface} package must declare package.name='{expected_name}', got '{package_name}'"
+                );
+            }
+
+            return Ok(());
+        }
+
         anyhow::bail!(
             "Module '{slug}' contains {}, but rustok-module.toml is missing [provides.{surface}_ui].leptos_crate or [provides.{surface}_support].leptos_crate",
             manifest_path.display()
@@ -178,4 +231,86 @@ pub(crate) fn validate_module_ui_package(
         crate_name: package.name,
         manifest_path: manifest_path.display().to_string(),
     }))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn temp_root() -> PathBuf {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "rustok-module-ui-contract-{}-{}",
+            std::process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn future_ui_allows_an_unmounted_draft_package_with_canonical_identity() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("admin")).unwrap();
+        std::fs::write(
+            root.join("rustok-module.toml"),
+            "[module]\nui_classification = \"future_ui\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("admin/Cargo.toml"),
+            "[package]\nname = \"rustok-example-admin\"\n",
+        )
+        .unwrap();
+
+        validate_module_ui_surface_contract("example", &root, "admin", None).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn future_ui_rejects_a_draft_package_with_noncanonical_identity() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("admin")).unwrap();
+        std::fs::write(
+            root.join("rustok-module.toml"),
+            "[module]\nui_classification = \"future_ui\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("admin/Cargo.toml"),
+            "[package]\nname = \"wrong-admin-package\"\n",
+        )
+        .unwrap();
+
+        let error = validate_module_ui_surface_contract("example", &root, "admin", None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("rustok-example-admin"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn non_future_ui_cannot_hide_an_unregistered_ui_subcrate() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("admin")).unwrap();
+        std::fs::write(
+            root.join("rustok-module.toml"),
+            "[module]\nui_classification = \"no_ui\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("admin/Cargo.toml"),
+            "[package]\nname = \"rustok-example-admin\"\n",
+        )
+        .unwrap();
+
+        let error = validate_module_ui_surface_contract("example", &root, "admin", None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing [provides.admin_ui]"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
