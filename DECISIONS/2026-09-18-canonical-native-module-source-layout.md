@@ -44,6 +44,9 @@ The canonical slots are:
 - `src/graphql/`: owner GraphQL adapters;
 - `src/controllers/` (or `src/rest/`): owner HTTP adapters;
 - `src/migrations/`: owner migrations and ordering descriptors;
+- `src/error.rs` or `src/error/`: owner error types and safe public error
+  mapping when the module owns such a contract;
+- `src/events/`: owner event contracts/handlers when the module owns them;
 - `src/runtime.rs`: optional narrow reusable runtime state when the module has one;
 - `src/tests/`: crate-internal contract tests that need crate-private access;
   integration tests that only use the public API remain in top-level `tests/`.

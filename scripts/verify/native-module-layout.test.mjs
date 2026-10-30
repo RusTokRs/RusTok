@@ -268,17 +268,19 @@ test("the opposite-side support crate is valid beside a single live surface", ()
   });
 });
 
-test("support crates cannot impersonate a no_ui or capability_only module surface", () => {
-  fixture((ctx) => {
-    ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
-      '[crate]\nentry_type = "SampleModule"\n' +
-      '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
-    ctx.write("storefront/Cargo.toml",
-      '[package]\nname = "rustok-sample-storefront-support"\n');
-    ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
-    assert.match(lint(ctx).join("\n"), /storefront_support is incompatible/);
-  });
+test("support crates cannot impersonate no_ui or capability_only modules", () => {
+  for (const classification of ["no_ui", "capability_only"]) {
+    fixture((ctx) => {
+      ctx.write("rustok-module.toml",
+        '[module]\nslug = "sample"\nui_classification = "' + classification + '"\n' +
+        '[crate]\nentry_type = "SampleModule"\n' +
+        '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
+      ctx.write("storefront/Cargo.toml",
+        '[package]\nname = "rustok-sample-storefront-support"\n');
+      ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
+      assert.match(lint(ctx).join("\n"), /storefront_support is incompatible/);
+    });
+  }
 });
 
 test("a sub-crate cannot be declared as both a UI surface and a support package", () => {
@@ -416,5 +418,16 @@ test("FFA model remains framework-independent", () => {
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     assert.match(lint(ctx).join("\n"), /forbidden Leptos dependency in FFA model/);
+  });
+});
+
+
+test("root error.rs and error/ cannot both claim the same responsibility", () => {
+  fixture((ctx) => {
+    ctx.write("src/error.rs", "pub struct Error;\n");
+    ctx.write("src/error/mod.rs", "pub struct ErrorModule;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod error;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.match(lint(ctx).join("\n"), /use either error\.rs or error\//);
   });
 });
