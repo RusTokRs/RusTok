@@ -1,5 +1,8 @@
 //! Independent durable worker for origin-aware registry artifact validation.
 
+#[cfg(test)]
+mod contract_tests;
+
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
@@ -38,7 +41,7 @@ fn automated_check(key: &str, status: &str, detail: &str) -> ModuleGovernanceAut
     }
 }
 
-fn successful_validation_checks(
+pub(crate) fn successful_validation_checks(
     origin: ModulePublicationArtifactOrigin,
 ) -> Vec<ModuleGovernanceAutomatedCheck> {
     let mut checks = vec![automated_check(
@@ -69,7 +72,7 @@ fn successful_validation_checks(
     checks
 }
 
-fn failed_validation_checks(
+pub(crate) fn failed_validation_checks(
     origin: ModulePublicationArtifactOrigin,
     artifact_contract_passed: bool,
 ) -> Vec<ModuleGovernanceAutomatedCheck> {
@@ -208,10 +211,25 @@ impl RegistryValidationAlloyPublication {
     }
 }
 
+impl std::fmt::Debug for RegistryValidationAlloyPublication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryValidationAlloyPublication")
+            .field("target", &self.target)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Short-lived credential adapter for exact staged OCI registry/repository
 /// identities. The lease never enters the modules owner or validation result.
 pub struct CredentialedOciRegistryProvider {
     credentials: Arc<dyn RegistryCredentialBroker>,
+}
+
+impl std::fmt::Debug for CredentialedOciRegistryProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CredentialedOciRegistryProvider")
+            .finish_non_exhaustive()
+    }
 }
 
 impl CredentialedOciRegistryProvider {
@@ -281,6 +299,15 @@ pub struct RegistryValidationWorker {
     publication_evidence: Arc<ModulePlatformPublicationEvidenceProducer>,
     alloy_publication: RegistryValidationAlloyPublication,
     publication_policy: RegistryValidationPublicationPolicy,
+}
+
+impl std::fmt::Debug for RegistryValidationWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryValidationWorker")
+            .field("actor_principal", &self.actor_principal)
+            .field("publication_policy", &self.publication_policy)
+            .finish_non_exhaustive()
+    }
 }
 
 impl RegistryValidationWorker {
