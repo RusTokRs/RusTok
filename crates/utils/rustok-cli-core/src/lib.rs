@@ -32,6 +32,10 @@ impl CommandDescriptor {
         self.supports_dry_run = true;
         self
     }
+
+    pub fn matches(&self, namespace: &str, name: &str) -> bool {
+        self.namespace == namespace && self.name == name
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -42,6 +46,22 @@ pub struct CommandRequest {
     pub dry_run: bool,
 }
 
+impl CommandRequest {
+    pub fn new(
+        namespace: impl Into<String>,
+        name: impl Into<String>,
+        args: serde_json::Value,
+        dry_run: bool,
+    ) -> Self {
+        Self {
+            namespace: namespace.into(),
+            name: name.into(),
+            args,
+            dry_run,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandOutcome {
     pub exit_code: i32,
@@ -50,6 +70,18 @@ pub struct CommandOutcome {
 }
 
 impl CommandOutcome {
+    pub fn new(
+        exit_code: i32,
+        message: impl Into<String>,
+        data: serde_json::Value,
+    ) -> Self {
+        Self {
+            exit_code,
+            message: message.into(),
+            data,
+        }
+    }
+
     pub fn success(message: impl Into<String>) -> Self {
         Self {
             exit_code: 0,
@@ -58,13 +90,25 @@ impl CommandOutcome {
         }
     }
 
+    pub fn failure(exit_code: i32, message: impl Into<String>) -> Self {
+        Self {
+            exit_code,
+            message: message.into(),
+            data: serde_json::Value::Null,
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        self.exit_code == 0
+    }
+
     pub fn with_data(mut self, data: serde_json::Value) -> Self {
         self.data = data;
         self
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CliCoreError {
     #[error("unknown command: {namespace} {name}")]
     UnknownCommand { namespace: String, name: String },
@@ -123,3 +167,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -1670,11 +1670,11 @@
       "name": "rustok-cli-core",
       "path": "crates/utils/rustok-cli-core",
       "category": "utils",
-      "files": 1,
-      "loc": 125,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 2,
+      "loc": 310,
+      "completed": true,
+      "completed_at": "2026-10-30 20:20",
+      "notes": "Standardized CRATE_API.md with 5 canonical sections, package metadata, verified CommandDescriptor, CommandRequest, CommandOutcome, and CliCoreError equality and traits; 6/6 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/utils/rustok-cli-platform": {
       "name": "rustok-cli-platform",
