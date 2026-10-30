@@ -168,13 +168,13 @@ function isTestSource(file) {
   const parts = file.split(/[\\/]/);
   const name = parts.at(-1);
   if (parts.includes("test") || parts.includes("tests")) return true;
-  const moduleName = name.replace(/\\.rs$/, "");
+  const moduleName = name.replace(/\.rs$/, "");
   if (!/(?:^|_)tests?$/.test(moduleName)) return false;
   const parentModule = join(dirname(file), "mod.rs");
   if (!hasSource(parentModule)) return false;
   const parentCode = maskRustNonCode(readFileSync(parentModule, "utf8"));
-  return new RegExp("#\\\\s*\\\\[\\\\s*cfg\\\\s*\\\\(\\\\s*test\\\\s*\\\\)\\\\s*\\\\]\\\\s*(?:pub(?:\\\\([^)]*\\\\))?\\\\s+)?mod\\\\s+" +
-    moduleName + "\\\\s*;").test(parentCode);
+  return new RegExp("#\\s*\\[\\s*cfg\\s*\\(\\s*test\\s*\\)\\s*\\]\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" +
+    moduleName + "\\s*;").test(parentCode);
 }
 function checkImports(root, directory, patterns, diagnostics) {
   for (const file of rustFiles(directory)) {
