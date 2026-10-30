@@ -492,8 +492,10 @@ test("native module paths cannot traverse a symlinked ancestor directory", () =>
 
 test("service dependency direction ignores test-only migration fixtures", () => {
   fixture((ctx) => {
-    ctx.write("src/services/mod.rs", "pub mod post;\n");
-    ctx.write("src/services/post/mod.rs", "pub struct PostService;\n");
+    ctx.write("src/services/mod.rs",
+      "pub mod post;\n#[cfg(test)]\nmod tag_tenant_integrity_tests;\n");
+    ctx.write("src/services/post/mod.rs",
+      "pub struct PostService;\n#[cfg(test)]\nmod tests;\n");
     ctx.write("src/services/post/tests.rs", "use sea_orm_migration::MigrationTrait;\n");
     ctx.write("src/services/tag_tenant_integrity_tests.rs",
       "use sea_orm_migration::SchemaManager;\n");
