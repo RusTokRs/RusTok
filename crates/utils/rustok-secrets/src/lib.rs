@@ -459,3 +459,7 @@ mod tests {
         unsafe { std::env::remove_var(key) };
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

@@ -3,6 +3,9 @@ name = "rustok-secrets"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Runtime secret-reference contracts and resolver registry for RusToK"
 
 [dependencies]
@@ -24,3 +27,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
