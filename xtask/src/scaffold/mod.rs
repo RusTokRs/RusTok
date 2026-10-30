@@ -367,8 +367,27 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{scaffold, ScaffoldOptions, ScaffoldUi};
+    use super::{
+        build_scaffold_plan, scaffold, PlannedFile, PlannedFileKind, ScaffoldOptions,
+        ScaffoldTransaction, ScaffoldUi,
+    };
     use super::options::ScaffoldProfile;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root() -> PathBuf {
+        let id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rustok-scaffold-transaction-test-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
 
     fn options() -> ScaffoldOptions {
         ScaffoldOptions {
@@ -449,6 +468,63 @@ mod tests {
         let error = state.unwrap_err().to_string();
         assert!(error.contains("architecture lint failed"));
         assert!(error.contains("NOT verified"));
+    }
+
+    #[test]
+    fn scaffold_transaction_restores_manifests_and_removes_created_crate_on_rollback() {
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        fs::create_dir_all(root.join("crates/modules")).unwrap();
+        let manifest = root.join("modules.toml");
+        fs::write(&manifest, "before\\n").unwrap();
+
+        let plan = vec![
+            PlannedFile {
+                path: module_dir.join("src/lib.rs"),
+                content: "pub struct Example;\\n".into(),
+                kind: PlannedFileKind::Create,
+            },
+            PlannedFile {
+                path: manifest.clone(),
+                content: "after\\n".into(),
+                kind: PlannedFileKind::Update,
+            },
+        ];
+
+        let transaction = ScaffoldTransaction::apply(&plan, &module_dir).unwrap();
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), "after\\n");
+        assert!(module_dir.join("src/lib.rs").is_file());
+
+        transaction.rollback().unwrap();
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), "before\\n");
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dry_run_preflight_rejects_an_existing_module_directory() {
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        fs::create_dir_all(&module_dir).unwrap();
+
+        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
+            .unwrap_err();
+        assert!(error.to_string().contains("already exists"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dry_run_preflight_rejects_an_existing_registry_slug() {
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
+        fs::write(root.join("modules.toml"), "[modules]\\nexample = { crate = \\"rustok-example\\" }\\n")
+            .unwrap();
+
+        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
+            .unwrap_err();
+        assert!(error.to_string().contains("already registered"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
