@@ -35,9 +35,11 @@ npm run verify:module-source-layout
 ```
 
 That default run adds Blog-owned strict reference checks (including
-retired-path evidence). The shared lint checks canonical file responsibility,
-optional runtime wiring, private entities, source size, dependency direction,
-FFA surface boundaries, support-sub-crate identity, declaration-to-package
+retired-path evidence). The shared lint checks canonical file responsibility and module wiring,
+thin crate facades, optional `runtime.rs` / `error.rs` wiring, private
+entities, source size, transport-neutral DTO/port contracts, persistence and
+service dependency direction, framework-independent FFA model/core, transport
+facade boundaries, support-sub-crate identity, declaration-to-package
 alignment, symlink safety, and suspicious scaffold placeholders. It is static:
 it cannot prove behavioral correctness, Next.js parity, live FBA transport,
 or publish registration readiness.

@@ -225,9 +225,12 @@ The generic lint recognizes all six manifest classifications, including
 `capability_only`, and distinguishes live UI surfaces, unmounted
 `future_ui` drafts, and manifest-declared UI support sub-crates. Support
 sub-crates are not routes and do not inherit the surface package layout.
-Unknown source directories, empty responsibility slots, unwired
-`runtime.rs`, symlinks, comment-only dependency/registration markers, and
-UI components that bypass their transport facade fail closed.
+Unknown source directories, empty or unwired responsibility slots,
+thin backend/FFA facades, optional `runtime.rs` / `error.rs` wiring,
+transport-neutral DTOs and ports, persistence-only entity dependencies,
+framework-independent FFA models/core, symlinked module paths/source trees,
+comment-only dependency/registration markers, and UI components that bypass
+their transport facade fail closed.
 
 There is one architecture-lint owner: `native-module-layout.mjs`.
 The former standalone `verify-native-module-architecture.mjs` duplicate has
