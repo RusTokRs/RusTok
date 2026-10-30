@@ -216,7 +216,7 @@ pub fn print_scaffold_usage() {
     println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
     println!("  --skip-validate          Skip post-scaffold contract validation");
     println!(
-        "  --dry-run                Preview generated source files (registration edits not shown)"
+        "  --dry-run                Preview all source files and registration manifest updates"
     );
     println!();
     println!("Examples:");
