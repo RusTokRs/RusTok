@@ -221,15 +221,21 @@ live UI surface. `no_ui` forbids UI packages, while `admin_only`,
 `storefront_only` and `dual_surface` require the corresponding actual
 package and live manifest declaration.
 
-The older standalone `verify-native-module-architecture.mjs` has
-overlapping but divergent opt-in checks. It is **not** the `xtask` lint
-owner; consolidate its remaining useful rules in a separate validator
-change instead of expanding parallel verification paths.
+The generic lint recognizes all six manifest classifications, including
+`capability_only`, and distinguishes live UI surfaces, unmounted
+`future_ui` drafts, and manifest-declared UI support sub-crates. Support
+sub-crates are not routes and do not inherit the surface package layout.
+Unknown source directories, empty responsibility slots, unwired
+`runtime.rs`, symlinks, comment-only dependency/registration markers, and
+UI components that bypass their transport facade fail closed.
 
-`module validate` still checks publish-readiness metadata/registration,
-not architecture. Neither static check proves compilation, tests, native
-or GraphQL transport execution, Next.js parity or FBA/FFA readiness.
-Those require independently recorded evidence.
+There is one architecture-lint owner: `native-module-layout.mjs`.
+The former standalone `verify-native-module-architecture.mjs` duplicate has
+been removed; its applicable checks now live in the shared validator.
+`module validate` still checks publish metadata and registration, not
+architecture. Static lint does not prove compilation, tests, native or
+GraphQL transport execution, Next.js parity or FBA/FFA readiness. Those
+require independently recorded evidence.
 
 ```bash
 cargo xtask module lint <slug>

@@ -74,8 +74,11 @@ native server-module template and is not changed by this decision.
 - `docs/modules/module-authoring.md` remains the canonical module-authoring entry
   point and links to the backend guide.
 - Module-local README/docs own the live responsibility map for each module.
-- `scripts/verify/verify-module-source-layout.mjs` is the machine guard for
-  enrolled reference modules.
+- `scripts/verify/native-module-layout.mjs` owns the shared static source
+  contract used by `cargo xtask module lint <slug>` for registered native
+  modules; it does not certify runtime readiness.
+- `scripts/verify/verify-module-source-layout.mjs` adds Blog-specific strict
+  reference assertions when the default Blog profile is selected.
 - Domain state and persistence ownership remain with the existing module owners;
   moving a file never transfers semantic ownership.
 
@@ -83,7 +86,10 @@ native server-module template and is not changed by this decision.
 
 ### Allowed states
 
-- Small modules omit unused slots.
+- Small modules omit unused slots; an optional `src/runtime.rs` is a
+  root-level module only when declared by `lib.rs`.
+- Manifest-declared UI support sub-crates are not live UI surfaces and do not
+  inherit the route-owning surface package contract.
 - Large responsibilities become nested submodules under the owning canonical slot.
 - Public compatibility is preserved by explicit re-export when a physical move is
   not intended to change the owner contract.
@@ -161,7 +167,8 @@ decision explicitly changes them.
 
 For the initial reference implementation:
 
-- `npm run verify:module-source-layout`;
+- `cargo xtask module lint <slug>` for the generic native structural contract;
+- `npm run verify:module-source-layout` for the strict Blog reference profile;
 - `cargo xtask module validate blog`;
 - `cargo check -p rustok-blog`;
 - `cargo test -p rustok-blog --lib`;
