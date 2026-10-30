@@ -17,22 +17,22 @@ const ALLOWED_ROOT_RUST_FILES = new Set(["lib.rs", "module.rs", "runtime.rs", "e
 const FORBIDDEN_DOMAIN = [
   ["SeaORM", /\bsea_orm(?:::|\s)/],
   ["SeaORM migrations", /\bsea_orm_migration(?:::|\s)/],
-  ["Axum", /\baxum(?:::|\s)/],
-  ["GraphQL", /\basync_graphql(?:::|\s)/],
-  ["Leptos", /\bleptos(?:::|\s)/],
-  ["Dioxus", /\bdioxus(?:::|\s)/],
-  ["rustok-web", /\brustok_web(?:::|\s)/],
+  ["Axum", /\baxum(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["GraphQL", /\b(?:async_graphql|rustok_graphql)(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["Leptos ecosystem", /\bleptos(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["Dioxus ecosystem", /\bdioxus(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["rustok-web", /\brustok_web(?:_[a-z0-9]+)*(?:::|\s)/],
 ];
 const FORBIDDEN_SERVICE = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
+const FORBIDDEN_ENTITY = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
 const FORBIDDEN_CORE = [
-  ["Leptos", /\bleptos(?:::|\s)/],
-  ["Leptos router", /\bleptos_router(?:::|\s)/],
-  ["Leptos Axum", /\bleptos_axum(?:::|\s)/],
-  ["Dioxus", /\bdioxus(?:::|\s)/],
+  ["Leptos ecosystem", /\bleptos(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["Dioxus ecosystem", /\bdioxus(?:_[a-z0-9]+)*(?:::|\s)/],
   ["web-sys", /\bweb_sys(?:::|\s)/],
   ["wasm-bindgen", /\bwasm_bindgen(?:::|\s)/],
-  ["Axum", /\baxum(?:::|\s)/],
-  ["GraphQL transport", /\b(?:async_graphql|rustok_graphql)(?:::|\s)/],
+  ["Axum", /\baxum(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["GraphQL transport", /\b(?:async_graphql|rustok_graphql)(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["rustok-web", /\brustok_web(?:_[a-z0-9]+)*(?:::|\s)/],
 ];
 
 function maskRange(chars, start, end) {
@@ -487,6 +487,9 @@ export function lintNativeModule(root, modulePath, slug) {
   }
 
   checkImports(repo, join(src, "domain"), FORBIDDEN_DOMAIN, diagnostics);
+  checkImports(repo, join(src, "dto"), FORBIDDEN_DOMAIN, diagnostics);
+  checkImports(repo, join(src, "ports"), FORBIDDEN_DOMAIN, diagnostics);
+  checkImports(repo, join(src, "entities"), FORBIDDEN_ENTITY, diagnostics);
   checkImports(repo, join(src, "services"), FORBIDDEN_SERVICE, diagnostics);
   checkSizes(repo, src, BACKEND_LIMIT, diagnostics);
 

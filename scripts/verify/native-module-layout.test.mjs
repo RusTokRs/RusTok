@@ -431,3 +431,36 @@ test("root error.rs and error/ cannot both claim the same responsibility", () =>
     assert.match(lint(ctx).join("\n"), /use either error\.rs or error\//);
   });
 });
+
+
+test("DTO and port contracts cannot import persistence or transport frameworks", () => {
+  fixture((ctx) => {
+    ctx.write("src/dto/mod.rs", "use async_graphql::InputObject;\n");
+    ctx.write("src/ports/mod.rs", "use sea_orm::DatabaseConnection;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod dto;\nmod ports;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /forbidden GraphQL dependency/);
+    assert.match(failures, /forbidden SeaORM dependency/);
+  });
+});
+
+test("persistence entities may use SeaORM but cannot depend on transport frameworks", () => {
+  fixture((ctx) => {
+    ctx.write("src/entities/mod.rs", "use sea_orm::EntityTrait;\nuse axum::Router;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod entities;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /forbidden Axum dependency/);
+    assert.doesNotMatch(failures, /forbidden SeaORM dependency/);
+  });
+});
+
+test("service code cannot depend on migration tooling", () => {
+  fixture((ctx) => {
+    ctx.write("src/services/mod.rs", "use sea_orm_migration::MigrationTrait;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod services;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
+  });
+});
