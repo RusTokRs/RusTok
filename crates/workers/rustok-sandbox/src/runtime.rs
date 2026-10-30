@@ -33,6 +33,16 @@ pub struct SandboxRuntime {
     admission: crate::admission::AdmissionController,
 }
 
+impl std::fmt::Debug for SandboxRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SandboxRuntime")
+            .field("executors", &self.executors)
+            .field("observers_count", &self.observers.len())
+            .field("capability_observers_count", &self.capability_observers.len())
+            .finish()
+    }
+}
+
 impl SandboxRuntime {
     pub fn new(executors: ExecutorRegistry, broker: Arc<dyn CapabilityBroker>) -> Self {
         Self {
