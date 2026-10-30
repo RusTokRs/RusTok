@@ -274,7 +274,7 @@ impl MigrationSource for {module_type} {{
     );
 
     let tests = format!(
-        r#"use crate::{module_type};
+        r##"use crate::{module_type};
 use rustok_core::module::{{MigrationSource, ModuleKind, RusToKModule}};
 
 #[test]
@@ -304,7 +304,7 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
     }}
     assert!(api.contains("No create/update/delete commands are advertised"));
 }}
-"#
+"##
     );
 
     [
