@@ -635,6 +635,19 @@ test("empty FFA i18n, locale catalogs and contract tests are rejected", () => {
   });
 });
 
+test("future_ui support packages are not misclassified as FFA draft surfaces", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/Cargo.toml",
+      '[package]\nname = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/src/lib.rs", "pub struct Support;\\n");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
 test("declared transport adapters must contain callable operations", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",

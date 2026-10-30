@@ -419,11 +419,13 @@ function checkNextUiSurface(root, side, manifest, diagnostics) {
 function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const section = "provides." + (side === "admin" ? "admin_ui" : "storefront_ui");
   const requested = hasSection(manifest, section);
+  const supportSection = "provides." + side + "_support";
+  const supportPackage = hasSection(manifest, supportSection);
   const uiRoot = join(moduleRoot, side);
   const futureUi = keyInSection(manifest, "module", "ui_classification") === "future_ui";
-  const draft = !requested && futureUi && existsSync(uiRoot);
+  const draft = !requested && !supportPackage && futureUi && existsSync(uiRoot);
   if (!requested && !draft) {
-    if (existsSync(uiRoot)) {
+    if (existsSync(uiRoot) && !supportPackage) {
       diagnostics.push(relative(root, uiRoot) +
         ": undeclared UI package requires explicit module.ui_classification = \"future_ui\" or a support declaration");
     }
