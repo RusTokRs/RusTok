@@ -1,5 +1,34 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-07 `rustok-ai` ecosystem audit — 2026-10-30 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 74 source files in `crates/modules/rustok-ai`, 17 files in `crates/modules/rustok-ai/admin`, and vertical packages (`rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, `rustok-ai-translation`).
+- **Rig 0.39 Runtime & Invariants Verified**: Verified Rig 0.39 provider catalog, descriptors, secret resolver registry, RAG retrieval data plane, and permission intersection; verified machine translation bridge whitespace shape preservation and duplicate placeholder rejections.
+- **FFA & Dual Admin Parity Verified**: Strict FFA separation in Leptos admin package with pure view models; Next.js admin adapter parity verified via `verify-ai-admin-boundary.mjs` with GraphQL schema alignment and route coverage.
+- **Cargo Metadata Standardized**: Standardized `rust-version.workspace = true`, `repository.workspace = true`, and `readme = "README.md"` across all 9 crates.
+- **Verification Evidence**:
+  - `cargo test -p rustok-ai`: 37/37 tests passed.
+  - `cargo test -p rustok-ai-admin`: 26/26 tests passed.
+  - `cargo test -p rustok-ai-alloy`: 2/2 tests passed.
+  - `cargo test -p rustok-ai-athanor`: 2/2 tests passed.
+  - `cargo test -p rustok-ai-content`: 11/11 tests passed.
+  - `cargo test -p rustok-ai-media`: 2/2 tests passed.
+  - `cargo test -p rustok-ai-order`: 10/10 tests passed.
+  - `cargo test -p rustok-ai-product`: 7/7 tests passed.
+  - `cargo test -p rustok-ai-translation`: 19/19 tests passed.
+  - `node scripts/verify/verify-ai-admin-boundary.mjs`: passed.
+  - `node scripts/verify/verify-ai-alloy-policy.mjs`: passed.
+  - `node scripts/verify/verify-ai-content-contract.mjs`: passed.
+  - `node scripts/verify/verify-ai-domain-verticals.mjs`: passed.
+  - `node scripts/verify/verify-ai-fba-baseline.mjs`: passed.
+  - `node scripts/verify/verify-ai-media-fba.mjs`: passed.
+  - `node scripts/verify/verify-ai-product-fba.mjs`: passed.
+  - `node scripts/verify/verify-ai-rig-cutover.mjs`: passed.
+  - `node scripts/verify/verify-ai-router-policy.mjs`: passed.
+  - `node scripts/verify/verify-ai-translation-boundary.mjs`: passed.
+  - `node scripts/verify/verify-server-ai-optional-dependency.mjs`: passed.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED.
+
 ## FS-07 `rustok-mcp`, `rustok-mcp/admin`, and `apps/next-admin/packages/rustok-mcp` audit — 2026-10-30 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 26 source files in `crates/modules/rustok-mcp` and 7 files in `crates/modules/rustok-mcp/admin`.
@@ -126,10 +155,10 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 ## Deep Full-Stack Audit Cycle — Round 1 (Fresh Start from Scratch)
 
 **Status:** ACTIVE  
-**Active phase:** Phase FS-07 — Search, Indexing, Translation & AI Ecosystem  
-**Next pending component:** [`crates/modules/rustok-ai`](../../crates/modules/rustok-ai) (74 files, 42,418 LOC)  
-**Current main SHA:** `5beb9f6b54`  
-**Active branch:** `audit/fs07-rustok-mcp`  
+**Active phase:** Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)  
+**Next pending component:** [`crates/workers/rustok-module-build-worker`](../../crates/workers/rustok-module-build-worker) (8 files, 4,124 LOC)  
+**Current main SHA:** `1b352b4031`  
+**Active branch:** `audit/fs07-rustok-ai`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
 
@@ -238,7 +267,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (37/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
-- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (17/26 completed)
+- [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
@@ -420,7 +449,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-07 — Search, Indexing, Translation & AI Ecosystem
-*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (17/26 completed)
+*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (26/26 completed — 100% PASS)
 
 - [x] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC) — Search execution engine, query parsing, fuzzy matching, faceted filtering, sort ordering, and spellcheck suggestions. Audited and verified all 6 Universal Logic Dimensions across 101 source files; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 104/104 tests passed, clean rustdoc, docs.rs compliant, zero defects.
 - [x] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC) — FFA admin UI for search configuration, synonym management, boost rules, and search analytics. Audited Leptos admin FFA package across 20 source files; verified strict FFA separation (pure Rust view models and grid column definitions in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 26/26 tests passed, clean rustdoc, zero defects.
@@ -439,15 +468,15 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/libs/rustok-translation-targets`](../../crates/libs/rustok-translation-targets)** (3 files, 1,729 LOC) — Translation target registration contracts, provider seams, and entity translation keys. Audited target provider contracts and runtime registry across 3 source files; verified exact locale validation, protected token ledger matchers, whitespace shape preservation, and fail-closed AI export guards; added `rust-version.workspace = true`; 11 unit tests and 3 integration tests passed, 0 clippy warnings, zero defects.
 - [x] **[`crates/modules/rustok-mcp`](../../crates/modules/rustok-mcp)** (26 files, 6,939 LOC) — Model Context Protocol (MCP) server, tool registry, resource providers, context prompts, and secure agent sandboxes. Audited and verified all 6 Universal Logic Dimensions across 26 source files; verified stdio and authenticated remote JSON/SSE transport boundaries, source-redacted audit logging, Alloy scaffold digest verification, and tenant isolation; standardized `rust-version.workspace = true`; 25 lib unit tests and 9 contract/integration tests passed, clean rustdoc, zero defects.
 - [x] **[`crates/modules/rustok-mcp/admin`](../../crates/modules/rustok-mcp/admin)** (7 files, 1,873 LOC) — FFA admin UI for MCP server status, registered tool catalog, and access token permissions. Audited Leptos admin UI package across 7 source files; verified dual-path transport (GraphQL / ServerFn) and host runtime context; verified Next.js admin adapter parity via `verify-mcp-admin-boundary.mjs`; standardized `rust-version`, `repository`, and `readme` in Cargo.toml; 4/4 tests passed, SSR check passed, zero defects.
-- [ ] **[`crates/modules/rustok-ai`](../../crates/modules/rustok-ai)** (74 files, 42,418 LOC) — AI LLM orchestration, provider-neutral embeddings, vector indexing, prompt templates, and streaming completions.
-- [ ] **[`crates/modules/rustok-ai/admin`](../../crates/modules/rustok-ai/admin)** (17 files, 8,538 LOC) — FFA admin UI for AI provider credentials, model selection, prompt tuning, and usage metrics.
-- [ ] **[`crates/modules/rustok-ai-alloy`](../../crates/modules/rustok-ai-alloy)** (1 files, 384 LOC) — AI assistant integration with Alloy dynamic schemas for natural language data generation.
-- [ ] **[`crates/modules/rustok-ai-athanor`](../../crates/modules/rustok-ai-athanor)** (2 files, 548 LOC) — Athanor high-performance data plane for AI vector embeddings and chunked semantic search.
-- [ ] **[`crates/modules/rustok-ai-content`](../../crates/modules/rustok-ai-content)** (1 files, 326 LOC) — AI content generator for blog posts, product descriptions, marketing summaries, and SEO tags.
-- [ ] **[`crates/modules/rustok-ai-media`](../../crates/modules/rustok-ai-media)** (1 files, 71 LOC) — AI image generation, automated ALT tag generation, and visual similarity search.
-- [ ] **[`crates/modules/rustok-ai-order`](../../crates/modules/rustok-ai-order)** (1 files, 255 LOC) — AI customer order assistance, anomaly detection in fraud screening, and predictive reordering.
-- [ ] **[`crates/modules/rustok-ai-product`](../../crates/modules/rustok-ai-product)** (1 files, 307 LOC) — AI product categorization, automatic attribute extraction from titles, and variant suggestions.
-- [ ] **[`crates/modules/rustok-ai-translation`](../../crates/modules/rustok-ai-translation)** (1 files, 1,655 LOC) — Machine translation bridge integrating OpenAI/DeepL/Claude for batch catalog translation.
+- [x] **[`crates/modules/rustok-ai`](../../crates/modules/rustok-ai)** (74 files, 42,418 LOC) — AI LLM orchestration, provider-neutral embeddings, vector indexing, prompt templates, and streaming completions. Audited and verified all 6 Universal Logic Dimensions across 74 source files; verified Rig 0.39 provider catalog and descriptors, runtime extensions, secret resolver registry, RAG retrieval data plane, and permission ceiling; standardized `rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`; 37/37 tests passed, clean rustdoc, zero defects.
+- [x] **[`crates/modules/rustok-ai/admin`](../../crates/modules/rustok-ai/admin)** (17 files, 8,538 LOC) — FFA admin UI for AI provider credentials, model selection, prompt tuning, and usage metrics. Audited Leptos admin FFA package across 17 source files; verified strict FFA separation (pure Rust models, view models, and metric aggregations in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and catalog-driven agent model assignment editors; verified Next.js admin adapter parity via `verify-ai-admin-boundary.mjs`; standardized Cargo metadata; 26/26 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-alloy`](../../crates/modules/rustok-ai-alloy)** (1 files, 384 LOC) — AI assistant integration with Alloy dynamic schemas for natural language data generation. Audited Alloy vertical descriptor; verified execution policy metadata and static evidence; standardized Cargo metadata; 2/2 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-athanor`](../../crates/modules/rustok-ai-athanor)** (2 files, 548 LOC) — Athanor high-performance data plane for AI vector embeddings and chunked semantic search. Audited Athanor library adapter for lexical and semantic retrieval; standardized Cargo metadata; 2/2 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-content`](../../crates/modules/rustok-ai-content)** (1 files, 326 LOC) — AI content generator for blog posts, product descriptions, marketing summaries, and SEO tags. Audited content moderation and blog draft vertical descriptors; verified policy matrix and payload validation; standardized Cargo metadata; 11/11 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-media`](../../crates/modules/rustok-ai-media)** (1 files, 71 LOC) — AI image generation, automated ALT tag generation, and visual similarity search. Audited media flow vertical descriptors and image size normalization; standardized Cargo metadata; 2/2 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-order`](../../crates/modules/rustok-ai-order)** (1 files, 255 LOC) — AI customer order assistance, anomaly detection in fraud screening, and predictive reordering. Audited order analytics and ops assistant vertical descriptors; verified confidence bounds and order status dependencies; standardized Cargo metadata; 10/10 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-product`](../../crates/modules/rustok-ai-product)** (1 files, 307 LOC) — AI product categorization, automatic attribute extraction from titles, and variant suggestions. Audited product attributes and copy generation vertical descriptors; verified flex key validation and category normalization; standardized Cargo metadata; 7/7 tests passed, zero defects.
+- [x] **[`crates/modules/rustok-ai-translation`](../../crates/modules/rustok-ai-translation)** (1 files, 1,655 LOC) — Machine translation bridge integrating OpenAI/DeepL/Claude for batch catalog translation. Audited machine translation bridge; verified structured task mapping, prompt policy digests, whitespace shape preservation, and duplicate placeholder rejections; standardized Cargo metadata; 19/19 tests passed, zero defects.
 
 ---
 
