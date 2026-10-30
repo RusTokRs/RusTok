@@ -643,7 +643,7 @@ test("future_ui support packages are not misclassified as FFA draft surfaces", (
       '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
     ctx.write("storefront/Cargo.toml",
       '[package]\nname = "rustok-sample-storefront-support"\n');
-    ctx.write("storefront/src/lib.rs", "pub struct Support;\\n");
+    ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
     assert.deepEqual(lint(ctx), []);
   });
 });
