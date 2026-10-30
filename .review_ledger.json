@@ -592,9 +592,9 @@
       "category": "modules",
       "files": 9,
       "loc": 682,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30 16:50",
+      "notes": "Audited and verified FFA invariants across all source files; verified zero UI framework types in core.rs, pure Rust address parsing and mode resolution, Fluent i18n catalogs (en/ru), and GraphQL/native server adapters; standardized Cargo.toml with readme, repository, rust-version, and docs.rs metadata; added cargo manifest contract test; 8/8 tests passed across default and SSR features, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/modules/rustok-iggy-connector/next-admin": {
       "name": "next-admin",
@@ -602,9 +602,9 @@
       "category": "modules",
       "files": 5,
       "loc": 367,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30 16:50",
+      "notes": "Audited Next.js admin adapter package (relocated to apps/next-admin/packages/iggy-connector); verified FFA parity with Leptos admin: identical mode definitions, address parsing, restart advice, navigation registration (/dashboard/iggy-connector), and GraphQL queries/mutations; 7/7 tests passed, zero defects."
     },
     "crates/modules/rustok-index": {
       "name": "rustok-index",
@@ -2464,9 +2464,9 @@
       "category": "apps",
       "files": 6,
       "loc": 389,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30 16:50",
+      "notes": "Audited in FS-08; verified FFA parity with Leptos admin: identical mode definitions, address parsing, restart advice, navigation registration (/dashboard/iggy-connector), and GraphQL queries/mutations; 7/7 tests passed, zero defects."
     },
     "apps/next-frontend/packages/rustok-cart": {
       "name": "rustok-cart",
