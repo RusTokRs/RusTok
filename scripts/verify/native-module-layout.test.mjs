@@ -633,7 +633,7 @@ test("empty FFA i18n, locale catalogs and contract tests are rejected", () => {
     assert.match(failures, /model.rs must contain a real transport-neutral model/);
     assert.match(failures, /FFA core cannot be an empty facade/);
     assert.match(failures, /i18n entrypoint cannot be empty/);
-    assert.match(failures, /localization directory has no FTL\\/JSON catalog/);
+    assert.match(failures, /localization directory has no FTL\/JSON catalog/);
     assert.match(failures, /UI contract test file has no tests/);
   });
 });
@@ -693,7 +693,7 @@ test("live adapters cannot retain MissingOwnerContract or unfinished macro stubs
     writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
     const failures = lint(ctx).join("\n");
     assert.match(failures, /live UI transport adapter still returns the MissingOwnerContract scaffold placeholder/);
-    assert.match(failures, /transport adapter contains an unfinished todo!\\/unimplemented! stub/);
+    assert.match(failures, /transport adapter contains an unfinished todo!\/unimplemented! stub/);
   });
 });
 
