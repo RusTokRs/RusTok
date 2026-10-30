@@ -725,6 +725,42 @@ test("a declared adapter that the transport facade never reaches is rejected", (
   });
 });
 
+test("transport adapters must expose public operations to their facade", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/graphql_adapter.rs",
+      "async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+    assert.match(lint(ctx).join("\n"), /declared transport adapter has no callable owner operation/);
+  });
+});
+
+test("Leptos root component must be public and re-exportable", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/ui/leptos.rs", "#[component]\nfn Surface() {}\n");
+    assert.match(lint(ctx).join("\n"), /Leptos root component must be public/);
+  });
+});
+
+test("direct lib.rs re-export requires a visible ui::leptos module", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/lib.rs",
+      'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\npub use ui::leptos::Surface;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    assert.match(lint(ctx).join("\n"), /ui\/leptos module must be visible when lib.rs re-exports it directly/);
+  });
+});
+
 test("declared transport adapters must contain callable operations", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",

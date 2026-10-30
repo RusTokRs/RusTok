@@ -531,7 +531,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     const adapterPath = candidates.find(hasSource) || candidates[0];
     const adapterSource = readRequired(root, adapterPath, diagnostics);
     const adapterCode = maskRustNonCode(adapterSource);
-    if (!/\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(adapterCode)) {
+    if (!/\bpub(?:\([^)]*\))?\s+(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(adapterCode)) {
       diagnostics.push(relative(root, adapterPath) +
         ": declared transport adapter has no callable owner operation");
     }
@@ -554,8 +554,23 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     ? join(src, "ui", "leptos.rs")
     : join(src, "ui", "leptos", "mod.rs");
   const uiLeptosSource = readRequired(root, uiLeptos, diagnostics);
-  if (!/#\s*\[\s*component\s*\]/.test(maskRustNonCode(uiLeptosSource))) {
+  const uiLeptosCode = maskRustNonCode(uiLeptosSource);
+  if (!/#\s*\[\s*component\s*\]/.test(uiLeptosCode)) {
     diagnostics.push(relative(root, uiLeptos) + ": Leptos render adapter must define a component");
+  }
+  if (!/\bpub(?:\([^)]*\))?\s+(?:async\s+)?fn\s+[A-Z][A-Za-z0-9_]*/.test(uiLeptosCode)) {
+    diagnostics.push(relative(root, uiLeptos) + ": Leptos root component must be public so the crate facade can re-export it");
+  }
+  const uiReexportsLeptos = /\bpub\s+use\s+(?:self::)?leptos::/.test(uiModuleCode);
+  const libReexportsLeptosDirectly = /\bpub\s+use\s+(?:crate::)?ui::leptos::/.test(libCode);
+  if (!uiReexportsLeptos && !libReexportsLeptosDirectly) {
+    diagnostics.push(relative(root, uiModulePath) +
+      ": Leptos component must be re-exported through ui/mod.rs or directly from lib.rs");
+  }
+  if (libReexportsLeptosDirectly &&
+      !/\bpub(?:\([^)]*\))?\s+mod\s+leptos\s*;/.test(uiModuleCode)) {
+    diagnostics.push(relative(root, uiModulePath) +
+      ": ui/leptos module must be visible when lib.rs re-exports it directly");
   }
 
   const localesRoot = join(uiRoot, "locales");
