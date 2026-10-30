@@ -60,6 +60,12 @@ Error and event modules appear only with real owner error/event contracts.
 A file containing only a comment, a no-op adapter, speculative search
 projection, invented records table, or fake CRUD is **not** a layer.
 
+The CLI must reject unexpected flags, repeated options and missing option values
+instead of silently interpreting a partial request. Metadata printed into owner
+docs and the central Markdown registry must be single-line and must not introduce
+unescaped table separators. A headless module's implementation plan must describe
+UI as absent, not as an unmounted draft.
+
 `--no-db` must produce no entities, migrations or durable storage claims. A
 DB request authorizes persistence only once an actual owner schema and
 migration contract exist. `--no-ui` must produce no UI packages or advertised

@@ -1,5 +1,6 @@
 use crate::module_cli_args::cli_option_value;
 use anyhow::{bail, Result};
+use std::collections::HashSet;
 
 /// Architectural roles are distinct even when their output is a Rust crate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +73,53 @@ pub struct ScaffoldOptions {
     pub skip_validate: bool,
 }
 
+/// Validate the complete CLI input before it can shape any source or registry edits.
+/// Unknown arguments, repeated switches and missing values must never turn into
+/// successful default scaffolds.
+fn validate_scaffold_arguments(args: &[String]) -> Result<()> {
+    let mut used = HashSet::new();
+    let mut index = 1;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        let takes_value = matches!(
+            flag,
+            "--profile" | "--title" | "--name" | "--description" | "--category" | "--ui"
+        );
+        let is_switch = matches!(
+            flag,
+            "--dry-run" | "--skip-server-wire" | "--skip-validate"
+                | "--no-db" | "--with-db" | "--no-ui" | "--with-ui"
+        );
+
+        if !takes_value && !is_switch {
+            bail!("Unknown scaffold argument '{flag}'");
+        }
+        if !used.insert(flag) {
+            bail!("Scaffold option '{flag}' may only be provided once");
+        }
+        if takes_value {
+            let value = args
+                .get(index + 1)
+                .filter(|value| !value.starts_with("--") && !value.trim().is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Scaffold option '{flag}' requires a non-empty value"))?;
+            // Titles/descriptions appear unquoted in Markdown documents; the
+            // description is also inserted into a registry table cell.
+            if matches!(flag, "--title" | "--name" | "--description" | "--category")
+                && value.chars().any(|ch| ch.is_control() || ch == '|' || ch == '\u{2028}' || ch == '\u{2029}')
+            {
+                bail!("Scaffold option '{flag}' must be a single line without control characters or '|' table delimiters");
+            }
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    if used.contains("--title") && used.contains("--name") {
+        bail!("--title and --name are aliases and cannot both be specified");
+    }
+    Ok(())
+}
+
 pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
         print_scaffold_usage();
@@ -80,6 +128,8 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
         }
         return Ok(None);
     }
+
+    validate_scaffold_arguments(args)?;
 
     let raw_slug = args[0].trim().to_ascii_lowercase();
     if !is_valid_slug(&raw_slug) {
@@ -354,6 +404,52 @@ mod tests {
         ] {
             assert!(parse(&args).is_err(), "must reject: {args:?}");
         }
+    }
+
+    #[test]
+    fn malformed_arguments_never_turn_into_default_scaffolds() {
+        for args in [
+            vec!["example", "--unknown"],
+            vec!["example", "stray"],
+            vec!["example", "--ui", "dual", "stray"],
+            vec!["example", "--dry-run", "--dry-run"],
+            vec!["example", "--skip-validate", "--skip-validate"],
+            vec!["example", "--title"],
+            vec!["example", "--title", "--no-db"],
+            vec!["example", "--description", ""],
+            vec!["example", "--category", "  "],
+            vec!["example", "--title", "One", "--title", "Two"],
+            vec!["example", "--description", "One long description here", "--description", "Another long description here"],
+            vec!["example", "--name", "One", "--title", "Two"],
+        ] {
+            assert!(parse(&args).is_err(), "must reject malformed arguments: {args:?}");
+        }
+    }
+
+    #[test]
+    fn metadata_cannot_break_generated_docs_or_registry_table_rows() {
+        for args in [
+            vec!["example", "--description", "An otherwise valid | description for a module"],
+            vec!["example", "--description", "First description line\\nSecond description line"],
+            vec!["example", "--title", "First\\rSecond"],
+            vec!["example", "--title", "First\\tSecond"],
+            vec!["example", "--category", "content|other"],
+        ] {
+            assert!(parse(&args).is_err(), "must reject unsafe metadata: {args:?}");
+        }
+        let valid = parse(&[
+            "example",
+            "--title",
+            "WebRTC Calls & Conferencing",
+            "--description",
+            "A native capability with punctuation: quotes, ampersands & slashes.",
+            "--category",
+            "collaboration",
+            "--dry-run",
+        ])
+        .unwrap();
+        assert_eq!(valid.title, "WebRTC Calls & Conferencing");
+        assert!(valid.dry_run);
     }
 
     #[test]
