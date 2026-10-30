@@ -167,14 +167,28 @@ function rustFiles(directory) {
 function isTestSource(file) {
   const parts = file.split(/[\\/]/);
   const name = parts.at(-1);
-  if (parts.includes("test") || parts.includes("tests")) return true;
+  const isTestGated = (parentModule, moduleName) => {
+    if (!hasSource(parentModule)) return false;
+    const parentCode = maskRustNonCode(readFileSync(parentModule, "utf8"));
+    return new RegExp("#\\s*\\[\\s*cfg\\s*\\(\\s*test\\s*\\)\\s*\\]\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" +
+      moduleName + "\\s*;").test(parentCode);
+  };
+
   const moduleName = name.replace(/\.rs$/, "");
-  if (!/(?:^|_)tests?$/.test(moduleName)) return false;
-  const parentModule = join(dirname(file), "mod.rs");
-  if (!hasSource(parentModule)) return false;
-  const parentCode = maskRustNonCode(readFileSync(parentModule, "utf8"));
-  return new RegExp("#\\s*\\[\\s*cfg\\s*\\(\\s*test\\s*\\)\\s*\\]\\s*(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" +
-    moduleName + "\\s*;").test(parentCode);
+  if (/(?:^|_)tests?$/.test(moduleName) &&
+      isTestGated(join(dirname(file), "mod.rs"), moduleName)) {
+    return true;
+  }
+
+  const testDirectoryIndex = parts.findIndex((part) => part === "test" || part === "tests");
+  if (testDirectoryIndex >= 0) {
+    const parentDirectory = parts.slice(0, testDirectoryIndex).join(sep);
+    const parentModule = parentDirectory.endsWith(sep + "src")
+      ? join(parentDirectory, "lib.rs")
+      : join(parentDirectory, "mod.rs");
+    if (isTestGated(parentModule, parts[testDirectoryIndex])) return true;
+  }
+  return false;
 }
 function checkImports(root, directory, patterns, diagnostics) {
   for (const file of rustFiles(directory)) {

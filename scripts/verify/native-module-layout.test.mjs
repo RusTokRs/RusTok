@@ -516,3 +516,15 @@ test("test-named files without cfg(test) wiring remain production dependencies",
     assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
   });
 });
+
+
+test("a tests directory without cfg(test) module wiring remains production source", () => {
+  fixture((ctx) => {
+    ctx.write("src/services/mod.rs", "mod tests;\n");
+    ctx.write("src/services/tests/production.rs",
+      "use sea_orm_migration::SchemaManager;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod services;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
+  });
+});
