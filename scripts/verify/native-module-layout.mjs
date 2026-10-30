@@ -250,6 +250,96 @@ function hasSection(source, section) {
   return source.split(/\r?\n/).some((line) => line.trim() === "[" + section + "]");
 }
 
+function findNextPackageByName(packagesRoot, expectedName) {
+  const matches = [];
+  if (!isDirectory(packagesRoot)) return matches;
+
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (["node_modules", ".next", "dist", "build"].includes(entry.name)) continue;
+        visit(path);
+      } else if (entry.isFile() && entry.name === "package.json") {
+        try {
+          const manifest = JSON.parse(readFileSync(path, "utf8"));
+          if (manifest.name === expectedName) {
+            matches.push({ root: directory, manifest });
+          }
+        } catch {
+          // An unrelated malformed package is not evidence for this module.
+        }
+      }
+    }
+  };
+
+  visit(packagesRoot);
+  return matches;
+}
+
+function checkNextUiSurface(root, side, manifest, diagnostics) {
+  const section = "provides." + side + "_ui";
+  const packageName = keyInSection(manifest, section, "next_package")?.trim();
+  if (!packageName) {
+    diagnostics.push(section + ": next_package is required for live Next.js parity");
+    return;
+  }
+
+  const routeSegment = keyInSection(manifest, section, "route_segment")?.trim();
+  if (!routeSegment || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(routeSegment)) {
+    diagnostics.push(section + ": route_segment must be a safe kebab-case Next.js route");
+    return;
+  }
+
+  const host = side === "admin" ? "next-admin" : "next-frontend";
+  const packagesRoot = join(root, "apps", host, "packages");
+  const matches = findNextPackageByName(packagesRoot, packageName);
+  if (matches.length === 0) {
+    diagnostics.push(relative(root, packagesRoot) + ": Next.js package '" + packageName + "' is missing");
+    return;
+  }
+  if (matches.length > 1) {
+    diagnostics.push(relative(root, packagesRoot) + ": Next.js package '" + packageName + "' is declared more than once");
+    return;
+  }
+
+  const packageRoot = matches[0].root;
+  const packageManifest = matches[0].manifest;
+  if (!checkModulePathNoSymlinks(root, packageRoot, diagnostics)) return;
+  checkNoSymlinks(root, packageRoot, diagnostics);
+
+  const main = typeof packageManifest.main === "string" ? packageManifest.main.trim() : "";
+  if (!main) {
+    diagnostics.push(relative(root, join(packageRoot, "package.json")) + ": Next.js package must declare a main entrypoint");
+  } else {
+    const entry = resolve(packageRoot, main);
+    if (entry !== packageRoot && !entry.startsWith(packageRoot + sep)) {
+      diagnostics.push(relative(root, join(packageRoot, "package.json")) + ": Next.js package main entry escapes its package root");
+    } else if (!hasSource(entry)) {
+      diagnostics.push(relative(root, join(packageRoot, "package.json")) + ": Next.js package main entry is missing");
+    }
+  }
+
+  const hostRegistryPath = join(root, "apps", host, "src", "modules", "index.ts");
+  const hostRegistry = readRequired(root, hostRegistryPath, diagnostics);
+  const relativePackageSource = relative(dirname(hostRegistryPath), join(packageRoot, "src"))
+    .split(sep).join("/");
+  if (!hostRegistry.includes(packageName) && !hostRegistry.includes(relativePackageSource)) {
+    diagnostics.push(relative(root, hostRegistryPath) +
+      ": Next.js host module registry does not import declared package '" + packageName + "'");
+  }
+
+  const routePath = side === "admin"
+    ? join(root, "apps", host, "src", "app", "dashboard", routeSegment, "page.tsx")
+    : join(root, "apps", host, "src", "app", "[locale]", routeSegment, "page.tsx");
+  const routeSource = readRequired(root, routePath, diagnostics);
+  if (routeSource && !routeSource.includes(packageName)) {
+    diagnostics.push(relative(root, routePath) +
+      ": Next.js route must import declared package '" + packageName + "'");
+  }
+}
+
 function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const section = "provides." + (side === "admin" ? "admin_ui" : "storefront_ui");
   const requested = hasSection(manifest, section);
@@ -356,7 +446,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (/\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) + ": FFA lib.rs must remain a module/re-export facade");
   }
-  // Next.js packages are host-owned; this lint does not infer their parity from Leptos.
+  if (requested) checkNextUiSurface(root, side, manifest, diagnostics);
 }
 
 function checkSupportPackage(root, moduleRoot, side, manifest, classification, diagnostics) {
