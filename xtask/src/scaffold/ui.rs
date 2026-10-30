@@ -35,13 +35,18 @@ fn render_ui_package(
     } else {
         format!("{pascal}StorefrontView")
     };
-    let side_name = if side == "admin" { "Admin" } else { "Storefront" };
+    let side_name = if side == "admin" {
+        "Admin"
+    } else {
+        "Storefront"
+    };
     let side_key = format!("{slug}-{side}-unavailable");
     let title_rust = format!("{:?}", opts.title);
     let description_rust = format!("{:?}", opts.description);
     let cargo_description = toml::Value::String(format!(
         "{side_name} FFA adapter for {crate_name} (owner API pending)"
-    )).to_string();
+    ))
+    .to_string();
 
     // No unused graphql, native-server, grid, database or module dependencies:
     // adding any of them requires implementing an actual adapter.
@@ -160,7 +165,8 @@ impl std::fmt::Display for MissingOwnerContract {
 }
 
 impl std::error::Error for MissingOwnerContract {}
-"#.to_string();
+"#
+        .to_string();
 
     let core = r#"//! Pure presentation policy: reusable by a future Dioxus adapter.
 //! Do not put Leptos signals, framework resources or GraphQL requests here.
@@ -172,7 +178,8 @@ pub enum UiCapabilityState {
 pub const fn owner_capability_state() -> UiCapabilityState {
     UiCapabilityState::Unavailable
 }
-"#.to_string();
+"#
+        .to_string();
 
     // This is a real FFA selection facade through the existing platform
     // transport owner. Each adapter explicitly reports missing business logic:
@@ -225,7 +232,8 @@ use crate::model::MissingOwnerContract;
 pub(super) async fn fetch_owner_capability() -> Result<(), MissingOwnerContract> {
     Err(MissingOwnerContract)
 }
-"#.to_string();
+"#
+        .to_string();
 
     let leptos = format!(
         r#"use leptos::prelude::*;
@@ -298,7 +306,8 @@ fn documented_ui_is_not_a_fake_business_api() {
     }
     assert!(docs.contains("No CRUD or owner business operation is available"));
 }
-"####.to_string();
+"####
+        .to_string();
 
     let translations_en = format!(
         "{side_key} = This module's UI is not available until its owner API is implemented.\n"
@@ -366,7 +375,11 @@ mod tests {
     }
 
     fn normalized_ui_snapshot(files: &[(PathBuf, String)], side: &str) -> String {
-        let surface_title = if side == "admin" { "Admin" } else { "Storefront" };
+        let surface_title = if side == "admin" {
+            "Admin"
+        } else {
+            "Storefront"
+        };
         let page = if side == "admin" {
             "ExampleAdminPage"
         } else {

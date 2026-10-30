@@ -87,8 +87,13 @@ fn validate_scaffold_arguments(args: &[String]) -> Result<()> {
         );
         let is_switch = matches!(
             flag,
-            "--dry-run" | "--skip-server-wire" | "--skip-validate"
-                | "--no-db" | "--with-db" | "--no-ui" | "--with-ui"
+            "--dry-run"
+                | "--skip-server-wire"
+                | "--skip-validate"
+                | "--no-db"
+                | "--with-db"
+                | "--no-ui"
+                | "--with-ui"
         );
 
         if !takes_value && !is_switch {
@@ -101,11 +106,15 @@ fn validate_scaffold_arguments(args: &[String]) -> Result<()> {
             let value = args
                 .get(index + 1)
                 .filter(|value| !value.starts_with("--") && !value.trim().is_empty())
-                .ok_or_else(|| anyhow::anyhow!("Scaffold option '{flag}' requires a non-empty value"))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Scaffold option '{flag}' requires a non-empty value")
+                })?;
             // Titles/descriptions appear unquoted in Markdown documents; the
             // description is also inserted into a registry table cell.
             if matches!(flag, "--title" | "--name" | "--description" | "--category")
-                && value.chars().any(|ch| ch.is_control() || ch == '|' || ch == '\u{2028}' || ch == '\u{2029}')
+                && value
+                    .chars()
+                    .any(|ch| ch.is_control() || ch == '|' || ch == '\u{2028}' || ch == '\u{2029}')
             {
                 bail!("Scaffold option '{flag}' must be a single line without control characters or '|' table delimiters");
             }
@@ -140,7 +149,12 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     // Canonical slug format is snake_case per RusToK Naming Contract (docs/standards/coding.md)
     let slug = raw_slug.replace('-', "_");
 
-    if args.iter().filter(|arg| arg.as_str() == "--profile").count() > 1 {
+    if args
+        .iter()
+        .filter(|arg| arg.as_str() == "--profile")
+        .count()
+        > 1
+    {
         bail!("--profile may only be provided once");
     }
     let profile = match args.iter().position(|arg| arg == "--profile") {
@@ -182,14 +196,12 @@ pub fn parse_options(args: &[String]) -> Result<Option<ScaffoldOptions>> {
     }
 
     let with_ui_alias = args.iter().any(|arg| arg == "--with-ui");
-    if with_ui_alias && (args.iter().any(|arg| arg == "--no-ui")
-        || args.iter().any(|arg| arg == "--ui"))
+    if with_ui_alias
+        && (args.iter().any(|arg| arg == "--no-ui") || args.iter().any(|arg| arg == "--ui"))
     {
         bail!("--with-ui cannot be combined with --ui or --no-ui");
     }
-    if args.iter().any(|arg| arg == "--no-ui")
-        && args.iter().any(|arg| arg == "--ui")
-    {
+    if args.iter().any(|arg| arg == "--no-ui") && args.iter().any(|arg| arg == "--ui") {
         bail!("--no-ui and --ui are conflicting surface requests");
     }
 
@@ -313,7 +325,10 @@ mod tests {
     use super::*;
 
     fn parse(arguments: &[&str]) -> Result<ScaffoldOptions> {
-        let args = arguments.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+        let args = arguments
+            .iter()
+            .map(|arg| (*arg).to_owned())
+            .collect::<Vec<_>>();
         parse_options(&args)?.ok_or_else(|| anyhow::anyhow!("expected a scaffold request"))
     }
 
@@ -322,8 +337,18 @@ mod tests {
         for valid in ["example", "page_builder", "page-builder", "v2_calls"] {
             assert!(parse(&[valid]).is_ok(), "expected valid slug: {valid}");
         }
-        for invalid in ["2example", "page__builder", "page--builder", "page-_builder", "_example", "example-"] {
-            assert!(parse(&[invalid]).is_err(), "must reject invalid slug: {invalid}");
+        for invalid in [
+            "2example",
+            "page__builder",
+            "page--builder",
+            "page-_builder",
+            "_example",
+            "example-",
+        ] {
+            assert!(
+                parse(&[invalid]).is_err(),
+                "must reject invalid slug: {invalid}"
+            );
         }
     }
 
@@ -338,8 +363,13 @@ mod tests {
     #[test]
     fn native_no_db_no_ui_request_keeps_both_capabilities_absent() {
         let request = parse(&[
-            "sample-module", "--profile", "native", "--no-db", "--no-ui",
-        ]).expect("valid native request");
+            "sample-module",
+            "--profile",
+            "native",
+            "--no-db",
+            "--no-ui",
+        ])
+        .expect("valid native request");
         assert_eq!(request.slug, "sample_module");
         assert_eq!(request.crate_name(), "rustok-sample-module");
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
@@ -390,7 +420,10 @@ mod tests {
 
     #[test]
     fn with_ui_alias_never_silently_downgrades_to_headless() {
-        assert_eq!(parse(&["example", "--with-ui"]).unwrap().ui, ScaffoldUi::Dual);
+        assert_eq!(
+            parse(&["example", "--with-ui"]).unwrap().ui,
+            ScaffoldUi::Dual
+        );
         assert!(parse(&["example", "--with-ui", "--no-ui"]).is_err());
         assert!(parse(&["example", "--with-ui", "--ui", "dual"]).is_err());
     }
@@ -419,23 +452,43 @@ mod tests {
             vec!["example", "--description", ""],
             vec!["example", "--category", "  "],
             vec!["example", "--title", "One", "--title", "Two"],
-            vec!["example", "--description", "One long description here", "--description", "Another long description here"],
+            vec![
+                "example",
+                "--description",
+                "One long description here",
+                "--description",
+                "Another long description here",
+            ],
             vec!["example", "--name", "One", "--title", "Two"],
         ] {
-            assert!(parse(&args).is_err(), "must reject malformed arguments: {args:?}");
+            assert!(
+                parse(&args).is_err(),
+                "must reject malformed arguments: {args:?}"
+            );
         }
     }
 
     #[test]
     fn metadata_cannot_break_generated_docs_or_registry_table_rows() {
         for args in [
-            vec!["example", "--description", "An otherwise valid | description for a module"],
-            vec!["example", "--description", "First description line\\nSecond description line"],
-            vec!["example", "--title", "First\\rSecond"],
-            vec!["example", "--title", "First\\tSecond"],
+            vec![
+                "example",
+                "--description",
+                "An otherwise valid | description for a module",
+            ],
+            vec![
+                "example",
+                "--description",
+                "First description line\nSecond description line",
+            ],
+            vec!["example", "--title", "First\rSecond"],
+            vec!["example", "--title", "First\tSecond"],
             vec!["example", "--category", "content|other"],
         ] {
-            assert!(parse(&args).is_err(), "must reject unsafe metadata: {args:?}");
+            assert!(
+                parse(&args).is_err(),
+                "must reject unsafe metadata: {args:?}"
+            );
         }
         let valid = parse(&[
             "example",

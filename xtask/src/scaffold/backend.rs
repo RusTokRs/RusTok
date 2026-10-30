@@ -20,9 +20,15 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
     let ui_classification = if ui_requested { "future_ui" } else { "no_ui" };
     let ui_summary = match opts.ui {
         super::options::ScaffoldUi::None => "No UI packages requested.",
-        super::options::ScaffoldUi::Admin => "Draft Leptos admin crate created but NOT mounted in the host.",
-        super::options::ScaffoldUi::Storefront => "Draft Leptos storefront crate created but NOT mounted in the host.",
-        super::options::ScaffoldUi::Dual => "Draft Leptos admin and storefront crates created but NOT mounted in hosts.",
+        super::options::ScaffoldUi::Admin => {
+            "Draft Leptos admin crate created but NOT mounted in the host."
+        }
+        super::options::ScaffoldUi::Storefront => {
+            "Draft Leptos storefront crate created but NOT mounted in the host."
+        }
+        super::options::ScaffoldUi::Dual => {
+            "Draft Leptos admin and storefront crates created but NOT mounted in hosts."
+        }
     };
     let ui_readiness = if ui_requested {
         "draft FFA packages, not_started; no live host route or owner operations"

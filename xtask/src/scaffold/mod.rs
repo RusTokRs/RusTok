@@ -14,7 +14,7 @@ mod ui;
 #[allow(unused_imports)]
 pub use options::{
     default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
-    ScaffoldUi,
+    ScaffoldProfile, ScaffoldUi,
 };
 
 pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
@@ -368,9 +368,8 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
 mod tests {
     use super::{
         build_scaffold_plan, scaffold, PlannedFile, PlannedFileKind, ScaffoldOptions,
-        ScaffoldTransaction, ScaffoldUi,
+        ScaffoldProfile, ScaffoldTransaction, ScaffoldUi,
     };
-    use super::options::ScaffoldProfile;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -490,42 +489,43 @@ mod tests {
 
     #[test]
     fn scaffold_validation_runs_architecture_before_publish_metadata() {
-        let mut calls = Vec::new();
+        let calls = std::cell::RefCell::new(Vec::new());
         let state = super::validate_scaffold_with(
             "example",
             false,
             |args| {
                 assert_eq!(args, &[String::from("example")]);
-                calls.push("lint");
+                calls.borrow_mut().push("lint");
                 Ok(())
             },
             |args| {
                 assert_eq!(args, &["example"]);
-                calls.push("validate");
+                calls.borrow_mut().push("validate");
                 Ok(())
             },
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(state, super::ScaffoldValidation::Verified);
-        assert_eq!(calls, vec!["lint", "validate"]);
+        assert_eq!(calls.borrow().as_slice(), &["lint", "validate"][..]);
     }
 
     #[test]
     fn publish_validation_failure_does_not_claim_verified() {
-        let mut calls = Vec::new();
+        let calls = std::cell::RefCell::new(Vec::new());
         let state = super::validate_scaffold_with(
             "example",
             false,
             |_| {
-                calls.push("lint");
+                calls.borrow_mut().push("lint");
                 Ok(())
             },
             |_| {
-                calls.push("validate");
+                calls.borrow_mut().push("validate");
                 anyhow::bail!("publish failure")
             },
         );
         let error = state.unwrap_err().to_string();
-        assert_eq!(calls, vec!["lint", "validate"]);
+        assert_eq!(calls.borrow().as_slice(), &["lint", "validate"]);
         assert!(error.contains("publish-readiness validation failed"));
         assert!(error.contains("NOT verified"));
     }
