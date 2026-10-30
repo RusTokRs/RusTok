@@ -191,7 +191,7 @@ mod tests {
             "example",
             false,
             |args| {
-                assert_eq!(args, &["example"]);
+                assert_eq!(args, &[String::from("example")]);
                 calls.push("lint");
                 Ok(())
             },
@@ -202,7 +202,28 @@ mod tests {
             },
         ).unwrap();
         assert_eq!(state, super::ScaffoldValidation::Verified);
-        assert_eq!(calls, ["lint", "validate"]);
+        assert_eq!(calls, vec!["lint", "validate"]);
+    }
+
+    #[test]
+    fn publish_validation_failure_does_not_claim_verified() {
+        let mut calls = Vec::new();
+        let state = super::validate_scaffold_with(
+            "example",
+            false,
+            |_| {
+                calls.push("lint");
+                Ok(())
+            },
+            |_| {
+                calls.push("validate");
+                anyhow::bail!("publish failure")
+            },
+        );
+        let error = state.unwrap_err().to_string();
+        assert_eq!(calls, vec!["lint", "validate"]);
+        assert!(error.contains("publish-readiness validation failed"));
+        assert!(error.contains("NOT verified"));
     }
 
     #[test]
