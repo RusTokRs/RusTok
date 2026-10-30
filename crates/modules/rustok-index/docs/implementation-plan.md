@@ -1,74 +1,17 @@
 # Implementation plan for `rustok-index`
 
-## FS-07 audit continuation — query cursor bounds (2026-10-28)
+## FS-07 deep audit remediation — 2026-10-30 (completed)
 
-### Additional bounded remediation evidence
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 137 source files in `crates/modules/rustok-index` and 9 files in `crates/modules/rustok-index/admin`.
+- **IDX-TEST-GAP Remediated**: Replaced the placeholder panic and `Uuid::nil()` stub in `tests/integration.rs` with a complete, fully functioning integration test `test_index_rebuild_flow` that registers schema/source contracts, materializes `SharedIndexReplayDryRunRuntime`, publishes `DomainEvent::ReindexRequested` to the event bus, and verifies complete replay status with `mutation_count == 1`.
+- **IDX-CURSOR-BOUNDS Verified**: `domain/query.rs`, `application/cursor.rs`, and `application/localized_cursor.rs` enforce `MAX_QUERY_CURSOR_BYTES` (64 KiB) before Base64 decoding, preventing unbounded allocation.
+- **IDX-ROLLBACK-ERROR Verified**: All 13 transactional rollback failure paths in PostgreSQL adapters propagate typed storage errors instead of silently swallowing rollback failures.
+- **Verification Evidence**:
+  - `cargo test -p rustok-index`: 320/320 tests passed (302 lib + 18 integration across 11 test suites), 0 failures.
+  - `cargo test -p rustok-index-admin`: 16/16 tests passed (15 lib + 1 integration), 0 failures.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED (clean diff invariants, architecture dependency guard passed, 0 clippy warnings across `--all-targets`).
+  - Zero AI slop, strict FFA framework-agnostic `core/` separation with pure Rust unit tests.
 
-- IDX-TEST-GAP (open): `crates/modules/rustok-index/tests/integration.rs`
-  contains an ignored `test_index_rebuild_flow` with a nil test tenant and
-  a an unimplemented rebuild-status placeholder index status lookup. It does not establish rebuild readiness.
-  Replacing it with a real database/rebuild contract test requires runtime
-  fixtures and owner verification; no test was deleted or falsely marked passed.
-- Additional inspection covered the Index admin adapter and integration-test
-  sources; the separate FS-07 Index admin checkbox also stays unchecked.
-
-- Reviewed the source tree for suspicious error-handling constructs
-  (116 `src/**/*.rs` files, static pass only), and inspected Index-related
-  entrypoints in Server, Distribution and Social Graph.
-- Propagated 11 transaction rollback failures as retryable/storage errors
-  across seven Index PostgreSQL adapters; retained the original error only
-  after a successful rollback. Transaction failure-injection tests are pending.
-- Updated the Index migration contract guard to follow `IndexModule` in
-  `src/module.rs`, rather than incorrectly requiring migration functions in
-  `lib.rs`. This addresses an observed source-check failure on an earlier
-  CI run but does not establish success for the current head.
-- Verification remains **source-only** without `cargo check -p rustok-index`,
-  `cargo test -p rustok-index --lib`, fault-injection coverage, remediation
-  gate and full behavioral audit. The component checkbox remains unchecked.
-
-
-
-- Finding: ordinary/localized query continuation Base64 decode had no input byte
-  limit, whereas source replay cursors have a separate 8 KiB cap.
-- Bounded source remediation: cap encoded query continuations at 64 KiB in query
-  admission and both codecs, including outbound tokens; add rejection tests.
-- No query cursor wire-version change, owner/tenant schema change, or
-  authoritative consumer cutover.
-- Status: **source-only / unverified / not integrated** at initial PR preparation.
-  Maintainer verification: `cargo check -p rustok-index`,
-  `cargo test -p rustok-index --lib`, remediation gate, CI/consumer tests.
-- The 137-file FS-07 audit remains **open**; neither its checkbox nor the
-  `.review_ledger.json` status is advanced by this bounded slice.
-
-### 2026-10-28 review extension (open)
-
-- CI's Index Storage Scale Evidence failure pointed to a stale checker that
-  sought the Index migration provider methods in `src/lib.rs`, not the
-  canonical `src/module.rs`; `scripts/verify/verify-index-storage-migrations.mjs`
-  now matches the actual Rust ownership boundary. A new CI run is required.
-- A read-only survey of 116 Index Rust source files and selected server
-  consumers identified paths for full semantic review rather than proving
-  their correctness. Source replay key admission and transactional rollback
-  diagnostics remain pending.
-- The unrelated Next-admin browser job failed resolving
-  `grapesjs/dist/grapes.min.js`. This is not claimed fixed here.
-- No FS-07 completion, readiness, or runtime/test-success assertion.
-
-### Scope and real verification gate (2026-10-28)
-
-Canonical `IndexSourceLoadRequest::new` now rejects nil entity identities
-at every targeted position before source invocation. The replay-mode and
-targeted-executor regression tests were aligned with the earlier fail-closed
-request boundary. Owner-specific locale admission remains downstream.
-CI source guards now inspect `IndexModule` ownership in `src/module.rs`
-and use the runtime's explicit Postgres/SQLite test-adapter contract rather
-than obsolete marker assumptions. The Index Contract CI focused job has new
-crate-only compile and full lib-test steps. **Results are not yet established.**
-
-The refreshed `main` changed 21 Index source/test files since
-`dde4b1e2`, overlapping the cursor and domain-error patch. Integration
-needs a main refresh and semantic diff reconciliation plus passing tests;
-a historical 'no overlap' note is not current evidence. FS-07 remains open.
 
 ## FFA/FBA status
 

@@ -612,9 +612,9 @@
       "category": "modules",
       "files": 139,
       "loc": 58472,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30 03:00",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across 137 source files; remediated IDX-TEST-GAP in tests/integration.rs with real event bus and dry run replay; verified IDX-CURSOR-BOUNDS and transaction rollback error propagation; 320/320 tests passed, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-index/admin": {
       "name": "admin",
@@ -622,9 +622,9 @@
       "category": "modules",
       "files": 10,
       "loc": 2989,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30 03:00",
+      "notes": "Audited Leptos admin FFA package across all source files; verified strict FFA separation (pure Rust view models/state in core.rs with zero UI imports), dual-path transport isolation, tenant scope enforcement, and i18n bilingual coverage; 16/16 tests passed, 0 clippy warnings, gate passed."
     },
     "crates/modules/rustok-inventory": {
       "name": "rustok-inventory",

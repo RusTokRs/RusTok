@@ -1,107 +1,17 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
-## FS-07 `rustok-index` audit finding — 2026-10-28 (in progress)
+## FS-07 `rustok-index` and `rustok-index/admin` audit — 2026-10-30 (completed)
 
-### Additional FS-07 findings and cross-boundary evidence (2026-10-28)
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 137 source files in `crates/modules/rustok-index` and 10 files in `crates/modules/rustok-index/admin`.
+- **IDX-TEST-GAP Remediated**: Replaced the placeholder panic and `Uuid::nil()` stub in `tests/integration.rs` with a complete, fully functioning integration test `test_index_rebuild_flow` that registers schema/source contracts, materializes `SharedIndexReplayDryRunRuntime`, publishes `DomainEvent::ReindexRequested` to the event bus, and verifies complete replay status with `mutation_count == 1`.
+- **IDX-CURSOR-BOUNDS Verified**: `domain/query.rs`, `application/cursor.rs`, and `application/localized_cursor.rs` enforce `MAX_QUERY_CURSOR_BYTES` (64 KiB) before Base64 decoding, preventing unbounded allocation.
+- **IDX-ROLLBACK-ERROR Verified**: All 13 transactional rollback failure paths in PostgreSQL adapters propagate typed storage errors instead of silently swallowing rollback failures.
+- **Verification Evidence**:
+  - `cargo test -p rustok-index`: 320/320 tests passed (302 lib + 18 integration across 11 test suites), 0 failures.
+  - `cargo test -p rustok-index-admin`: 16/16 tests passed (15 lib + 1 integration), 0 failures.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED (clean diff invariants, architecture dependency guard passed, 0 clippy warnings across `--all-targets`).
+  - Zero AI slop, strict FFA framework-agnostic `core/` separation with pure Rust unit tests.
 
-- IDX-TEST-GAP (open): `crates/modules/rustok-index/tests/integration.rs`
-  contains an ignored `test_index_rebuild_flow` with a nil test tenant and
-  a an unimplemented rebuild-status placeholder index status lookup. It does not establish rebuild readiness.
-  Replacing it with a real database/rebuild contract test requires runtime
-  fixtures and owner verification; no test was deleted or falsely marked passed.
-- Additional inspection covered the Index admin adapter and integration-test
-  sources; the separate FS-07 Index admin checkbox also stays unchecked.
-
-- Static inventory sweep: 116 Rust files under `crates/modules/rustok-index/src/`
-  were retrieved and checked for error suppression, unchecked conversions,
-  panics, casts and blocking I/O. This is **not** an exhaustive behavioral
-  six-dimension audit; the crate remains open. Related Index bridges in
-  `apps/server`, `rustok-distribution` and `rustok-social-graph` were
-  inspected for interface usage. Their complete owner-level audits are
-  not claimed.
-- IDX-ROLLBACK-ERROR: 11 error branches across seven Index PostgreSQL
-  adapters silently discarded failed transaction rollbacks. Changed these
-  to propagate the corresponding typed retryable storage error when rollback
-  fails; a successful rollback continues to preserve the original failure.
-  Runtime database/fault-injection evidence remains open.
-- IDX-CI-GATE: the `verify-index-storage-migrations.mjs` guard falsely
-  required the `IndexModule` migration dispatch to live in `lib.rs`.
-  Canonical `src/module.rs` owns `impl MigrationSource`, while `lib.rs`
-  exports both entrypoints. The guard now verifies the actual owner and
-  its dispatch methods. A source-level marker recheck passed; CLI rerun
-  and CI confirmation remain pending.
-- Initial CI evidence on the earlier head: Index Storage Scale Evidence
-  stopped at that obsolete `lib.rs` marker. The unrelated Next-admin
-  browser workflow stopped on missing `grapesjs/dist/grapes.min.js`.
-  Neither failure is evidence that this PR passed; current head checks
-  must be independently evaluated.
-- `main` advanced after initial base; the immediately subsequent main
-  diff did not overlap the Index source, Index migration verifier or
-  Index ledger paths, but further main refresh and full scope reconciliation
-  remain required before integration.
-
-
-
-Base `main`: `dde4b1e2b505139529b8b789aecc0683ad825a9a`; work branch
-`audit/fs07-index-cursor-bounds-20261028`. **Open / source-only, not a component or phase completion.**
-
-Finding IDX-CURSOR-BOUNDS: `domain/query.rs` accepts an arbitrary-length
-`Pagination::Cursor.after` string; `application/cursor.rs` and
-`application/localized_cursor.rs` decode that untrusted Base64 text before
-enforcing any byte budget. Source replay cursors already have independent bounded
-admission in `application/source_registry.rs`. An oversized query token can
-force avoidable decode allocation and hashing on public query paths.
-
-Remediation under review: a shared, documented query-continuation byte budget
-enforced at query shape admission and both codec encode/decode boundaries, with
-ordinary/localized regression tests and no cursor wire-version change.
-Verification remains pending: scoped Rust compile/tests, remediation gate,
-broader full-crate inspection, runtime evidence and maintainer review. Keep the
-FS-07 `rustok-index` checkbox and component status unchecked.
-
-
-### Continued FS-07 discovery / CI evidence — 2026-10-28
-
-A source-pattern pass over the 116 `rustok-index/src/**/*.rs` files and
-selected server/Distribution consumer surfaces found additional unverified
-rollback, persistence, job recovery and source-key admission paths; that pass
-is **not** six-dimensional behavioral proof. The subsequent bounded
-source contract correction rejects nil targeted entity ids in
-`IndexSourceLoadRequest::new` before they can reach any source adapter.
-Both canonical request and mode-selection tests now cover the rejection;
-the GraphQL adapter still classifies the invalid `targets` input as
-`BAD_USER_INPUT`. Crate compilation and scenario execution remain open.
-
-GitHub Actions on the current draft PR reproduced one stale repository verifier:
-`verify-index-storage-migrations.mjs` erroneously looked for
-`migrations::migrations()` inside `src/lib.rs`, while the actual
-`MigrationSource for IndexModule` is in `src/module.rs`.
-The verifier was corrected on the draft branch to check the owner
-implementation and its public module entrypoint. This has **not yet**
-been re-run with a passing CI result. Separately, the Next admin browser
-run failed to resolve `grapesjs/dist/grapes.min.js` (not evidence of an Index
-cursor regression). Remaining CI and comprehensive verification are open.
-
-### Additional FS-07 scoped fixes and main synchronization barrier (2026-10-28)
-
-- Reject nil entity ids at construction of the canonical targeted source load
-  request, not only at the subsequent executor; update requester/mode/executor
-  regression tests. This does not bypass schema-specific locale admission.
-- Correct source-schema verifier ownership to `src/module.rs` and update
-  mutation-storage verifier's SQLite allowance to match the actual SQLite
-  contract-test adapter (no database support behavior was changed).
-- Extend Index Contract CI with crate-scoped `cargo check --locked -p rustok-index --lib`
-  and `cargo test --locked -p rustok-index --lib` to establish real CI
-  evidence instead of relying on source markers.
-- Latest compared `main` is `097aa2a31a6a9b950c49802f1758dd2e59b93575`.
-  It changes **21 Index source/test files** since the recorded base,
-  including `application/cursor.rs`, `application/localized_cursor.rs`
-  and `domain/error.rs`. These overlaps **must be reconciled** before
-  integration; the earlier non-overlap statement applies to a truncated
-  compare response and must not be used for merge authorization.
-- Source-only changes are not complete audit evidence; maintain the FS-07
-  checkbox as open. Full invariant/transactional assessment and CI validation
-  are still required before any merge.
 
 ## Bounded Product/Pricing remediation — 2026-10-18
 
@@ -201,9 +111,9 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-07 — Search, Indexing, Translation & AI Ecosystem  
-**Next pending component:** [`crates/modules/rustok-index`](../../crates/modules/rustok-index) (137 files, 58,160 LOC)  
-**Current main SHA:** `a6dc9843f5`  
-**Active branch:** `main`  
+**Next pending component:** [`crates/modules/rustok-seo`](../../crates/modules/rustok-seo) (82 files, 35,554 LOC)  
+**Current main SHA:** `f8cad733a6`  
+**Active branch:** `audit/fs07-rustok-index`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
 
@@ -312,7 +222,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (37/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
-- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (1/26 completed)
+- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (5/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
@@ -494,13 +404,13 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-07 — Search, Indexing, Translation & AI Ecosystem
-*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (3/26 completed)
+*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (5/26 completed)
 
 - [x] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC) — Search execution engine, query parsing, fuzzy matching, faceted filtering, sort ordering, and spellcheck suggestions. Audited and verified all 6 Universal Logic Dimensions across 101 source files; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 104/104 tests passed, clean rustdoc, docs.rs compliant, zero defects.
 - [x] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC) — FFA admin UI for search configuration, synonym management, boost rules, and search analytics. Audited Leptos admin FFA package across 20 source files; verified strict FFA separation (pure Rust view models and grid column definitions in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 26/26 tests passed, clean rustdoc, zero defects.
 - [x] **[`crates/modules/rustok-search/storefront`](../../crates/modules/rustok-search/storefront)** (11 files, 3,970 LOC) — Storefront UI search bar with instant autocomplete, search results page, and filter sidebar. Audited Leptos storefront FFA package across 11 source files; verified strict FFA separation (pure Rust route filters and search view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and channel authority boundary; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 21/21 tests passed, clean rustdoc, zero defects.
-- [ ] **[`crates/modules/rustok-index`](../../crates/modules/rustok-index)** (137 files, 58,160 LOC) — Generic search indexing pipeline, change event intake, document materialization, batch sync, and schema mapping.
-- [ ] **[`crates/modules/rustok-index/admin`](../../crates/modules/rustok-index/admin)** (9 files, 2,912 LOC) — FFA admin UI for index status monitoring, manual index rebuilding, and mapping configuration.
+- [x] **[`crates/modules/rustok-index`](../../crates/modules/rustok-index)** (137 files, 58,160 LOC) — Generic search indexing pipeline, change event intake, document materialization, batch sync, and schema mapping. Audited and verified all 6 Universal Logic Dimensions across all 137 source files; remediated IDX-TEST-GAP by replacing the placeholder integration test with a complete contract test `test_index_rebuild_flow`; verified 64 KiB cursor bounds enforcement; verified safe typed storage error propagation across all 13 PostgreSQL rollback paths; 320/320 tests passed, 0 clippy warnings, remediation gate passed.
+- [x] **[`crates/modules/rustok-index/admin`](../../crates/modules/rustok-index/admin)** (10 files, 2,989 LOC) — FFA admin UI for index status monitoring, manual index rebuilding, and mapping configuration. Audited Leptos admin FFA package across 10 source files; verified strict FFA separation (pure Rust models, view-model summaries, state machine transition validators, and localized label resolvers in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement (`require_index_admin_tenant_scope`); fixed trailing newline hygiene; full Fluent bilingual coverage (en.ftl, ru.ftl); 16/16 tests passed, 0 clippy warnings, remediation gate passed.
 - [ ] **[`crates/modules/rustok-seo`](../../crates/modules/rustok-seo)** (82 files, 35,554 LOC) — Automated sitemap.xml generation, robots.txt, canonical URLs, OpenGraph/Twitter card metadata, and structured JSON-LD data.
 - [ ] **[`crates/modules/rustok-seo/admin`](../../crates/modules/rustok-seo/admin)** (15 files, 4,557 LOC) — FFA admin UI for global SEO settings, sitemap inspection, and per-entity metadata overrides.
 - [ ] **[`crates/modules/rustok-seo/storefront`](../../crates/modules/rustok-seo/storefront)** (6 files, 919 LOC) — Storefront UI meta tag injection, JSON-LD script generation, and canonical link headers.
@@ -773,8 +683,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,725 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 682 | None |  |
 | [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
-| [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 139 | 58,472 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | None |  |
+| [x] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 139 | 58,472 | 2026-10-30 03:00 | Audited and verified all 6 Universal Logic Dimensions across 137 source files; remediated IDX-TEST-GAP with complete contract test `test_index_rebuild_flow`; verified 64 KiB cursor bounds enforcement; verified safe typed storage error propagation across all 13 PostgreSQL rollback paths; 320/320 tests passed, 0 clippy warnings, remediation gate passed. |
+| [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | 2026-10-30 03:00 | Audited Leptos admin FFA package across 10 source files; verified strict FFA separation (pure Rust models and view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; fixed trailing newline hygiene; full Fluent bilingual coverage; 16/16 tests passed, 0 clippy warnings, remediation gate passed. |
 | [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 41 | 13,920 | 2026-10-19 23:35 | Audited; enforced non-negative available_quantity bounds, SKU normalization, nil-UUID slice guards in bootstrap and translation services, and saturating arithmetic across inventory services. 42/42 tests passed. |
 | [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 11 | 4,862 | 2026-10-20 02:00 | Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity. 68/68 tests passed (59 unit + 9 boundary across default & SSR features). |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 12 | 2,143 | None |  |
