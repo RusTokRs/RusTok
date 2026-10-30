@@ -86,6 +86,21 @@ the AI host retains that typed receipt separately from redacted tool output.
 - `cargo check -p rustok-mcp-admin --features ssr`
 - `cargo test -p rustok-mcp --lib`
 
+## Phase FS-07 audit and remediation status
+
+- **Scope:** `rustok-mcp` (control plane, RMCP adapter, Alloy bridge), `rustok-mcp-admin` (Leptos admin UI package), and Next.js admin adapter parity (`apps/next-admin/packages/rustok-mcp`).
+- **Cargo metadata:** Workspace standardization applied (`rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`).
+- **Universal Logic Dimensions:** Verified bounds, anti-swallowing, state integrity, and redacted audit receipts across stdio and remote SSE transports.
+- **Verification evidence:**
+  - `cargo test -p rustok-mcp --lib` (25 unit tests passed)
+  - `cargo test -p rustok-mcp --test tools` (8 tests passed)
+  - `cargo test -p rustok-mcp --test contract_surface` (1 test passed)
+  - `cargo test -p rustok-mcp-admin` (4 tests passed)
+  - `cargo check -p rustok-mcp-admin --features ssr` (passed)
+  - `node scripts/verify/verify-mcp-admin-boundary.mjs` (passed)
+  - `node scripts/verify/verify-api-surface-contract.mjs` (passed)
+  - `node scripts/verify/verify-axum-runtime.mjs` (passed)
+
 ## References
 
 - [Crate README](../README.md)

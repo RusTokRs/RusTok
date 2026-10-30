@@ -3,6 +3,9 @@ name = "rustok-mcp-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Leptos admin UI package for the rustok-mcp control plane"
 
 [package.metadata.docs.rs]

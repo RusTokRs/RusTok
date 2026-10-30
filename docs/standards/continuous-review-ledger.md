@@ -1,5 +1,21 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-07 `rustok-mcp`, `rustok-mcp/admin`, and `apps/next-admin/packages/rustok-mcp` audit — 2026-10-30 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 26 source files in `crates/modules/rustok-mcp` and 7 files in `crates/modules/rustok-mcp/admin`.
+- **Transport & Security Invariants Verified**: Verified stdio and authenticated remote JSON/SSE transport boundaries; remote Alloy script authoring requires `scripts.manage`, validates tenant equality, and redacts source-bearing tool responses and audit payloads; stdio and in-process MCP statically omit tenant-scoped operations; stable SHA-256 source digest calculation for Alloy scaffold reviews.
+- **FFA & Dual Admin Parity Verified**: Strict FFA separation in Leptos admin package with pure view models; Next.js admin adapter parity verified via `verify-mcp-admin-boundary.mjs` with GraphQL schema alignment and route coverage.
+- **Cargo Metadata Standardized**: Standardized `rust-version.workspace = true`, `repository.workspace = true`, and `readme = "README.md"` across crates.
+- **Verification Evidence**:
+  - `cargo test -p rustok-mcp --lib`: 25/25 unit tests passed.
+  - `cargo test -p rustok-mcp --tests`: 9 integration/contract tests passed.
+  - `cargo test -p rustok-mcp-admin`: 4/4 tests passed.
+  - `cargo check -p rustok-mcp-admin --features ssr`: passed.
+  - `node scripts/verify/verify-mcp-admin-boundary.mjs`: passed.
+  - `node scripts/verify/verify-api-surface-contract.mjs`: passed.
+  - `node scripts/verify/verify-axum-runtime.mjs`: passed.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED.
+
 ## FS-07 `rustok-index` and `rustok-index/admin` audit — 2026-10-30 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 137 source files in `crates/modules/rustok-index` and 10 files in `crates/modules/rustok-index/admin`.
@@ -111,9 +127,9 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-07 — Search, Indexing, Translation & AI Ecosystem  
-**Next pending component:** [`crates/modules/rustok-mcp`](../../crates/modules/rustok-mcp) (26 files, 6,939 LOC)  
-**Current main SHA:** `a7c57e6758`  
-**Active branch:** `audit/fs07-rustok-translation`  
+**Next pending component:** [`crates/modules/rustok-ai`](../../crates/modules/rustok-ai) (74 files, 42,418 LOC)  
+**Current main SHA:** `5beb9f6b54`  
+**Active branch:** `audit/fs07-rustok-mcp`  
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
 
@@ -222,7 +238,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (37/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
-- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (12/26 completed)
+- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (17/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
@@ -404,7 +420,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-07 — Search, Indexing, Translation & AI Ecosystem
-*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (15/26 completed)
+*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (17/26 completed)
 
 - [x] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC) — Search execution engine, query parsing, fuzzy matching, faceted filtering, sort ordering, and spellcheck suggestions. Audited and verified all 6 Universal Logic Dimensions across 101 source files; standardized CRATE_API.md with ## Public surface and contract_tests.rs; added rust-version, repository, and readme to Cargo.toml; 104/104 tests passed, clean rustdoc, docs.rs compliant, zero defects.
 - [x] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC) — FFA admin UI for search configuration, synonym management, boost rules, and search analytics. Audited Leptos admin FFA package across 20 source files; verified strict FFA separation (pure Rust view models and grid column definitions in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; added canonical CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 26/26 tests passed, clean rustdoc, zero defects.
@@ -421,8 +437,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/modules/rustok-translation`](../../crates/modules/rustok-translation)** (81 files, 45,996 LOC) — Translation memory, localized string catalogs, fallback chains, translation export/import, and 49-operation admin contract. Audited and verified all 6 Universal Logic Dimensions across 81 source files; remediated RBAC regression in `collaboration.rs` where job-level notes mistakenly required `Action::Manage`, restoring intended contributor `Action::Update` access and passing all 27 integration tests in `tests/workflow.rs`; reconciled public error safety verification script to 88 variants; standardized `rust-version.workspace = true`; 38 lib unit tests and 50 integration tests passed, 0 clippy warnings, gate passed.
 - [x] **[`crates/modules/rustok-translation/admin`](../../crates/modules/rustok-translation/admin)** (9 files, 14,236 LOC) — FFA admin UI for side-by-side translation editor, missing translation filters, and PO/XLIFF export/import. Audited Leptos admin FFA package across 9 source files; verified strict FFA separation (pure Rust models and view models in `core.rs` with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; full Fluent bilingual coverage (en.ftl, ru.ftl); added `rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`; 26/26 tests passed, 0 clippy warnings, remediation gate passed.
 - [x] **[`crates/libs/rustok-translation-targets`](../../crates/libs/rustok-translation-targets)** (3 files, 1,729 LOC) — Translation target registration contracts, provider seams, and entity translation keys. Audited target provider contracts and runtime registry across 3 source files; verified exact locale validation, protected token ledger matchers, whitespace shape preservation, and fail-closed AI export guards; added `rust-version.workspace = true`; 11 unit tests and 3 integration tests passed, 0 clippy warnings, zero defects.
-- [ ] **[`crates/modules/rustok-mcp`](../../crates/modules/rustok-mcp)** (26 files, 6,939 LOC) — Model Context Protocol (MCP) server, tool registry, resource providers, context prompts, and secure agent sandboxes.
-- [ ] **[`crates/modules/rustok-mcp/admin`](../../crates/modules/rustok-mcp/admin)** (7 files, 1,873 LOC) — FFA admin UI for MCP server status, registered tool catalog, and access token permissions.
+- [x] **[`crates/modules/rustok-mcp`](../../crates/modules/rustok-mcp)** (26 files, 6,939 LOC) — Model Context Protocol (MCP) server, tool registry, resource providers, context prompts, and secure agent sandboxes. Audited and verified all 6 Universal Logic Dimensions across 26 source files; verified stdio and authenticated remote JSON/SSE transport boundaries, source-redacted audit logging, Alloy scaffold digest verification, and tenant isolation; standardized `rust-version.workspace = true`; 25 lib unit tests and 9 contract/integration tests passed, clean rustdoc, zero defects.
+- [x] **[`crates/modules/rustok-mcp/admin`](../../crates/modules/rustok-mcp/admin)** (7 files, 1,873 LOC) — FFA admin UI for MCP server status, registered tool catalog, and access token permissions. Audited Leptos admin UI package across 7 source files; verified dual-path transport (GraphQL / ServerFn) and host runtime context; verified Next.js admin adapter parity via `verify-mcp-admin-boundary.mjs`; standardized `rust-version`, `repository`, and `readme` in Cargo.toml; 4/4 tests passed, SSR check passed, zero defects.
 - [ ] **[`crates/modules/rustok-ai`](../../crates/modules/rustok-ai)** (74 files, 42,418 LOC) — AI LLM orchestration, provider-neutral embeddings, vector indexing, prompt templates, and streaming completions.
 - [ ] **[`crates/modules/rustok-ai/admin`](../../crates/modules/rustok-ai/admin)** (17 files, 8,538 LOC) — FFA admin UI for AI provider credentials, model selection, prompt tuning, and usage metrics.
 - [ ] **[`crates/modules/rustok-ai-alloy`](../../crates/modules/rustok-ai-alloy)** (1 files, 384 LOC) — AI assistant integration with Alloy dynamic schemas for natural language data generation.
