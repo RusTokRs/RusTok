@@ -19,8 +19,8 @@ const FORBIDDEN_DOMAIN = [
   ["SeaORM migrations", /\bsea_orm_migration(?:::|\s)/],
   ["Axum", /\baxum(?:_[a-z0-9]+)*(?:::|\s)/],
   ["GraphQL", /\b(?:async_graphql|rustok_graphql)(?:_[a-z0-9]+)*(?:::|\s)/],
-  ["Leptos ecosystem", /\bleptos(?:_[a-z0-9]+)*(?:::|\s)/],
-  ["Dioxus ecosystem", /\bdioxus(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["Leptos", /\bleptos(?:_[a-z0-9]+)*(?:::|\s)/],
+  ["Dioxus", /\bdioxus(?:_[a-z0-9]+)*(?:::|\s)/],
   ["rustok-web", /\brustok_web(?:_[a-z0-9]+)*(?:::|\s)/],
 ];
 const FORBIDDEN_SERVICE = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
