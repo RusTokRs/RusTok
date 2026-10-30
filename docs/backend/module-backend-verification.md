@@ -47,9 +47,9 @@ It is static: it cannot prove behavioral correctness, Next.js parity, live FBA
 transport, or publish registration readiness.
 
 Existing unconverted native modules may fail the canonical lint; findings are
-migration tasks, not opt-in exceptions. Node verifier fixture tests live in
-`scripts/verify/native-module-layout.test.mjs`; run them with
-`node --test scripts/verify/native-module-layout.test.mjs`.
+migration tasks, not opt-in exceptions. The canonical `npm run verify:module-source-layout` command also runs the
+shared validator fixtures with `node --test scripts/verify/native-module-layout.test.mjs`.
+This keeps generic native lint behavior under the same CI gate as the Blog reference profile.
 
 ## Post-scaffold verification
 
