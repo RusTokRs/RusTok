@@ -263,6 +263,7 @@ test("the opposite-side support crate is valid beside a single live surface", ()
       '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
       '[crate]\nentry_type = "SampleModule"\n' +
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n' +
       '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
@@ -279,6 +280,7 @@ test("the opposite-side support crate is valid beside a single live surface", ()
     ctx.write("storefront/Cargo.toml",
       '[package]\nname = "rustok-sample-storefront-support"\n');
     ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
+    writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
     assert.deepEqual(lint(ctx), []);
   });
 });
