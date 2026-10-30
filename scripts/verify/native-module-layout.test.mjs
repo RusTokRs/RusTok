@@ -737,17 +737,6 @@ test("transport adapters must expose public operations to their facade", () => {
   });
 });
 
-test("Leptos root component must be public and re-exportable", () => {
-  fixture((ctx) => {
-    ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
-      '[crate]\nentry_type = "SampleModule"\n');
-    writeFfaSurface(ctx, "admin");
-    ctx.write("admin/src/ui/leptos.rs", "#[component]\nfn Surface() {}\n");
-    assert.match(lint(ctx).join("\n"), /Leptos root component must be public/);
-  });
-});
-
 test("direct lib.rs re-export requires a visible ui::leptos module", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",

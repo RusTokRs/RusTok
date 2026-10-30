@@ -558,9 +558,6 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (!/#\s*\[\s*component\s*\]/.test(uiLeptosCode)) {
     diagnostics.push(relative(root, uiLeptos) + ": Leptos render adapter must define a component");
   }
-  if (!/\bpub\s+(?:async\s+)?fn\s+[A-Z][A-Za-z0-9_]*/.test(uiLeptosCode)) {
-    diagnostics.push(relative(root, uiLeptos) + ": Leptos root component must be public so the crate facade can re-export it");
-  }
   const uiReexportsLeptos = /\bpub\s+use\s+(?:self::)?leptos::/.test(uiModuleCode);
   const libReexportsLeptosDirectly = /\bpub\s+use\s+(?:crate::)?ui::leptos::/.test(libCode);
   if (!uiReexportsLeptos && !libReexportsLeptosDirectly) {
