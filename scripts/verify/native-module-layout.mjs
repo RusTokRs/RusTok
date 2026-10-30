@@ -13,7 +13,7 @@ const BACKEND_SLOTS = new Set([
   "domain", "dto", "entities", "services", "ports", "integrations",
   "graphql", "controllers", "rest", "migrations", "tests", "events", "error",
 ]);
-const ALLOWED_ROOT_RUST_FILES = new Set(["lib.rs", "module.rs", "runtime.rs"]);
+const ALLOWED_ROOT_RUST_FILES = new Set(["lib.rs", "module.rs", "runtime.rs", "error.rs"]);
 const FORBIDDEN_DOMAIN = [
   ["SeaORM", /\bsea_orm(?:::|\s)/],
   ["SeaORM migrations", /\bsea_orm_migration(?:::|\s)/],
@@ -232,7 +232,13 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     diagnostics.push(relative(root, uiRoot) + ": Cargo package name differs from expected Leptos package " + configured);
   }
   const lib = readRequired(root, join(src, "lib.rs"), diagnostics);
-  readRequired(root, join(src, "model.rs"), diagnostics);
+  const model = readRequired(root, join(src, "model.rs"), diagnostics);
+  const modelCode = maskRustNonCode(model);
+  for (const [name, regex] of FORBIDDEN_CORE) {
+    if (regex.test(modelCode)) {
+      diagnostics.push(relative(root, join(src, "model.rs")) + ": forbidden " + name + " dependency in FFA model");
+    }
+  }
   if (!hasSource(join(src, "i18n.rs")) && !hasSource(join(src, "i18n", "mod.rs"))) {
     diagnostics.push(relative(root, src) + ": required module-owned i18n entrypoint missing");
   }
@@ -300,6 +306,9 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   }
   if (/#\s*\[\s*component\s*\]/.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) + ": UI components belong in ui/, not lib.rs");
+  }
+  if (/\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/.test(libCode)) {
+    diagnostics.push(relative(root, join(src, "lib.rs")) + ": FFA lib.rs must remain a module/re-export facade");
   }
   // Next.js packages are host-owned; this lint does not infer their parity from Leptos.
 }
@@ -400,6 +409,9 @@ export function lintNativeModule(root, modulePath, slug) {
   const module = readRequired(repo, join(src, "module.rs"), diagnostics);
   const libCode = maskRustNonCode(lib);
   const moduleCode = maskRustNonCode(module);
+  if (/\b(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(|\b(?:pub\s+)?(?:struct|enum|trait|type|const|static)\b|\bimpl\b/.test(libCode)) {
+    diagnostics.push(relative(repo, join(src, "lib.rs")) + ": lib.rs must remain a thin module/re-export facade");
+  }
   if (lib && !/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+module\s*;/.test(libCode)) {
     diagnostics.push(relative(repo, join(src, "lib.rs")) + ": module.rs is not declared");
   }
@@ -425,6 +437,15 @@ export function lintNativeModule(root, modulePath, slug) {
   }
   if (hasSource(join(src, "runtime.rs")) && !/\bmod\s+runtime\s*;/.test(libCode)) {
     diagnostics.push(relative(repo, join(src, "runtime.rs")) + ": optional runtime.rs must be declared by lib.rs");
+  }
+  if (hasSource(join(src, "error.rs")) && isDirectory(join(src, "error"))) {
+    diagnostics.push(relative(repo, join(src, "error.rs")) + ": use either error.rs or error/, not both");
+  }
+  for (const rootModule of ["runtime", "error"]) {
+    if (hasSource(join(src, rootModule + ".rs")) &&
+        !new RegExp("\\bmod\\s+" + rootModule + "\\s*;").test(libCode)) {
+      diagnostics.push(relative(repo, join(src, rootModule + ".rs")) + ": " + rootModule + ".rs must be declared by lib.rs");
+    }
   }
   const contractPath = join(src, "tests", "contract.rs");
   if (!hasSource(contractPath)) {
@@ -453,6 +474,9 @@ export function lintNativeModule(root, modulePath, slug) {
     if (!isDirectory(dir)) continue;
     if (!hasSource(join(dir, "mod.rs"))) {
       diagnostics.push(relative(repo, dir) + ": responsibility directory requires mod.rs");
+    }
+    if (!new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + slot + "\\s*;").test(libCode)) {
+      diagnostics.push(relative(repo, dir) + ": responsibility directory is not declared by lib.rs");
     }
     const files = rustFiles(dir);
     const payload = files.map((file) => maskRustNonCode(readFileSync(file, "utf8")).trim()).join("");

@@ -73,6 +73,8 @@ test("domain and application boundaries reject transport dependencies", () => {
   fixture((ctx) => {
     ctx.write("src/domain/mod.rs", "use sea_orm::EntityTrait;\n");
     ctx.write("src/services/mod.rs", "use axum::Router;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod domain;\nmod services;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
     const failures = lint(ctx).join("\n");
     assert.match(failures, /forbidden SeaORM/);
     assert.match(failures, /forbidden Axum/);
@@ -306,6 +308,8 @@ test("unknown responsibility directories and empty optional slots are rejected",
   fixture((ctx) => {
     ctx.write("src/helpers/mod.rs", "pub fn helper() {}\n");
     ctx.write("src/integrations/mod.rs", "//! Placeholder only.\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod integrations;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
     const failures = lint(ctx).join("\n");
     assert.match(failures, /unrecognized native responsibility directory/);
     assert.match(failures, /empty responsibility slot is forbidden/);
@@ -364,5 +368,53 @@ test("Leptos UI code cannot bypass the transport facade through raw adapters", (
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     assert.match(lint(ctx).join("\n"), /UI must use the module transport facade/);
+  });
+});
+
+
+test("optional error.rs is a canonical root responsibility when wired", () => {
+  fixture((ctx) => {
+    ctx.write("src/error.rs", "pub struct DomainError;\n");
+    assert.match(lint(ctx).join("\n"), /error\.rs must be declared/);
+    ctx.write("src/lib.rs",
+      'mod module;\nmod error;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("native lib.rs rejects business definitions instead of acting as a dumping ground", () => {
+  fixture((ctx) => {
+    ctx.write("src/lib.rs",
+      'mod module;\npub use module::SampleModule;\npub fn create() {}\n#[cfg(test)]\nmod tests;\n');
+    assert.match(lint(ctx).join("\n"), /lib\.rs must remain a thin module\/re-export facade/);
+  });
+});
+
+test("an optional responsibility directory must be wired through lib.rs", () => {
+  fixture((ctx) => {
+    ctx.write("src/domain/mod.rs", "pub struct Domain;\n");
+    assert.match(lint(ctx).join("\n"), /responsibility directory is not declared by lib\.rs/);
+  });
+});
+
+test("FFA model remains framework-independent", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("admin/src/lib.rs",
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/model.rs", "use leptos::prelude::*;\n");
+    ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
+    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
+    ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
+    assert.match(lint(ctx).join("\n"), /forbidden Leptos dependency in FFA model/);
   });
 });
