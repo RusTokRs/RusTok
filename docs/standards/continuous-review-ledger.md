@@ -1,5 +1,17 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-08 `rustok-module-build-worker` audit — 2026-10-30 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all source files in `crates/workers/rustok-module-build-worker` (`src/lib.rs`, `src/main.rs`, `src/artifact.rs`, `src/materializer.rs`, `src/policy.rs`, `src/runner.rs`, `src/source.rs`, `src/bin/rustok-module-build-worker-probe.rs`).
+- **Hardened Execution & Invariants Verified**: Verified OCI launcher digest re-verification, gVisor/Kata container isolation attestation, RAII workspace directory cleanup preventing path traversal outside workspace root, offline Cargo metadata enforcement (`CARGO_NET_OFFLINE=true`), SHA-256 lockfile digest binding, and output stream budgeting preventing memory exhaustion.
+- **Typed Errors & Anti-Swallowing**: Converted all 9 domain error enums (`SourceMaterializationError`, `DependencyMaterializationError`, `SourcePolicyError`, `CargoMetadataError`, `ComponentArtifactError`, `BuildEvidenceError`, `WitContractError`, `PublicationBundleError`, `ArtifactDescriptorError`) to strongly-typed `thiserror::Error` with descriptive display implementations; propagated non-empty trimmed stderr diagnostics on launcher and materializer process failures.
+- **Cargo Metadata Standardized**: Standardized `rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`, `thiserror.workspace = true`, and `[package.metadata.docs.rs]`.
+- **Contract Documentation & Tests**: Created canonical `CRATE_API.md` and added contract unit tests in `src/contract_tests.rs`.
+- **Verification Evidence**:
+  - `cargo test -p rustok-module-build-worker`: 14/14 tests passed (0 failures).
+  - `cargo clippy -p rustok-module-build-worker --all-targets`: 0 warnings.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED.
+
 ## FS-07 `rustok-ai` ecosystem audit — 2026-10-30 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 74 source files in `crates/modules/rustok-ai`, 17 files in `crates/modules/rustok-ai/admin`, and vertical packages (`rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, `rustok-ai-translation`).
@@ -156,9 +168,9 @@ review/integration remain open. No sequential FS cursor, checkbox or readiness p
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)  
-**Next pending component:** [`crates/workers/rustok-module-build-worker`](../../crates/workers/rustok-module-build-worker) (8 files, 4,124 LOC)  
-**Current main SHA:** `1b352b4031`  
-**Active branch:** `audit/fs07-rustok-ai`  
+**Next pending component:** [`crates/workers/rustok-module-build-dispatcher`](../../crates/workers/rustok-module-build-dispatcher) (3 files, 504 LOC)  
+**Current main SHA:** `60267e392b`  
+**Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **262 components** (~350k LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
 
@@ -268,7 +280,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
-- [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
+- [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (1/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
 - [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (0/34 completed)
@@ -481,9 +493,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)
-*Distributed build workers, artifact node agents, sandbox execution environments, static distribution, verification, and streaming event log infrastructure.* (0/19 completed)
+*Distributed build workers, artifact node agents, sandbox execution environments, static distribution, verification, and streaming event log infrastructure.* (1/19 completed)
 
-- [ ] **[`crates/workers/rustok-module-build-worker`](../../crates/workers/rustok-module-build-worker)** (8 files, 4,124 LOC) — Compilation worker for native Rust, WASM, and Rhai extension modules with strict caching.
+- [x] **[`crates/workers/rustok-module-build-worker`](../../crates/workers/rustok-module-build-worker)** (9 files, 4,306 LOC) — Compilation worker for native Rust, WASM, and Rhai extension modules with strict caching. Audited; standardized CRATE_API.md, docs.rs metadata, and contract_tests.rs; implemented informative Debug and typed thiserror derives across all worker error types; verified 6 Universal Logic Dimensions across OCI job runner, dependency materializer, policy preflight, and artifact inspection; 14/14 tests passed, 0 clippy warnings, zero defects.
 - [ ] **[`crates/workers/rustok-module-build-dispatcher`](../../crates/workers/rustok-module-build-dispatcher)** (3 files, 504 LOC) — Build task scheduler, queue prioritization, node health tracking, and dispatching.
 - [ ] **[`crates/workers/rustok-module-build-transport`](../../crates/workers/rustok-module-build-transport)** (6 files, 325 LOC) — gRPC transport contracts for build worker-to-dispatcher communication.
 - [ ] **[`crates/workers/rustok-artifact-node-agent`](../../crates/workers/rustok-artifact-node-agent)** (8 files, 2,421 LOC) — Artifact node agent managing local disk caches, signature verification, and binary deployment.
@@ -620,11 +632,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [media](../../apps/next-admin/packages/media) | `apps` | 5 | 272 | None |  |
 | [ ] | [pages](../../apps/next-admin/packages/pages) | `apps` | 6 | 500 | None |  |
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 13 | 2,197 | None |  |
-| [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | None |  |
-| [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | None |  |
+| [x] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | 2026-10-30 07:55 | Audited Next.js admin adapter parity; verified admin boundary, GraphQL types, and target catalog parity via verify-ai-admin-boundary.mjs; zero defects. |
+| [x] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | 2026-10-30 06:40 | Audited Next.js admin adapter parity; verified admin boundaries, GraphQL schema alignment, and token management parity via verify-mcp-admin-boundary.mjs; zero defects. |
 | [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 41 | 12,302 | None |  |
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 1 | 2,926 | None |  |
-| [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
+| [x] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | 2026-10-30 05:40 | Verified Next.js admin translation package parity with Leptos admin across all 49 operations via verify:translation:admin-boundary script; all routes, layouts, and translations verified. |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,529 | None |  |
 | [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 156 | 25,597 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 17 | 1,858 | None | Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated. |
@@ -637,7 +649,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 7 | 904 | None |  |
 | [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 11 | 2,319 | None |  |
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 7 | 780 | None |  |
-| [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | None |  |
+| [x] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 5 | 1,459 | 2026-10-30 04:30 | Verified Next.js SEO frontend package; verified canonical SeoPageContext contract, site metadata builder, and runtime fixtures; all 10 D8 gates passed, zero defects. |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 1 | 681 | None |  |
 | [ ] | [server](../../apps/server) | `apps` | 495 | 198,537 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 6,151 | None |  |
@@ -651,22 +663,22 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 7 | 1,045 | 2026-10-17 01:09 | Audited and cleaned. |
 | [ ] | [rustok-pricing-persistence](../../crates/libs/rustok-pricing-persistence) | `libs` | 6 | 668 | None |  |
 | [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 5 | 2,457 | 2026-10-17 00:58 | Audited and cleaned. |
-| [x] | [rustok-seo-targets](../../crates/libs/rustok-seo-targets) | `libs` | 2 | 1,516 | 2026-10-30 04:50 | Audited runtime SEO target capability registry and schema builders; 8/8 tests passed, zero defects. |
+| [x] | [rustok-seo-targets](../../crates/libs/rustok-seo-targets) | `libs` | 2 | 1,516 | 2026-10-30 04:30 | Audited runtime SEO target capability registry and schema builders; verified canonical SeoTargetSlug contract, slug validation, duplicate slug rejection, capability filtering, and typed JSON-LD emitters; 8/8 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,361 | 2026-10-17 01:15 | Audited and cleaned. |
 | [x] | [rustok-translation-targets](../../crates/libs/rustok-translation-targets) | `libs` | 4 | 1,780 | 2026-10-30 05:40 | Audited target provider contracts and runtime registry; 11 unit tests and 3 integration tests passed, zero defects. |
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 3 | 775 | 2026-10-17 01:44 | Audited and cleaned. |
 | [x] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,264 | 2026-10-25 01:03 | Audited and verified all 6 Universal Logic Dimensions across 77 files; standardized AlloyModule with RusToKModule/MigrationSource; verified canonical CRATE_API.md and contract_tests.rs; added docs.rs and repository metadata; 126/126 unit tests passed, zero defects. |
 | [x] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,215 | 2026-10-25 02:26 | Audited and verified all 6 Universal Logic Dimensions across 51 source files; standardized FlexModule in src/module.rs with RusToKModule/MigrationSource; created canonical CRATE_API.md and contract_tests.rs; added docs.rs, readme, and repository metadata; 86/86 tests passed, zero defects. |
 | [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | 2026-10-18 20:00 | Audited and cleaned. Standard chart of accounts, bounds and character validation, 1000 lines limit, storno generation, multi-currency trial balance, outbox events, 27/27 tests passed. |
-| [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,489 | None |  |
-| [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 413 | None |  |
-| [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 572 | None |  |
-| [ ] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 2 | 355 | None |  |
-| [ ] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 2 | 100 | None |  |
-| [ ] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 2 | 284 | None |  |
-| [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 336 | None |  |
-| [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,684 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,567 | None |  |
+| [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,489 | 2026-10-30 07:55 | Audited 6 Universal Logic Dimensions across 77 files; verified Rig 0.39 runtime, provider profile catalog, secret resolvers, RAG vector data plane, and permission intersection; 37/37 tests passed, zero defects. |
+| [x] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 413 | 2026-10-30 07:55 | Audited Alloy flow verticals; verified execution policy metadata and static evidence; 2/2 tests passed, zero defects. |
+| [x] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 572 | 2026-10-30 07:55 | Audited Athanor library adapter for lexical/semantic vector embeddings; 2/2 tests passed, zero defects. |
+| [x] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 2 | 355 | 2026-10-30 07:55 | Audited content moderation verticals, blog draft payloads, and policy matrix; 11/11 tests passed, zero defects. |
+| [x] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 2 | 100 | 2026-10-30 07:55 | Audited media flow verticals and image size normalization; 2/2 tests passed, zero defects. |
+| [x] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 2 | 284 | 2026-10-30 07:55 | Audited order analytics and ops assistant vertical descriptors; 10/10 tests passed, zero defects. |
+| [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 336 | 2026-10-30 07:55 | Audited product attributes, flex keys, and copy generation verticals; 7/7 tests passed, zero defects. |
+| [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,684 | 2026-10-30 07:55 | Audited machine-translation bridge, structured task mapping, and prompt policy digest; 19/19 tests passed, zero defects. |
+| [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,567 | 2026-10-30 07:55 | Audited Leptos admin FFA package across 18 files; verified strict FFA separation in core/, dual-path transport (GraphQL/ServerFn), and prompt/catalog editor; 26/26 tests passed, zero defects. |
 | [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 59 | 14,541 | 2026-10-17 02:47 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 21 | 7,373 | 2026-10-17 03:04 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 359 | 2026-10-17 03:19 | Audited and cleaned. |
@@ -728,8 +740,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,725 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 682 | None |  |
 | [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
-| [x] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 139 | 58,472 | 2026-10-30 03:00 | Audited and verified all 6 Universal Logic Dimensions across 137 source files; remediated IDX-TEST-GAP with complete contract test `test_index_rebuild_flow`; verified 64 KiB cursor bounds enforcement; verified safe typed storage error propagation across all 13 PostgreSQL rollback paths; 320/320 tests passed, 0 clippy warnings, remediation gate passed. |
-| [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | 2026-10-30 03:00 | Audited Leptos admin FFA package across 10 source files; verified strict FFA separation (pure Rust models and view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; fixed trailing newline hygiene; full Fluent bilingual coverage; 16/16 tests passed, 0 clippy warnings, remediation gate passed. |
+| [x] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 139 | 58,552 | 2026-10-30 03:00 | Audited and verified all 6 Universal Logic Dimensions across 137 source files; remediated IDX-TEST-GAP in tests/integration.rs with real event bus and dry run replay; verified IDX-CURSOR-BOUNDS and transaction rollback error propagation; 320/320 tests passed, 0 clippy warnings, gate passed. |
+| [x] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | 2026-10-30 03:00 | Audited Leptos admin FFA package across all source files; verified strict FFA separation (pure Rust view models/state in core.rs with zero UI imports), dual-path transport isolation, tenant scope enforcement, and i18n bilingual coverage; 16/16 tests passed, 0 clippy warnings, gate passed. |
 | [x] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 41 | 13,920 | 2026-10-19 23:35 | Audited; enforced non-negative available_quantity bounds, SKU normalization, nil-UUID slice guards in bootstrap and translation services, and saturating arithmetic across inventory services. 42/42 tests passed. |
 | [x] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 11 | 4,862 | 2026-10-20 02:00 | Audited; enforced non-nil UUID validation across native server adapter, non-negative quantity guards on reserve, availability check, and release endpoints, saturating sum on inventory summary, whitespace normalization for status and date range filters, and dedicated parse_release_quantity. 68/68 tests passed (59 unit + 9 boundary across default & SSR features). |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 12 | 2,143 | None |  |
@@ -742,8 +754,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 15 | 2,050 | None |  |
 | [ ] | [rustok-marketplace-seller](../../crates/modules/rustok-marketplace-seller) | `modules` | 51 | 11,035 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 14 | 2,508 | None |  |
-| [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 27 | 7,103 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 8 | 1,967 | None |  |
+| [x] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 27 | 7,103 | 2026-10-30 06:40 | Audited 6 Universal Logic Dimensions across 26 source files; verified stdio/remote SSE transport boundaries, Alloy authoring security invariants, and audit redaction; standardized Cargo metadata; 34/34 tests passed, zero defects. |
+| [x] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 8 | 1,967 | 2026-10-30 06:40 | Audited Leptos admin UI package across 7 source files; verified dual-path transport (GraphQL/ServerFn) and strict FFA separation; SSR check passed; 4/4 tests passed, zero defects. |
 | [x] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 48 | 14,240 | 2026-10-21 21:20 | Audited; verified Universal Logic Dimensions across lifecycles, content-addressed storage, worker concurrency and timeouts, CAS translation revisions with outbox event recording, and retained reference locks; added zero-dimension guard to contained_dimensions, saturating arithmetic to alpha channel buffer allocation, NilTenantId error variant and upfront nil UUID validation across all service methods, clamped pagination/reconciliation limits, cleaned redundant borrows in formatting; 54/54 unit tests and 13 integration tests passed (67 total), 0 clippy warnings, remediation gate passed. |
 | [x] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 7 | 2,393 | 2026-10-21 22:00 | Audited; verified gRPC envelope framing, deadline timeout propagation, typed PortError detail preservation across gRPC status mappings, and server-side trusted authority enforcement; enforced non-empty validation on authority tenant and actor IDs, enforced tenant match between claimed and trusted authority, trimmed whitespace in UUID parsing with nil/invalid UUID rejection, added fallback status description when gRPC message is empty, safely trimmed trailing slashes in public origin descriptor rebasing, recognized .localhost subdomains under RFC 6761; added comprehensive unit tests for authority, ID, error mapping, and unconfigured provider branches, and expanded integration tests to verify end-to-end descriptor rebasing with GrpcMediaPublicImageConnectionConfig over loopback gRPC; 23/23 unit tests passed, 1/1 integration test passed (24 total), 0 clippy warnings, remediation gate passed. |
 | [x] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 11 | 2,442 | 2026-10-21 22:40 | Audited; verified framework-agnostic FFA architecture in core.rs with zero Leptos imports, full Fluent en/ru parity, dual-path transport isolation (GraphQL / ServerFn), and REST upload adapter; fixed Fluent placeholder template handling to support all variations ({ $count }, {$count}, {count}), guarded against non-positive dimensions in media_dimensions_label, clamped negative usage counts in media_usage_stat_cards, eliminated i32 overflow in GraphQL pagination offset calculation, enforced non-empty trimmed tenant and media IDs across all GraphQL operations, added nil-UUID and empty-string guards to parse_uuid and native server function handlers, enforced trimmed non-empty locale on translation upsert, hardened REST upload with input validation on empty filenames and empty data, and captured HTTP status codes on REST failures; added comprehensive unit tests for core view models, GraphQL offset/ID guards, native UUID parsing, and REST upload validation; 31/31 unit tests passed (including SSR feature), 0 clippy warnings, remediation gate passed. |
@@ -797,7 +809,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | 2026-10-24 21:00 | Consolidated into self-contained rustok-profiles provider/model architecture; verified traits, DTOs, and queries; 63/63 tests passed, zero defects. |
 | [x] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 2 | 484 | 2026-10-24 21:10 | Audited operational command adapter; verified supports_dry_run descriptor, visibility validation, non-nil UUID validation, limit parsing, display name formatting; added docs.rs metadata and unit tests; 6/6 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 10 | 1,492 | 2026-10-24 21:15 | Audited and verified FFA invariants across all 9 source files; verified framework-agnostic core/ with 0 UI framework imports and pure Rust domain models; added docs.rs metadata; 9/9 tests passed, 0 clippy warnings, zero defects. |
-| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 14,980 | 2026-10-17 03:33 | Audited and cleaned. |
+| [x] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 14,979 | 2026-10-17 03:33 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 9 | 981 | 2026-10-17 03:49 | Audited and cleaned. |
 | [x] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 2 | 369 | 2026-10-17 04:10 | Audited and cleaned. |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 19 | 5,357 | None |  |
@@ -813,9 +825,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-security](../../crates/modules/rustok-security) | `modules` | 33 | 3,019 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-security/admin) | `modules` | 6 | 319 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-security/storefront) | `modules` | 6 | 123 | None |  |
-| [x] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 87 | 36,868 | 2026-10-30 04:30 | Audited and verified all 6 Universal Logic Dimensions across 52 source files; enforced non-nil validation on tenant_id/target_id, positive revision, and bounded limits; eliminated silent let _ = error swallowing in events.rs; repaired applications.rs routing signatures for bulk batch reads; 164/164 tests passed, 0 clippy warnings, gate passed. |
+| [x] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 87 | 36,926 | 2026-10-30 04:30 | Audited and verified all 6 Universal Logic Dimensions across 52 source files; enforced non-nil validation on tenant_id/target_id, positive revision, and bounded limits; eliminated silent let _ = error swallowing in events.rs; repaired applications.rs routing signatures for bulk batch reads; 164/164 tests passed, 0 clippy warnings, gate passed. |
 | [x] | [rustok-seo-admin-support](../../crates/modules/rustok-seo-admin-support) | `modules` | 6 | 2,627 | 2026-10-30 04:30 | Consolidated into crates/modules/rustok-seo/panel and crates/modules/rustok-seo/admin (commit b05b0f6c37); audited and verified under rustok-seo-panel and rustok-seo-admin. |
-| [x] | [rustok-seo-targets](../../crates/libs/rustok-seo-targets) | `modules` | 1 | 1,487 | 2026-10-30 04:30 | Audited runtime SEO target capability registry and schema builders; verified canonical SeoTargetSlug contract, slug validation, duplicate slug rejection, capability filtering, and typed JSON-LD emitters; 8/8 tests passed, 0 clippy warnings, zero defects. |
+| [x] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,487 | 2026-10-30 04:30 | Consolidated into crates/libs/rustok-seo-targets; audited and verified under rustok-seo-targets. |
 | [x] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 16 | 4,611 | 2026-10-30 04:30 | Audited FFA admin UI package across 15 source files; verified strict FFA separation (pure Rust models and view models in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn) and tenant scope enforcement; full Fluent bilingual coverage (en.ftl, ru.ftl); 18/18 tests passed, 0 clippy warnings, remediation gate passed. |
 | [x] | [panel](../../crates/modules/rustok-seo/panel) | `modules` | 7 | 2,834 | 2026-10-30 04:30 | Audited embedded SEO review panel; verified widget state derivation, event delivery summary aggregations, typed recommendation mapping, host locale normalization, and GraphQL transport request builders; 28/28 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [render](../../crates/modules/rustok-seo/render) | `modules` | 1 | 17 | 2026-10-30 04:30 | Consolidated into crates/modules/rustok-seo/storefront/src/render.rs (commit cfd1524edf); audited and verified under rustok-seo-storefront. |
@@ -829,9 +841,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 55 | 15,098 | 2026-10-23 05:13 | Standardized TaxonomyModule into src/module.rs with ModuleKind::Optional and health check; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 37/37 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 30 | 4,377 | 2026-10-17 02:12 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 864 | 2026-10-17 02:35 | Audited and cleaned. |
-| [x] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,679 | 2026-10-23 05:24 | Standardized TranslationModule into src/module.rs with ModuleKind::Optional, health check, and runtime extensions; created canonical CRATE_API.md with 7 contract sections; created contract_tests.rs; 38/38 tests passed (+1 ignored internal child test), 0 clippy warnings, zero defects. |
+| [x] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,673 | 2026-10-30 05:40 | Audited all 6 Universal Logic Dimensions across 81 files; remediated RBAC regression in collaboration.rs for job notes; 38 lib + 50 integration tests passed, zero defects. |
 | [x] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | 2026-10-23 05:31 | Verified owner-neutral translation target contracts, identity validation, protected token ledger, and runtime registry; 10/10 tests passed, 0 clippy warnings, zero defects. |
-| [x] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 9 | 14,236 | 2026-10-30 05:40 | Audited Leptos admin FFA package across 9 source files; verified strict FFA separation (pure Rust models/view models in core.rs with 0 UI imports); verified dual-path transport (GraphQL/ServerFn); 26/26 tests passed, zero defects. |
+| [x] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,265 | 2026-10-30 05:40 | Audited Leptos admin FFA package across 9 source files; verified strict FFA separation (pure Rust models/view models in core.rs with 0 UI imports); verified dual-path transport (GraphQL/ServerFn); 26/26 tests passed, zero defects. |
 | [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,814 | 2026-10-18T05:00:00Z | Remediated backoff integer overflow with saturating math and capped retries, fixed UTF-8 slicing boundary panic, fixed StepContext set() dropped mutations on empty contexts, added operator aliases (equals/==, not_equals/!=) and on_false support in ConditionStep, aligned delay step with duration_seconds, replaced dummy nil UUID masks with typed VersionNotFound and TemplateNotFound errors, unified permission denial status to 403 Forbidden across all workflow controllers, added 15 new unit tests (23 total), 0 clippy warnings, gate passed. |
 | [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,530 | 2026-10-18T05:35:00Z | Audited Leptos admin UI package; added user action error feedback banner in TemplateGallery, added missing bilingual Fluent keys (table-clear, table-selected, search-placeholder, total, error-createTemplate) in en.ftl and ru.ftl, made status filter equality exact to prevent accidental substring collisions, normalized route_segment to prevent double /modules prefix, mapped typed VersionNotFound and TemplateNotFound errors in native server adapter, added tests in core/presentation, core/command, and core/navigation, 13/13 tests passed, 0 clippy warnings, gate passed. |
 | [x] | [fly](../../crates/ui/fly) | `ui` | 111 | 44,096 | 2026-10-29 05:48 | Standardized CRATE_API.md, docs.rs metadata, verified lossless GrapesJS codec, history budget, runtime binding and SSR rendering; 301/301 tests passed, zero defects. |
@@ -885,7 +897,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-artifact-node-transport](../../crates/workers/rustok-artifact-node-transport) | `workers` | 6 | 1,013 | None |  |
 | [ ] | [rustok-module-build-dispatcher](../../crates/workers/rustok-module-build-dispatcher) | `workers` | 3 | 504 | None |  |
 | [ ] | [rustok-module-build-transport](../../crates/workers/rustok-module-build-transport) | `workers` | 6 | 325 | None |  |
-| [ ] | [rustok-module-build-worker](../../crates/workers/rustok-module-build-worker) | `workers` | 8 | 4,124 | None |  |
+| [x] | [rustok-module-build-worker](../../crates/workers/rustok-module-build-worker) | `workers` | 9 | 4,297 | 2026-10-30 08:00 | Audited and verified all 6 Universal Logic Dimensions across all source files; derived thiserror on all 9 domain error enums; added stderr diagnostics on launcher/materializer process failures; standardized Cargo metadata with repository, readme, docs.rs and thiserror; created canonical CRATE_API.md and contract_tests.rs; 14/14 tests passed, 0 clippy warnings, gatekeeper passed. |
 | [ ] | [rustok-registry-validation-worker](../../crates/workers/rustok-registry-validation-worker) | `workers` | 2 | 905 | None |  |
 | [ ] | [rustok-sandbox](../../crates/workers/rustok-sandbox) | `workers` | 27 | 8,183 | None |  |
 | [ ] | [rustok-sandbox-transport](../../crates/workers/rustok-sandbox-transport) | `workers` | 5 | 1,309 | None |  |

@@ -99,6 +99,23 @@ pub struct OciJobBuildWorker {
     isolation_attestation_path: PathBuf,
 }
 
+impl std::fmt::Debug for OciJobBuildWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OciJobBuildWorker")
+            .field("job_launcher_path", &self.job_launcher_path)
+            .field("job_launcher_digest", &self.job_launcher_digest)
+            .field("job_runtime", &self.job_runtime)
+            .field("job_image_digest", &self.job_image_digest)
+            .field("publication_target", &self.publication_target)
+            .field("request_timeout", &self.request_timeout)
+            .field(
+                "isolation_attestation_path",
+                &self.isolation_attestation_path,
+            )
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OciJobIsolationAttestation {
@@ -632,11 +649,16 @@ impl ModuleBuildWorker for OciJobBuildWorker {
             }
         };
         let stdout = collect_job_output(stdout_task).await?;
-        let _stderr = collect_job_output(stderr_task).await?;
+        let stderr = collect_job_output(stderr_task).await?;
         if !status.success() {
+            let stderr_text = String::from_utf8_lossy(&stderr);
+            let diagnostic = if stderr_text.trim().is_empty() {
+                String::new()
+            } else {
+                format!(": {}", stderr_text.trim())
+            };
             return Err(ModuleBuildProtocolError::Transport(format!(
-                "module build OCI job launcher exited with {}",
-                status
+                "module build OCI job launcher exited with {status}{diagnostic}"
             )));
         }
         let mut result: ModuleBuildResult = serde_json::from_slice(&stdout)
@@ -960,9 +982,13 @@ fn is_sha256_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+#[derive(Debug, thiserror::Error)]
 enum ScenarioContractError {
+    #[error("scenario contract is invalid")]
     Invalid,
+    #[error("scenario contract resource limit exceeded")]
     ResourceLimit,
+    #[error("internal scenario contract failure: {0}")]
     Internal(String),
 }
 

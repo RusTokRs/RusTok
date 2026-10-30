@@ -611,7 +611,7 @@
       "path": "crates/modules/rustok-index",
       "category": "modules",
       "files": 139,
-      "loc": 58472,
+      "loc": 58552,
       "completed": true,
       "completed_at": "2026-10-30 03:00",
       "notes": "Audited and verified all 6 Universal Logic Dimensions across 137 source files; remediated IDX-TEST-GAP in tests/integration.rs with real event bus and dry run replay; verified IDX-CURSOR-BOUNDS and transaction rollback error propagation; 320/320 tests passed, 0 clippy warnings, gate passed."
@@ -1201,7 +1201,7 @@
       "path": "crates/modules/rustok-rbac",
       "category": "modules",
       "files": 59,
-      "loc": 14980,
+      "loc": 14979,
       "completed": true,
       "completed_at": "2026-10-17 03:33",
       "notes": "Audited and cleaned."
@@ -1321,7 +1321,7 @@
       "path": "crates/modules/rustok-seo",
       "category": "modules",
       "files": 87,
-      "loc": 36868,
+      "loc": 36926,
       "completed": true,
       "completed_at": "2026-10-30 04:30",
       "notes": "Audited and verified all 6 Universal Logic Dimensions across 52 source files; enforced non-nil validation on tenant_id/target_id, positive revision, and bounded limits; eliminated silent let _ = error swallowing in events.rs; repaired applications.rs routing signatures for bulk batch reads; 164/164 tests passed, 0 clippy warnings, gate passed."
@@ -1431,7 +1431,7 @@
       "path": "crates/modules/rustok-translation",
       "category": "modules",
       "files": 86,
-      "loc": 46679,
+      "loc": 46673,
       "completed": true,
       "completed_at": "2026-10-30 05:40",
       "notes": "Audited all 6 Universal Logic Dimensions across 81 files; remediated RBAC regression in collaboration.rs for job notes; 38 lib + 50 integration tests passed, zero defects."
@@ -1860,11 +1860,11 @@
       "name": "rustok-module-build-worker",
       "path": "crates/workers/rustok-module-build-worker",
       "category": "workers",
-      "files": 8,
-      "loc": 4124,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 9,
+      "loc": 4297,
+      "completed": true,
+      "completed_at": "2026-10-30 08:00",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across all source files; derived thiserror on all 9 domain error enums; added stderr diagnostics on launcher/materializer process failures; standardized Cargo metadata with repository, readme, docs.rs and thiserror; created canonical CRATE_API.md and contract_tests.rs; 14/14 tests passed, 0 clippy warnings, gatekeeper passed."
     },
     "crates/workers/rustok-registry-validation-worker": {
       "name": "rustok-registry-validation-worker",

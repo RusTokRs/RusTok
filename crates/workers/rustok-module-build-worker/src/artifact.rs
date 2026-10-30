@@ -57,70 +57,91 @@ struct BuildEvidenceExpectation {
 }
 
 /// A terminal fact about the fixed runner's component output.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ComponentArtifactError {
+    #[error("component artifact inspection failed")]
     InspectionFailed,
+    #[error("component artifact resource limit exceeded")]
     ResourceLimit,
+    #[error("internal component artifact inspection failure: {0}")]
     Internal(String),
 }
 
 /// A terminal fact about fixed SBOM and provenance evidence emitted alongside
 /// a successful component.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum BuildEvidenceError {
+    #[error("SBOM evidence is invalid")]
     SbomInvalid,
+    #[error("provenance evidence is invalid")]
     ProvenanceInvalid,
+    #[error("build evidence resource limit exceeded")]
     ResourceLimit,
+    #[error("internal build evidence failure: {0}")]
     Internal(String),
 }
 
 /// A terminal fact that the Component's encoded WIT contract does not match
 /// the immutable request or declares a capability outside that world.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum WitContractError {
+    #[error("WIT contract mismatch")]
     Mismatch,
+    #[error("WIT contract resource limit exceeded")]
     ResourceLimit,
+    #[error("internal WIT contract failure: {0}")]
     Internal(String),
 }
 
 /// A terminal fact that the runner's fixed output directory cannot provide an
 /// immutable OCI publication bundle bound to the verified build result.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PublicationBundleError {
+    #[error("publication bundle is invalid")]
     Invalid,
+    #[error("publication bundle resource limit exceeded")]
     ResourceLimit,
+    #[error("internal publication bundle failure: {0}")]
     Internal(String),
 }
 
 /// A terminal fact about the author source manifest or worker-owned descriptor
 /// finalization step.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ArtifactDescriptorError {
+    #[error("artifact descriptor is invalid")]
     Invalid,
+    #[error("artifact descriptor resource limit exceeded")]
     ResourceLimit,
+    #[error("internal artifact descriptor failure: {0}")]
     Internal(String),
 }
 
 /// Validates the one fixed component payload path produced by the image-owned
 /// runner. The runner cannot select another path through JSON or request data.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ComponentArtifactInspector;
 
 /// Validates the fixed evidence file names and request-bound provenance facts.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct BuildEvidenceInspector;
 
 /// Extracts WIT from validated Component bytes through a fixed image-owned
 /// wasm-tools executable. No runner-owned WIT text or request-selected tool
 /// path participates in this check.
+#[derive(Debug)]
 pub struct WitContractInspector {
     wasm_tools_path: PathBuf,
 }
 
 /// Collects the fixed descriptor, payload, SBOM, and provenance files only
 /// after their independent inspection stages have succeeded.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct PublicationBundleCollector;
 
 /// Holds a validated source declaration across the untrusted runner call and
 /// writes the final descriptor only after component inspection succeeds.
+#[derive(Debug)]
 pub struct ArtifactDescriptorFinalizer {
     source: ModuleArtifactSourceManifest,
 }
