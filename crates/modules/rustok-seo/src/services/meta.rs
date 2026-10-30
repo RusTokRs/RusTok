@@ -123,6 +123,13 @@ impl SeoService {
         tenant: &TenantContext,
         input: &mut SeoMetaInput,
     ) -> SeoResult<String> {
+        if tenant.id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
+        if input.target_id.is_nil() {
+            return Err(SeoError::validation("target_id must not be nil"));
+        }
+
         let response_locale = upsert_response_locale(input, tenant.default_locale.as_str())?;
 
         if self
@@ -309,6 +316,16 @@ impl SeoService {
         target_id: Uuid,
         revision: i32,
     ) -> SeoResult<SeoMetaRecord> {
+        if tenant.id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
+        if target_id.is_nil() {
+            return Err(SeoError::validation("target_id must not be nil"));
+        }
+        if revision <= 0 {
+            return Err(SeoError::validation("revision must be greater than zero"));
+        }
+
         let Some(snapshot) = seo_revision::Entity::find()
             .filter(seo_revision::Column::TenantId.eq(tenant.id))
             .filter(seo_revision::Column::TargetKind.eq(target_kind.as_str()))

@@ -1,5 +1,21 @@
 # rustok-seo implementation plan
 
+## FS-07 deep audit remediation — 2026-10-30 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 52 source files in `crates/modules/rustok-seo`, 15 files in `admin`, 6 files in `storefront`, 6 files in `panel`, and `rustok-seo-targets`.
+- **Preconditions & Bounds Enforced**: Added non-nil validation for `tenant_id` and `target_id` across `prepare_meta_transition`, `rollback_revision`, `list_redirects`, `upsert_redirect`, `list_sitemap_jobs`, and `sitemap_job`; enforced `revision > 0` and bounded `limit.clamp(1, 100)`.
+- **Branch Completeness & Anti-Swallowing**: Eliminated silent `let _ =` error suppression in `src/services/events.rs:mark_index_cursor_repair_progress` for skipped deliveries, replacing it with explicit typed warning logging.
+- **Verification Script Remediation**: Corrected single-line signature in `applications.rs` for `execute_next_bulk_job` and `execute_next_index_repair_job`, achieving 100% pass on `scripts/verify/verify-seo-bulk-batch-reads.mjs`.
+- **Clippy Invariants**: Fixed `field_reassign_with_default` in `routing.rs::title_suffix_survives_truncation`.
+- **Consolidation Noted**: Historical `rustok-seo/render` consolidated into `rustok-seo/storefront/src/render.rs`; historical `rustok-seo-admin-support` consolidated into `rustok-seo/panel` and `rustok-seo/admin`.
+- **Verification Evidence**:
+  - `cargo test -p rustok-seo`: 164/164 tests passed (154 lib unit tests + 10 integration tests), 0 failures.
+  - `cargo test -p rustok-seo-admin`: 18/18 tests passed, 0 failures.
+  - `cargo test -p rustok-seo-panel`: 28/28 tests passed, 0 failures.
+  - `cargo test -p rustok-seo-storefront`: 9/9 tests passed, 0 failures.
+  - Next.js SEO runtime fixtures: `verify:seo-runtime-fixtures` passed (all 10 D8 gates passed).
+  - Remediation gatekeeper and architecture dependency guards all passed.
+
 ## Current state
 
 `rustok-seo` is the tenant-aware SEO runtime for metadata, redirects,
