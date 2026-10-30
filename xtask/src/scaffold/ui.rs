@@ -100,8 +100,12 @@ The scaffold command writes this development package into the Cargo workspace
 without mounting it in a Leptos host or advertising a live UI in rustok-module.toml.
 After the module owner implements business operations, complete and verify the
 native and GraphQL adapters, then add Leptos host composition and live UI
-manifest metadata in a separate feature change before promoting readiness. Next.js applications own any separate classic packages in their hosts
-and are not a generated FFA adapter.
+manifest metadata in a separate feature change before promoting readiness.
+Next.js applications own separate classic packages in their hosts; they are
+not generated as FFA adapters. Before promoting a surface to live, add its
+`next_package` under the corresponding Next host, register it in the host
+module registry and import it from the declared route. `cargo xtask module lint`
+checks that structural package/route wiring.
 
 ## Known Limitations / Pending Implementation
 - No owner business operation or usable native/GraphQL adapter exists yet.

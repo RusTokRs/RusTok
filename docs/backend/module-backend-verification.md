@@ -43,8 +43,10 @@ facade boundaries, support-sub-crate identity, declaration-to-package
 alignment, symlink safety, and suspicious scaffold placeholders. Test-only
 dependency exemptions apply only to test directories or Rust modules proven
 to be declared under `#[cfg(test)]`; a filename suffix alone is not enough.
-It is static: it cannot prove behavioral correctness, Next.js parity, live FBA
-transport, or publish registration readiness.
+It also checks structural Next.js package identity, host-module registration,
+and route-page imports for live UI surfaces. It cannot prove functional
+Next.js/Leptos parity for data, authorization, locale, or transport behavior,
+live FBA transport, or publish registration readiness.
 
 Existing unconverted native modules may fail the canonical lint; findings are
 migration tasks, not opt-in exceptions. The canonical `npm run verify:module-source-layout` command also runs the

@@ -249,7 +249,13 @@ and does not declare any live `[provides.*_ui]` until the module owner
 implements real operations and host wiring.
 The generated draft contains only Leptos FFA files. Classic Next.js packages are
 independent React packages inside Next hosts, not FFA adapters and not part
-of the Rust scaffolding output.
+of the Rust scaffolding output. This separation does **not** make Next.js
+parity optional for a live UI surface: a live `provides.admin_ui` or
+`provides.storefront_ui` must declare `next_package`, and the generic native
+module lint verifies that the matching package exists, is imported by the
+Next host module registry, and is imported by its declared route page. This
+is structural package/route wiring evidence, not proof of functional parity
+for data, authorization, locale, or transport behavior.
 
 The generated Leptos draft keeps `core/mod.rs`, `model.rs`,
 `transport/mod.rs`, `transport/native_server_adapter.rs`,

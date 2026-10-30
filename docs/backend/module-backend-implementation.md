@@ -239,9 +239,10 @@ There is one architecture-lint owner: `native-module-layout.mjs`.
 The former standalone `verify-native-module-architecture.mjs` duplicate has
 been removed; its applicable checks now live in the shared validator.
 `module validate` still checks publish metadata and registration, not
-architecture. Static lint does not prove compilation, tests, native or
-GraphQL transport execution, Next.js parity or FBA/FFA readiness. Those
-require independently recorded evidence.
+architecture. Static lint checks structural Next.js package and route wiring
+for live UI surfaces, but does not prove compilation, tests, functional
+Next.js/Leptos parity, native or GraphQL transport execution, or FBA/FFA
+readiness. Those require independently recorded evidence.
 
 ```bash
 cargo xtask module lint <slug>
