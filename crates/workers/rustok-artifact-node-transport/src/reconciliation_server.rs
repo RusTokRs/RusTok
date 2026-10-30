@@ -137,6 +137,14 @@ impl StaticModuleArtifactNodeReconciliationAuthenticator {
     }
 }
 
+impl std::fmt::Debug for StaticModuleArtifactNodeReconciliationAuthenticator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticModuleArtifactNodeReconciliationAuthenticator")
+            .field("identities_count", &self.identities.len())
+            .finish()
+    }
+}
+
 impl ModuleArtifactNodeReconciliationAuthenticator
     for StaticModuleArtifactNodeReconciliationAuthenticator
 {
@@ -160,6 +168,13 @@ pub struct ArtifactNodeReconciliationGrpcService<A> {
     db: DatabaseConnection,
     authenticator: A,
     admission: WorkerAdmission,
+}
+
+impl<A> std::fmt::Debug for ArtifactNodeReconciliationGrpcService<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeReconciliationGrpcService")
+            .finish_non_exhaustive()
+    }
 }
 
 impl<A> ArtifactNodeReconciliationGrpcService<A> {

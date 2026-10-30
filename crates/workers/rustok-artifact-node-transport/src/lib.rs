@@ -5,6 +5,9 @@ mod reconciliation_server;
 mod server;
 mod status;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub mod proto {
     tonic::include_proto!("rustok.artifact_node");
 }
