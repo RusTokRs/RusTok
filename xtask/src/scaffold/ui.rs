@@ -263,7 +263,7 @@ mod tests;
 "#
     );
 
-    let tests = r#"#[test]
+    let tests = r####"#[test]
 fn pure_presentation_state_does_not_fake_a_connected_owner() {
     assert_eq!(
         crate::core::owner_capability_state(),
@@ -298,7 +298,7 @@ fn documented_ui_is_not_a_fake_business_api() {
     }
     assert!(docs.contains("No CRUD or owner business operation is available"));
 }
-"#.to_string();
+"####.to_string();
 
     let translations_en = format!(
         "{side_key} = This module's UI is not available until its owner API is implemented.\n"
