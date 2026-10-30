@@ -89,6 +89,14 @@ Both paths must work. Neither cancels the other.
 | CSR/Trunk debug | `graphql_adapter` is used; `/api/fn/*` must not be required |
 | Classic Next.js host or mobile client | Uses public GraphQL/REST; not a Rust FFA adapter and never calls `#[server]` |
 
+An unmounted `future_ui` draft must retain both adapter boundaries even before
+it has owner operations. A live single-adapter surface is an explicit exception,
+not an alternate default: it is limited to documented internal operator/bootstrap
+surfaces and must carry one of the canonical exception phrases in
+`docs/implementation-plan.md`. The generic native-module lint enforces this
+distinction and rejects live adapters that still return the scaffold's
+`MissingOwnerContract` error or contain `todo!` / `unimplemented!` stubs.
+
 The reason for both paths: in monolith deployment `apps/admin` and `apps/storefront` run
 same-origin with `apps/server`, so native server functions provide a short internal Rust
 path. But independent headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
