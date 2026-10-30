@@ -309,7 +309,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 rig = { version = "=0.42.0", features = ["audio", "image"] }
 rig-bedrock = "=0.42.0"
 rig-fastembed = "=0.42.0"
-rig-gemini-grpc = "=0.42.0"
+rig-gemini-grpc = "=0.45.0"
 rig-vertexai = "=0.42.0"
 
 # Internal crates
