@@ -322,3 +322,7 @@ mod tests {
         assert_eq!(scenario["expectation"]["output"], scenario["input"]);
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+
