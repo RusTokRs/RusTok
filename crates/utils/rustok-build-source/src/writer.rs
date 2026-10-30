@@ -29,6 +29,15 @@ pub struct SourceTreeFile {
     pub contents: Vec<u8>,
 }
 
+impl SourceTreeFile {
+    pub fn new(path: impl Into<String>, contents: impl Into<Vec<u8>>) -> Self {
+        Self {
+            path: path.into(),
+            contents: contents.into(),
+        }
+    }
+}
+
 /// Shared safe materializer for reviewed source files. It creates one new
 /// directory that can then be handed to [`SourceArchiveBuilder`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,6 +100,10 @@ impl SourceArchiveBuilder {
         Self { limits }
     }
 
+    pub fn limits(&self) -> ArchiveLimits {
+        self.limits
+    }
+
     pub fn write(
         &self,
         source_root: &Path,
@@ -149,6 +162,10 @@ impl SourceArchiveBuilder {
 impl SourceTreeMaterializer {
     pub fn new(limits: ArchiveLimits) -> Self {
         Self { limits }
+    }
+
+    pub fn limits(&self) -> ArchiveLimits {
+        self.limits
     }
 
     /// Validates data-only reviewed source without touching the filesystem.

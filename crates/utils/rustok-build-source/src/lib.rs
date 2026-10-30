@@ -21,9 +21,10 @@ pub use writer::{
     SourceTreeFile, SourceTreeMaterialization, SourceTreeMaterializer,
 };
 
-const USTAR_BLOCK_BYTES: usize = 512;
-const COPY_BUFFER_BYTES: usize = 64 * 1024;
-const MAX_ARCHIVE_ENTRIES: u32 = 65_536;
+pub const USTAR_BLOCK_BYTES: usize = 512;
+pub const COPY_BUFFER_BYTES: usize = 64 * 1024;
+pub const MAX_ARCHIVE_ENTRIES: u32 = 65_536;
+pub const CAS_SOURCE_URI_SCHEME: &str = "cas://";
 static SOURCE_UPLOAD_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,14 +55,14 @@ impl ArchiveLimits {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CasArchiveStore {
     root: PathBuf,
 }
 
 /// Control-plane writer for the deployment source CAS consumed read-only by
 /// isolated build jobs.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CasArchivePublisher {
     root: PathBuf,
 }
@@ -267,6 +268,10 @@ impl CasArchivePublisher {
 impl SourceArchiveInspector {
     pub fn new(limits: ArchiveLimits) -> Self {
         Self { limits }
+    }
+
+    pub fn limits(&self) -> ArchiveLimits {
+        self.limits
     }
 
     pub fn inspect(&self, archive_path: &Path) -> Result<SourceArchiveInspection, CasArchiveError> {
@@ -751,3 +756,6 @@ mod publisher_tests {
         fs::remove_dir_all(root).expect("remove test root");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

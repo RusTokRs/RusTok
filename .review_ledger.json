@@ -1650,11 +1650,11 @@
       "name": "rustok-build-source",
       "path": "crates/utils/rustok-build-source",
       "category": "utils",
-      "files": 2,
-      "loc": 1572,
+      "files": 3,
+      "loc": 1845,
       "completed": true,
-      "completed_at": "2026-10-29 06:41",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified deterministic source archives, CAS immutability, and path traversal protection; 7/7 tests passed, zero defects."
+      "completed_at": "2026-10-30 18:30",
+      "notes": "Standardized CRATE_API.md with 5 canonical sections, docs.rs and package metadata, verified deterministic source archives, CAS immutability, atomic hard-link publication, and path traversal protection; 15/15 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/utils/rustok-cli": {
       "name": "rustok-cli",
