@@ -518,9 +518,6 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (!/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+leptos\s*;/.test(uiModuleCode)) {
     diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must declare its Leptos render adapter");
   }
-  if (!/\bpub\s+use\s+(?:self::)?leptos::/.test(uiModuleCode)) {
-    diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must re-export the root Leptos component");
-  }
   const uiLeptos = hasSource(join(src, "ui", "leptos.rs"))
     ? join(src, "ui", "leptos.rs")
     : join(src, "ui", "leptos", "mod.rs");

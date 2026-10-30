@@ -601,7 +601,7 @@ test("FFA lib and test facades must wire every canonical source file", () => {
   });
 });
 
-test("FFA component re-exports must connect ui/leptos.rs to the crate facade", () => {
+test("FFA crate facade must re-export the root UI component", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
@@ -612,7 +612,6 @@ test("FFA component re-exports must connect ui/leptos.rs to the crate facade", (
     ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
     const failures = lint(ctx).join("\n");
     assert.match(failures, /must re-export the root UI component from ui/);
-    assert.match(failures, /must re-export the root Leptos component/);
   });
 });
 
