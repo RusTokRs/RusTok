@@ -1840,11 +1840,11 @@
       "name": "rustok-module-build-dispatcher",
       "path": "crates/workers/rustok-module-build-dispatcher",
       "category": "workers",
-      "files": 3,
-      "loc": 504,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 4,
+      "loc": 560,
+      "completed": true,
+      "completed_at": "2026-10-30 08:40",
+      "notes": "Audited and verified 6 Universal Logic Dimensions; verified persistent Iggy consumer cursor offset commits only after terminal result persistence; validated envelope and tenant matching invariants and safe replay handling (AlreadySettled, ClaimedElsewhere); implemented credential-redacting Debug and non-exhaustive consumer Debug; standardized Cargo metadata, CRATE_API.md, and contract_tests.rs; 9/9 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/workers/rustok-module-build-transport": {
       "name": "rustok-module-build-transport",
