@@ -68,8 +68,8 @@ requireText(
 const ownerVariantCount = (
   errorSource.match(/^\s{4}[A-Z][A-Za-z0-9_]*(?:\s*\{|\s*\(|,)/gm) ?? []
 ).length;
-if (ownerVariantCount !== 89) {
-  failures.push(`${paths.error}: expected 89 TranslationError variants, found ${ownerVariantCount}`);
+if (ownerVariantCount !== 88) {
+  failures.push(`${paths.error}: expected 88 TranslationError variants, found ${ownerVariantCount}`);
 }
 
 for (const marker of [

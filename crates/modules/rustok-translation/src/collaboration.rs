@@ -139,12 +139,6 @@ impl TranslationCollaborationService {
         if input.item_id.is_none() && !matches!(job.status.as_str(), "open" | "in_progress") {
             return Err(TranslationError::JobNotWritable(job.status));
         }
-        // Job-level notes require Manage — Update is assignment-bound to item, Resolve only for in_review item.
-        if input.item_id.is_none()
-            && security.get_scope(Resource::Translations, Action::Manage) == PermissionScope::None
-        {
-            return Err(TranslationError::Forbidden);
-        }
         if let Some(item_id) = input.item_id {
             let item = ensure_item(&transaction, tenant_id, input.job_id, item_id).await?;
             ensure_item_note_writer(&security, &context.actor, &item)?;

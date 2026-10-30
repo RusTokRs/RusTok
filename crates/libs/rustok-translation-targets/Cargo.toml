@@ -2,6 +2,7 @@
 name = "rustok-translation-targets"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Owner-neutral translation target provider contracts and runtime registry"
 repository.workspace = true
