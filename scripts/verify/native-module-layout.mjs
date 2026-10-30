@@ -483,8 +483,8 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const adapterNames = ["native_server_adapter", "graphql_adapter"].filter((adapter) =>
     new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + adapter + "\\s*;").test(transportCode),
   );
-  const hasOwnerOperation = /\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\\s*\\(/.test(transportCode) &&
-    /\\b(?:native_server_adapter|graphql_adapter)\\s*::/.test(transportCode);
+  const hasOwnerOperation = /\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\s*\(/.test(transportCode) &&
+    /\b(?:native_server_adapter|graphql_adapter)\s*::/.test(transportCode);
   if (transportSource && (!adapterNames.length || !hasOwnerOperation)) {
     diagnostics.push(relative(root, transport) +
       ": transport facade must expose an owner operation delegated to a declared native/GraphQL adapter");
@@ -500,7 +500,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     const adapterPath = candidates.find(hasSource) || candidates[0];
     const adapterSource = readRequired(root, adapterPath, diagnostics);
     const adapterCode = maskRustNonCode(adapterSource);
-    if (!/\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(/.test(adapterCode)) {
+    if (!/\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(adapterCode)) {
       diagnostics.push(relative(root, adapterPath) +
         ": declared transport adapter has no callable owner operation");
     }
@@ -508,14 +508,14 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
 
   const uiModulePath = join(src, "ui", "mod.rs");
   const uiModule = readRequired(root, uiModulePath, diagnostics);
-  if (!/\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+leptos\\s*;/.test(maskRustNonCode(uiModule))) {
+  if (!/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+leptos\s*;/.test(maskRustNonCode(uiModule))) {
     diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must declare its Leptos render adapter");
   }
   const uiLeptos = hasSource(join(src, "ui", "leptos.rs"))
     ? join(src, "ui", "leptos.rs")
     : join(src, "ui", "leptos", "mod.rs");
   const uiLeptosSource = readRequired(root, uiLeptos, diagnostics);
-  if (!/#\\s*\\[\\s*component\\s*\\]/.test(maskRustNonCode(uiLeptosSource))) {
+  if (!/#\s*\[\s*component\s*\]/.test(maskRustNonCode(uiLeptosSource))) {
     diagnostics.push(relative(root, uiLeptos) + ": Leptos render adapter must define a component");
   }
 
@@ -524,7 +524,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   }
   const testsModulePath = join(src, "tests", "mod.rs");
   const testsModule = readRequired(root, testsModulePath, diagnostics);
-  if (!/\\bmod\\s+contract\\s*;/.test(maskRustNonCode(testsModule))) {
+  if (!/\bmod\s+contract\s*;/.test(maskRustNonCode(testsModule))) {
     diagnostics.push(relative(root, testsModulePath) + ": tests/mod.rs must declare contract.rs");
   }
   if (!hasSource(join(src, "tests", "contract.rs"))) {
