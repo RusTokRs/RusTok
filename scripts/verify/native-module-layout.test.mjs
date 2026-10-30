@@ -652,7 +652,7 @@ test("future_ui support packages are not misclassified as FFA draft surfaces", (
   });
 });
 
-test("future_ui drafts must retain both native and GraphQL adapters", () => {
+test("future_ui draft single-adapter state requires a documented exception", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
       '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
@@ -660,7 +660,21 @@ test("future_ui drafts must retain both native and GraphQL adapters", () => {
     writeFfaSurface(ctx, "admin");
     ctx.write("admin/src/transport/mod.rs",
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
-    assert.match(lint(ctx).join("\n"), /future_ui FFA draft must retain both native and GraphQL adapter boundaries/);
+    assert.match(lint(ctx).join("\n"), /FFA package with a single adapter must document the canonical single-adapter exception/);
+  });
+});
+
+test("future_ui draft single-adapter state passes with its documented exception", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    ctx.write("docs/implementation-plan.md",
+      "single-adapter state, native-only internal operator/bootstrap surface, no GraphQL/REST contract yet, parity or exemption plan pending\n");
+    assert.deepEqual(lint(ctx), []);
   });
 });
 
@@ -675,7 +689,7 @@ test("a live single-adapter UI requires the documented exception", () => {
     ctx.write("admin/src/transport/mod.rs",
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
     writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
-    assert.match(lint(ctx).join("\n"), /live single-adapter FFA package must document the canonical single-adapter exception/);
+    assert.match(lint(ctx).join("\n"), /FFA package with a single adapter must document the canonical single-adapter exception/);
   });
 });
 

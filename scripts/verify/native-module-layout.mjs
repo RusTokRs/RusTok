@@ -504,7 +504,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
       normalizedPlan.includes("single-adapter state, native-only internal operator/bootstrap surface, no GraphQL/REST contract yet, parity or exemption plan pending");
     if (!documentedException) {
       diagnostics.push(relative(root, planPath) +
-        ": a live single-adapter FFA package must document the canonical single-adapter exception");
+        ": an FFA package with a single adapter must document the canonical single-adapter exception");
     }
   }
   const referencedAdapters = adapterNames.filter((adapter) =>
