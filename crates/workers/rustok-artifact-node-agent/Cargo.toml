@@ -4,8 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Independent artifact materialization and readiness agent for RusToK nodes"
 autobins = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [[bin]]
 name = "rustok-artifact-node-agent"

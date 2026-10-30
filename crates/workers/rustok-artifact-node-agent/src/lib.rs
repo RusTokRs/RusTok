@@ -26,3 +26,6 @@ pub use slot_supervisor::{
     WorkerRollbackReceipt,
 };
 pub use watchdog::{NodeWatchdog, WatchdogConfig, WatchdogRecoveryReceipt, WatchdogStatus};
+
+#[cfg(test)]
+mod contract_tests;
