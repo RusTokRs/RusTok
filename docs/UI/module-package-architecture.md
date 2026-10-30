@@ -89,6 +89,16 @@ Both paths must work. Neither cancels the other.
 | CSR/Trunk debug | `graphql_adapter` is used; `/api/fn/*` must not be required |
 | Classic Next.js host or mobile client | Uses public GraphQL/REST; not a Rust FFA adapter and never calls `#[server]` |
 
+Dual-path native and GraphQL adapters remain the default. An unmounted
+`future_ui` draft or live surface may use a single adapter only when the missing
+counterpart and parity/exemption plan are documented in
+`docs/implementation-plan.md`: GraphQL-only is allowed for headless-compatible
+work with a parity plan; native-only is limited to internal operator/bootstrap
+surfaces with no GraphQL/REST contract yet. The generic native-module lint
+enforces the documented exception and rejects live adapters that still return
+the scaffold's `MissingOwnerContract` error or contain `todo!` /
+`unimplemented!` stubs.
+
 The reason for both paths: in monolith deployment `apps/admin` and `apps/storefront` run
 same-origin with `apps/server`, so native server functions provide a short internal Rust
 path. But independent headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
@@ -192,20 +202,23 @@ transport-neutral `model`, pure tested `core`, working `transport`, render-only
 an empty transport facade for the two real native/GraphQL paths, subject to the
 documented operator/bootstrap exception. `--no-ui` means no UI packages.
 
-A functional **Leptos FFA publication** requires actual native and GraphQL
-transport implementations and the relevant Leptos host registration. It does
-not structurally require a classic Next.js package. Where the same business
-feature is independently exposed by a Next host, the feature's API and
-capability compatibility must be reviewed in that host's own scope; such
-verification is not a prerequisite for the FFA source-layout lint and cannot
-be inferred from Leptos compilation. The current scaffold preview does not
-yet meet the functional-publication contract.
+A live module-owned UI surface in RusToK requires both its Leptos FFA package
+and the corresponding classic Next.js package/route wiring. The manifest
+declares `next_package` and `route_segment`; generic native-module lint checks
+that the package exists, is imported by the Next host module registry, and is
+imported by its declared route page. This is structural wiring evidence only:
+it does not prove functional parity for data, authorization, locale, or
+transport behavior. The Leptos and Next.js packages remain separate
+implementations and are not generated from one another. An unmounted
+`future_ui` draft is not a live surface and does not require Next.js wiring.
+The current scaffold preview does not meet the live-surface contract.
 
 ## What Counts as a Correctly Structured UI Package
 
 A module UI package is considered correctly structured when:
 
-- `core.rs` / `core/` has no `leptos::*` imports
+- `model.rs` exists as a non-empty, framework/transport-independent owner/view-model seam
+- `core.rs` / `core/` exists, is wired from `lib.rs`, and has no `leptos::*` imports
 - `transport/mod.rs` or `transport.rs` is the only facade consumed by `ui/leptos.rs`
 - `ui/leptos.rs` calls only `transport::*` functions, never raw adapter internals
 - Both `native_server_adapter` and `graphql_adapter` exist for target dual-path packages.

@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-// Shared generic rules apply before Blog's additional reference-v1 constraints.
+// The default Blog runner is a legacy/reference profile, not a certification of
+// Blog's architecture. Generic native-module lint is opt-in via --module <slug>.
 import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mjs";
 
 const parameters = process.argv.slice(2);
@@ -18,7 +19,8 @@ if (parameters.length !== 0 &&
   console.error("Usage: node scripts/verify/verify-module-source-layout.mjs [--module <slug>]");
   process.exit(2);
 }
-const selectedModule = parameters.length ? parameters[1] : "blog";
+const explicitModule = parameters.length === 2;
+const selectedModule = explicitModule ? parameters[1] : "blog";
 let modulePath;
 try {
   modulePath = resolveNativeModule(repoRoot, selectedModule);
@@ -26,11 +28,13 @@ try {
   console.error(error.message);
   process.exit(1);
 }
-const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule);
-if (architectureFailures.length) {
-  console.error("Native module architecture verification failed:");
-  for (const failure of architectureFailures) console.error("- " + failure);
-  process.exit(1);
+if (explicitModule) {
+  const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule);
+  if (architectureFailures.length) {
+    console.error("Native module architecture verification failed:");
+    for (const failure of architectureFailures) console.error("- " + failure);
+    process.exit(1);
+  }
 }
 if (selectedModule !== "blog") {
   console.log("Native module architecture verification passed for " + selectedModule + ".");

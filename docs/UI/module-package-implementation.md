@@ -23,15 +23,18 @@ and the planned Dioxus sibling `ui/dioxus.rs`. Both should call the same
 framework-neutral core, model and transport facade.
 
 Classic Next.js packages are separate React packages, owned by their
-respective Next hosts. They do not follow this FFA layout and are not
-generated or validated by the Rust FFA scaffolding command. Shared
-business capabilities and backend APIs can still require functional
-cross-client checks when both are actually implemented.
+respective Next hosts. They do not follow this FFA layout and are not generated
+by the Rust FFA scaffolding command. For a live module UI surface, the generic
+native-module lint verifies the declared Next.js package, host registry import,
+and route-page import. Those checks prove structural wiring only; functional
+cross-client parity still requires separate evidence.
 
 ## Required File Structure
 
-Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate) should follow
-this target layout when it has enough DTO and transport surface to justify separate files:
+Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate), including an
+unmounted `future_ui` draft, must follow this minimum layout. The owner may add
+nested submodules as responsibilities grow, but required files must be wired and
+non-empty:
 
 ```
 admin/                            (or storefront/)
@@ -42,8 +45,8 @@ admin/                            (or storefront/)
 │   └── ru.json
 └── src/
     ├── lib.rs                    ← wiring only: mod declarations + root re-export
-    ├── core.rs                   ← NO leptos::* imports — CI enforces this
-    ├── model.rs                  ← transport-neutral DTOs shared by adapters when needed
+    ├── core.rs or core/mod.rs   ← non-empty, framework-independent presentation policy
+    ├── model.rs                  ← non-empty transport-neutral owner/view model and boundary types
     ├── i18n.rs                   ← written manually using rustok-ui-i18n helpers
     ├── transport/
     │   ├── mod.rs                ← public facade; only entry point for ui/leptos.rs
@@ -97,9 +100,13 @@ Use `ui/leptos/` subdirectory instead of `ui/leptos.rs` when page components mul
 Use `transport.rs` instead of `transport/mod.rs` only for small facades. Once the package
 has multiple adapters or subdomains, split it into `transport/`.
 
-Use `model.rs` when request/response DTOs are shared by adapters or reused outside one
-facade. Small native/bootstrap packages may keep transport-neutral DTOs in `core.rs` or
-`transport.rs`; do not create a mechanical `model.rs` that only moves one local type.
+Keep `model.rs` as the stable framework- and transport-neutral owner/view-model seam
+shared by core and adapters. It is required even for an unmounted draft, but it
+must contain a real type rather than an empty placeholder. When no business
+DTO exists yet, model only the truthful capability/error state (for example,
+an explicit unavailable owner contract); never invent records or CRUD data.
+Do not put Leptos, GraphQL transport errors, persistence entities, or host
+context into this module.
 
 If the package currently has only one transport adapter, this is a valid current-state
 exception only when it is documented. Capture it in the module's
@@ -119,8 +126,7 @@ into new public/headless surfaces.
 ```rust
 mod core;
 mod i18n;
-// Include when shared request/response DTOs exist.
-// mod model;
+mod model;
 mod transport;
 mod ui;
 
