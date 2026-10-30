@@ -408,7 +408,8 @@ test("FFA model remains framework-independent", () => {
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
       'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
-    ctx.write("admin/src/model.rs", "use leptos_ui_routing::use_route_query_value;\n");
+    ctx.write("admin/src/model.rs",
+      "use leptos_ui_routing::use_route_query_value;\nuse sea_orm::EntityTrait;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
     ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
     ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
@@ -418,6 +419,7 @@ test("FFA model remains framework-independent", () => {
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     assert.match(lint(ctx).join("\n"), /forbidden Leptos dependency in FFA model/);
+    assert.match(lint(ctx).join("\n"), /forbidden SeaORM dependency in FFA model/);
   });
 });
 

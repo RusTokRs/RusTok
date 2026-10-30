@@ -26,6 +26,8 @@ const FORBIDDEN_DOMAIN = [
 const FORBIDDEN_SERVICE = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
 const FORBIDDEN_ENTITY = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
 const FORBIDDEN_CORE = [
+  ["SeaORM", /\bsea_orm(?:::|\s)/],
+  ["SeaORM migrations", /\bsea_orm_migration(?:::|\s)/],
   ["Leptos", /\bleptos(?:_[a-z0-9]+)*(?:::|\s)/],
   ["Dioxus", /\bdioxus(?:_[a-z0-9]+)*(?:::|\s)/],
   ["web-sys", /\bweb_sys(?:::|\s)/],
