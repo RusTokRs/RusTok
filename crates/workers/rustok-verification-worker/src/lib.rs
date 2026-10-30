@@ -4,6 +4,9 @@ pub mod cosign;
 pub mod policy;
 pub mod service;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use cosign::CosignTrustVerifier;
 pub use policy::{
     VerificationPolicy, VerificationRetiringTrustRoot, VerificationTrustRoot,
