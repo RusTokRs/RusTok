@@ -43,3 +43,7 @@ mod tests {
         assert!(WIT_SOURCE.contains("export run:"));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+
