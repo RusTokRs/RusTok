@@ -93,6 +93,12 @@ pub trait BuildEventPublisher: Send + Sync {
 #[derive(Default)]
 pub struct NoopBuildEventPublisher;
 
+impl std::fmt::Debug for NoopBuildEventPublisher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NoopBuildEventPublisher").finish()
+    }
+}
+
 #[async_trait]
 impl BuildEventPublisher for NoopBuildEventPublisher {
     async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
@@ -108,6 +114,15 @@ pub struct EventBusBuildEventPublisher {
     event_bus: rustok_core::EventBus,
     scope: BuildEventScope,
     context: BuildEventPublicationContext,
+}
+
+impl std::fmt::Debug for EventBusBuildEventPublisher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EventBusBuildEventPublisher")
+            .field("scope", &self.scope)
+            .field("context", &self.context)
+            .finish()
+    }
 }
 
 impl EventBusBuildEventPublisher {

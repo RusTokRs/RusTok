@@ -34,3 +34,7 @@ pub use report::BuildExecutionReport;
 pub use request::{BuildRequest, ModuleSpec};
 pub use service::BuildService;
 pub use snapshot::build_snapshot;
+
+#[cfg(test)]
+mod contract_tests;
+

@@ -651,9 +651,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)
-*Installer, migrations engine, secrets manager, object storage abstraction, CLI tooling, test fixtures, and vendored packages.* (0/19 completed)
+*Installer, migrations engine, secrets manager, object storage abstraction, CLI tooling, test fixtures, and vendored packages.* (1/19 completed)
 
-- [ ] **[`crates/utils/rustok-build`](../../crates/utils/rustok-build)** (12 files, 2,109 LOC) — Build-time code generation scripts, protobuf compilation, and build metadata stamping.
+- [x] **[`crates/utils/rustok-build`](../../crates/utils/rustok-build)** (12 files, 2,111 LOC) — Build-time code generation scripts, protobuf compilation, and build metadata stamping. Audited and verified 6 Universal Logic Dimensions across all source files; verified build lifecycle state transitions (Queued, Running, Success, Failed, Cancelled) with atomic CAS claiming, fail_build error propagation and terminal state immutability, transactional EventBusBuildEventPublisher with non-nil actor/correlation contexts and Platform vs Tenant scope separation, sandboxed process execution via run_build_command with manifest snapshot materialization, and module contribution manifest normalization against builder capabilities; implemented Debug for SharedBuildControl, BuildService, BuildExecutionService, NoopBuildEventPublisher, and EventBusBuildEventPublisher; added manifest_path getter; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 16/16 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [ ] **[`crates/utils/rustok-build-publication`](../../crates/utils/rustok-build-publication)** (4 files, 874 LOC) — Cryptographic signing, packaging, and publication pipeline for RusToK packages.
 - [ ] **[`crates/utils/rustok-build-source`](../../crates/utils/rustok-build-source)** (2 files, 1,570 LOC) — Deterministic source archive builder, reproducible zip packaging, and SHA256 tree hashing.
 - [ ] **[`crates/utils/rustok-cli`](../../crates/utils/rustok-cli)** (3 files, 1,328 LOC) — Main RusToK developer and operations CLI tool for server management, testing, and inspection.
