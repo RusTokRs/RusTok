@@ -498,7 +498,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   if (requested && adapterNames.length === 1) {
     const planPath = join(moduleRoot, "docs", "implementation-plan.md");
     const plan = hasSource(planPath) ? readFileSync(planPath, "utf8") : "";
-    const normalizedPlan = plan.replace(/\\s+/g, " ");
+    const normalizedPlan = plan.replace(/\s+/g, " ");
     const documentedException =
       normalizedPlan.includes("single-adapter state, GraphQL, native parity plan pending") ||
       normalizedPlan.includes("single-adapter state, native-only internal operator/bootstrap surface, no GraphQL/REST contract yet, parity or exemption plan pending");
