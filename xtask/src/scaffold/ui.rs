@@ -479,7 +479,15 @@ mod tests {
             for path in ["native_server_adapter.rs", "graphql_adapter.rs"] {
                 let adapter = content(&files, &format!("{root}src/transport/{path}"));
                 assert!(adapter.contains("Err(MissingOwnerContract)"));
-                assert!(!adapter.contains("Ok(())"));
+                let executable = adapter
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !executable.contains("Ok(())"),
+                    "adapter must not contain a successful fallback"
+                );
             }
             let cargo = content(&files, &format!("{root}Cargo.toml"));
             let parsed: toml::Value = toml::from_str(cargo).unwrap();
