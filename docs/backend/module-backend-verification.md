@@ -40,9 +40,11 @@ thin crate facades, optional `runtime.rs` / `error.rs` wiring, private
 entities, source size, transport-neutral DTO/port contracts, persistence and
 service dependency direction, framework-independent FFA model/core, transport
 facade boundaries, support-sub-crate identity, declaration-to-package
-alignment, symlink safety, and suspicious scaffold placeholders. It is static:
-it cannot prove behavioral correctness, Next.js parity, live FBA transport,
-or publish registration readiness.
+alignment, symlink safety, and suspicious scaffold placeholders. Test-only
+dependency exemptions apply only to test directories or Rust modules proven
+to be declared under `#[cfg(test)]`; a filename suffix alone is not enough.
+It is static: it cannot prove behavioral correctness, Next.js parity, live FBA
+transport, or publish registration readiness.
 
 Existing unconverted native modules may fail the canonical lint; findings are
 migration tasks, not opt-in exceptions. Node verifier fixture tests live in
