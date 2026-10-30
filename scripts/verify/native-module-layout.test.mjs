@@ -42,6 +42,48 @@ function lint(ctx) {
   return lintNativeModule(ctx.root, ctx.path("."), "sample");
 }
 
+function writeFfaSurface(ctx, side) {
+  const crateName = "rustok-sample-" + side;
+  ctx.write(side + "/Cargo.toml", '[package]\nname = "' + crateName + '"\n');
+  ctx.write(side + "/src/lib.rs",
+    'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+  ctx.write(side + "/src/core/mod.rs", "pub enum State { Pending }\n");
+  ctx.write(side + "/src/model.rs", "pub struct OwnerModel;\n");
+  ctx.write(side + "/src/i18n.rs", "pub fn t() {}\n");
+  ctx.write(side + "/src/transport/mod.rs",
+    'mod graphql_adapter;\nmod native_server_adapter;\n' +
+    'pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n');
+  ctx.write(side + "/src/transport/graphql_adapter.rs",
+    "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+  ctx.write(side + "/src/transport/native_server_adapter.rs",
+    "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+  ctx.write(side + "/src/ui/mod.rs", "mod leptos;\n");
+  ctx.write(side + "/src/ui/leptos.rs", "#[component]\npub fn Surface() {}\n");
+  ctx.write(side + "/src/tests/mod.rs", "mod contract;\n");
+  ctx.write(side + "/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+  ctx.write(side + "/locales/en.ftl", "sample-state = Pending\n");
+}
+
+function writeNextSurface(ctx, side, packageName, routeSegment) {
+  const host = side === "admin" ? "next-admin" : "next-frontend";
+  const packageDir = side === "admin" ? "sample-admin" : "rustok-sample";
+  const main = side === "admin" ? "./src/index.ts" : "./src/index.tsx";
+  const packageRoot = "apps/" + host + "/packages/" + packageDir;
+  ctx.writeRoot(packageRoot + "/package.json", JSON.stringify({ name: packageName, main }));
+  ctx.writeRoot(packageRoot + "/" + main.replace(/^\\.\\//, ""), "export const Page = () => null;\n");
+  const hostIndex = side === "admin"
+    ? "apps/next-admin/src/modules/index.ts"
+    : "apps/next-frontend/src/modules/index.ts";
+  const hostImport = side === "admin"
+    ? 'import "' + packageName + '";\n'
+    : 'import "../../packages/' + packageDir + '/src";\n';
+  ctx.writeRoot(hostIndex, hostImport);
+  const route = side === "admin"
+    ? "apps/next-admin/src/app/dashboard/" + routeSegment + "/page.tsx"
+    : "apps/next-frontend/src/app/[locale]/" + routeSegment + "/page.tsx";
+  ctx.writeRoot(route, 'import { Page } from "' + packageName + '";\nexport default Page;\n');
+}
+
 test("a minimal native module omits unused responsibility directories", () => {
   fixture((ctx) => {
     assert.equal(resolveNativeModule(ctx.root, "sample"), ctx.path(""));
@@ -103,49 +145,13 @@ test("declared UI requires actual FFA structure independent of Next.js", () => {
   });
 });
 
-test("Leptos FFA without any Next.js metadata passes native architecture lint", () => {
+test("an unmounted Leptos FFA draft does not claim Next.js readiness", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "admin_only"\n[crate]\nentry_type = "SampleModule"\n' +
-      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
-    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
-    ctx.write("admin/src/lib.rs",
-      'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
-    ctx.write("admin/src/core/mod.rs", "pub enum State { Pending }\n");
-    ctx.write("admin/src/model.rs", "pub struct OwnerModel;\n");
-    ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
-    ctx.write("admin/src/transport/mod.rs",
-      'mod graphql_adapter;\nmod native_server_adapter;\n' +
-      'pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n');
-    ctx.write("admin/src/transport/graphql_adapter.rs",
-      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/transport/native_server_adapter.rs",
-      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
-    ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
-    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
-    ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
-    ctx.write("admin/locales/en.ftl", "sample-state = Pending\n");
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
     assert.deepEqual(lint(ctx), []);
-
-    // A scaffolded but unmounted FFA development package is still linted.
-    ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
-      '[crate]\nentry_type = "SampleModule"\n');
-    assert.deepEqual(lint(ctx), [], "future_ui accepts real draft package files");
-
-    // A no_ui module may not silently hide a physical UI package.
-    ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
-      '[crate]\nentry_type = "SampleModule"\n');
-    assert.match(lint(ctx).join("\n"), /undeclared UI package requires explicit/);
-
-    // Draft is not a free pass for a wrong Cargo package name.
-    ctx.write("rustok-module.toml",
-      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
-      '[crate]\nentry_type = "SampleModule"\n');
-    ctx.write("admin/Cargo.toml", '[package]\nname = "wrong-admin"\n');
-    assert.match(lint(ctx).join("\n"), /Cargo package name differs/);
   });
 });
 
@@ -526,5 +532,64 @@ test("a tests directory without cfg(test) module wiring remains production sourc
     ctx.write("src/lib.rs",
       'mod module;\nmod services;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
     assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
+  });
+});
+
+test("live admin UI requires a Next.js package and host route", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /Next.js package '@rustok\/sample-admin' is missing/);
+  });
+});
+
+test("live admin UI passes only with matching Next.js package, host registry and route", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("live storefront UI requires its Next.js package, host registry and localized route", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "storefront_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.storefront_ui]\nleptos_crate = "rustok-sample-storefront"\n' +
+      'next_package = "@rustok/sample-frontend"\nroute_segment = "sample"\nslot = "home_after_catalog"\npage_title = "Sample"\n');
+    writeFfaSurface(ctx, "storefront");
+    writeNextSurface(ctx, "storefront", "@rustok/sample-frontend", "sample");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("live Next.js route and host registry must import the declared package", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    const packageRoot = "apps/next-admin/packages/sample-admin";
+    ctx.writeRoot(packageRoot + "/package.json",
+      JSON.stringify({ name: "@rustok/sample-admin", main: "./src/index.ts" }));
+    ctx.writeRoot(packageRoot + "/src/index.ts", "export const Page = () => null;\n");
+    ctx.writeRoot("apps/next-admin/src/modules/index.ts", "export {};\n");
+    ctx.writeRoot("apps/next-admin/src/app/dashboard/sample/page.tsx", "export default function Page() {}\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /Next.js host module registry does not import declared package/);
+    assert.match(failures, /Next.js route must import declared package/);
   });
 });
