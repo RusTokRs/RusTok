@@ -18,10 +18,13 @@ Before changing backend code:
 
 ## Scaffold profiles and generation contract
 
-This section defines the **target** for `cargo xtask module new` and
-`cargo xtask scaffold`, not proof that the current renderer complies.
-`module validate` checks publish-readiness and registration today; full
-architecture, compilation, and runtime evidence remain distinct checks.
+This section defines the contract for `cargo xtask module new` and
+`cargo xtask scaffold`. A non-dry-run native scaffold now runs
+`cargo xtask module lint <slug>` followed by
+`cargo xtask module validate <slug>` after registration unless
+`--skip-validate` is explicitly supplied. Static architecture and
+publish-metadata checks are therefore enforced before a successful scaffold
+result; compilation, behavior, and runtime evidence remain distinct checks.
 
 | Profile | Canonical owner | Required baseline | Must not inherit |
 |---|---|---|---|

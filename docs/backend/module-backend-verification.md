@@ -51,6 +51,24 @@ migration tasks, not opt-in exceptions. Node verifier fixture tests live in
 `scripts/verify/native-module-layout.test.mjs`; run them with
 `node --test scripts/verify/native-module-layout.test.mjs`.
 
+## Post-scaffold verification
+
+A non-dry-run `cargo xtask scaffold` registers the module, then runs static
+architecture lint before publish-metadata validation. It prints
+`SCAFFOLDED` only after both checks pass. If architecture lint or publish
+validation fails, the command returns a non-zero error and does not claim the
+module is verified.
+
+`--skip-validate` is an explicit development escape hatch: registration may
+still have been written, but the command reports `REGISTERED BUT UNVERIFIED`
+and prints the two checks the owner must run. `--dry-run` previews file
+creation without writing, registration, or validation.
+
+Generation is not yet transactional. A validation failure can leave written
+files or registry changes behind; atomic planning/rollback remains a separate
+scaffolding-hardening step.
+
+
 ## Canonical reference-contract verification
 
 For a module that is used as a migration/reference template, run both guards:
