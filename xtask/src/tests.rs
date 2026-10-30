@@ -29,7 +29,7 @@ use super::{
     ModulePublishDryRunPreview, ModuleSpec, ModuleUiPackagePreview, ModuleUiPackagesPreview,
     ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview,
     RegistryGovernanceActionHttpResponse, RegistryPublishStatusHttpResponse, ScaffoldOptions,
-    ScaffoldUi, Settings, MODULE_AUTH_TOKEN_ENV, REGISTRY_MUTATION_SCHEMA_VERSION,
+    ScaffoldProfile, ScaffoldUi, Settings, MODULE_AUTH_TOKEN_ENV, REGISTRY_MUTATION_SCHEMA_VERSION,
     REGISTRY_YANK_REASON_CODES, REMOTE_RUNNER_TOKEN_ENV,
 };
 use std::{

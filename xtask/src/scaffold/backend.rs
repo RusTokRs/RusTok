@@ -1,5 +1,4 @@
 use super::options::ScaffoldOptions;
-use anyhow::Result;
 use std::path::PathBuf;
 
 /// Render an intentionally minimal native runtime module. There is no generic
@@ -20,9 +19,25 @@ pub(crate) fn render_backend(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathB
     let ui_classification = if ui_requested { "future_ui" } else { "no_ui" };
     let ui_summary = match opts.ui {
         super::options::ScaffoldUi::None => "No UI packages requested.",
-        super::options::ScaffoldUi::Admin => "Draft Leptos admin crate created but NOT mounted in the host.",
-        super::options::ScaffoldUi::Storefront => "Draft Leptos storefront crate created but NOT mounted in the host.",
-        super::options::ScaffoldUi::Dual => "Draft Leptos admin and storefront crates created but NOT mounted in hosts.",
+        super::options::ScaffoldUi::Admin => {
+            "Draft Leptos admin crate created but NOT mounted in the host."
+        }
+        super::options::ScaffoldUi::Storefront => {
+            "Draft Leptos storefront crate created but NOT mounted in the host."
+        }
+        super::options::ScaffoldUi::Dual => {
+            "Draft Leptos admin and storefront crates created but NOT mounted in hosts."
+        }
+    };
+    let ui_readiness = if ui_requested {
+        "draft FFA packages, not_started; no live host route or owner operations"
+    } else {
+        "not applicable; no UI packages or live UI routes"
+    };
+    let ui_work_phases = if ui_requested {
+        "- [ ] Implement owner-specific native/GraphQL transports and mount Leptos UI after real operations.\n- [ ] Implement and verify the independent classic Next.js client before publishing a live UI surface."
+    } else {
+        "- [ ] Preserve the headless contract; add UI only if a real owner API and new product scope justify it."
     };
 
     let cargo = format!(
@@ -92,7 +107,7 @@ Native runtime module identity for {title}. No domain capability has been implem
 
 ## Known Limitations / Pending Implementation
 - There are no domain commands, durable persistence, migrations or business transports yet.
-- A requested UI package is unmounted development code, not a live route.
+- No live UI route is declared; any requested UI development package is unmounted.
 - Compilation, runtime composition and FBA/FFA readiness require separate evidence.
 - Track owner operations and verification in [the implementation plan](./docs/implementation-plan.md).
 
@@ -148,15 +163,14 @@ Establish native ownership before implementing a business capability.
 - FBA status: `not_started`
 - FFA status: `not_started`
 - UI surfaces: {ui_summary}
-- UI readiness: draft skeleton, not_started, no live host mount or owner operations
+- UI readiness: {ui_readiness}
 - No business functionality or runtime transport parity is claimed.
 
 ## Local work phases
 - [x] Define native module runtime metadata and contract tests.
 - [ ] Specify domain rules, owner service/DTO commands and typed context/errors.
 - [ ] Design real persistence and migrations if required.
-- [ ] Implement owner-specific native and GraphQL transports and mount Leptos UI after real operations.
-- [ ] Implement any independent classic Next.js client separately in its host, if needed.
+{ui_work_phases}
 - [ ] Verify runtime, FBA/FFA evidence, registration and release readiness.
 
 ## Verification
@@ -265,7 +279,7 @@ impl MigrationSource for {module_type} {{
     );
 
     let tests = format!(
-        r#"use crate::{module_type};
+        r####"use crate::{module_type};
 use rustok_core::module::{{MigrationSource, ModuleKind, RusToKModule}};
 
 #[test]
@@ -295,7 +309,7 @@ fn public_contract_does_not_claim_unimplemented_capabilities() {{
     }}
     assert!(api.contains("No create/update/delete commands are advertised"));
 }}
-"#
+"####
     );
 
     [
@@ -351,6 +365,21 @@ mod tests {
     }
 
     #[test]
+    fn native_module_manifest_matches_the_golden_snapshot() {
+        let files = render_backend(&options(), "Example");
+        let manifest = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("rustok-module.toml"))
+            .unwrap()
+            .1
+            .as_str();
+        assert_eq!(
+            manifest,
+            include_str!("goldens/native-module-manifest.golden")
+        );
+    }
+
+    #[test]
     fn metadata_is_parseable_and_reports_no_ui_or_fake_dependencies() {
         let files = render_backend(&options(), "Example");
         let manifest = files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap();
@@ -363,6 +392,29 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&cargo.1).unwrap();
         assert!(parsed["dependencies"].get("sea-orm").is_none());
         assert!(parsed["dependencies"].get("rustok-outbox").is_none());
+    }
+
+    #[test]
+    fn no_ui_plan_does_not_pretend_a_draft_ui_exists() {
+        let files = render_backend(&options(), "Example");
+        let plan = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("docs/implementation-plan.md"))
+            .unwrap()
+            .1
+            .as_str();
+        assert!(plan.contains("no UI packages or live UI routes"));
+        assert!(plan.contains("Preserve the headless contract"));
+        assert!(!plan.contains("draft skeleton"));
+        assert!(!plan.contains("mount Leptos UI"));
+        let readme = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("README.md"))
+            .unwrap()
+            .1
+            .as_str();
+        assert!(readme.contains("No UI packages requested"));
+        assert!(readme.contains("No live UI route is declared"));
     }
 
     #[test]

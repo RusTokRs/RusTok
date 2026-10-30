@@ -60,6 +60,12 @@ Error and event modules appear only with real owner error/event contracts.
 A file containing only a comment, a no-op adapter, speculative search
 projection, invented records table, or fake CRUD is **not** a layer.
 
+The CLI must reject unexpected flags, repeated options and missing option values
+instead of silently interpreting a partial request. Metadata printed into owner
+docs and the central Markdown registry must be single-line and must not introduce
+unescaped table separators. A headless module's implementation plan must describe
+UI as absent, not as an unmounted draft.
+
 `--no-db` must produce no entities, migrations or durable storage claims. A
 DB request authorizes persistence only once an actual owner schema and
 migration contract exist. `--no-ui` must produce no UI packages or advertised
@@ -76,7 +82,14 @@ registry. Known gaps must be declared in the owner README/plan. The current
 generator preflights source and registration edits, previews the complete plan
 in dry-run, and uses rollback-protected writes; architecture lint runs before
 publish-metadata validation. This does not isolate concurrent external
-workspace writers, and the full generated-crate build matrix remains pending.
+workspace writers. Golden file-tree snapshots cover all four UI modes, with
+renderer snapshots for the native manifest and both Leptos package variants.
+The dedicated `Native Scaffold Matrix` workflow runs `cargo test -p xtask`,
+generates headless/admin/storefront/dual modules in a disposable CI checkout,
+requires each scaffold's architecture and metadata validation to pass, tests
+all generated crates, and checks CSR/hydrate/SSR builds for both UI surfaces.
+This is compile/structure evidence only, not proof of business behavior,
+runtime integration or functional client parity.
 
 ### Current implementation gap
 
@@ -95,7 +108,9 @@ Successful publish metadata validation does not imply runtime or UI readiness.
 The generator now previews complete manifest edits and restores planned files
 when post-generation lint or metadata validation fails. This rollback-protected
 transaction is not a concurrency-isolated filesystem transaction. Golden
-snapshots and an executable generated-crate build matrix remain future work.
+snapshots and the generated-crate matrix are enforced by the dedicated
+`Native Scaffold Matrix` workflow; passing them still does not imply a working
+domain service or live UI surface.
 
 ## Target Module Layout
 
@@ -224,9 +239,13 @@ registration placement, private persistence entities, test location, dependency
 direction, bounded Rust file sizes, FFA package structure, and consistency
 between `module.ui_classification`, UI package presence and
 `[provides.*_ui]`. A `future_ui` package remains an unmounted draft, not a
-live UI surface. `no_ui` forbids UI packages, while `admin_only`,
-`storefront_only` and `dual_surface` require the corresponding actual
-package and live manifest declaration.
+live UI surface. Publish validation permits a physical admin/storefront
+package without `[provides.*_ui]` or support metadata only when the manifest
+explicitly says `future_ui`; even then, its Cargo package name must match
+`rustok-<slug>-admin` or `rustok-<slug>-storefront`. This preserves package
+identity without advertising a live route. `no_ui` forbids UI packages, while
+`admin_only`, `storefront_only` and `dual_surface` require the corresponding
+actual package and live manifest declaration.
 
 The generic lint recognizes all six manifest classifications, including
 `capability_only`, and distinguishes live UI surfaces, unmounted
