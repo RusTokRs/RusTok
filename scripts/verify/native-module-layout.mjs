@@ -491,11 +491,11 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   const adapterNames = ["native_server_adapter", "graphql_adapter"].filter((adapter) =>
     new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + adapter + "\\s*;").test(transportCode),
   );
-  if (draft && adapterNames.length !== 2) {
+  if (draft && adapterNames.length === 0) {
     diagnostics.push(relative(root, transport) +
-      ": an unmounted future_ui FFA draft must retain both native and GraphQL adapter boundaries");
+      ": an unmounted future_ui FFA draft must declare at least one native/GraphQL adapter boundary");
   }
-  if (requested && adapterNames.length === 1) {
+  if (adapterNames.length === 1) {
     const planPath = join(moduleRoot, "docs", "implementation-plan.md");
     const plan = hasSource(planPath) ? readFileSync(planPath, "utf8") : "";
     const normalizedPlan = plan.replace(/\s+/g, " ");
