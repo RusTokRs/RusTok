@@ -107,7 +107,7 @@ impl StaticDistributionJobConfig {
         Ok(())
     }
 
-    fn validate_fields(&self) -> Result<(), StaticDistributionJobError> {
+    pub(crate) fn validate_fields(&self) -> Result<(), StaticDistributionJobError> {
         if self.contract != JOB_CONFIG_CONTRACT
             || !valid_digest(&self.cargo_digest)
             || !valid_digest(&self.rustc_digest)

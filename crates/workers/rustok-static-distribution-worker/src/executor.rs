@@ -80,6 +80,21 @@ pub struct StaticDistributionWorker {
     active_jobs: Arc<Mutex<HashSet<PathBuf>>>,
 }
 
+impl std::fmt::Debug for StaticDistributionWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticDistributionWorker")
+            .field("launcher_path", &self.launcher_path)
+            .field("launcher_digest", &self.launcher_digest)
+            .field("job_config_path", &self.job_config_path)
+            .field("job_config_digest", &self.job_config_digest)
+            .field("work_root", &self.work_root)
+            .field("toolchain_digest", &self.toolchain_digest)
+            .field("build_target", &self.build_target)
+            .field("execution_timeout", &self.execution_timeout)
+            .finish_non_exhaustive()
+    }
+}
+
 impl StaticDistributionWorker {
     pub fn from_env(execution_timeout: Duration) -> Result<Self, String> {
         required_text("RUSTOK_INSTANCE_ROOT", 4_096)?;
@@ -143,6 +158,31 @@ impl StaticDistributionWorker {
         };
         worker.validate_runtime()?;
         Ok(worker)
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_for_test(
+        launcher_path: PathBuf,
+        launcher_digest: String,
+        job_config_path: PathBuf,
+        job_config_digest: String,
+        work_root: PathBuf,
+        toolchain_digest: String,
+        build_target: String,
+        execution_timeout: Duration,
+    ) -> Self {
+        Self {
+            launcher_path,
+            launcher_digest,
+            job_config_path,
+            job_config_digest,
+            work_root,
+            toolchain_digest,
+            build_target,
+            execution_timeout,
+            active_jobs: Arc::new(Mutex::new(HashSet::new())),
+        }
     }
 
     fn validate_runtime(&self) -> Result<(), String> {
