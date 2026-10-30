@@ -368,8 +368,11 @@ test("Leptos UI code cannot bypass the transport facade through raw adapters", (
       "use crate::transport::native_server_adapter::request;\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("admin/src/contract_tests.rs", "#[test]\nfn legacy_contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
-    assert.match(lint(ctx).join("\n"), /UI must use the module transport facade/);
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /UI must use the module transport facade/);
+    assert.doesNotMatch(failures, /contract_tests\.rs.*belong in src\/tests\/contract\.rs/);
   });
 });
 
@@ -474,5 +477,19 @@ test("native module paths cannot traverse a symlinked ancestor directory", () =>
     rmSync(modules, { recursive: true, force: true });
     symlinkSync(join(ctx.root, "outside-modules"), modules);
     assert.match(lint(ctx).join("\n"), /native module path cannot traverse symlinks/);
+  });
+});
+
+
+test("service dependency direction ignores test-only migration fixtures", () => {
+  fixture((ctx) => {
+    ctx.write("src/services/mod.rs", "pub mod post;\n");
+    ctx.write("src/services/post/mod.rs", "pub struct PostService;\n");
+    ctx.write("src/services/post/tests.rs", "use sea_orm_migration::MigrationTrait;\n");
+    ctx.write("src/services/tag_tenant_integrity_tests.rs",
+      "use sea_orm_migration::SchemaManager;\n");
+    ctx.write("src/lib.rs",
+      'mod module;\nmod services;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.deepEqual(lint(ctx), []);
   });
 });

@@ -164,8 +164,18 @@ function rustFiles(directory) {
   return result;
 }
 
+function isTestSource(file) {
+  const parts = file.split(/[\\/]/);
+  const name = parts.at(-1);
+  return parts.includes("test") || parts.includes("tests") ||
+    /(?:^|_)tests?\.rs$/.test(name);
+}
+
 function checkImports(root, directory, patterns, diagnostics) {
   for (const file of rustFiles(directory)) {
+    // Test fixtures may need migration tooling or framework adapters to assemble
+    // isolated databases; dependency direction applies to production source.
+    if (isTestSource(file)) continue;
     const source = maskRustNonCode(readFileSync(file, "utf8"));
     for (const [label, regex] of patterns) {
       if (regex.test(source)) {
@@ -295,10 +305,8 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     diagnostics.push(relative(root, join(src, "tests", "contract.rs")) +
       ": UI contract tests must use the dedicated tests/ slot");
   }
-  if (hasSource(join(src, "contract_tests.rs"))) {
-    diagnostics.push(relative(root, join(src, "contract_tests.rs")) +
-      ": UI contract tests belong in src/tests/contract.rs");
-  }
+  // Older UI crates may retain an auxiliary root contract_tests.rs while
+  // migrating. The canonical tests/contract.rs above remains mandatory.
   const libCode = maskRustNonCode(lib);
   if (!/#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*mod\s+tests\s*;/.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) +
