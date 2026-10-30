@@ -717,11 +717,11 @@ test("the compact transport.rs facade resolves sibling adapter modules", () => {
     rmSync(join(ctx.root, ctx.path("admin/transport")), { recursive: true, force: true });
     ctx.write("admin/src/transport.rs",
       'mod graphql_adapter;\nmod native_server_adapter;\n' +
-      'pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n');
+      'pub async fn reconcile_catalog() -> Result<(), ()> { graphql_adapter::reconcile_catalog().await }\n');
     ctx.write("admin/src/graphql_adapter.rs",
-      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+      "pub async fn reconcile_catalog() -> Result<(), ()> { Err(()) }\n");
     ctx.write("admin/src/native_server_adapter.rs",
-      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+      "pub async fn reconcile_catalog() -> Result<(), ()> { Err(()) }\n");
     assert.deepEqual(lint(ctx), []);
   });
 });

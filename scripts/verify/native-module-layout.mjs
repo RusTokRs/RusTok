@@ -507,7 +507,7 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
         ": a live single-adapter FFA package must document the canonical single-adapter exception");
     }
   }
-  const hasOwnerOperation = /\b(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\s*\(/.test(transportCode) &&
+  const hasOwnerOperation = /\bpub(?:\([^)]*\))?\s+(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(transportCode) &&
     /\b(?:native_server_adapter|graphql_adapter)\s*::/.test(transportCode);
   if (transportSource && (!adapterNames.length || !hasOwnerOperation)) {
     diagnostics.push(relative(root, transport) +
