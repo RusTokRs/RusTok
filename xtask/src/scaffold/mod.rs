@@ -475,27 +475,27 @@ mod tests {
         let module_dir = root.join("crates/modules/rustok-example");
         fs::create_dir_all(root.join("crates/modules")).unwrap();
         let manifest = root.join("modules.toml");
-        fs::write(&manifest, "before\\n").unwrap();
+        fs::write(&manifest, "before\n").unwrap();
 
         let plan = vec![
             PlannedFile {
                 path: module_dir.join("src/lib.rs"),
-                content: "pub struct Example;\\n".into(),
+                content: "pub struct Example;\n".into(),
                 kind: PlannedFileKind::Create,
             },
             PlannedFile {
                 path: manifest.clone(),
-                content: "after\\n".into(),
+                content: "after\n".into(),
                 kind: PlannedFileKind::Update,
             },
         ];
 
         let transaction = ScaffoldTransaction::apply(&plan, &module_dir).unwrap();
-        assert_eq!(fs::read_to_string(&manifest).unwrap(), "after\\n");
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), "after\n");
         assert!(module_dir.join("src/lib.rs").is_file());
 
         transaction.rollback().unwrap();
-        assert_eq!(fs::read_to_string(&manifest).unwrap(), "before\\n");
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), "before\n");
         assert!(!module_dir.exists());
         fs::remove_dir_all(root).unwrap();
     }
@@ -517,7 +517,7 @@ mod tests {
         let root = temp_root();
         let module_dir = root.join("crates/modules/rustok-example");
         fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
-        fs::write(root.join("modules.toml"), "[modules]\\nexample = { crate = \\"rustok-example\\" }\\n")
+        fs::write(root.join("modules.toml"), "[modules]\nexample = { crate = \"rustok-example\" }\n")
             .unwrap();
 
         let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
