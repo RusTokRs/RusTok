@@ -10,6 +10,16 @@
 
 `rustok-product` is the default catalog submodule of the `Ecommerce` family.
 
+## Microservice and Modular Extraction Sovereignty
+
+`rustok-product` is the core catalog module, but related product micro-modules are **strictly separated standalone crates**:
+- `rustok-product-catalog-service`: Standalone authenticated gRPC microservice host binary providing remote catalog reads outside the monolith (`RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc`).
+- `rustok-product-transport`: Typed tonic gRPC framing, protobuf definitions, and bearer auth interceptors for the `ProductCatalogReadPort`.
+- `rustok-product-bundles`: Dedicated domain module managing product bundles, kits, and package discounts with independent persistence and idempotency receipts.
+- `rustok-product-relations`: Dedicated merchandising domain module managing cross-sells, up-sells, and related product associations.
+
+Contributors and AI agents MUST NOT merge, glue, or collapse these standalone crates back into `rustok-product`. They exist as separate crates specifically to support Fluid Backend Architecture (FBA) and independent microservice deployment.
+
 ## Responsibilities
 
 - Exact Product-owned image references with retain-before-commit, durable postcommit
