@@ -31,6 +31,8 @@ pub struct ModuleOperationRequest {
     pub trace_id: Option<String>,
     pub correlation_id: String,
     pub idempotency_key: Option<Uuid>,
+    /// Original failed operation for recovery commands; part of replay identity.
+    pub recovery_source_id: Option<Uuid>,
     /// Lifecycle commands bind this precondition into the durable
     /// idempotency identity. New executor and recovery commands always carry
     /// a revision; `None` exists only for legacy journal rows and direct
@@ -65,6 +67,7 @@ pub struct ModuleOperationSnapshot {
     pub trace_id: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<Uuid>,
+    pub recovery_source_id: Option<Uuid>,
     pub expected_revision: Option<u64>,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -368,6 +371,7 @@ impl ModuleOperationJournal {
         if existing.module_slug != request.module_slug
             || existing.requested_enabled != request.requested_enabled
             || existing.expected_revision != request.expected_revision
+            || existing.recovery_source_id != request.recovery_source_id
         {
             return Err(ModuleOperationStoreError::IdempotencyConflict);
         }
@@ -393,7 +397,7 @@ impl ModuleOperationJournal {
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 render_parameters(
-                    "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
+                    "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, NULL)",
                     backend,
                 ),
                 vec![
@@ -408,6 +412,7 @@ impl ModuleOperationJournal {
                     request.correlation_id.into(),
                     request.idempotency_key.into(),
                     expected_revision.into(),
+                    request.recovery_source_id.map(|id| id.to_string()).into(),
                 ],
             ))
             .await
@@ -1591,7 +1596,7 @@ fn static_lifecycle_database_error(
 
 fn operation_select_sql() -> &'static str {
     "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
-     requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message, created_at, updated_at FROM module_operations"
+     requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message, created_at, updated_at FROM module_operations"
 }
 
 /// Compares only the semantic lifecycle request under the already-matched
@@ -1606,6 +1611,7 @@ fn replay_or_conflict(
     if existing.module_slug != request.module_slug
         || existing.requested_enabled != request.requested_enabled
         || existing.expected_revision != request.expected_revision
+        || existing.recovery_source_id != request.recovery_source_id
     {
         return Err(ModuleOperationStoreError::IdempotencyConflict);
     }
@@ -1642,6 +1648,11 @@ fn operation_snapshot(
         idempotency_key: backend
             .optional_uuid_from_row(&row, "idempotency_key")
             .map_err(database_error)?,
+        recovery_source_id: row
+            .try_get::<Option<String>>("", "recovery_source_id")
+            .map_err(database_error)?
+            .map(|value| Uuid::parse_str(&value).map_err(database_error))
+            .transpose()?,
         expected_revision: row
             .try_get::<Option<i64>>("", "expected_revision")
             .map_err(database_error)?
@@ -2059,6 +2070,7 @@ mod tests {
                     trace_id TEXT, \
                     correlation_id TEXT, \
                     idempotency_key TEXT, \
+                    recovery_source_id TEXT, \
                     expected_revision INTEGER, \
                     error_message TEXT, \
                     result_snapshot TEXT, \
@@ -2113,6 +2125,7 @@ mod tests {
             trace_id: Some("test:operation-store".to_string()),
             correlation_id: Uuid::new_v4().to_string(),
             idempotency_key: Some(idempotency_key),
+            recovery_source_id: None,
             expected_revision: Some(0),
         }
     }

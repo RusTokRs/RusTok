@@ -1070,14 +1070,22 @@ impl SeoService {
                 delivery.status.as_str(),
                 INDEX_DELIVERY_STATUS_SENT | INDEX_DELIVERY_STATUS_DEAD_LETTER
             ) {
-                let _ = self
+                if let Err(error) = self
                     .mark_index_cursor_repair_progress(
                         tenant_id,
                         trigger.target_type.as_str(),
                         event_delivery.created_at,
                         INDEX_CURSOR_REPLAY_MODE_REPLAYING,
                     )
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        tenant_id = %tenant_id,
+                        target_type = %trigger.target_type,
+                        error = %error,
+                        "failed to mark SEO index cursor replay progress for skipped delivery"
+                    );
+                }
                 continue;
             }
 

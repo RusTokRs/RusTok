@@ -558,10 +558,18 @@ impl ExternalPrebuiltIngressService {
         // Observability context is stored as evidence, not replay identity.
         let request_digest = command.semantic_request_digest()?;
 
-        // 5. Reject a reused owner idempotency key before the global immutable
-        // release lookup can make a changed command appear successful.
-        let existing_by_key = self
+        let tx = self
             .db
+            .begin()
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, &command.scope)
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+
+        // 5. Reject a reused owner idempotency key before the scoped immutable
+        // release lookup can make a changed command appear successful.
+        let existing_by_key = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -601,8 +609,7 @@ impl ExternalPrebuiltIngressService {
         }
 
         // 6. Check if release already admitted under this release digest.
-        let existing_by_digest = self
-            .db
+        let existing_by_digest = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -611,16 +618,26 @@ impl ExternalPrebuiltIngressService {
                             r.artifact_origin, e.native_promotion_denied, e.ingress_at \
                      FROM module_admitted_oci_releases AS r \
                      JOIN module_external_prebuilt_ingress AS e \
-                       ON e.release_digest = r.release_digest \
-                     WHERE r.release_digest = {}",
-                    backend.placeholder(1)
+                       ON e.release_digest = r.release_digest AND e.scope_kind = r.scope_kind \
+                          AND e.scope_tenant_key = r.scope_tenant_key \
+                     WHERE r.release_digest = {} AND r.scope_kind = {} AND r.scope_tenant_key = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3)
                 ),
-                vec![command.reference.digest.clone().into()],
+                vec![
+                    command.reference.digest.clone().into(),
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                ],
             ))
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         if let Some(row) = existing_by_digest {
+            tx.commit()
+                .await
+                .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
             let descriptor_json: String = row
                 .try_get("", "descriptor_json")
                 .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
@@ -691,7 +708,7 @@ impl ExternalPrebuiltIngressService {
 
         // 7. Record staging intent in journal before CAS mutation.
         ReleaseAdmissionIntentJournal::record_staging_intent(
-            &self.db,
+            &tx,
             &command.scope,
             &command.context,
             &request_digest,
@@ -703,6 +720,10 @@ impl ExternalPrebuiltIngressService {
             }
             other => ExternalPrebuiltIngressError::Database(other.to_string()),
         })?;
+
+        tx.commit()
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
         // 8. Fetch OCI package from registry and validate against descriptor and evidence
         let package = self
@@ -842,11 +863,11 @@ impl ExternalPrebuiltIngressService {
             .begin()
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-        crate::backend::set_platform_scope(&tx)
+        crate::backend::set_installation_scope(&tx, &command.scope)
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
-        tx.execute_raw(Statement::from_sql_and_values(
+        let inserted = tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO module_admitted_oci_releases (\
@@ -855,7 +876,7 @@ impl ExternalPrebuiltIngressService {
                     descriptor_json, artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, \
                     request_digest, admitted_at\
                 ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'external_prebuilt', {}, {}, {}, {}, {}, {}) \
-                ON CONFLICT (release_digest) DO NOTHING",
+                ON CONFLICT (scope_kind, scope_tenant_key, release_digest) DO NOTHING",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
@@ -877,7 +898,7 @@ impl ExternalPrebuiltIngressService {
             vec![
                 command.reference.digest.clone().into(),
                 scope_kind.into(),
-                scope_tenant_key.into(),
+                scope_tenant_key.clone().into(),
                 command.reference.registry.clone().into(),
                 command.reference.repository.clone().into(),
                 package.descriptor.slug.clone().into(),
@@ -897,17 +918,20 @@ impl ExternalPrebuiltIngressService {
         .await
         .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
 
+        if inserted.rows_affected() == 0 {
+            return Err(ExternalPrebuiltIngressError::Database("Concurrent admission already committed; retry the command to read the durable result".to_string()));
+        }
+
         tx.execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "INSERT INTO module_external_prebuilt_ingress (\
-                    release_digest, publisher_identity, lineage_reference, lineage_digest, \
+                    scope_kind, scope_tenant_key, release_digest, publisher_identity, lineage_reference, lineage_digest, \
                     signature_reference, signature_digest, sbom_reference, sbom_digest, \
                     provenance_reference, provenance_digest, policy_revision, \
                     license_policy_verified, vulnerability_policy_verified, abi_verified, \
                     capability_verified, native_promotion_denied, ingress_at\
-                ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
-                ON CONFLICT (release_digest) DO NOTHING",
+                ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
@@ -925,8 +949,12 @@ impl ExternalPrebuiltIngressService {
                 backend.placeholder(15),
                 backend.placeholder(16),
                 backend.placeholder(17),
+                backend.placeholder(18),
+                backend.placeholder(19),
             ),
             vec![
+                scope_kind.into(),
+                scope_tenant_key.into(),
                 command.reference.digest.clone().into(),
                 command.evidence.publisher.identity.into(),
                 command.evidence.lineage.source_reference.into(),
@@ -984,12 +1012,24 @@ impl ExternalPrebuiltIngressService {
     /// Looks up an already-admitted external prebuilt package by its exact manifest digest.
     pub async fn get_ingress_record(
         &self,
+        scope: &ModuleInstallationScope,
         release_digest: &str,
     ) -> Result<Option<ExternalPrebuiltIngressReceipt>, ExternalPrebuiltIngressError> {
         let backend = SupportedBackend::new(self.db.get_database_backend())
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
-        let row = self
+        let (scope_kind, scope_tenant_key) = match scope {
+            ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+        };
+        let tx = self
             .db
+            .begin()
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
+        let row = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -998,11 +1038,12 @@ impl ExternalPrebuiltIngressService {
                             e.native_promotion_denied, e.ingress_at \
                      FROM module_admitted_oci_releases AS r \
                      JOIN module_external_prebuilt_ingress AS e \
-                       ON e.release_digest = r.release_digest \
-                     WHERE r.release_digest = {}",
-                    backend.placeholder(1)
+                       ON e.release_digest = r.release_digest AND e.scope_kind = r.scope_kind \
+                          AND e.scope_tenant_key = r.scope_tenant_key \
+                     WHERE r.release_digest = {} AND r.scope_kind = {} AND r.scope_tenant_key = {}",
+                    backend.placeholder(1), backend.placeholder(2), backend.placeholder(3)
                 ),
-                vec![release_digest.into()],
+                vec![release_digest.into(), scope_kind.into(), scope_tenant_key.into()],
             ))
             .await
             .map_err(|e| ExternalPrebuiltIngressError::Database(e.to_string()))?;
@@ -1076,10 +1117,5 @@ impl ExternalPrebuiltIngressService {
             cas_published: false,
             ingress_at,
         }))
-    }
-
-    /// Verifies whether the payload bytes for an admitted release exist in platform CAS.
-    pub async fn has_cas_payload(&self, payload_digest: &str) -> bool {
-        self.blobs.get_verified(payload_digest).await.is_ok()
     }
 }

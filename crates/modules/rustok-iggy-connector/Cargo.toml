@@ -28,7 +28,7 @@ sea-orm-migration.workspace = true
 default = []
 # Enable Iggy SDK support (for full functionality)
 iggy = ["dep:iggy"]
-migrations = ["dep:sea-orm", "dep:sea-orm-migration"]
+migrations = ["dep:sea-orm"]
 
 [dependencies.iggy]
 version = "0.11.0"

@@ -82,6 +82,8 @@ mod m20261027_000084_module_operation_result_snapshot;
 mod m20261027_000085_artifact_ui_resources;
 mod m20261027_000086_gc_candidate_platform_discovery_policy;
 mod m20261027_000087_executor_pools;
+mod m20261029_000088_scoped_admission;
+mod m20261030_000089_lifecycle_hook_settings;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -171,6 +173,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261027_000085_artifact_ui_resources::Migration),
         Box::new(m20261027_000086_gc_candidate_platform_discovery_policy::Migration),
         Box::new(m20261027_000087_executor_pools::Migration),
+        Box::new(m20261029_000088_scoped_admission::Migration),
+        Box::new(m20261030_000089_lifecycle_hook_settings::Migration),
     ]
 }
 

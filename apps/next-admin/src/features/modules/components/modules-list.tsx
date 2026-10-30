@@ -12,7 +12,14 @@ import {
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from '@rustok/next-fluent';
 import { useSession } from 'next-auth/react';
-import { startTransition, useEffect, useMemo, useState } from 'react';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { toast } from 'sonner';
 
 import { useEnabledModulesActions } from '@/shared/hooks/use-enabled-modules';
@@ -54,11 +61,13 @@ import {
   getTransitionCheckpoint,
   installModule,
   listActiveModuleTransitions,
+  listInstalledModules,
   listMarketplaceModules,
   listMarketplaceRegistryFreshness,
   listRetentionHolds,
   listTenantModules,
   type BuildJob,
+  type GqlOpts,
   type InstalledModule,
   type MarketplaceModule,
   type MarketplaceRegistryFreshness,
@@ -73,6 +82,7 @@ import { ModuleDetailPanel } from './module-detail-panel';
 import { ModuleCard } from './module-card';
 import { ModuleUpdateCard } from './module-update-card';
 import { TransitionControlCard } from './transition-control-card';
+import { RecoveryWorkspace } from './recovery-workspace';
 import { ModuleSettingsDialog } from './module-settings-dialog';
 import { ForumModuleSettingsFields } from './module-settings-fields/forum';
 import { BlogModuleSettingsFields } from './module-settings-fields/blog';
@@ -228,18 +238,24 @@ export function ModulesList({
   const [selectedModuleDetail, setSelectedModuleDetail] =
     useState<MarketplaceModule | null>(null);
   const [moduleDetailLoading, setModuleDetailLoading] = useState(false);
-  const [activeTransition, setActiveTransition] =
-    useState<ModuleTransitionCheckpoint | null>(null);
+  const [activeTransitions, setActiveTransitions] = useState<
+    ModuleTransitionCheckpoint[]
+  >([]);
+  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionRefresh, setTransitionRefresh] = useState(0);
+  const [transitionScope, setTransitionScope] = useState<GqlOpts | null>(null);
   const [retentionHolds, setRetentionHolds] = useState<RetentionHold[]>([]);
-  const [tenantSettingsMap, setTenantSettingsMap] = useState<
-    Map<string, { settings: string; revision: number }>
-  >(new Map());
+  const [retentionScope, setRetentionScope] = useState<GqlOpts | null>(null);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
+  const settingsRequest = useRef(0);
+  const orchestrationRequest = useRef(0);
   const [settingsDialog, setSettingsDialog] = useState<{
     open: boolean;
     slug: string;
     settings: string;
     revision: number;
-  }>({ open: false, slug: '', settings: '{}', revision: 0 });
+    scope: GqlOpts | null;
+  }>({ open: false, slug: '', settings: '{}', revision: 0, scope: null });
   const [catalogFilterDraft, setCatalogFilterDraft] = useState(DEFAULT_FILTERS);
   const [appliedCatalogFilters, setAppliedCatalogFilters] =
     useState(DEFAULT_FILTERS);
@@ -277,9 +293,49 @@ export function ModulesList({
   const apiOpts = useMemo(
     () => ({
       token: session?.user?.rustokToken ?? null,
-      tenantSlug: session?.user?.tenantSlug ?? null
+      tenantSlug: session?.user?.tenantSlug ?? null,
+      tenantId: session?.user?.tenantId ?? null
     }),
-    [session?.user?.rustokToken, session?.user?.tenantSlug]
+    [
+      session?.user?.rustokToken,
+      session?.user?.tenantSlug,
+      session?.user?.tenantId
+    ]
+  );
+  useEffect(() => {
+    return () => {
+      settingsRequest.current += 1;
+      orchestrationRequest.current += 1;
+    };
+  }, [apiOpts]);
+  const openSettings = useCallback(
+    async (slug: string) => {
+      const request = ++settingsRequest.current;
+      try {
+        const tenantModules = await listTenantModules(apiOpts);
+        if (request !== settingsRequest.current) return;
+        const current = tenantModules.find(
+          (module) => module.moduleSlug === slug
+        );
+        if (!current) throw new Error(`Settings for ${slug} are unavailable`);
+        setSettingsDialog({
+          open: true,
+          slug,
+          settings: current.settings,
+          revision: current.revision,
+          scope: apiOpts
+        });
+      } catch (error) {
+        if (request === settingsRequest.current) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load module settings'
+          );
+        }
+      }
+    },
+    [apiOpts]
   );
   const { setModuleEnabled } = useEnabledModulesActions();
 
@@ -385,62 +441,80 @@ export function ModulesList({
     async function loadRetentionAndSettings() {
       try {
         const holds = await listRetentionHolds(apiOpts);
-        if (!cancelled) setRetentionHolds(holds);
-      } catch {
-        // non-blocking
-      }
-      try {
-        const tenantMods = await listTenantModules(apiOpts);
         if (!cancelled) {
-          const map = new Map<string, { settings: string; revision: number }>();
-          tenantMods.forEach((tm) => {
-            map.set(tm.moduleSlug, {
-              settings: tm.settings,
-              revision: tm.revision
-            });
-          });
-          setTenantSettingsMap(map);
+          setRetentionHolds(holds);
+          setRetentionError(null);
+          setRetentionScope(apiOpts);
         }
-      } catch {
-        // non-blocking
+      } catch (error) {
+        if (!cancelled) {
+          setRetentionHolds([]);
+          setRetentionError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load retention holds'
+          );
+          setRetentionScope(apiOpts);
+        }
       }
     }
     void loadRetentionAndSettings();
     return () => {
       cancelled = true;
     };
-  }, [apiOpts]);
+  }, [apiOpts, transitionRefresh]);
 
   const opIdFromUrl =
     searchParams.get('op_id') ?? searchParams.get('operation_id');
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
     async function loadTransitions() {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        if (opIdFromUrl) {
-          const cp = await getTransitionCheckpoint(opIdFromUrl, apiOpts);
-          if (!cancelled && cp) {
-            setActiveTransition(cp);
-            return;
-          }
-        }
         const activeList = await listActiveModuleTransitions(apiOpts);
-        if (!cancelled) {
-          if (activeList.length > 0) {
-            // The page renders one transition control card. Surface an
-            // operator-attention checkpoint ahead of ordinary in-flight
-            // transitions so it cannot be hidden by list order.
-            setActiveTransition(
-              activeList.find(
-                (checkpoint) => checkpoint.state === 'INTERVENTION_REQUIRED'
-              ) ?? activeList[0]
-            );
-          } else if (!opIdFromUrl) {
-            setActiveTransition(null);
+        let selected: ModuleTransitionCheckpoint | null = null;
+        let selectionError: string | null = null;
+        if (opIdFromUrl) {
+          try {
+            selected = await getTransitionCheckpoint(opIdFromUrl, apiOpts);
+            if (!selected)
+              selectionError = 'The selected transition was not found.';
+          } catch (error) {
+            selectionError =
+              error instanceof Error
+                ? error.message
+                : 'Failed to load selected transition';
           }
         }
-      } catch {
-        // non-blocking
+        if (!cancelled) {
+          setActiveTransitions(
+            selected
+              ? [
+                  selected,
+                  ...activeList.filter(
+                    (checkpoint) =>
+                      checkpoint.operationId !== selected?.operationId
+                  )
+                ]
+              : activeList
+          );
+          setTransitionError(selectionError);
+          setTransitionScope(apiOpts);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setActiveTransitions([]);
+          setTransitionError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load module transitions'
+          );
+          setTransitionScope(apiOpts);
+        }
+      } finally {
+        inFlight = false;
       }
     }
     void loadTransitions();
@@ -451,7 +525,7 @@ export function ModulesList({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [opIdFromUrl, apiOpts]);
+  }, [opIdFromUrl, apiOpts, transitionRefresh]);
 
   const refreshMarketplaceCatalog = async (
     nextFilters: CatalogFilters,
@@ -505,16 +579,19 @@ export function ModulesList({
   };
 
   const refreshOrchestrationState = async (filters = appliedCatalogFilters) => {
+    const request = ++orchestrationRequest.current;
     try {
       const normalized = normalizeCatalogFilters(filters);
       const [
         nextActiveBuild,
         nextBuildHistory,
+        nextInstalledModules,
         nextMarketplaceCatalog,
         nextRegistryFreshness
       ] = await Promise.all([
         getActiveBuild(apiOpts),
         getBuildHistory(10, 0, apiOpts),
+        listInstalledModules(apiOpts),
         listMarketplaceModules(
           normalized.search,
           normalized.category,
@@ -526,8 +603,10 @@ export function ModulesList({
         ),
         listMarketplaceRegistryFreshness(apiOpts).catch(() => null)
       ]);
+      if (request !== orchestrationRequest.current) return;
       setActiveBuild(nextActiveBuild);
       setBuildHistory(nextBuildHistory);
+      setInstalledModules(nextInstalledModules);
       setMarketplaceCatalog(nextMarketplaceCatalog);
       if (nextRegistryFreshness) {
         setRegistryFreshness(nextRegistryFreshness);
@@ -552,8 +631,14 @@ export function ModulesList({
           ])
         ).sort((left, right) => left.localeCompare(right))
       );
-    } catch {
-      // Keep optimistic orchestration state if refresh fails.
+    } catch (error) {
+      if (request === orchestrationRequest.current) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Failed to refresh module state'
+        );
+      }
     }
   };
 
@@ -614,35 +699,6 @@ export function ModulesList({
     };
   }, [activeBuild?.id, activeBuild?.status, apiOpts, appliedCatalogFilters]);
 
-  const upsertInstalledModule = (slug: string, version: string) => {
-    const registryModule = modules.find((module) => module.moduleSlug === slug);
-    const catalogModule = marketplaceCatalog.find(
-      (module) => module.slug === slug
-    );
-
-    setInstalledModules((prev) => {
-      if (prev.some((module) => module.slug === slug)) {
-        return prev.map((module) =>
-          module.slug === slug ? { ...module, version } : module
-        );
-      }
-
-      return [
-        ...prev,
-        {
-          slug,
-          source: catalogModule?.source ?? 'path',
-          crateName:
-            catalogModule?.crateName ?? registryModule?.moduleSlug ?? slug,
-          version,
-          required: false,
-          dependencies:
-            catalogModule?.dependencies ?? registryModule?.dependencies ?? []
-        }
-      ].sort((left, right) => left.slug.localeCompare(right.slug));
-    });
-  };
-
   const handleToggle = async (slug: string, enabled: boolean) => {
     const module = modules.find((candidate) => candidate.moduleSlug === slug);
     if (!module) {
@@ -684,7 +740,6 @@ export function ModulesList({
     setPlatformLoading(slug);
     try {
       const build = await installModule(slug, version, apiOpts);
-      upsertInstalledModule(slug, version);
       setActiveBuild(build);
       setBuildHistory((prev) => upsertBuildJob(prev, build));
       toast.success(`Install queued for ${slug}`);
@@ -703,13 +758,6 @@ export function ModulesList({
     setPlatformLoading(slug);
     try {
       const build = await uninstallModule(slug, apiOpts);
-      setInstalledModules((prev) => prev.filter((item) => item.slug !== slug));
-      setModules((prev) =>
-        prev.map((module) =>
-          module.moduleSlug === slug ? { ...module, enabled: false } : module
-        )
-      );
-      setModuleEnabled(slug, false);
       setActiveBuild(build);
       setBuildHistory((prev) => upsertBuildJob(prev, build));
       toast.success(`Uninstall queued for ${slug}`);
@@ -728,7 +776,6 @@ export function ModulesList({
     setPlatformLoading(slug);
     try {
       const build = await upgradeModule(slug, version, apiOpts);
-      upsertInstalledModule(slug, version);
       setActiveBuild(build);
       setBuildHistory((prev) => upsertBuildJob(prev, build));
       toast.success(`Upgrade queued for ${slug}`);
@@ -1006,16 +1053,7 @@ export function ModulesList({
                 variant='outline'
                 size='sm'
                 className='h-8 px-2 text-xs'
-                onClick={() => {
-                  const existing = tenantSettingsMap.get(module.moduleSlug);
-                  setSettingsDialog({
-                    open: true,
-                    slug: module.moduleSlug,
-                    settings: existing?.settings ?? '{}',
-                    revision:
-                      existing?.revision ?? module.lifecycleRevision ?? 0
-                  });
-                }}
+                onClick={() => void openSettings(module.moduleSlug)}
               >
                 Settings
               </Button>
@@ -1050,7 +1088,7 @@ export function ModulesList({
       loading,
       platformLoading,
       t,
-      tenantSettingsMap
+      openSettings
     ]
   );
 
@@ -1365,7 +1403,12 @@ export function ModulesList({
         <ModuleDetailPanel
           adminSurface={adminSurface}
           slug={selectedModuleSlug}
-          module={selectedModuleDetail}
+          module={
+            selectedModuleDetail?.slug === selectedModuleSlug &&
+            searchParams.get('module') === selectedModuleSlug
+              ? selectedModuleDetail
+              : null
+          }
           loading={moduleDetailLoading}
           onClose={handleCloseDetail}
           apiOpts={apiOpts}
@@ -1373,7 +1416,7 @@ export function ModulesList({
         />
       )}
 
-      {settingsDialog.open && (
+      {settingsDialog.open && settingsDialog.scope === apiOpts && (
         <ModuleSettingsDialog
           moduleSlug={settingsDialog.slug}
           initialSettings={settingsDialog.settings}
@@ -1382,12 +1425,7 @@ export function ModulesList({
           onOpenChange={(open) =>
             setSettingsDialog((prev) => ({ ...prev, open }))
           }
-          onSaved={(slug, newSettings, newRevision) => {
-            setTenantSettingsMap((prev) => {
-              const next = new Map(prev);
-              next.set(slug, { settings: newSettings, revision: newRevision });
-              return next;
-            });
+          onSaved={(slug, _newSettings, newRevision) => {
             setModules((prev) =>
               prev.map((m) =>
                 m.moduleSlug === slug
@@ -1427,6 +1465,28 @@ export function ModulesList({
         </TabsList>
 
         <TabsContent value='installed' className='space-y-6'>
+          <RecoveryWorkspace
+            key={`${session?.user?.id ?? ''}:${session?.user?.tenantId ?? ''}`}
+            apiOpts={apiOpts}
+            onModuleUpdated={(updated) => {
+              setModules((current) =>
+                current.map((module) =>
+                  module.moduleSlug === updated.moduleSlug
+                    ? {
+                        ...module,
+                        enabled: updated.enabled,
+                        lifecycleRevision: updated.revision
+                      }
+                    : module
+                )
+              );
+              setModuleEnabled(updated.moduleSlug, updated.enabled);
+            }}
+            onRefresh={() => {
+              void refreshOrchestrationState();
+              router.refresh();
+            }}
+          />
           <Card>
             <CardHeader>
               <CardTitle className='text-base'>Build history</CardTitle>
@@ -1515,16 +1575,7 @@ export function ModulesList({
                       }
                       recommendedVersion={module.version}
                       onInspect={handleInspect}
-                      onConfigureSettings={(slug) => {
-                        const existing = tenantSettingsMap.get(slug);
-                        setSettingsDialog({
-                          open: true,
-                          slug,
-                          settings: existing?.settings ?? '{}',
-                          revision:
-                            existing?.revision ?? module.lifecycleRevision ?? 0
-                        });
-                      }}
+                      onConfigureSettings={(slug) => void openSettings(slug)}
                     />
                   ))}
                 </div>
@@ -1560,18 +1611,7 @@ export function ModulesList({
                         onToggle={handleToggle}
                         onInspect={handleInspect}
                         onUninstall={handleUninstall}
-                        onConfigureSettings={(slug) => {
-                          const existing = tenantSettingsMap.get(slug);
-                          setSettingsDialog({
-                            open: true,
-                            slug,
-                            settings: existing?.settings ?? '{}',
-                            revision:
-                              existing?.revision ??
-                              module.lifecycleRevision ??
-                              0
-                          });
-                        }}
+                        onConfigureSettings={(slug) => void openSettings(slug)}
                       />
                     ))}
                   </div>
@@ -1694,49 +1734,56 @@ export function ModulesList({
             </CardHeader>
           </Card>
 
-          {activeTransition && (
-            <TransitionControlCard
-              checkpoint={activeTransition}
-              retentionHolds={retentionHolds}
-              onRefresh={async () => {
-                try {
-                  const cp = await getTransitionCheckpoint(
-                    activeTransition.operationId,
-                    apiOpts
-                  );
-                  setActiveTransition(cp);
-                  const holds = await listRetentionHolds(apiOpts);
-                  setRetentionHolds(holds);
-                } catch {
-                  // ignore
+          {transitionScope === apiOpts && transitionError && (
+            <p role='alert' className='text-destructive text-sm'>
+              {transitionError}
+            </p>
+          )}
+          {retentionScope === apiOpts && retentionError && (
+            <p role='alert' className='text-destructive text-sm'>
+              {retentionError}
+            </p>
+          )}
+          {transitionScope === apiOpts &&
+            activeTransitions.map((checkpoint) => (
+              <TransitionControlCard
+                key={checkpoint.operationId}
+                checkpoint={checkpoint}
+                retentionHolds={
+                  retentionScope === apiOpts && !retentionError
+                    ? retentionHolds
+                    : undefined
                 }
-              }}
-              apiOpts={apiOpts}
-            />
-          )}
+                onRefresh={() => setTransitionRefresh((value) => value + 1)}
+                apiOpts={apiOpts}
+              />
+            ))}
 
-          {!activeTransition && retentionHolds.length > 0 && (
-            <Card>
-              <CardHeader className='pb-3'>
-                <CardTitle className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
-                  Active Platform Retention Holds ({retentionHolds.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className='space-y-2 font-mono text-xs'>
-                {retentionHolds.map((hold) => (
-                  <div
-                    key={hold.holdId}
-                    className='flex items-center justify-between border-b pb-1 last:border-b-0'
-                  >
-                    <span className='text-foreground'>
-                      {hold.targetType}: {hold.targetIdentity}
-                    </span>
-                    <Badge variant='secondary'>{hold.kind}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+          {transitionScope === apiOpts &&
+            activeTransitions.length === 0 &&
+            retentionScope === apiOpts &&
+            retentionHolds.length > 0 && (
+              <Card>
+                <CardHeader className='pb-3'>
+                  <CardTitle className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
+                    Active Platform Retention Holds ({retentionHolds.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className='space-y-2 font-mono text-xs'>
+                  {retentionHolds.map((hold) => (
+                    <div
+                      key={hold.holdId}
+                      className='flex items-center justify-between border-b pb-1 last:border-b-0'
+                    >
+                      <span className='text-foreground'>
+                        {hold.targetType}: {hold.targetIdentity}
+                      </span>
+                      <Badge variant='secondary'>{hold.kind}</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
           {updateCandidates.length > 0 ? (
             <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>

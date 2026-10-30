@@ -19,7 +19,7 @@
 //! pre-authorized.
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -254,6 +254,14 @@ fn scope_parts(scope: &ModuleInstallationScope) -> (&'static str, Option<Uuid>) 
     }
 }
 
+fn scope_key(scope: &ModuleInstallationScope) -> (&'static str, String) {
+    let (kind, tenant) = scope_parts(scope);
+    (
+        kind,
+        tenant.map_or_else(|| "platform".to_string(), |id| id.to_string()),
+    )
+}
+
 /// SQL fragment matching the nullable tenant column against an optional
 /// tenant value, for `tenant_id` columns expressed without a table alias.
 fn tenant_clause(backend: SupportedBackend, column: &str, index: usize) -> String {
@@ -357,6 +365,7 @@ impl ModuleOperatorService {
     /// publisher is the attested ingress publisher when one exists.
     pub async fn validate_version_identity_immutability(
         &self,
+        scope: &ModuleInstallationScope,
         publisher: &str,
         slug: &str,
         version: &str,
@@ -364,24 +373,34 @@ impl ModuleOperatorService {
     ) -> Result<(), ModuleOperatorError> {
         let backend =
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
-        let row = self
-            .db
+        let (scope_kind, scope_tenant_key) = scope_key(scope);
+        let tx = self.db.begin().await.map_err(database_error)?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(database_error)?;
+        let row = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT r.release_digest, e.publisher_identity \
                      FROM module_admitted_oci_releases r \
                      LEFT JOIN module_external_prebuilt_ingress e ON e.release_digest = r.release_digest \
+                         AND e.scope_kind = r.scope_kind AND e.scope_tenant_key = r.scope_tenant_key \
                      WHERE r.slug = {} AND r.version = {} AND r.release_digest <> {} \
+                       AND r.scope_kind = {} AND r.scope_tenant_key = {} \
                      LIMIT 1",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
+                    backend.placeholder(4),
+                    backend.placeholder(5),
                 ),
                 vec![
                     slug.to_string().into(),
                     version.to_string().into(),
                     candidate_release_digest.to_string().into(),
+                    scope_kind.into(),
+                    scope_tenant_key.into(),
                 ],
             ))
             .await
@@ -423,11 +442,11 @@ impl ModuleOperatorService {
         let predecessor_row = current_index.and_then(|index| chain.get(index + 1));
 
         let current_identity = match current_row {
-            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+            Some(row) => Some(self.dynamic_coordinate(slug, row, scope).await?),
             None => None,
         };
         let predecessor_identity = match predecessor_row {
-            Some(row) => Some(self.dynamic_coordinate(slug, row).await?),
+            Some(row) => Some(self.dynamic_coordinate(slug, row, scope).await?),
             None => None,
         };
 
@@ -447,7 +466,7 @@ impl ModuleOperatorService {
             Some(ModuleReleaseCoordinate::Dynamic { release_digest, .. }) => {
                 if let Some(current) = current_row {
                     let current_fingerprint = data_schema_fingerprint(&current.descriptor);
-                    match self.candidate_descriptor(release_digest).await? {
+                    match self.candidate_descriptor(release_digest, scope).await? {
                         Some(candidate) => {
                             has_schema_migration =
                                 data_schema_fingerprint(&candidate) != current_fingerprint;
@@ -677,11 +696,11 @@ impl ModuleOperatorService {
         };
 
         let current_identity = match current_index {
-            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index], scope).await?),
             None => None,
         };
         let candidate_identity = match candidate_index {
-            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index], scope).await?),
             None => None,
         };
         let predecessor_index = match current_index {
@@ -689,7 +708,7 @@ impl ModuleOperatorService {
             None => (chain.len() > 1).then_some(1),
         };
         let predecessor_identity = match predecessor_index {
-            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index]).await?),
+            Some(index) => Some(self.dynamic_coordinate(slug, &chain[index], scope).await?),
             None => None,
         };
         let active_retention_holds_count = self.active_holds_for(basis).await?.len();
@@ -788,19 +807,30 @@ impl ModuleOperatorService {
     async fn publisher_for_release(
         &self,
         release_digest: &str,
+        scope: &ModuleInstallationScope,
     ) -> Result<Option<String>, ModuleOperatorError> {
         let backend =
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
-        let row = self
-            .db
+        let (scope_kind, scope_tenant_key) = scope_key(scope);
+        let tx = self.db.begin().await.map_err(database_error)?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(database_error)?;
+        let row = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT publisher_identity FROM module_external_prebuilt_ingress \
-                     WHERE release_digest = {}",
+                     WHERE release_digest = {} AND scope_kind = {} AND scope_tenant_key = {}",
                     backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
-                vec![release_digest.to_string().into()],
+                vec![
+                    release_digest.to_string().into(),
+                    scope_kind.into(),
+                    scope_tenant_key.into(),
+                ],
             ))
             .await
             .map_err(database_error)?;
@@ -817,9 +847,12 @@ impl ModuleOperatorService {
         &self,
         slug: &str,
         row: &InstallationRow,
+        scope: &ModuleInstallationScope,
     ) -> Result<ModuleReleaseCoordinate, ModuleOperatorError> {
         Ok(ModuleReleaseCoordinate::Dynamic {
-            publisher_identity: self.publisher_for_release(&row.manifest_digest).await?,
+            publisher_identity: self
+                .publisher_for_release(&row.manifest_digest, scope)
+                .await?,
             module_slug: slug.to_string(),
             version: row.version.clone(),
             release_digest: row.manifest_digest.clone(),
@@ -831,19 +864,26 @@ impl ModuleOperatorService {
     async fn candidate_descriptor(
         &self,
         release_digest: &str,
+        scope: &ModuleInstallationScope,
     ) -> Result<Option<ModuleArtifactDescriptor>, ModuleOperatorError> {
         let backend =
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
-        let row = self
-            .db
+        let (scope_kind, scope_tenant_key) = scope_key(scope);
+        let tx = self.db.begin().await.map_err(database_error)?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(database_error)?;
+        let row = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT CAST(descriptor_json AS TEXT) AS descriptor_json \
-                     FROM module_admitted_oci_releases WHERE release_digest = {}",
+                     FROM module_admitted_oci_releases WHERE release_digest = {} AND scope_kind = {} AND scope_tenant_key = {}",
                     backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3),
                 ),
-                vec![release_digest.to_string().into()],
+                vec![release_digest.to_string().into(), scope_kind.into(), scope_tenant_key.into()],
             ))
             .await
             .map_err(database_error)?;

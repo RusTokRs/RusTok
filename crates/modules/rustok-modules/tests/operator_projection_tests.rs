@@ -136,11 +136,11 @@ async fn admit_test_release(
         backend,
         format!(
             "INSERT INTO module_external_prebuilt_ingress (\
-                release_digest, publisher_identity, lineage_reference, lineage_digest, signature_reference, \
+                scope_kind, scope_tenant_key, release_digest, publisher_identity, lineage_reference, lineage_digest, signature_reference, \
                 signature_digest, sbom_reference, sbom_digest, provenance_reference, provenance_digest, \
                 policy_revision, license_policy_verified, vulnerability_policy_verified, abi_verified, \
                 capability_verified, native_promotion_denied, ingress_at \
-             ) VALUES ({}, 1, 1, 1, 1, 1, datetime('now'))",
+             ) VALUES ('platform', 'platform', {}, 1, 1, 1, 1, 1, datetime('now'))",
             ingress_placeholders.join(", ")
         ),
         vec![
@@ -181,7 +181,7 @@ async fn insert_inactive_installation(
             format!(
                 "SELECT registry, repository, slug, version, descriptor_json, payload_digest, \
                         payload_media_type, payload_size_bytes \
-                 FROM module_admitted_oci_releases WHERE release_digest = {placeholder}"
+                 FROM module_admitted_oci_releases WHERE scope_kind = 'platform' AND scope_tenant_key = 'platform' AND release_digest = {placeholder}"
             ),
             vec![release_digest.to_string().into()],
         ))
@@ -206,6 +206,16 @@ async fn insert_inactive_installation(
         ModuleInstallationScope::Platform => ("platform", None),
         ModuleInstallationScope::Tenant { tenant_id } => ("tenant", Some(*tenant_id)),
     };
+    if let Some(tenant_id) = tenant_id {
+        let (tenant, digest) = match backend {
+            sea_orm::DbBackend::Postgres => ("$1", "$2"),
+            _ => ("?1", "?2"),
+        };
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(backend, format!(
+            "INSERT INTO module_admitted_oci_releases (release_digest, scope_kind, scope_tenant_key, registry, repository, slug, version, payload_digest, payload_media_type, payload_size_bytes, descriptor_json, artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, request_digest, admitted_at) SELECT release_digest, 'tenant', {tenant}, registry, repository, slug, version, payload_digest, payload_media_type, payload_size_bytes, descriptor_json, artifact_origin, actor_id, idempotency_key, trace_id, correlation_id, request_digest, admitted_at FROM module_admitted_oci_releases WHERE scope_kind = 'platform' AND scope_tenant_key = 'platform' AND release_digest = {digest} ON CONFLICT (scope_kind, scope_tenant_key, release_digest) DO NOTHING"), vec![tenant_id.to_string().into(), release_digest.to_string().into()])).await.expect("scoped release fixture");
+        db.execute_raw(sea_orm::Statement::from_sql_and_values(backend, format!(
+            "INSERT INTO module_external_prebuilt_ingress (scope_kind, scope_tenant_key, release_digest, publisher_identity, lineage_reference, lineage_digest, signature_reference, signature_digest, sbom_reference, sbom_digest, provenance_reference, provenance_digest, policy_revision, license_policy_verified, vulnerability_policy_verified, abi_verified, capability_verified, native_promotion_denied, ingress_at) SELECT 'tenant', {tenant}, release_digest, publisher_identity, lineage_reference, lineage_digest, signature_reference, signature_digest, sbom_reference, sbom_digest, provenance_reference, provenance_digest, policy_revision, license_policy_verified, vulnerability_policy_verified, abi_verified, capability_verified, native_promotion_denied, ingress_at FROM module_external_prebuilt_ingress WHERE scope_kind = 'platform' AND scope_tenant_key = 'platform' AND release_digest = {digest} ON CONFLICT (scope_kind, scope_tenant_key, release_digest) DO NOTHING"), vec![tenant_id.to_string().into(), release_digest.to_string().into()])).await.expect("scoped ingress fixture");
+    }
     let uuid_value = |value: Uuid| -> sea_orm::Value {
         match backend {
             sea_orm::DbBackend::Postgres => value.into(),
@@ -370,6 +380,7 @@ async fn test_version_coordinate_immutability_rejection() {
     // 1. Same version, same release digest passes validation
     operator
         .validate_version_identity_immutability(
+            &ModuleInstallationScope::Platform,
             "trusted-analytics-corp",
             "analytics_tracker",
             "1.0.0",
@@ -381,6 +392,7 @@ async fn test_version_coordinate_immutability_rejection() {
     // 2. Same version, different release digest is rejected with VersionConflict!
     let conflict_err = operator
         .validate_version_identity_immutability(
+            &ModuleInstallationScope::Platform,
             "trusted-analytics-corp",
             "analytics_tracker",
             "1.0.0",

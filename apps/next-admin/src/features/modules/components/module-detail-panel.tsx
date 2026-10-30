@@ -288,6 +288,7 @@ export function ModuleDetailPanel({
 
             {/* Governance & Moderation Actions */}
             <GovernanceForm
+              key={module.slug}
               module={module}
               apiOpts={apiOpts}
               onSuccess={onRefresh}

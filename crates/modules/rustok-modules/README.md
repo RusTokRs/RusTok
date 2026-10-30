@@ -160,6 +160,13 @@ around the owner contracts.
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 
+- Scoped OCI admission and executor-readiness identity changes require
+  PostgreSQL migration, RLS, and concurrent-admission verification before
+  production use.
+- Static settings writes conservatively reject detected unresolved transitions
+  with a predecessor, but exact release schemas and an atomic fence covering
+  static rollouts are missing. Installer seed toggles do not yet compose the
+  active settings schema, and recovery and retry paths need production evidence.
 - Artifact-data object migration and the physical namespace cutover still need
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest

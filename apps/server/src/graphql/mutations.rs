@@ -607,7 +607,12 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         }
         ModuleOperationRecoveryError::NotRetryable(reason) => {
             tracing::error!(%reason, "module operation recovery is not retryable");
-            FieldError::new("Module operation is not retryable").extend_with(|_, ext| {
+            let message = match reason.as_str() {
+                "hook_settings_changed" => "Module settings changed after the failed hook; restore the reviewed settings or use compensation",
+                "hook_settings_evidence_unavailable" => "The original hook settings cannot be verified; use the guarded compensation path",
+                _ => "Module operation is not retryable",
+            };
+            FieldError::new(message).extend_with(|_, ext| {
                     ext.set("code", "MODULE_OPERATION_NOT_RETRYABLE");
                     ext.set("retryable_issue", false);
                 })
@@ -2404,6 +2409,16 @@ mod tests {
         );
         assert_eq!(not_retryable.message, "Module operation is not retryable");
         assert!(!not_retryable.message.contains("database password=secret"));
+
+        let changed = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::NotRetryable("hook_settings_changed".to_string()),
+        );
+        assert!(changed.message.contains("settings changed"));
+        let missing =
+            map_module_operation_recovery_error(ModuleOperationRecoveryError::NotRetryable(
+                "hook_settings_evidence_unavailable".to_string(),
+            ));
+        assert!(missing.message.contains("cannot be verified"));
 
         let post_hook =
             map_module_operation_recovery_error(ModuleOperationRecoveryError::PostHookFailed(

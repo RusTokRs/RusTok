@@ -66,7 +66,9 @@ impl ModuleRolloutPromotionSettingsService {
                 }
             })
         };
-        let expected_settings = normalize(expected_settings)?;
+        // The reviewed snapshot is a comparison precondition, not a write.
+        // Normalizing it would materialize defaults that may not exist in the
+        // persisted document and turn an unchanged snapshot into a conflict.
         let settings = normalize(settings)?;
 
         let state = writer

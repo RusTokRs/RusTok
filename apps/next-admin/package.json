@@ -14,6 +14,7 @@
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
     "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
+    "test:modules": "node --test src/shared/api/modules.test.mjs",
     "lint:fix": "eslint src --fix && prettier --write src",
     "lint:strict": "eslint src --max-warnings=0",
     "test:e2e": "playwright test",

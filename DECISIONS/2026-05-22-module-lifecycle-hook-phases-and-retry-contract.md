@@ -22,6 +22,19 @@ and the `module_operations` journal cannot be reliably used for retry/compensati
 - A post-hook error does not roll back the committed state. Instead of rollback, a retryable issue is created in
   `module_operations` (via status/details), so recovery proceeds through retry/compensation,
   not through an implicit state rewind.
+- A retry is admitted only when the selected tenant intent still matches and
+  the current settings have the same canonical digest as the document supplied
+  to the original hook. The digest is recorded atomically with the committed
+  lifecycle state before the post-hook runs, and is carried to retry attempts.
+  Historical operations without that evidence fail closed for automatic retry;
+  operators may use the independently guarded compensation path. The digest is
+  private owner evidence, not a copy of the settings or a public DTO field.
+- Successful recovery records the retry completion and resolves the original
+  post-hook failure in the same owner transaction. A failed transaction leaves
+  recovery pending for reconciliation rather than reporting a false success.
+- Retry and compensation idempotency bind the exact original operation ID;
+  an ordinary toggle or recovery of a different operation cannot replay under
+  the same tenant/idempotency key.
 - Legacy `on_enable` / `on_disable` are treated as a compat pre-hook layer until full cutover to
   the explicit pre/post API.
 

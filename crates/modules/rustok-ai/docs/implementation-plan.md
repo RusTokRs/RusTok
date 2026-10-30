@@ -271,6 +271,33 @@ providers must be added behind the same retrieval contract.
 - `cargo test -p rustok-ai --features server,graphql --lib`
 - Next admin typecheck/lint and Leptos native/GraphQL target-catalog parity tests
 
+## Phase FS-07 audit and remediation status
+
+- **Scope:** Complete `rustok-ai` capability ecosystem: `rustok-ai` (orchestration, Rig 0.39 runtime, provider profiles, RAG data plane), `rustok-ai-admin` (Leptos admin UI package), `rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, and `rustok-ai-translation`.
+- **Cargo metadata:** Workspace standardization applied (`rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`) across all 9 crates.
+- **Universal Logic Dimensions:** Verified bounds checks, non-empty secret resolvers, Rig provider descriptor catalogs, structured execution task ports, encryption keyring configuration, and strict permission intersections.
+- **Verification evidence:**
+  - `cargo test -p rustok-ai` (37 tests passed)
+  - `cargo test -p rustok-ai-admin` (26 tests passed)
+  - `cargo test -p rustok-ai-alloy` (2 tests passed)
+  - `cargo test -p rustok-ai-athanor` (2 tests passed)
+  - `cargo test -p rustok-ai-content` (11 tests passed)
+  - `cargo test -p rustok-ai-media` (2 tests passed)
+  - `cargo test -p rustok-ai-order` (10 tests passed)
+  - `cargo test -p rustok-ai-product` (7 tests passed)
+  - `cargo test -p rustok-ai-translation` (19 tests passed)
+  - `node scripts/verify/verify-ai-admin-boundary.mjs` (passed)
+  - `node scripts/verify/verify-ai-alloy-policy.mjs` (passed)
+  - `node scripts/verify/verify-ai-content-contract.mjs` (passed)
+  - `node scripts/verify/verify-ai-domain-verticals.mjs` (passed)
+  - `node scripts/verify/verify-ai-fba-baseline.mjs` (passed)
+  - `node scripts/verify/verify-ai-media-fba.mjs` (passed)
+  - `node scripts/verify/verify-ai-product-fba.mjs` (passed)
+  - `node scripts/verify/verify-ai-rig-cutover.mjs` (passed)
+  - `node scripts/verify/verify-ai-router-policy.mjs` (passed)
+  - `node scripts/verify/verify-ai-translation-boundary.mjs` (passed)
+  - `node scripts/verify/verify-server-ai-optional-dependency.mjs` (passed)
+
 ## References
 
 - [Capability README](../README.md)

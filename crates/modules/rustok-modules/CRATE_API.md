@@ -51,6 +51,15 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
+- `ModuleLifecycleDbWriter::with_static_settings_schema` supplies the active
+  host-resolved schema for one static module. Enables with this schema validate
+  retained settings under the lifecycle claim and persist the normalized value
+  with the lifecycle state. Enable-direction static compensation requires it;
+  all other static enable consumers must also compose it to obtain preflight.
+- Post-hook recovery requires the original hook settings digest and rejects
+  changed settings or historical operations without evidence. Recovery replay
+  identity binds the exact source operation. Successful retry and original
+  failure resolution are committed together.
 - `ModuleMarketplaceCatalog` and `ModuleGovernanceLifecycleSnapshot` expose
   transport-neutral marketplace and governance reads.
 - `ModuleBuildResultReader`, `ModuleAuthoringBuildCommand`, and

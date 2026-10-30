@@ -414,6 +414,76 @@ export type AppMessageKey =
   | 'modules.error.load'
   | 'modules-eyebrow'
   | 'modules.eyebrow'
+  | 'modules-governance-loading'
+  | 'modules.governance.loading'
+  | 'modules-governance-no-request'
+  | 'modules.governance.no.request'
+  | 'modules-governance-owner-required'
+  | 'modules.governance.owner.required'
+  | 'modules-governance-reason-code-options'
+  | 'modules.governance.reason.code.options'
+  | 'modules-governance-reason-code-required'
+  | 'modules.governance.reason.code.required'
+  | 'modules-governance-reason-required'
+  | 'modules.governance.reason.required'
+  | 'modules-governance-release-unavailable'
+  | 'modules.governance.release.unavailable'
+  | 'modules-governance-request'
+  | 'modules.governance.request'
+  | 'modules-governance-status-error'
+  | 'modules.governance.status.error'
+  | 'modules-governance-status-mismatch'
+  | 'modules.governance.status.mismatch'
+  | 'modules-governance-unavailable'
+  | 'modules.governance.unavailable'
+  | 'modules-holds-empty'
+  | 'modules.holds.empty'
+  | 'modules-holds-tenant-title'
+  | 'modules.holds.tenant.title'
+  | 'modules-holds-unavailable'
+  | 'modules.holds.unavailable'
+  | 'modules-recovery-action-error'
+  | 'modules.recovery.action.error'
+  | 'modules-recovery-action-success'
+  | 'modules.recovery.action.success'
+  | 'modules-recovery-compensate'
+  | 'modules.recovery.compensate'
+  | 'modules-recovery-description'
+  | 'modules.recovery.description'
+  | 'modules-recovery-disable'
+  | 'modules.recovery.disable'
+  | 'modules-recovery-empty'
+  | 'modules.recovery.empty'
+  | 'modules-recovery-enable'
+  | 'modules.recovery.enable'
+  | 'modules-recovery-load-error'
+  | 'modules.recovery.load.error'
+  | 'modules-recovery-refresh'
+  | 'modules.recovery.refresh'
+  | 'modules-recovery-refresh-error'
+  | 'modules.recovery.refresh.error'
+  | 'modules-recovery-refreshing'
+  | 'modules.recovery.refreshing'
+  | 'modules-recovery-retry'
+  | 'modules.recovery.retry'
+  | 'modules-recovery-revision-error'
+  | 'modules.recovery.revision.error'
+  | 'modules-recovery-title'
+  | 'modules.recovery.title'
+  | 'modules-rollback-action'
+  | 'modules.rollback.action'
+  | 'modules-rollback-cancel'
+  | 'modules.rollback.cancel'
+  | 'modules-rollback-confirm'
+  | 'modules.rollback.confirm'
+  | 'modules-rollback-error'
+  | 'modules.rollback.error'
+  | 'modules-rollback-owner-detail'
+  | 'modules.rollback.owner.detail'
+  | 'modules-rollback-reason'
+  | 'modules.rollback.reason'
+  | 'modules-rollback-success'
+  | 'modules.rollback.success'
   | 'modules-section-core'
   | 'modules.section.core'
   | 'modules-section-optional'
@@ -2008,6 +2078,76 @@ export interface AppMessageArgs {
   'modules-error-load'?: Record<string, never>;
   'modules.eyebrow'?: Record<string, never>;
   'modules-eyebrow'?: Record<string, never>;
+  'modules.governance.loading'?: Record<string, never>;
+  'modules-governance-loading'?: Record<string, never>;
+  'modules.governance.no.request'?: Record<string, never>;
+  'modules-governance-no-request'?: Record<string, never>;
+  'modules.governance.owner.required'?: Record<string, never>;
+  'modules-governance-owner-required'?: Record<string, never>;
+  'modules.governance.reason.code.options'?: Record<string, never>;
+  'modules-governance-reason-code-options'?: Record<string, never>;
+  'modules.governance.reason.code.required'?: Record<string, never>;
+  'modules-governance-reason-code-required'?: Record<string, never>;
+  'modules.governance.reason.required'?: Record<string, never>;
+  'modules-governance-reason-required'?: Record<string, never>;
+  'modules.governance.release.unavailable'?: Record<string, never>;
+  'modules-governance-release-unavailable'?: Record<string, never>;
+  'modules.governance.request'?: Record<string, never>;
+  'modules-governance-request'?: Record<string, never>;
+  'modules.governance.status.error'?: Record<string, never>;
+  'modules-governance-status-error'?: Record<string, never>;
+  'modules.governance.status.mismatch'?: Record<string, never>;
+  'modules-governance-status-mismatch'?: Record<string, never>;
+  'modules.governance.unavailable'?: Record<string, never>;
+  'modules-governance-unavailable'?: Record<string, never>;
+  'modules.holds.empty'?: Record<string, never>;
+  'modules-holds-empty'?: Record<string, never>;
+  'modules.holds.tenant.title'?: Record<string, never>;
+  'modules-holds-tenant-title'?: Record<string, never>;
+  'modules.holds.unavailable'?: Record<string, never>;
+  'modules-holds-unavailable'?: Record<string, never>;
+  'modules.recovery.action.error'?: Record<string, never>;
+  'modules-recovery-action-error'?: Record<string, never>;
+  'modules.recovery.action.success'?: Record<string, never>;
+  'modules-recovery-action-success'?: Record<string, never>;
+  'modules.recovery.compensate'?: Record<string, never>;
+  'modules-recovery-compensate'?: Record<string, never>;
+  'modules.recovery.description'?: Record<string, never>;
+  'modules-recovery-description'?: Record<string, never>;
+  'modules.recovery.disable'?: Record<string, never>;
+  'modules-recovery-disable'?: Record<string, never>;
+  'modules.recovery.empty'?: Record<string, never>;
+  'modules-recovery-empty'?: Record<string, never>;
+  'modules.recovery.enable'?: Record<string, never>;
+  'modules-recovery-enable'?: Record<string, never>;
+  'modules.recovery.load.error'?: Record<string, never>;
+  'modules-recovery-load-error'?: Record<string, never>;
+  'modules.recovery.refresh'?: Record<string, never>;
+  'modules-recovery-refresh'?: Record<string, never>;
+  'modules.recovery.refresh.error'?: Record<string, never>;
+  'modules-recovery-refresh-error'?: Record<string, never>;
+  'modules.recovery.refreshing'?: Record<string, never>;
+  'modules-recovery-refreshing'?: Record<string, never>;
+  'modules.recovery.retry'?: Record<string, never>;
+  'modules-recovery-retry'?: Record<string, never>;
+  'modules.recovery.revision.error'?: Record<string, never>;
+  'modules-recovery-revision-error'?: Record<string, never>;
+  'modules.recovery.title'?: Record<string, never>;
+  'modules-recovery-title'?: Record<string, never>;
+  'modules.rollback.action'?: Record<string, never>;
+  'modules-rollback-action'?: Record<string, never>;
+  'modules.rollback.cancel'?: Record<string, never>;
+  'modules-rollback-cancel'?: Record<string, never>;
+  'modules.rollback.confirm'?: Record<string, never>;
+  'modules-rollback-confirm'?: Record<string, never>;
+  'modules.rollback.error'?: Record<string, never>;
+  'modules-rollback-error'?: Record<string, never>;
+  'modules.rollback.owner.detail'?: Record<string, never>;
+  'modules-rollback-owner-detail'?: Record<string, never>;
+  'modules.rollback.reason'?: Record<string, never>;
+  'modules-rollback-reason'?: Record<string, never>;
+  'modules.rollback.success'?: Record<string, never>;
+  'modules-rollback-success'?: Record<string, never>;
   'modules.section.core'?: Record<string, never>;
   'modules-section-core'?: Record<string, never>;
   'modules.section.optional'?: Record<string, never>;

@@ -38,8 +38,8 @@ impl RusToKModule for AiModule {
     /// AI is composed at deployment scope. Tenant profiles and principals are
     /// still tenant-scoped, but a tenant-module toggle must never remove the
     /// generic runtime handles or durable worker from a running deployment.
-    fn kind(&self) -> ModuleKind {
-        ModuleKind::Core
+    fn kind(&self) -> rustok_core::ModuleKind {
+        rustok_core::ModuleKind::Core
     }
 
     fn register_runtime_extensions(

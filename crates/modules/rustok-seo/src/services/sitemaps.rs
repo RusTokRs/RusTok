@@ -455,13 +455,17 @@ impl SeoService {
         tenant_id: Uuid,
         limit: usize,
     ) -> SeoResult<Vec<SeoSitemapJobRecord>> {
+        if tenant_id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
+        let bounded_limit = limit.clamp(1, 100);
         let jobs = seo_sitemap_job::Entity::find()
             .filter(seo_sitemap_job::Column::TenantId.eq(tenant_id))
             .order_by_desc(seo_sitemap_job::Column::CreatedAt)
-            .limit(limit.max(1) as u64)
+            .limit(bounded_limit as u64)
             .all(&self.db)
             .await?;
-        let jobs = jobs.into_iter().take(limit.max(1)).collect::<Vec<_>>();
+        let jobs = jobs.into_iter().take(bounded_limit).collect::<Vec<_>>();
         let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
         let files_map = self
             .load_sitemap_files_for_jobs(tenant_id, &job_ids)
@@ -478,6 +482,12 @@ impl SeoService {
         tenant_id: Uuid,
         job_id: Uuid,
     ) -> SeoResult<Option<SeoSitemapJobRecord>> {
+        if tenant_id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
+        if job_id.is_nil() {
+            return Err(SeoError::validation("job_id must not be nil"));
+        }
         let Some(job) = seo_sitemap_job::Entity::find()
             .filter(seo_sitemap_job::Column::TenantId.eq(tenant_id))
             .filter(seo_sitemap_job::Column::Id.eq(job_id))

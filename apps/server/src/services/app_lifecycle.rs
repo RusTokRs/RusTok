@@ -592,11 +592,14 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(not(feature = "mod-notifications"))]
     let notification_fanout_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
             await_module_worker_shutdown("Forum search inbox", worker.join()).await;
         }
     };
+    #[cfg(not(feature = "mod-forum"))]
+    let forum_search_drain = std::future::ready(());
 
     tokio::join!(
         relay_drain,
@@ -681,7 +684,9 @@ fn spawn_auth_retention_handle(
     }
 }
 
-fn auth_retention_removed_artifacts(purge: &crate::services::auth_retention::AuthRetentionPurge) -> bool {
+fn auth_retention_removed_artifacts(
+    purge: &crate::services::auth_retention::AuthRetentionPurge,
+) -> bool {
     purge.sessions > 0
         || purge.invite_consumptions > 0
         || purge.invites > 0

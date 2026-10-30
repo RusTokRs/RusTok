@@ -22,6 +22,22 @@ capability grants and static-promotion admission. Persistence adapters and
 owner transports are still being moved from the server. It does not own sandbox
 implementation or Alloy source authoring.
 
+OCI admissions and external ingress evidence use the installation scope and
+release digest as their durable identity. Tenant reads and writes set the
+owner transaction's tenant scope; executor-readiness lookups also require the
+exact operation and installation. The scoped migration preserves existing
+release and ingress evidence in a SQLite owner migration test. A PostgreSQL 16
+transactional schema check also exercised the migration SQL, duplicate digest
+across two tenant scopes, and tenant reads and foreign-tenant write rejection
+with a non-bypass RLS role; the
+transaction was rolled back. PostgreSQL owner-service execution and concurrent
+admission and crash behavior still require verification.
+The ignored owner-library test
+`postgres_scoped_admission_migration_enforces_tenant_rls` can be run explicitly
+with `RUSTOK_MODULES_TEST_DATABASE_URL` and a PostgreSQL role allowed to create
+a schema and assume `pg_read_all_data`. It creates its schema within a rolled-back
+transaction and checks the non-bypass role's tenant isolation.
+
 ### Durable replay identity
 
 An idempotent retry is identified by its explicit durable scope and
@@ -46,12 +62,36 @@ module owns field semantics and runtime consumption. `tenant_modules` and
 use owner read/policy ports rather than query those rows directly.
 
 Current writes normalize against the active host-resolved manifest schema, and
-disable retains settings. Retained settings are revalidated against the active
-schema before re-enable hooks, the static rollout guard validates against the real
-predecessor and candidate schema intersection, and dormant settings can be repaired
-while disabled via `update_static_normalized_settings`. Static rows do not yet
+disable retains settings. The server supplies the active schema to the owner
+for ordinary enables and enable-direction compensation; the owner validates
+retained settings under the lifecycle claim and commits normalized settings
+with the intent and revision. Dormant settings can be repaired while disabled
+via `update_static_normalized_settings`. The standalone installer does not yet
+compose the static schema for seed toggles. Static rows do not yet
 persist the exact schema digest plus `not_applicable`/`ready`/`migration_required`
-columns.
+columns. The server manifest adapter currently returns an empty schema when
+the module is absent from both its resolved manifest and builtin catalog; this
+does not prove the active release declares no settings and must be removed by
+the owner schema-evidence cutover. Both static settings write paths now reject a detected unresolved
+tenant or platform transition with a predecessor, rather than substituting the
+candidate schema for missing predecessor evidence. This conservative read is
+not atomic with transition creation and does not cover static distribution
+rollout state, so N/N+1 write safety is not yet established. Lifecycle toggles
+and compensation also reject detected unresolved tenant or platform transitions
+after replay and claim; the read is not an atomic transition fence.
+The reviewed settings CAS currently compares recorded intent and platform
+default, not the complete effective policy with dependencies, quarantine,
+maintenance, and runtime availability. It must not be used as evidence that
+the reviewed effective-policy snapshot is unchanged.
+Post-hook recovery compares current settings with the canonical digest recorded
+in the original lifecycle commit before dispatch. A mismatch or absent legacy
+evidence blocks automatic retry; the owner does not store another settings
+copy. Retry and compensation identity binds the original operation, and retry
+completion and original failure resolution commit together. Artifact settings
+writers do not yet share the lifecycle aggregate claim, so production
+concurrency and runtime-release fencing remain unverified.
+Older recovery journal entries without a source-operation identity cannot be
+replayed as newly source-bound commands; they require explicit operator review.
 
 The canonical current/target contract and gap table are in
 [Settings and Configuration Architecture](../../../../docs/architecture/settings.md),

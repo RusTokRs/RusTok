@@ -523,6 +523,14 @@ selection.
 - `cargo test -p rustok-distribution --no-default-features --features ai-translation selected_ai_translation_bridge_publishes_factory_and_stays_optional_without_keyring`
 - `npm run verify:ai-translation:boundary`
 
+### Phase FS-07 Deep Audit Verification (2026-10-30)
+- Remediated RBAC regression in `collaboration.rs` where job-level notes mistakenly required `Action::Manage`, restoring intended contributor `Action::Update` access and passing all 27 integration tests in `tests/workflow.rs`.
+- Reconciled `scripts/verify/verify-translation-public-error-safety.mjs` expected error count to 88 following the earlier removal of obsolete `MachineTranslationInProgress`.
+- Updated `scripts/verify/verify-ai-translation-boundary.mjs` distribution source path to directory-level inspection across all source files.
+- Standardized `rust-version.workspace = true`, `repository.workspace = true`, and `readme` across `rustok-translation`, `rustok-translation-admin`, and `rustok-translation-targets`.
+- Full test suite passed across `rustok-translation` (38 unit + 50 integration tests), `rustok-translation-admin` (26 tests), and `rustok-translation-targets` (11 unit + 3 integration tests).
+- 0 clippy warnings, clean verification gate, zero defects.
+
 ## Update Rules
 
 - Never query or mutate owner tables from this module.

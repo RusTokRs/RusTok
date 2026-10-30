@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{Arc, OnceLock},
 };
 use thiserror::Error;
@@ -69,6 +69,7 @@ pub struct ModuleLifecycleDbWriter<'a> {
     default_enabled_modules: Vec<String>,
     co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
     settings_schema_validators: ArtifactSchemaValidatorCache,
+    static_settings_schema: Option<(String, HashMap<String, crate::ModuleSettingSpec>)>,
 }
 
 /// Owner-owned view of one explicit tenant module override. Effective
@@ -148,10 +149,10 @@ pub struct ModuleLifecycleSettingsCommand {
     pub context: ModuleCommandContext,
     pub expected_revision: u64,
     /// Reviewed automation supplies the exact prior snapshot: the prior
-    /// *effective* enablement (recorded intent, else platform default —
-    /// the same value tenant-module views project) and the prior settings
-    /// object. Both must be supplied together or not at all. The ordinary
-    /// editor leaves both values absent and relies on the aggregate revision.
+    /// recorded enablement intent with the platform default applied and the
+    /// prior settings object. This is not the full effective policy decision.
+    /// Both must be supplied together or not at all. The ordinary editor
+    /// leaves both values absent and relies on the aggregate revision.
     pub expected_enabled: Option<bool>,
     pub expected_settings: Option<serde_json::Value>,
 }
@@ -186,6 +187,7 @@ struct OverrideOperationRequest<'a> {
     requested_override_enabled: Option<bool>,
     context: &'a ModuleCommandContext,
     expected_revision: u64,
+    recovery_source_id: Option<Uuid>,
 }
 
 impl<'a> ModuleLifecycleDbWriter<'a> {
@@ -218,6 +220,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             default_enabled_modules,
             co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
+            static_settings_schema: None,
         }
     }
 
@@ -241,6 +244,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             default_enabled_modules,
             co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
+            static_settings_schema: None,
         }
     }
 
@@ -279,6 +283,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             default_enabled_modules,
             co_requisites: Vec::new(),
             settings_schema_validators: ArtifactSchemaValidatorCache::default(),
+            static_settings_schema: None,
         }
     }
 
@@ -307,6 +312,17 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         self
     }
 
+    /// Supplies the host-resolved active static schema for lifecycle preflight.
+    /// The owner reads and validates retained settings after acquiring its claim.
+    pub fn with_static_settings_schema(
+        mut self,
+        module_slug: String,
+        schema: HashMap<String, crate::ModuleSettingSpec>,
+    ) -> Self {
+        self.static_settings_schema = Some((module_slug, schema));
+        self
+    }
+
     pub async fn toggle(
         &self,
         command: ModuleLifecycleToggleCommand,
@@ -331,6 +347,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             requested_override_enabled: Some(command.enabled),
             context: &command.context,
             expected_revision: command.expected_revision,
+            recovery_source_id: None,
         })
         .await
     }
@@ -378,12 +395,27 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 enabled: request.enabled,
                 context: request.context.clone(),
                 expected_revision: request.expected_revision,
+                recovery_source_id: request.recovery_source_id,
                 effective_enabled_modules,
                 ordering_enabled_modules,
                 previous_override_enabled,
                 requested_override_enabled: request.requested_override_enabled,
                 current_settings,
                 policy_transition,
+                static_settings_schema: self.static_settings_schema.as_ref().and_then(
+                    |(slug, schema)| {
+                        let is_static = matches!(
+                            catalog
+                                .get(request.module_slug)
+                                .map(|definition| &definition.source),
+                            Some(
+                                ModuleDefinitionSource::PlatformNative { .. }
+                                    | ModuleDefinitionSource::PromotedNative { .. }
+                            )
+                        );
+                        (slug == request.module_slug && is_static).then(|| schema.clone())
+                    },
+                ),
             },
         )
         .await
@@ -429,30 +461,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         command: ModuleLifecycleRecoveryCommand,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleLifecycleDbWriterError> {
         validate_recovery_command(&command)?;
-        let plan = self
-            .recovery_plan(command.tenant_id, command.operation_id)
+        self.recovery_plan(command.tenant_id, command.operation_id)
             .await?;
         let catalog = self.definition_catalog()?;
-        let replay_request = ModuleOperationRequest {
-            tenant_id: plan.tenant_id,
-            module_slug: plan.module_slug.clone(),
-            requested_enabled: plan.requested_enabled,
-            previous_effective_enabled: plan.previous_effective_enabled,
-            requested_by: Some(command.context.actor_id.to_string()),
-            trace_id: Some(command.context.trace_id.clone()),
-            correlation_id: command.context.correlation_id.to_string(),
-            idempotency_key: Some(command.context.idempotency_key),
-            expected_revision: Some(command.expected_revision),
-        };
-        if let Some(operation) =
-            ModuleOperationJournal::replay_idempotent(&self.db, &replay_request)
-                .await
-                .map_err(map_idempotency_command_error)?
-        {
-            return module_operation_recovery_plan(&self.db, operation.id)
-                .await
-                .map_err(ModuleLifecycleDbWriterError::Recovery);
-        }
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {
                 ModuleExecutionDispatcher::new(&catalog, registry).with_artifact_executor(executor)
@@ -483,8 +494,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 
     /// Compensates a post-hook failure only while the exact committed tenant
     /// override still matches the original requested intent. The reverse
-    /// transition restores the original explicit override, including removing
-    /// the row when the predecessor was inherited/default selection.
+    /// transition restores the original explicit override; an inherited
+    /// predecessor clears the intent while retaining any settings row.
     pub async fn compensate_failed_operation(
         &self,
         command: ModuleLifecycleRecoveryCommand,
@@ -520,6 +531,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             trace_id: Some(command.context.trace_id.clone()),
             correlation_id: command.context.correlation_id.to_string(),
             idempotency_key: Some(command.context.idempotency_key),
+            recovery_source_id: Some(command.operation_id),
             expected_revision: Some(command.expected_revision),
         };
         if ModuleOperationJournal::replay_idempotent_command(&self.db, &replay_request)
@@ -535,6 +547,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     requested_override_enabled: plan.previous_override_enabled,
                     context: &command.context,
                     expected_revision: command.expected_revision,
+                    recovery_source_id: Some(command.operation_id),
                 })
                 .await;
         }
@@ -546,6 +559,25 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 },
             ));
         }
+        if reverse_enabled
+            && matches!(
+                self.definition_catalog()?
+                    .get(&plan.module_slug)
+                    .map(|definition| &definition.source),
+                Some(
+                    ModuleDefinitionSource::PlatformNative { .. }
+                        | ModuleDefinitionSource::PromotedNative { .. }
+                )
+            )
+            && !self
+                .static_settings_schema
+                .as_ref()
+                .is_some_and(|(slug, _)| slug == &plan.module_slug)
+        {
+            return Err(ModuleLifecycleDbWriterError::Configuration(
+                "static settings schema is required to compensate an enable transition".into(),
+            ));
+        }
         self.apply_override_with_operation_context(OverrideOperationRequest {
             tenant_id: plan.tenant_id,
             module_slug: &plan.module_slug,
@@ -553,6 +585,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             requested_override_enabled: plan.previous_override_enabled,
             context: &command.context,
             expected_revision: command.expected_revision,
+            recovery_source_id: Some(command.operation_id),
         })
         .await
     }
@@ -621,12 +654,37 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 .await
                 .map_err(map_static_lifecycle_settings_error);
                 if let Err(error) = claim {
+                    // A database failure can be returned after the claim write
+                    // committed. Preserve the processing receipt and request hash
+                    // until lease recovery: deleting it would let a different
+                    // request reuse the same key and inherit an uncertain claim.
+                    if matches!(error, ModuleLifecycleDbWriterError::Database(_)) {
+                        return Err(error);
+                    }
                     self.fail_static_settings_operation(lease, &error).await?;
                     return Err(error);
                 }
                 lease
             }
         };
+
+        // Checkpoint identities are not static-release schema evidence. Reject
+        // a detected rollback window instead of inventing a predecessor schema.
+        // Replay is handled above; transition creation still needs an atomic fence.
+        if let Err(error) = self
+            .reject_unverifiable_rollout_settings_write(command.tenant_id, &command.module_slug)
+            .await
+        {
+            self.abandon_static_settings_operation(
+                lease,
+                command.tenant_id,
+                &command.module_slug,
+                command.context.idempotency_key,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
 
         let current_override = match self.overrides(command.tenant_id).await {
             Ok(overrides) => overrides
@@ -659,19 +717,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 return Err(error);
             }
         };
-        // `expected_enabled` is the reviewer's *effective* enablement (the
-        // same value the tenant-module views and this command's result
-        // project), not the raw stored intent: recorded intent wins, and
-        // without intent the platform default applies. Comparing against
-        // the tri-state intent would spuriously conflict every
-        // default-enabled module that has no override row.
-        let current_effective_enabled = current_enabled.unwrap_or_else(|| {
+        // This is recorded intent with the platform default applied. It is
+        // not the full effective policy: dependencies and runtime or
+        // maintenance restrictions can independently deny availability.
+        let current_defaulted_enabled = current_enabled.unwrap_or_else(|| {
             definition.kind == ModuleDefinitionKind::Core
                 || self.default_enabled_modules.contains(&definition.slug)
         });
         if let (Some(expected_enabled), Some(expected_settings)) =
             (command.expected_enabled, command.expected_settings.as_ref())
-            && (current_effective_enabled != expected_enabled
+            && (current_defaulted_enabled != expected_enabled
                 || current_settings != *expected_settings)
         {
             let error = ModuleLifecycleDbWriterError::SettingsSnapshotConflict;
@@ -715,8 +770,8 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             return Err(error);
         }
         let result = async {
-            // Effective enablement for the result projection: recorded
-            // intent wins; without intent the platform default applies
+            // Defaulted intent for the result projection: recorded intent
+            // wins; without intent the platform default applies
             // (Core and default-enabled modules). A settings save itself
             // records no intent (see `persist_settings`).
             let platform_default_enabled = definition.kind == ModuleDefinitionKind::Core
@@ -766,18 +821,18 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 Ok(result)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
-                let release_result = StaticTenantLifecycleStore::release(
+                // A failed rollback leaves the transaction outcome uncertain. Keep
+                // both claims intact so the same command can reconcile safely.
+                transaction.rollback().await.map_err(database_error)?;
+                StaticTenantLifecycleStore::release(
                     &self.db,
                     command.tenant_id,
                     &command.module_slug,
                     command.context.idempotency_key,
                 )
                 .await
-                .map_err(map_static_lifecycle_settings_error);
-                let receipt_result = self.fail_static_settings_operation(lease, &error).await;
-                release_result?;
-                receipt_result?;
+                .map_err(map_static_lifecycle_settings_error)?;
+                self.fail_static_settings_operation(lease, &error).await?;
                 Err(error)
             }
         }
@@ -813,36 +868,42 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .map_err(|error| map_artifact_settings_error(module_slug, error))
     }
 
+    async fn reject_unverifiable_rollout_settings_write(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<(), ModuleLifecycleDbWriterError> {
+        let checkpoints = crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+            &self.db, module_slug, tenant_id,
+        )
+        .await
+        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+        if checkpoints
+            .iter()
+            .any(|checkpoint| checkpoint.predecessor_digest.is_some())
+        {
+            return Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(
+                "settings cannot be changed during an unresolved transition until both release schemas can be verified".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     async fn fail_static_settings_operation(
         &self,
         lease: idempotency::Lease,
         error: &ModuleLifecycleDbWriterError,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
-        let receipt_error = match error {
-            ModuleLifecycleDbWriterError::SettingsSnapshotConflict => PortError::conflict(
-                "modules.static_lifecycle_settings_snapshot_conflict",
-                error.to_string(),
-            ),
-            ModuleLifecycleDbWriterError::Settings(
-                ModuleOperationStoreError::ModuleNotEnabled(_),
-            ) => PortError::validation(
-                "modules.static_lifecycle_settings_module_disabled",
-                error.to_string(),
-            ),
-            ModuleLifecycleDbWriterError::Lifecycle(
-                ModuleLifecycleExecutionError::RevisionConflict { .. },
-            ) => PortError::conflict(
-                "modules.static_lifecycle_revision_conflict",
-                error.to_string(),
-            ),
-            _ => PortError::invariant_violation(
-                "modules.static_lifecycle_settings_failed",
-                error.to_string(),
-            ),
-        };
-        idempotency::fail(&self.db, lease, &receipt_error)
-            .await
-            .map_err(ModuleLifecycleDbWriterError::OperationReceipt)
+        let receipt_error = static_settings_receipt_error(error);
+        if receipt_error.retryable {
+            idempotency::release_retryable(&self.db, lease, &receipt_error)
+                .await
+                .map_err(ModuleLifecycleDbWriterError::OperationReceipt)
+        } else {
+            idempotency::fail(&self.db, lease, &receipt_error)
+                .await
+                .map_err(ModuleLifecycleDbWriterError::OperationReceipt)
+        }
     }
 
     async fn abandon_static_settings_operation(
@@ -853,15 +914,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         idempotency_key: Uuid,
         error: &ModuleLifecycleDbWriterError,
     ) -> Result<(), ModuleLifecycleDbWriterError> {
-        let release_result =
-            StaticTenantLifecycleStore::release(&self.db, tenant_id, module_slug, idempotency_key)
-                .await
-                .map_err(map_static_lifecycle_settings_error);
-        let receipt_result = self.fail_static_settings_operation(lease, error).await;
-        release_result?;
-        receipt_result
+        StaticTenantLifecycleStore::release(&self.db, tenant_id, module_slug, idempotency_key)
+            .await
+            .map_err(map_static_lifecycle_settings_error)?;
+        self.fail_static_settings_operation(lease, error).await
     }
-
     /// Confirms that the active owner catalog contains a module before a host
     /// adapter resolves its static-only settings schema.
     pub fn require_module_definition(
@@ -1581,6 +1638,54 @@ pub enum ModuleLifecycleDbWriterError {
     OperationReceipt(PortError),
 }
 
+fn static_settings_receipt_error(error: &ModuleLifecycleDbWriterError) -> PortError {
+    match error {
+        ModuleLifecycleDbWriterError::Database(_)
+        | ModuleLifecycleDbWriterError::Settings(ModuleOperationStoreError::Database(_))
+        | ModuleLifecycleDbWriterError::Lifecycle(ModuleLifecycleExecutionError::Persistence(_)) => {
+            PortError::unavailable(
+                "modules.static_lifecycle_settings_unavailable",
+                error.to_string(),
+            )
+        }
+        ModuleLifecycleDbWriterError::OperationReceipt(receipt_error)
+            if receipt_error.retryable =>
+        {
+            receipt_error.clone()
+        }
+        ModuleLifecycleDbWriterError::SettingsSnapshotConflict => PortError::conflict(
+            "modules.static_lifecycle_settings_snapshot_conflict",
+            error.to_string(),
+        ),
+        ModuleLifecycleDbWriterError::InvalidSettingsCommand(_) => PortError::validation(
+            "modules.static_lifecycle_settings_invalid",
+            error.to_string(),
+        ),
+        ModuleLifecycleDbWriterError::Settings(ModuleOperationStoreError::ModuleNotEnabled(_)) => {
+            PortError::validation(
+                "modules.static_lifecycle_settings_module_disabled",
+                error.to_string(),
+            )
+        }
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::RevisionConflict { .. },
+        ) => PortError::conflict(
+            "modules.static_lifecycle_revision_conflict",
+            error.to_string(),
+        ),
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::OperationInProgress { .. },
+        ) => PortError::conflict(
+            "modules.static_lifecycle_operation_in_progress",
+            error.to_string(),
+        ),
+        _ => PortError::invariant_violation(
+            "modules.static_lifecycle_settings_failed",
+            error.to_string(),
+        ),
+    }
+}
+
 fn map_idempotency_command_error(error: ModuleOperationStoreError) -> ModuleLifecycleDbWriterError {
     match error {
         ModuleOperationStoreError::IdempotencyConflict => ModuleLifecycleDbWriterError::Lifecycle(
@@ -1612,7 +1717,13 @@ fn map_static_lifecycle_settings_error(
                 ModuleLifecycleExecutionError::OperationInProgress { module_slug },
             )
         }
-        error => ModuleLifecycleDbWriterError::Database(error.to_string()),
+        StaticTenantLifecycleStoreError::Database(message) => {
+            ModuleLifecycleDbWriterError::Database(message)
+        }
+        error @ (StaticTenantLifecycleStoreError::RevisionOverflow(_)
+        | StaticTenantLifecycleStoreError::InconsistentState(_)) => {
+            ModuleLifecycleDbWriterError::Configuration(error.to_string())
+        }
     }
 }
 
@@ -1733,6 +1844,252 @@ fn map_artifact_settings_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct SettingsTestModule;
+
+    impl rustok_core::MigrationSource for SettingsTestModule {
+        fn migrations(&self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+            vec![]
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl rustok_core::RusToKModule for SettingsTestModule {
+        fn slug(&self) -> &'static str {
+            "forum"
+        }
+        fn name(&self) -> &'static str {
+            "Forum"
+        }
+        fn description(&self) -> &'static str {
+            "Settings fixture"
+        }
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
+    }
+
+    #[tokio::test]
+    async fn unresolved_predecessor_blocks_settings_only_in_matching_scope() {
+        use sea_orm_migration::MigrationTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let manager = sea_orm_migration::SchemaManager::new(&db);
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&manager)
+            .await
+            .unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE module_static_tenant_lifecycle (\
+             tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, revision INTEGER NOT NULL, \
+             active_idempotency_key TEXT, active_claimed_at TEXT, \
+             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             PRIMARY KEY (tenant_id, module_slug))",
+        )
+        .await
+        .unwrap();
+        let registry = ModuleRegistry::new().register(SettingsTestModule);
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        let tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let now = chrono::Utc::now();
+        let mut checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: Uuid::new_v4(),
+            revision: 1,
+            module_slug: "forum".into(),
+            tenant_id: Some(other_tenant),
+            predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "operator recovery required".into(),
+            },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
+        assert!(
+            writer
+                .reject_unverifiable_rollout_settings_write(tenant, "forum")
+                .await
+                .is_ok()
+        );
+        assert!(matches!(
+            writer
+                .reject_unverifiable_rollout_settings_write(other_tenant, "forum")
+                .await,
+            Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
+        ));
+        let command = ModuleLifecycleSettingsCommand {
+            tenant_id: other_tenant,
+            module_slug: "forum".into(),
+            settings: serde_json::json!({"value": 1}),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(other_tenant),
+                trace_id: "trace".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            expected_revision: 0,
+            expected_enabled: None,
+            expected_settings: None,
+        };
+        assert!(matches!(
+            writer
+                .update_static_normalized_settings(command.clone())
+                .await,
+            Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
+        ));
+        assert!(
+            matches!(writer.update_static_normalized_settings(command).await,
+            Err(ModuleLifecycleDbWriterError::OperationReceipt(error))
+            if error.code == "modules.static_lifecycle_settings_invalid")
+        );
+        assert!(
+            writer
+                .static_lifecycle_snapshot(other_tenant, "forum")
+                .await
+                .unwrap()
+                .active_idempotency_key
+                .is_none()
+        );
+
+        checkpoint.operation_id = Uuid::new_v4();
+        checkpoint.tenant_id = None;
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
+        assert!(matches!(
+            writer
+                .reject_unverifiable_rollout_settings_write(tenant, "forum")
+                .await,
+            Err(ModuleLifecycleDbWriterError::InvalidSettingsCommand(_))
+        ));
+        assert!(
+            writer
+                .reject_unverifiable_rollout_settings_write(tenant, "other")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn uncertain_claim_keeps_request_fingerprint() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(
+            &sea_orm_migration::SchemaManager::new(&db),
+        )
+        .await
+        .unwrap();
+        // Deliberately omit the lifecycle aggregate table: the claim fails
+        // after receipt admission, while its outcome is treated as uncertain.
+        let registry = ModuleRegistry::new().register(SettingsTestModule);
+        let writer = ModuleLifecycleDbWriter::new(db, &registry, vec![]);
+        let tenant_id = Uuid::new_v4();
+        let mut command = ModuleLifecycleSettingsCommand {
+            tenant_id,
+            module_slug: "forum".into(),
+            settings: serde_json::json!({"value": 1}),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant_id),
+                trace_id: "trace".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            expected_revision: 0,
+            expected_enabled: None,
+            expected_settings: None,
+        };
+        assert!(matches!(
+            writer
+                .update_static_normalized_settings(command.clone())
+                .await,
+            Err(ModuleLifecycleDbWriterError::Database(_))
+        ));
+        command.settings = serde_json::json!({"value": 2});
+        assert!(
+            matches!(writer.update_static_normalized_settings(command).await,
+            Err(ModuleLifecycleDbWriterError::OperationReceipt(error)) if error.code == "outbox.operation_receipt_conflict")
+        );
+    }
+
+    #[tokio::test]
+    async fn retryable_settings_failure_allows_same_receipt_to_run_again() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let manager = sea_orm_migration::SchemaManager::new(&db);
+        rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+            .await
+            .unwrap();
+        let registry = ModuleRegistry::new();
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        let scope = idempotency::OwnerOperationScope::Tenant(Uuid::new_v4());
+        let request = serde_json::json!({"module": "forum"});
+        let lease = match idempotency::admit(
+            &db,
+            scope.clone(),
+            STATIC_LIFECYCLE_OWNER_SLUG,
+            "same-key",
+            STATIC_LIFECYCLE_SETTINGS_OPERATION,
+            &request,
+        )
+        .await
+        .unwrap()
+        {
+            Admission::Run(lease) => lease,
+            _ => panic!("first admission must run"),
+        };
+        writer
+            .fail_static_settings_operation(
+                lease,
+                &ModuleLifecycleDbWriterError::Database("unavailable".into()),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            idempotency::admit(
+                &db,
+                scope,
+                STATIC_LIFECYCLE_OWNER_SLUG,
+                "same-key",
+                STATIC_LIFECYCLE_SETTINGS_OPERATION,
+                &request
+            )
+            .await
+            .unwrap(),
+            Admission::Run(_)
+        ));
+    }
+
+    #[test]
+    fn settings_receipts_release_infrastructure_failures_but_keep_conflicts_terminal() {
+        let database = ModuleLifecycleDbWriterError::Database("connection lost".into());
+        let storage = ModuleLifecycleDbWriterError::Settings(ModuleOperationStoreError::Database(
+            "unavailable".into(),
+        ));
+        let busy = ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::OperationInProgress {
+                module_slug: "forum".into(),
+            },
+        );
+        assert!(static_settings_receipt_error(&database).retryable);
+        assert!(static_settings_receipt_error(&storage).retryable);
+        let busy_receipt = static_settings_receipt_error(&busy);
+        assert!(!busy_receipt.retryable);
+        assert_eq!(
+            busy_receipt.code,
+            "modules.static_lifecycle_operation_in_progress"
+        );
+    }
 
     #[test]
     fn static_lifecycle_projection_keeps_owner_settings_and_revision_together() {
