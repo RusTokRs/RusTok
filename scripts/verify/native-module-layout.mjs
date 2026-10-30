@@ -375,7 +375,7 @@ function checkSupportPackage(root, moduleRoot, side, manifest, classification, d
   checkSizes(root, join(supportRoot, "src"), UI_LIMIT, diagnostics);
 }
 
-export function resolveNativeModule(root, slug) {
+function nativeModuleRegistryEntry(root, slug) {
   const manifest = readFileSync(join(root, "modules.toml"), "utf8");
   const moduleHeader = manifest.match(/^\[modules\]\s*$/m);
   if (!moduleHeader) throw new Error("Missing [modules] section in modules.toml");
@@ -385,14 +385,21 @@ export function resolveNativeModule(root, slug) {
     const match = line.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*\{(.+)\}\s*$/);
     if (match?.[1] !== slug) continue;
     const spec = match[2];
-    const source = spec.match(/\bsource\s*=\s*"([^"]+)"/)?.[1];
-    const path = spec.match(/\bpath\s*=\s*"([^"]+)"/)?.[1];
-    if (source !== "path" || !path) {
-      throw new Error("Module '" + slug + "' is not a native local path module");
-    }
-    return path;
+    return {
+      crate: spec.match(/\bcrate\s*=\s*"([^"]+)"/)?.[1],
+      source: spec.match(/\bsource\s*=\s*"([^"]+)"/)?.[1],
+      path: spec.match(/\bpath\s*=\s*"([^"]+)"/)?.[1],
+    };
   }
   throw new Error("Unknown native path module '" + slug + "' in modules.toml");
+}
+
+export function resolveNativeModule(root, slug) {
+  const entry = nativeModuleRegistryEntry(root, slug);
+  if (entry.source !== "path" || !entry.path) {
+    throw new Error("Module '" + slug + "' is not a native local path module");
+  }
+  return entry.path;
 }
 
 export function lintNativeModule(root, modulePath, slug) {
@@ -416,8 +423,22 @@ export function lintNativeModule(root, modulePath, slug) {
     diagnostics.push(relative(repo, moduleRoot) + ": module slug must use canonical snake_case");
   }
   const packageName = keyInSection(cargo, "package", "name");
-  if (packageName !== "rustok-" + slug.replaceAll("_", "-")) {
-    diagnostics.push(relative(repo, moduleRoot) + ": Cargo package.name must match module slug");
+  let registryEntry;
+  try {
+    registryEntry = nativeModuleRegistryEntry(repo, slug);
+  } catch (error) {
+    diagnostics.push(relative(repo, join(repo, "modules.toml")) + ": " + error.message);
+  }
+  if (registryEntry) {
+    if (registryEntry.source !== "path" || !registryEntry.path) {
+      diagnostics.push(relative(repo, moduleRoot) + ": module registry entry is not a native local path module");
+    } else if (resolve(repo, registryEntry.path) !== moduleRoot) {
+      diagnostics.push(relative(repo, moduleRoot) + ": module path does not match modules.toml");
+    }
+    if (!registryEntry.crate || packageName !== registryEntry.crate) {
+      diagnostics.push(relative(repo, moduleRoot) +
+        ": Cargo package.name must match modules.toml crate identity");
+    }
   }
   const entryType = keyInSection(manifest, "crate", "entry_type");
   if (!entryType || !/^[A-Za-z][A-Za-z0-9_]*$/.test(entryType)) {

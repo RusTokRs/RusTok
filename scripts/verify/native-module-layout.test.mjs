@@ -211,13 +211,22 @@ test("no_ui rejects both unadvertised packages and invented live provides metada
   });
 });
 
-test("native Cargo identity matches registered snake_case slug", () => {
+test("native Cargo identity must match the registered crate name", () => {
   fixture((ctx) => {
     ctx.write("Cargo.toml", '[package]\nname = "rustok-other"\n');
-    assert.match(lint(ctx).join("\n"), /Cargo package.name must match module slug/);
+    assert.match(lint(ctx).join("\n"), /Cargo package.name must match modules.toml crate identity/);
   });
 });
 
+test("native module package names may differ from slugs when modules.toml declares them", () => {
+  fixture((ctx) => {
+    ctx.writeRoot("modules.toml",
+      '[modules]\nsample = { crate = "sample-runtime", source = "path", path = "' +
+      ctx.path(".") + '" }\n');
+    ctx.write("Cargo.toml", '[package]\nname = "sample-runtime"\n');
+    assert.deepEqual(lint(ctx), []);
+  });
+});
 
 test("capability_only is a valid headless native module classification", () => {
   fixture((ctx) => {
