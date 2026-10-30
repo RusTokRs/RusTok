@@ -464,3 +464,13 @@ test("service code cannot depend on migration tooling", () => {
     assert.match(lint(ctx).join("\n"), /forbidden SeaORM migrations dependency/);
   });
 });
+
+
+test("native module paths cannot traverse a symlinked ancestor directory", () => {
+  fixture((ctx) => {
+    const modules = join(ctx.root, "crates/modules");
+    rmSync(modules, { recursive: true, force: true });
+    symlinkSync(join(ctx.root, "outside-modules"), modules);
+    assert.match(lint(ctx).join("\n"), /native module path cannot traverse symlinks/);
+  });
+});

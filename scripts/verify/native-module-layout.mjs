@@ -112,6 +112,23 @@ function isDirectory(path) {
   }
 }
 
+function checkModulePathNoSymlinks(root, moduleRoot, diagnostics) {
+  let current = root;
+  for (const segment of relative(root, moduleRoot).split(sep)) {
+    if (!segment || segment === ".") continue;
+    current = join(current, segment);
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        diagnostics.push(relative(root, current) + ": native module path cannot traverse symlinks");
+        return false;
+      }
+    } catch {
+      return true;
+    }
+  }
+  return true;
+}
+
 function checkNoSymlinks(root, directory, diagnostics) {
   let stat;
   try {
@@ -375,9 +392,7 @@ export function lintNativeModule(root, modulePath, slug) {
   if (!moduleRoot.startsWith(repo + sep)) {
     return ["Module '" + slug + "': path escapes the repository root"];
   }
-  if (existsSync(moduleRoot) && lstatSync(moduleRoot).isSymbolicLink()) {
-    return [relative(repo, moduleRoot) + ": native module root must not be a symlink"];
-  }
+  if (!checkModulePathNoSymlinks(repo, moduleRoot, diagnostics)) return diagnostics;
   const manifest = readRequired(repo, join(moduleRoot, "rustok-module.toml"), diagnostics);
   const cargo = readRequired(repo, join(moduleRoot, "Cargo.toml"), diagnostics);
   if (!cargo.includes("[package]")) {
