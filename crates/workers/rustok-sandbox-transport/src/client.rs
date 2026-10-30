@@ -25,6 +25,12 @@ pub struct GrpcRhaiExecutor {
     client: SandboxWorkerServiceClient<Channel>,
 }
 
+impl std::fmt::Debug for GrpcRhaiExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrpcRhaiExecutor").finish_non_exhaustive()
+    }
+}
+
 impl GrpcRhaiExecutor {
     pub(crate) fn from_channel(channel: Channel) -> Self {
         Self {
