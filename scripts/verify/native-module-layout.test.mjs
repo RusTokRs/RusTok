@@ -46,7 +46,7 @@ function writeFfaSurface(ctx, side) {
   const crateName = "rustok-sample-" + side;
   ctx.write(side + "/Cargo.toml", '[package]\nname = "' + crateName + '"\n');
   ctx.write(side + "/src/lib.rs",
-    'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+    'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\npub use ui::Surface;\n#[cfg(test)]\nmod tests;\n');
   ctx.write(side + "/src/core/mod.rs", "pub enum State { Pending }\n");
   ctx.write(side + "/src/model.rs", "pub struct OwnerModel;\n");
   ctx.write(side + "/src/i18n.rs", "pub fn t() {}\n");
@@ -57,7 +57,7 @@ function writeFfaSurface(ctx, side) {
     "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
   ctx.write(side + "/src/transport/native_server_adapter.rs",
     "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-  ctx.write(side + "/src/ui/mod.rs", "mod leptos;\n");
+  ctx.write(side + "/src/ui/mod.rs", "mod leptos;\npub use leptos::Surface;\n");
   ctx.write(side + "/src/ui/leptos.rs", "#[component]\npub fn Surface() {}\n");
   ctx.write(side + "/src/tests/mod.rs", "mod contract;\n");
   ctx.write(side + "/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
@@ -268,14 +268,14 @@ test("the opposite-side support crate is valid beside a single live surface", ()
       '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
-      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\npub use ui::Admin;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/model.rs", "pub struct Model;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
     ctx.write("admin/src/transport/mod.rs",
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
     ctx.write("admin/src/transport/native_server_adapter.rs",
       "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\npub use leptos::Admin;\n");
     ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
@@ -379,14 +379,14 @@ test("Leptos UI code cannot bypass the transport facade through raw adapters", (
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
-      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\npub use ui::Admin;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/model.rs", "pub struct Model;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
     ctx.write("admin/src/transport/mod.rs",
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
     ctx.write("admin/src/transport/native_server_adapter.rs",
       "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\npub use leptos::Admin;\n");
     ctx.write("admin/src/ui/leptos.rs",
       "#[component]\npub fn Admin() {}\nuse crate::transport::native_server_adapter::request;\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
@@ -434,7 +434,7 @@ test("FFA model remains framework-independent", () => {
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
     ctx.write("admin/src/lib.rs",
-      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\npub use ui::Admin;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/model.rs",
       "use leptos_ui_routing::use_route_query_value;\nuse sea_orm::EntityTrait;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
@@ -442,7 +442,7 @@ test("FFA model remains framework-independent", () => {
       "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
     ctx.write("admin/src/transport/native_server_adapter.rs",
       "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
-    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\npub use leptos::Admin;\n");
     ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
     ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
@@ -593,11 +593,42 @@ test("FFA lib and test facades must wire every canonical source file", () => {
       '[crate]\nentry_type = "SampleModule"\n');
     writeFfaSurface(ctx, "admin");
     ctx.write("admin/src/lib.rs",
-      'mod core;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+      'mod core;\nmod i18n;\nmod transport;\nmod ui;\npub use ui::Surface;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/tests/mod.rs", "");
     const failures = lint(ctx).join("\n");
     assert.match(failures, /FFA lib.rs must declare required module model/);
     assert.match(failures, /tests\/mod.rs must declare contract.rs/);
+  });
+});
+
+test("FFA component re-exports must connect ui/leptos.rs to the crate facade", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/lib.rs",
+      'mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /must re-export the root UI component from ui/);
+    assert.match(failures, /must re-export the root Leptos component/);
+  });
+});
+
+test("empty FFA i18n, locale catalogs and contract tests are rejected", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/i18n.rs", "//! empty\n");
+    ctx.write("admin/src/tests/contract.rs", "//! no tests\n");
+    rmSync(join(ctx.root, ctx.path("admin/locales/en.ftl")), { force: true });
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /i18n entrypoint cannot be empty/);
+    assert.match(failures, /localization directory has no FTL\\/JSON catalog/);
+    assert.match(failures, /UI contract test file has no tests/);
   });
 });
 

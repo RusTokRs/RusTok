@@ -453,6 +453,10 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
         ": FFA lib.rs must declare required module " + requiredModule);
     }
   }
+  if (!/\bpub\s+use\s+(?:crate::)?ui::/.test(libCode)) {
+    diagnostics.push(relative(root, join(src, "lib.rs")) +
+      ": FFA lib.rs must re-export the root UI component from ui/");
+  }
 
   const modelPath = join(src, "model.rs");
   const model = readRequired(root, modelPath, diagnostics);
@@ -466,8 +470,10 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
       diagnostics.push(relative(root, modelPath) + ": forbidden " + name + " dependency in FFA model");
     }
   }
-  if (!hasSource(join(src, "i18n.rs")) && !hasSource(join(src, "i18n", "mod.rs"))) {
-    diagnostics.push(relative(root, src) + ": required module-owned i18n entrypoint missing");
+  const i18nPath = hasSource(join(src, "i18n.rs")) ? join(src, "i18n.rs") : join(src, "i18n", "mod.rs");
+  const i18nSource = readRequired(root, i18nPath, diagnostics);
+  if (!maskRustNonCode(i18nSource).trim()) {
+    diagnostics.push(relative(root, i18nPath) + ": module-owned i18n entrypoint cannot be empty");
   }
 
   const core = hasSource(join(src, "core.rs")) ? join(src, "core.rs") : join(src, "core", "mod.rs");
@@ -508,8 +514,12 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
 
   const uiModulePath = join(src, "ui", "mod.rs");
   const uiModule = readRequired(root, uiModulePath, diagnostics);
-  if (!/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+leptos\s*;/.test(maskRustNonCode(uiModule))) {
+  const uiModuleCode = maskRustNonCode(uiModule);
+  if (!/\b(?:pub(?:\([^)]*\))?\s+)?mod\s+leptos\s*;/.test(uiModuleCode)) {
     diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must declare its Leptos render adapter");
+  }
+  if (!/\bpub\s+use\s+(?:self::)?leptos::/.test(uiModuleCode)) {
+    diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must re-export the root Leptos component");
   }
   const uiLeptos = hasSource(join(src, "ui", "leptos.rs"))
     ? join(src, "ui", "leptos.rs")
@@ -519,17 +529,25 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     diagnostics.push(relative(root, uiLeptos) + ": Leptos render adapter must define a component");
   }
 
-  if (!isDirectory(join(uiRoot, "locales"))) {
-    diagnostics.push(relative(root, join(uiRoot, "locales")) + ": declared UI has no localization bundles");
+  const localesRoot = join(uiRoot, "locales");
+  if (!isDirectory(localesRoot)) {
+    diagnostics.push(relative(root, localesRoot) + ": declared UI has no localization bundles");
+  } else if (!readdirSync(localesRoot, { withFileTypes: true }).some((entry) =>
+    entry.isFile() && /\.(?:ftl|json)$/i.test(entry.name),
+  )) {
+    diagnostics.push(relative(root, localesRoot) + ": localization directory has no FTL/JSON catalog");
   }
   const testsModulePath = join(src, "tests", "mod.rs");
   const testsModule = readRequired(root, testsModulePath, diagnostics);
   if (!/\bmod\s+contract\s*;/.test(maskRustNonCode(testsModule))) {
     diagnostics.push(relative(root, testsModulePath) + ": tests/mod.rs must declare contract.rs");
   }
-  if (!hasSource(join(src, "tests", "contract.rs"))) {
-    diagnostics.push(relative(root, join(src, "tests", "contract.rs")) +
+  const uiContractPath = join(src, "tests", "contract.rs");
+  if (!hasSource(uiContractPath)) {
+    diagnostics.push(relative(root, uiContractPath) +
       ": UI contract tests must use the dedicated tests/ slot");
+  } else if (!/#\s*\[\s*(?:tokio::)?test\s*\]/.test(maskRustNonCode(readFileSync(uiContractPath, "utf8")))) {
+    diagnostics.push(relative(root, uiContractPath) + ": UI contract test file has no tests");
   }
   // Older UI crates may retain an auxiliary root contract_tests.rs while
   // migrating. The canonical tests/contract.rs above remains mandatory.
