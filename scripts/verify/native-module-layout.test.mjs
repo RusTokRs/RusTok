@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mjs";
@@ -8,11 +8,12 @@ import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mj
 function fixture(run) {
   const root = mkdtempSync(join(tmpdir(), "rustok-native-layout-"));
   const modulePath = "crates/modules/rustok-sample";
-  const write = (path, value) => {
+  const writeRoot = (path, value) => {
     const full = join(root, path);
     mkdirSync(join(full, ".."), { recursive: true });
     writeFileSync(full, value);
   };
+  const write = (path, value) => writeRoot(join(modulePath, path));
   const path = (name) => join(modulePath, name);
   write("modules.toml",
     '[modules]\nsample = { crate = "rustok-sample", source = "path", path = "' + modulePath + '" }\n');
@@ -26,7 +27,12 @@ function fixture(run) {
   write(path("src/tests/mod.rs"), "mod contract;\n");
   write(path("src/tests/contract.rs"), "#[test]\nfn contract() {}\n");
   try {
-    return run({ root, write: (name, value) => write(path(name), value), path: (name) => path(name) });
+    return run({
+      root,
+      write: (name, value) => write(path(name), value),
+      writeRoot,
+      path: (name) => path(name),
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -46,7 +52,7 @@ test("a minimal native module omits unused responsibility directories", () => {
 test("unknown and non-path module registry entries are rejected", () => {
   fixture((ctx) => {
     assert.throws(() => resolveNativeModule(ctx.root, "missing"), /Unknown native/);
-    ctx.write("../../../modules.toml",
+    ctx.writeRoot("modules.toml",
       '[modules]\nsample = { crate = "rustok-sample", source = "registry" }\n');
     assert.throws(() => resolveNativeModule(ctx.root, "sample"), /not a native local path/);
   });
@@ -208,5 +214,156 @@ test("native Cargo identity matches registered snake_case slug", () => {
   fixture((ctx) => {
     ctx.write("Cargo.toml", '[package]\nname = "rustok-other"\n');
     assert.match(lint(ctx).join("\n"), /Cargo package.name must match module slug/);
+  });
+});
+
+
+test("capability_only is a valid headless native module classification", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "capability_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("declared support sub-crates are not mistaken for live FFA surfaces", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/Cargo.toml",
+      '[package]\nname = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/src/lib.rs", "pub struct ReactionBar;\n");
+    ctx.write("storefront/src/contract_tests.rs", "#[test] fn support_contract() {}\n");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("the opposite-side support crate is valid beside a single live surface", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("admin/src/lib.rs",
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/model.rs", "pub struct Model;\n");
+    ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
+    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
+    ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
+    ctx.write("storefront/Cargo.toml",
+      '[package]\nname = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("support crates cannot impersonate a no_ui or capability_only module surface", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "no_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.storefront_support]\nleptos_crate = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/Cargo.toml",
+      '[package]\nname = "rustok-sample-storefront-support"\n');
+    ctx.write("storefront/src/lib.rs", "pub struct Support;\n");
+    assert.match(lint(ctx).join("\n"), /storefront_support is incompatible/);
+  });
+});
+
+test("a sub-crate cannot be declared as both a UI surface and a support package", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      '[provides.admin_support]\nleptos_crate = "rustok-sample-admin"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("admin/src/lib.rs", "pub struct Surface;\n");
+    assert.match(lint(ctx).join("\n"), /cannot be both provides\.admin_ui and provides\.admin_support/);
+  });
+});
+
+test("optional runtime.rs is allowed only when wired by the crate facade", () => {
+  fixture((ctx) => {
+    ctx.write("src/runtime.rs", "pub struct Runtime;\n");
+    assert.match(lint(ctx).join("\n"), /runtime\.rs must be declared/);
+    ctx.write("src/lib.rs",
+      'mod module;\nmod runtime;\npub use module::SampleModule;\n#[cfg(test)]\nmod tests;\n');
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("unknown responsibility directories and empty optional slots are rejected", () => {
+  fixture((ctx) => {
+    ctx.write("src/helpers/mod.rs", "pub fn helper() {}\n");
+    ctx.write("src/integrations/mod.rs", "//! Placeholder only.\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /unrecognized native responsibility directory/);
+    assert.match(failures, /empty responsibility slot is forbidden/);
+  });
+});
+
+test("optional responsibility directories require their canonical mod.rs entrypoint", () => {
+  fixture((ctx) => {
+    ctx.write("src/domain/model.rs", "pub struct Model;\n");
+    assert.match(lint(ctx).join("\n"), /responsibility directory requires mod\.rs/);
+  });
+});
+
+test("Rust comments and string literals cannot fake dependencies or module implementations", () => {
+  fixture((ctx) => {
+    ctx.write("src/module.rs",
+      '// impl RusToKModule for SampleModule {}\n' +
+      'pub struct SampleModule;\n');
+    ctx.write("src/domain/mod.rs",
+      '/* outer comment /* nested use sea_orm::EntityTrait; */ still a comment */\n' +
+      'const DOC: &str = "use sea_orm::EntityTrait;";\n' +
+      'pub struct Pure;\n');
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /missing native RusToKModule implementation/);
+    assert.doesNotMatch(failures, /forbidden SeaORM/);
+  });
+});
+
+test("symlinks are rejected instead of followed through native source trees", () => {
+  fixture((ctx) => {
+    ctx.write("src/domain/mod.rs", "pub struct Domain;\n");
+    const target = join(ctx.root, "outside.rs");
+    ctx.writeRoot("outside.rs", "pub struct Outside;\n");
+    symlinkSync(target, join(ctx.root, ctx.path("src/domain/outside.rs")));
+    assert.match(lint(ctx).join("\n"), /symlinks are forbidden/);
+  });
+});
+
+test("Leptos UI code cannot bypass the transport facade through raw adapters", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
+    ctx.write("admin/Cargo.toml", '[package]\nname = "rustok-sample-admin"\n');
+    ctx.write("admin/src/lib.rs",
+      'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/model.rs", "pub struct Model;\n");
+    ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
+    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
+    ctx.write("admin/src/ui/leptos.rs",
+      "use crate::transport::native_server_adapter::request;\n");
+    ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
+    ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
+    assert.match(lint(ctx).join("\n"), /UI must use the module transport facade/);
   });
 });
