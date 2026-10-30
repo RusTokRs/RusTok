@@ -1,5 +1,16 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-08 `rustok-verification-transport` audit — 2026-10-30 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all source files in `crates/workers/rustok-verification-transport` (`src/lib.rs`, `src/client.rs`, `src/server.rs`, `build.rs`, `proto/rustok/verification/v1/verification.proto`, and `src/contract_tests.rs`).
+- **Transport Framing & Readiness Invariants**: Verified that artifact trust verification gRPC service strictly operates over mTLS (`connect_with_tls`), maps `TrustVerificationRequest` and `TrustVerificationDecision` without silent defaulting or field omission, enforces `WorkerAdmission` rate limiting on verify calls, and exposes a protected readiness probe (`GetReadiness`) reflecting verified worker initialization.
+- **Informative Debug Formatting**: Implemented `Debug` for `GrpcTrustVerifier` and `VerificationGrpcService<V>`.
+- **Cargo Metadata & Documentation Standardized**: Standardized `rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`, and `[package.metadata.docs.rs]`; authored canonical `CRATE_API.md` and added contract unit tests in `src/contract_tests.rs`.
+- **Verification Evidence**:
+  - `cargo test -p rustok-verification-transport`: 7/7 tests passed (0 failures).
+  - `cargo clippy -p rustok-verification-transport --all-targets`: 0 warnings.
+  - `python scripts/verify/verify-remediation-gate.py --staged`: ALL GATES PASSED.
+
 ## FS-08 `rustok-verification-worker` audit — 2026-10-30 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all source files in `crates/workers/rustok-verification-worker` (`src/lib.rs`, `src/main.rs`, `src/service.rs`, `src/policy.rs`, `src/cosign.rs`, `fixtures/slsa-statement.json`, `fixtures/cyclonedx-statement.json`, and `src/contract_tests.rs`).
@@ -357,7 +368,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (34/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
-- [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (8/19 completed)
+- [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (9/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
 - [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (0/34 completed)
@@ -580,7 +591,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[`crates/workers/rustok-artifact-node-reconciler`](../../crates/workers/rustok-artifact-node-reconciler)** (4 files, 198 LOC) — Desired vs actual state reconciliation loop for artifact deployments across server clusters. Audited and verified 6 Universal Logic Dimensions; verified mTLS operator certificate fingerprint mapping, non-nil actor UUID, bounded allowed node list (1 to 1024 nodes), and WorkerAdmission limits; standardized Cargo metadata, CRATE_API.md, and contract_tests.rs; 5/5 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[`crates/workers/rustok-artifact-node-transport`](../../crates/workers/rustok-artifact-node-transport)** (6 files, 1,016 LOC) — gRPC transport contracts between artifact controllers and fleet node agents. Audited and verified 6 Universal Logic Dimensions; verified mTLS client/server framing, protocol revision fail-closed check, principal binding pinning, certificate-to-node ID scope enforcement, and 1MB message limits; added Debug for transport services and authenticators; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 14/14 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[`crates/workers/rustok-verification-worker`](../../crates/workers/rustok-verification-worker)** (5 files, 1,121 LOC) — Automated package verification worker validating manifests, checksums, and safety constraints. Audited and verified 6 Universal Logic Dimensions; verified Cosign process runner with kill_on_drop and 30s timeout, fail-closed policy validation, SLSA subject/builder/build-type/source/ref checking, CycloneDX transitive license & vulnerability rating verification, and retiring root expiration; added Debug for CosignTrustVerifier and VerificationWorker; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 18/18 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
-- [ ] **[`crates/workers/rustok-verification-transport`](../../crates/workers/rustok-verification-transport)** (4 files, 309 LOC) — gRPC transport for verification worker requests and audit reports.
+- [x] **[`crates/workers/rustok-verification-transport`](../../crates/workers/rustok-verification-transport)** (4 files, 309 LOC) — gRPC transport for verification worker requests and audit reports. Audited and verified 6 Universal Logic Dimensions; verified mTLS client/server framing, fail-closed verification error propagation, readiness probe semantics, and WorkerAdmission rate limiting; added Debug for GrpcTrustVerifier and VerificationGrpcService; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 7/7 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [ ] **[`crates/workers/rustok-static-distribution-worker`](../../crates/workers/rustok-static-distribution-worker)** (10 files, 3,397 LOC) — Static asset bundle distribution, compression (gzip/brotli), and edge CDN synchronization.
 - [ ] **[`crates/workers/rustok-registry-validation-worker`](../../crates/workers/rustok-registry-validation-worker)** (2 files, 898 LOC) — Marketplace registry package validator enforcing manifest policies and dependency hygiene.
 - [ ] **[`crates/workers/rustok-sandbox`](../../crates/workers/rustok-sandbox)** (26 files, 8,071 LOC) — Isolated Rhai/WASM script execution sandbox with memory caps and timeout enforcement.
