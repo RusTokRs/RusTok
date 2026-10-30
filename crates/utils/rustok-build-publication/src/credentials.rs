@@ -43,10 +43,29 @@ pub struct CommandRegistryCredentialBroker {
     program_digest: String,
 }
 
+impl std::fmt::Debug for CommandRegistryCredentialBroker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandRegistryCredentialBroker")
+            .field("program", &self.program)
+            .field("program_digest", &self.program_digest)
+            .finish()
+    }
+}
+
 pub struct RegistryCredentialLease {
     username: String,
     password: String,
     expires_at_unix_seconds: u64,
+}
+
+impl std::fmt::Debug for RegistryCredentialLease {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegistryCredentialLease")
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .field("expires_at_unix_seconds", &self.expires_at_unix_seconds)
+            .finish()
+    }
 }
 
 #[derive(Debug, Error)]
