@@ -223,7 +223,10 @@ WASI `rustok-module-template` as a native server-module template.
 
 Unused slots are omitted. When a responsibility grows, split it below its
 canonical owner directory rather than inventing a new top-level convention.
-Run `npm run verify:module-source-layout` for enrolled reference modules.
+For every native module, run `cargo xtask module lint <slug>` to check the
+generic source/FFA contract and live Next.js package/route wiring.
+`npm run verify:module-source-layout` remains a separate reference-profile
+gate for enrolled modules such as Blog.
 
 ### 3. Data and Migrations Follow the Common Storage Contract
 
@@ -261,9 +264,10 @@ If an actor/principal/read-model is needed, use a typed contract, not string heu
 
 Minimum checklist before completing work:
 
-1. `cargo xtask module validate <slug>`
-2. `cargo check -p rustok-server --lib`
-3. targeted `cargo test` for the module and affected host/runtime
+1. `cargo xtask module lint <slug>`
+2. `cargo xtask module validate <slug>`
+3. `cargo check -p rustok-server --lib`
+4. targeted `cargo test` for the module and affected host/runtime
 4. updated local module docs
 5. updated central docs if architecture/runtime contract changed
 6. module plan added/synchronized in `docs/modules/implementation-plans-registry.md`
@@ -366,9 +370,10 @@ For failure diagnostics, see [runtime guardrails runbook](../guides/runtime-guar
 
 Minimum checklist:
 
-1. `cargo xtask module validate <slug>`
-2. targeted `cargo check` for the UI crate and host app
-3. `npm run verify:i18n:ui`, if locale bundles or locale wiring are affected
+1. `cargo xtask module lint <slug>`
+2. `cargo xtask module validate <slug>`
+3. targeted `cargo check` for the UI crate and host app
+4. `npm run verify:i18n:ui`, if locale bundles or locale wiring are affected
 4. UI package docs and host docs updated if surface contract changed
 
 ### 7. Mandatory FFA/FBA Status Block for Modules with UI
