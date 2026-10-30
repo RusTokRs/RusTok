@@ -8,6 +8,15 @@ pub struct SelectedDistributionRegistry {
     providers: Vec<Box<dyn CommandProvider>>,
 }
 
+impl std::fmt::Debug for SelectedDistributionRegistry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SelectedDistributionRegistry")
+            .field("providers_len", &self.providers.len())
+            .finish()
+    }
+}
+
 impl SelectedDistributionRegistry {
     pub fn empty() -> Self {
         Self::default()
@@ -15,6 +24,10 @@ impl SelectedDistributionRegistry {
 
     pub fn from_providers(providers: Vec<Box<dyn CommandProvider>>) -> Self {
         Self { providers }
+    }
+
+    pub fn len(&self) -> usize {
+        self.providers.len()
     }
 
     pub fn providers(&self) -> Vec<&dyn CommandProvider> {
@@ -108,3 +121,6 @@ mod tests {
         assert_eq!(registry.commands()[0].name, "inspect");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

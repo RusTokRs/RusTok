@@ -1690,11 +1690,11 @@
       "name": "rustok-cli-registry",
       "path": "crates/utils/rustok-cli-registry",
       "category": "utils",
-      "files": 2,
-      "loc": 138,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 3,
+      "loc": 250,
+      "completed": true,
+      "completed_at": "2026-10-30 22:05",
+      "notes": "Standardized CRATE_API.md with 5 canonical sections, package metadata, verified SelectedDistributionRegistry empty/len/Debug, lexicographical command sorting, and code-generated provider aggregation; 5/5 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/utils/rustok-installer": {
       "name": "rustok-installer",
