@@ -23,9 +23,7 @@ const FORBIDDEN_DOMAIN = [
   ["Dioxus", /\bdioxus(?:::|\s)/],
   ["rustok-web", /\brustok_web(?:::|\s)/],
 ];
-const FORBIDDEN_SERVICE = FORBIDDEN_DOMAIN.filter(([name]) =>
-  name !== "SeaORM" && name !== "SeaORM migrations"
-);
+const FORBIDDEN_SERVICE = FORBIDDEN_DOMAIN.filter(([name]) => name !== "SeaORM");
 const FORBIDDEN_CORE = [
   ["Leptos", /\bleptos(?:::|\s)/],
   ["Leptos router", /\bleptos_router(?:::|\s)/],
@@ -334,7 +332,10 @@ function checkSupportPackage(root, moduleRoot, side, manifest, classification, d
     diagnostics.push(relative(root, supportRoot) +
       ": Cargo package name differs from declared support package " + configured);
   }
-  readRequired(root, join(supportRoot, "src", "lib.rs"), diagnostics);
+  const lib = readRequired(root, join(supportRoot, "src", "lib.rs"), diagnostics);
+  if (lib && !maskRustNonCode(lib).trim()) {
+    diagnostics.push(relative(root, supportRoot) + ": support package facade has no implementation");
+  }
   checkSizes(root, join(supportRoot, "src"), UI_LIMIT, diagnostics);
 }
 

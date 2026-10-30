@@ -96,8 +96,7 @@ test("declared UI requires actual FFA structure independent of Next.js", () => {
       '[module]\nslug = "sample"\nui_classification = "admin_only"\n[crate]\nentry_type = "SampleModule"\n' +
       '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n');
     const failures = lint(ctx).join("\n");
-    assert.match(failures, /admin\/Cargo.toml.*required file missing/);
-    assert.match(failures, /model.rs.*required file missing/);
+    assert.match(failures, /admin: declared UI package directory is missing/);
     assert.doesNotMatch(failures, /Next.js package metadata/);
   });
 });
