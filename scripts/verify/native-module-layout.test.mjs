@@ -622,10 +622,14 @@ test("empty FFA i18n, locale catalogs and contract tests are rejected", () => {
       '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
       '[crate]\nentry_type = "SampleModule"\n');
     writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/model.rs", "//! empty\n");
+    ctx.write("admin/src/core/mod.rs", "//! empty\n");
     ctx.write("admin/src/i18n.rs", "//! empty\n");
     ctx.write("admin/src/tests/contract.rs", "//! no tests\n");
     rmSync(join(ctx.root, ctx.path("admin/locales/en.ftl")), { force: true });
     const failures = lint(ctx).join("\n");
+    assert.match(failures, /model.rs must contain a real transport-neutral model/);
+    assert.match(failures, /FFA core cannot be an empty facade/);
     assert.match(failures, /i18n entrypoint cannot be empty/);
     assert.match(failures, /localization directory has no FTL\\/JSON catalog/);
     assert.match(failures, /UI contract test file has no tests/);
