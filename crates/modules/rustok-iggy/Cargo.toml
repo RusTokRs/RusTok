@@ -2,8 +2,11 @@
 name = "rustok-iggy"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-description.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Iggy high-throughput distributed event streaming message bus integration for RusToK"
 
 [package.metadata.docs.rs]
 all-features = true
