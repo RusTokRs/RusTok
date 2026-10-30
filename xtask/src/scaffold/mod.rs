@@ -525,7 +525,7 @@ mod tests {
             },
         );
         let error = state.unwrap_err().to_string();
-        assert_eq!(calls.borrow().as_slice(), &["lint", "validate"]);
+        assert_eq!(calls.borrow().as_slice(), &["lint", "validate"][..]);
         assert!(error.contains("publish-readiness validation failed"));
         assert!(error.contains("NOT verified"));
     }
