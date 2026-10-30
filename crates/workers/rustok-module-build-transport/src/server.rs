@@ -16,6 +16,13 @@ pub struct ModuleBuildGrpcService<W> {
     admission: WorkerAdmission,
 }
 
+impl<W> std::fmt::Debug for ModuleBuildGrpcService<W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleBuildGrpcService")
+            .finish_non_exhaustive()
+    }
+}
+
 impl<W> ModuleBuildGrpcService<W> {
     pub fn new(worker: Arc<W>, admission: WorkerAdmission) -> Self {
         Self { worker, admission }
