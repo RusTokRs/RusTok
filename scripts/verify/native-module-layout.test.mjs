@@ -13,7 +13,7 @@ function fixture(run) {
     mkdirSync(join(full, ".."), { recursive: true });
     writeFileSync(full, value);
   };
-  const write = (path, value) => writeRoot(join(modulePath, path), value);
+  const write = (path, value) => writeRoot(path, value);
   const path = (name) => join(modulePath, name);
   write("modules.toml",
     '[modules]\nsample = { crate = "rustok-sample", source = "path", path = "' + modulePath + '" }\n');
