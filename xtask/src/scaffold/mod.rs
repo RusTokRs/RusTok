@@ -1,5 +1,6 @@
 use crate::manifest_io::workspace_root;
 use crate::manifest_validation::{module_validate_command, to_pascal_case};
+use crate::module_commands::module_lint_command;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -38,6 +39,40 @@ pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
     };
 
     scaffold(&options)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScaffoldValidation {
+    Verified,
+    Skipped,
+}
+
+fn validate_scaffold_with(
+    slug: &str,
+    skip_validate: bool,
+    lint: impl FnOnce(&[String]) -> Result<()>,
+    validate: impl FnOnce(&[String]) -> Result<()>,
+) -> Result<ScaffoldValidation> {
+    if skip_validate {
+        return Ok(ScaffoldValidation::Skipped);
+    }
+    let args = vec![slug.to_owned()];
+    lint(&args).with_context(|| {
+        format!("Module '{slug}' files were written but architecture lint failed; scaffold is NOT verified")
+    })?;
+    validate(&args).with_context(|| {
+        format!("Module '{slug}' files were written but publish-readiness validation failed; scaffold is NOT verified")
+    })?;
+    Ok(ScaffoldValidation::Verified)
+}
+
+fn validate_scaffold(slug: &str, skip_validate: bool) -> Result<ScaffoldValidation> {
+    validate_scaffold_with(
+        slug,
+        skip_validate,
+        module_lint_command,
+        module_validate_command,
+    )
 }
 
 pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
@@ -102,26 +137,24 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         registration::register_module(&root, options, &pascal_name, &snake_name)?;
         println!("  Registration complete across workspace manifests and docs.");
 
-        // 4. Run post-scaffold validation if not skipped
-        if !options.skip_validate {
-            println!("\nVerifying module publish-readiness contracts for '{slug}'...");
-            match module_validate_command(std::slice::from_ref(slug)) {
-                Ok(_) => {
-                    println!("\n  SCAFFOLDED: Module '{slug}' registered; publish metadata checked, business/UI readiness remains not_started.");
-                    println!("  Next steps:");
-                    println!("    cargo check -p {crate_name}");
-                    if options.ui.has_admin() {
-                        println!("    cargo check -p {crate_name}-admin");
-                    }
-                    if options.ui.has_storefront() {
-                        println!("    cargo check -p {crate_name}-storefront");
-                    }
+        // 4. Run the same architecture lint users can invoke directly,
+        // then check publish metadata. A skip is reported as unverified.
+        match validate_scaffold(slug, options.skip_validate)? {
+            ScaffoldValidation::Verified => {
+                println!("\n  SCAFFOLDED: Module '{slug}' registered; architecture lint and publish metadata checks passed. Business/UI readiness remains not_started.");
+                println!("  Next steps:");
+                println!("    cargo check -p {crate_name}");
+                if options.ui.has_admin() {
+                    println!("    cargo check -p {crate_name}-admin");
                 }
-                Err(err) => {
-                    return Err(err).with_context(|| format!(
-                        "Module '{slug}' files were written but publish-readiness validation failed; scaffold is NOT verified"
-                    ));
+                if options.ui.has_storefront() {
+                    println!("    cargo check -p {crate_name}-storefront");
                 }
+            }
+            ScaffoldValidation::Skipped => {
+                println!("\n  REGISTERED BUT UNVERIFIED: validation was explicitly skipped for '{slug}'.");
+                println!("  Run: cargo xtask module lint {slug}");
+                println!("  Run: cargo xtask module validate {slug}");
             }
         }
     } else {
@@ -149,6 +182,51 @@ mod tests {
             skip_server_wire: false,
             skip_validate: false,
         }
+    }
+
+    #[test]
+    fn scaffold_validation_runs_architecture_before_publish_metadata() {
+        let mut calls = Vec::new();
+        let state = super::validate_scaffold_with(
+            "example",
+            false,
+            |args| {
+                assert_eq!(args, &["example"]);
+                calls.push("lint");
+                Ok(())
+            },
+            |args| {
+                assert_eq!(args, &["example"]);
+                calls.push("validate");
+                Ok(())
+            },
+        ).unwrap();
+        assert_eq!(state, super::ScaffoldValidation::Verified);
+        assert_eq!(calls, ["lint", "validate"]);
+    }
+
+    #[test]
+    fn skipped_scaffold_validation_never_claims_verified() {
+        let state = super::validate_scaffold_with(
+            "example",
+            true,
+            |_| panic!("lint must be skipped"),
+            |_| panic!("publish validation must be skipped"),
+        ).unwrap();
+        assert_eq!(state, super::ScaffoldValidation::Skipped);
+    }
+
+    #[test]
+    fn architecture_lint_failure_stops_before_publish_validation() {
+        let state = super::validate_scaffold_with(
+            "example",
+            false,
+            |_| anyhow::bail!("architecture failure"),
+            |_| panic!("publish validation must not run after lint failure"),
+        );
+        let error = state.unwrap_err().to_string();
+        assert!(error.contains("architecture lint failed"));
+        assert!(error.contains("NOT verified"));
     }
 
     #[test]
