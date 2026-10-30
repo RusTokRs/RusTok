@@ -3,6 +3,9 @@ name = "rustok-installer-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Operational install and seed command adapter for the RusToK installer"
 
 [dependencies]
@@ -29,4 +32,9 @@ rustok-api.workspace = true
 rustok-modules.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 

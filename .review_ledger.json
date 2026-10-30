@@ -1712,9 +1712,9 @@
       "category": "utils",
       "files": 1,
       "loc": 823,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-30T20:52:45.672050+00:00",
+      "notes": "CLI adapter for the installer and seed command workflow. Audited and verified 6 Universal Logic Dimensions across all source files; verified InstallerCommandProvider constructor, runtime getter, and Debug implementation; verified commands descriptor registration with dry-run support, seed apply non-production environment enforcement (strictly rejecting production), starter import default blueprint validation and missing file error handling, plan command secret redaction (redact_install_plan), preflight policy evaluation, apply dry-run preflight reporting, and typed CliCoreError taxonomy; standardized Cargo.toml, authored 5-section CRATE_API.md, and contract_tests.rs; 9/9 tests passed, 0 clippy warnings, zero defects."
     },
     "crates/utils/rustok-installer-persistence": {
       "name": "rustok-installer-persistence",
