@@ -798,7 +798,85 @@ pub(crate) fn find_closing_bracket_after(lines: &[String], section_prefix: &str)
 
 #[cfg(test)]
 mod scaffold_registration_tests {
-    use super::{draft_readiness, ScaffoldUi};
+    use super::{draft_readiness, plan_module_registration, ScaffoldOptions, ScaffoldUi};
+    use crate::scaffold::options::ScaffoldProfile;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root() -> PathBuf {
+        let id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rustok-registration-plan-test-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn options() -> ScaffoldOptions {
+        ScaffoldOptions {
+            profile: ScaffoldProfile::NativeModule,
+            slug: "example".into(),
+            title: "Example".into(),
+            description: "An example module".into(),
+            category: "collaboration".into(),
+            with_db: false,
+            ui: ScaffoldUi::None,
+            dry_run: true,
+            skip_server_wire: true,
+            skip_validate: false,
+        }
+    }
+
+    #[test]
+    fn registration_plan_contains_all_changed_manifests_without_mutating_workspace() {
+        let root = temp_root();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\n]\n[workspace.dependencies]\n",
+        ).unwrap();
+        fs::write(root.join("modules.toml"), "[modules]\n# Capability extensions\n").unwrap();
+        fs::create_dir_all(root.join("docs/modules")).unwrap();
+        fs::write(
+            root.join("docs/modules/registry.md"),
+            "## FFA/FBA Readiness Board\n| Module slug | UI surfaces | FFA | FBA | Shape | Plan |\n|---|---|---|---|---|---|\n| existing | none | not_started | not_started | none | plan |\n### Optional Modules\n| Module | Crate | Dependencies | Description |\n|---|---|---|---|\n| existing | existing | none | existing |\n## Dependencies\n",
+        ).unwrap();
+        fs::write(
+            root.join("docs/modules/_index.md"),
+            "## Domain Modules\n| Crate | Docs | Plan |\n|---|---|---|\n| existing | docs | plan |\n## Shared Libraries\n",
+        ).unwrap();
+
+        let before_cargo = fs::read_to_string(root.join("Cargo.toml")).unwrap();
+        let before_modules = fs::read_to_string(root.join("modules.toml")).unwrap();
+        let before_registry = fs::read_to_string(root.join("docs/modules/registry.md")).unwrap();
+        let before_index = fs::read_to_string(root.join("docs/modules/_index.md")).unwrap();
+
+        let changes = plan_module_registration(&root, &options(), "Example", "example").unwrap();
+        let changed_paths = changes.iter().map(|change| {
+            change.path.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/")
+        }).collect::<Vec<_>>();
+
+        assert_eq!(changes.len(), 4);
+        for expected in [
+            "Cargo.toml",
+            "modules.toml",
+            "docs/modules/registry.md",
+            "docs/modules/_index.md",
+        ] {
+            assert!(changed_paths.iter().any(|path| path == expected), "missing planned update: {expected}");
+        }
+        assert!(changes.iter().any(|change| change.content.contains("example = { crate = \"rustok-example\"")));
+        assert_eq!(fs::read_to_string(root.join("Cargo.toml")).unwrap(), before_cargo);
+        assert_eq!(fs::read_to_string(root.join("modules.toml")).unwrap(), before_modules);
+        assert_eq!(fs::read_to_string(root.join("docs/modules/registry.md")).unwrap(), before_registry);
+        assert_eq!(fs::read_to_string(root.join("docs/modules/_index.md")).unwrap(), before_index);
+
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn draft_packages_remain_unmounted_and_not_started() {
