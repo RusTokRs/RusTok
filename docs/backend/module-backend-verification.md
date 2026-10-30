@@ -63,12 +63,13 @@ module is verified.
 
 `--skip-validate` is an explicit development escape hatch: registration may
 still have been written, but the command reports `REGISTERED BUT UNVERIFIED`
-and prints the two checks the owner must run. `--dry-run` previews file
-creation without writing, registration, or validation.
+and prints the two checks the owner must run. `--dry-run` previews all planned
+source and registration edits without writing or running validation.
 
-Generation is not yet transactional. A validation failure can leave written
-files or registry changes behind; atomic planning/rollback remains a separate
-scaffolding-hardening step.
+The generator snapshots its planned targets and restores them if architecture
+lint or publish-metadata validation fails. This is rollback-protected
+multi-file generation, not isolation from concurrent external workspace
+writers; the generated-crate compilation/test matrix remains a separate gate.
 
 
 ## Canonical reference-contract verification

@@ -105,6 +105,81 @@ function maskRustNonCode(source) {
   return chars.join("");
 }
 
+function maskJavaScriptNonCode(source) {
+  const chars = source.split("");
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith("//", index)) {
+      let end = source.indexOf("\n", index + 2);
+      if (end < 0) end = source.length;
+      maskRange(chars, index, end);
+      index = end;
+      continue;
+    }
+    if (source.startsWith("/*", index)) {
+      const close = source.indexOf("*/", index + 2);
+      const end = close < 0 ? source.length : close + 2;
+      maskRange(chars, index, end);
+      index = end;
+      continue;
+    }
+    const quote = source[index];
+    if (quote === "'" || quote === '"') {
+      let end = index + 1;
+      let escaped = false;
+      while (end < source.length) {
+        const char = source[end];
+        end += 1;
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === quote) break;
+      }
+      index = end;
+      continue;
+    }
+    if (quote === String.fromCharCode(96)) {
+      const start = index;
+      let end = index + 1;
+      let escaped = false;
+      while (end < source.length) {
+        const char = source[end];
+        end += 1;
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === String.fromCharCode(96)) break;
+      }
+      maskRange(chars, start, end);
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+  return chars.join("");
+}
+
+function escapeRegExp(value) {
+  const special = new Set([".", "+", "*", "?", "^", "$", "(", ")", "[", "]", "{", "}", "|", "\\"]);
+  return Array.from(value, (character) =>
+    special.has(character) ? "\\" + character : character,
+  ).join("");
+}
+
+function hasStaticImport(source, specifier) {
+  const code = maskJavaScriptNonCode(source);
+  const escaped = escapeRegExp(specifier);
+  const quote = "[\"']";
+  const sideEffectImport = new RegExp(
+    "(?:^|[;\\n])\\s*import\\s*" + quote + escaped + quote + "\\s*;?",
+    "m",
+  );
+  const fromImport = new RegExp(
+    "(?:^|[;\\n])\\s*import\\s+(?:type\\s+)?[\\s\\S]*?\\s+from\\s*" +
+      quote + escaped + quote + "\\s*;?",
+    "m",
+  );
+  return sideEffectImport.test(code) || fromImport.test(code);
+}
+
 function isDirectory(path) {
   try {
     const stat = lstatSync(path);
@@ -325,7 +400,8 @@ function checkNextUiSurface(root, side, manifest, diagnostics) {
   const hostRegistry = readRequired(root, hostRegistryPath, diagnostics);
   const relativePackageSource = relative(dirname(hostRegistryPath), join(packageRoot, "src"))
     .split(sep).join("/");
-  if (!hostRegistry.includes(packageName) && !hostRegistry.includes(relativePackageSource)) {
+  if (!hasStaticImport(hostRegistry, packageName) &&
+      !hasStaticImport(hostRegistry, relativePackageSource)) {
     diagnostics.push(relative(root, hostRegistryPath) +
       ": Next.js host module registry does not import declared package '" + packageName + "'");
   }
@@ -334,7 +410,7 @@ function checkNextUiSurface(root, side, manifest, diagnostics) {
     ? join(root, "apps", host, "src", "app", "dashboard", routeSegment, "page.tsx")
     : join(root, "apps", host, "src", "app", "[locale]", routeSegment, "page.tsx");
   const routeSource = readRequired(root, routePath, diagnostics);
-  if (routeSource && !routeSource.includes(packageName)) {
+  if (routeSource && !hasStaticImport(routeSource, packageName)) {
     diagnostics.push(relative(root, routePath) +
       ": Next.js route must import declared package '" + packageName + "'");
   }
@@ -370,45 +446,86 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
     diagnostics.push(relative(root, uiRoot) + ": Cargo package name differs from expected Leptos package " + configured);
   }
   const lib = readRequired(root, join(src, "lib.rs"), diagnostics);
-  const model = readRequired(root, join(src, "model.rs"), diagnostics);
+  const libCode = maskRustNonCode(lib);
+  for (const requiredModule of ["core", "model", "i18n", "transport", "ui"]) {
+    if (!new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + requiredModule + "\\s*;").test(libCode)) {
+      diagnostics.push(relative(root, join(src, "lib.rs")) +
+        ": FFA lib.rs must declare required module " + requiredModule);
+    }
+  }
+
+  const modelPath = join(src, "model.rs");
+  const model = readRequired(root, modelPath, diagnostics);
   const modelCode = maskRustNonCode(model);
+  if (!modelCode.trim()) {
+    diagnostics.push(relative(root, modelPath) +
+      ": model.rs must contain a real transport-neutral model or owner-boundary type");
+  }
   for (const [name, regex] of FORBIDDEN_CORE) {
     if (regex.test(modelCode)) {
-      diagnostics.push(relative(root, join(src, "model.rs")) + ": forbidden " + name + " dependency in FFA model");
+      diagnostics.push(relative(root, modelPath) + ": forbidden " + name + " dependency in FFA model");
     }
   }
   if (!hasSource(join(src, "i18n.rs")) && !hasSource(join(src, "i18n", "mod.rs"))) {
     diagnostics.push(relative(root, src) + ": required module-owned i18n entrypoint missing");
   }
+
   const core = hasSource(join(src, "core.rs")) ? join(src, "core.rs") : join(src, "core", "mod.rs");
+  const coreSource = readRequired(root, core, diagnostics);
+  if (!maskRustNonCode(coreSource).trim()) {
+    diagnostics.push(relative(root, core) + ": FFA core cannot be an empty facade");
+  }
+
   const transport = hasSource(join(src, "transport.rs")) ? join(src, "transport.rs") :
     join(src, "transport", "mod.rs");
-  readRequired(root, core, diagnostics);
   const transportSource = readRequired(root, transport, diagnostics);
   const transportCode = maskRustNonCode(transportSource);
-  const hasAdapterModule = /\b(?:pub\s+)?mod\s+(?:native_server_adapter|graphql_adapter)\s*;/.test(transportCode);
-  const hasOwnerOperation = /\b(?:async\s+)?fn\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\s*\(/.test(transportCode) &&
-    /\b(?:native_server_adapter|graphql_adapter)\s*::/.test(transportCode);
-  if (transportSource && !hasAdapterModule && !hasOwnerOperation) {
+  const adapterNames = ["native_server_adapter", "graphql_adapter"].filter((adapter) =>
+    new RegExp("\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+" + adapter + "\\s*;").test(transportCode),
+  );
+  const hasOwnerOperation = /\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+(?:fetch|load|create|update|delete|query|execute|mutate|request|publish|submit|save|read)(?:_[a-z0-9_]+)?\\s*\\(/.test(transportCode) &&
+    /\\b(?:native_server_adapter|graphql_adapter)\\s*::/.test(transportCode);
+  if (transportSource && (!adapterNames.length || !hasOwnerOperation)) {
     diagnostics.push(relative(root, transport) +
-      ": empty transport facade without an owner operation or a real adapter module");
+      ": transport facade must expose an owner operation delegated to a declared native/GraphQL adapter");
   }
+
   const transportDir = join(src, "transport");
-  for (const adapter of ["native_server_adapter", "graphql_adapter"]) {
-    if (new RegExp("\\b(?:pub\\s+)?mod\\s+" + adapter + "\\s*;").test(transportCode) &&
-        !hasSource(join(transportDir, adapter + ".rs")) &&
-        !hasSource(join(transportDir, adapter, "mod.rs"))) {
-      diagnostics.push(relative(root, transportDir) + ": declared " + adapter + " has no source file");
+  const adapterRoot = hasSource(join(src, "transport.rs")) ? src : transportDir;
+  for (const adapter of adapterNames) {
+    const candidates = [
+      join(adapterRoot, adapter + ".rs"),
+      join(adapterRoot, adapter, "mod.rs"),
+    ];
+    const adapterPath = candidates.find(hasSource) || candidates[0];
+    const adapterSource = readRequired(root, adapterPath, diagnostics);
+    const adapterCode = maskRustNonCode(adapterSource);
+    if (!/\\b(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?fn\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(/.test(adapterCode)) {
+      diagnostics.push(relative(root, adapterPath) +
+        ": declared transport adapter has no callable owner operation");
     }
   }
-  readRequired(root, join(src, "ui", "mod.rs"), diagnostics);
-  if (!hasSource(join(src, "ui", "leptos.rs")) &&
-      !hasSource(join(src, "ui", "leptos", "mod.rs"))) {
-    diagnostics.push(relative(root, join(src, "ui")) +
-      ": declared Leptos UI has no dedicated render adapter");
+
+  const uiModulePath = join(src, "ui", "mod.rs");
+  const uiModule = readRequired(root, uiModulePath, diagnostics);
+  if (!/\\b(?:pub(?:\\([^)]*\\))?\\s+)?mod\\s+leptos\\s*;/.test(maskRustNonCode(uiModule))) {
+    diagnostics.push(relative(root, uiModulePath) + ": ui/mod.rs must declare its Leptos render adapter");
   }
+  const uiLeptos = hasSource(join(src, "ui", "leptos.rs"))
+    ? join(src, "ui", "leptos.rs")
+    : join(src, "ui", "leptos", "mod.rs");
+  const uiLeptosSource = readRequired(root, uiLeptos, diagnostics);
+  if (!/#\\s*\\[\\s*component\\s*\\]/.test(maskRustNonCode(uiLeptosSource))) {
+    diagnostics.push(relative(root, uiLeptos) + ": Leptos render adapter must define a component");
+  }
+
   if (!isDirectory(join(uiRoot, "locales"))) {
     diagnostics.push(relative(root, join(uiRoot, "locales")) + ": declared UI has no localization bundles");
+  }
+  const testsModulePath = join(src, "tests", "mod.rs");
+  const testsModule = readRequired(root, testsModulePath, diagnostics);
+  if (!/\\bmod\\s+contract\\s*;/.test(maskRustNonCode(testsModule))) {
+    diagnostics.push(relative(root, testsModulePath) + ": tests/mod.rs must declare contract.rs");
   }
   if (!hasSource(join(src, "tests", "contract.rs"))) {
     diagnostics.push(relative(root, join(src, "tests", "contract.rs")) +
@@ -416,7 +533,6 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   }
   // Older UI crates may retain an auxiliary root contract_tests.rs while
   // migrating. The canonical tests/contract.rs above remains mandatory.
-  const libCode = maskRustNonCode(lib);
   if (!/#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*mod\s+tests\s*;/.test(libCode)) {
     diagnostics.push(relative(root, join(src, "lib.rs")) +
       ": missing cfg(test) tests module declaration");
@@ -601,6 +717,11 @@ export function lintNativeModule(root, modulePath, slug) {
         !new RegExp("\\bmod\\s+" + rootModule + "\\s*;").test(libCode)) {
       diagnostics.push(relative(repo, join(src, rootModule + ".rs")) + ": " + rootModule + ".rs must be declared by lib.rs");
     }
+  }
+  const testsModulePath = join(src, "tests", "mod.rs");
+  const testsModule = readRequired(repo, testsModulePath, diagnostics);
+  if (!/\bmod\s+contract\s*;/.test(maskRustNonCode(testsModule))) {
+    diagnostics.push(relative(repo, testsModulePath) + ": src/tests/mod.rs must declare contract.rs");
   }
   const contractPath = join(src, "tests", "contract.rs");
   if (!hasSource(contractPath)) {

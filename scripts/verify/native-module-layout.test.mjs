@@ -169,6 +169,7 @@ test("fake UI actions and Leptos in pure core fail FFA lint", () => {
     ctx.write("admin/src/transport/mod.rs", "pub fn fetch() {}\n");
     ctx.write("admin/src/ui/mod.rs", "let sample_rows = vec![];\n");
     ctx.write("admin/src/ui/leptos.rs", "pub fn render() {}\n");
+    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     const failures = lint(ctx).join("\n");
@@ -270,11 +271,14 @@ test("the opposite-side support crate is valid beside a single live surface", ()
       'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/model.rs", "pub struct Model;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
-    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
-    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
     ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
     ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     ctx.write("storefront/Cargo.toml",
@@ -378,12 +382,15 @@ test("Leptos UI code cannot bypass the transport facade through raw adapters", (
       'mod model;\nmod core;\nmod transport;\nmod ui;\nmod i18n;\n#[cfg(test)]\nmod tests;\n');
     ctx.write("admin/src/model.rs", "pub struct Model;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
-    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
-    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
     ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
     ctx.write("admin/src/ui/leptos.rs",
-      "use crate::transport::native_server_adapter::request;\n");
+      "#[component]\npub fn Admin() {}\nuse crate::transport::native_server_adapter::request;\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/src/contract_tests.rs", "#[test]\nfn legacy_contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
@@ -431,11 +438,14 @@ test("FFA model remains framework-independent", () => {
     ctx.write("admin/src/model.rs",
       "use leptos_ui_routing::use_route_query_value;\nuse sea_orm::EntityTrait;\n");
     ctx.write("admin/src/core/mod.rs", "pub struct Core;\n");
-    ctx.write("admin/src/transport/mod.rs", "mod native_server_adapter;\n");
-    ctx.write("admin/src/transport/native_server_adapter.rs", "pub struct Adapter;\n");
+    ctx.write("admin/src/transport/mod.rs",
+      "mod native_server_adapter;\npub async fn fetch_owner_capability() -> Result<(), ()> { native_server_adapter::fetch_owner_capability().await }\n");
+    ctx.write("admin/src/transport/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
     ctx.write("admin/src/ui/mod.rs", "mod leptos;\n");
     ctx.write("admin/src/ui/leptos.rs", "#[component]\npub fn Admin() {}\n");
     ctx.write("admin/src/i18n.rs", "pub fn t() {}\n");
+    ctx.write("admin/src/tests/mod.rs", "mod contract;\n");
     ctx.write("admin/src/tests/contract.rs", "#[test]\nfn contract() {}\n");
     ctx.write("admin/locales/en.ftl", "sample-title = Sample\n");
     assert.match(lint(ctx).join("\n"), /forbidden Leptos dependency in FFA model/);
@@ -573,6 +583,76 @@ test("live storefront UI requires its Next.js package, host registry and localiz
     writeFfaSurface(ctx, "storefront");
     writeNextSurface(ctx, "storefront", "@rustok/sample-frontend", "sample");
     assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("FFA lib and test facades must wire every canonical source file", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/lib.rs",
+      'mod core;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n');
+    ctx.write("admin/src/tests/mod.rs", "");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /FFA lib.rs must declare required module model/);
+    assert.match(failures, /tests\/mod.rs must declare contract.rs/);
+  });
+});
+
+test("declared transport adapters must contain callable operations", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/transport/graphql_adapter.rs", "pub struct EmptyAdapter;\n");
+    assert.match(lint(ctx).join("\n"), /graphql_adapter.rs: declared transport adapter has no callable owner operation/);
+  });
+});
+
+test("the compact transport.rs facade resolves sibling adapter modules", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n' +
+      '[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    rmSync(join(ctx.root, ctx.path("admin/transport")), { recursive: true, force: true });
+    ctx.write("admin/src/transport.rs",
+      'mod graphql_adapter;\nmod native_server_adapter;\n' +
+      'pub async fn fetch_owner_capability() -> Result<(), ()> { graphql_adapter::fetch_owner_capability().await }\n');
+    ctx.write("admin/src/graphql_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+    ctx.write("admin/src/native_server_adapter.rs",
+      "pub async fn fetch_owner_capability() -> Result<(), ()> { Err(()) }\n");
+    assert.deepEqual(lint(ctx), []);
+  });
+});
+
+test("comment-only Next.js package mentions do not satisfy host and route imports", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "admin_only"\n' +
+      '[crate]\nentry_type = "SampleModule"\n' +
+      '[provides.admin_ui]\nleptos_crate = "rustok-sample-admin"\n' +
+      'next_package = "@rustok/sample-admin"\nroute_segment = "sample"\nnav_label = "Sample"\n');
+    writeFfaSurface(ctx, "admin");
+    writeNextSurface(ctx, "admin", "@rustok/sample-admin", "sample");
+    ctx.writeRoot("apps/next-admin/src/modules/index.ts",
+      "// import '@rustok/sample-admin';\nexport {};\n");
+    ctx.writeRoot("apps/next-admin/src/app/dashboard/sample/page.tsx",
+      "// import { Page } from '@rustok/sample-admin';\nexport default function Page() {}\n");
+    const failures = lint(ctx).join("\n");
+    assert.match(failures, /Next.js host module registry does not import declared package/);
+    assert.match(failures, /Next.js route must import declared package/);
+  });
+});
+
+test("native contract tests must be wired through src/tests/mod.rs", () => {
+  fixture((ctx) => {
+    ctx.write("src/tests/mod.rs", "");
+    assert.match(lint(ctx).join("\n"), /src\/tests\/mod.rs must declare contract.rs/);
   });
 });
 
