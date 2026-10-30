@@ -70,7 +70,7 @@ function writeNextSurface(ctx, side, packageName, routeSegment) {
   const main = side === "admin" ? "./src/index.ts" : "./src/index.tsx";
   const packageRoot = "apps/" + host + "/packages/" + packageDir;
   ctx.writeRoot(packageRoot + "/package.json", JSON.stringify({ name: packageName, main }));
-  ctx.writeRoot(packageRoot + "/" + main.replace(/^\\.\\//, ""), "export const Page = () => null;\n");
+  ctx.writeRoot(packageRoot + "/" + main.replace(/^\.\//, ""), "export const Page = () => null;\n");
   const hostIndex = side === "admin"
     ? "apps/next-admin/src/modules/index.ts"
     : "apps/next-frontend/src/modules/index.ts";
