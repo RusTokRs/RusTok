@@ -82,7 +82,14 @@ registry. Known gaps must be declared in the owner README/plan. The current
 generator preflights source and registration edits, previews the complete plan
 in dry-run, and uses rollback-protected writes; architecture lint runs before
 publish-metadata validation. This does not isolate concurrent external
-workspace writers, and the full generated-crate build matrix remains pending.
+workspace writers. Golden file-tree snapshots cover all four UI modes, with
+renderer snapshots for the native manifest and both Leptos package variants.
+The dedicated `Native Scaffold Matrix` workflow runs `cargo test -p xtask`,
+generates headless/admin/storefront/dual modules in a disposable CI checkout,
+requires each scaffold's architecture and metadata validation to pass, tests
+all generated crates, and checks CSR/hydrate/SSR builds for both UI surfaces.
+This is compile/structure evidence only, not proof of business behavior,
+runtime integration or functional client parity.
 
 ### Current implementation gap
 
@@ -101,7 +108,9 @@ Successful publish metadata validation does not imply runtime or UI readiness.
 The generator now previews complete manifest edits and restores planned files
 when post-generation lint or metadata validation fails. This rollback-protected
 transaction is not a concurrency-isolated filesystem transaction. Golden
-snapshots and an executable generated-crate build matrix remain future work.
+snapshots and the generated-crate matrix are enforced by the dedicated
+`Native Scaffold Matrix` workflow; passing them still does not imply a working
+domain service or live UI surface.
 
 ## Target Module Layout
 

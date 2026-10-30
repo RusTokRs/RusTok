@@ -357,6 +357,57 @@ mod tests {
             .unwrap_or_else(|| panic!("missing {path}")).1
     }
 
+    fn golden_options(ui: ScaffoldUi) -> ScaffoldOptions {
+        let mut request = options(ui);
+        request.slug = "example".to_string();
+        request.title = "Example".to_string();
+        request.description = "A native example module without business logic".to_string();
+        request
+    }
+
+    fn normalized_ui_snapshot(files: &[(PathBuf, String)], side: &str) -> String {
+        let surface_title = if side == "admin" { "Admin" } else { "Storefront" };
+        let page = if side == "admin" {
+            "ExampleAdminPage"
+        } else {
+            "ExampleStorefrontView"
+        };
+        let mut snapshot = String::new();
+
+        for relative in [
+            "Cargo.toml",
+            "README.md",
+            "CRATE_API.md",
+            "src/lib.rs",
+            "src/transport/mod.rs",
+            "src/ui/leptos.rs",
+        ] {
+            let source = content(files, &format!("{side}/{relative}"));
+            let normalized = source
+                .replace(page, "{Page}")
+                .replace(side, "{surface}")
+                .replace(surface_title, "{Surface}");
+            snapshot.push_str(&format!("=== {relative} ===\n{normalized}"));
+        }
+
+        snapshot
+    }
+
+    #[test]
+    fn admin_and_storefront_renderers_match_the_shared_ui_golden_snapshot() {
+        for (ui, side) in [
+            (ScaffoldUi::Admin, "admin"),
+            (ScaffoldUi::Storefront, "storefront"),
+        ] {
+            let files = render_ui_templates(&golden_options(ui), "Example");
+            assert_eq!(
+                normalized_ui_snapshot(&files, side),
+                include_str!("goldens/ui-package.golden"),
+                "generated {side} UI contract changed"
+            );
+        }
+    }
+
     #[test]
     fn scaffolded_ui_is_documented_as_unmounted_until_owner_wiring_exists() {
         let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");

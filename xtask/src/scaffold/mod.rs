@@ -372,7 +372,7 @@ mod tests {
     };
     use super::options::ScaffoldProfile;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
@@ -401,6 +401,91 @@ mod tests {
             skip_server_wire: false,
             skip_validate: false,
         }
+    }
+
+    fn copy_scaffold_inputs(root: &Path) {
+        let workspace = crate::manifest_io::workspace_root();
+        for relative in [
+            "Cargo.toml",
+            "modules.toml",
+            "docs/modules/registry.md",
+            "docs/modules/_index.md",
+            "docs/modules/UI_PACKAGES_INDEX.md",
+            "apps/server/Cargo.toml",
+            "crates/modules/rustok-distribution/Cargo.toml",
+            "crates/modules/rustok-distribution/src/lib.rs",
+        ] {
+            let source = workspace.join(relative);
+            let destination = root.join(relative);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(&source, &destination)
+                .unwrap_or_else(|error| panic!("failed to stage {relative}: {error}"));
+        }
+    }
+
+    fn plan_path_snapshot(root: &Path, plan: &[PlannedFile]) -> String {
+        let paths = plan
+            .iter()
+            .map(|file| {
+                file.path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect::<Vec<_>>();
+        paths.join("\n") + "\n"
+    }
+
+    #[test]
+    fn complete_scaffold_plans_match_golden_file_trees_for_every_ui_mode() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+
+        let scenarios = [
+            (
+                "scaffold_golden_headless",
+                ScaffoldUi::None,
+                include_str!("goldens/plan-headless.golden"),
+            ),
+            (
+                "scaffold_golden_admin",
+                ScaffoldUi::Admin,
+                include_str!("goldens/plan-admin.golden"),
+            ),
+            (
+                "scaffold_golden_storefront",
+                ScaffoldUi::Storefront,
+                include_str!("goldens/plan-storefront.golden"),
+            ),
+            (
+                "scaffold_golden_dual",
+                ScaffoldUi::Dual,
+                include_str!("goldens/plan-dual.golden"),
+            ),
+        ];
+
+        for (slug, ui, expected) in scenarios {
+            let mut request = options();
+            request.slug = slug.to_string();
+            request.title = format!("Golden {slug}");
+            request.description =
+                "Golden fixture for native module scaffold generation".to_string();
+            request.ui = ui;
+
+            let module_dir = root.join("crates/modules").join(request.crate_name());
+            let pascal = crate::manifest_validation::to_pascal_case(slug);
+            let plan = build_scaffold_plan(&root, &module_dir, &request, &pascal, slug)
+                .unwrap_or_else(|error| panic!("failed to build {slug} plan: {error}"));
+            let actual = plan_path_snapshot(&root, &plan);
+
+            assert_eq!(
+                actual, expected,
+                "generated file tree changed for scaffold mode {slug}"
+            );
+        }
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

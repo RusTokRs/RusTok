@@ -360,6 +360,21 @@ mod tests {
     }
 
     #[test]
+    fn native_module_manifest_matches_the_golden_snapshot() {
+        let files = render_backend(&options(), "Example");
+        let manifest = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("rustok-module.toml"))
+            .unwrap()
+            .1
+            .as_str();
+        assert_eq!(
+            manifest,
+            include_str!("goldens/native-module-manifest.golden")
+        );
+    }
+
+    #[test]
     fn metadata_is_parseable_and_reports_no_ui_or_fake_dependencies() {
         let files = render_backend(&options(), "Example");
         let manifest = files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap();

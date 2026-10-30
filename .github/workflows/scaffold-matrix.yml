@@ -1,0 +1,53 @@
+name: Native Scaffold Matrix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/scaffold-matrix.yml"
+      - "scripts/ci/verify-scaffold-matrix.sh"
+      - "xtask/src/scaffold/**"
+      - "Cargo.toml"
+      - "modules.toml"
+      - "apps/server/Cargo.toml"
+      - "crates/modules/rustok-distribution/**"
+      - "docs/modules/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/scaffold-matrix.yml"
+      - "scripts/ci/verify-scaffold-matrix.sh"
+      - "xtask/src/scaffold/**"
+      - "Cargo.toml"
+      - "modules.toml"
+      - "apps/server/Cargo.toml"
+      - "crates/modules/rustok-distribution/**"
+      - "docs/modules/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: "0"
+  SQLX_OFFLINE: "true"
+
+jobs:
+  generated-scaffold-matrix:
+    name: Generate, validate and compile scaffold modes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Generate and verify all native scaffold modes
+        run: bash scripts/ci/verify-scaffold-matrix.sh

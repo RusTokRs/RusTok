@@ -1,0 +1,16 @@
+[module]
+slug = "example"
+name = "Example"
+version = "0.1.0"
+description = "A native example module without business logic"
+ownership = "first_party"
+trust_level = "private"
+ui_classification = "no_ui"
+recommended_admin_surfaces = []
+
+[marketplace]
+category = "collaboration"
+tags = ["example"]
+
+[crate]
+entry_type = "ExampleModule"

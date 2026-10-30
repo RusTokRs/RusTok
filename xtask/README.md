@@ -87,8 +87,14 @@ multi-file generation, not isolation from concurrent external workspace writers.
 Passing lint and metadata validation still does not prove compilation, behavior,
 FBA runtime readiness or functional FFA/Next.js parity. The generated UI crates
 remain *draft, unmounted* and their adapters fail explicitly until owner
-operations are implemented. Golden snapshots and the generated-crate build
-matrix remain outstanding. Persistence still requires a real owner schema.
+operations are implemented. Golden plan-tree and renderer snapshots run in
+`cargo test -p xtask`. The dedicated
+`scripts/ci/verify-scaffold-matrix.sh` workflow generates headless, admin,
+storefront and dual modules, runs the scaffold's lint/metadata validation,
+tests every generated crate, and checks both UI surfaces under CSR, hydrate
+and SSR features. This proves generated-source compilation, not business
+behavior or functional cross-client parity. Persistence still requires a
+real owner schema.
 Classic Next.js packages remain Next-host owned; live UI wiring is checked by
 the generic native-module lint, while functional cross-client parity needs
 separate evidence.
