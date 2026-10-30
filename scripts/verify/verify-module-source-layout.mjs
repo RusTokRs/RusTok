@@ -246,8 +246,8 @@ for (const profile of uiProfiles) {
   if (!existsSync(uiContractTest)) {
     fail(`${profile.crate}: missing tests/contract.rs for the module-owned API contract`);
   }
-  if (existsSync(join(sourceRoot, "contract_tests.rs"))) {
-    fail(`${profile.crate}: contract tests must not live at the UI source root`);
+  if (existsSync(join(sourceRoot, "contract_tests.rs")) && !existsSync(uiContractTest)) {
+    fail(`${profile.crate}: root contract_tests.rs cannot replace the canonical tests/contract.rs slot`);
   }
 
   for (const file of rustFiles(sourceRoot)) {

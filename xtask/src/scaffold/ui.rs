@@ -1,19 +1,11 @@
 use super::options::{ScaffoldOptions, ScaffoldUi};
-use super::write_file_content;
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Creates Leptos FFA *development skeletons* that compile independently
 /// without mounting routes or claiming native/GraphQL business operations.
 /// Domain-specific services, transport calls and UI flows are authored later
 /// by each module owner; missing operations remain explicit errors.
-pub(crate) fn generate_ui(opts: &ScaffoldOptions, module_dir: &Path, pascal: &str) -> Result<()> {
-    for (relative, contents) in render_ui_templates(opts, pascal) {
-        write_file_content(&module_dir.join(relative), &contents, opts.dry_run)?;
-    }
-    Ok(())
-}
-
 /// Pure renderer used for both dry-run and writable Leptos skeleton creation.
 /// No host mount or live [provides.*_ui] metadata is produced.
 pub(crate) fn render_ui_templates(
@@ -100,8 +92,18 @@ The scaffold command writes this development package into the Cargo workspace
 without mounting it in a Leptos host or advertising a live UI in rustok-module.toml.
 After the module owner implements business operations, complete and verify the
 native and GraphQL adapters, then add Leptos host composition and live UI
-manifest metadata in a separate feature change before promoting readiness. Next.js applications own any separate classic packages in their hosts
-and are not a generated FFA adapter.
+manifest metadata in a separate feature change before promoting readiness.
+Next.js applications own separate classic packages in their hosts; they are
+not generated as FFA adapters. Before promoting a surface to live, add its
+`next_package` under the corresponding Next host, register it in the host
+module registry and import it from the declared route. `cargo xtask module lint`
+checks that structural package/route wiring.
+
+## Known Limitations / Pending Implementation
+- No owner business operation or usable native/GraphQL adapter exists yet.
+- This Leptos package has no host route and advertises no live UI capability.
+- Client parity and real transport behavior remain pending owner implementation.
+- Track subsequent implementation in the module's docs/implementation-plan.md.
 
 ## Reference
 - [Blog's production Leptos package](../../rustok-blog/{side}/README.md)
