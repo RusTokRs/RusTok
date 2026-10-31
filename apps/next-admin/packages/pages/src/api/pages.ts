@@ -49,7 +49,7 @@ export interface CreatePageInput {
 
 // ---------- Queries & mutations ----------
 
-const PAGE_LIST_FIELDS = `
+export const PAGE_LIST_FIELDS = `
   id
   status
   template
@@ -57,6 +57,45 @@ const PAGE_LIST_FIELDS = `
   slug
   channelSlugs
   updatedAt
+`;
+
+export const PAGES_LIST_QUERY = `
+  query PagesList($filter: ListGqlPagesFilter, $tenantId: UUID) {
+    pages(filter: $filter, tenantId: $tenantId) {
+      items { ${PAGE_LIST_FIELDS} }
+      total
+    }
+  }
+`;
+
+export const CREATE_PAGE_MUTATION = `
+  mutation CreatePage($input: CreateGqlPageInput!, $tenantId: UUID) {
+    createPage(input: $input, tenantId: $tenantId) {
+      id
+      version
+      status
+      template
+      translation { locale title slug }
+    }
+  }
+`;
+
+export const UNPUBLISH_PAGE_MUTATION = `
+  mutation UnpublishPage($id: UUID!, $expectedVersion: Int, $tenantId: UUID) {
+    unpublishPage(id: $id, expectedVersion: $expectedVersion, tenantId: $tenantId) {
+      id
+      version
+      status
+      template
+      translation { locale title slug }
+    }
+  }
+`;
+
+export const DELETE_PAGE_MUTATION = `
+  mutation DeletePage($id: UUID!, $tenantId: UUID) {
+    deletePage(id: $id, tenantId: $tenantId)
+  }
 `;
 
 export async function listPages(
@@ -68,19 +107,19 @@ export async function listPages(
   } = {},
   opts: GqlOpts = {}
 ): Promise<PageListResponse> {
+  const normalizedFilter = {
+    ...filter,
+    ...(filter.page !== undefined ? { page: Math.max(1, filter.page) } : {}),
+    ...(filter.perPage !== undefined
+      ? { perPage: Math.min(100, Math.max(1, filter.perPage)) }
+      : {})
+  };
   const data = await graphqlRequest<
     { filter?: Record<string, unknown>; tenantId?: string },
     { pages: PageListResponse }
   >(
-    `
-      query PagesList($filter: ListGqlPagesFilter, $tenantId: UUID) {
-        pages(filter: $filter, tenantId: $tenantId) {
-          items { ${PAGE_LIST_FIELDS} }
-          total
-        }
-      }
-    `,
-    { filter, tenantId: opts.tenantId ?? undefined },
+    PAGES_LIST_QUERY,
+    { filter: normalizedFilter, tenantId: opts.tenantId ?? undefined },
     opts.token,
     opts.tenantSlug
   );
@@ -91,27 +130,24 @@ export async function createPage(
   input: CreatePageInput,
   opts: GqlOpts = {}
 ): Promise<PageResponse> {
+  if (!input.title || !input.title.trim()) {
+    throw new Error('Page title cannot be empty');
+  }
+  if (!input.locale || !input.locale.trim()) {
+    throw new Error('Page locale cannot be empty');
+  }
+
   const data = await graphqlRequest<
     { input: Record<string, unknown>; tenantId?: string },
     { createPage: PageResponse }
   >(
-    `
-      mutation CreatePage($input: CreateGqlPageInput!, $tenantId: UUID) {
-        createPage(input: $input, tenantId: $tenantId) {
-          id
-          version
-          status
-          template
-          translation { locale title slug }
-        }
-      }
-    `,
+    CREATE_PAGE_MUTATION,
     {
       input: {
         translations: [
           {
-            locale: input.locale,
-            title: input.title,
+            locale: input.locale.trim(),
+            title: input.title.trim(),
             slug: input.slug ?? null,
             metaTitle: null,
             metaDescription: null
@@ -137,23 +173,17 @@ export async function unpublishPage(
   expectedVersion?: number,
   opts: GqlOpts = {}
 ): Promise<PageResponse> {
+  if (!id || !id.trim()) {
+    throw new Error('Page id cannot be empty');
+  }
+
   const data = await graphqlRequest<
     { id: string; expectedVersion: number | null; tenantId?: string },
     { unpublishPage: PageResponse }
   >(
-    `
-      mutation UnpublishPage($id: UUID!, $expectedVersion: Int, $tenantId: UUID) {
-        unpublishPage(id: $id, expectedVersion: $expectedVersion, tenantId: $tenantId) {
-          id
-          version
-          status
-          template
-          translation { locale title slug }
-        }
-      }
-    `,
+    UNPUBLISH_PAGE_MUTATION,
     {
-      id,
+      id: id.trim(),
       expectedVersion: expectedVersion ?? null,
       tenantId: opts.tenantId ?? undefined
     },
@@ -167,16 +197,16 @@ export async function deletePage(
   id: string,
   opts: GqlOpts = {}
 ): Promise<boolean> {
+  if (!id || !id.trim()) {
+    throw new Error('Page id cannot be empty');
+  }
+
   const data = await graphqlRequest<
     { id: string; tenantId?: string },
     { deletePage: boolean }
   >(
-    `
-      mutation DeletePage($id: UUID!, $tenantId: UUID) {
-        deletePage(id: $id, tenantId: $tenantId)
-      }
-    `,
-    { id, tenantId: opts.tenantId ?? undefined },
+    DELETE_PAGE_MUTATION,
+    { id: id.trim(), tenantId: opts.tenantId ?? undefined },
     opts.token,
     opts.tenantSlug
   );
