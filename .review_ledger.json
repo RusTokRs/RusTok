@@ -2292,11 +2292,11 @@
       "name": "leptos",
       "path": "crates/ui/fly/leptos",
       "category": "ui",
-      "files": 5,
+      "files": 6,
       "loc": 2899,
       "completed": true,
-      "completed_at": "2026-10-29 05:54",
-      "notes": "Consolidated Leptos visual editor adapter; 4/4 tests passed, zero defects."
+      "completed_at": "2026-10-31 05:59",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified Leptos 0.8 SSR-first visual editor workspace, preview canvas, toolbar modes, and layer hierarchy; 8/8 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/fly/ui": {
       "name": "ui",
