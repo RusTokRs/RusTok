@@ -1530,11 +1530,11 @@
       "name": "rustok-ui-auth",
       "path": "crates/ui/rustok-ui-auth",
       "category": "ui",
-      "files": 1,
-      "loc": 74,
+      "files": 2,
+      "loc": 150,
       "completed": true,
-      "completed_at": "2026-10-29 05:00",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified auth state bridge; zero defects."
+      "completed_at": "2026-10-31 09:47",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified client session contract, credential redaction in Debug, saturating expiry math, and error status mapping; 5/5 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-ui-core": {
       "name": "rustok-ui-core",
