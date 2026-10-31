@@ -93,3 +93,7 @@ pub mod prelude {
     pub use crate::row::GridRow;
     pub use crate::toolbar::GridToolbar;
 }
+
+#[cfg(test)]
+mod contract_tests;
+

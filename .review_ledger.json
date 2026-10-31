@@ -2329,14 +2329,14 @@
       "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified pagination bounds, column width clamping, cell value total ordering, and state apply_rows pipeline; 79/79 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-grid/dioxus": {
-      "name": "dioxus",
+      "name": "rustok-grid-dioxus",
       "path": "crates/ui/rustok-grid/dioxus",
       "category": "ui",
-      "files": 8,
-      "loc": 1741,
+      "files": 9,
+      "loc": 1666,
       "completed": true,
-      "completed_at": "2026-10-29 05:20",
-      "notes": "Standardized CRATE_API.md, verified Dioxus 0.7 grid adapter; compiled cleanly, zero defects."
+      "completed_at": "2026-10-31 08:48",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified filter commit modes, GridCell context, and core grid re-exports; 5/5 tests passed (4 unit/contract + 1 doctest), 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-grid/leptos": {
       "name": "leptos",
