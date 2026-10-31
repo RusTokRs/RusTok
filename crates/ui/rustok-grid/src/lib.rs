@@ -82,3 +82,7 @@ pub mod prelude {
     pub use crate::sort::{SortDirection, SortState};
     pub use crate::state::GridState;
 }
+
+#[cfg(test)]
+mod contract_tests;
+
