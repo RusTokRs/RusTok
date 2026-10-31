@@ -1486,36 +1486,6 @@
       "completed_at": "2026-10-31 05:12",
       "notes": "Standardized Cargo.toml metadata, docs.rs metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified lossless GrapesJS codec roundtrip, history budget, runtime binding, safe URL validation, and SSR rendering; 306/306 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
-    "crates/ui/fly-browser": {
-      "name": "fly-browser",
-      "path": "crates/ui/fly-browser",
-      "category": "ui",
-      "files": 9,
-      "loc": 816,
-      "completed": true,
-      "completed_at": "2026-10-29 05:54",
-      "notes": "Verified browser config, CSRF derivation, cross-protocol rejection and server dispatch; 11/11 tests passed, zero defects."
-    },
-    "crates/ui/fly-leptos": {
-      "name": "fly-leptos",
-      "path": "crates/ui/fly-leptos",
-      "category": "ui",
-      "files": 5,
-      "loc": 1691,
-      "completed": true,
-      "completed_at": "2026-10-29 05:54",
-      "notes": "Verified Leptos 0.8 visual editor workspace, preview canvas, and layer hierarchy; 4/4 tests passed, zero defects."
-    },
-    "crates/ui/fly-ui": {
-      "name": "fly-ui",
-      "path": "crates/ui/fly-ui",
-      "category": "ui",
-      "files": 20,
-      "loc": 5225,
-      "completed": true,
-      "completed_at": "2026-10-29 05:53",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified capability policies, drag-and-drop contracts, and state machine; 74/74 tests passed, zero defects."
-    },
     "crates/ui/leptos-auth": {
       "name": "leptos-auth",
       "path": "crates/ui/leptos-auth",
@@ -2302,11 +2272,11 @@
       "name": "browser",
       "path": "crates/ui/fly/browser",
       "category": "ui",
-      "files": 12,
+      "files": 13,
       "loc": 1630,
       "completed": true,
-      "completed_at": "2026-10-29 05:54",
-      "notes": "Consolidated browser runtime adapter; 11/11 tests passed, zero defects."
+      "completed_at": "2026-10-31 05:24",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified browser config, CSRF derivation, cross-protocol rejection, intent kind classification, and server dispatch; 36 tests passed (16 unit/contract + 20 integration), 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/fly/dioxus": {
       "name": "dioxus",
