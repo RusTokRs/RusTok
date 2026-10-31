@@ -383,3 +383,7 @@ page-builder-translations-localizedMetadataValuesPlaceholder =
         }
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+
