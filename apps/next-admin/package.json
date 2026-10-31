@@ -21,6 +21,7 @@
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
     "test:rbac": "node --experimental-strip-types --test packages/rbac/src/rbac-admin.test.mjs",
     "test:search": "node --experimental-strip-types --test packages/search/src/search-admin.test.mjs",
+    "test:workflow": "node --experimental-strip-types --test packages/workflow/src/workflow-admin.test.mjs",
     "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
     "test:modules": "node --test src/shared/api/modules.test.mjs",
     "lint:fix": "eslint src --fix && prettier --write src",
