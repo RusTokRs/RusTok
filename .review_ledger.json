@@ -2453,9 +2453,9 @@
       "category": "apps",
       "files": 23,
       "loc": 4775,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-31 20:59",
+      "notes": "Audited Next.js forum storefront package across all 6 Universal Logic Dimensions; verified forum-discussions slot registration in home:afterHero, canonical route mapping (/forum/t/[...slug]), deep linking with ?reply=<uuid> auto-paging up to 20 pages, virtualized TimelineScroller, rich text Composer with QuoteTooltip integration, access-token draft isolation across viewers/tenants, authenticated read receipts (markForumTopicRead), authored package README.md and canonical 5-section CRATE_API.md; 120/120 unit tests passed, verify:forum:storefront-boundary passed (9/9 tests), typecheck passed, gatekeeper passed, zero defects."
     },
     "apps/next-frontend/packages/rustok-notifications": {
       "name": "rustok-notifications",
