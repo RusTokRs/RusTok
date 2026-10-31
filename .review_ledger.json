@@ -1540,11 +1540,11 @@
       "name": "rustok-ui-core",
       "path": "crates/ui/rustok-ui-core",
       "category": "ui",
-      "files": 9,
-      "loc": 2262,
+      "files": 10,
+      "loc": 2380,
       "completed": true,
-      "completed_at": "2026-10-29 05:24",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified navigation, money formatting, route selection and CSS tokens; 38/38 tests passed, zero defects."
+      "completed_at": "2026-10-31 10:03",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified status badge tones, CSS hex normalization, price/discount presentation, breadcrumb hierarchy, pagination/sorting state, and query application; 46/46 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-ui-forms": {
       "name": "rustok-ui-forms",
