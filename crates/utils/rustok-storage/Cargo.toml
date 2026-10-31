@@ -3,6 +3,9 @@ name = "rustok-storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 description = "Storage driver abstraction for RusTok — local filesystem and S3-compatible backends"
 
 [features]
@@ -24,3 +27,7 @@ bytes = "1"
 futures-util.workspace = true
 tempfile = "3.27"
 tokio.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

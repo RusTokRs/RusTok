@@ -6,6 +6,9 @@
 mod key;
 mod runtime;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use key::{DigestObjectKey, KeyError, ObjectKey, ObjectScope, ObjectZone};
 pub use object_store;
 pub use runtime::{
