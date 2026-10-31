@@ -196,3 +196,4 @@ test('updateEmailSettings returns defaults if backend returns unparseable respon
   const res = await api.updateEmailSettings({ enabled: true });
   assert.deepEqual(res, api.DEFAULT_EMAIL_SETTINGS);
 });
+

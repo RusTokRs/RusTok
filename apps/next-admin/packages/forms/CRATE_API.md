@@ -33,3 +33,4 @@
 - **Host Interface:** Depends on React 19, `next/navigation`, and `@/modules/registry` from `apps/next-admin`.
 - **Backend API:** Communicates with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Table Access:** Never queries `form_submissions` database tables directly; all access is mediated through GraphQL.
+

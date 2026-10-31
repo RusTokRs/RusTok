@@ -222,3 +222,4 @@ test('updateCacheSettings returns defaults if backend returns unparseable respon
   const res = await api.updateCacheSettings({ mode: 'redis' });
   assert.deepEqual(res, api.DEFAULT_CACHE_SETTINGS);
 });
+

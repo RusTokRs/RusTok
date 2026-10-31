@@ -288,3 +288,4 @@ test('GraphQL queries and mutations define expected schema contracts', () => {
   assert.match(api.CREATE_ORDER_RETURN_DECISION_MUTATION, /orderReturn/);
   assert.match(api.CREATE_ORDER_RETURN_DECISION_MUTATION, /refund/);
 });
+

@@ -35,3 +35,4 @@
 - **Host Interface:** Depends on React 19, `@/modules/registry`, and `@/shared/ui/shadcn` design system components from `apps/next-admin`.
 - **Backend API:** Communicates with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Storage Access:** Never accesses cache backends (Redis or in-memory stores) directly; all operations execute through the authenticated RusToK GraphQL gateway.
+

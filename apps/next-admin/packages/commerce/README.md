@@ -12,3 +12,4 @@ Next.js admin UI package for the `rustok-commerce` module.
   - **Return Decisions**: Orchestration form for return-only, refund, exchange, and claim resolution paths (`ReturnDecisionsTemplate`).
 - Communicates directly with the RusToK GraphQL API via typed queries and mutations without intermediate server-side proxies.
 - Registers navigation items under the `modulePlugins` group with manager role access guards.
+

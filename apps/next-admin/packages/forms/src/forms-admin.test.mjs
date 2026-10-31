@@ -145,3 +145,4 @@ test('updateFormSubmissionState passes id, input, and auth context to gateway', 
   assert.deepEqual(res, updatedSubmission);
   assert.equal(res.state, 'handled');
 });
+

@@ -42,3 +42,4 @@
 - **Host Interface:** Depends on React 19, `@/modules/registry`, `@/shared/ui/shadcn`, and `@/widgets/data-table` from `apps/next-admin`.
 - **Backend API:** Communicates exclusively with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Database Access:** Never queries commerce tables or database entities directly.
+

@@ -9,3 +9,4 @@ Next.js admin UI package for platform event stream monitoring, outbox inspection
 - Provides diagnostic metrics for pending outbox events, dead-letter queue (DLQ) backlog, and available stream transports.
 - Enforces Iggy streaming broker configuration prerequisites before allowing activation of `outbox_iggy` transport profile.
 - Registers navigation items under Infrastructure with admin role access guards.
+

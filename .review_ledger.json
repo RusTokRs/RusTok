@@ -2421,11 +2421,11 @@
       "name": "forum",
       "path": "apps/next-admin/packages/forum",
       "category": "apps",
-      "files": 19,
-      "loc": 4900,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 34,
+      "loc": 5437,
+      "completed": true,
+      "completed_at": "2026-10-31 18:20",
+      "notes": "Audited Next.js forum admin package across all 6 Universal Logic Dimensions; verified 8 permission-guarded routes under modulePlugins, CategoryTreeAdmin and dialog workspaces, rich text authoring with draft preservation, and FFA thread restructuring workflows (topic merge, branch fork, reply-range move, split, slug rename); added missing package dependencies, authored README.md, canonical 5-section CRATE_API.md and forum-contract.test.mjs; 19/19 tests passed across 3 test suites, full Next.js admin typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-admin/packages/iggy-connector": {
       "name": "iggy-connector",
