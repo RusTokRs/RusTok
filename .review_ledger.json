@@ -2091,11 +2091,11 @@
       "name": "search",
       "path": "apps/next-frontend/packages/search",
       "category": "apps",
-      "files": 1,
-      "loc": 681,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 3,
+      "loc": 737,
+      "completed": true,
+      "completed_at": "2026-11-01 00:05",
+      "notes": "Audited Next.js search storefront package; verified SearchStorefrontPage, live faceted search preview, suggestions autocomplete, dynamic filter presets, extracted headless api.ts, anti-swallowing error propagation, added type:module, authored README.md, CRATE_API.md, 5/5 tests passed, typecheck clean, zero defects."
     },
     "apps/server": {
       "name": "server",
