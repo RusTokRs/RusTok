@@ -1790,11 +1790,11 @@
       "name": "utoipa-swagger-ui-vendored",
       "path": "crates/utils/utoipa-swagger-ui-vendored",
       "category": "utils",
-      "files": 2,
-      "loc": 34,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 4,
+      "loc": 75,
+      "completed": true,
+      "completed_at": "2026-10-31 04:46",
+      "notes": "Standardized Cargo.toml metadata and docs.rs metadata, enabled test harness, authored CRATE_API.md and contract_tests.rs; verified static ZIP archive integrity and magic bytes, 2/2 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/workers/rustok-artifact-node-agent": {
       "name": "rustok-artifact-node-agent",

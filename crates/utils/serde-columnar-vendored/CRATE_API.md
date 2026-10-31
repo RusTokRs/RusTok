@@ -52,3 +52,4 @@
   - Verified unit and contract tests:
     - `cargo test -p serde_columnar --lib`: 9 passed, 0 failed.
   - Clippy verification: 0 warnings with `-D warnings`.
+

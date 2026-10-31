@@ -16,3 +16,4 @@ Vendored high-performance columnar serialization library for batch data processi
 - `serde_columnar::from_bytes`: Deserializes byte arrays back into structured columnar models.
 - Compression encoders: `AnyRleEncoder`, `BoolRleEncoder`, `DeltaRleEncoder`, `DeltaOfDeltaEncoder`.
 - Derive macro: `#[columnar]` from `serde_columnar_derive`.
+
