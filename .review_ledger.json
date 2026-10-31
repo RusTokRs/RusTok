@@ -2062,9 +2062,9 @@
       "category": "apps",
       "files": 17,
       "loc": 1858,
-      "completed": false,
-      "completed_at": null,
-      "notes": "Audited 2026-10-17: invalid category query with a swallowed error remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
+      "completed": true,
+      "completed_at": "2026-10-31 20:13",
+      "notes": "Audited Next.js blog storefront package across all 6 Universal Logic Dimensions; verified blog-latest-posts slot registration in home:afterHero, editorial post reading views, full taxonomy pagination without infinite loops, robust threaded comment ordering (arbitrary depth, orphan promotion, cycle breaking), defensive reading time formatting with Russian pluralization bounds, added type:module to package.json, authored README.md and canonical 5-section CRATE_API.md; 7/7 unit tests passed, verify:blog:storefront-boundary passed, typecheck passed, gatekeeper passed, zero defects.",
       "last_audited": "2026-10-17"
     },
     "apps/next-frontend/packages/rustok-comments": {
