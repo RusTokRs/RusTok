@@ -17,3 +17,4 @@ fn test_swagger_ui_vendored_contents() {
     assert!(text.contains("swagger-ui-5.17.12/dist/swagger-initializer.js"));
     assert!(text.contains("swagger-ui-5.17.12/dist/index.html"));
 }
+

@@ -38,3 +38,4 @@
   - Verified unit and contract tests:
     - `cargo test -p utoipa-swagger-ui-vendored --lib`: 2 passed, 0 failed.
   - Clippy verification: 0 warnings with `-D warnings`.
+
