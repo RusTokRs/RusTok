@@ -16,6 +16,7 @@
     "test:pages": "node --experimental-strip-types --test packages/rustok-pages/src/pages-frontend.test.mjs",
     "test:cart": "node --experimental-strip-types --test packages/rustok-cart/src/cart-frontend.test.mjs",
     "test:comments": "node --test packages/rustok-comments/src/comment-composer.test.mjs",
+    "test:notifications": "node --experimental-strip-types --test packages/rustok-notifications/src/notifications-frontend.test.mjs",
     "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs packages/rustok-blog/src/utils/reading-time.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
