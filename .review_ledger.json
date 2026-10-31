@@ -1960,11 +1960,11 @@
       "name": "commerce",
       "path": "apps/next-admin/packages/commerce",
       "category": "apps",
-      "files": 11,
-      "loc": 2737,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 15,
+      "loc": 2886,
+      "completed": true,
+      "completed_at": "2026-10-31 17:36",
+      "notes": "Audited Next.js commerce admin package across all 6 Universal Logic Dimensions; verified manager navigation registration, OrdersTable status formatting and row actions, shipping profiles lifecycle CRUD with multi-locale translations, cart promotion preview calculation and application, and post-order return decisions and changes; exported typed GraphQL documents, authored README.md, canonical 5-section CRATE_API.md and commerce-admin.test.mjs; 6/6 tests passed, full Next.js admin typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-admin/packages/email": {
       "name": "email",
