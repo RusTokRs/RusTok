@@ -73,6 +73,9 @@ pub fn FlyReadOnly(children: Element) -> Element {
 }
 
 #[cfg(test)]
+mod contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -86,6 +89,6 @@ mod tests {
             height: 100.0,
         };
         let transform = CoordinateTransform::default();
-        assert_eq!(transform.normalized_zoom(), 1.0);
+        assert!((transform.normalized_zoom() - 1.0).abs() < f64::EPSILON);
     }
 }
