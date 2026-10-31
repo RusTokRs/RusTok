@@ -415,7 +415,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (19/19 completed — 100% PASS)
 - [x] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (19/19 completed — 100% PASS)
-- [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (crates/ui/*)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (6/23 completed)
+- [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (crates/ui/*)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (7/23 completed)
 - [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (0/34 completed)
 
 ---
@@ -676,7 +676,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)
-*Fly design system, core UI component primitives, form controls, data grid, Leptos & Dioxus adapters, and frontend i18n.* (6/23 completed)
+*Fly design system, core UI component primitives, form controls, data grid, Leptos & Dioxus adapters, and frontend i18n.* (7/23 completed)
 
 - [x] **[crates/ui/fly](../../crates/ui/fly)** (112 files, 44,150 LOC) — Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, design system specifications, and lossless GrapesJS compatibility core. Standardized Cargo.toml metadata, docs.rs metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified lossless GrapesJS codec roundtrip, history budget, runtime binding, safe URL validation, and SSR rendering; 306/306 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[crates/ui/fly/browser](../../crates/ui/fly/browser)** (13 files, 1,650 LOC) — Fly browser-level event handlers, scroll locks, and focus trap primitives. Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified browser config, CSRF derivation, cross-protocol rejection, intent kind classification, and server dispatch; 36 tests passed (16 unit/contract + 20 integration), 0 clippy warnings, gatekeeper passed, zero defects.
@@ -684,7 +684,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[crates/ui/fly/leptos](../../crates/ui/fly/leptos)** (6 files, 2,500 LOC) — Leptos component adapter implementations for Fly design system primitives. Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified Leptos 0.8 SSR-first visual editor workspace, preview canvas, toolbar modes, and layer hierarchy; 8/8 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[crates/ui/fly/ui](../../crates/ui/fly/ui)** (23 files, 6,350 LOC) — Fly UI layout primitives: flex containers, grid rows, cards, and dividers. Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified framework-neutral editor state machine, capability policies, viewport presets, keyboard shortcuts, and style property descriptors; 79/79 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[crates/ui/fly/web](../../crates/ui/fly/web)** (7 files, 2,300 LOC) — Fly web runtime bindings, SSR hydrators, and stylesheet link injectors. Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified hit testing, coordinate transforms, sandboxed iframe origin checks, real-DOM inline grants, and cleanup registry; resolved float comparison clippy lints; 34/34 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
-- [ ] **[`crates/ui/leptos-auth`](../../crates/ui/leptos-auth)** (9 files, 1,506 LOC) — Leptos authentication context, protected route wrappers, and token refresh hooks.
+- [x] **[crates/ui/leptos-auth](../../crates/ui/leptos-auth)** (10 files, 1,550 LOC) — Leptos authentication context, protected route wrappers, and token refresh hooks. Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified auth token storage, BFF refresh cookies, JWT session ID extraction, reactive auth hooks, and route protection; 7/7 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [ ] **[`crates/ui/leptos-ui`](../../crates/ui/leptos-ui)** (5 files, 415 LOC) — General-purpose Leptos UI components and reactive state utilities.
 - [ ] **[`crates/ui/leptos-ui-routing`](../../crates/ui/leptos-ui-routing)** (1 files, 233 LOC) — Leptos router integration, nested sub-routes, and query parameter synchronizers.
 - [ ] **[`crates/ui/rustok-ui-forms`](../../crates/ui/rustok-ui-forms)** (21 files, 9,244 LOC) — Fluid Frontend Architecture (FFA) headless form engine: schema validation, field dirty state, and submit handlers.

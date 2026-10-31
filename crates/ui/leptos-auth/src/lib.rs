@@ -124,3 +124,6 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
     }
     Some(output)
 }
+
+#[cfg(test)]
+mod contract_tests;
