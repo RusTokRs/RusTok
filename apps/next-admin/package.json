@@ -12,6 +12,7 @@
     "lint": "eslint src",
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:cache": "node --experimental-strip-types --test packages/cache/src/cache-admin.test.mjs",
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
     "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
     "test:modules": "node --test src/shared/api/modules.test.mjs",
