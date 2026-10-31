@@ -20,9 +20,20 @@ export interface EmailSettings {
 
 export type EmailSettingsInput = Partial<EmailSettings>;
 
+export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
+  enabled: false,
+  provider: 'smtp',
+  from: 'noreply@example.com',
+  resetBaseUrl: 'https://example.com',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUsername: '',
+  smtpPassword: ''
+};
+
 // ---------- GraphQL ----------
 
-const PLATFORM_SETTINGS_QUERY = `
+export const PLATFORM_SETTINGS_QUERY = `
 query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
@@ -31,7 +42,7 @@ query PlatformSettings($category: String!) {
 }
 `;
 
-const UPDATE_PLATFORM_SETTINGS_MUTATION = `
+export const UPDATE_PLATFORM_SETTINGS_MUTATION = `
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
   updatePlatformSettings(input: $input) {
     success
@@ -68,7 +79,17 @@ export async function getEmailSettings(
     opts.tenantSlug
   );
 
-  return JSON.parse(data.platformSettings.settings) as EmailSettings;
+  try {
+    const parsed = JSON.parse(
+      data?.platformSettings?.settings ?? '{}'
+    ) as Partial<EmailSettings>;
+    return {
+      ...DEFAULT_EMAIL_SETTINGS,
+      ...parsed
+    };
+  } catch {
+    return DEFAULT_EMAIL_SETTINGS;
+  }
 }
 
 export async function updateEmailSettings(
@@ -85,5 +106,15 @@ export async function updateEmailSettings(
     opts.tenantSlug
   );
 
-  return JSON.parse(data.updatePlatformSettings.settings) as EmailSettings;
+  try {
+    const parsed = JSON.parse(
+      data?.updatePlatformSettings?.settings ?? '{}'
+    ) as Partial<EmailSettings>;
+    return {
+      ...DEFAULT_EMAIL_SETTINGS,
+      ...parsed
+    };
+  } catch {
+    return DEFAULT_EMAIL_SETTINGS;
+  }
 }

@@ -1970,11 +1970,11 @@
       "name": "email",
       "path": "apps/next-admin/packages/email",
       "category": "apps",
-      "files": 5,
-      "loc": 291,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 9,
+      "loc": 519,
+      "completed": true,
+      "completed_at": "2026-10-31 17:45",
+      "notes": "Audited Next.js email admin package across all 6 Universal Logic Dimensions; verified admin navigation registration with keyboard shortcuts, SMTP credential form controls, and delivery toggle; added missing package dependencies, hardened JSON setting parsing with safe optional chaining and fallback defaults, exported typed GraphQL documents, authored README.md, canonical 5-section CRATE_API.md and email-admin.test.mjs; 7/7 tests passed, full Next.js admin typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-admin/packages/rbac": {
       "name": "rbac",
