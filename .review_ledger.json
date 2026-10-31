@@ -1510,11 +1510,11 @@
       "name": "leptos-ui-routing",
       "path": "crates/ui/leptos-ui-routing",
       "category": "ui",
-      "files": 1,
-      "loc": 238,
+      "files": 2,
+      "loc": 317,
       "completed": true,
-      "completed_at": "2026-10-29 05:00",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified route contract; zero defects."
+      "completed_at": "2026-10-31 07:18",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified route query reader, route policy sanitization, and route query writer dispatch; 4/4 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-graphql": {
       "name": "rustok-graphql",

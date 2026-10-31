@@ -236,3 +236,7 @@ fn sanitize_route_query(
         .map(|policy| policy.sanitize(route_segment, subpath, query))
         .unwrap_or_else(|| query.clone())
 }
+
+#[cfg(test)]
+mod contract_tests;
+
