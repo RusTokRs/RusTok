@@ -19,26 +19,38 @@ export interface FormSubmission {
   handledAt: string | null;
 }
 
+export interface FormSubmissionsFilter {
+  formId?: string;
+  state?: FormSubmissionState;
+  page?: number;
+  perPage?: number;
+}
+
+export const FORM_SUBMISSIONS_QUERY = `
+query FormSubmissions($filter: ListGqlFormSubmissionsFilter) {
+  formSubmissions(filter: $filter) {
+    id formId locale pageId payload state createdAt handledAt
+  }
+}
+`;
+
+export const UPDATE_FORM_SUBMISSION_STATE_MUTATION = `
+mutation UpdateFormSubmissionState($id: UUID!, $input: UpdateGqlFormSubmissionStateInput!) {
+  updateFormSubmissionState(id: $id, input: $input) {
+    id formId locale pageId payload state createdAt handledAt
+  }
+}
+`;
+
 export async function listFormSubmissions(
-  filter: {
-    formId?: string;
-    state?: FormSubmissionState;
-    page?: number;
-    perPage?: number;
-  } = {},
+  filter: FormSubmissionsFilter = {},
   opts: GqlOpts = {}
 ): Promise<FormSubmission[]> {
   const data = await graphqlRequest<
     { filter?: Record<string, unknown> },
     { formSubmissions: FormSubmission[] }
   >(
-    `
-      query FormSubmissions($filter: ListGqlFormSubmissionsFilter) {
-        formSubmissions(filter: $filter) {
-          id formId locale pageId payload state createdAt handledAt
-        }
-      }
-    `,
+    FORM_SUBMISSIONS_QUERY,
     {
       filter: {
         formId: filter.formId ?? null,
@@ -62,13 +74,7 @@ export async function updateFormSubmissionState(
     { id: string; input: { state: FormSubmissionState } },
     { updateFormSubmissionState: FormSubmission }
   >(
-    `
-      mutation UpdateFormSubmissionState($id: UUID!, $input: UpdateGqlFormSubmissionStateInput!) {
-        updateFormSubmissionState(id: $id, input: $input) {
-          id formId locale pageId payload state createdAt handledAt
-        }
-      }
-    `,
+    UPDATE_FORM_SUBMISSION_STATE_MUTATION,
     { id, input: { state } },
     opts.token,
     opts.tenantSlug

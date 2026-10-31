@@ -15,6 +15,7 @@
     "test:cache": "node --experimental-strip-types --test packages/cache/src/cache-admin.test.mjs",
     "test:commerce": "node --experimental-strip-types --test packages/commerce/src/commerce-admin.test.mjs",
     "test:email": "node --experimental-strip-types --test packages/email/src/email-admin.test.mjs",
+    "test:forms": "node --experimental-strip-types --test packages/forms/src/forms-admin.test.mjs",
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
     "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
     "test:modules": "node --test src/shared/api/modules.test.mjs",
