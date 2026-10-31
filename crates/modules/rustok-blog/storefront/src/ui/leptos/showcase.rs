@@ -250,7 +250,7 @@ pub(super) fn BlogShowcase(
                 }
                 .into_any()
             }}
-            {move || (search_total.is_none()).then(|| ())
+            {move || (search_total.is_none()).then_some(())
                 .and_then(|_| posts_cursor_query.get().filter(|value| !value.trim().is_empty())).map(|_| {
                 let writer = first_page_writer.clone();
                 view! {

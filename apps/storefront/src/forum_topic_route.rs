@@ -45,7 +45,7 @@ pub(crate) async fn render_forum_topic_route_response(
             return private_status_response(StatusCode::NOT_FOUND, "Forum topic route not found");
         }
         Err(error) => {
-            eprintln!("failed to resolve Forum storefront topic route: {error}");
+            tracing::error!("failed to resolve Forum storefront topic route: {error}");
             return private_status_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Forum topic route resolution is temporarily unavailable",
@@ -78,7 +78,7 @@ pub(crate) async fn render_forum_topic_route_response(
             {
                 Ok(context) => context,
                 Err(error) => {
-                    eprintln!("failed to resolve Forum topic SEO context: {error}");
+                    tracing::warn!("failed to resolve Forum topic SEO context: {error}");
                     None
                 }
             };
