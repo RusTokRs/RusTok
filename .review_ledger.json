@@ -2431,11 +2431,11 @@
       "name": "iggy-connector",
       "path": "apps/next-admin/packages/iggy-connector",
       "category": "apps",
-      "files": 6,
-      "loc": 389,
+      "files": 10,
+      "loc": 582,
       "completed": true,
-      "completed_at": "2026-10-30 16:50",
-      "notes": "Audited in FS-08; verified FFA parity with Leptos admin: identical mode definitions, address parsing, restart advice, navigation registration (/dashboard/iggy-connector), and GraphQL queries/mutations; 7/7 tests passed, zero defects."
+      "completed_at": "2026-10-31 18:30",
+      "notes": "Audited Next.js iggy-connector admin package across all 6 Universal Logic Dimensions; verified admin navigation registration under Infrastructure, bundled/external mode toggling with availability guards, address parsing, and restart requirement signaling; exported typed GraphQL documents, authored README.md, canonical 5-section CRATE_API.md; 7/7 tests passed in iggy-connector-admin.test.mjs, full Next.js admin typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-frontend/packages/rustok-cart": {
       "name": "rustok-cart",
