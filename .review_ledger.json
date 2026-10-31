@@ -2369,14 +2369,14 @@
       "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified Dioxus 0.7 component adapters, design token re-exports, ARIA accessibility bindings, and headless state integrations; 11/11 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-ui/leptos": {
-      "name": "leptos",
+      "name": "rustok-ui-leptos",
       "path": "crates/ui/rustok-ui/leptos",
       "category": "ui",
-      "files": 20,
-      "loc": 2065,
+      "files": 21,
+      "loc": 2130,
       "completed": true,
-      "completed_at": "2026-10-29 05:23",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified SSR-first Leptos 0.8 design system adapter; 15/15 tests passed, zero defects."
+      "completed_at": "2026-10-31 11:53",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified SSR-first Leptos 0.8 design system adapter, design token re-exports, ARIA accessibility bindings, and SSR rendering hydration parity; 18/18 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/utils/rustok-starter": {
       "name": "rustok-starter",
