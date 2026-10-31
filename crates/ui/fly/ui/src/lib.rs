@@ -79,4 +79,6 @@ pub use viewport::{
 pub type UiResult<T> = Result<T, UiError>;
 
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod tests;
