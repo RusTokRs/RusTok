@@ -6,12 +6,12 @@
 //!
 //! For example, you want to store this array:
 //!
-//! ```
+//! ```text
 //! [{a: 1, b: 1}, {a: 1, b: 2}, {a: 1, b: 3}, ...]
 //! ```
 //! After columnar storage, it can be stored as:
 //!
-//! ```
+//! ```text
 //! a: [1, 1, 1,...] ---Rle---> [N, 1]
 //! b: [1, 2, 3,...] ---DeltaRle---> [N, 1] (each value is 1 greater than the previous one)
 //! ```
@@ -132,3 +132,6 @@ pub fn iter_from_bytes<'de, T: iterable::TableIter<'de>>(
     T::Iter::deserialize(decoder.deref_mut())
         .map_err(|e| ColumnarError::SerializeError(e as postcard::Error))
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -414,7 +414,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (19/19 completed — 100% PASS)
-- [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (17/19 completed)
+- [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (18/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (`crates/ui/*`)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/27 completed)
 - [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (0/34 completed)
 
@@ -651,7 +651,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)
-*Installer, migrations engine, secrets manager, object storage abstraction, CLI tooling, test fixtures, and vendored packages.* (17/19 completed)
+*Installer, migrations engine, secrets manager, object storage abstraction, CLI tooling, test fixtures, and vendored packages.* (18/19 completed)
 
 - [x] **[`crates/utils/rustok-build`](../../crates/utils/rustok-build)** (12 files, 2,111 LOC) — Build-time code generation scripts, protobuf compilation, and build metadata stamping. Audited and verified 6 Universal Logic Dimensions across all source files; verified build lifecycle state transitions (Queued, Running, Success, Failed, Cancelled) with atomic CAS claiming, fail_build error propagation and terminal state immutability, transactional EventBusBuildEventPublisher with non-nil actor/correlation contexts and Platform vs Tenant scope separation, sandboxed process execution via run_build_command with manifest snapshot materialization, and module contribution manifest normalization against builder capabilities; implemented Debug for SharedBuildControl, BuildService, BuildExecutionService, NoopBuildEventPublisher, and EventBusBuildEventPublisher; added manifest_path getter; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 16/16 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
 - [x] **[`crates/utils/rustok-build-publication`](../../crates/utils/rustok-build-publication)** (4 files, 876 LOC) — Cryptographic signing, packaging, and publication pipeline for RusToK packages. Audited and verified 6 Universal Logic Dimensions across all source files; verified digest-pinned program validation, in-memory credential broker with ephemeral lease bounds (15m max), credential redaction in Debug implementations, KMS-only Cosign signing, SLSA statement reduction to predicate, and safe create-new cleanup guards for temporary docker auth configs and predicate files; standardized Cargo.toml, CRATE_API.md, and contract_tests.rs; 9/9 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.
