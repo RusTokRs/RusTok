@@ -2411,11 +2411,11 @@
       "name": "events",
       "path": "apps/next-admin/packages/events",
       "category": "apps",
-      "files": 7,
-      "loc": 423,
+      "files": 11,
+      "loc": 641,
       "completed": true,
-      "completed_at": "2026-10-18 03:00",
-      "notes": "Audited in FS-03; FFA model extracted, Fluent {  } fixed, 7 tests passed, gate passed."
+      "completed_at": "2026-10-31 17:52",
+      "notes": "Audited Next.js events admin package across all 6 Universal Logic Dimensions; verified admin navigation registration, outbox/DLQ queue monitoring, Iggy streaming prerequisite validation modal, and restart requirement signaling in framework-agnostic events-model.ts; authored README.md and canonical 5-section CRATE_API.md; 7/7 tests passed in events-admin.test.mjs, full Next.js admin typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-admin/packages/forum": {
       "name": "forum",
