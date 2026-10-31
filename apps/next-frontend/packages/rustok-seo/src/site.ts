@@ -1,4 +1,16 @@
-import { defaultLocale, locales } from "@/i18n";
+export const locales: readonly string[] = ["en", "ru"];
+export const defaultLocale = "en";
+
+export function resolveLocale(value?: string | null): string {
+  const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
+  if (!normalized) return defaultLocale;
+
+  return (
+    locales.find((l) => l.toLowerCase() === normalized) ??
+    locales.find((l) => l.toLowerCase() === normalized.split("-")[0]) ??
+    defaultLocale
+  );
+}
 
 const FALLBACK_SITE_URL = "http://localhost:3000";
 
@@ -35,5 +47,3 @@ export function localizedPath(locale: string, path = "/"): string {
   }
   return `/${locale}${pathWithoutLocale}`;
 }
-
-export { defaultLocale, locales };

@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
 
 import { defaultLocale, getSiteUrl, localizedPath, locales } from "./site";
+import {
+  normalizeRobots,
+  buildVerification,
+  serializeStructuredData,
+  type SeoRobots,
+  type SeoVerification,
+  type SeoVerificationTag,
+} from "./utils";
+
+export { normalizeRobots, buildVerification, serializeStructuredData };
+export type { SeoRobots, SeoVerification, SeoVerificationTag };
 
 export type SeoAlternateLink = {
   locale: string;
@@ -50,17 +61,6 @@ export type SeoTwitterCard = {
   images?: SeoImageAsset[] | null;
 };
 
-export type SeoVerificationTag = {
-  name: string;
-  value: string;
-};
-
-export type SeoVerification = {
-  google?: string[] | null;
-  yandex?: string[] | null;
-  yahoo?: string[] | null;
-  other?: SeoVerificationTag[] | null;
-};
 
 export type SeoPagination = {
   prevUrl?: string | null;
@@ -92,18 +92,6 @@ export type SeoLinkTag = {
   title?: string | null;
 };
 
-export type SeoRobots = {
-  index: boolean;
-  follow: boolean;
-  noarchive?: boolean;
-  nosnippet?: boolean;
-  noimageindex?: boolean;
-  notranslate?: boolean;
-  maxSnippet?: number | null;
-  maxImagePreview?: string | null;
-  maxVideoPreview?: number | null;
-  custom?: string[] | null;
-};
 
 export type SeoDocument = {
   title: string;
@@ -158,30 +146,7 @@ function toRoutePath(pathOrUrl: string): string {
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
-export function normalizeRobots(robots?: SeoRobots | null): Metadata["robots"] {
-  if (!robots) {
-    return { index: true, follow: true };
-  }
 
-  const maxImagePreview =
-    robots.maxImagePreview === "none" ||
-    robots.maxImagePreview === "standard" ||
-    robots.maxImagePreview === "large"
-      ? robots.maxImagePreview
-      : undefined;
-
-  return {
-    index: robots.index,
-    follow: robots.follow,
-    noarchive: robots.noarchive,
-    nosnippet: robots.nosnippet,
-    noimageindex: robots.noimageindex,
-    notranslate: robots.notranslate,
-    "max-snippet": robots.maxSnippet ?? undefined,
-    "max-image-preview": maxImagePreview,
-    "max-video-preview": robots.maxVideoPreview ?? undefined,
-  };
-}
 
 export function buildAlternates(
   locale: string,
@@ -267,54 +232,7 @@ export function buildTwitter(
   };
 }
 
-export function buildVerification(
-  verification?: SeoVerification | null,
-): Metadata["verification"] {
-  if (!verification) {
-    return undefined;
-  }
 
-  const otherEntries = (verification.other ?? [])
-    .filter((item) => item.name.trim() !== "" && item.value.trim() !== "")
-    .map((item) => [item.name, item.value] as const);
-
-  return {
-    google:
-      verification.google && verification.google.length > 0
-        ? verification.google
-        : undefined,
-    yandex:
-      verification.yandex && verification.yandex.length > 0
-        ? verification.yandex
-        : undefined,
-    yahoo:
-      verification.yahoo && verification.yahoo.length > 0
-        ? verification.yahoo
-        : undefined,
-    other: otherEntries.length > 0 ? Object.fromEntries(otherEntries) : undefined,
-  };
-}
-
-export function serializeStructuredData(payload: unknown): string | null {
-  if (payload === null || payload === undefined) {
-    return null;
-  }
-
-  if (typeof payload !== "object") {
-    return null;
-  }
-
-  try {
-    return JSON.stringify(payload)
-      .replace(/</g, "\\u003c")
-      .replace(/>/g, "\\u003e")
-      .replace(/&/g, "\\u0026")
-      .replace(/\u2028/g, "\\u2028")
-      .replace(/\u2029/g, "\\u2029");
-  } catch {
-    return null;
-  }
-}
 
 export function buildSeoStructuredDataScripts(
   context?: SeoPageContext | null,

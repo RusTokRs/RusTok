@@ -1,12 +1,27 @@
 import { cache } from "react";
 import type { MetadataRoute } from "next";
-
-import { resolveLocale } from "@/i18n";
-import { getStorefrontTenantSlug } from "@/shared/api/modules";
+import { permanentRedirect, redirect } from "next/navigation";
 
 import type { SeoPageContext } from "./metadata";
-import { defaultLocale, getSiteUrl, locales, localizedPath } from "./site";
+import { defaultLocale, getSiteUrl, locales, localizedPath, resolveLocale } from "./site";
 import { fetchSeoPageContext, SeoTransportError } from "./transport";
+import {
+  buildDeterministicSeoRoute,
+  type ResolveSeoRouteInput,
+  type SeoRouteQueryInput,
+  type SeoRouteQueryPrimitive,
+} from "./utils";
+
+export { buildDeterministicSeoRoute };
+export type { ResolveSeoRouteInput, SeoRouteQueryInput, SeoRouteQueryPrimitive };
+
+function resolveStorefrontTenantSlug(): string | null {
+  return (
+    process.env.NEXT_PUBLIC_TENANT_SLUG ??
+    process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG ??
+    null
+  );
+}
 
 const FALLBACK_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -15,18 +30,6 @@ const FALLBACK_API_BASE_URL =
 
 const MODULE_DISABLED_HINT = "seo module is not enabled";
 
-type SeoRouteQueryPrimitive = string | number | boolean;
-
-export type SeoRouteQueryInput = Record<
-  string,
-  SeoRouteQueryPrimitive | SeoRouteQueryPrimitive[] | null | undefined
->;
-
-export type ResolveSeoRouteInput = {
-  route?: string | null;
-  routeSegment?: string | null;
-  query?: SeoRouteQueryInput;
-};
 
 export type SeoPageContextResolution = {
   context: SeoPageContext | null;
@@ -63,89 +66,6 @@ function resolveApiBaseUrl(): string {
   return FALLBACK_API_BASE_URL.replace(/\/$/, "");
 }
 
-function normalizeQueryValue(
-  value: SeoRouteQueryPrimitive | SeoRouteQueryPrimitive[] | null | undefined,
-): string | null {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const normalized = normalizeQueryValue(item);
-      if (normalized) {
-        return normalized;
-      }
-    }
-    return null;
-  }
-
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  const normalized = `${value}`.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeRoutePath(route: string): string {
-  const normalized = route.trim();
-  if (!normalized) {
-    return "/";
-  }
-  if (normalized.startsWith("/")) {
-    return normalized;
-  }
-  return `/${normalized}`;
-}
-
-export function buildDeterministicSeoRoute(input: ResolveSeoRouteInput): string {
-  if (input.routeSegment) {
-    const baseRoute = `/modules/${input.routeSegment}`;
-    const params = new URLSearchParams();
-    Object.entries(input.query ?? {})
-      .filter(([key]) => key !== "lang")
-      .sort(([left], [right]) => left.localeCompare(right))
-      .forEach(([key, value]) => {
-        const normalizedValue = normalizeQueryValue(value);
-        if (normalizedValue) {
-          params.set(key, normalizedValue);
-        }
-      });
-
-    const serialized = params.toString();
-    return serialized ? `${baseRoute}?${serialized}` : baseRoute;
-  }
-
-  const rawRoute = normalizeRoutePath(input.route ?? "/");
-  const productMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/products\/([^/?#]+)/i);
-  if (productMatch) {
-    const slug = productMatch[2];
-    return `/modules/product?handle=${encodeURIComponent(slug)}&slug=${encodeURIComponent(slug)}`;
-  }
-
-  const blogMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/blog\/([^/?#]+)/i);
-  if (blogMatch) {
-    const slug = blogMatch[2];
-    return `/modules/blog?slug=${encodeURIComponent(slug)}`;
-  }
-
-  const pageMatch = rawRoute.match(/^(?:\/([a-z]{2}(?:-[a-z]{2})?))?\/pages\/([^/?#]+)/i);
-  if (pageMatch) {
-    const slug = pageMatch[2];
-    return `/modules/pages?slug=${encodeURIComponent(slug)}`;
-  }
-
-  const params = new URLSearchParams();
-  Object.entries(input.query ?? {})
-    .filter(([key]) => key !== "lang")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .forEach(([key, value]) => {
-      const normalizedValue = normalizeQueryValue(value);
-      if (normalizedValue) {
-        params.set(key, normalizedValue);
-      }
-    });
-
-  const serialized = params.toString();
-  return serialized ? `${rawRoute}?${serialized}` : rawRoute;
-}
 
 function classifyNotFound(message: string): "module_disabled" | "not_found" {
   return message.toLowerCase().includes(MODULE_DISABLED_HINT)
@@ -213,6 +133,28 @@ const resolveSeoPageContextCached = cache(
   },
 );
 
+/**
+ * Applies the SEO redirect decision as a real HTTP redirect response.
+ *
+ * This is the single Next storefront choke point for `route.redirect` (audit P2-13): every
+ * server page resolves its SEO context through `resolveSeoPageContextForRoute`, so placing
+ * the decision here makes redirects apply on every route family instead of only on pages
+ * that remember to check. It mirrors the Leptos storefront, which answers with
+ * `redirect_response(target, status)` as soon as the resolved context carries a decision.
+ * Calling `redirect()` (including from `generateMetadata`) propagates `NEXT_REDIRECT` to the
+ * app-render error recovery, which answers with the decision's status and `Location` header.
+ */
+function applySeoRouteRedirect(resolution: SeoPageContextResolution): void {
+  const decision = resolution.context?.route.redirect;
+  if (!decision) {
+    return;
+  }
+  if (decision.statusCode === 301 || decision.statusCode === 308) {
+    permanentRedirect(decision.targetUrl);
+  }
+  redirect(decision.targetUrl);
+}
+
 export async function resolveSeoPageContextForRoute({
   locale,
   route,
@@ -225,14 +167,20 @@ export async function resolveSeoPageContextForRoute({
   query?: SeoRouteQueryInput;
 }): Promise<SeoPageContextResolution> {
   const resolvedLocale = resolveLocale(locale ?? defaultLocale);
-  const tenantSlug = getStorefrontTenantSlug() ?? "";
+  const tenantSlug = resolveStorefrontTenantSlug() ?? "";
   const normalizedRoute = buildDeterministicSeoRoute({
     route,
     routeSegment,
     query,
   });
 
-  return resolveSeoPageContextCached(resolvedLocale, normalizedRoute, tenantSlug);
+  const resolution = await resolveSeoPageContextCached(
+    resolvedLocale,
+    normalizedRoute,
+    tenantSlug,
+  );
+  applySeoRouteRedirect(resolution);
+  return resolution;
 }
 
 function staticRobotsMetadata(): MetadataRoute.Robots {
@@ -453,7 +401,7 @@ async function fetchSeoTextDocument(
     "Accept-Language": resolveLocale(locale),
   };
 
-  const tenantSlug = getStorefrontTenantSlug();
+  const tenantSlug = resolveStorefrontTenantSlug();
   if (tenantSlug) {
     headers["X-Tenant-Slug"] = tenantSlug;
   }
