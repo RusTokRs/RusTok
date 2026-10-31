@@ -748,10 +748,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 116 | 26,758 | None |  |
-| [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 549 | 85,230 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 17 | 2,586 | None | Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated. |
+| [x] | [admin](../../apps/admin) | `apps` | 116 | 26,837 | 2026-10-31 | Audited in FS-11; Rust/Leptos admin dashboard, strict CSP with CspNonce, AdminLocaleContext, fail-closed module filtering, AST guard, CRATE_API.md, 92/92 tests passed, zero defects. |
+| [x] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | 2026-10-31 | Audited in FS-11; experimental Dioxus runner, workspace isolation, zero domain logic, CRATE_API.md, zero defects. |
+| [x] | [next-admin](../../apps/next-admin) | `apps` | 540 | 82,499 | 2026-10-31 | Audited in FS-11; Next.js admin composition root, App Router layouts, Fluent i18n, enabled module filtering, token parity, CRATE_API.md, typecheck clean, zero defects. |
+| [x] | [blog](../../apps/next-admin/packages/blog) | `apps` | 15 | 2,122 | 2026-10-31 | Audited in FS-11; editorial forms, category management, comment moderation, GraphQL contract integrity (66 schema types), CRATE_API.md, typecheck clean, zero defects. |
 | [x] | [cache](../../apps/next-admin/packages/cache) | `apps` | 8 | 706 | 2026-10-31 | Audited in FS-11; navigation guards, health diagnostics, dynamic settings, safe JSON parsing, CRATE_API.md, 8 tests passed, typecheck clean, zero defects. |
 | [x] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 15 | 2,886 | 2026-10-31 | Audited in FS-11; navigation guards, orders table, shipping profiles, promo simulation, return decisions, CRATE_API.md, 6 tests passed, typecheck clean, zero defects. |
 | [x] | [email](../../apps/next-admin/packages/email) | `apps` | 9 | 519 | 2026-10-31 | Audited in FS-11; navigation guards, SMTP configuration form, safe JSON parsing, CRATE_API.md, 7 tests passed, typecheck clean, zero defects. |
@@ -782,7 +782,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 7 | 1,720 | 2026-10-31 | Audited in FS-11; verified canonical SeoPageContext, safe JSON-LD escaping, applySeoRouteRedirect, isolated utils/site, CRATE_API.md, 7/7 tests passed, 10 D8 gates passed, typecheck clean, zero defects. |
 | [x] | [search](../../apps/next-frontend/packages/search) | `apps` | 3 | 737 | 2026-11-01 | Audited in FS-11; SearchStorefrontPage, live faceted search preview, suggestions, presets, headless api.ts, anti-swallowing, CRATE_API.md, 5/5 tests passed, typecheck clean, zero defects. |
 | [ ] | [server](../../apps/server) | `apps` | 495 | 198,537 | None |  |
-| [ ] | [storefront](../../apps/storefront) | `apps` | 34 | 6,151 | None |  |
+| [x] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | 2026-10-31 | Audited in FS-11; Rust/Leptos e-commerce storefront, SSR anonymous delivery without nonce leak, canonical route normalization, slot filtering, ETag cache, CRATE_API.md, 39/39 tests passed, zero defects. |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 1,234 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,533 | 2026-10-17 00:43 | Audited and cleaned. |
 | [x] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 12 | 1,476 | 2026-10-17 01:57 | Audited and cleaned. |
