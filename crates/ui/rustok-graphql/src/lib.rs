@@ -338,3 +338,7 @@ mod tests {
         assert!(!mutation.is_query());
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+
