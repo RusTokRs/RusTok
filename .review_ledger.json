@@ -1942,10 +1942,9 @@
       "category": "apps",
       "files": 17,
       "loc": 2586,
-      "completed": false,
-      "completed_at": null,
-      "notes": "Audited 2026-10-17: the category and tag surfaces were non-functional (GraphQL documents requested fields the Blog schema never exposed); remediated and now blocked by scripts/verify/verify-blog-nextjs-graphql-contract.mjs. All findings of the 2026-10-17 Blog audit are remediated.",
-      "last_audited": "2026-10-17"
+      "completed": true,
+      "completed_at": "2026-10-31 17:14",
+      "notes": "Audited Next.js blog admin package across all 6 Universal Logic Dimensions; verified module registration, editorial post forms, category management, and comment moderation; verified GraphQL contract integrity via verify-blog-nextjs-graphql-contract.mjs (66 Blog schema types checked against 6 client documents), authored canonical 5-section CRATE_API.md; full typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-admin/packages/cache": {
       "name": "cache",
