@@ -658,7 +658,7 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
         ],
     );
     assert!(
-        db.execute(forged_usage).await.is_err(),
+        db.execute_raw(forged_usage).await.is_err(),
         "a projection row cannot reference another tenant's Taxonomy Tag",
     );
 
@@ -689,7 +689,7 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
             [tenant_id.into(), tag_id.into()],
         );
         let result = db
-            .query_one(statement)
+            .query_one_raw(statement)
             .await
             .expect("tag attachment count query should succeed")
             .expect("count query must return one row");

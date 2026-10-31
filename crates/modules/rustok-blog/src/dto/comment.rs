@@ -47,13 +47,23 @@ pub struct ModerateCommentInput {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListCommentsFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_per_page")]
     pub per_page: u64,
+}
+
+impl Default for ListCommentsFilter {
+    fn default() -> Self {
+        Self {
+            locale: None,
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 /// Upper bound of one comment list page. Every Blog transport that already

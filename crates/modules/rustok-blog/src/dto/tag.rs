@@ -44,7 +44,7 @@ pub struct TagListItem {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListTagsFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
@@ -53,6 +53,16 @@ pub struct ListTagsFilter {
     #[serde(default = "default_per_page")]
     #[param(minimum = 1, maximum = 100)]
     pub per_page: u64,
+}
+
+impl Default for ListTagsFilter {
+    fn default() -> Self {
+        Self {
+            locale: None,
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 fn default_page() -> u64 {

@@ -34,6 +34,7 @@ pub async fn import_blog_categories(
             security.clone(),
             ListCategoriesFilter {
                 locale: Some(locale.to_string()),
+                per_page: 100,
                 ..Default::default()
             },
         )

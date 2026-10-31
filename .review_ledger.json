@@ -2412,11 +2412,11 @@
       "name": "rustok-starter",
       "path": "crates/utils/rustok-starter",
       "category": "utils",
-      "files": 11,
-      "loc": 1271,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 13,
+      "loc": 1450,
+      "completed": true,
+      "completed_at": "2026-10-31 03:45",
+      "notes": "Standardized Cargo.toml metadata and docs.rs metadata, authored CRATE_API.md and contract_tests.rs. Resolved rustok-blog ListCategoriesFilter Default pagination clipping bug (per_page 0 -> 1) causing duplicate category conflict during idempotent re-run; verified 7/7 tests passed (6 unit/contract + 1 integration), 0 clippy warnings."
     },
     "crates/utils/serde-columnar-vendored": {
       "name": "serde-columnar-vendored",
