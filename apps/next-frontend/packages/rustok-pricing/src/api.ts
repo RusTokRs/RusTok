@@ -181,6 +181,13 @@ export async function fetchStorefrontPricing(
       : Promise.resolve({ data: { storefrontPricingProduct: null } })
   ]);
 
+  if (productsRes.errors?.length) {
+    throw new Error(productsRes.errors[0]?.message ?? 'Products query failed');
+  }
+  if ('errors' in productRes && productRes.errors?.length) {
+    throw new Error(productRes.errors[0]?.message ?? 'Product pricing query failed');
+  }
+
   const rawProducts = productsRes.data?.storefrontProducts;
   const items = (rawProducts?.items ?? []).map((item) => ({
     ...item,

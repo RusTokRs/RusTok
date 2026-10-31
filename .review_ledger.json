@@ -2483,9 +2483,9 @@
       "category": "apps",
       "files": 7,
       "loc": 904,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-31 22:12",
+      "notes": "Audited Next.js pricing storefront package across all 6 Universal Logic Dimensions; verified public pricing atlas, context resolution (channels, price lists, currency, clamped quantity), variant price matrix, base vs effective pricing comparisons with sale badges, added anti-swallowing error propagation in fetchStorefrontPricing, added type:module, authored README.md, canonical 5-section CRATE_API.md and pricing-frontend.test.mjs; 3/3 tests passed, full Next.js storefront typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-frontend/packages/rustok-profiles": {
       "name": "rustok-profiles",

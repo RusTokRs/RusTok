@@ -18,6 +18,7 @@
     "test:comments": "node --test packages/rustok-comments/src/comment-composer.test.mjs",
     "test:notifications": "node --experimental-strip-types --test packages/rustok-notifications/src/notifications-frontend.test.mjs",
     "test:order": "node --experimental-strip-types --test packages/rustok-order/src/order-frontend.test.mjs",
+    "test:pricing": "node --experimental-strip-types --test packages/rustok-pricing/src/pricing-frontend.test.mjs",
     "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs packages/rustok-blog/src/utils/reading-time.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
