@@ -518,14 +518,12 @@ mod tests {
 
     #[test]
     fn invalid_zoom_falls_back_to_one() {
-        assert_eq!(
-            CoordinateTransform {
-                zoom: 0.0,
-                ..CoordinateTransform::default()
-            }
-            .normalized_zoom(),
-            1.0
-        );
+        let zoom = CoordinateTransform {
+            zoom: 0.0,
+            ..CoordinateTransform::default()
+        }
+        .normalized_zoom();
+        assert!((zoom - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -647,7 +645,7 @@ mod tests {
             viewport,
             AutoScrollPolicy::default(),
         );
-        assert_eq!(delta.x, 0.0);
+        assert!(delta.x.abs() < f64::EPSILON);
         assert!(delta.y > 0.0);
         assert!(delta.y <= 24.0);
     }

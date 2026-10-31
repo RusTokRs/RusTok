@@ -2312,11 +2312,11 @@
       "name": "web",
       "path": "crates/ui/fly/web",
       "category": "ui",
-      "files": 6,
+      "files": 7,
       "loc": 2236,
       "completed": true,
-      "completed_at": "2026-10-29 05:54",
-      "notes": "Verified hit testing, coordinate transforms, sandboxed iframe origin checks, and real-DOM inline grants; 30/30 tests passed, zero defects."
+      "completed_at": "2026-10-31 06:29",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified hit testing, coordinate transforms, sandboxed iframe origin checks, real-DOM inline grants, and cleanup registry; resolved float comparison clippy lints; 34/34 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-grid": {
       "name": "rustok-grid",
