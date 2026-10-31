@@ -2493,9 +2493,9 @@
       "category": "apps",
       "files": 7,
       "loc": 780,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-31 23:06",
+      "notes": "Audited Next.js profiles storefront package across all 6 Universal Logic Dimensions; verified public user profile display (ProfilesView, ProfilePanel), media avatar and banner fallbacks (ProfileAvatar, ProfileBanner), robust getProfileInitials with Unicode and handle fallbacks, optimistic concurrency follow state transitions with revision recovery and idempotency keys, added GraphQL error propagation (anti-swallowing), added type:module to package.json, authored README.md, canonical 5-section CRATE_API.md and profiles-frontend.test.mjs; 4/4 tests passed, full Next.js storefront typecheck passed with zero errors, gatekeeper passed, zero defects."
     },
     "apps/next-frontend/packages/rustok-seo": {
       "name": "rustok-seo",

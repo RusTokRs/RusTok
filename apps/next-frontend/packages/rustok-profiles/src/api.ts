@@ -80,6 +80,10 @@ export async function fetchProfileByHandle(
     tenant: tenantSlug ?? undefined
   });
 
+  if (result.errors?.length) {
+    throw new Error(result.errors[0]?.message ?? 'Failed to fetch profile');
+  }
+
   return result.data?.profile ?? null;
 }
 
@@ -95,6 +99,10 @@ export async function fetchFollowState(
     token: token ?? undefined,
     tenant: tenantSlug ?? undefined
   });
+
+  if (result.errors?.length) {
+    throw new Error(result.errors[0]?.message ?? 'Failed to fetch follow state');
+  }
 
   return result.data?.state ?? null;
 }

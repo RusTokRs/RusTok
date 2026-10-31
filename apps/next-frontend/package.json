@@ -20,6 +20,7 @@
     "test:order": "node --experimental-strip-types --test packages/rustok-order/src/order-frontend.test.mjs",
     "test:pricing": "node --experimental-strip-types --test packages/rustok-pricing/src/pricing-frontend.test.mjs",
     "test:product": "node --experimental-strip-types --test packages/rustok-product/src/catalog/pricing.test.mjs packages/rustok-product/src/product-frontend.test.mjs",
+    "test:profiles": "node --experimental-strip-types --test packages/rustok-profiles/src/profiles-frontend.test.mjs",
     "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs packages/rustok-blog/src/utils/reading-time.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
