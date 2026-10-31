@@ -1480,11 +1480,11 @@
       "name": "fly",
       "path": "crates/ui/fly",
       "category": "ui",
-      "files": 111,
+      "files": 112,
       "loc": 44096,
       "completed": true,
-      "completed_at": "2026-10-29 05:48",
-      "notes": "Standardized CRATE_API.md, docs.rs metadata, verified lossless GrapesJS codec, history budget, runtime binding and SSR rendering; 301/301 tests passed, zero defects."
+      "completed_at": "2026-10-31 05:12",
+      "notes": "Standardized Cargo.toml metadata, docs.rs metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified lossless GrapesJS codec roundtrip, history budget, runtime binding, safe URL validation, and SSR rendering; 306/306 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/fly-browser": {
       "name": "fly-browser",
