@@ -415,8 +415,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 - [x] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (26/26 completed — 100% PASS)
 - [x] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (19/19 completed — 100% PASS)
 - [x] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (19/19 completed — 100% PASS)
-- [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (crates/ui/*)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (17/23 completed)
-- [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (0/34 completed)
+- [x] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (crates/ui/*)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (23/23 completed — 100% PASS)
+- [ ] **[Phase FS-11 — Client Applications & Host Frontends (`apps/*`)](#fs-11---client-applications-&-host-frontends-apps)** (1/34 completed)
 
 ---
 
@@ -705,9 +705,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 ---
 
 ### Phase FS-11 — Client Applications & Host Frontends (`apps/*`)
-*Full admin dashboards, storefront customer-facing applications, Next.js admin & storefront packages, and Dioxus desktop.* (0/34 completed)
+*Full admin dashboards, storefront customer-facing applications, Next.js admin & storefront packages, and Dioxus desktop.* (1/34 completed)
 
-- [ ] **[`apps/admin`](../../apps/admin)** (116 files, 26,837 LOC) — Canonical Rust/Leptos administration dashboard: full navigation, settings, module management, and operator views.
+- [x] **[`apps/admin`](../../apps/admin)** (116 files, 26,837 LOC) — Canonical Rust/Leptos administration dashboard: full navigation, settings, module management, and operator views. Standardized Cargo.toml metadata and workspace lints, authored 5-section CRATE_API.md and contract_tests.rs; verified standalone Leptos admin security headers (strict CSP with per-request CspNonce, nosniff, frame-ancestors 'none', HSTS in production, isolated richtext frame CSP), reactive AdminLocaleContext and i18n catalog validation with zero diagnostics, fail-closed module component and route registration filtering via enabled_modules, and AST guard invariants against GraphQL contract drift; remediated collapsible if in modules_list; 92/92 tests passed (58 unit + 34 integration guard), 0 clippy warnings, gatekeeper passed, zero defects.
 - [ ] **[`apps/storefront`](../../apps/storefront)** (34 files, 5,987 LOC) — Canonical Rust/Leptos e-commerce storefront: catalog navigation, cart drawer, checkout, and account portal.
 - [ ] **[`apps/dioxus-admin`](../../apps/dioxus-admin)** (1 files, 13 LOC) — Experimental Dioxus-based desktop/mobile administration client application.
 - [ ] **[`apps/next-admin`](../../apps/next-admin)** (540 files, 82,499 LOC) — Next.js administration dashboard application host and composition root.

@@ -65,7 +65,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         seo_title: set_seo_title,
         seo_description: set_seo_description,
         scheduled_at: set_scheduled_at,
-        schedule_editable: set_schedule_editable,
+        schedule_editable: _set_schedule_editable,
         publish_now: set_publish_now,
     } = form_setters;
 

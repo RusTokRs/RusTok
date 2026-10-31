@@ -16,12 +16,16 @@ pub use core::{
     selected_transport_profile,
 };
 pub use model::{
-    MarketplaceListingAdminCommand, MarketplaceListingAdminCommandResult,
-    MarketplaceListingAdminDetail, MarketplaceListingAdminDirectory,
-    MarketplaceListingAdminFilters, MarketplaceListingAdminListItem,
-    MarketplaceListingAdminRecord, MarketplaceListingAdminShell, MarketplaceListingAdminTerms,
+    MarketplaceListingAdminAction, MarketplaceListingAdminCommand,
+    MarketplaceListingAdminCommandResult, MarketplaceListingAdminDetail,
+    MarketplaceListingAdminDirectory, MarketplaceListingAdminFilters,
+    MarketplaceListingAdminListItem, MarketplaceListingAdminRecord, MarketplaceListingAdminShell,
+    MarketplaceListingAdminTerms,
 };
-pub use transport::{MarketplaceListingAdminTransportContext, load_marketplace_listing_directory};
+pub use transport::{
+    MARKETPLACE_LISTING_TRANSPORT_FALLBACK_POLICY, MarketplaceListingAdminTransportContext,
+    load_marketplace_listing_directory,
+};
 pub use ui::leptos::MarketplaceListingAdmin;
 
 #[cfg(test)]
