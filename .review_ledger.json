@@ -1782,9 +1782,9 @@
       "category": "utils",
       "files": 7,
       "loc": 1952,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-10-31 04:25",
+      "notes": "Standardized Cargo.toml metadata and CRATE_API.md. Audited and verified 6 Universal Logic Dimensions across database testing utilities, mock event bus, and fixtures; verified single-connection SQLite in-memory isolation, Postgres dynamic test DB lifecycle, and deterministic MockEventTransport recording; 16 tests passed (15 unit + 1 integration, 1 ignored requiring sea-orm sqlite feature) and 23 doctests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/utils/utoipa-swagger-ui-vendored": {
       "name": "utoipa-swagger-ui-vendored",
