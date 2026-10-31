@@ -1570,11 +1570,11 @@
       "name": "rustok-forms-leptos",
       "path": "crates/ui/rustok-ui-forms/leptos",
       "category": "ui",
-      "files": 6,
-      "loc": 3138,
+      "files": 7,
+      "loc": 2928,
       "completed": true,
-      "completed_at": "2026-10-29 05:10",
-      "notes": "Standardized CRATE_API.md, verified Leptos 0.8 reactive Owner context provision in SSR, FormField and FormError lifecycle; 18/18 tests passed, zero defects."
+      "completed_at": "2026-10-31 08:01",
+      "notes": "Standardized Cargo.toml metadata, authored 5-section CRATE_API.md and contract_tests.rs; verified button variants/sizes, FieldContext ARIA wiring, and FormContext reactive state access; 21/21 tests passed, 0 clippy warnings, gatekeeper passed, zero defects."
     },
     "crates/ui/rustok-ui-i18n": {
       "name": "rustok-ui-i18n",
