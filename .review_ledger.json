@@ -2663,9 +2663,9 @@
       "category": "modules",
       "files": 24,
       "loc": 1111,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:48:00Z",
+      "notes": "Verified 6 Universal Logic Dimensions: calendar scheduling, appointment bounds, permissions contract, and event serialization."
     },
     "crates/modules/rustok-calendar/admin": {
       "name": "admin",
@@ -2673,9 +2673,9 @@
       "category": "modules",
       "files": 6,
       "loc": 325,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:48:00Z",
+      "notes": "Verified FFA compliance, pure core filtering, contract compliance, and i18n catalogs."
     },
     "crates/modules/rustok-calendar/storefront": {
       "name": "storefront",
@@ -2683,9 +2683,9 @@
       "category": "modules",
       "files": 6,
       "loc": 123,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:48:00Z",
+      "notes": "Verified storefront FFA architecture, view-models, contract compliance, and i18n catalogs."
     },
     "crates/modules/rustok-calls": {
       "name": "rustok-calls",

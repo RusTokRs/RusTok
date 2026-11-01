@@ -822,9 +822,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,215 | 2026-10-25 03:28 | Audited Leptos admin FFA package; verified strict FFA separation (pure Rust models, view-model computations, slug/name validation in core.rs with zero UI imports); verified dual-path transport (GraphQL / ServerFn); added CRATE_API.md, contract_tests.rs, docs.rs, readme, and repository metadata; 14/14 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,693 | 2026-10-17 04:30 | Audited and cleaned. |
 | [x] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 8 | 1,221 | 2026-10-17 04:47 | Audited and cleaned. |
-| [ ] | [rustok-calendar](../../crates/modules/rustok-calendar) | `modules` | 24 | 1,111 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-calendar/admin) | `modules` | 6 | 325 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-calendar/storefront) | `modules` | 6 | 123 | None |  |
+| [x] | [rustok-calendar](../../crates/modules/rustok-calendar) | `modules` | 24 | 1,111 | 2026-11-01 08:48 | Verified 6 Universal Logic Dimensions: calendar scheduling, appointment bounds, permissions contract, and event serialization. |
+| [x] | [admin](../../crates/modules/rustok-calendar/admin) | `modules` | 6 | 325 | 2026-11-01 08:48 | Verified FFA compliance, pure core filtering, contract compliance, and i18n catalogs. |
+| [x] | [storefront](../../crates/modules/rustok-calendar/storefront) | `modules` | 6 | 123 | 2026-11-01 08:48 | Verified storefront FFA architecture, view-models, contract compliance, and i18n catalogs. |
 | [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,103 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 322 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 123 | None |  |
