@@ -932,9 +932,9 @@
       "category": "modules",
       "files": 13,
       "loc": 2330,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T09:14:00Z",
+      "notes": "Verified storefront FFA architecture, tracking steps, checkout result models, and dual-transport adapters."
     },
     "crates/modules/rustok-outbox": {
       "name": "rustok-outbox",
