@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting) (14/17 completed)
+- **Active Phase:** CC-16: CQRS Read Projections, Search & Index Synchronization
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle) (15/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -69,7 +69,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed — 100% PASS)
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed — 100% PASS)
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed — 100% PASS)
-- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
+- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed — 100% PASS)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
@@ -286,10 +286,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `ObjectStorage StorageBackend generate_presigned_url MediaService CanonicalObjectKey`
 
 #### Sub-Audit Checklist
-- [ ] **CC-15.01 — Tenant-Scoped Object Keys:** Verify canonical storage keys are strictly structured with tenant scope, preventing cross-tenant enumeration.
-- [ ] **CC-15.02 — Path Traversal Prevention:** Verify strict ASCII allow-lists on key segments, blocking `../`, absolute paths, and null bytes.
-- [ ] **CC-15.03 — Presigned Upload Expiration & Verification:** Verify bounded expiry on upload sessions, byte length checks, and magic byte signature verification.
-- [ ] **CC-15.04 — Media Extraction SSRF Guard:** Verify outbound media URL fetches enforce DNS pinning and block RFC 1918 / cloud metadata IPs.
+- [x] **CC-15.01 — Tenant-Scoped Object Keys:** Verified canonical storage keys are strictly structured with tenant scope, preventing cross-tenant enumeration (`ObjectKey::chronological`, `ObjectScope::TenantModule`, `cargo test -p rustok-storage --lib` — 12/12 PASSED).
+- [x] **CC-15.02 — Path Traversal Prevention:** Verified strict ASCII allow-lists on key segments, blocking `../`, absolute paths, control chars, and null bytes (`KeyError::InvalidSegment`, `KeyError::InvalidExtension`).
+- [x] **CC-15.03 — Presigned Upload Expiration & Verification:** Verified bounded expiry on upload sessions (max 15 mins), byte length checks, and magic byte signature verification (`validate_upload_policy`, `verify_media_type`, `cargo test -p rustok-media --lib` — 57/57 PASSED).
+- [x] **CC-15.04 — Media Extraction SSRF Guard:** Verified outbound media URL fetches enforce DNS pinning, scheme whitelisting, and block private/loopback IPs (`SsrfProtection`, `node scripts/verify/verify-media-public-image-proxy.mjs` — PASSED).
 
 ---
 
