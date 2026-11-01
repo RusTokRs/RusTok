@@ -1232,9 +1232,9 @@
       "category": "modules",
       "files": 19,
       "loc": 5357,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:15:00Z",
+      "notes": "Verified 6 Universal Logic Dimensions: reaction catalog, actor state, reconciliation, integer overflow guards, and outbox events."
     },
     "crates/modules/rustok-reactions-api": {
       "name": "rustok-reactions-api",
@@ -1242,9 +1242,9 @@
       "category": "modules",
       "files": 3,
       "loc": 1576,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:15:00Z",
+      "notes": "Consolidated into rustok-reactions: verified traits, ports, selection limits, and domain invariants."
     },
     "crates/modules/rustok-reactions-storefront": {
       "name": "rustok-reactions-storefront",
@@ -1252,9 +1252,9 @@
       "category": "modules",
       "files": 6,
       "loc": 743,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:15:00Z",
+      "notes": "Moved to crates/modules/rustok-reactions/storefront: verified FFA view-models and contract tests."
     },
     "crates/modules/rustok-region": {
       "name": "rustok-region",
@@ -2793,9 +2793,9 @@
       "category": "modules",
       "files": 7,
       "loc": 768,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:15:00Z",
+      "notes": "Verified storefront FFA architecture, ReactionBar component, neutral subject references, and i18n catalogs."
     },
     "crates/modules/rustok-security": {
       "name": "rustok-security",
