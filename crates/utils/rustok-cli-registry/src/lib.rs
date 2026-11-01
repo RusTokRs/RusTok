@@ -1,3 +1,9 @@
+//! # rustok-cli-registry
+//!
+//! Selected-distribution command registry for the RusToK platform CLI. It
+//! aggregates command providers at runtime and answers provider, command, and
+//! emptiness queries without owning any command's execution semantics.
+
 use rustok_cli_core::{CommandDescriptor, CommandProvider};
 use rustok_runtime::RuntimeComposition;
 

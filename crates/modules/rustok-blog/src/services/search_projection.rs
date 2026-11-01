@@ -37,7 +37,7 @@ pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
 /// Search owns the indexed document and ranking, but only Blog can authorize a
 /// stored candidate against *current* publication, post/channel allowlists and
 /// the Channel owner's active Blog-module binding. This is a bounded batch read
-/// and never trusts `search_documents.payload` as the authorization source.
+/// and never trusts the stored projection payload as the authorization source.
 ///
 /// The host adapter checks the tenant module lifecycle before invoking this
 /// method. A missing channel means the unscoped public corpus, so only posts

@@ -102,7 +102,12 @@ for (const marker of [
   'DomainEvent::CommentStatusChanged',
   'counted: Some(false)',
   'DomainEvent::CommentDeleted',
-  'counted: Some(new_status == "approved")',
+  // The count verdict goes through the typed `status_counts_publicly` helper
+  // (rustok_comments::CommentStatus comparison, unknown statuses fail closed),
+  // not a raw string comparison against "approved".
+  'counted: Some(status_counts_publicly(new_status))',
+  'fn status_counts_publicly(',
+  'Some(CommentStatus::Approved) => true,',
   'fn projection_applied_delta(',
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',

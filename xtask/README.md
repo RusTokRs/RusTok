@@ -74,16 +74,23 @@ The command:
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
-- Runs `cargo xtask module validate <slug>` unless skipped. This validates publish-readiness metadata/registration, **not** full source architecture, compilation, running transports or FFA/FBA readiness.
+- After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure in either check returns a non-zero result and restores the planned source/registration files.
 
-**Remaining limitations:** Registration is not atomic; `--dry-run` does not
-preview all manifest edits. Successful publish-readiness validation does not
-prove compilation, native architecture lint or functional FFA/FBA readiness;
-post-scaffold validation errors return a failure, but earlier writes are not
-rolled back. Persistence needs a real schema. New UI crates are *draft,
-unmounted*; their native and GraphQL adapters fail explicitly until owner
-operations are implemented. Classic Next.js packages remain Next-host owned.
-Run scoped verification before publishing any UI route.
+**Verification and remaining limitations:** The generator builds a complete
+source/registration plan before writing, and `--dry-run` previews every planned
+change without mutating the workspace. A live run snapshots the affected files,
+applies the plan, runs architecture lint and then publish-metadata validation,
+and restores the snapshots if either check fails. This is rollback-protected
+multi-file generation, not isolation from concurrent external workspace writers.
+`--skip-validate` explicitly leaves the module registered but unverified.
+Passing lint and metadata validation still does not prove compilation, behavior,
+FBA runtime readiness or functional FFA/Next.js parity. The generated UI crates
+remain *draft, unmounted* and their adapters fail explicitly until owner
+operations are implemented. Golden snapshots and the generated-crate build
+matrix remain outstanding. Persistence still requires a real owner schema.
+Classic Next.js packages remain Next-host owned; live UI wiring is checked by
+the generic native-module lint, while functional cross-client parity needs
+separate evidence.
 
 ```powershell
 # Create the minimal native runtime identity (no business CRUD or storage):
@@ -157,7 +164,7 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
-- `cargo xtask module lint <slug>` checks its native source layout and declared FFA package shape. This is independent of publish-readiness; it is not yet implicitly run by `module validate` or by the old scaffold command.
+- `cargo xtask module lint <slug>` checks native source layout, FFA package structure and live Next.js package/route wiring. This is independent of publish-readiness; `module validate` does not run it, while the scaffold command explicitly runs lint before validate unless `--skip-validate` is supplied.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.
 - A crate under `crates/` is treated as a support/capability crate until it is added to `modules.toml`.

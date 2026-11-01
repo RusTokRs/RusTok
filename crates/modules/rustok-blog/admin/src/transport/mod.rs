@@ -4,8 +4,9 @@ mod native_server_adapter;
 
 use crate::core::BlogPostAdminSort;
 use crate::model::{
-    BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
-    BlogPostDraft, BlogPostList,
+    BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate,
+    BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
+    BlogPreviewToken,
 };
 use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 
@@ -225,6 +226,94 @@ pub async fn delete_post(
         selected_transport_path(),
         move || native_server_adapter::delete_post(native_id),
         move || graphql_adapter::delete_post(token, tenant_slug, id),
+    )
+    .await
+}
+
+/// Mints a draft preview token for a post. The plaintext secret is returned
+/// exactly once; the backend keeps only its SHA-256 digest.
+pub async fn create_preview_token(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    post_id: String,
+    ttl_hours: Option<i64>,
+) -> Result<BlogPreviewToken, ApiError> {
+    let native_post_id = post_id.clone();
+    execute_selected_transport(
+        "blog/admin/create-preview-token",
+        selected_transport_path(),
+        move || {
+            native_server_adapter::create_preview_token(native_post_id, ttl_hours)
+        },
+        move || graphql_adapter::create_preview_token(token, tenant_slug, post_id, ttl_hours),
+    )
+    .await
+}
+
+/// Full category projection for the category management workspace. Pages
+/// through the owner list (100 per page) like the posts options loader.
+pub async fn fetch_category_details(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryDetail>, ApiError> {
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog/admin/category-details",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_category_details(native_locale),
+        move || graphql_adapter::fetch_category_details(token, tenant_slug, locale),
+    )
+    .await
+}
+
+/// Creates a category and returns the new id.
+pub async fn create_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    draft: BlogCategoryDraft,
+) -> Result<String, ApiError> {
+    let native_draft = draft.clone();
+    execute_selected_transport(
+        "blog/admin/create-category",
+        selected_transport_path(),
+        move || native_server_adapter::create_category(native_draft),
+        move || graphql_adapter::create_category(token, tenant_slug, draft),
+    )
+    .await
+}
+
+/// Updates a category's localized copy and returns the refreshed projection.
+pub async fn update_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    update: BlogCategoryUpdate,
+) -> Result<BlogCategoryDetail, ApiError> {
+    let native_id = id.clone();
+    let native_update = update.clone();
+    execute_selected_transport(
+        "blog/admin/update-category",
+        selected_transport_path(),
+        move || native_server_adapter::update_category(native_id, native_update),
+        move || graphql_adapter::update_category(token, tenant_slug, id, update),
+    )
+    .await
+}
+
+/// Deletes a category. The owner fails closed unless the host composed the
+/// Taxonomy capability cleanup; posts fall back to the uncategorized state.
+pub async fn delete_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<bool, ApiError> {
+    let native_id = id.clone();
+    execute_selected_transport(
+        "blog/admin/delete-category",
+        selected_transport_path(),
+        move || native_server_adapter::delete_category(native_id),
+        move || graphql_adapter::delete_category(token, tenant_slug, id),
     )
     .await
 }

@@ -1,5 +1,7 @@
 # utoipa-swagger-ui-vendored
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 `crates/utils/utoipa-swagger-ui-vendored` — module/application of RusToK. This is where its code and root documentation live.
 

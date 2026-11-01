@@ -1,5 +1,7 @@
 # rustok-module-sdk
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-module-sdk` is the product-neutral Rust author SDK for untrusted RusToK

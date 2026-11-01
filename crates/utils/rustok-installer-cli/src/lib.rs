@@ -1,3 +1,9 @@
+//! # rustok-installer-cli
+//!
+//! Selected `rustok-cli` command provider for installer operator commands.
+//! It owns terminal-adapter mapping only and delegates plan, preflight, and
+//! seed semantics to `rustok-installer`.
+
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };

@@ -8,6 +8,10 @@ readme = "README.md"
 repository.workspace = true
 description = "SeaORM persistence adapter for RusToK installer state"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 chrono.workspace = true
 async-trait.workspace = true
@@ -30,6 +34,3 @@ uuid.workspace = true
 rustok-test-utils.workspace = true
 tokio.workspace = true
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]

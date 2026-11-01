@@ -40,6 +40,13 @@ const validForumSource = `
     NotificationOpenAuthorization::Unavailable;
     let _ = "/modules/forum?category={}&topic={}";
     let _ = Internal { retryable: true };
+    if requested_revision != persisted.sequence_no {
+        return None;
+    }
+    let _ = requested_revision != semantic_revision;
+    let visible = .visibility_service()
+        .is_topic_visible(tenant_id, topic_id, None, viewer);
+    let _ = visible;
   }
 `;
 
@@ -127,12 +134,14 @@ try {
   }
   write("crates/modules/rustok-forum/src/notification_source.rs", validForumSource);
 
+  // The provider no longer reads channel-access tables itself: visibility is owned by the audience
+  // owner, so bypassing .visibility_service() must fail the durability invariant.
   write(
     "crates/modules/rustok-forum/src/notification_source.rs",
-    validForumSource.replace("forum_topic_channel_access::Entity::find();", ""),
+    validForumSource.replace("let visible = .visibility_service()", "let visible = audience_owner"),
   );
   const channelBypass = run();
-  if (channelBypass.status === 0 || !channelBypass.stderr.includes("forum_topic_channel_access")) {
+  if (channelBypass.status === 0 || !channelBypass.stderr.includes(".visibility_service()")) {
     throw new Error(`channel-bypass fixture did not fail correctly:\n${channelBypass.stdout}\n${channelBypass.stderr}`);
   }
 

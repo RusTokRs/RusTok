@@ -9,9 +9,9 @@ repository.workspace = true
 description = "Generated Rust guest bindings for the RusToK module component ABI"
 include = ["src/**", "wit/**", "README.md", "docs/**", "Cargo.toml"]
 
-[dependencies]
-wit-bindgen.workspace = true
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+wit-bindgen.workspace = true

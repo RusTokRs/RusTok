@@ -62,7 +62,7 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
   writeFixture(
     root,
     "crates/modules/rustok-forum/src/lib.rs",
-    "pub mod mentions;\npub use mentions::*;\n",
+    "pub mod mentions;\npub use mentions::{ForumMentionPolicy, ForumMentionRevisionProjection, ForumQuoteReference, diff_forum_mentions};\n",
   );
   writeFixture(
     root,
@@ -80,7 +80,7 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
   writeFixture(
     root,
     "crates/modules/rustok-forum/docs/implementation-plan.md",
-    "Forum richtext cutover is complete\n",
+    "Shared richtext storage and server projection are live\n",
   );
   writeFixture(
     root,

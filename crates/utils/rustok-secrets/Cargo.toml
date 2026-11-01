@@ -8,6 +8,10 @@ readme = "README.md"
 repository.workspace = true
 description = "Runtime secret-reference contracts and resolver registry for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 aws-config.workspace = true
@@ -28,6 +32,3 @@ uuid.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]

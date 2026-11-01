@@ -1,3 +1,5 @@
+//! # rustok-secrets
+//!
 //! Runtime secret references for capability and module integrations.
 //!
 //! Callers persist only [`SecretRef`] values. Resolver endpoints and workload

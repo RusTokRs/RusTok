@@ -1,5 +1,7 @@
 # rustok-installer
 
+The typed contracts, their public surface, and invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 `rustok-installer` is the shared installer foundation for RusToK. It owns the
 install plan, state-machine, secret-reference, receipt, checksum, and preflight
 contracts that CLI, server HTTP, web wizard, and dev bootstrap wrappers should

@@ -1,5 +1,7 @@
 # rustok-installer-cli
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 `rustok-installer-cli` is the selected `rustok-cli` provider for installer
 operator commands. It owns terminal-adapter mapping only and delegates plan,
 preflight and seed semantics to `rustok-installer`.

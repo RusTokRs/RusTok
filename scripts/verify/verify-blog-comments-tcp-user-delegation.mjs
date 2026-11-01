@@ -16,6 +16,7 @@ const serverPath = 'crates/modules/rustok-comments/src/tcp_server.rs';
 const transportPath = 'crates/modules/rustok-comments/src/tcp_transport.rs';
 const runtimePath = 'apps/server/src/services/comments_provider_runtime.rs';
 const blogContextPath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const blogCommandsPath = 'crates/modules/rustok-blog/src/services/comment/commands.rs';
 const commentsPolicyPath = 'crates/modules/rustok-comments/src/services.rs';
 
 function read(path) {
@@ -78,6 +79,7 @@ for (const path of [
   transportPath,
   runtimePath,
   blogContextPath,
+  blogCommandsPath,
   commentsPolicyPath,
 ]) {
   requireCondition(fs.existsSync(path), `missing source artifact ${path}`);
@@ -96,7 +98,10 @@ const delegation = read(delegationPath);
 const server = read(serverPath);
 const transport = read(transportPath);
 const runtime = readComposedRustSource(read, runtimePath);
-const blogContext = read(blogContextPath);
+// The comment service is split: the context helper lives in comment.rs while
+// the write-port call sites moved to comment/commands.rs, so the marker view
+// is the concatenation of both halves (mirrors verify-blog-fba.mjs).
+const blogContext = `${read(blogContextPath)}\n${read(blogCommandsPath)}`;
 const commentsPolicy = read(commentsPolicyPath);
 
 requireCondition(evidence.schema_version === 1, 'evidence schema must remain version 1');
@@ -430,7 +435,9 @@ hasAll(
     '.with_deadline(std::time::Duration::from_secs(2))',
     'context = context.with_role(security.role.to_string());',
     'context = context.with_claim(permission.to_string());',
-    'comments_write_port_context(\n                    tenant_id,\n                    &SecurityContext::system(),',
+    // Moderation path builds the write context with the SYSTEM security
+    // context; the match-arm form reflects the comment-service split.
+    'Some(moderator_id) => comments_write_port_context(\n                        tenant_id,\n                        &SecurityContext::system(),',
   ],
   'Blog authority context construction',
 );

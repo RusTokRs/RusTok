@@ -111,3 +111,4 @@ include!("tests/lifecycle.rs");
 include!("tests/public_listing.rs");
 include!("tests/scheduling.rs");
 include!("tests/search.rs");
+include!("tests/admin_list_filters.rs");

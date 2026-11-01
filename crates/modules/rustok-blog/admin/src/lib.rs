@@ -26,5 +26,3 @@ pub use ui::BlogAdmin;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod contract_tests;

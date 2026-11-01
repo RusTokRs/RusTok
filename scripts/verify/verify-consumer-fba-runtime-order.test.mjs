@@ -10,6 +10,7 @@ const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json',
   'crates/modules/rustok-blog/rustok-module.toml',
   'crates/modules/rustok-blog/src/services/comment.rs',
+  'crates/modules/rustok-blog/src/services/comment/commands.rs',
   'crates/modules/rustok-blog/src/dto/comment.rs',
   'crates/modules/rustok-blog/src/error/mod.rs',
   'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
@@ -48,9 +49,16 @@ verifyConsumerFbaRuntimeOrder();
 
 const blogDrift = fixture();
 const commentService = path.join(blogDrift, 'crates/modules/rustok-blog/src/services/comment.rs');
+const commentServiceCommands = path.join(blogDrift, 'crates/modules/rustok-blog/src/services/comment/commands.rs');
+// `ensure_post_exists` inside `create_comment_internal` now lives in the
+// commands half of the split service; mutate both halves so the marker is gone.
 fs.writeFileSync(
   commentService,
   fs.readFileSync(commentService, 'utf8').replaceAll('ensure_post_exists', '/* missing post ownership guard */'),
+);
+fs.writeFileSync(
+  commentServiceCommands,
+  fs.readFileSync(commentServiceCommands, 'utf8').replaceAll('ensure_post_exists', '/* missing post ownership guard */'),
 );
 expectFailure(blogDrift, /blog create_comment source marker missing: ensure_post_exists/);
 

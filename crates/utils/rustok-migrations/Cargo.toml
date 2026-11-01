@@ -8,6 +8,10 @@ readme = "README.md"
 repository.workspace = true
 description = "Global SeaORM migration orchestrator and schema definitions for RusToK"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [[bin]]
 name = "rustok-migrate"
 path = "src/bin/rustok_migrate.rs"
@@ -84,7 +88,4 @@ sea-orm.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 

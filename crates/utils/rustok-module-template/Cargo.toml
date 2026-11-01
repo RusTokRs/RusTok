@@ -9,6 +9,10 @@ description = "Canonical independently versioned Rust module component template 
 repository.workspace = true
 include = ["src/**", "assets/**", "README.md", "docs/**", "Cargo.toml"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 rustok-module-sdk.workspace = true
 rustok-modules.workspace = true
@@ -16,6 +20,3 @@ rustok-sandbox.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]

@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_product::entities::product;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Order,
-    QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, Order, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -78,6 +79,42 @@ async fn relation_group_in_tx(
         .await?)
 }
 
+/// Takes the source-Product lock that serializes relation writes for one product.
+///
+/// Postgres and MySQL lock the owner row with SELECT ... FOR UPDATE. SQLite has no FOR UPDATE,
+/// so the lock is approximated with a self-assigning UPDATE that takes the database write lock,
+/// mirroring the catalog schema service's product locking.
+async fn lock_product_for_update(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> ProductRelationResult<()> {
+    let query = product::Entity::find_by_id(product_id)
+        .filter(product::Column::TenantId.eq(tenant_id));
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+            query
+                .lock_exclusive()
+                .one(txn)
+                .await?
+                .ok_or(ProductRelationError::ProductNotFound(product_id))?;
+        }
+        DatabaseBackend::Sqlite => {
+            let statement = Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE products SET updated_at = updated_at WHERE tenant_id = ?1 AND id = ?2",
+                [tenant_id.into(), product_id.into()],
+            );
+            let result = txn.execute_raw(statement).await?;
+            if result.rows_affected() != 1 {
+                return Err(ProductRelationError::ProductNotFound(product_id));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Resolves a relation's owner, takes the owner Product lock, then reloads the relation.
 ///
 /// Relation writes serialize on their source Product. The reload closes the read-before-lock
@@ -89,6 +126,12 @@ async fn lock_relation_for_mutation(
     tenant_id: Uuid,
     relation_id: Uuid,
 ) -> ProductRelationResult<ProductRelationModel> {
+    let relation = ProductRelation::find_by_id(relation_id)
+        .filter(Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .ok_or(ProductRelationError::RelationNotFound(relation_id))?;
+    lock_product_for_update(txn, tenant_id, relation.product_id).await?;
     ProductRelation::find_by_id(relation_id)
         .filter(Column::TenantId.eq(tenant_id))
         .one(txn)

@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::path::Path;
 
 mod backend;
 mod options;

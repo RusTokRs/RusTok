@@ -3,7 +3,7 @@
 ## Public surface
 
 ### UI Components
-- `BlogAdmin`: Composed root admin page containing post authoring workspace and comment moderation panel.
+- `BlogAdmin`: Composed root admin page. Dispatches on the module child-page subpath: the posts workspace with the comment moderation panel, or the category management workspace (`/modules/blog/categories`).
 
 ### Page Builder Contributions
 - `BlogContributionAdapter`, `BlogWidgetOwnerSchemaRef`, `BlogWidgetPropertyEditorModel`, `BlogWidgetRenderModel`: Widget integration types for the Fly page builder.
@@ -26,6 +26,8 @@
 ### Input DTOs/Commands
 - `BlogAdmin`: Entrypoint workspace component mounting blog administration.
 - Post draft creation, updating, scheduled publishing, and comment moderation commands.
+- Draft preview token minting (`transport::create_preview_token`): dual-transport command that returns the one-time plaintext secret; the backend stores only its SHA-256 digest.
+- Category CRUD commands (`transport::fetch_category_details`, `create_category`, `update_category`, `delete_category`): dual-transport commands over the Blog owner category contract. Create sends parent and canonical position; update sends localized copy only, with `Patch` description semantics (absent keeps, `null` clears); delete requires the host-composed `TaxonomyCategoryDeleteCleanupPort` on the native path (the owner fails closed without it).
 
 ### Domain Invariants
 - Posts maintain slug uniqueness within channel and tenant boundaries.

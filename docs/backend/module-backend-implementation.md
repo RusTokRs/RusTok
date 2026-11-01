@@ -72,9 +72,11 @@ registration, structural validation and tests. These do **not** imply
 implemented business operations, FBA `boundary_ready` /
 `transport_verified` or FFA `parity_verified`. Record actual readiness in
 the owner implementation plan and only project evidenced states into the
-registry. Known gaps must be declared in the owner README/plan. The future
-generator must preflight a complete edit plan, show all edits in dry-run,
-roll back failed writes, and never return success after failed validation.
+registry. Known gaps must be declared in the owner README/plan. The current
+generator preflights source and registration edits, previews the complete plan
+in dry-run, and uses rollback-protected writes; architecture lint runs before
+publish-metadata validation. This does not isolate concurrent external
+workspace writers, and the full generated-crate build matrix remains pending.
 
 ### Current implementation gap
 
@@ -90,8 +92,10 @@ The central readiness board remains `not_started` even though source shape
 is `core_transport_ui`. No Leptos host route is mounted.
 Classic Next.js packages belong to their own hosts and are not FFA.
 Successful publish metadata validation does not imply runtime or UI readiness.
-Atomic rollback, complete manifest-edit dry-run and an executable golden
-generation matrix remain future improvements.
+The generator now previews complete manifest edits and restores planned files
+when post-generation lint or metadata validation fails. This rollback-protected
+transaction is not a concurrency-isolated filesystem transaction. Golden
+snapshots and an executable generated-crate build matrix remain future work.
 
 ## Target Module Layout
 

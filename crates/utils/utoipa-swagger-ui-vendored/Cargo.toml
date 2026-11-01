@@ -8,9 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Vendored Swagger UI static assets for embedded OpenAPI documentation in RusToK"
 
-[lib]
-path = "src/lib.rs"
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+path = "src/lib.rs"
+

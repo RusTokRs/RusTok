@@ -164,6 +164,8 @@ impl BlogQuery {
             tag: None,
             author_id: None,
             locale: None,
+            slug: None,
+            title: None,
             after: None,
             per_page: Some(20),
             sort_by: None,
@@ -191,6 +193,8 @@ impl BlogQuery {
                     category_id: filter.category_id,
                     tag: filter.tag.clone(),
                     author_id: filter.author_id,
+                    slug: filter.slug.clone(),
+                    title: filter.title.clone(),
                     locale: Some(locale.clone()),
                     after: filter.after.clone(),
                     // The clamped limit is the executed limit: the reported
