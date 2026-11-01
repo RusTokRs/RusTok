@@ -322,9 +322,9 @@
       "category": "modules",
       "files": 46,
       "loc": 10932,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:42",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified thread tree concurrency, position allocation, rich text comment profile validation, event publication, non-nil UUID guards; 25/25 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-comments/admin": {
       "name": "admin",
@@ -332,9 +332,9 @@
       "category": "modules",
       "files": 9,
       "loc": 1690,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:42",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA separation, moderation queue command validation, reactive status badges, bounded pagination; 20/20 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-comments-storefront-support": {
       "name": "rustok-comments-storefront-support",
@@ -342,9 +342,9 @@
       "category": "modules",
       "files": 3,
       "loc": 247,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:42",
+      "notes": "Consolidated package name for rustok-comments/storefront; audited and verified under storefront."
     },
     "crates/modules/rustok-commerce": {
       "name": "rustok-commerce",
@@ -2173,9 +2173,9 @@
       "category": "modules",
       "files": 3,
       "loc": 330,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:42",
+      "notes": "Consolidated into rustok-comments; verified under comments module root."
     },
     "crates/modules/rustok-docs": {
       "name": "rustok-docs",
@@ -2723,9 +2723,9 @@
       "category": "modules",
       "files": 4,
       "loc": 265,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:42",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA core validation rules for blank documents/empty nodes, error formatting and key resolution; 6/6 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-deal": {
       "name": "rustok-deal",
