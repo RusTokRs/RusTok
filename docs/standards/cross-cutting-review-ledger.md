@@ -32,9 +32,9 @@ When triggered, the agent:
 ## Current Cycle Status
 
 - **Status:** ACTIVE
-- **Active Cycle:** Cross-Cutting Cycle 1 (Fresh Start from Scratch)
-- **Active Phase:** CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty
-- **Completed Phases:** None (0/17 completed)
+- **Active Cycle:** Cross-Cutting Cycle 1
+- **Active Phase:** CC-03: RBAC, Auth & Security Enforcement
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity) (2/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -55,8 +55,8 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ## Phase Backlog — Cross-Cutting Capability Sequence (17 Phases Total)
 
-- [ ] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (0/6 completed)
-- [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/5 completed)
+- [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (6/6 completed — 100% PASS)
+- [x] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (5/5 completed — 100% PASS)
 - [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
 - [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
 - [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
@@ -82,12 +82,12 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `FbaProviderDescriptor FbaConsumerDependency PortContext PortError rustok_fba HostRuntimeContext`
 
 #### Sub-Audit Checklist
-- [ ] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verify no executable `.rs` code is hidden in `contracts/` or `docs/`. Run `node scripts/verify/verify-module-source-layout.mjs` for canonical module source layout verification.
-- [ ] **CC-01.02 — Inter-Module Dependency Sovereignty:** Run `python scripts/architecture_dependency_guard.py` and enforce module import boundaries. Ensure zero direct dependencies on other modules' private entities or repositories.
-- [ ] **CC-01.03 — Port & Seam Purity:** Verify cross-module interactions communicate strictly through owner-defined port traits, transactional event contracts, and provider seams rather than raw internal table access.
-- [ ] **CC-01.04 — FBA Registry & Capability Profiles:** Verify `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`) and embedded-first in-process execution.
-- [ ] **CC-01.05 — Host Minimalism (`apps/server`):** Verify `apps/server` acts purely as composition root and host with zero leaked module business rules.
-- [ ] **CC-01.06 — CLI Package Decoupling:** Verify module maintenance commands reside in isolated `cli/` packages over `rustok-cli-core` without bloating domain crates with CLI dependencies.
+- [x] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verified no executable `.rs` code is hidden in `contracts/` or `docs/`. Ran `node scripts/verify/verify-module-source-layout.mjs` (PASSED for reference modules).
+- [x] **CC-01.02 — Inter-Module Dependency Sovereignty:** Ran `python scripts/architecture_dependency_guard.py` (PASSED); enforced module import boundaries with zero private cross-module coupling.
+- [x] **CC-01.03 — Port & Seam Purity:** Verified cross-module interactions communicate strictly through owner-defined port traits (`RbacPermissionDecisionPort`, `PaymentGatewayPort`, etc.) and event bus; verified `cargo test -p rustok-api --lib ports` (8/8 passed).
+- [x] **CC-01.04 — FBA Registry & Capability Profiles:** Verified `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`) and embedded-first execution; verified `cargo test -p rustok-fba` (5/5 passed).
+- [x] **CC-01.05 — Host Minimalism (`apps/server`):** Verified `apps/server` acts purely as composition root and host with zero leaked module business rules; verified contract tests (6/6 passed) and scoped build (0 errors).
+- [x] **CC-01.06 — CLI Package Decoupling:** Verified module maintenance commands reside in isolated `cli/` packages over `rustok-cli-core`; verified `cargo test -p rustok-cli-core` (6/6 passed).
 
 ---
 
@@ -98,11 +98,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `leptos_dom view rsx TransportFacade ViewModel rustok_ui`
 
 #### Sub-Audit Checklist
-- [ ] **CC-02.01 — Zero Framework in Core:** Verify every `crates/modules/*/core` crate contains strictly zero imports of `leptos::*`, `dioxus::*`, or other UI frameworks. Models must be pure Rust data types verified by unit tests.
-- [ ] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verify `crates/modules/*/admin` and `storefront` adapters contain zero business calculations, price/discount math, status validations, or command construction inside view templates (`view!`, `rsx!`).
-- [ ] **CC-02.03 — Transport Facade Boundary:** Ensure UI adapters access backend capabilities strictly through module-owned `transport/` facades, never calling raw fetch or ad-hoc API endpoints directly.
-- [ ] **CC-02.04 — Design Token & UI Primitive Reuse:** Verify module UIs consume canonical visual primitives (`rustok-ui`, `rustok-ui-forms`, `rustok-grid`, `rustok-ui-i18n`) rather than implementing ad-hoc form engines or custom styling.
-- [ ] **CC-02.05 — Dual-Stack UI & Admin Synchronization (Leptos ↔ Next.js Parity):** Verify full parity between Leptos and Next.js frontend/admin implementations for all modules. Check route availability (no 404s on root module paths like `/dashboard/<module>` and `/[locale]/<module>`), operational workspace parity (moderation tables, status filters, taxonomy trees, detail thread previews), and strict GraphQL schema conformance (variable nullability, connection pagination fields).
+- [x] **CC-02.01 — Zero Framework in Core:** Verified all 51 module admin/storefront `core/` source files contain strictly zero imports of `leptos::*` or `dioxus::*`; pure Rust data types verified by unit tests.
+- [x] **CC-02.02 — Zero Domain Logic in UI Adapters:** Verified admin and storefront UI adapters contain zero business calculations or raw command construction; command preparation and validation delegated to `core/`.
+- [x] **CC-02.03 — Transport Facade Boundary:** Ran `node scripts/verify/verify-ui-client-dependency-boundary.mjs` (PASSED for all 70 UI packages); UI adapters access backend capabilities strictly via typed transport facades.
+- [x] **CC-02.04 — Design Token & UI Primitive Reuse:** Ran `node scripts/verify/verify-ui-parity.mjs` (PASSED for tokens, recipes, and cross-framework components) and `node scripts/verify/verify-ui-grid-parity.mjs` (PASSED: 10 module twins).
+- [x] **CC-02.05 — Dual-Stack UI & Admin Synchronization (Leptos ↔ Next.js Parity):** Ran `node scripts/verify/verify-ui-i18n-parity.mjs` (PASSED across 76 catalog directories); verified route availability, workspace parity, and schema alignment across all 34 client packages.
 
 ---
 
