@@ -21,10 +21,13 @@ For the architectural context, see
 Run in this order:
 
 ```powershell
-# 1. Validate module manifest, sub-crate existence, and wiring
+# 1. Check native/FFA architecture and live Next.js package/route wiring
+cargo xtask module lint <slug>
+
+# 2. Validate module manifest and publish metadata
 cargo xtask module validate <slug>
 
-# 2. Run module-scoped tests
+# 3. Run module-scoped tests
 cargo xtask module test <slug>
 ```
 
@@ -120,7 +123,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 
 | Check | Catches |
 |---|---|
-| `module validate <slug>` | Missing `Cargo.toml`, manifest/sub-crate mismatch, version drift |
+| `module lint <slug>` | Native/FFA source layout, dependency boundaries, private entities, adapter wiring, and structural Next.js package/route imports |
+| `module validate <slug>` | Manifest identity, declared UI metadata, local docs and publish metadata |
 | `module test <slug>` | Broken transport adapters, failed unit/integration tests |
 | `verify:i18n:ui` | Key drift between `admin/locales/` and `apps/next-admin/messages/` |
 | `verify:i18n:contract` | Undeclared locale bundles, missing manifest wiring |

@@ -9,7 +9,7 @@
     "verify:manifest": "cargo run -p xtask -- validate-manifest",
     "generate:docs-topology": "node scripts/generate/generate-docs-topology.mjs",
     "verify:adrs": "node scripts/verify/verify-adrs.mjs",
-    "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs",
+    "verify:module-source-layout": "node scripts/verify/verify-module-source-layout.mjs && node --test scripts/verify/native-module-layout.test.mjs",
     "verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.mjs",
     "test:verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.test.mjs",
     "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",

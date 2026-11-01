@@ -18,10 +18,13 @@ Before changing backend code:
 
 ## Scaffold profiles and generation contract
 
-This section defines the **target** for `cargo xtask module new` and
-`cargo xtask scaffold`, not proof that the current renderer complies.
-`module validate` checks publish-readiness and registration today; full
-architecture, compilation, and runtime evidence remain distinct checks.
+This section defines the contract for `cargo xtask module new` and
+`cargo xtask scaffold`. A non-dry-run native scaffold now runs
+`cargo xtask module lint <slug>` followed by
+`cargo xtask module validate <slug>` after registration unless
+`--skip-validate` is explicitly supplied. Static architecture and
+publish-metadata checks are therefore enforced before a successful scaffold
+result; compilation, behavior, and runtime evidence remain distinct checks.
 
 | Profile | Canonical owner | Required baseline | Must not inherit |
 |---|---|---|---|
@@ -69,9 +72,11 @@ registration, structural validation and tests. These do **not** imply
 implemented business operations, FBA `boundary_ready` /
 `transport_verified` or FFA `parity_verified`. Record actual readiness in
 the owner implementation plan and only project evidenced states into the
-registry. Known gaps must be declared in the owner README/plan. The future
-generator must preflight a complete edit plan, show all edits in dry-run,
-roll back failed writes, and never return success after failed validation.
+registry. Known gaps must be declared in the owner README/plan. The current
+generator preflights source and registration edits, previews the complete plan
+in dry-run, and uses rollback-protected writes; architecture lint runs before
+publish-metadata validation. This does not isolate concurrent external
+workspace writers, and the full generated-crate build matrix remains pending.
 
 ### Current implementation gap
 
@@ -87,8 +92,10 @@ The central readiness board remains `not_started` even though source shape
 is `core_transport_ui`. No Leptos host route is mounted.
 Classic Next.js packages belong to their own hosts and are not FFA.
 Successful publish metadata validation does not imply runtime or UI readiness.
-Atomic rollback, complete manifest-edit dry-run and an executable golden
-generation matrix remain future improvements.
+The generator now previews complete manifest edits and restores planned files
+when post-generation lint or metadata validation fails. This rollback-protected
+transaction is not a concurrency-isolated filesystem transaction. Golden
+snapshots and an executable generated-crate build matrix remain future work.
 
 ## Target Module Layout
 
@@ -203,54 +210,49 @@ profile admits only `lib.rs` and `module.rs` at the source root, so a bundle tha
 
 If a file starts mixing two rows from the table, split it before adding new behavior.
 
-## Strict native scaffolding contract (opt-in validator)
+## Static native architecture verification
 
-`cargo xtask module new <slug>` targets **native server modules**, not support
-crates and not the standalone WASI Component Model template. The new-module
-target profile has a small mandatory skeleton and optional, genuinely owned
-responsibilities; neither empty directories nor fake integrations count as
-completed behavior.
+The supported static entrypoint for a registered local native module is
+`cargo xtask module lint <slug>`. It invokes
+`scripts/verify/verify-module-source-layout.mjs --module <slug>`, which
+runs the generic rules in `scripts/verify/native-module-layout.mjs`.
+Blog-only reference assertions remain separate and must not become universal
+requirements.
 
-- **Required backend:** `Cargo.toml`, `rustok-module.toml`, `src/lib.rs`
-  (facade), `src/module.rs` (runtime ownership) and
-  `src/tests/{mod.rs,contract.rs}` (identity and contract tests).
-- **Optional backend responsibilities:** `domain/`, `dto/`, `services/`,
-  `error/`, `events/`, `ports/`, `integrations/`, `graphql/`,
-  `controllers/` or `rest/`, and paired `entities/` + `migrations/` when
-  the module actually owns persisted tables. Each materialized directory has
-  a meaningful `mod.rs`; no placeholder-owned capability.
-- **Required when UI is declared:** each `admin/` or `storefront/` package
-  has its own Cargo manifest, `src/lib.rs`, `core/`, `transport/`, `ui/`,
-  `i18n` entrypoint and `tests/contract.rs`; the selected transport facade
-  owns both GraphQL and native server adapters. UI modes `none`, `admin`,
-  `storefront` and `dual` must agree with the module manifest and the actual
-  packages. Transport-neutral `model` is materialized when it has distinct
-  types, rather than as an empty directory.
-- **Forbidden:** root-level backend responsibility files other than
-  `lib.rs` / `module.rs`, publicly exported persistence entities, runtime
-  framework imports in the pure domain/FFA core, transport imports in owner
-  services, UI bypassing its transport facade, and fabricated records or
-  log-only CRUD presented as a functional product.
-- **Bounded source:** 32 KiB backend Rust files and 40 KiB module-owned UI
-  Rust files, split only by coherent responsibilities.
+The generic lint checks source layout, Cargo/module identity, entry type,
+registration placement, private persistence entities, test location, dependency
+direction, bounded Rust file sizes, FFA package structure, and consistency
+between `module.ui_classification`, UI package presence and
+`[provides.*_ui]`. A `future_ui` package remains an unmounted draft, not a
+live UI surface. `no_ui` forbids UI packages, while `admin_only`,
+`storefront_only` and `dual_surface` require the corresponding actual
+package and live manifest declaration.
 
-The standalone, targeted architectural preflight is:
+The generic lint recognizes all six manifest classifications, including
+`capability_only`, and distinguishes live UI surfaces, unmounted
+`future_ui` drafts, and manifest-declared UI support sub-crates. Support
+sub-crates are not routes and do not inherit the surface package layout.
+Unknown source directories, empty or unwired responsibility slots,
+thin backend/FFA facades, optional `runtime.rs` / `error.rs` wiring,
+transport-neutral DTOs and ports, persistence-only entity dependencies,
+framework-independent FFA models/core, symlinked module paths/source trees,
+comment-only dependency/registration markers, and UI components that bypass
+their transport facade fail closed.
+
+There is one architecture-lint owner: `native-module-layout.mjs`.
+The former standalone `verify-native-module-architecture.mjs` duplicate has
+been removed; its applicable checks now live in the shared validator.
+`module validate` still checks publish metadata and registration, not
+architecture. Static lint checks structural Next.js package and route wiring
+for live UI surfaces, but does not prove compilation, tests, functional
+Next.js/Leptos parity, native or GraphQL transport execution, or FBA/FFA
+readiness. Those require independently recorded evidence.
 
 ```bash
-node scripts/verify/verify-native-module-architecture.mjs --module <slug>
-# Or validate a temporary generated fixture:
-node scripts/verify/verify-native-module-architecture.mjs --module-root <path>
-node --test scripts/verify/verify-native-module-architecture.test.mjs
+cargo xtask module lint <slug>
+cargo xtask module validate <slug>
+node --test scripts/verify/native-module-layout.test.mjs
 ```
-
-This strict check is **opt-in** during scaffold migration, and does not silently
-enroll historical modules or replace the existing Blog reference gates.
-It verifies physical/source invariants only: a pass is **not** proof of FFA
-client parity, FBA transport verification, persistence transactions, compilation,
-test execution, module installation, or publish readiness. The current generator
-has known contract drift (root `contract_tests.rs`, public entities, synthetic
-UI actions and placeholder integrations). Repair these in subsequent bounded
-scaffold stages; do not weaken the check or mark incomplete modules ready.
 
 ## Canonical reference invariants
 
