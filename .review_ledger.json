@@ -660,11 +660,11 @@
       "name": "rustok-marketplace-allocation",
       "path": "crates/modules/rustok-marketplace-allocation",
       "category": "modules",
-      "files": 14,
-      "loc": 1796,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "files": 13,
+      "loc": 1475,
+      "completed": true,
+      "completed_at": "2026-11-01T07:10:00+03:00",
+      "notes": "Audited order-line allocation owner; batch atomicity, idempotency receipts, minor currency units, error mapping; 8/8 tests passed, 0 clippy warnings, gatekeeper passed, zero defects"
     },
     "crates/modules/rustok-marketplace-commission": {
       "name": "rustok-marketplace-commission",
@@ -2648,14 +2648,14 @@
       "notes": ""
     },
     "crates/modules/rustok-blog/cli": {
-      "name": "cli",
+      "name": "rustok-blog-cli",
       "path": "crates/modules/rustok-blog/cli",
       "category": "modules",
       "files": 2,
       "loc": 580,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T07:25:00+03:00",
+      "notes": "Audited operational command provider; publish-scheduled and cleanup-tokens with bounded limits, tenant scoping, dry-run, outbox emissions; 6/6 tests passed, 0 clippy warnings, gatekeeper passed, zero defects"
     },
     "crates/modules/rustok-calendar": {
       "name": "rustok-calendar",
