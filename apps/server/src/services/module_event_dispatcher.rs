@@ -679,6 +679,20 @@ pub fn build_module_event_dispatcher(
     dispatcher
 }
 
+#[cfg(feature = "mod-product")]
+fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
+    // Reserve before spawning: concurrent composition must not create two workers.
+    struct ProductMediaReleaseWorkerReservation;
+    if !ctx.settings().runtime.runs_background_workers()
+        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
+    {
+        return;
+    }
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -963,18 +977,4 @@ mod tests {
         #[cfg(all(feature = "commerce-marketplace-financial", feature = "mod-payment"))]
         assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
     }
-}
-
-#[cfg(feature = "mod-product")]
-fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
-    // Reserve before spawning: concurrent composition must not create two workers.
-    struct ProductMediaReleaseWorkerReservation;
-    if !ctx.settings().runtime.runs_background_workers()
-        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
-    {
-        return;
-    }
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
 }

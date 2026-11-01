@@ -94,7 +94,6 @@ mod contract_tests {
     }
 
     #[test]
-    #[test]
     fn registry_modules_publish_expected_rbac_surface() {
         let registry = build_registry();
         let auth = registry.get("auth").expect("auth module");

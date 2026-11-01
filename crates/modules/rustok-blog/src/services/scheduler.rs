@@ -626,13 +626,12 @@ fn dangling_route_condition() -> Condition {
         )
 }
 
-/// The reconciliation worker is `runtime`-gated with the rest of this module, so these
-/// tests run under `cargo test -p rustok-blog --features runtime`.
-
 #[path = "scheduler/retention.rs"]
 mod retention;
 pub use retention::BlogCommentProjectionRetentionWorkRegistration;
 
+/// The reconciliation worker is `runtime`-gated with the rest of this module, so these
+/// tests run under `cargo test -p rustok-blog --features runtime`.
 #[cfg(test)]
 #[path = "scheduler/reconciliation_tests.rs"]
 mod reconciliation_tests;
