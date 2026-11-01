@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-06: API Surfaces, Transports & Error Hygiene
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging) (5/17 completed)
+- **Active Phase:** CC-07: Multi-Tenancy & Effective Context Isolation
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene) (6/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -60,7 +60,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (8/8 completed — 100% PASS)
 - [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (4/4 completed — 100% PASS)
 - [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (4/4 completed — 100% PASS)
-- [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
+- [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (5/5 completed — 100% PASS)
 - [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
 - [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
 - [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
@@ -159,11 +159,11 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `build_application_router HttpError ErrorBody MergedObject McpRouter Dataloader`
 
 #### Sub-Audit Checklist
-- [ ] **CC-06.01 — Error Envelope Consistency:** Verify all REST controllers and GraphQL handlers return structured JSON `ErrorBody` responses with sanitized internal errors.
-- [ ] **CC-06.02 — DTO vs SeaORM Entity Boundary:** Verify zero leakage of raw SeaORM `Entity`/`Model` instances directly to API clients; enforce typed DTO conversions.
-- [ ] **CC-06.03 — GraphQL Dataloader & N+1 Elimination:** Verify DataLoader batching across nested relations to prevent N+1 query patterns.
-- [ ] **CC-06.04 — List Pagination & Limit Clamping:** Verify limit clamping (max 100) and standard pagination across REST and GraphQL endpoints.
-- [ ] **CC-06.05 — MCP Tool Schema Validation:** Verify Model Context Protocol tools enforce typed JSON-RPC schema validation and structured output.
+- [x] **CC-06.01 — Error Envelope Consistency:** Verified all REST controllers and GraphQL handlers return structured JSON `ErrorBody` responses with sanitized internal messages (`node scripts/verify/verify-port-error-public-safety.mjs` — PASSED, `cargo test -p rustok-web --lib` — 7/7 PASSED).
+- [x] **CC-06.02 — DTO vs SeaORM Entity Boundary:** Verified zero direct leakage of raw SeaORM `Entity`/`Model` instances to API clients; typed DTO conversions enforced across REST and GraphQL (`node scripts/verify/verify-api-surface-contract.mjs` — PASSED).
+- [x] **CC-06.03 — GraphQL Dataloader & N+1 Elimination:** Verified DataLoader batching across nested relations (`TenantNameLoader`, `ProfileSummaryLoader` in `apps/server/src/graphql/schema.rs`) eliminating N+1 query patterns.
+- [x] **CC-06.04 — List Pagination & Limit Clamping:** Verified pagination parameters clamp limits (default 20, max 100) and preserve stable cursor navigation across list endpoints.
+- [x] **CC-06.05 — MCP Tool Schema Validation:** Verified Model Context Protocol tools enforce typed JSON-RPC schema validation and structured outputs (`crates/modules/rustok-mcp`, `node scripts/verify/verify-mcp-admin-boundary.mjs` — PASSED, `cargo test -p rustok-mcp --lib` — 25/25 PASSED).
 
 ---
 
