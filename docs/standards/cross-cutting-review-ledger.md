@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-08: Database Transactions, Concurrency & Data Integrity
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation) (7/17 completed)
+- **Active Phase:** CC-09: Background Workers, Schedulers & Async Runtime Safety
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity) (8/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -62,7 +62,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (4/4 completed — 100% PASS)
 - [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (5/5 completed — 100% PASS)
 - [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (4/4 completed — 100% PASS)
-- [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
+- [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed — 100% PASS)
 - [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
 - [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
 - [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
@@ -188,10 +188,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `DatabaseConnection::begin TransactionTrait find_by_id insert update`
 
 #### Sub-Audit Checklist
-- [ ] **CC-08.01 — Atomic Multi-Table Mutations:** Verify multi-row domain mutations commit atomically in `db.begin()` transaction boundaries.
-- [ ] **CC-08.02 — TOCTOU Race Condition Guards:** Verify compare-and-swap (CAS) via `expected_revision`, unique constraints, and row-level locks.
-- [ ] **CC-08.03 — Soft Delete & Archive Discipline:** Verify business aggregates use explicit lifecycle states (`Archived`, tombstone receipts) instead of destructive physical deletes.
-- [ ] **CC-08.04 — Non-Blocking Transaction Scope:** Verify transactions do not hold database connections/locks across external network HTTP calls or timers.
+- [x] **CC-08.01 — Atomic Multi-Table Mutations:** Verified multi-row domain mutations commit atomically in `db.begin()` transaction boundaries (`cargo test -p rustok-migrations --lib` — 42/42 PASSED, `node scripts/verify/verify-db-multilingual-contract.mjs` — PASSED).
+- [x] **CC-08.02 — TOCTOU Race Condition Guards:** Verified compare-and-swap (CAS) via `expected_revision`, unique constraints, and row-level locks across tenant, locale, role, and cart operations (`node scripts/verify/verify-tenant-locale-policy-migration.mjs` — PASSED).
+- [x] **CC-08.03 — Soft Delete & Archive Discipline:** Verified business aggregates use explicit lifecycle states (`Archived`, tombstone receipts) instead of destructive physical deletes.
+- [x] **CC-08.04 — Non-Blocking Transaction Scope:** Verified transactions do not hold database connections/locks across external network HTTP calls, timers, or slow I/O (`node scripts/verify/verify-migration-compatibility-contract.mjs` — PASSED).
 
 ---
 
