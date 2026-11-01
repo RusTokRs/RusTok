@@ -482,9 +482,9 @@
       "category": "modules",
       "files": 638,
       "loc": 178659,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 12:05",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified forum state machine transitions, topic route canonicalization, posting policy facts, mention relations; 253/253 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-forum/admin": {
       "name": "admin",
@@ -492,9 +492,9 @@
       "category": "modules",
       "files": 36,
       "loc": 13480,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 12:05",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA separation, full multilingual parity (en/ru/ar), dual-path transport isolation; 94/94 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-forum/storefront": {
       "name": "storefront",
@@ -502,9 +502,9 @@
       "category": "modules",
       "files": 27,
       "loc": 7841,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 12:05",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA separation, draft persistence, cursor pagination, badge mappings; 38/38 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-fulfillment": {
       "name": "rustok-fulfillment",
