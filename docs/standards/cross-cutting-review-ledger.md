@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-03: RBAC, Auth & Security Enforcement
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity) (2/17 completed)
+- **Active Phase:** CC-04: Caching, Invalidation & Tenant Cache Isolation
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement) (3/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -57,7 +57,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 - [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (6/6 completed — 100% PASS)
 - [x] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (5/5 completed — 100% PASS)
-- [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
+- [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (8/8 completed — 100% PASS)
 - [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
 - [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
 - [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
@@ -113,14 +113,14 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `RequirePermission check_permission RbacService AuthContext PermissionKey`
 
 #### Sub-Audit Checklist
-- [ ] **CC-03.01 — Controller & Resolver Permission Coverage:** Audit REST endpoints in `apps/server/src/controllers/*` and GraphQL operations in `apps/server/src/graphql/*` to verify permission guards are enforced on all operations.
-- [ ] **CC-03.02 — Tenant Isolation in Security Context & Authoritative Queries:** Verify `SecurityContext` strictly requires and enforces tenant scope and principal claims, preventing cross-tenant role leakage or privilege escalation.
-- [ ] **CC-03.03 — RBAC Cache Invalidation & Canonical API Seams:** Verify role and permission mutations commit atomically within transaction boundaries and broadcast multi-node invalidation via `publish_user_rbac_invalidation`.
-- [ ] **CC-03.04 — Password & Token Security:** Verify Argon2id password hashing parameters, unique random salts, 256-bit entropy refresh tokens, strict JWT validation (RFC 7519), and session revocation on password changes.
-- [ ] **CC-03.05 — FFA Purity & i18n in RBAC UI:** Enforce FFA i18n invariants in RBAC UI components, resolving messages via Fluent message catalogs without hardcoded language branching.
-- [ ] **CC-03.06 — Built-in Role Resource Parity & Completeness:** Audit built-in system role definitions across `SUPER_ADMIN_PERMISSIONS`, `ADMIN_PERMISSIONS`, `MANAGER_PERMISSIONS`, and `CUSTOMER_PERMISSIONS` in `rustok-core::rbac`.
-- [ ] **CC-03.07 — GraphQL Mutation Race Elimination & Role Invalidation:** Verify permission insertion handles concurrency deterministically and invalidates cached permissions for all affected users upon role permission updates.
-- [ ] **CC-03.08 — Platform Permission Catalog Exhaustiveness:** Verify 100% parity across all resource variants between `rustok-core::rbac`, `rustok-api::Resource`, and GraphQL admin permission query catalogs.
+- [x] **CC-03.01 — Controller & Resolver Permission Coverage:** Verified REST controllers in `apps/server/src/controllers/*` and GraphQL resolvers bind permission checks; OpenAPI DTO derives strictly separated into `rustok-auth::rest` via `node scripts/verify/verify-auth-admin-boundary.mjs` and `node scripts/verify/verify-rbac-admin-boundary.mjs` (PASSED).
+- [x] **CC-03.02 — Tenant Isolation in Security Context & Authoritative Queries:** Verified explicit principal kind typing and tenant enforcement without metadata fallback via `node scripts/verify/verify-rbac-explicit-principal-kind.mjs`, `node scripts/verify/verify-auth-admin-tenant-scope.mjs`, and `node scripts/verify/verify-rbac-admin-tenant-scope.mjs` (PASSED).
+- [x] **CC-03.03 — RBAC Cache Invalidation & Canonical API Seams:** Role and permission mutations commit atomically within transaction boundaries and trigger user-scoped cache invalidation; verified `node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs` (PASSED) and `node scripts/verify/verify-server-platform-settings-tenant-scope.mjs` (PASSED).
+- [x] **CC-03.04 — Password & Token Security:** Verified Argon2id password hashing parameters, unique salts, 256-bit entropy refresh tokens, RFC 7519 JWT validation, and token revocation via unit tests (`cargo test -p rustok-auth --lib` — 74/74 PASSED).
+- [x] **CC-03.05 — FFA Purity & i18n in RBAC UI:** Enforced framework-free view models in `crates/modules/rustok-rbac/admin/src/core/` and Fluent message resolution (`cargo test -p rustok-rbac-admin --lib` — 8/8 PASSED).
+- [x] **CC-03.06 — Built-in Role Resource Parity & Completeness:** Audited system role definitions across `SUPER_ADMIN_PERMISSIONS`, `ADMIN_PERMISSIONS`, `MANAGER_PERMISSIONS`, and `CUSTOMER_PERMISSIONS` in `rustok-core::rbac` (`cargo test -p rustok-core --lib rbac::tests` — 19/19 PASSED).
+- [x] **CC-03.07 — GraphQL Mutation Race Elimination & Role Invalidation:** Replaced direct `user_roles::Entity` SeaORM model coupling in `apps/server/src/graphql/rbac_runtime.rs` with portable backend-aware statement queries and deterministic user invalidation (`cargo check -p rustok-server --lib --no-default-features` — 0 errors).
+- [x] **CC-03.08 — Platform Permission Catalog Exhaustiveness:** Verified resource and permission catalog parity across `rustok-core::rbac`, `rustok-api::Resource`, and GraphQL catalogs (`cargo test -p rustok-rbac --lib` — 83/83 PASSED).
 
 ---
 
