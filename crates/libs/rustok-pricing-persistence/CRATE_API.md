@@ -1,5 +1,9 @@
 # rustok-pricing-persistence / CRATE_API
 
+## Public surface
+- `entities`: SeaORM entity definitions for `price`, `price_list`, and `price_list_translation`.
+- `BootstrapService`: transactional initial price creation and deletion helper.
+
 ## Public Modules
 - `entities`: SeaORM entity definitions for `price`, `price_list`, and `price_list_translation`.
 

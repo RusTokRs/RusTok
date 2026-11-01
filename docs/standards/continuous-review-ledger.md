@@ -791,7 +791,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 34 | 12,269 | 2026-10-17 00:50 | Audited and cleaned. |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 2 | 186 | 2026-10-17 01:23 | Audited and cleaned. |
 | [x] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 7 | 1,045 | 2026-10-17 01:09 | Audited and cleaned. |
-| [ ] | [rustok-pricing-persistence](../../crates/libs/rustok-pricing-persistence) | `libs` | 6 | 668 | None |  |
+| [x] | [rustok-pricing-persistence](../../crates/libs/rustok-pricing-persistence) | `libs` | 6 | 668 | 2026-11-01 09:30 | Verified SeaORM pricing entities, non-negative bounds, ASCII currency validation, BootstrapService transaction safety, and contract tests. |
 | [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 5 | 2,457 | 2026-10-17 00:58 | Audited and cleaned. |
 | [x] | [rustok-seo-targets](../../crates/libs/rustok-seo-targets) | `libs` | 2 | 1,516 | 2026-10-30 04:30 | Audited runtime SEO target capability registry and schema builders; verified canonical SeoTargetSlug contract, slug validation, duplicate slug rejection, capability filtering, and typed JSON-LD emitters; 8/8 tests passed, 0 clippy warnings, zero defects. |
 | [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,361 | 2026-10-17 01:15 | Audited and cleaned. |
