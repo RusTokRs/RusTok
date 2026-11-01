@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-05: Event Bus, Transactional Outbox & Async Messaging
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation) (4/17 completed)
+- **Active Phase:** CC-06: API Surfaces, Transports & Error Hygiene
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging) (5/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -59,7 +59,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (5/5 completed — 100% PASS)
 - [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (8/8 completed — 100% PASS)
 - [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (4/4 completed — 100% PASS)
-- [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
+- [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (4/4 completed — 100% PASS)
 - [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
 - [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
 - [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
@@ -145,10 +145,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `publish_in_tx TransactionalEventBus Outbox sys_events publish`
 
 #### Sub-Audit Checklist
-- [ ] **CC-05.01 — Atomic `publish_in_tx` Invariant:** Verify all domain mutations write outbox events inside the active database transaction boundary (`publish_in_tx`).
-- [ ] **CC-05.02 — Event Payload Integrity & PII Boundary:** Verify `EventEnvelope` enforces metadata (ULID id, tenant_id, correlation_id, trace_id), strict schema versioning, and zero PII leaks.
-- [ ] **CC-05.03 — Consumer Idempotency:** Verify durable owner-scoped idempotency receipts in `owner_operation_receipts` to prevent duplicate processing.
-- [ ] **CC-05.04 — Outbox Retention & DLQ Pipelines:** Verify lease batch claiming, exponential backoff, DLQ quarantine for failed events, and retention pruning.
+- [x] **CC-05.01 — Atomic `publish_in_tx` Invariant:** Verified all domain mutations write outbox events inside the active database transaction boundary (`publish_in_tx` / `write_envelope_in_tx` in `rustok-outbox`) before commit (`node scripts/verify/verify-outbox-contract-write-once-causation.mjs` — PASSED).
+- [x] **CC-05.02 — Event Payload Integrity & PII Boundary:** Verified `EventEnvelope` enforces metadata (ULID id, tenant_id, correlation_id, trace_id), strict schema versioning, and zero PII leaks (`cargo test -p rustok-events --lib` — 72/72 PASSED, `node scripts/verify/verify-event-contract-digest-admission.mjs` — PASSED).
+- [x] **CC-05.03 — Consumer Idempotency:** Verified durable owner-scoped idempotency receipts in `owner_operation_receipts` preventing duplicate processing; validated lease recovery and retryable admission (`cargo test -p rustok-outbox --lib` — 24/24 PASSED).
+- [x] **CC-05.04 — Outbox Retention & DLQ Pipelines:** Verified lease batch claiming, exponential backoff, DLQ quarantine for malformed events, and retention pruning (`node scripts/verify/verify-outbox-retention-and-event-metrics.mjs`, `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs`, `node scripts/verify/verify-event-dlq-duplicate-alert-observability.mjs` — all PASSED).
 
 ---
 
