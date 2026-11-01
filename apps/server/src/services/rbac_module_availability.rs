@@ -118,9 +118,7 @@ impl rustok_rbac::graphql::RbacModuleAvailabilityProvider for ServerRbacModuleAv
 pub fn rbac_module_availability_handle(
     ctx: &ServerRuntimeContext,
 ) -> Option<rustok_rbac::graphql::RbacModuleAvailabilityHandle> {
-    if ctx.shared_get::<ModuleRegistry>().is_none() {
-        return None;
-    }
+    ctx.shared_get::<ModuleRegistry>()?;
     Some(rustok_rbac::graphql::RbacModuleAvailabilityHandle(
         Arc::new(ServerRbacModuleAvailabilityProvider::new(ctx.clone())),
     ))

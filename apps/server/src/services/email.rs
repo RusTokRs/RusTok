@@ -276,14 +276,6 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-/// Build a localized built-in auth email sender from server runtime context.
-///
-/// `locale` is used to render localized built-in auth templates. The underlying SMTP transport is cached in
-/// `shared_store` to reuse the connection pool.
-///
-/// Dispatches on `email.provider`:
-/// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
-/// - `none` → `EmailService::Disabled`
 /// Verification-token lifetime shared by registration and resend flows.
 pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 
@@ -335,6 +327,14 @@ pub fn spawn_email_verification(
     });
 }
 
+/// Build a localized built-in auth email sender from server runtime context.
+///
+/// `locale` is used to render localized built-in auth templates. The underlying SMTP transport is cached in
+/// `shared_store` to reuse the connection pool.
+///
+/// Dispatches on `email.provider`:
+/// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
+/// - `none` → `EmailService::Disabled`
 pub fn email_service_from_ctx(
     ctx: &ServerRuntimeContext,
     locale: &str,

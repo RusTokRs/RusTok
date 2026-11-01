@@ -4,7 +4,7 @@
 //! chain, the SQLite test migrator, installer-owned schema application, and
 //! the schema-diff safety classifier shared by operator tooling.
 
-use sea_orm_migration::prelude::{DbErr, MigrationTrait, MigratorTrait, SchemaManager};
+use sea_orm_migration::prelude::{ConnectionTrait, DbErr, MigrationTrait, MigratorTrait, SchemaManager};
 
 // Platform-core migrations — tables that are always present regardless of which
 // optional modules are installed: tenants, users, sessions, roles, permissions,

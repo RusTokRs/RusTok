@@ -99,7 +99,7 @@ mod wrap;
 pub use wrap::{ColumnarMap, ColumnarVec};
 
 pub use postcard::Error as PostcardError;
-pub use serde_columnar_derive::columnar;
+pub use serde_columnar_derive::{columnar, __private_consume_columnar_attributes};
 pub mod __serde_utils;
 
 #[cfg(feature = "bench")]

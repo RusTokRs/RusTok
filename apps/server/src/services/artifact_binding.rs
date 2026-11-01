@@ -234,7 +234,7 @@ fn idempotency_request(
     key: Option<Uuid>,
     request_digest: String,
 ) -> Result<Option<ArtifactBindingIdempotencyRequest>> {
-    let key = match (binding.idempotency.clone(), key) {
+    let key = match (binding.idempotency, key) {
         (ModuleBindingIdempotency::None, _) => return Ok(None),
         (ModuleBindingIdempotency::Required, None) => {
             return Err(Error::BadRequest(

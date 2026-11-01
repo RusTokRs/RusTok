@@ -1185,7 +1185,7 @@ mod tests {
 
     #[test]
     fn empty_outbox_is_healthy_and_has_zero_pending_lag() {
-        let now = Utc::now();
+        let now = chrono::Utc::now();
         assert_eq!(super::pending_event_lag_seconds(None, now), 0);
         assert_eq!(
             super::pending_event_lag_seconds(Some(now - chrono::Duration::seconds(12)), now),

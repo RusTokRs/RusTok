@@ -143,6 +143,7 @@ pub mod module_event_dispatcher {
     pub fn search_public_source_modules() -> Vec<&'static str> {
         // Blog is gated: live Channel bindings and publication may change
         // before an asynchronous Search projection catches up.
+        #[allow(unused_mut)]
         let mut modules = vec!["commerce", "content", "docs", "pages"];
         #[cfg(feature = "mod-content")]
         modules.extend_from_slice(rustok_content::CONTENT_NODE_KINDS);

@@ -2,9 +2,11 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
 };
+#[allow(unused_imports)]
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+#[allow(unused_imports)]
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
     ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE,
@@ -942,6 +944,7 @@ fn attached_ref<'a>(
     }
 }
 
+#[cfg(feature = "mod-taxonomy")]
 fn prepared_write_changed(
     before_shared: &Value,
     before_localized: Option<&Value>,
@@ -957,6 +960,7 @@ fn prepared_write_changed(
     }
 }
 
+#[cfg(feature = "mod-taxonomy")]
 fn normalized_object(value: Option<&Value>) -> Value {
     Value::Object(
         value

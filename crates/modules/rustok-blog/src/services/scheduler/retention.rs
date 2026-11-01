@@ -55,31 +55,33 @@ impl BlogCommentProjectionRetentionWorkAdapter {
         // An async mutex is held over discovery to prevent concurrent local
         // claims from advancing the fairness cursor based on the same state.
         let mut last = self.last_claimed_tenant.lock().await;
-        let stale_tenants = || {
+        let stale_tenants_query = || {
             blog_comment_projection_delivery::Entity::find()
                 .select_only()
                 .column(blog_comment_projection_delivery::Column::TenantId)
                 .filter(blog_comment_projection_delivery::Column::ProcessedAt.lt(cutoff))
                 .group_by(blog_comment_projection_delivery::Column::TenantId)
                 .order_by_asc(blog_comment_projection_delivery::Column::TenantId)
-                .into_tuple::<Uuid>()
         };
 
         let next = if let Some(last_tenant) = *last {
-            let higher = stale_tenants()
+            let higher = stale_tenants_query()
                 .filter(blog_comment_projection_delivery::Column::TenantId.gt(last_tenant))
+                .into_tuple::<Uuid>()
                 .one(&self.database)
                 .await
                 .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
             match higher {
                 Some(tenant_id) => Some(tenant_id),
-                None => stale_tenants()
+                None => stale_tenants_query()
+                    .into_tuple::<Uuid>()
                     .one(&self.database)
                     .await
                     .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
             }
         } else {
-            stale_tenants()
+            stale_tenants_query()
+                .into_tuple::<Uuid>()
                 .one(&self.database)
                 .await
                 .map_err(|error| ModuleWorkError::Source(error.to_string()))?

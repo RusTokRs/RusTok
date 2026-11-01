@@ -169,10 +169,8 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             // Custom role slugs fall through to the provider (the
             // USERS_MANAGE requirement above already covers them);
             // built-in role grants keep the hierarchy check here.
-            if let Ok(role) = Self::parse_role(role) {
-                if role != UserRole::Customer {
-                    Self::validate_role_grant(context, &authority, &role)?;
-                }
+            if let Ok(role) = Self::parse_role(role).filter(|r| *r != UserRole::Customer) {
+                Self::validate_role_grant(context, &authority, &role)?;
             }
         }
 

@@ -32,9 +32,10 @@ use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
-    FieldDefinitionViewSource, GenericAttachedFieldDefinitionService,
-    TAXONOMY_CATEGORY_ENTITY_TYPE, UpdateFieldDefinitionCommand,
+    FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
 };
+#[cfg(feature = "mod-taxonomy")]
+use flex::{GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE};
 
 struct UserFieldDefinitionService;
 struct OrderFieldDefinitionService;

@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(literal_search_pattern("a_b%|"), "%a|_b|%||%");
         assert_eq!(literal_search_pattern("Иван"), "%Иван%");
 
-        use sea_orm::{DbBackend, QueryTrait};
+        use sea_orm::{DbBackend, ExprTrait, QueryTrait};
         let pattern = literal_search_pattern("%");
         let statement = ordered_tenant_users_query(Uuid::new_v4())
             .filter(Expr::col(UserColumn::Email).like(LikeExpr::new(pattern).escape('|')))

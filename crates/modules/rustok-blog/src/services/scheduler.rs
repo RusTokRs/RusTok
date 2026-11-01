@@ -23,7 +23,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use rustok_api::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
@@ -501,13 +500,13 @@ impl BlogRouteReconciliationWorkAdapter {
         let owner = BlogPostRouteOwner::new(self.events.clone());
         let mut removed = 0u64;
         for route in stale {
-            // The iteration removes at most ROUTE_RECONCILIATION_BATCH routes, no
+            // The iteration removes at most ROUTE_RECONCILIATION_SCAN routes, no
             // matter how many routes one target owns. The remaining routes of a
             // target are removed by the next iteration.
-            if removed >= ROUTE_RECONCILIATION_BATCH {
+            if removed >= ROUTE_RECONCILIATION_SCAN {
                 break;
             }
-            let budget = ROUTE_RECONCILIATION_BATCH - removed;
+            let budget = ROUTE_RECONCILIATION_SCAN - removed;
             removed += owner
                 .remove_target_routes_up_to_in_tx(&txn, tenant_id, None, route.target_id, budget)
                 .await
@@ -596,7 +595,6 @@ impl ModuleWorkHandler for BlogRouteReconciliationWorkAdapter {
 /// is idempotent and safe under duplicate execution: newly processed events have
 /// a greater ULID, so a delete computed against an older snapshot of the ledger
 /// can never touch them.
-#[derive(Clone)]
 /// A route of a `blog_post` target whose post is absent in the same tenant.
 ///
 /// The correlated subquery mirrors what the owner checks on read, so discovery and
@@ -631,10 +629,11 @@ fn dangling_route_condition() -> Condition {
 /// The reconciliation worker is `runtime`-gated with the rest of this module, so these
 /// tests run under `cargo test -p rustok-blog --features runtime`.
 
-#[cfg(test)]
+#[path = "scheduler/retention.rs"]
 mod retention;
 pub use retention::BlogCommentProjectionRetentionWorkRegistration;
 
+#[cfg(test)]
 #[path = "scheduler/reconciliation_tests.rs"]
 mod reconciliation_tests;
 

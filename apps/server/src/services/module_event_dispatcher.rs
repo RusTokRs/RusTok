@@ -61,6 +61,7 @@ fn enrich_runtime_extensions_after_event_start(
     ctx: &ServerRuntimeContext,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Arc<ModuleRuntimeExtensions> {
+    #[allow(unused_mut)]
     let mut enriched = extensions.as_ref().clone();
 
     #[cfg(feature = "mod-pages")]
