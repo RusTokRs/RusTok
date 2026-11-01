@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-11: Dynamic Settings, Tenant Configuration & Secrets
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry) (10/17 completed)
+- **Active Phase:** CC-12: Internationalization (i18n), Localization & Translation Storage
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets) (11/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -65,7 +65,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed — 100% PASS)
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed — 100% PASS)
 - [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed — 100% PASS)
-- [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
+- [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed — 100% PASS)
 - [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
 - [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
 - [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
@@ -230,10 +230,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `SettingsService load_tenant_settings Zeroize`
 
 #### Sub-Audit Checklist
-- [ ] **CC-11.01 — In-Memory Secret Zeroization & Redaction:** Verify secret zeroization in memory, absence of Debug leaks, and secret redaction on settings reads.
-- [ ] **CC-11.02 — Dynamic Settings Schema Validation:** Verify tenant settings schemas are validated prior to persistence against typed domain validators.
-- [ ] **CC-11.03 — Hierarchy & Fallback Resolution:** Verify 3-tier settings resolution: tenant database row -> host YAML configuration -> compiled-in defaults.
-- [ ] **CC-11.04 — Environment Variable Containment:** Verify `std::env::var` reads are restricted to host startup; domain modules consume typed context facades.
+- [x] **CC-11.01 — In-Memory Secret Zeroization & Redaction:** Verified secret wrapper `Secret` redacts in `Debug`/`Display` (`<redacted>`), and `redact_secrets` scrubs SMTP passwords, Redis passwords, and connection URLs on read (`node scripts/verify/verify-server-platform-settings-tenant-scope.mjs` — PASSED).
+- [x] **CC-11.02 — Dynamic Settings Schema Validation:** Verified `ValidatorRegistry` in `SettingsService` enforces typed domain validators prior to persisting tenant settings.
+- [x] **CC-11.03 — Hierarchy & Fallback Resolution:** Verified 3-tier settings resolution: tenant database row -> host YAML configuration (`yaml_defaults_for`) -> compiled-in defaults.
+- [x] **CC-11.04 — Environment Variable Containment:** Verified `std::env::var` reads are restricted to host startup and SSR transport entrypoints; domain modules consume typed context facades.
 
 ---
 
