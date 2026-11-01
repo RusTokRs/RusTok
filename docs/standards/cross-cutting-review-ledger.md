@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-13: Documentation, ADRs, Manifests & Verification Gates
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage) (12/17 completed)
+- **Active Phase:** CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates) (13/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -67,7 +67,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed — 100% PASS)
 - [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed — 100% PASS)
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed — 100% PASS)
-- [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
+- [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed — 100% PASS)
 - [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
 - [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
@@ -258,10 +258,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `build_registry RusToKModule modules.toml rustok-module.toml`
 
 #### Sub-Audit Checklist
-- [ ] **CC-13.01 — Registry vs Manifest Parity:** Verify all modules declared in `modules.toml` match server registry and `rustok-module.toml` manifests.
-- [ ] **CC-13.02 — Active ADR Alignment:** Verify code reflects accepted ADRs in `DECISIONS/` and ADRs conform to canonical governance template.
-- [ ] **CC-13.03 — Reference Schema Parity:** Verify committed routes and API contracts adhere to platform API contracts.
-- [ ] **CC-13.04 — Documentation Integrity:** Verify documentation links, module diagrams, and metadata pass `node scripts/verify/verify-docs.mjs`.
+- [x] **CC-13.01 — Registry vs Manifest Parity:** Verified all 65 modules declared in `modules.toml` match server registry, `modules.toml.example`, and `rustok-module.toml` manifests (`node scripts/verify/verify-module-manifest-docs-drift.mjs` — PASSED).
+- [x] **CC-13.02 — Active ADR Alignment:** Verified code reflects accepted ADRs and all 163 ADRs conform to canonical governance template with 13 standard headings (`node scripts/verify/verify-adrs.mjs` — 163/163 PASSED).
+- [x] **CC-13.03 — Reference Schema Parity:** Verified committed routes and API contracts adhere to platform API contracts (`node scripts/verify/verify-api-surface-contract.mjs` — PASSED, `node scripts/verify/verify-api-compatibility-contract.mjs` — PASSED).
+- [x] **CC-13.04 — Documentation Integrity:** Verified documentation links, module diagrams, and metadata pass `node scripts/verify/verify-docs.mjs` (all 6 stages PASSED).
 
 ---
 

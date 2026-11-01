@@ -131,3 +131,19 @@ Close the open implementation gap in `PageService::publish_reviewed`:
 - Scoped backend test suite: `cargo test -p rustok-pages --test page_template_catalog_sqlite` and `cargo test -p rustok-pages --test reviewed_publish_layout`.
 - Fly core test suite: `cargo test -p fly` verifying `page_content_slot` registration and single-slot validation.
 - End-to-end publish verification: Verifying published artifact HTML contains layout header, page content, and layout footer in correct order with verified hash integrity.
+
+## Migration and cutover
+
+New page templates and starter presets use the unified Fly builder directly. Existing pages continue to render their existing static landing artifacts; re-publication under the reviewed publish closure automatically applies the configured layout without requiring content migration.
+
+## Alternatives considered
+
+1. **Independent Templates subsystem:** Rejected to avoid duplicating design tokens, AST models, and rendering pipelines.
+2. **Client-side runtime layout injection:** Rejected to ensure zero SSR overhead and deterministic static artifact caching.
+
+## Consequences
+
+- Unifies page and layout visual authoring under the single `fly` engine.
+- Closes the publish gap so layouts are compiled directly into static landing artifacts.
+- Guarantees WYSIWYG context for page authors without leaking layout state into page bodies.
+
