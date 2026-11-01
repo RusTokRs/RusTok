@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-16: CQRS Read Projections, Search & Index Synchronization
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle) (15/17 completed)
+- **Active Phase:** CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle), CC-16 (CQRS Read Projections, Search & Index Synchronization) (16/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -70,7 +70,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed — 100% PASS)
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed — 100% PASS)
 - [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed — 100% PASS)
-- [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
+- [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (4/4 completed — 100% PASS)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
 
 ---
@@ -300,10 +300,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `IndexService SearchService index_products index_content ReindexHandler`
 
 #### Sub-Audit Checklist
-- [ ] **CC-16.01 — CQRS-Lite Separation:** Verify storefront and catalog reads query denormalized search/index models rather than joining normalized write tables.
-- [ ] **CC-16.02 — Event-Driven Reindexing Consistency:** Verify domain aggregate mutations emit outbox events that project state deterministically into indexes.
-- [ ] **CC-16.03 — Search Tenant Scoping:** Verify search queries strictly enforce tenant, channel authority, and locale scopes fail-closed.
-- [ ] **CC-16.04 — Reindex Idempotency & Batching:** Verify batch replay and reconciliation runners enforce leased attempt fencing, cursors, and idempotency.
+- [x] **CC-16.01 — CQRS-Lite Separation:** Verified storefront and catalog reads query denormalized search/index models (`search_documents`, `index_entities`, `index_links`) rather than joining normalized write tables (`node scripts/verify/verify-index-fba.mjs` — PASSED, `node scripts/verify/verify-search-fba.mjs` — PASSED).
+- [x] **CC-16.02 — Event-Driven Reindexing Consistency:** Verified domain aggregate mutations emit outbox events that project state deterministically into indexes (`node scripts/verify/verify-search-projection-writer-boundary.mjs` — PASSED, `node scripts/verify/verify-blog-category-search-reindex.mjs` — PASSED).
+- [x] **CC-16.03 — Search Tenant Scoping:** Verified search queries strictly enforce tenant, channel authority, and locale scopes fail-closed; GraphQL storefront search rejects explicit client tenant overrides and derives tenant strictly from trusted request context (`node scripts/verify/verify-search-audience-classes.mjs` — PASSED, `cargo test -p rustok-search --lib` — 100/100 PASSED).
+- [x] **CC-16.04 — Reindex Idempotency & Batching:** Verified batch replay and reconciliation runners enforce leased attempt fencing, cursors, and idempotency (`index_inbox`, `index_checkpoints`, `cargo test -p rustok-index --lib` — 302/302 PASSED).
 
 ---
 

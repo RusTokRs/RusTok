@@ -126,7 +126,7 @@ requireAll(paths.engine, [
   "pub struct SearchAudienceDocumentScope",
   "pub async fn search_storefront_scoped(",
   "sd.document_id AS document_id",
-  "(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))",
+  "(source_module = ${owner_param} AND document_id IN ({ids_params}))",
 ]);
 forbid(paths.engine, [
   "exclude_forum",
@@ -148,7 +148,7 @@ requireAll(paths.suggestions, [
   "fn suggestion_module_placeholders(",
   "source_module IN ({})",
   "async fn authorize_suggestion_documents(",
-  "resolve_audience_eligible_candidates(",
+  "resolve_audience_eligible_candidates_by_module(",
 ]);
 forbid(paths.suggestions, ["source_module <> 'forum'"]);
 
