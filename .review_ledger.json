@@ -2753,9 +2753,9 @@
       "category": "modules",
       "files": 18,
       "loc": 979,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:00:00Z",
+      "notes": "Verified 6 Universal Logic Dimensions, lifecycle transitions, permissions, events."
     },
     "crates/modules/rustok-finance/admin": {
       "name": "admin",
@@ -2763,9 +2763,9 @@
       "category": "modules",
       "files": 6,
       "loc": 316,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:00:00Z",
+      "notes": "Verified FFA compliance, pure core filtering, contract compliance, i18n catalogs."
     },
     "crates/modules/rustok-party": {
       "name": "rustok-party",
