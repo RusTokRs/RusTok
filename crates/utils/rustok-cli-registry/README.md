@@ -1,5 +1,7 @@
 # rustok-cli-registry
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-cli-registry` owns the selected distribution command provider registry

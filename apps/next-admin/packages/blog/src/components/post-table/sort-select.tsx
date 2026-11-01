@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import {
   Select,
@@ -8,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/shared/ui/shadcn/select';
+import { Input } from '@/shared/ui/shadcn/input';
 import {
   BLOG_POST_SORT_FIELDS,
   BLOG_POST_SORT_ORDERS,
@@ -124,5 +126,87 @@ export function PostStatusSelect() {
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Text filters for the cursor-paged post list: title, slug, locale and author.
+ *
+ * Each filter is part of the list request (the owner filters server-side), so a
+ * change invalidates the keyset cursor exactly like a sort or status change
+ * does: the update resets `after` and the page history atomically, and the list
+ * restarts at page one under the new filter instead of resuming a stale
+ * position that would silently skip matching rows.
+ */
+const POST_TEXT_FILTER_PARAMS = ['title', 'slug', 'locale', 'authorId'] as const;
+
+type PostTextFilterParam = (typeof POST_TEXT_FILTER_PARAMS)[number];
+
+function postTextFilterParsers(param: PostTextFilterParam) {
+  const parsers: Record<
+    PostTextFilterParam | 'after' | 'history',
+    typeof parseAsString
+  > = {
+    title: parseAsString,
+    slug: parseAsString,
+    locale: parseAsString,
+    authorId: parseAsString,
+    after: parseAsString,
+    history: parseAsString
+  };
+  // Only the active param plus the cursor pair are wired into the query state;
+  // the other text filters keep their own URL keys untouched.
+  return {
+    [param]: parsers[param],
+    after: parsers.after,
+    history: parsers.history
+  } as Pick<typeof parsers, PostTextFilterParam | 'after' | 'history'>;
+}
+
+export function PostTextFilter({
+  param,
+  label,
+  placeholder
+}: {
+  param: PostTextFilterParam;
+  label: string;
+  placeholder: string;
+}) {
+  const [filters, setFilters] = useQueryStates(
+    postTextFilterParsers(param),
+    { shallow: false, history: 'push' }
+  );
+
+  const value = filters[param] ?? '';
+
+  // The input is edited locally; the route (and with it the server list)
+  // updates only after typing pauses, so one search phrase is one navigation
+  // instead of one per keystroke.
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(() => {
+    if (draft === value) return;
+    const timer = setTimeout(() => {
+      void setFilters({
+        [param]: draft.trim() === '' ? null : draft,
+        after: null,
+        history: null
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [draft, value, param, setFilters]);
+
+  return (
+    <Input
+      type='search'
+      className='h-8 w-[170px]'
+      aria-label={label}
+      placeholder={placeholder}
+      maxLength={255}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+    />
   );
 }

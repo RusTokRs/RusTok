@@ -449,6 +449,12 @@ pub struct PostsFilter {
     pub tag: Option<String>,
     pub author_id: Option<Uuid>,
     pub locale: Option<String>,
+    /// Case-insensitive substring filter on the post's own slug column.
+    pub slug: Option<String>,
+    /// Case-insensitive substring filter on the locale-resolved translation
+    /// title. A list filter, not full-text search: it matches the same
+    /// translation the projection would display.
+    pub title: Option<String>,
     /// Opaque cursor: `nextCursor` of the previous page. Absent for the first page.
     /// A cursor is bound to the sort it was issued for; a mismatching sort is
     /// rejected instead of resumed with a wrong position.

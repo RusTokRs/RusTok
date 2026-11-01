@@ -137,7 +137,13 @@ for (const marker of [
 for (const marker of [
   'jsonb_array_elements_text',
   "p.metadata -> 'tags'",
-  'search_documents',
+  // Prohibit *usage* of the Search owner's storage: a Rust entity path or a
+  // SQL table reference. A doc comment that names `search_documents.payload`
+  // while explaining that it is never trusted as an authorization source is
+  // not a violation, so the bare table name is not forbidden.
+  'search_documents::',
+  'FROM search_documents',
+  'JOIN search_documents',
   'LEFT JOIN users',
 ]) forbid(searchProjectionSource, marker, files.searchProjectionSource);
 

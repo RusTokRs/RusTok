@@ -75,6 +75,10 @@ Category route normalization is also delegated to the canonical Taxonomy normali
 
 ## Tag owner contract
 
+Canonical tag identity now lives in shared `rustok-taxonomy` (scope-aware terms
+with localized copies); Blog keeps `blog_post_tags` as the module-owned relation table
+for post attachments.
+
 Blog Tag localized names and caller-supplied slugs are bounded to 100 Unicode
 characters. The Blog Create/Update DTO schemas and service validation use the
 same character-count semantics as the canonical Taxonomy term validator; UTF-8
@@ -178,6 +182,15 @@ its keyset cursor is bound to the sort it was issued for, so a cursor replayed
 with another sort is rejected instead of resuming at a wrong position. Both
 admin lists expose that choice as a control and drop the cursor when it changes.
 
+The admin text filters `slug` and `title` are substring list filters, still not
+full-text search: case-insensitive `LIKE` matches whose wildcard characters are
+escaped literally, with trimmed needles capped at 255 characters (an oversized
+needle is a validation error, never a silently dropped filter). `slug` matches
+the post's own slug column; `title` matches the translation the projection
+would display for the requested locale chain (requested, explicit fallback,
+platform fallback), so a post whose displayed title comes from the resolver's
+final unordered fallback is outside a title search's reach.
+
 Full-text search remains the Search capability's responsibility.
 
 ## Derived state and events
@@ -265,6 +278,16 @@ Blog domain policy.
 The admin edit model carries `PostResponse.version`; edit transports require it
 before sending an update. Lifecycle UI exposes explicit restore for archived
 posts.
+
+The admin category workspace (child page `categories`) manages Taxonomy-owned
+categories through the Blog owner contract on both transports: the list pages
+the owner projection in the admin locale, create sends the parent and the
+canonical sibling position, update sends only localized copy (name, slug,
+description) where the description uses Patch semantics so an emptied field
+clears while an untouched one is not re-sent, and delete requires the host-
+composed `TaxonomyCategoryDeleteCleanupPort` (the owner fails closed without
+it). Moving a category in the hierarchy or changing the sibling position stays
+an owner command, mirroring the Next admin surface.
 
 The manifest's bundled UI locales (currently `en` and `ru`) describe shipped
 interface translations only. They do not restrict tenant Blog content locales.

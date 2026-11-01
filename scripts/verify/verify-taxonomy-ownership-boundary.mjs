@@ -34,6 +34,23 @@ function requireMarkers(relative, markers) {
   }
 }
 
+// The consolidated Blog schema migration splits its DDL across the migration
+// file and the schema/tables/*.rs tree, so ownership markers are checked
+// against the whole migration directory rather than a single file.
+function requireMarkersInTree(relative, markers) {
+  const files = walkRust(relative);
+  if (files.length === 0) {
+    failures.push(`missing Taxonomy ownership artifact tree: ${relative}`);
+    return;
+  }
+  const combined = files.map((file) => read(file)).join("\n");
+  for (const marker of markers) {
+    if (!combined.includes(marker)) {
+      failures.push(`${relative}: missing ownership marker: ${marker}`);
+    }
+  }
+}
+
 const taxonomySourceFiles = walkRust("crates/modules/rustok-taxonomy/src");
 if (taxonomySourceFiles.length === 0) {
   failures.push("Taxonomy production source tree is missing or empty");
@@ -98,11 +115,13 @@ requireMarkers(
   ],
 );
 
-requireMarkers(
-  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
+// Blog owns the blog_post_tags relation table; its tag tenant/id pair is
+// foreign-keyed into the shared taxonomy_terms dictionary.
+requireMarkersInTree(
+  "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema",
   [
     ".table(BlogPostTags::Table)",
-    "REFERENCES taxonomy_terms",
+    'Alias::new("taxonomy_terms")',
   ],
 );
 requireMarkers("crates/modules/rustok-blog/src/entities/blog_post_tag.rs", [

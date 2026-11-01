@@ -11,6 +11,14 @@ interface ThreadedCommentsProps {
   onReply?: (parentCommentId: string) => void;
 }
 
+// Static per-depth margin classes (4rem steps, capped at depth 3) instead of a
+// runtime style prop: the Next CSP style boundary forbids JSX style attributes.
+const DEPTH_MARGIN_CLASSES = ['ml-0', 'ml-4', 'ml-8', 'ml-12'] as const;
+
+function depthMarginClass(depth: number): string {
+  return DEPTH_MARGIN_CLASSES[Math.min(Math.max(depth, 0), 3)];
+}
+
 export function ThreadedCommentsList({
   items,
   locale = 'ru',
@@ -34,8 +42,7 @@ export function ThreadedCommentsList({
       {orderedComments.map(({ comment, depth }) => (
         <article
           key={comment.id}
-          className='rounded-xl border border-border bg-card p-4 space-y-2 shadow-sm'
-          style={{ marginLeft: Math.min(depth, 3) * 16 }}
+          className={`rounded-xl border border-border bg-card p-4 space-y-2 shadow-sm ${depthMarginClass(depth)}`}
         >
           <div className='flex items-center justify-between gap-2 text-xs text-muted-foreground'>
             <div className='flex items-center gap-1.5 font-medium text-foreground/80'>

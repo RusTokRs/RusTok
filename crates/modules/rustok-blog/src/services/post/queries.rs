@@ -59,6 +59,10 @@ impl PostService {
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
         let tag_filter = query.tag.clone();
+        // Admin text filters are normalized once here: every later SQL builder
+        // receives an already-trimmed, length-capped needle (or none at all).
+        let text_filters =
+            prepare_post_list_text_filters(&query, locale.as_str(), fallback_locale.as_deref())?;
         let mut select =
             blog_post::Entity::find().filter(blog_post::Column::TenantId.eq(tenant_id));
 
@@ -115,6 +119,12 @@ impl PostService {
         }
         if let Some(category_id) = query.category_id {
             select = select.filter(blog_post::Column::CategoryId.eq(category_id));
+        }
+        if let Some(ref needle) = text_filters.slug {
+            select = apply_post_slug_filter(select, needle);
+        }
+        if let Some(ref needle) = text_filters.title {
+            select = apply_post_title_filter(select, needle, &text_filters.title_locales);
         }
 
         let (sort_by, sort_order) = query.sort();

@@ -26,7 +26,7 @@
   "composition": {
     "host_context": "rustok_api::HostRuntimeContext",
     "shared_value": "Arc<dyn rustok_blog::CommentsThreadPort>",
-    "facade_reexport": "pub use rustok_comments_api::CommentsThreadPort;",
+    "facade_reexport": "pub use rustok_comments::CommentsThreadPort;",
     "lookup": "HostRuntimeContext::shared_get",
     "selector": "comment_service",
     "runtime_constructor": "CommentService::from_runtime_capabilities",

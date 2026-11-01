@@ -1,3 +1,5 @@
+//! # rustok-installer
+//!
 //! Shared installer foundation contracts for RusToK.
 //!
 //! The crate intentionally contains no HTTP, CLI, or database adapter code.

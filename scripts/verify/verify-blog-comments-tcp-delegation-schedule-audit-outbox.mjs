@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { readComposedRustSource, readRustModuleTree } from './lib/rust-facade-source.mjs';
 import { flattenWhitespace } from './lib/verify-text.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -28,7 +28,9 @@ const guard = readComposedRustSource(read, guardPath);
 const auditedStore = readComposedRustSource(read, auditedStorePath);
 const auditedTrigger = readComposedRustSource(read, auditedTriggerPath);
 const migrationRegistry = read(migrationRegistryPath);
-const migration = read(migrationPath);
+// The consolidated baseline declares its tables below its `schema/` module
+// tree, so the marker view is the composed module tree, not the entry file.
+const migration = readRustModuleTree(read, migrationPath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 

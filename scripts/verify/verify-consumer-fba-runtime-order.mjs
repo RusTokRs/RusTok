@@ -77,7 +77,11 @@ function verifyBlog({ read, json }) {
   if (!sameSet(dependency.operations, provider.ports?.[0]?.operations ?? [])) fail('blog provider operation set drift');
   verifyManifestDegradedModes(read, 'crates/modules/rustok-blog/rustok-module.toml', smoke.fallback_smoke.degraded_modes, 'blog');
 
-  const service = read(smoke.source_contract.consumer_service);
+  // The Comment consumer service is split across its module entry and its
+  // `commands` child module; the runtime-order view spans both halves. The FBA
+  // registry gate composes the same view for the same reason.
+  const service = read(smoke.source_contract.consumer_service)
+    + '\n' + read('crates/modules/rustok-blog/src/services/comment/commands.rs');
   for (const entry of smoke.runtime_order) {
     if (!registry.contract_tests.cases.some((testCase) => testCase.operation === entry.operation)) {
       fail(`blog runtime order operation ${entry.operation} is not declared in registry cases`);

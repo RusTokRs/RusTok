@@ -8,5 +8,9 @@ description = "Generated Rust guest bindings for the RusToK module component ABI
 repository.workspace = true
 include = ["src/**", "wit/**", "README.md", "docs/**", "Cargo.toml"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 wit-bindgen.workspace = true

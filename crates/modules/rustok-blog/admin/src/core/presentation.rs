@@ -12,6 +12,14 @@ pub struct BlogPostAdminTableRowViewModel {
     pub excerpt: String,
     pub status: String,
     pub locale: String,
+    /// Author display name when profile enrichment is available, otherwise the
+    /// raw author id; never empty because every post has an author.
+    pub author: String,
+    /// `YYYY-MM-DD` slice of the RFC 3339 creation timestamp.
+    pub created_at: String,
+    /// `YYYY-MM-DD` slice of the RFC 3339 publication timestamp, or an em dash
+    /// while the post is unpublished.
+    pub published_at: String,
     pub is_editing: bool,
     pub is_busy: bool,
     pub is_published: bool,
@@ -23,11 +31,15 @@ pub struct BlogPostAdminTableRowViewModel {
     pub show_publish_action: bool,
     pub show_archive_action: bool,
     pub show_restore_action: bool,
+    /// Draft rows only: preview tokens are minted for drafts and die with the
+    /// first lifecycle transition away from draft.
+    pub show_preview_action: bool,
     pub edit_label: String,
     pub publish_label: String,
     pub archive_label: String,
     pub restore_label: String,
     pub delete_label: String,
+    pub preview_label: String,
 }
 
 #[derive(Clone, Copy)]
@@ -41,6 +53,7 @@ pub struct BlogPostAdminTableRowLabels<'a> {
     pub archive: &'a str,
     pub restore: &'a str,
     pub delete: &'a str,
+    pub preview_link: &'a str,
 }
 
 pub fn blog_post_admin_table_row_view(
@@ -57,6 +70,7 @@ pub fn blog_post_admin_table_row_view(
     let show_publish_action = should_show_publish_action(is_archived);
     let show_archive_action = should_show_archive_action(is_published);
     let show_restore_action = should_show_restore_action(is_archived);
+    let show_preview_action = !is_published && !is_archived;
     // Pinned posts may later be archived; unpin is permitted for every status.
     let show_pin_action = is_published || post.is_pinned;
     let next_pin_state = !post.is_pinned;
@@ -68,6 +82,9 @@ pub fn blog_post_admin_table_row_view(
         excerpt: fallback_post_excerpt(post.excerpt, labels.no_excerpt),
         status: post.status,
         locale: post.effective_locale,
+        author: author_cell_label(post.author_id.as_deref(), post.author_profile.as_ref()),
+        created_at: admin_date_cell_label(Some(post.created_at.as_str())),
+        published_at: admin_date_cell_label(post.published_at.as_deref()),
         is_editing,
         is_busy,
         is_published,
@@ -79,6 +96,7 @@ pub fn blog_post_admin_table_row_view(
         show_publish_action,
         show_archive_action,
         show_restore_action,
+        show_preview_action,
         edit_label: edit_action_label(
             is_editing,
             labels.editing.to_string(),
@@ -92,6 +110,7 @@ pub fn blog_post_admin_table_row_view(
         archive_label: labels.archive.to_string(),
         restore_label: labels.restore.to_string(),
         delete_label: labels.delete.to_string(),
+        preview_label: labels.preview_link.to_string(),
     }
 }
 
@@ -103,6 +122,9 @@ pub struct BlogPostAdminTableLabels {
     pub slug_header: String,
     pub status_header: String,
     pub locale_header: String,
+    pub author_header: String,
+    pub created_header: String,
+    pub published_header: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +136,9 @@ pub struct BlogPostAdminTableViewModel {
     pub slug_header: String,
     pub status_header: String,
     pub locale_header: String,
+    pub author_header: String,
+    pub created_header: String,
+    pub published_header: String,
 }
 
 pub fn blog_post_admin_table_view(
@@ -129,6 +154,9 @@ pub fn blog_post_admin_table_view(
         slug_header: labels.slug_header,
         status_header: labels.status_header,
         locale_header: labels.locale_header,
+        author_header: labels.author_header,
+        created_header: labels.created_header,
+        published_header: labels.published_header,
     }
 }
 
@@ -168,6 +196,9 @@ pub struct BlogPostAdminPostsTableLabels {
     pub slug_header: String,
     pub status_header: String,
     pub locale_header: String,
+    pub author_header: String,
+    pub created_header: String,
+    pub published_header: String,
     pub draft_slug: String,
     pub no_excerpt: String,
     pub editing: String,
@@ -177,6 +208,7 @@ pub struct BlogPostAdminPostsTableLabels {
     pub archive: String,
     pub restore: String,
     pub delete: String,
+    pub preview_link: String,
 }
 
 /// The count label reports the loaded rows: admin lists are cursor-paged and never count.
@@ -197,6 +229,9 @@ pub fn blog_post_admin_posts_table_view_from_items(
             slug_header: labels.slug_header,
             status_header: labels.status_header,
             locale_header: labels.locale_header,
+            author_header: labels.author_header,
+            created_header: labels.created_header,
+            published_header: labels.published_header,
         },
     );
     let row_labels = BlogPostAdminTableRowLabels {
@@ -209,6 +244,7 @@ pub fn blog_post_admin_posts_table_view_from_items(
         archive: labels.archive.as_str(),
         restore: labels.restore.as_str(),
         delete: labels.delete.as_str(),
+        preview_link: labels.preview_link.as_str(),
     };
     let rows = items
         .into_iter()
@@ -866,6 +902,48 @@ pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
                     .into(),
                 ),
             }),
+        GridColumnDef::new("author", if is_ru { "Автор" } else { "Author" })
+            .min_width(140)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр автора..."
+                    } else {
+                        "Filter author..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new("createdAt", if is_ru { "Создан" } else { "Created" })
+            .min_width(110)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(
+                    if is_ru {
+                        "Фильтр даты..."
+                    } else {
+                        "Filter date..."
+                    }
+                    .into(),
+                ),
+            }),
+        GridColumnDef::new(
+            "publishedAt",
+            if is_ru { "Опубликован" } else { "Published" },
+        )
+        .min_width(110)
+        .align(ColumnAlign::Left)
+        .filter(GridFilterType::Text {
+            placeholder: Some(
+                if is_ru {
+                    "Фильтр даты..."
+                } else {
+                    "Filter date..."
+                }
+                .into(),
+            ),
+        }),
         GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
             .width(260)
             .not_sortable()
@@ -918,6 +996,32 @@ pub fn matches_blog_post_filter(
             {
                 return false;
             }
+            ("author", FilterValue::Text(q)) => {
+                if !row
+                    .author
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("createdAt", FilterValue::Text(q)) => {
+                if !row
+                    .created_at
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase())
+                {
+                    return false;
+                }
+            }
+            ("publishedAt", FilterValue::Text(q))
+                if !row
+                    .published_at
+                    .to_ascii_lowercase()
+                    .contains(&q.to_ascii_lowercase()) =>
+            {
+                return false;
+            }
             _ => {}
         }
     }
@@ -939,6 +1043,9 @@ pub fn filter_blog_posts(
                     && !row.excerpt.to_ascii_lowercase().contains(&term)
                     && !row.status.to_ascii_lowercase().contains(&term)
                     && !row.locale.to_ascii_lowercase().contains(&term)
+                    && !row.author.to_ascii_lowercase().contains(&term)
+                    && !row.created_at.to_ascii_lowercase().contains(&term)
+                    && !row.published_at.to_ascii_lowercase().contains(&term)
                 {
                     return false;
                 }

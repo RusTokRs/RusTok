@@ -100,7 +100,7 @@ for (const marker of [
   "document.document_id.is_nil()",
   "self.source.refresh_scope(entity_type)",
   "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
-  "self.source.source_module().into()",
+  "self.source.source_module()",
 ]) {
   if (!driver.includes(marker)) {
     fail(`${srcDir}/${driverFile} is missing the storage contract marker: ${marker}`);

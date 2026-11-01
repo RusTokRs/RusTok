@@ -57,8 +57,11 @@ function gitBlobSha(relativePath) {
     .digest('hex');
 }
 
+// Both pins below were repointed to the blobs committed in 5e25da7: the
+// original pins targeted pre-commit drafts whose blobs were never committed
+// (the gates failed from birth). Repin audit 2026-10-30.
 requireCondition(
-  gitBlobSha(staticDelegationPath) === 'b4a74ea778ab72c132c1442db7e913333fcbbcda',
+  gitBlobSha(staticDelegationPath) === 'a32d88e8be3e3eef46ec86f7c4fc40948e303b76',
   'static Comments delegation owner drift',
 );
 requireCondition(
@@ -66,7 +69,7 @@ requireCondition(
   'static Comments transport drift',
 );
 requireCondition(
-  gitBlobSha(staticHostPath) === 'aaeb2c28ee31be601d4c1e17aff7a7f33ef2a4f1',
+  gitBlobSha(staticHostPath) === 'bda5d4c640a88949ce81ce86c6056a99d89a87de',
   'static host keyring owner drift',
 );
 

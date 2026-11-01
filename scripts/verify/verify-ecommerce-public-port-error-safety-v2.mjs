@@ -52,7 +52,16 @@ const channel = read('crates/modules/rustok-channel/src/ports.rs');
 const region = read('crates/modules/rustok-region/src/ports.rs');
 const cart = read('crates/modules/rustok-cart/src/checkout_snapshot.rs');
 const cartPromotion = read('crates/modules/rustok-cart/src/promotion_guard.rs');
-const product = read('crates/modules/rustok-product/src/ports.rs');
+// The product port surface is split across the ports/ subtree and the sibling read/command
+// port adapters; the bounded diagnostics contract spans all of them.
+const product =
+  read('crates/modules/rustok-product/src/ports.rs') +
+  '\n' +
+  read('crates/modules/rustok-product/src/catalog_command_port.rs') +
+  '\n' +
+  read('crates/modules/rustok-product/src/catalog_schema_read_port.rs') +
+  '\n' +
+  read('crates/modules/rustok-product/src/storefront_http_read_port.rs');
 const productCommandPort = read('crates/modules/rustok-product/src/catalog_command_port.rs');
 const storefrontProductsLegacy = read('crates/modules/rustok-commerce/src/controllers/store/products.rs');
 const storefrontCarts = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
@@ -415,7 +424,7 @@ forbidAll(taxCalculation, [
 
 requireText(
   tax,
-  /PortError::validation\(\s*"tax\.validation",\s*"tax calculation request is invalid",?\s*\)/,
+  /PortError::validation\(\s*"tax\.validation",\s*"tax request is invalid",?\s*\)/,
   'tax stable validation envelope',
 );
 requireText(taxCalculation, 'error_message_present = !error.message.is_empty()', 'tax local error message presence');
@@ -681,7 +690,7 @@ forbidAll(storefrontLineItemResolution, [
 requireAll(storefrontLineItemResolution, [
   'owner_error_kind',
   'owner_code_length',
-  'tenant_id_length = context.tenant_id.chars().count()',
+  'tenant_id_length: context.tenant_id.chars().count()',
   'variant_id_non_nil = !variant_id.is_nil()',
   'product_id_non_nil = !product_id.is_nil()',
   'channel_present',

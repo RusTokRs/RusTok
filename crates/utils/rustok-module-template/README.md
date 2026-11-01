@@ -1,5 +1,7 @@
 # rustok-module-template
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-module-template` renders the canonical standalone Rust module
