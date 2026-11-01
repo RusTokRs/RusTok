@@ -224,3 +224,4 @@ test("fetchStorefrontSuggestions returns suggestions and propagates errors", asy
     },
   );
 });
+

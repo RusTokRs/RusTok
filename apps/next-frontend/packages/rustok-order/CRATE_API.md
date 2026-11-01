@@ -51,3 +51,4 @@
 1. **No Floating-Point Calculations**: Monetary sums and adjustments must strictly remain exact decimal strings.
 2. **Cap Guest Order Storage**: `localStorage` recent order history is strictly capped at 25 items to prevent unbounded storage growth.
 3. **Fail-Closed Guest Queries**: Empty or whitespace-only order IDs must be rejected before making GraphQL requests.
+

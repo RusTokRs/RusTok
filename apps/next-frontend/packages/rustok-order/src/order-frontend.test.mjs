@@ -50,3 +50,4 @@ test('fetchGuestRecentOrders filters out null responses', async () => {
   assert.equal(orders[0].id, 'order-valid');
   assert.equal(orders[0].status, 'PAID');
 });
+

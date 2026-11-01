@@ -78,3 +78,4 @@
 - **XSS Prevention in JSON-LD**: All structured data payload strings have angle brackets `< >`, ampersands `&`, and line/paragraph separators `\u2028 \u2029` unicode-escaped before script injection.
 - **SSRF Prevention in Document Fetching**: `fetchSeoTextDocument` strictly verifies target origin against `allowedOrigins` allowlist before issuing HTTP requests.
 - **Contract Unit Tests**: Verified by `packages/rustok-seo/src/seo-frontend.test.mjs` (7 tests, 100% pass) and `apps/next-frontend/scripts/verify-seo-runtime-fixtures.mjs` (10 D8 gates, 4 fallback cases, 4 route rows, 2 smoke routes).
+

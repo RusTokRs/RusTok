@@ -92,3 +92,4 @@ test('applyNotificationGroupState propagates command parameters and returns resu
   assert.equal(capturedVariables.limit, 10);
   assert.equal(capturedVariables.idempotencyKey, 'idem-456');
 });
+

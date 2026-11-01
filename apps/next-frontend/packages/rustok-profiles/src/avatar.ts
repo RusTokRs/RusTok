@@ -27,3 +27,4 @@ export function getProfileInitials(
   const handle = profile.handle.trim();
   return handle ? handle[0].toUpperCase() : '?';
 }
+

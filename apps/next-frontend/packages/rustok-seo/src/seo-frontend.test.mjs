@@ -202,3 +202,4 @@ test("buildVerification filters empty tags and formats search engine verificatio
   assert.deepEqual(verification.yahoo, ["yahoo-code-1"]);
   assert.deepEqual(verification.other, { "custom-bot": "token-123" });
 });
+

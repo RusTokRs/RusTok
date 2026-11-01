@@ -261,3 +261,4 @@ export async function fetchStorefrontSuggestions(
 
   return response.data?.storefrontSearchSuggestions ?? [];
 }
+

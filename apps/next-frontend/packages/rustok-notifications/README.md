@@ -9,3 +9,4 @@ Next.js storefront package for RusToK customer notification inboxes, unread coun
 - **Detailed Notification Items:** Granular item rows (`NotificationItemRow`) with action anchors and timestamp formatting.
 - **Bulk Action State Machine:** Idempotent bulk state actions (`applyNotificationGroupState`) for reading, unreading, and archiving groups with cursor pagination.
 - **Inbox Overview:** Complete unified inbox workspace (`NotificationsView`).
+

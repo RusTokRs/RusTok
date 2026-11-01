@@ -78,3 +78,4 @@
 ## 5. Security & Anti-Defect Guarantees
 - **Tenant & Auth Isolation**: All GraphQL operations strictly forward the viewer's `token` and `tenantSlug`, preventing cross-tenant data leaks.
 - **Contract Unit Tests**: Verified by `packages/search/src/search-frontend.test.mjs` (5 unit tests covering CSV parsing, search queries, filter presets, suggestions, and GraphQL error anti-swallowing).
+

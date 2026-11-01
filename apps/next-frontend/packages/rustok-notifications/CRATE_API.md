@@ -49,3 +49,4 @@
 1. **Idempotent Group State Mutations**: Bulk operations must always supply an idempotency key to prevent double execution on retry.
 2. **Fail-Safe Counter Fallbacks**: If unread counter queries fail on network interruption, fallback gracefully to `0` rather than crashing header bars.
 3. **Cursor Paging Safety**: Always observe `hasMore` and `nextCursor` when iterating over notification groups and items.
+

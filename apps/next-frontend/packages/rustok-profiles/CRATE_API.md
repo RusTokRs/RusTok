@@ -99,3 +99,4 @@
   ```bash
   npm run typecheck:next-frontend
   ```
+

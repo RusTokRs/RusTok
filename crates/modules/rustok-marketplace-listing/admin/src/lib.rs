@@ -16,11 +16,10 @@ pub use core::{
     selected_transport_profile,
 };
 pub use model::{
-    MarketplaceListingAdminAction, MarketplaceListingAdminCommand,
-    MarketplaceListingAdminCommandResult, MarketplaceListingAdminDetail,
-    MarketplaceListingAdminDirectory, MarketplaceListingAdminFilters,
-    MarketplaceListingAdminListItem, MarketplaceListingAdminRecord, MarketplaceListingAdminShell,
-    MarketplaceListingAdminTerms,
+    MarketplaceListingAdminCommand, MarketplaceListingAdminCommandResult,
+    MarketplaceListingAdminDetail, MarketplaceListingAdminDirectory,
+    MarketplaceListingAdminFilters, MarketplaceListingAdminListItem, MarketplaceListingAdminRecord,
+    MarketplaceListingAdminShell, MarketplaceListingAdminTerms,
 };
 pub use transport::{
     MARKETPLACE_LISTING_TRANSPORT_FALLBACK_POLICY, MarketplaceListingAdminTransportContext,
