@@ -55,6 +55,11 @@ title = "All Blog Posts"
 nav_label = "All Posts"
 
 [[provides.admin_ui.child_pages]]
+subpath = "categories"
+title = "Blog Categories"
+nav_label = "Categories"
+
+[[provides.admin_ui.child_pages]]
 subpath = "new"
 title = "Add Blog Post"
 nav_label = "Add Post"

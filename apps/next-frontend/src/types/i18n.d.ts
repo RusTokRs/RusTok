@@ -40,6 +40,8 @@ export type AppMessageKey =
   | 'Account.trackOrder'
   | 'Blog-comments-empty'
   | 'Blog.comments.empty'
+  | 'Blog-comments-readOnly'
+  | 'Blog.comments.readOnly'
   | 'Blog-comments-timeout'
   | 'Blog.comments.timeout'
   | 'Blog-comments-timeoutCached'
@@ -682,6 +684,8 @@ export interface AppMessageArgs {
   'Account.trackOrder'?: Record<string, never>;
   'Blog-comments-empty'?: Record<string, never>;
   'Blog.comments.empty'?: Record<string, never>;
+  'Blog-comments-readOnly'?: Record<string, never>;
+  'Blog.comments.readOnly'?: Record<string, never>;
   'Blog-comments-timeout'?: Record<string, never>;
   'Blog.comments.timeout'?: Record<string, never>;
   'Blog-comments-timeoutCached'?: Record<string, never>;
@@ -1325,6 +1329,8 @@ export interface AppMessages {
   'Account.trackOrder': Record<string, never>;
   'Blog-comments-empty': Record<string, never>;
   'Blog.comments.empty': Record<string, never>;
+  'Blog-comments-readOnly': Record<string, never>;
+  'Blog.comments.readOnly': Record<string, never>;
   'Blog-comments-timeout': Record<string, never>;
   'Blog.comments.timeout': Record<string, never>;
   'Blog-comments-timeoutCached': Record<string, never>;

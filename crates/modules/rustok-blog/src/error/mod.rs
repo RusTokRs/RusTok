@@ -38,11 +38,6 @@ pub enum BlogError {
     #[error("Blog revision conflict: {0}")]
     Conflict(String),
 
-    #[error(
-        "Category translation revision is exhausted for category {category_id} and locale {locale}"
-    )]
-    CategoryTranslationRevisionExhausted { category_id: Uuid, locale: String },
-
     #[error("Cannot delete published post")]
     CannotDeletePublished,
 
@@ -153,15 +148,6 @@ impl From<BlogError> for RichError {
             BlogError::Conflict(message) => RichError::new(ErrorKind::Conflict, message)
                 .with_user_message("The Blog resource changed before the request could be applied")
                 .with_error_code("BLOG_CONFLICT"),
-            BlogError::CategoryTranslationRevisionExhausted {
-                category_id,
-                locale,
-            } => RichError::new(
-                ErrorKind::Conflict,
-                format!("Category translation revision is exhausted for {category_id} in {locale}"),
-            )
-            .with_user_message("The category translation can no longer be updated safely")
-            .with_error_code("CATEGORY_TRANSLATION_REVISION_EXHAUSTED"),
             BlogError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published post")
                     .with_user_message(

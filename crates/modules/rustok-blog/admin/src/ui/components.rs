@@ -121,6 +121,7 @@ pub(super) fn BlogPostsTable(
     on_archive: Callback<(String, String)>,
     on_restore: Callback<(String, String)>,
     on_delete: Callback<String>,
+    on_preview: Callback<String>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let table_classes = core::blog_post_admin_table_classes_view();
@@ -139,6 +140,9 @@ pub(super) fn BlogPostsTable(
             slug_header: t(locale.as_deref(), "blog.table.slug", "Slug"),
             status_header: t(locale.as_deref(), "blog.table.status", "Status"),
             locale_header: t(locale.as_deref(), "blog.table.locale", "Locale"),
+            author_header: t(locale.as_deref(), "blog.table.author", "Author"),
+            created_header: t(locale.as_deref(), "blog.table.createdAt", "Created"),
+            published_header: t(locale.as_deref(), "blog.table.published", "Published"),
             draft_slug: t(locale.as_deref(), "blog.table.draft", "draft"),
             no_excerpt: t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt"),
             editing: t(locale.as_deref(), "blog.table.editing", "Editing"),
@@ -148,6 +152,7 @@ pub(super) fn BlogPostsTable(
             archive: t(locale.as_deref(), "blog.table.archive", "Archive"),
             restore: t(locale.as_deref(), "blog.table.restore", "Restore"),
             delete: t(locale.as_deref(), "blog.table.delete", "Delete"),
+            preview_link: t(locale.as_deref(), "blog.table.previewLink", "Preview link"),
         },
     );
     let columns = core::blog_post_grid_columns(locale.as_deref());
@@ -229,6 +234,7 @@ pub(super) fn BlogPostsTable(
                 let post_id_archive = row.post_id.clone();
                 let post_id_restore = row.post_id.clone();
                 let post_id_delete = row.post_id.clone();
+                let post_id_preview = row.post_id.clone();
                 let post_locale_edit = row.locale.clone();
                 let post_locale_publish = row.locale.clone();
                 let post_locale_pin = row.locale.clone();
@@ -250,6 +256,15 @@ pub(super) fn BlogPostsTable(
                 }.into_any(),
                 "locale" => view! {
                     <span class=tc.muted_cell>{row.locale.clone()}</span>
+                }.into_any(),
+                "author" => view! {
+                    <span class=tc.muted_cell>{row.author.clone()}</span>
+                }.into_any(),
+                "createdAt" => view! {
+                    <span class=tc.muted_cell>{row.created_at.clone()}</span>
+                }.into_any(),
+                "publishedAt" => view! {
+                    <span class=tc.muted_cell>{row.published_at.clone()}</span>
                 }.into_any(),
                 "actions" => view! {
                     <div class=tc.actions_group>
@@ -330,6 +345,21 @@ pub(super) fn BlogPostsTable(
                                     }
                                 >
                                     {row.restore_label.clone()}
+                                </button>
+                            }
+                            .into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                        {if row.show_preview_action {
+                            view! {
+                                <button
+                                    type="button"
+                                    class=tc.primary_action_button
+                                    disabled=row.is_busy
+                                    on:click={move |_| on_preview.run(post_id_preview.clone())}
+                                >
+                                    {row.preview_label.clone()}
                                 </button>
                             }
                             .into_any()
@@ -533,6 +563,7 @@ pub(super) fn BlogPostsList(
     on_archive: Callback<(String, String)>,
     on_restore: Callback<(String, String)>,
     on_delete: Callback<String>,
+    on_preview: Callback<String>,
 ) -> impl IntoView {
     let shell_classes = core::blog_post_admin_shell_classes_view();
     view! {
@@ -554,6 +585,7 @@ pub(super) fn BlogPostsList(
             on_archive=on_archive
             on_restore=on_restore
             on_delete=on_delete
+            on_preview=on_preview
         />
     }
 }
@@ -648,6 +680,72 @@ pub(super) fn BlogPostsListHeader(
                     on:input=move |ev| set_locale.set(event_target_value(&ev))
                 />
             </label>
+        </div>
+    }
+}
+
+/// One-time draft preview token banner shown after a successful mint.
+///
+/// The plaintext secret exists only in the mint result — the backend stores a
+/// SHA-256 digest — so this is the only surface that ever shows it. The link
+/// carries the token in the URL *fragment* (`#token=…`), which browsers never
+/// send to the server, keeping the secret out of request logs and referrers.
+/// The admin host does not know the storefront origin in every deployment, so
+/// the banner shows the storefront-relative path and the raw token separately.
+#[component]
+pub(super) fn BlogPreviewTokenBanner(
+    token: crate::model::BlogPreviewToken,
+    on_close: Callback<()>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let title = t(ui_locale.as_deref(), "blog.preview.title", "Draft preview link");
+    let path_label = t(
+        ui_locale.as_deref(),
+        "blog.preview.pathLabel",
+        "Preview path — prepend your storefront origin",
+    );
+    let token_label = t(ui_locale.as_deref(), "blog.preview.tokenLabel", "Token");
+    let expires_at = token.expires_at.clone();
+    let secret = token.token.clone();
+    let expires_label = crate::i18n::preview_expires_message(
+        ui_locale.as_deref(),
+        "blog.preview.expires",
+        "Expires {at}",
+        expires_at.as_str(),
+    );
+    let note = t(
+        ui_locale.as_deref(),
+        "blog.preview.note",
+        "Shown only once — the backend stores a digest, not the secret. Publishing, scheduling or archiving the post revokes the link immediately.",
+    );
+    let close_label = t(ui_locale.as_deref(), "blog.preview.close", "Close");
+    let preview_path = format!("/blog/preview#token={secret}");
+    view! {
+        <div class="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <div class="flex items-start justify-between gap-3">
+                <h3 class="text-sm font-semibold text-foreground">{title}</h3>
+                <button
+                    type="button"
+                    class="text-xs font-medium text-primary hover:underline"
+                    on:click=move |_| on_close.run(())
+                >
+                    {close_label}
+                </button>
+            </div>
+            <div class="space-y-1">
+                <span class="text-xs text-muted-foreground">{path_label}</span>
+                <code class="block w-full overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs text-foreground">
+                    {preview_path}
+                </code>
+            </div>
+            <div class="space-y-1">
+                <span class="text-xs text-muted-foreground">{token_label}</span>
+                <code class="block w-full overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs text-foreground">
+                    {secret}
+                </code>
+            </div>
+            <p class="text-xs text-muted-foreground">{expires_label}</p>
+            <p class="text-xs text-muted-foreground">{note}</p>
         </div>
     }
 }

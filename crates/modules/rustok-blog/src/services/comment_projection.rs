@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use rustok_comments::CommentStatus;
 use rustok_core::Error;
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
@@ -17,16 +18,43 @@ use crate::services::BLOG_POST_TARGET_TYPE;
 
 /// Whether the comment counts toward the public `comment_count` after this
 /// event. `None` means "keep the previously projected state" (a body edit does
-/// not change visibility). Only `approved` comments are publicly visible
-/// (`CommentStatus::is_visible`), so only they may be counted: Blog creates
-/// comments as `pending`, and a status change into `spam`/`trash` must remove
-/// the comment from the count rather than keep or add it. The moderation queue
-/// total is a separate, owner-side number and is not what this counter means.
+/// not change visibility). Only `approved` comments are publicly visible, so
+/// only they may be counted: Blog creates comments as `pending`, and a status
+/// change into `spam`/`trash` must remove the comment from the count rather
+/// than keep or add it. The moderation queue total is a separate, owner-side
+/// number and is not what this counter means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CommentProjectionChange {
     comment_id: Uuid,
     post_id: Uuid,
     counted: Option<bool>,
+}
+
+/// Maps a lifecycle status string to the public-count verdict. The status comes
+/// from the event payload (a string), so the typed `CommentStatus` vocabulary is
+/// used for the comparison; an unknown value fails closed — the comment is not
+/// counted — and is logged, because only a producer/consumer drift can emit it.
+fn status_counts_publicly(new_status: &str) -> bool {
+    const KNOWN_STATUSES: [CommentStatus; 4] = [
+        CommentStatus::Pending,
+        CommentStatus::Approved,
+        CommentStatus::Spam,
+        CommentStatus::Trash,
+    ];
+    match KNOWN_STATUSES
+        .iter()
+        .find(|status| status.as_str() == new_status)
+    {
+        Some(CommentStatus::Approved) => true,
+        Some(_) => false,
+        None => {
+            tracing::warn!(
+                new_status,
+                "Comment event carried an unknown status; treating comment as not counted"
+            );
+            false
+        }
+    }
 }
 
 fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionChange> {
@@ -63,7 +91,10 @@ fn comment_projection_change(event: &DomainEvent) -> Option<CommentProjectionCha
         } if target_type == BLOG_POST_TARGET_TYPE => Some(CommentProjectionChange {
             comment_id: *comment_id,
             post_id: *target_id,
-            counted: Some(new_status == "approved"),
+            // Compare against the typed status vocabulary of the Comments
+            // module instead of a raw literal, and fail closed on an unknown
+            // status: an unrecognized value must never be counted publicly.
+            counted: Some(status_counts_publicly(new_status)),
         }),
         DomainEvent::CommentDeleted {
             comment_id,

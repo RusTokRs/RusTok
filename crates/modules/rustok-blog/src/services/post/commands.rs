@@ -132,10 +132,16 @@ impl PostService {
             || category_id.is_changed()
             || featured_image_url.is_changed()
             || normalized_channels.is_some()
-            || metadata_changed
-            || scheduled_at.is_changed();
+            || metadata_changed;
+        // Scheduling is bookkeeping, not content: drafts are excluded from the
+        // search corpus anyway, so a schedule-only edit must not trigger reindex.
+        let has_schedule_change = scheduled_at.is_changed();
         let has_relation_change = tags.is_some();
-        if !has_owner_change && !has_translation_change && !has_relation_change {
+        if !has_owner_change
+            && !has_schedule_change
+            && !has_translation_change
+            && !has_relation_change
+        {
             return Err(BlogError::validation("No Blog post changes were supplied"));
         }
 
@@ -304,25 +310,33 @@ impl PostService {
             .await?;
         }
 
-        let event = if full_reindex {
-            DomainEvent::ReindexRequested {
+        // Emit exactly one content event for the strongest corpus-affecting
+        // change. A schedule-only edit emits no content event at all: the search
+        // corpus holds published posts only, and the dedicated
+        // BlogPostScheduled / BlogPostScheduleCancelled events below already
+        // carry the scheduling state.
+        if let Some(event) = if full_reindex {
+            Some(DomainEvent::ReindexRequested {
                 target_type: "blog".to_string(),
                 target_id: Some(post_id),
-            }
-        } else {
-            DomainEvent::BlogPostUpdated {
+            })
+        } else if has_translation_change {
+            Some(DomainEvent::BlogPostUpdated {
                 post_id,
                 locale: locale.ok_or_else(|| {
                     BlogError::invariant(
                         "localized-only update reached event publication without a canonical locale",
                     )
                 })?,
-            }
-        };
-        self.event_bus
-            .publish_in_tx(&txn, tenant_id, security.user_id, event)
-            .await
-            .map_err(BlogError::from)?;
+            })
+        } else {
+            None
+        } {
+            self.event_bus
+                .publish_in_tx(&txn, tenant_id, security.user_id, event)
+                .await
+                .map_err(BlogError::from)?;
+        }
 
         // Publish schedule events if scheduled_at was changed
         match scheduled_at {

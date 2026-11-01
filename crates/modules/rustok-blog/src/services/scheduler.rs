@@ -1,6 +1,6 @@
 //! Blog-owned module work adapters for the host scheduler.
 //!
-//! Blog publishes three durable queues to the generic platform scheduler instead of
+//! Blog publishes four durable queues to the generic platform scheduler instead of
 //! running module-local timers. The scheduler owns the poll loop and the deployment
 //! stop signal; each adapter here owns discovery (a read-only hint) and hands the
 //! authoritative work to an owner command:
@@ -10,14 +10,20 @@
 //!   decides which concurrent writer publishes a post;
 //! - `blog_preview_token_cleanup` removes expired preview tokens of one tenant;
 //! - `blog_route_reconciliation` removes Blog routes whose target post no longer
-//!   exists, which is the safety net for a missed `TargetDeleted` delivery.
+//!   exists, which is the safety net for a missed `TargetDeleted` delivery;
+//! - `blog_comment_projection_retention` compacts the per-comment delivery ledger
+//!   of the Comments projection to its causal frontier (the newest event per
+//!   comment), which is all the projection reads; older deliveries of a live post
+//!   are pure storage growth otherwise.
 //!
 //! Every queue is tenant-scoped, like every other platform work item: one tenant's
-//! backlog cannot starve another tenant.
+//! backlog cannot starve another tenant, and every discovery rotates tenants so a
+//! pinned (always failing) tenant cannot starve the others either.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rustok_api::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
@@ -44,8 +50,8 @@ pub const BLOG_SCHEDULED_PUBLISH_WORKER: &str = "blog_scheduled_publish";
 pub const BLOG_PREVIEW_TOKEN_CLEANUP_WORKER: &str = "blog_preview_token_cleanup";
 /// Stable scheduler identity for stale Blog route reconciliation.
 pub const BLOG_ROUTE_RECONCILIATION_WORKER: &str = "blog_route_reconciliation";
-/// Upper bound of routes one reconciliation iteration removes.
-const ROUTE_RECONCILIATION_BATCH: u64 = 200;
+/// Deliveries processed before this window carry no replay information the
+/// projection still consults (see the retention worker's safety argument).
 /// Upper bound of stale route rows one reconciliation iteration scans.
 ///
 /// The scan bound is separate from the removal bound: one scanned row points at
@@ -250,15 +256,30 @@ impl ModuleWorkHandler for BlogScheduledPublishWorkAdapter {
 /// Expired tokens have no consumer, so they are pure storage growth. Deleting a post
 /// already removes its tokens through the foreign key cascade; this worker bounds the
 /// purely time-based residue.
+///
+/// Discovery uses the same rotating tenant cursor as the scheduled-publish
+/// adapter: without rotation, a tenant whose delete keeps failing (or whose
+/// backlog is simply very large) would be re-claimed every iteration — the
+/// earliest-expired-token query returns that tenant again — and every other
+/// tenant's cleanup would starve behind it.
 #[derive(Clone)]
 pub struct BlogPreviewTokenCleanupWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only: the expiry predicate remains the durable source of
+    // work. Another host can claim the same tenant concurrently; the delete
+    // re-checks expiry, so a duplicate claim is wasted work, never a double
+    // effect.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogPreviewTokenCleanupWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     pub async fn register_with(
@@ -269,17 +290,48 @@ impl BlogPreviewTokenCleanupWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant owning the earliest expired token. Read-only discovery; the delete
-    /// itself re-checks the expiry predicate.
+    /// Rotate tenants with expired tokens instead of re-claiming the earliest
+    /// expired token's tenant forever. An instance restart simply begins a new
+    /// fair cycle.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
-        blog_preview_token::Entity::find()
-            .filter(blog_preview_token::Column::ExpiresAt.lt(now))
-            .order_by_asc(blog_preview_token::Column::ExpiresAt)
-            .one(&self.database)
-            .await
-            .map(|token| token.map(|token| token.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        let expired_tokens = || {
+            blog_preview_token::Entity::find()
+                .filter(blog_preview_token::Column::ExpiresAt.lt(now))
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = expired_tokens()
+                .filter(blog_preview_token::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_preview_token::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(token) => Some(token.tenant_id),
+                None => expired_tokens()
+                    .order_by_asc(blog_preview_token::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|token| token.map(|token| token.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            expired_tokens()
+                .order_by_asc(blog_preview_token::Column::ExpiresAt)
+                .one(&self.database)
+                .await
+                .map(|token| token.map(|token| token.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 }
 
@@ -362,11 +414,19 @@ impl ModuleWorkHandler for BlogPreviewTokenCleanupWorkAdapter {
 pub struct BlogRouteReconciliationWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only, like the scheduled-publish cursor: the dangling-route
+    // predicate remains the durable source of truth, and a pinned (always
+    // failing) tenant must not starve the reconciliation of every other tenant.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogRouteReconciliationWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     pub async fn register_with(
@@ -377,16 +437,47 @@ impl BlogRouteReconciliationWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant owning the first stale route.
+    /// Rotate over tenants that own dangling routes. The first claim serves the
+    /// tenant with the first stale route; later claims advance by tenant id so
+    /// the same failing tenant is not re-claimed on every iteration.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
-        blog_post_route::Entity::find()
-            .filter(dangling_route_condition())
-            .order_by_asc(blog_post_route::Column::TenantId)
-            .order_by_asc(blog_post_route::Column::SourceRoute)
-            .one(&self.database)
-            .await
-            .map(|route| route.map(|route| route.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
+        let dangling_routes = || {
+            blog_post_route::Entity::find().filter(dangling_route_condition())
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = dangling_routes()
+                .filter(blog_post_route::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_post_route::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(route) => Some(route.tenant_id),
+                None => dangling_routes()
+                    .order_by_asc(blog_post_route::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|route| route.map(|route| route.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            dangling_routes()
+                .order_by_asc(blog_post_route::Column::TenantId)
+                .order_by_asc(blog_post_route::Column::SourceRoute)
+                .one(&self.database)
+                .await
+                .map(|route| route.map(|route| route.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 
     async fn reconcile_tenant(&self, tenant_id: Uuid) -> Result<u64, ModuleWorkError> {
@@ -491,6 +582,21 @@ impl ModuleWorkHandler for BlogRouteReconciliationWorkAdapter {
     }
 }
 
+/// Tenant-rotating cleanup of the Comments projection delivery ledger.
+///
+/// The projection reads exactly one row per comment — the newest delivery, which
+/// carries the ULID idempotency frontier and the current counted state — and one
+/// aggregate per post: the maximum `projection_revision`, which is always carried
+/// by the newest delivery of its comment (revisions are allocated in processing
+/// order). Everything older is pure storage growth, so retention compacts each
+/// comment's history to that frontier once it is past
+/// [`COMMENT_PROJECTION_DELIVERY_RETENTION_DAYS`], after which every possible
+/// replay of a purged delivery is still rejected by the frontier's
+/// `latest.event_id >= envelope.id` guard. Deleting strictly-below-frontier rows
+/// is idempotent and safe under duplicate execution: newly processed events have
+/// a greater ULID, so a delete computed against an older snapshot of the ledger
+/// can never touch them.
+#[derive(Clone)]
 /// A route of a `blog_post` target whose post is absent in the same tenant.
 ///
 /// The correlated subquery mirrors what the owner checks on read, so discovery and
@@ -526,6 +632,9 @@ fn dangling_route_condition() -> Condition {
 /// tests run under `cargo test -p rustok-blog --features runtime`.
 
 #[cfg(test)]
+mod retention;
+pub use retention::BlogCommentProjectionRetentionWorkRegistration;
+
 #[path = "scheduler/reconciliation_tests.rs"]
 mod reconciliation_tests;
 

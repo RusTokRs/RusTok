@@ -11,8 +11,8 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::components::{
     BlogEditBanner, BlogPostFormSetters, BlogPostSeoPanel, BlogPostsList, BlogPostsListHeader,
-    BlogPostsPageHeader, BlogSeoConfigError, apply_post_to_form, blog_form_copy_view_model,
-    blog_form_view_model, local_resource, reset_form,
+    BlogPostsPageHeader, BlogPreviewTokenBanner, BlogSeoConfigError, apply_post_to_form,
+    blog_form_copy_view_model, blog_form_view_model, local_resource, reset_form,
 };
 use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
@@ -45,6 +45,9 @@ struct BlogAdminPageState {
     archive_post: Callback<(String, String)>,
     restore_post: Callback<(String, String)>,
     delete_post: Callback<String>,
+    create_preview_link: Callback<String>,
+    preview_token: ReadSignal<Option<crate::model::BlogPreviewToken>>,
+    close_preview_banner: Callback<()>,
     categories_resource:
         LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
     categories_unavailable_label: String,
@@ -837,6 +840,44 @@ pub fn BlogAdmin() -> impl IntoView {
         open_query_writer.apply_query_intent(core::blog_post_admin_open_post_query_intent(post_id));
     });
 
+    // Draft preview tokens: minting is a one-shot secret handoff. The plaintext
+    // exists only in the mint result (the backend stores a SHA-256 digest), so
+    // the banner keeps it in page state until the editor closes it. The token is
+    // shared through the URL fragment, never a query string.
+    let (preview_token, set_preview_token) = signal(Option::<crate::model::BlogPreviewToken>::None);
+    let close_preview_banner = Callback::new(move |_| set_preview_token.set(None));
+    let create_preview_link_locale = ui_locale.clone();
+    let create_preview_link = Callback::new(move |post_id: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let ui_locale = create_preview_link_locale.clone();
+        set_submit_error.set(None);
+        set_busy_key.set(Some(core::busy_key_for_preview(post_id.as_str())));
+
+        spawn_local(async move {
+            // The default TTL (168h) matches the backend default; the owner
+            // service validates the 1..720h range and revokes tokens on any
+            // lifecycle transition away from draft.
+            match transport::create_preview_token(token_value, tenant_value, post_id, None).await {
+                Ok(minted) => {
+                    set_preview_token.set(Some(minted));
+                }
+                Err(err) => {
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
+                        &t(
+                            ui_locale.as_deref(),
+                            "blog.error.createPreviewToken",
+                            "Failed to create preview token",
+                        ),
+                        &err.to_string(),
+                    )));
+                }
+            }
+
+            set_busy_key.set(None);
+        });
+    });
+
     page::render(BlogAdminPageState {
         ui_locale,
         host_locale_for_seo,
@@ -864,6 +905,9 @@ pub fn BlogAdmin() -> impl IntoView {
         archive_post,
         restore_post,
         delete_post,
+        create_preview_link,
+        preview_token,
+        close_preview_banner,
         categories_resource,
         categories_unavailable_label,
         form_setters: BlogPostFormSetters {

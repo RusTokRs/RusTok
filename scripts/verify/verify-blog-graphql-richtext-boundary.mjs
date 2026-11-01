@@ -128,7 +128,9 @@ for (const source of [
   between(mutation, 'async fn create_post(', 'async fn update_post('),
   between(mutation, 'async fn update_post(', 'async fn delete_post('),
 ]) {
-  assert.ok(source.includes('input.try_into()'), 'resolver must delegate through input.try_into()');
+  // rustfmt may wrap `input` and `.try_into()` across lines, so the delegation
+  // check must tolerate whitespace between the receiver and the call.
+  assert.match(source, /\binput\s*\.try_into\(\)/, 'resolver must delegate through input.try_into()');
   assert.ok(!source.includes('input.content'), 'resolver must not map content manually');
 }
 requireMarkers(createTest, CREATE_MARKERS, 'create conversion coverage');

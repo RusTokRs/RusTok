@@ -66,7 +66,10 @@ export interface PostSummary {
   slug: string | null;
   excerpt: string | null;
   status: BlogPostStatus;
+  effectiveLocale: string;
   authorId: string | null;
+  /** Author display-name projection of the owner's profile enrichment. */
+  authorProfile: { displayName: string } | null;
   createdAt: string;
   publishedAt: string | null;
   scheduledAt: string | null;
@@ -108,6 +111,14 @@ export interface PostListQuery {
   status?: BlogPostStatus;
   authorId?: string;
   locale?: string;
+  /** Case-insensitive substring filter on the post's own slug column. */
+  slug?: string;
+  /**
+   * Case-insensitive substring filter on the locale-resolved translation title.
+   * A list filter, not full-text search: it matches the translation the list
+   * displays for the requested locale.
+   */
+  title?: string;
   /** Opaque cursor: `nextCursor` of the previous page. */
   after?: string;
   perPage?: number;
@@ -160,7 +171,11 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
       slug
       excerpt
       status
+      effectiveLocale
       authorId
+      authorProfile {
+        displayName
+      }
       createdAt
       publishedAt
       scheduledAt
@@ -257,6 +272,18 @@ mutation UnpinPost($id: UUID!, $tenantId: UUID!) {
 }
 `;
 
+const CREATE_PREVIEW_TOKEN_MUTATION = `
+mutation CreatePreviewToken($input: CreatePreviewTokenInput!, $tenantId: UUID!) {
+  createPreviewToken(input: $input, tenantId: $tenantId) {
+    id
+    token
+    postId
+    expiresAt
+    createdAt
+  }
+}
+`;
+
 // ---------- Response types ----------
 
 interface PostsQueryResponse {
@@ -303,6 +330,22 @@ interface UnpinPostResponse {
   unpinPost: boolean;
 }
 
+interface CreatePreviewTokenResponse {
+  createPreviewToken: BlogPreviewToken | null;
+}
+
+/**
+ * Draft preview token. `token` is the plaintext secret — it exists only in the
+ * createPreviewToken response and is never retrievable afterwards.
+ */
+export interface BlogPreviewToken {
+  id: string;
+  token: string;
+  postId: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 // ---------- API functions ----------
 
 export async function listPosts(
@@ -313,6 +356,8 @@ export async function listPosts(
   if (query.status) filter.status = query.status;
   if (query.authorId) filter.authorId = query.authorId;
   if (query.locale) filter.locale = query.locale;
+  if (query.slug) filter.slug = query.slug;
+  if (query.title) filter.title = query.title;
   if (query.after) filter.after = query.after;
   if (query.perPage) filter.perPage = query.perPage;
   // A cursor is bound to the sort it was issued for; the owner rejects a mismatch, so the
@@ -457,4 +502,29 @@ export async function unpinPost(id: string, opts: GqlOpts): Promise<void> {
     opts.tenantSlug
   );
   if (!data.unpinPost) throw new Error('Unpin post rejected by the Blog owner');
+}
+
+/**
+ * Mints a draft preview token. The plaintext token is returned by this mutation
+ * exactly once — the backend only stores a SHA-256 digest — so the caller must
+ * present it to the editor immediately. Tokens are revoked automatically when
+ * the post leaves the draft state (publish, schedule, archive).
+ */
+export async function createPreviewToken(
+  input: { postId: string; ttlHours?: number },
+  opts: GqlOpts
+): Promise<BlogPreviewToken> {
+  const data = await graphqlRequest<
+    { input: { postId: string; ttlHours?: number }; tenantId: string },
+    CreatePreviewTokenResponse
+  >(
+    CREATE_PREVIEW_TOKEN_MUTATION,
+    { input, tenantId: opts.tenantId! },
+    opts.token,
+    opts.tenantSlug
+  );
+  if (!data.createPreviewToken) {
+    throw new Error('Create preview token rejected by the Blog owner');
+  }
+  return data.createPreviewToken;
 }

@@ -130,11 +130,7 @@ pub fn adapter_editor_messages(locale: Option<&str>) -> EditorMessages {
         asset_url: t(locale, "page_builder.field.assetUrl", "Asset URL"),
         add_asset: t(locale, "page_builder.action.add", "Add"),
         use_asset: t(locale, "page_builder.action.select", "Use"),
-        contributions_summary: t(
-            locale,
-            "page_builder.panel.contributionsSummary",
-            "Provider contributions: {registered} registered, {skipped} skipped",
-        ),
+        contributions_summary: crate::i18n::contributions_summary_template(locale),
         page_name_label: t(locale, "page_builder.field.pageName", "Page name"),
         page_id_label: t(locale, "page_builder.field.pageId", "Page id"),
         seo_title: t(locale, "page_builder.field.seoTitle", "SEO title"),

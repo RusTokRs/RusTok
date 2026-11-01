@@ -129,7 +129,7 @@ hasAll(
   [
     'CommentsTcpChannelProtection, CommentsTcpClientChannelConnector,',
     'CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadTransport,',
-    'use rustok_comments_api::CommentsThreadPort;',
+    'use rustok_comments::CommentsThreadPort;',
     'PlaintextLoopbackCommentsTcpChannel',
     'TcpProtectedLoopback',
     'pub struct SharedCommentsTcpClientChannelConnector(',

@@ -13,6 +13,7 @@ const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-pagin
 const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-pagination-source.json',
   'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-blog/src/services/tag/relations.rs',
   'crates/modules/rustok-blog/src/dto/tag.rs',
   'crates/modules/rustok-blog/tests/taxonomy_tags.rs',
   'crates/modules/rustok-blog/docs/implementation-plan-slice-102.md',

@@ -114,7 +114,7 @@ if (evidence) {
   if (
     composition.host_context !== 'rustok_api::HostRuntimeContext' ||
     composition.shared_value !== 'Arc<dyn rustok_blog::CommentsThreadPort>' ||
-    composition.facade_reexport !== 'pub use rustok_comments_api::CommentsThreadPort;' ||
+    composition.facade_reexport !== 'pub use rustok_comments::CommentsThreadPort;' ||
     composition.lookup !== 'HostRuntimeContext::shared_get' ||
     composition.selector !== 'comment_service' ||
     composition.runtime_constructor !== 'CommentService::from_runtime_capabilities' ||
@@ -174,7 +174,7 @@ if (
     'all_other_blog_errors'
 ) failures.push(`${fallbackEvidencePath}: fallback evidence drift`);
 
-requireMarker(facade, 'pub use rustok_comments_api::CommentsThreadPort;', facadePath);
+requireMarker(facade, 'pub use rustok_comments::CommentsThreadPort;', facadePath);
 
 for (const marker of [
   'use std::sync::Arc;',

@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Storage driver abstraction for RusTok — local filesystem and S3-compatible backends"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["local"]
 local = []

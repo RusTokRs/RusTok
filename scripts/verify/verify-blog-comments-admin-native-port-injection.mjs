@@ -58,6 +58,7 @@ const evidencePath =
 const adminAdapterPath =
   'crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs';
 const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const serviceCommandsPath = 'crates/modules/rustok-blog/src/services/comment/commands.rs';
 const consumerMatrixPath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
@@ -69,7 +70,10 @@ const harnessCommand =
 const evidence = json(evidencePath);
 const consumerMatrix = json(consumerMatrixPath);
 const adminAdapter = read(adminAdapterPath);
-const service = read(servicePath);
+// The Comment service is split across its module entry (capabilities, port
+// contexts, error mapping) and `comment/commands.rs` (the port calls); service
+// markers may live in either half.
+const service = read(servicePath) + '\n' + read(serviceCommandsPath);
 const normalizedPlan = read(planPath).replace(/\s+/g, ' ');
 
 if (evidence) {

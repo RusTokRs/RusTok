@@ -39,7 +39,7 @@ function fixture({
     root,
     runtimePath,
     `
-use rustok_comments_api::CommentsThreadPort;
+use rustok_comments::CommentsThreadPort;
 use rustok_api::SharedStaticModuleSettingsReader;
 use std::sync::Arc;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>

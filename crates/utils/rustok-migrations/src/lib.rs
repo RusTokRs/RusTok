@@ -1,4 +1,10 @@
-pub use sea_orm_migration::prelude::*;
+//! # rustok-migrations
+//!
+//! Neutral platform schema composition: the canonical platform migration
+//! chain, the SQLite test migrator, installer-owned schema application, and
+//! the schema-diff safety classifier shared by operator tooling.
+
+use sea_orm_migration::prelude::{DbErr, MigrationTrait, MigratorTrait, SchemaManager};
 
 // Platform-core migrations — tables that are always present regardless of which
 // optional modules are installed: tenants, users, sessions, roles, permissions,
@@ -42,7 +48,11 @@ mod m20261025_000005_add_oauth_token_family;
 mod m20261028_000001_enforce_single_running_install_http_job;
 
 pub mod schema_diff;
-pub use schema_diff::*;
+pub use schema_diff::{
+    ColumnSummary, LockClassification, MigrationDiffError, MigrationDryRunReceipt,
+    MigrationSafetyClassification, SchemaOperation, classify_operation, classify_operations,
+    compute_migration_plan_digest, compute_schema_state_digest, generate_migration_dry_run_receipt,
+};
 
 #[cfg(test)]
 mod rbac_system_role_repair_tests;

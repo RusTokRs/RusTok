@@ -111,6 +111,9 @@ impl RusToKModule for BlogModule {
             registrations.register(std::sync::Arc::new(
                 crate::services::scheduler::BlogRouteReconciliationWorkRegistration,
             ));
+            registrations.register(std::sync::Arc::new(
+                crate::services::scheduler::BlogCommentProjectionRetentionWorkRegistration,
+            ));
         }
 
         Ok(())

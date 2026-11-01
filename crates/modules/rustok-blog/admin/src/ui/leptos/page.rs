@@ -29,6 +29,9 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         archive_post,
         restore_post,
         delete_post,
+        create_preview_link,
+        preview_token,
+        close_preview_banner,
         categories_resource,
         categories_unavailable_label,
         form_setters,
@@ -72,6 +75,19 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
     view! {
             <div class=shell_classes.page>
                 <BlogPostsPageHeader />
+
+                // The one-time secret stays visible until the editor closes the
+                // banner; closing drops it from page state for good.
+                {move || {
+                    preview_token.get().map(|minted| {
+                        view! {
+                            <BlogPreviewTokenBanner
+                                token=minted
+                                on_close=close_preview_banner
+                            />
+                        }
+                    })
+                }}
 
                 <section class=shell_classes.layout>
                     <div class=shell_classes.list_card>
@@ -145,6 +161,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                                                     on_archive=archive_post
                                                     on_restore=restore_post
                                                     on_delete=delete_post
+                                                    on_preview=create_preview_link
                                                 />
                                             }.into_any()
                                         }

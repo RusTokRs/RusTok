@@ -393,7 +393,9 @@ assert(
 );
 
 const missingInventoryBootstrap = copyFixture();
-replaceInFixture(
+// The marker appears in the definition and in test call sites; every occurrence must drift
+// for the bootstrap contract check to fail.
+replaceAllInFixture(
   missingInventoryBootstrap,
   'crates/modules/rustok-inventory/src/services/bootstrap.rs',
   'create_initial_records_in_tx',

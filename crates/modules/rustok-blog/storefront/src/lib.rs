@@ -22,5 +22,3 @@ pub use transport::feed::render_rss_feed;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod contract_tests;

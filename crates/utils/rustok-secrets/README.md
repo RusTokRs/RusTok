@@ -1,5 +1,7 @@
 # rustok-secrets
 
+The public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 `rustok-secrets` owns runtime secret-reference contracts and the resolver
 registry used by capability and module integrations.
 

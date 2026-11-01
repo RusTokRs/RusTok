@@ -13,6 +13,7 @@ const verifier = path.join(repositoryRoot, 'scripts/verify/verify-blog-tag-canon
 const files = [
   'crates/modules/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   'crates/modules/rustok-blog/src/services/tag.rs',
+  'crates/modules/rustok-blog/src/services/tag/relations.rs',
   'crates/modules/rustok-taxonomy/src/services.rs',
   'crates/modules/rustok-taxonomy/src/owner_read.rs',
   'crates/modules/rustok-taxonomy/src/translation_target_tests.rs',
@@ -63,7 +64,7 @@ test('accepts canonical Blog tag read/Search source', () => {
 
 test('rejects metadata resurrection on empty relation set', () => {
   const result = rejects((root) => {
-    const file = 'crates/modules/rustok-blog/src/services/tag.rs';
+    const file = 'crates/modules/rustok-blog/src/services/tag/relations.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
     write(root, file, source.replace('return Ok(tags_by_post);', 'return Ok(HashMap::new());'));
   });
@@ -89,8 +90,8 @@ test('rejects metadata-backed Search projection', () => {
       root,
       file,
       source.replace(
-        'let tag_map = load_post_tags_map(',
-        "let tag_map = load_metadata_tags(p.metadata -> 'tags', ",
+        'load_post_tags_map(&self.db, tenant_id, &post_ids, locale, fallback_locale)',
+        "load_metadata_tags(p.metadata -> 'tags', &self.db, tenant_id, &post_ids, locale, fallback_locale)",
       ),
     );
   });
@@ -102,10 +103,10 @@ test('rejects a Search-side writer inside the Blog owner source', () => {
   const result = rejects((root) => {
     const file = 'crates/modules/rustok-blog/src/services/search_projection.rs';
     const source = readFileSync(absolute(root, file), 'utf8');
-    write(root, file, `${source}\n// INSERT INTO search_documents (document_key) VALUES ($1)\n`);
+    write(root, file, `${source}\n// FROM search_documents WHERE document_key = $1\n`);
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /forbidden search_documents/);
+  assert.match(result.stderr, /forbidden FROM search_documents/);
 });
 
 test('rejects removal of global Taxonomy Tag Search invalidation proof', () => {

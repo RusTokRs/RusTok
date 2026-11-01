@@ -70,11 +70,17 @@ assertAll('crates/modules/rustok-blog/src/graphql/query.rs', [
   '.is_module_enabled_for_tenant(tenant_id, channel_id, MODULE_SLUG)',
   'public_channel_slug(ctx)',
   'is_post_visible_for_channel',
+]);
+// The channel-binding denial proof test lives in the query module's tests file
+// (query.rs declares `mod tests;`).
+assertAll('crates/modules/rustok-blog/src/graphql/query/tests.rs', [
   'public_request_rejects_disabled_blog_channel_binding',
 ]);
 assertAll('crates/modules/rustok-blog/src/integrations/seo_targets.rs', [
-  'channel_visible',
-  'normalize_channel_slug',
+  // Channel-aware SEO resolution: public loads and route matches expose only
+  // published posts visible for the requesting channel.
+  'SeoTargetLoadScope::PublicRoute',
+  'is_post_visible_for_channel',
   'request.channel_slug',
 ]);
 assertAll('crates/modules/rustok-blog/README.md', [
@@ -128,7 +134,7 @@ assertAll('crates/modules/rustok-commerce/README.md', [
 assertAll('crates/modules/rustok-forum/src/graphql/mod.rs', [
   'async fn require_public_forum_channel_enabled(',
   'ChannelService::new',
-  '.is_module_enabled(channel_id, "forum")',
+  '.is_module_enabled_for_tenant(tenant.id, channel_id, "forum")',
 ]);
 assertAll('crates/modules/rustok-forum/src/graphql/query_runtime.rs', [
   'require_public_forum_channel_enabled(ctx)',

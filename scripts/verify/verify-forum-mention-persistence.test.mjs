@@ -80,6 +80,12 @@ projection_fingerprint
 added_user_ids
 replayed: true
 ForumError::quote_target_unavailable()
+ForumMentionEvent
+TransactionalEventBus
+publish_contract_in_tx_with_envelope_id
+forum_domain_event::ActiveModel
+let result = MentionRelationSyncResult
+publish_added_target_events_in_tx
 ${options.lateQuoteValidation ? firstWrite : quoteValidation}
 ${options.lateQuoteValidation ? quoteValidation : firstWrite}
 ${options.notificationCall ? "rustok_notifications::deliver();" : ""}
@@ -103,16 +109,24 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
     root,
     "crates/modules/rustok-forum/src/migrations/mod.rs",
     [
+      "mod m20260713_000011_add_forum_domain_events;",
       "mod m20260722_000004_add_forum_mention_quote_relations;",
       "mod m20260722_000005_seed_forum_relation_revisions;",
+      "Box::new(m20260713_000011_add_forum_domain_events::Migration)",
       "Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration)",
       "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
     ].join("\n"),
   );
+  // The append-only event journal accepts both mention event types in place.
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/src/migrations/m20260713_000011_add_forum_domain_events",
+    "forum.mention.user_added\nforum.mention.audience_added\n",
+  );
   writeFixture(
     root,
     "crates/modules/rustok-forum/src/services/mod.rs",
-    "mod mention_relation;",
+    "mod mention_relation {",
   );
   writeFixture(
     root,
@@ -122,12 +136,33 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   writeFixture(
     root,
     "crates/modules/rustok-forum/src/error.rs",
-    '"FORUM_QUOTE_TARGET_UNAVAILABLE"',
+    '"FORUM_QUOTE_TARGET_UNAVAILABLE"\n"FORUM_RELATION_REVISION_UNAVAILABLE"',
   );
   writeFixture(
     root,
     "crates/modules/rustok-forum/docs/implementation-plan.md",
     "Delivered in `FORUM-12B1`\nFORUM-12B2\n",
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/docs/forum-12b2-owner-write-integration.md",
+    [
+      "FORUM-12B2",
+      "persist_in_tx",
+      "same transaction",
+      "",
+    ].join("\n"),
+  );
+  writeFixture(
+    root,
+    "crates/modules/rustok-forum/docs/forum-12c-mention-events.md",
+    [
+      "FORUM-12C",
+      "forum.mention.user_added",
+      "ForumRelationReadService",
+      "one shared identity",
+      "",
+    ].join("\n"),
   );
   writeFixture(
     root,
@@ -137,6 +172,8 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
       "MentionRelationService",
       "FORUM_QUOTE_TARGET_UNAVAILABLE",
       "source INSERT seed triggers",
+      "forum.mention.user_added",
+      "ForumRelationReadService",
     ].join("\n"),
   );
   return root;
@@ -169,7 +206,7 @@ test("mention persistence verifier accepts owner-only contract", () => {
 test("mention persistence verifier rejects notification delivery", () => {
   withFixture({ notificationCall: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not publish events or call Notifications/);
+    assert.match(result.stderr, /must publish owner events instead of calling Notifications/);
   });
 });
 

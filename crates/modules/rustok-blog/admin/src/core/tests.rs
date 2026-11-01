@@ -11,6 +11,8 @@ fn sample_list_item(id: &str) -> BlogPostListItem {
         slug: Some("title".to_string()),
         excerpt: Some("Excerpt".to_string()),
         status: "draft".to_string(),
+        author_id: Some("00000000-0000-0000-0000-000000000001".to_string()),
+        author_profile: None,
         created_at: "2026-06-14T00:00:00Z".to_string(),
         published_at: None,
         scheduled_at: None,
@@ -391,6 +393,10 @@ fn table_row_view_model_composes_row_policy_without_ui_runtime() {
             slug: None,
             excerpt: None,
             status: "published".to_string(),
+            author_id: Some("00000000-0000-0000-0000-000000000002".to_string()),
+            author_profile: Some(BlogAuthorProfileName {
+                display_name: "Ada Author".to_string(),
+            }),
             created_at: "2026-06-13T00:00:00Z".to_string(),
             published_at: Some("2026-06-13T00:00:00Z".to_string()),
             scheduled_at: None,
@@ -409,12 +415,16 @@ fn table_row_view_model_composes_row_policy_without_ui_runtime() {
             archive: "Archive",
             restore: "Restore",
             delete: "Delete",
+            preview_link: "Preview link",
         },
     );
 
     assert_eq!(row.post_id, "post-1");
     assert_eq!(row.slug, "draft");
     assert_eq!(row.excerpt, "No excerpt");
+    assert_eq!(row.author, "Ada Author");
+    assert_eq!(row.created_at, "2026-06-13");
+    assert_eq!(row.published_at, "2026-06-13");
     assert!(row.is_editing);
     assert!(row.is_busy);
     assert!(row.is_published);
@@ -423,10 +433,46 @@ fn table_row_view_model_composes_row_policy_without_ui_runtime() {
     assert!(row.show_publish_action);
     assert!(row.show_archive_action);
     assert!(!row.show_restore_action);
+    // Preview links exist only while the post is a draft.
+    assert!(!row.show_preview_action);
     assert_eq!(row.edit_label, "Editing");
     assert_eq!(row.publish_label, "Unpublish");
     assert_eq!(row.archive_label, "Archive");
     assert_eq!(row.delete_label, "Delete");
+    assert_eq!(row.preview_label, "Preview link");
+}
+
+#[test]
+fn preview_link_action_is_draft_only() {
+    fn labels() -> BlogPostAdminTableRowLabels<'static> {
+        BlogPostAdminTableRowLabels {
+            draft_slug: "draft",
+            no_excerpt: "No excerpt",
+            editing: "Editing",
+            edit: "Edit",
+            unpublish: "Unpublish",
+            publish: "Publish",
+            archive: "Archive",
+            restore: "Restore",
+            delete: "Delete",
+            preview_link: "Preview link",
+        }
+    }
+
+    // Draft rows mint preview tokens; the token dies on the first lifecycle
+    // transition away from draft, so published and archived rows must not offer it.
+    let draft_row = blog_post_admin_table_row_view(
+        sample_list_item("post-9"),
+        None,
+        None,
+        labels(),
+    );
+    assert!(draft_row.show_preview_action);
+
+    let mut archived = sample_list_item("post-9");
+    archived.status = "archived".to_string();
+    let archived_row = blog_post_admin_table_row_view(archived, None, None, labels());
+    assert!(!archived_row.show_preview_action);
 }
 
 #[test]
@@ -435,8 +481,8 @@ fn title_input_does_not_invent_slug_policy() {
     assert_eq!(english.title, "Hello RusTok");
 
     // The Blog owner applies the same canonical Taxonomy transliteration in both UIs.
-    let russian = blog_post_admin_title_input_view("Привет мир".to_string());
-    assert_eq!(russian.title, "Привет мир");
+    let cyrillic = blog_post_admin_title_input_view("Привет мир".to_string());
+    assert_eq!(cyrillic.title, "Привет мир");
 }
 
 #[test]
@@ -461,6 +507,7 @@ fn busy_key_helpers_and_save_busy_are_consistent() {
     assert_eq!(busy_key_for_archive("1"), "archive:1".to_string());
     assert_eq!(busy_key_for_restore("1"), "restore:1".to_string());
     assert_eq!(busy_key_for_delete("1"), "delete:1".to_string());
+    assert_eq!(busy_key_for_preview("1"), "preview:1".to_string());
     assert!(is_save_busy(Some("create")));
     assert!(is_save_busy(Some("save:1")));
     assert!(!is_save_busy(Some("publish:1")));
@@ -484,6 +531,16 @@ fn label_count_and_status_helpers_work() {
     );
     assert_eq!(label_with_optional_id("Editing post {id}", None), "");
     assert_eq!(count_label("{count} total", 7), "7 total");
+    assert_eq!(
+        preview_expires_label("Expires {at}", "2026-11-06T12:00:00Z"),
+        "Expires 2026-11-06T12:00:00Z"
+    );
+    // A resolved catalog message already carries the timestamp; the helper
+    // must not touch it.
+    assert_eq!(
+        preview_expires_label("Действует до 2026-11-06T12:00:00Z", "2026-11-06T12:00:00Z"),
+        "Действует до 2026-11-06T12:00:00Z"
+    );
     assert!(is_published_status("published"));
     assert!(is_archived_status("archived"));
     assert!(!is_archived_status("draft"));
@@ -641,6 +698,9 @@ fn label_count_and_status_helpers_work() {
             slug_header: "Slug".to_string(),
             status_header: "Status".to_string(),
             locale_header: "Locale".to_string(),
+            author_header: "Author".to_string(),
+            created_header: "Created".to_string(),
+            published_header: "Published".to_string(),
         },
     );
     assert!(!table.is_empty);
@@ -657,6 +717,9 @@ fn label_count_and_status_helpers_work() {
             slug_header: "Slug".to_string(),
             status_header: "Status".to_string(),
             locale_header: "Locale".to_string(),
+            author_header: "Author".to_string(),
+            created_header: "Created".to_string(),
+            published_header: "Published".to_string(),
         },
     );
     assert!(empty_table.is_empty);
@@ -812,4 +875,157 @@ fn admin_sort_tokens_match_the_wire_spelling() {
         serde_json::from_value(serde_json::to_value(sort).expect("sort serializes"))
             .expect("sort deserializes");
     assert_eq!(round_tripped, sort);
+}
+
+#[test]
+fn category_description_patch_keeps_unchanged_clears_emptied_and_sets_changed() {
+    use rustok_api::Patch;
+
+    assert_eq!(
+        blog_category_description_patch("same text", Some("same text")),
+        Patch::<String>::Keep
+    );
+    assert_eq!(
+        blog_category_description_patch("", Some("old text")),
+        Patch::Clear
+    );
+    assert_eq!(
+        blog_category_description_patch("   ", Some("old text")),
+        Patch::Clear
+    );
+    assert_eq!(
+        blog_category_description_patch("new text", Some("old text")),
+        Patch::Set("new text".to_string())
+    );
+    // Nothing was loaded (create flow): any text is a set, blank is a clear.
+    assert_eq!(blog_category_description_patch("text", None), Patch::Set("text".to_string()));
+    assert_eq!(blog_category_description_patch("", None), Patch::Clear);
+}
+
+#[test]
+fn category_save_command_validates_the_name_length() {
+    let issue = prepare_blog_category_save_command(
+        BlogCategoryFormInput {
+            editing_category_id: None,
+            loaded_description: None,
+            locale: "en",
+            name: " a ",
+            slug: "",
+            description: "",
+            parent_id: None,
+            position: "0",
+        },
+        "name too short".to_string(),
+        "invalid position".to_string(),
+    )
+    .unwrap_err();
+    assert_eq!(issue.message, "name too short");
+}
+
+#[test]
+fn category_save_command_create_trims_optionals_and_parses_position() {
+    let command = prepare_blog_category_save_command(
+        BlogCategoryFormInput {
+            editing_category_id: None,
+            loaded_description: None,
+            locale: " en ",
+            name: " News ",
+            slug: "  ",
+            description: "  Team updates  ",
+            parent_id: Some("  "),
+            position: "3",
+        },
+        "name too short".to_string(),
+        "invalid position".to_string(),
+    )
+    .unwrap();
+    match command.operation {
+        BlogCategorySaveOperation::Create(draft) => {
+            assert_eq!(draft.locale, "en");
+            assert_eq!(draft.name, "News");
+            assert_eq!(draft.slug, None);
+            assert_eq!(draft.description.as_deref(), Some("Team updates"));
+            assert_eq!(draft.parent_id, None);
+            assert_eq!(draft.position, Some(3));
+        }
+        BlogCategorySaveOperation::Update { .. } => panic!("expected a create command"),
+    }
+    assert_eq!(command.busy_key, busy_key_for_category_save(None));
+}
+
+#[test]
+fn category_save_command_rejects_negative_or_non_numeric_position() {
+    for position in ["-1", "abc"] {
+        let issue = prepare_blog_category_save_command(
+            BlogCategoryFormInput {
+                editing_category_id: None,
+                loaded_description: None,
+                locale: "en",
+                name: "News",
+                slug: "",
+                description: "",
+                parent_id: None,
+                position,
+            },
+            "name too short".to_string(),
+            "invalid position".to_string(),
+        )
+        .unwrap_err();
+        assert_eq!(issue.message, "invalid position");
+    }
+}
+
+#[test]
+fn category_save_command_update_uses_description_patch_semantics() {
+    let command = prepare_blog_category_save_command(
+        BlogCategoryFormInput {
+            editing_category_id: Some("11111111-1111-1111-1111-111111111111"),
+            loaded_description: Some("loaded text"),
+            locale: "en",
+            name: "News",
+            slug: "news",
+            description: "loaded text",
+            parent_id: Some("00000000-0000-0000-0000-000000000002"),
+            position: "7",
+        },
+        "name too short".to_string(),
+        "invalid position".to_string(),
+    )
+    .unwrap();
+    match command.operation {
+        BlogCategorySaveOperation::Update { category_id, update } => {
+            assert_eq!(category_id, "11111111-1111-1111-1111-111111111111");
+            assert_eq!(update.locale, "en");
+            assert_eq!(update.name.as_deref(), Some("News"));
+            assert_eq!(update.slug.as_deref(), Some("news"));
+            assert_eq!(update.description, rustok_api::Patch::Keep);
+        }
+        BlogCategorySaveOperation::Create(_) => panic!("expected an update command"),
+    }
+    assert_eq!(
+        command.busy_key,
+        busy_key_for_category_save(Some("11111111-1111-1111-1111-111111111111"))
+    );
+}
+
+#[test]
+fn category_search_matches_name_slug_and_description() {
+    let row = blog_category_admin_table_row_view(&BlogCategoryDetail {
+        id: "id".to_string(),
+        locale: "en".to_string(),
+        effective_locale: "en".to_string(),
+        name: "Company News".to_string(),
+        slug: "company-news".to_string(),
+        description: Some("Updates from the team".to_string()),
+        parent_id: None,
+        position: 2,
+        created_at: "2026-06-14T00:00:00Z".to_string(),
+        updated_at: None,
+    });
+    assert!(blog_category_matches_query(&row, "comp"));
+    assert!(blog_category_matches_query(&row, "NEWS"));
+    assert!(blog_category_matches_query(&row, "company-news"));
+    assert!(blog_category_matches_query(&row, "team"));
+    assert!(blog_category_matches_query(&row, "  "));
+    assert!(!blog_category_matches_query(&row, "roadmap"));
 }

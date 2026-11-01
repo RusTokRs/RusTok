@@ -26,6 +26,7 @@ const MUTATION_PATH = `${BLOG_CRATE}/src/graphql/mutation.rs`;
 const CLIENT_DOCUMENTS = [
   'apps/next-admin/packages/blog/src/api/posts.ts',
   'apps/next-admin/packages/blog/src/api/categories.ts',
+  'apps/next-admin/packages/blog/src/api/moderation.ts',
   'apps/next-frontend/packages/rustok-blog/src/api/posts.ts',
   `${BLOG_CRATE}/admin/src/transport/graphql_adapter.rs`,
   `${BLOG_CRATE}/admin/src/transport/moderation_adapter.rs`,
