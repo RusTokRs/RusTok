@@ -2803,29 +2803,29 @@
       "category": "modules",
       "files": 33,
       "loc": 3019,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T07:43:00+03:00",
+      "notes": "Audited threat protection module; verified CIDR net parsing, brute-force lockout, Moka rate limiter, audit logs, policies; 18/18 tests passed, 0 clippy warnings, zero defects"
     },
     "crates/modules/rustok-security/admin": {
-      "name": "admin",
+      "name": "rustok-security-admin",
       "path": "crates/modules/rustok-security/admin",
       "category": "modules",
       "files": 6,
       "loc": 319,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T07:43:00+03:00",
+      "notes": "Audited Leptos admin FFA package; verified FFA separation in core/, dual-path transport, Fluent i18n; 4/4 tests passed, 0 clippy warnings, zero defects"
     },
     "crates/modules/rustok-security/storefront": {
-      "name": "storefront",
+      "name": "rustok-security-storefront",
       "path": "crates/modules/rustok-security/storefront",
       "category": "modules",
       "files": 6,
       "loc": 123,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T07:43:00+03:00",
+      "notes": "Audited Leptos storefront FFA package; verified FFA separation, honeypot challenge view model, Fluent i18n; 4/4 tests passed, 0 clippy warnings, zero defects"
     },
     "crates/modules/rustok-social-graph/cli": {
       "name": "cli",

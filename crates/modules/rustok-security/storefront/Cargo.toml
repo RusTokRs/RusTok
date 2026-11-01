@@ -2,7 +2,10 @@
 name = "rustok-security-storefront"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Storefront FFA package for Security"
 
 [package.metadata.docs.rs]

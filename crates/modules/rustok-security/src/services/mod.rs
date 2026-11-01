@@ -192,15 +192,15 @@ impl SecurityService {
                 continue;
             }
 
-            if let Ok(net) = rule.parse_net() {
-                if net.contains(ip) {
-                    match rule.rule_type {
-                        IpRuleType::Whitelist => {
-                            matched_whitelist = true;
-                        }
-                        IpRuleType::Blacklist => {
-                            return Ok(false);
-                        }
+            if let Ok(net) = rule.parse_net()
+                && net.contains(ip)
+            {
+                match rule.rule_type {
+                    IpRuleType::Whitelist => {
+                        matched_whitelist = true;
+                    }
+                    IpRuleType::Blacklist => {
+                        return Ok(false);
                     }
                 }
             }
@@ -356,16 +356,16 @@ impl SecurityService {
                     updated_at: m.updated_at,
                 })
             } else {
-                let mut default_pol = SecurityPolicy::default();
-                default_pol.tenant_id = tenant_id;
-                Ok(default_pol)
+                Ok(SecurityPolicy {
+                    tenant_id,
+                    ..SecurityPolicy::default()
+                })
             }
         } else {
             let store = self.in_memory_policies.read().await;
-            Ok(store.get(&tenant_id).cloned().unwrap_or_else(|| {
-                let mut p = SecurityPolicy::default();
-                p.tenant_id = tenant_id;
-                p
+            Ok(store.get(&tenant_id).cloned().unwrap_or_else(|| SecurityPolicy {
+                tenant_id,
+                ..SecurityPolicy::default()
             }))
         }
     }
