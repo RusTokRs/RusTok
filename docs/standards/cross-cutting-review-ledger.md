@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-04: Caching, Invalidation & Tenant Cache Isolation
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement) (3/17 completed)
+- **Active Phase:** CC-05: Event Bus, Transactional Outbox & Async Messaging
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation) (4/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -58,7 +58,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (6/6 completed — 100% PASS)
 - [x] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (5/5 completed — 100% PASS)
 - [x] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (8/8 completed — 100% PASS)
-- [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
+- [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (4/4 completed — 100% PASS)
 - [ ] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (0/4 completed)
 - [ ] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (0/5 completed)
 - [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
@@ -131,10 +131,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `CacheService get_cached set_cached invalidate CacheKey TieredCache`
 
 #### Sub-Audit Checklist
-- [ ] **CC-04.01 — Tenant Scoping in Cache Keys:** Verify `CacheKeyBuilder` requires `tenant_or_global` in the 6-tuple prefix, preventing cross-tenant key pollution.
-- [ ] **CC-04.02 — Mutation Path Invalidation:** Audit all write/mutation paths across modules to verify mutations trigger deterministic cache invalidations locally and via pub/sub broadcast.
-- [ ] **CC-04.03 — Stampede & Dogpile Prevention:** Verify singleflight request coalescing (`CacheLoadCoordinator` in `load_or_fill`) to prevent dogpiles on cold start.
-- [ ] **CC-04.04 — Negative Caching & Multi-Node Sync:** Verify negative caching bounds for non-existent entities and atomic invalidation on creation.
+- [x] **CC-04.01 — Tenant Scoping in Cache Keys:** Verified `CacheKeyBuilder` enforces `tenant_or_global` in the 6-tuple prefix, strictly bounding key components (capped at 512 bytes with deterministic SHA-256 fallback) without cross-tenant key pollution (`crates/modules/rustok-cache/src/key.rs`).
+- [x] **CC-04.02 — Mutation Path Invalidation:** Audited write/mutation paths across `channel`, `rbac`, `pages`, `seo`, `tenant`, and `field_definition` modules; verified mutations trigger deterministic multi-node cache invalidations via pub/sub broadcast and local cache purging (`node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs` — PASSED).
+- [x] **CC-04.03 — Stampede & Dogpile Prevention:** Verified singleflight request coalescing (`CacheLoadCoordinator` in `load_or_fill`) preventing dogpiles on cold start with bounded in-flight gates and per-(backend, key) locks (`cargo test -p rustok-cache --lib` — 228/228 PASSED).
+- [x] **CC-04.04 — Negative Caching & Multi-Node Sync:** Verified negative caching bounds (`NegativeCachePolicy` with 64KB max encoded bytes and non-zero TTL) for non-existent entities, fallible epoch clock fail-closed semantics (`node scripts/verify/verify-cache-clock-contract.mjs` — PASSED), and atomic invalidation on creation.
 
 ---
 
