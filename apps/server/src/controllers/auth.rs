@@ -28,10 +28,10 @@ use crate::services::email::{
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
     AcceptInviteParams, AuthResponse, ChangePasswordParams, ConfirmResetParams,
-    ConfirmVerificationParams, GenericStatusResponse, InviteAcceptResponse, LoginParams,
-    LogoutResponse, RefreshRequest, RegisterParams, RequestResetParams, RequestVerificationParams,
-    ResetRequestResponse, SessionItem, SessionListParams, SessionsResponse, UpdateProfileParams,
-    UserInfo, UserResponse, VerificationRequestResponse,
+    ConfirmVerificationParams, CookieSessionResponse, GenericStatusResponse, InviteAcceptResponse,
+    LoginParams, LogoutResponse, RefreshRequest, RegisterParams, RequestResetParams,
+    RequestVerificationParams, ResetRequestResponse, SessionItem, SessionListParams,
+    SessionsResponse, UpdateProfileParams, UserInfo, UserResponse, VerificationRequestResponse,
 };
 
 fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
@@ -240,26 +240,6 @@ async fn logout(
 const SESSION_COOKIE_NAME: &str = "rustok-session";
 const SESSION_COOKIE_PATH: &str = "/api/auth/session";
 const SESSION_REQUEST_HEADER: &str = "x-rustok-session-request";
-
-#[derive(serde::Serialize, utoipa::ToSchema)]
-pub(crate) struct CookieSessionResponse {
-    access_token: String,
-    token_type: &'static str,
-    expires_in: u64,
-    user: UserInfo,
-}
-
-impl std::fmt::Debug for CookieSessionResponse {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("CookieSessionResponse")
-            .field("access_token", &"<redacted>")
-            .field("token_type", &self.token_type)
-            .field("expires_in", &self.expires_in)
-            .field("user", &self.user)
-            .finish()
-    }
-}
 
 fn session_cookie_is_secure(
     headers: &axum::http::HeaderMap,

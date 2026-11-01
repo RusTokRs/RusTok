@@ -190,11 +190,10 @@ pub async fn resolve_optional(
                 current_user.permissions.clone(),
                 current_user.inferred_role.clone(),
             ));
+            let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
             parts
                 .extensions
-                .insert(AuthPrincipalContextExtension(AuthPrincipalContext::new(
-                    current_user.principal_kind,
-                )));
+                .insert(AuthPrincipalContextExtension(principal_context));
             parts.extensions.insert(AuthContextExtension(AuthContext {
                 user_id: current_user.user.id,
                 session_id: current_user.session_id,
