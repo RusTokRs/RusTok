@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-12: Internationalization (i18n), Localization & Translation Storage
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets) (11/17 completed)
+- **Active Phase:** CC-13: Documentation, ADRs, Manifests & Verification Gates
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage) (12/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -66,7 +66,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed — 100% PASS)
 - [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed — 100% PASS)
 - [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed — 100% PASS)
-- [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
+- [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed — 100% PASS)
 - [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
 - [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
 - [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
@@ -244,10 +244,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `constrain_locale_to_tenant TranslationService _translations`
 
 #### Sub-Audit Checklist
-- [ ] **CC-12.01 — Relational Translation Schema:** Verify entity translations adhere to `base + *_translations` pattern with `(entity_id, locale)` composite primary key.
-- [ ] **CC-12.02 — Fallback Negotiation Chain:** Verify locale negotiation: requested locale -> tenant default -> platform fallback.
-- [ ] **CC-12.03 — User-Facing String Decoupling:** Verify backend returns typed error codes/translation keys; presentation strings resolve via FTL catalogs.
-- [ ] **CC-12.04 — Fluent & ICU Format Safety:** Verify Fluent message formatting symmetry and non-panicking argument evaluation.
+- [x] **CC-12.01 — Relational Translation Schema:** Verified entity translations adhere to `base + *_translations` pattern with `(entity_id, locale)` composite primary key across modules (`blog`, `forum`, `pages`, `taxonomy`, `pricing`, `fulfillment`, `product`, `groups`, `alloy`).
+- [x] **CC-12.02 — Fallback Negotiation Chain:** Verified locale negotiation: requested locale -> tenant fallback -> tenant primary language -> tenant default -> platform fallback in `apps/server/src/middleware/locale.rs` (`node scripts/verify/verify-tenant-locale-policy-migration.mjs` — PASSED).
+- [x] **CC-12.03 — User-Facing String Decoupling:** Verified backend returns typed error codes/translation keys; presentation strings resolve via FTL catalogs (`node scripts/verify/verify-ui-i18n-keys.mjs` — 3474 UI keys across 72 packages PASSED, 0 uncataloged references).
+- [x] **CC-12.04 — Fluent & ICU Format Safety:** Verified Fluent message formatting symmetry and non-panicking argument evaluation (`node scripts/verify/verify-ui-i18n-parity.mjs` — 76 catalog directories PASSED, `cargo test -p rustok-translation --lib` — 38/38 PASSED).
 
 ---
 
