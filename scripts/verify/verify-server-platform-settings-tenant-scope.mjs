@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const moduleSource = read('apps/server/src/graphql/settings/mod.rs');
 const querySource = read('apps/server/src/graphql/settings/query.rs');
 const mutationSource = read('apps/server/src/graphql/settings/mutation.rs');
+const serviceSource = read('apps/server/src/services/settings_service.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -96,11 +97,21 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE)',
+    'ctx.data::<TransactionalEventBus>()?',
     'SettingsService::update(',
-    'event_bus',
-    '.publish(',
   ],
-  'settings write and event publication',
+  'settings write and event bus binding',
+);
+
+requireOrder(
+  serviceSource,
+  [
+    'pub async fn update(',
+    'event_bus',
+    '.publish_in_tx(',
+    'PlatformSettingsChanged',
+  ],
+  'transactional settings write and event publication',
 );
 
 const queryCalls = querySource.match(/require_tenant_settings_scope\(auth, tenant\.id\)\?;/g) ?? [];
