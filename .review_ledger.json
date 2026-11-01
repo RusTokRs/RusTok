@@ -2123,9 +2123,9 @@
       "category": "integration",
       "files": 6,
       "loc": 1234,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T09:58:00Z",
+      "notes": "Verified ContentRevisionApi, non-nil UUID validation, retention policy config, CRATE_API.md and contract tests."
     },
     "crates/libs/rustok-content-portability": {
       "name": "rustok-content-portability",

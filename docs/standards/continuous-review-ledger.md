@@ -783,7 +783,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [search](../../apps/next-frontend/packages/search) | `apps` | 3 | 737 | 2026-11-01 | Audited in FS-11; SearchStorefrontPage, live faceted search preview, suggestions, presets, headless api.ts, anti-swallowing, CRATE_API.md, 5/5 tests passed, typecheck clean, zero defects. |
 | [ ] | [server](../../apps/server) | `apps` | 495 | 198,537 | None |  |
 | [x] | [storefront](../../apps/storefront) | `apps` | 34 | 5,987 | 2026-10-31 | Audited in FS-11; Rust/Leptos e-commerce storefront, SSR anonymous delivery without nonce leak, canonical route normalization, slot filtering, ETag cache, CRATE_API.md, 39/39 tests passed, zero defects. |
-| [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 1,234 | None |  |
+| [x] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 6 | 1,234 | 2026-11-01 09:58 | Verified ContentRevisionApi, non-nil UUID validation, retention policy config, CRATE_API.md and contract tests. |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,533 | 2026-10-17 00:43 | Audited and cleaned. |
 | [x] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 12 | 1,476 | 2026-10-17 01:57 | Audited and cleaned. |
 | [x] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | 2026-10-17 01:58 | Audited and cleaned. |

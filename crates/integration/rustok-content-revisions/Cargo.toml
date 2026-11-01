@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "Content revision history integration for RusTok platform"
 license = "MIT OR Apache-2.0"
+rust-version = "1.85.0"
+repository = "https://github.com/RusTokRs/rustok"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 # Internal dependencies
