@@ -2,8 +2,11 @@
 name = "rustok-marketplace-listing-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Leptos admin FFA package for Marketplace Family listing administration"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

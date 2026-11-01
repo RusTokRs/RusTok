@@ -2,8 +2,11 @@
 name = "rustok-marketplace-balance"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Marketplace Family seller balance, escrow hold, and balance operations owner"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

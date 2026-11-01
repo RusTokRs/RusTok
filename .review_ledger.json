@@ -652,9 +652,9 @@
       "category": "modules",
       "files": 12,
       "loc": 2143,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified directory facades, financial orchestration context, non-nil UUID bounds, 3-letter currency validation; 6/6 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-allocation": {
       "name": "rustok-marketplace-allocation",
@@ -672,9 +672,9 @@
       "category": "modules",
       "files": 18,
       "loc": 3099,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified rule priority resolution, immutable versions, assessable allocation filtering; 9/9 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-ledger": {
       "name": "rustok-marketplace-ledger",
@@ -682,9 +682,9 @@
       "category": "modules",
       "files": 28,
       "loc": 6426,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Consolidated into rustok-marketplace-balance; audited and verified under balance module."
     },
     "crates/modules/rustok-marketplace-listing": {
       "name": "rustok-marketplace-listing",
@@ -692,9 +692,9 @@
       "category": "modules",
       "files": 34,
       "loc": 6898,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified durable command receipts, event provenance, non-nil UUID guards; 10/10 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-listing/admin": {
       "name": "admin",
@@ -702,9 +702,9 @@
       "category": "modules",
       "files": 10,
       "loc": 2004,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA separation, public model exports for admin action permission mapping; 4/4 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-payout": {
       "name": "rustok-marketplace-payout",
@@ -712,9 +712,9 @@
       "category": "modules",
       "files": 15,
       "loc": 2050,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified payout scheduling atomicity, non-credit entry rejection, receipt uniqueness; 8/8 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-seller": {
       "name": "rustok-marketplace-seller",
@@ -722,9 +722,9 @@
       "category": "modules",
       "files": 51,
       "loc": 11035,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified seller lifecycle events, member command attribution, durable receipts; 13/13 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-marketplace-seller/admin": {
       "name": "admin",
@@ -732,9 +732,9 @@
       "category": "modules",
       "files": 14,
       "loc": 2508,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA separation, transport selection explicit policy, i18n parity; 4/4 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-mcp": {
       "name": "rustok-mcp",
@@ -2213,9 +2213,9 @@
       "category": "modules",
       "files": 31,
       "loc": 7109,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 11:23",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified double-entry posting atomicity, reversal assessment rejection, accounting bridge; 8/8 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-newsletter": {
       "name": "rustok-newsletter",
