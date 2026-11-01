@@ -49,7 +49,6 @@ impl ScaffoldUi {
     pub fn has_storefront(&self) -> bool {
         matches!(self, Self::Storefront | Self::Dual)
     }
-
 }
 
 pub struct ScaffoldOptions {
@@ -354,14 +353,8 @@ mod tests {
 
     #[test]
     fn native_no_db_no_ui_request_keeps_both_capabilities_absent() {
-        let request = parse(&[
-            "sample-module",
-            "--profile",
-            "native",
-            "--no-db",
-            "--no-ui",
-        ])
-        .expect("valid native request");
+        let request = parse(&["sample-module", "--profile", "native", "--no-db", "--no-ui"])
+            .expect("valid native request");
         assert_eq!(request.slug, "sample_module");
         assert_eq!(request.crate_name(), "rustok-sample-module");
         assert_eq!(request.profile, ScaffoldProfile::NativeModule);
@@ -377,10 +370,7 @@ mod tests {
 
     #[test]
     fn support_and_wasi_are_not_native_modules() {
-        for (profile, explanation) in [
-            ("support", "support crate"),
-            ("wasi", "standalone WASI"),
-        ] {
+        for (profile, explanation) in [("support", "support crate"), ("wasi", "standalone WASI")] {
             let error = match parse(&["example", "--profile", profile]) {
                 Ok(_) => panic!("profile {profile} must be rejected"),
                 Err(error) => error,

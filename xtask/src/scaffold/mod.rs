@@ -218,7 +218,10 @@ fn build_scaffold_plan(
         let trimmed = line.trim();
         trimmed.starts_with(&needle) || trimmed.starts_with(&needle_sp)
     }) {
-        anyhow::bail!("Module '{}' is already registered in modules.toml", options.slug);
+        anyhow::bail!(
+            "Module '{}' is already registered in modules.toml",
+            options.slug
+        );
     }
 
     let mut plan = Vec::new();
@@ -247,24 +250,33 @@ fn build_scaffold_plan(
             anyhow::bail!("Scaffold target escapes workspace: {}", file.path.display());
         }
         if !seen.insert(file.path.clone()) {
-            anyhow::bail!("Scaffold plan contains duplicate target {}", file.path.display());
+            anyhow::bail!(
+                "Scaffold plan contains duplicate target {}",
+                file.path.display()
+            );
         }
         ensure_no_symlink_ancestors(root, &file.path)?;
         match file.kind {
             PlannedFileKind::Create => match fs::symlink_metadata(&file.path) {
-                Ok(_) => anyhow::bail!("Scaffold create target already exists: {}", file.path.display()),
+                Ok(_) => anyhow::bail!(
+                    "Scaffold create target already exists: {}",
+                    file.path.display()
+                ),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("Failed to inspect {}", file.path.display())
-                    });
+                    return Err(error)
+                        .with_context(|| format!("Failed to inspect {}", file.path.display()));
                 }
             },
             PlannedFileKind::Update => {
-                let metadata = fs::symlink_metadata(&file.path)
-                    .with_context(|| format!("Registration target is missing: {}", file.path.display()))?;
+                let metadata = fs::symlink_metadata(&file.path).with_context(|| {
+                    format!("Registration target is missing: {}", file.path.display())
+                })?;
                 if metadata.file_type().is_symlink() || !metadata.is_file() {
-                    anyhow::bail!("Registration target must be a regular file: {}", file.path.display());
+                    anyhow::bail!(
+                        "Registration target must be a regular file: {}",
+                        file.path.display()
+                    );
                 }
             }
         }
@@ -310,13 +322,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
     let module_dir = root.join("crates").join("modules").join(&crate_name);
 
     println!("Scaffolding module '{}' ({})...", slug, crate_name);
-    let plan = build_scaffold_plan(
-        &root,
-        &module_dir,
-        options,
-        &pascal_name,
-        &snake_name,
-    )?;
+    let plan = build_scaffold_plan(&root, &module_dir, options, &pascal_name, &snake_name)?;
 
     if options.dry_run {
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
@@ -354,7 +360,9 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
             }
         }
         ScaffoldValidation::Skipped => {
-            println!("\n  REGISTERED BUT UNVERIFIED: validation was explicitly skipped for '{slug}'.");
+            println!(
+                "\n  REGISTERED BUT UNVERIFIED: validation was explicitly skipped for '{slug}'."
+            );
             println!("  Run: cargo xtask module lint {slug}");
             println!("  Run: cargo xtask module validate {slug}");
         }
@@ -537,7 +545,8 @@ mod tests {
             true,
             |_| panic!("lint must be skipped"),
             |_| panic!("publish validation must be skipped"),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(state, super::ScaffoldValidation::Skipped);
     }
 
@@ -591,8 +600,8 @@ mod tests {
         let module_dir = root.join("crates/modules/rustok-example");
         fs::create_dir_all(&module_dir).unwrap();
 
-        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
-            .unwrap_err();
+        let error =
+            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap_err();
         assert!(error.to_string().contains("already exists"));
         fs::remove_dir_all(root).unwrap();
     }
@@ -602,8 +611,11 @@ mod tests {
         let root = temp_root();
         let module_dir = root.join("crates/modules/rustok-example");
         fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
-        fs::write(root.join("modules.toml"), "[modules]\nexample = { crate = \"rustok-example\" }\n")
-            .unwrap();
+        fs::write(
+            root.join("modules.toml"),
+            "[modules]\nexample = { crate = \"rustok-example\" }\n",
+        )
+        .unwrap();
 
         let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
             .unwrap_err();
@@ -615,7 +627,10 @@ mod tests {
     fn database_requests_fail_even_in_preview_mode() {
         let mut request = options();
         request.with_db = true;
-        assert!(scaffold(&request).unwrap_err().to_string().contains("--with-db"));
+        assert!(scaffold(&request)
+            .unwrap_err()
+            .to_string()
+            .contains("--with-db"));
     }
 
     #[test]
@@ -623,12 +638,15 @@ mod tests {
         let mut request = options();
         for mode in [ScaffoldUi::Admin, ScaffoldUi::Storefront, ScaffoldUi::Dual] {
             request.ui = mode;
-            let planned = super::ui::render_ui_templates(
-                &request, "Example"
-            );
+            let planned = super::ui::render_ui_templates(&request, "Example");
             assert!(!planned.is_empty());
-            assert!(planned.iter().any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
-            assert!(scaffold(&request).is_ok(), "dry-run must preview every UI mode");
+            assert!(planned
+                .iter()
+                .any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
+            assert!(
+                scaffold(&request).is_ok(),
+                "dry-run must preview every UI mode"
+            );
         }
     }
 }

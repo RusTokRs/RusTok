@@ -7,10 +7,7 @@ use std::path::PathBuf;
 /// by each module owner; missing operations remain explicit errors.
 /// Pure renderer used for both dry-run and writable Leptos skeleton creation.
 /// No host mount or live [provides.*_ui] metadata is produced.
-pub(crate) fn render_ui_templates(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-) -> Vec<(PathBuf, String)> {
+pub(crate) fn render_ui_templates(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathBuf, String)> {
     let mut files = Vec::new();
     if opts.ui.has_admin() {
         files.extend(render_ui_package(opts, pascal, "admin"));
@@ -21,11 +18,7 @@ pub(crate) fn render_ui_templates(
     files
 }
 
-fn render_ui_package(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-    side: &str,
-) -> Vec<(PathBuf, String)> {
+fn render_ui_package(opts: &ScaffoldOptions, pascal: &str, side: &str) -> Vec<(PathBuf, String)> {
     let slug = &opts.slug;
     let crate_name = opts.crate_name();
     let ui_crate = format!("{crate_name}-{side}");
@@ -165,7 +158,7 @@ impl std::fmt::Display for MissingOwnerContract {
 
 impl std::error::Error for MissingOwnerContract {}
 "#
-        .to_string();
+    .to_string();
 
     let core = r#"//! Pure presentation policy: reusable by a future Dioxus adapter.
 //! Do not put Leptos signals, framework resources or GraphQL requests here.
@@ -178,7 +171,7 @@ pub const fn owner_capability_state() -> UiCapabilityState {
     UiCapabilityState::Unavailable
 }
 "#
-        .to_string();
+    .to_string();
 
     // This is a real FFA selection facade through the existing platform
     // transport owner. Each adapter explicitly reports missing business logic:
@@ -232,7 +225,7 @@ pub(super) async fn fetch_owner_capability() -> Result<(), MissingOwnerContract>
     Err(MissingOwnerContract)
 }
 "#
-        .to_string();
+    .to_string();
 
     let leptos = format!(
         r#"use leptos::prelude::*;
@@ -306,14 +299,13 @@ fn documented_ui_is_not_a_fake_business_api() {
     assert!(docs.contains("No CRUD or owner business operation is available"));
 }
 "####
-        .to_string();
+    .to_string();
 
     let translations_en = format!(
         "{side_key} = This module's UI is not available until its owner API is implemented.\n"
     );
-    let translations_ru = format!(
-        "{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n"
-    );
+    let translations_ru =
+        format!("{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n");
 
     [
         ("Cargo.toml", cargo),
@@ -324,11 +316,20 @@ fn documented_ui_is_not_a_fake_business_api() {
         ("src/lib.rs", lib),
         ("src/core/mod.rs", core),
         ("src/model.rs", model),
-        ("src/i18n.rs", "rustok_ui_i18n::declare_module_i18n!();\n".to_string()),
+        (
+            "src/i18n.rs",
+            "rustok_ui_i18n::declare_module_i18n!();\n".to_string(),
+        ),
         ("src/transport/mod.rs", transport),
-        ("src/transport/native_server_adapter.rs", adapter_error.clone()),
+        (
+            "src/transport/native_server_adapter.rs",
+            adapter_error.clone(),
+        ),
         ("src/transport/graphql_adapter.rs", adapter_error),
-        ("src/ui/mod.rs", format!("mod leptos;\npub use leptos::{page};\n")),
+        (
+            "src/ui/mod.rs",
+            format!("mod leptos;\npub use leptos::{page};\n"),
+        ),
         ("src/ui/leptos.rs", leptos),
         ("src/tests/mod.rs", "mod contract;\n".to_string()),
         ("src/tests/contract.rs", tests),
@@ -337,7 +338,6 @@ fn documented_ui_is_not_a_fake_business_api() {
     .map(|(file, source)| (PathBuf::from(side).join(file), source))
     .collect()
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -500,13 +500,24 @@ mod tests {
     #[test]
     fn no_nextjs_or_fake_crud_are_generated_by_ffa() {
         let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
-        let all = files.iter().map(|(p, s)| format!("{}:\n{s}", p.display()))
-            .collect::<Vec<_>>().join("\n");
+        let all = files
+            .iter()
+            .map(|(p, s)| format!("{}:\n{s}", p.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(!all.contains("apps/next-"));
         for forbidden in [
-            "sample_rows", "rec-1", "tracing::info!", "create new module_example record",
-            "can_edit: true", "can_delete: true", "DataGrid", "rustok-grid-leptos",
-            "registerAdminModule(", "registerStorefrontModule(", "GraphqlRequest::new(",
+            "sample_rows",
+            "rec-1",
+            "tracing::info!",
+            "create new module_example record",
+            "can_edit: true",
+            "can_delete: true",
+            "DataGrid",
+            "rustok-grid-leptos",
+            "registerAdminModule(",
+            "registerStorefrontModule(",
+            "GraphqlRequest::new(",
         ] {
             assert!(!all.contains(forbidden), "fake UI pattern: {forbidden}");
         }
@@ -521,15 +532,22 @@ mod tests {
                 || path.to_string_lossy().contains("/src/transport/");
             if pure {
                 for framework in ["leptos::", "dioxus::", "leptos_ui::"] {
-                    assert!(!source.contains(framework),
-                        "{framework} must not leak into {}", path.display());
+                    assert!(
+                        !source.contains(framework),
+                        "{framework} must not leak into {}",
+                        path.display()
+                    );
                 }
             }
-            assert!(!path.ends_with("src/ui/dioxus.rs"),
-                "Dioxus is a future sibling adapter, not a replacement yet");
+            assert!(
+                !path.ends_with("src/ui/dioxus.rs"),
+                "Dioxus is a future sibling adapter, not a replacement yet"
+            );
         }
         assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
-        assert!(files.iter().any(|(p, _)| p.ends_with("src/transport/mod.rs")));
+        assert!(files
+            .iter()
+            .any(|(p, _)| p.ends_with("src/transport/mod.rs")));
     }
 
     #[test]

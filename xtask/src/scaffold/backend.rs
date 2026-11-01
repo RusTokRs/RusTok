@@ -352,14 +352,24 @@ mod tests {
     #[test]
     fn minimal_backend_has_only_real_responsibilities() {
         let files = render_backend(&options(), "Example");
-        let paths: Vec<_> = files.iter().map(|(path, _)| path.to_str().unwrap()).collect();
+        let paths: Vec<_> = files
+            .iter()
+            .map(|(path, _)| path.to_str().unwrap())
+            .collect();
         assert_eq!(paths.len(), 10);
         assert!(paths.contains(&"src/tests/contract.rs"));
         assert!(!paths.contains(&"src/contract_tests.rs"));
         assert!(!paths.iter().any(|path| path.contains("entities")
-            || path.contains("migrations") || path.contains("services")
-            || path.contains("integrations") || path.contains("domain")));
-        let lib = files.iter().find(|(path, _)| path.to_str() == Some("src/lib.rs")).unwrap().1.as_str();
+            || path.contains("migrations")
+            || path.contains("services")
+            || path.contains("integrations")
+            || path.contains("domain")));
+        let lib = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("src/lib.rs"))
+            .unwrap()
+            .1
+            .as_str();
         assert!(lib.contains("mod module;"));
         assert!(!lib.contains("pub mod entities;"));
     }
@@ -382,13 +392,19 @@ mod tests {
     #[test]
     fn metadata_is_parseable_and_reports_no_ui_or_fake_dependencies() {
         let files = render_backend(&options(), "Example");
-        let manifest = files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap();
+        let manifest = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("rustok-module.toml"))
+            .unwrap();
         let value: toml::Value = toml::from_str(&manifest.1).unwrap();
         assert_eq!(value["module"]["ui_classification"].as_str(), Some("no_ui"));
         assert_eq!(value["module"]["trust_level"].as_str(), Some("private"));
         assert!(value.get("provides").is_none());
         assert!(value.get("dependencies").is_none());
-        let cargo = files.iter().find(|(path, _)| path.to_str() == Some("Cargo.toml")).unwrap();
+        let cargo = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("Cargo.toml"))
+            .unwrap();
         let parsed: toml::Value = toml::from_str(&cargo.1).unwrap();
         assert!(parsed["dependencies"].get("sea-orm").is_none());
         assert!(parsed["dependencies"].get("rustok-outbox").is_none());
@@ -423,11 +439,25 @@ mod tests {
             let mut opts = options();
             opts.ui = ui;
             let files = render_backend(&opts, "Example");
-            let manifest = &files.iter().find(|(p, _)| p.to_str() == Some("rustok-module.toml")).unwrap().1;
+            let manifest = &files
+                .iter()
+                .find(|(p, _)| p.to_str() == Some("rustok-module.toml"))
+                .unwrap()
+                .1;
             let value: toml::Value = toml::from_str(manifest).unwrap();
-            assert_eq!(value["module"]["ui_classification"].as_str(), Some("future_ui"));
-            assert!(value.get("provides").is_none(), "draft UI must not mount a live surface");
-            let plan = &files.iter().find(|(p, _)| p.to_str() == Some("docs/implementation-plan.md")).unwrap().1;
+            assert_eq!(
+                value["module"]["ui_classification"].as_str(),
+                Some("future_ui")
+            );
+            assert!(
+                value.get("provides").is_none(),
+                "draft UI must not mount a live surface"
+            );
+            let plan = &files
+                .iter()
+                .find(|(p, _)| p.to_str() == Some("docs/implementation-plan.md"))
+                .unwrap()
+                .1;
             assert!(plan.contains("not_started"));
             assert!(plan.contains("NOT mounted"));
         }
@@ -439,11 +469,22 @@ mod tests {
         opts.title = "An \"Example\"".into();
         opts.description = "A \\quoted\\ module with a \"name\" and valid description".into();
         let files = render_backend(&opts, "Example");
-        let metadata = files.iter().find(|(path, _)| path.to_str() == Some("rustok-module.toml")).unwrap();
+        let metadata = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("rustok-module.toml"))
+            .unwrap();
         let parsed: toml::Value = toml::from_str(&metadata.1).unwrap();
         assert_eq!(parsed["module"]["name"].as_str(), Some(opts.title.as_str()));
-        assert_eq!(parsed["module"]["description"].as_str(), Some(opts.description.as_str()));
-        let module_rs = files.iter().find(|(path, _)| path.to_str() == Some("src/module.rs")).unwrap().1.as_str();
+        assert_eq!(
+            parsed["module"]["description"].as_str(),
+            Some(opts.description.as_str())
+        );
+        let module_rs = files
+            .iter()
+            .find(|(path, _)| path.to_str() == Some("src/module.rs"))
+            .unwrap()
+            .1
+            .as_str();
         assert!(module_rs.contains(&format!("{:?}", opts.title)));
     }
 }
