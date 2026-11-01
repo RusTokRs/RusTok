@@ -2773,9 +2773,9 @@
       "category": "modules",
       "files": 22,
       "loc": 1731,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:08:00Z",
+      "notes": "Verified 6 Universal Logic Dimensions: INN/KPP/OGRN/BIK validation, contract lifecycle bounds, and party activation guard."
     },
     "crates/modules/rustok-party/admin": {
       "name": "admin",
@@ -2783,9 +2783,9 @@
       "category": "modules",
       "files": 6,
       "loc": 322,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T08:08:00Z",
+      "notes": "Verified FFA compliance, pure core filtering, contract compliance, and i18n catalogs."
     },
     "crates/modules/rustok-reactions/storefront": {
       "name": "storefront",

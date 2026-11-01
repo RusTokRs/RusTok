@@ -2,8 +2,11 @@
 name = "rustok-party-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Admin FFA package for Counterparty & Legal Entities"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
