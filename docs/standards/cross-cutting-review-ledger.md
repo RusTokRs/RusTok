@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-07: Multi-Tenancy & Effective Context Isolation
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene) (6/17 completed)
+- **Active Phase:** CC-08: Database Transactions, Concurrency & Data Integrity
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation) (7/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -61,7 +61,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (4/4 completed — 100% PASS)
 - [x] **[CC-05: Event Bus, Transactional Outbox & Async Messaging](#cc-05-event-bus-transactional-outbox--async-messaging)** (4/4 completed — 100% PASS)
 - [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (5/5 completed — 100% PASS)
-- [ ] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (0/4 completed)
+- [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (4/4 completed — 100% PASS)
 - [ ] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (0/4 completed)
 - [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
 - [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
@@ -174,10 +174,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `TenantContext resolve_tenant Column::TenantId ensure_tenant_access`
 
 #### Sub-Audit Checklist
-- [ ] **CC-07.01 — Universal Query Filter Invariant:** Verify every domain SeaORM query enforces `.filter(Column::TenantId.eq(tenant_id))` or composite tenant keys.
-- [ ] **CC-07.02 — Request Host Smuggling & Boundary Defense:** Verify middleware defense against duplicate Host/Forwarded headers, trailing dots, and case normalizations.
-- [ ] **CC-07.03 — Cross-Tenant Relation Verification:** Verify cross-tenant relation checks preventing entities from referencing records in other tenants.
-- [ ] **CC-07.04 — Context Propagation:** Verify explicit typed context propagation (`TenantContext`, `ChannelContext`, `LocaleContext`) without manual downstream header parsing.
+- [x] **CC-07.01 — Universal Query Filter Invariant:** Verified domain SeaORM queries enforce `.filter(Column::TenantId.eq(tenant_id))` or composite tenant keys (`node scripts/verify/verify-tenant-fba.mjs` — PASSED, `cargo test -p rustok-tenant --lib` — 9/9 PASSED).
+- [x] **CC-07.02 — Request Host Smuggling & Boundary Defense:** Verified middleware defense against duplicate Host/Forwarded headers, trailing dots, and case normalizations (`node scripts/verify/verify-tenant-resolution-architecture.mjs` — PASSED).
+- [x] **CC-07.03 — Cross-Tenant Relation Verification:** Verified cross-tenant relation verification preventing entities from referencing records in other tenants across cart, payment, search, and admin endpoints (`node scripts/verify/verify-cart-checkout-tenant-context.mjs`, `node scripts/verify/verify-payment-collection-tenant-context.mjs`, `node scripts/verify/verify-search-graphql-mutation-tenant-scope.mjs` — all PASSED).
+- [x] **CC-07.04 — Context Propagation:** Verified explicit typed context propagation (`TenantContext`, `ChannelContext`, `LocaleContext`) without manual downstream header parsing (`cargo test -p rustok-channel --lib` — 39/39 PASSED, `node scripts/verify/verify-runtime-context-invariants.mjs` — PASSED).
 
 ---
 
