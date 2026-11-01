@@ -66,7 +66,7 @@ mod tests {
             BlogAdminSection::Posts
         );
         assert_eq!(
-            blog_admin_section_for_subpath(Some("categor")),
+            blog_admin_section_for_subpath(Some("category")),
             BlogAdminSection::Posts
         );
         assert_eq!(blog_admin_section_for_subpath(None), BlogAdminSection::Posts);
