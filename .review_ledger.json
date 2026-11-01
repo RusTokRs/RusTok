@@ -1272,9 +1272,9 @@
       "category": "modules",
       "files": 9,
       "loc": 3092,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T09:24:00Z",
+      "notes": "Verified admin FFA architecture, view-models, editor form states, validation rules, and contract tests."
     },
     "crates/modules/rustok-region/storefront": {
       "name": "storefront",
@@ -1282,9 +1282,9 @@
       "category": "modules",
       "files": 10,
       "loc": 1780,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T09:24:00Z",
+      "notes": "Verified storefront FFA architecture, rail view-models, route state normalization, error evidence, and contract tests."
     },
     "crates/modules/rustok-search": {
       "name": "rustok-search",
