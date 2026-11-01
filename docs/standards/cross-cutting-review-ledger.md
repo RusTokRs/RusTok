@@ -31,10 +31,10 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** ACTIVE
+- **Status:** COMPLETE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle), CC-16 (CQRS Read Projections, Search & Index Synchronization) (16/17 completed)
+- **Active Phase:** COMPLETE (All 17 phases verified — 100% PASS)
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle), CC-16 (CQRS Read Projections, Search & Index Synchronization), CC-17 (Ingress Sanitization, Input Validation & SSRF/XSS Defense) (17/17 completed — 100% PASS)
 - **Active Branch:** `main`
 
 ---
@@ -71,7 +71,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed — 100% PASS)
 - [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed — 100% PASS)
 - [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (4/4 completed — 100% PASS)
-- [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
+- [x] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (4/4 completed — 100% PASS)
 
 ---
 
@@ -314,7 +314,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 
 #### Sub-Audit Checklist
-- [ ] **CC-17.01 — Universal DTO Ingress Validation:** Verify universal DTO validation contracts (`validator::Validate`, `.validate()?`) and fail-closed validation ordering.
-- [ ] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Verify user markup passes schema-bounded sanitization and zero inline styles across hosted UI packages.
-- [ ] **CC-17.03 — Outbound SSRF Verification:** Verify outbound HTTP clients enforce DNS resolution pinning, reject redirects, and block private/loopback IPs.
-- [ ] **CC-17.04 — Path-Based Rate Limiting:** Verify sliding-window rate limiting on ingress entrypoints with per-IP isolation and lockout windows.
+- [x] **CC-17.01 — Universal DTO Ingress Validation:** Verified universal DTO validation contracts (`validator::Validate`, `.validate()?`) and fail-closed validation ordering across domain DTOs (`docs/guides/input-validation.md`, `cargo test -p rustok-core --lib security` — 20/20 PASSED).
+- [x] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Verified schema-bounded richtext/HTML sanitization (`validate_and_normalize`, `RichTextProfile`) and strict CSP headers with per-response nonces (`CspNonce`, `style-src-attr 'none'`, `node scripts/verify/verify-blog-graphql-richtext-boundary.mjs` — PASSED, `cargo test -p rustok-web --lib` — 7/7 PASSED).
+- [x] **CC-17.03 — Outbound SSRF Verification:** Verified outbound HTTP clients enforce DNS resolution pinning, reject redirects, and block private/loopback IPs (`SsrfProtection::validate_url`, `is_private_ip`).
+- [x] **CC-17.04 — Path-Based Rate Limiting:** Verified sliding-window rate limiting on ingress entrypoints with per-IP isolation and lockout windows (`PathRateLimitMiddlewareState`, `RateLimiter`, `TRUSTED_CLIENT_IP_HEADER`, `node scripts/verify/verify-blog-graphql-rate-limit.mjs` — PASSED).
