@@ -872,9 +872,9 @@
       "category": "modules",
       "files": 83,
       "loc": 24128,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:30:00Z",
+      "notes": "Verified 6 Universal Logic Dimensions: multi-channel fan-out, candidate lease, privacy policies, outbox intake, and contract tests."
     },
     "crates/modules/rustok-notifications/admin": {
       "name": "admin",
@@ -882,9 +882,9 @@
       "category": "modules",
       "files": 7,
       "loc": 290,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:30:00Z",
+      "notes": "Verified FFA admin UI, pure core models, status resolvers, i18n catalogs, and contract tests."
     },
     "crates/modules/rustok-notifications/storefront": {
       "name": "storefront",
@@ -892,9 +892,9 @@
       "category": "modules",
       "files": 17,
       "loc": 3297,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:30:00Z",
+      "notes": "Verified storefront FFA architecture, navigation badge, inbox snapshots, and contract tests."
     },
     "crates/modules/rustok-notifications-api": {
       "name": "rustok-notifications-api",
@@ -902,9 +902,9 @@
       "category": "modules",
       "files": 5,
       "loc": 1486,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01T10:30:00Z",
+      "notes": "Consolidated into rustok-notifications: provider seam traits, dispatch commands, delivery result DTOs."
     },
     "crates/modules/rustok-order": {
       "name": "rustok-order",
