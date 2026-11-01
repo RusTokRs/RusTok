@@ -54,7 +54,7 @@ struct PostgresRecoveryEvidenceDb {
 impl PostgresRecoveryEvidenceDb {
     async fn setup(prefix: &str, apply_migrations: bool) -> Result<Option<Self>> {
         let Some(database_url) = postgres_database_url() else {
-            eprintln!(
+            tracing::warn!(
                 "{POSTGRES_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Blog Comments recovery PostgreSQL evidence"
             );
             return Ok(None);

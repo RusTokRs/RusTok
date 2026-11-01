@@ -17,7 +17,7 @@ impl PostService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn list_posts_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -37,7 +37,7 @@ impl PostService {
 
     /// Channel-aware list entrypoint for authenticated transports. Public
     /// restrictions apply in SQL *before* keyset LIMIT/cursor computation.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn list_posts_with_locale_fallback_on_channel(
         &self,
         tenant_id: Uuid,

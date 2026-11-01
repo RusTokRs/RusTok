@@ -28,7 +28,7 @@ use super::{PAGE_KIND, PageService, PreparedPageBody};
 const MAX_DUPLICATE_SLUG_ATTEMPTS: usize = 50;
 
 impl PageService {
-    #[instrument(skip(self, input))]
+    #[instrument(skip(self, input, security))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -173,7 +173,7 @@ impl PageService {
     /// locale, channel visibility is copied as-is, and every current body is copied into the
     /// new page with one `duplicate` body-revision journal row. Unpublished working copies of
     /// a published source are not copied.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn duplicate_page(
         &self,
         tenant_id: Uuid,

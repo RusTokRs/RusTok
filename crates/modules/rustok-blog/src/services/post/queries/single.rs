@@ -1,7 +1,7 @@
 use super::*;
 
 impl PostService {
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_post(
         &self,
         tenant_id: Uuid,
@@ -13,7 +13,7 @@ impl PostService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_post_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -35,7 +35,7 @@ impl PostService {
 
     /// Public readers are scoped to the channel and its enabled Blog module;
     /// tenant-wide editors are independent of storefront channel visibility.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_post_with_locale_fallback_on_channel(
         &self,
         tenant_id: Uuid,
@@ -150,7 +150,7 @@ impl PostService {
     /// Any new caller that serves a public surface must do the same or call
     /// [`Self::get_post`] under its own visibility rule — this method alone is
     /// not a public read.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_post_by_slug(
         &self,
         tenant_id: Uuid,
@@ -162,7 +162,7 @@ impl PostService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_post_by_slug_with_locale_fallback(
         &self,
         tenant_id: Uuid,

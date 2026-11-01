@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-10: Observability, Distributed Tracing & Telemetry
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety) (9/17 completed)
+- **Active Phase:** CC-11: Dynamic Settings, Tenant Configuration & Secrets
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry) (10/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -64,7 +64,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (4/4 completed — 100% PASS)
 - [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed — 100% PASS)
 - [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed — 100% PASS)
-- [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
+- [x] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (4/4 completed — 100% PASS)
 - [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
 - [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
 - [ ] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (0/4 completed)
@@ -216,10 +216,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `init_telemetry register_metrics tracing::instrument health_check`
 
 #### Sub-Audit Checklist
-- [ ] **CC-10.01 — Ad-Hoc Print Elimination:** Verify zero `println!`, `eprintln!`, or `dbg!` statements in production crates; enforce structured `tracing::*`.
-- [ ] **CC-10.02 — PII & Secret Redaction in Spans:** Verify `#[instrument]` macros skip sensitive arguments (`skip(self, security, input, txn, password, token)`).
-- [ ] **CC-10.03 — Telemetry Lifecycle Safety:** Verify singleton metrics handles and safe global subscriber initialization.
-- [ ] **CC-10.04 — Health & Readiness Probes:** Verify distinct liveness (`/health/live`) and readiness (`/health/ready`) with tri-state status reporting.
+- [x] **CC-10.01 — Ad-Hoc Print Elimination:** Verified zero `println!`, `eprintln!`, or `dbg!` statements in production crates; enforce structured `tracing::*` (`eprintln!` in `native_server_adapter.rs` and audit evidence replaced with `tracing::warn!`).
+- [x] **CC-10.02 — PII & Secret Redaction in Spans:** Verified `#[instrument]` macros skip sensitive arguments (`skip(self, security, input, txn, password, token)`) across `rustok-blog`, `rustok-forum`, and `rustok-pages` (0 sensitive unskipped params remaining).
+- [x] **CC-10.03 — Telemetry Lifecycle Safety:** Verified singleton metrics handles (`OnceCell<Arc<MetricsHandle>>`, `OnceCell<Registry>`) and safe global subscriber initialization (`cargo test -p rustok-telemetry --lib` — 16/16 PASSED).
+- [x] **CC-10.04 — Health & Readiness Probes:** Verified distinct liveness (`/health/live`) and readiness (`/health/ready`) with tri-state status reporting (`Healthy`, `Degraded`, `Unhealthy`) in `apps/server/src/controllers/health.rs`.
 
 ---
 

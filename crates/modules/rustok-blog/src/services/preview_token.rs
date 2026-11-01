@@ -210,7 +210,7 @@ impl PreviewTokenService {
     /// it a token minted before a tenant disabled Blog would keep serving content.
     /// Returns `None` for an invalid, expired, or module-disabled token, and for a
     /// post that no longer exists.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, token))]
     pub async fn get_post_by_token(
         &self,
         token: &str,
