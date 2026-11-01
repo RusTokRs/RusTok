@@ -78,7 +78,9 @@ DomainEvent::CommentCreated
 counted: Some(false)
 DomainEvent::CommentUpdated\nDomainEvent::CommentStatusChanged\nDomainEvent::CommentDeleted
 counted: Some(false)
-counted: Some(new_status == "approved")
+counted: Some(status_counts_publicly(new_status))
+fn status_counts_publicly(
+Some(CommentStatus::Approved) => true,
 fn projection_applied_delta(previous_delta: Option<i32>, current_delta: i32) -> i32
 fn next_comment_count(comment_count: i32, delta: i32)
 comment_count.saturating_add(delta).max(0)

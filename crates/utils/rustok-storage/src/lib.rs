@@ -1,3 +1,5 @@
+//! # rustok-storage
+//!
 //! Runtime construction and canonical object-key policy for RusToK.
 //!
 //! Domain owners use [`object_store::ObjectStore`] directly. This crate does

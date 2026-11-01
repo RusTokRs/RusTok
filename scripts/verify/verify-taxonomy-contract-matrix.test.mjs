@@ -248,7 +248,7 @@ try {
   );
   expectFailure(
     root,
-    /crates\/rustok-taxonomy\/src\/dto\.rs/,
+    /crates\/modules\/rustok-taxonomy\/src\/dto\.rs/,
     "kind changes must stay inside the focused lookup workflow trigger set",
   );
   writeBaseline(root);

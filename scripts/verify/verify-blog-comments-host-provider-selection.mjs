@@ -88,7 +88,7 @@ if (
 ) fail('configuration evidence drift');
 
 if (
-  evidence.publication?.selected_value !== 'Arc<dyn rustok_comments_api::CommentsThreadPort>'
+  evidence.publication?.selected_value !== 'Arc<dyn rustok_comments::CommentsThreadPort>'
   || evidence.publication?.graphql !== true
   || evidence.publication?.axum_http !== true
   || evidence.publication?.server_functions !== true
@@ -106,7 +106,7 @@ hasAll(
     'TcpLoopback',
     'TcpProtectedLoopback',
     'pub struct SharedCommentsTcpClientChannelConnector(',
-    'use rustok_comments_api::CommentsThreadPort;',
+    'use rustok_comments::CommentsThreadPort;',
     'extensions.contains::<Arc<dyn CommentsThreadPort>>()',
     '"in_process"',
     '"tcp"',
@@ -153,7 +153,7 @@ hasAll(
     'register_comments_provider_runtime(&mut extensions)',
     '.map_err(Error::BadRequest)?;',
     'CommentsProviderProfile::InProcess',
-    'rustok_comments_api::CommentsThreadPort',
+    'rustok_comments::CommentsThreadPort',
     'rustok_comments::in_process_comments_thread_port(',
     'transactional_event_bus_from_context(',
     'extensions.insert(provider);',

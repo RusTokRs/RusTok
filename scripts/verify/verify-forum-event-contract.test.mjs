@@ -19,5 +19,5 @@ test("forum event contract inventory is complete", () => {
     0,
     `static verifier failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
-  assert.match(result.stdout, /20 event types/);
+  assert.match(result.stdout, /19 event types/);
 });

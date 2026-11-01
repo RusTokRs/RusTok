@@ -1,4 +1,4 @@
-use rustok_api::{RichTextDocument, RichTextView};
+use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
 /// Sort column of the admin post list, spelled as the Blog GraphQL enum.
@@ -80,6 +80,12 @@ pub struct BlogPostListItem {
     pub slug: Option<String>,
     pub excerpt: Option<String>,
     pub status: String,
+    #[serde(rename = "authorId", default)]
+    pub author_id: Option<String>,
+    /// Display-name projection of the GraphQL author profile enrichment.
+    /// Absent on the native transport, which has no profile runtime data.
+    #[serde(rename = "authorProfile", default)]
+    pub author_profile: Option<BlogAuthorProfileName>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "publishedAt")]
@@ -90,6 +96,14 @@ pub struct BlogPostListItem {
     pub is_pinned: bool,
     #[serde(rename = "pinnedAt")]
     pub pinned_at: Option<String>,
+}
+
+/// The single field the admin list needs from the owner's author-profile
+/// enrichment: the localized display name shown in the Author column.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BlogAuthorProfileName {
+    #[serde(rename = "displayName")]
+    pub display_name: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -138,6 +152,53 @@ pub struct BlogPostDetail {
 pub struct BlogCategoryOption {
     pub id: String,
     pub name: String,
+}
+
+/// Full admin projection of a Blog category. Categories are Taxonomy-owned
+/// canonically; Blog owns membership, settings and the admin command surface.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogCategoryDetail {
+    pub id: String,
+    pub locale: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    #[serde(rename = "parentId")]
+    pub parent_id: Option<String>,
+    pub position: i32,
+    /// RFC 3339 timestamp.
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    /// RFC 3339 timestamp; absent when the list projection has no update stamp.
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+}
+
+/// Create payload for the category admin form. `parent_id` selects the
+/// Taxonomy parent (None is the tree root); `position` is the canonical
+/// sibling position the owner clamps to the sibling count.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogCategoryDraft {
+    pub locale: String,
+    pub name: String,
+    pub slug: Option<String>,
+    pub description: Option<String>,
+    #[serde(rename = "parentId")]
+    pub parent_id: Option<String>,
+    pub position: Option<i32>,
+}
+
+/// Update payload. `Patch` keeps "field not supplied" distinct from "clear the
+/// field" for the description, mirroring the owner's MaybeUndefined contract.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogCategoryUpdate {
+    pub locale: String,
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub description: Patch<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -201,4 +262,22 @@ pub struct BlogPostDraft {
     pub scheduled_at: Option<String>,
     /// The form may change schedule only while the post is a draft.
     pub schedule_editable: bool,
+}
+
+/// A minted draft preview token. The plaintext `token` exists only in the mint
+/// result — the backend stores a SHA-256 digest — so the admin surface shows it
+/// exactly once, next to the storefront preview path that carries it as a URL
+/// fragment.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogPreviewToken {
+    pub id: String,
+    pub token: String,
+    #[serde(rename = "postId")]
+    pub post_id: String,
+    /// RFC 3339 timestamp.
+    #[serde(rename = "expiresAt")]
+    pub expires_at: String,
+    /// RFC 3339 timestamp.
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
 }

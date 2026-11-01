@@ -127,7 +127,10 @@ hasAll(
   providerExport,
   [
     '#[cfg(feature = "server")]\npub mod remote;',
-    '#[cfg(feature = "server")]\npub use remote::*;',
+    // The glob re-export became an explicit named list; the gate pins the cfg
+    // gate plus the adapter traits it must still publish.
+    '#[cfg(feature = "server")]\npub use remote::{',
+    'CommentsThreadTransportReply, RemoteCommentsThreadPort, remote_comments_thread_port,',
   ],
   'provider exports',
 );

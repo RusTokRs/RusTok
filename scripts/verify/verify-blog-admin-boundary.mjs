@@ -48,6 +48,7 @@ const coreCommandsPath = "crates/modules/rustok-blog/admin/src/core/commands.rs"
 const corePresentationPath = "crates/modules/rustok-blog/admin/src/core/presentation.rs";
 const modelPath = "crates/modules/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
+const uiModPath = "crates/modules/rustok-blog/admin/src/ui/mod.rs";
 const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs";
 const uiPagePath = "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs";
 const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
@@ -79,6 +80,7 @@ for (const filePath of [
   corePresentationPath,
   modelPath,
   uiPath,
+  uiModPath,
   uiComponentsPath,
   richtextAdapterPath,
   sharedRichtextAdapterPath,
@@ -106,6 +108,7 @@ const core = [corePath, coreCommandsPath, corePresentationPath]
   .join("\n");
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
+const uiMod = readRepo(uiModPath);
 const uiComponents = readRepo(uiComponentsPath);
 const uiPage = existsSync(repoPath(uiPagePath)) ? readRepo(uiPagePath) : "";
 const uiBoundary = `${ui}\n${uiPage}\n${uiComponents}`;
@@ -131,9 +134,13 @@ assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod moderation;", `${libPath}: crate root must wire the moderation UI slice`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
-assertContains(lib, "pub fn BlogAdmin()", `${libPath}: crate root must expose the composed BlogAdmin root`);
-assertContains(lib, "<BlogEditor />", `${libPath}: composed root must preserve the existing CRUD editor`);
-assertContains(lib, "<BlogModerationPanel />", `${libPath}: composed root must include moderation`);
+// Page composition moved from the crate root to the UI adapter (see the
+// "Page composition belongs to the UI adapter, not lib.rs" note in ui/mod.rs);
+// the crate root exposes the composed root by re-export.
+assertContains(lib, "pub use ui::BlogAdmin;", `${libPath}: crate root must re-export the composed BlogAdmin root`);
+assertContains(uiMod, "pub fn BlogAdmin()", `${uiModPath}: UI adapter must own the composed BlogAdmin root`);
+assertContains(uiMod, "<BlogEditor />", `${uiModPath}: composed root must preserve the existing CRUD editor`);
+assertContains(uiMod, "<BlogModerationPanel />", `${uiModPath}: composed root must include moderation`);
 for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn archive_/, /pub async fn delete_/, /pub async fn moderate_/]) {
   assertNotContains(lib, marker, `${libPath}: crate root must not expose public transport passthroughs (${marker})`);
 }

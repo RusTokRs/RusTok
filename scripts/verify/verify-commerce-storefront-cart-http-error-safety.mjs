@@ -83,7 +83,7 @@ for (const [value, label] of [
   ['if critical {', 'technical severity branch'],
   ['tracing::error!(', 'technical severity'],
   ['tracing::warn!(', 'ordinary severity'],
-  ['tenant_id_non_nil = !tenant_id.is_nil()', 'tenant identity shape'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'tenant identity shape'],
   ['cart_id_present = cart_id.is_some()', 'cart identity presence'],
   ['owner_code_length,', 'owner code shape'],
   ['"storefront cart port operation failed with bounded diagnostics"', 'technical event'],
@@ -96,7 +96,7 @@ for (const [value, label] of [
 // Route entry diagnostics name the operation and the identity shapes only.
 for (const [value, label] of [
   ['boundary = "commerce_storefront_cart_http"', 'route boundary'],
-  ['tenant_id_non_nil = !tenant_id.is_nil()', 'route tenant shape'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'route tenant shape'],
   ['cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil())', 'route cart shape'],
   ['line_item_id_non_nil = line_item_id.is_some_and(|value| !value.is_nil())', 'route line-item shape'],
   ['"storefront cart route entered with bounded diagnostics"', 'route entry event'],

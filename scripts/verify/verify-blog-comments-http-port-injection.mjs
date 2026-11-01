@@ -112,7 +112,7 @@ if (
 ) failures.push(`${matrixPath}: base injection seam drift`);
 
 for (const marker of [
-  'use rustok_comments_api::CommentsThreadPort;',
+  'use rustok_comments::CommentsThreadPort;',
   'use std::sync::Arc;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   'settings_reader: Option<SharedStaticModuleSettingsReader>',

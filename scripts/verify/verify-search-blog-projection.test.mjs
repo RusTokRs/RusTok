@@ -92,8 +92,8 @@ test("rejects metadata tags as the projection source", () => {
   const result = rejects((root) =>
     rewrite(root, ownerSourcePath, (source) =>
       source.replace(
-        "let tag_map = load_post_tags_map(",
-        "let tag_map = load_metadata_tags(p.metadata -> 'tags', ",
+        "load_post_tags_map(&self.db, tenant_id, &post_ids, locale, fallback_locale)",
+        "load_metadata_tags(p.metadata -> 'tags', &self.db, tenant_id, &post_ids, locale, fallback_locale)",
       ),
     ),
   );

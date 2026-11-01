@@ -2,6 +2,8 @@
 
 import fs from 'node:fs';
 
+import { readRustModuleTree } from './lib/rust-facade-source.mjs';
+
 const consolidatedMigration =
   'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const isConsolidated = fs.existsSync(consolidatedMigration);
@@ -22,7 +24,12 @@ const forbid = (text, marker, label) => {
 };
 
 if (isConsolidated) {
-  const source = fs.readFileSync(consolidatedMigration, 'utf8');
+  // The consolidated baseline declares its tables below its `schema/` module
+  // tree, so the marker view is the composed module tree, not the entry file.
+  const source = readRustModuleTree(
+    (file) => fs.readFileSync(file, 'utf8'),
+    consolidatedMigration,
+  );
   need(source, 'BlogCategories::Table', 'BlogCategories table');
   need(source, 'ck_blog_categories_settings_object', 'blog_categories settings object constraint');
   need(source, 'ck_blog_categories_settings_size', 'blog_categories settings size constraint');

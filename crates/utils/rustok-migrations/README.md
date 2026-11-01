@@ -1,5 +1,7 @@
 # rustok-migrations
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-migrations` is the neutral platform schema-composition crate.

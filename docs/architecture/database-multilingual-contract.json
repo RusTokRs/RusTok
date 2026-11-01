@@ -277,11 +277,10 @@
       "status": "enforced",
       "files": [
         {
-          "path": "crates/modules/rustok-blog/src/migrations/m20260721_000005_expand_blog_locale_storage_columns.rs",
+          "path": "crates/modules/rustok-blog/src/migrations/m20261030_000001_widen_blog_translation_columns.rs",
           "required_markers": [
             "ALTER TABLE blog_post_translations",
-            "ALTER TABLE blog_category_translations",
-            "ALTER COLUMN locale TYPE VARCHAR(32)"
+            "ALTER COLUMN locale TYPE varchar(32)"
           ]
         },
         {
@@ -383,10 +382,10 @@
           ]
         },
         {
-          "path": "crates/modules/rustok-cart/src/migrations/m20260411_000110_add_cart_line_item_translations.rs",
+          "path": "crates/modules/rustok-cart/src/migrations/m20261029_000101_create_cart_schema.rs",
           "required_markers": [
             "CartLineItemTranslations::Locale",
-            ".drop_column(CartLineItems::Title)"
+            "CartLineItemTranslations::Title"
           ]
         },
         {

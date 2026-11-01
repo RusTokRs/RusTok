@@ -165,6 +165,15 @@ export interface BlogPostDetail extends BlogPostSummary {
   };
 }
 
+/**
+ * Draft post resolved through a preview token. Shape matches BlogPostDetail
+ * minus the comment snapshot — a preview is a content review surface, and the
+ * public comment thread only exists for published posts.
+ */
+export interface BlogPreviewPostDetail extends Omit<BlogPostDetail, "publicComments"> {
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+}
+
 export interface BlogCommentDetail {
   id: string;
   requestedLocale: string;
@@ -240,6 +249,20 @@ const CREATE_BLOG_COMMENT_MUTATION = `
   }
 `;
 
+const POST_BY_PREVIEW_TOKEN_QUERY = `
+  query PostByPreviewToken($token: String!, $locale: String) {
+    postByPreviewToken(token: $token, locale: $locale) {
+      id title slug excerpt featuredImageUrl authorId categoryId categoryName tags publishedAt effectiveLocale version
+      status seoTitle seoDescription updatedAt
+      authorProfile {
+        userId handle displayName tags avatarMediaId
+      }
+      content { document html }
+      contentPlainText
+    }
+  }
+`;
+
 export async function fetchPublishedPosts(
   graphql: BlogGraphqlExecutor,
   tenantId: string,
@@ -307,6 +330,35 @@ export async function fetchPublishedPost(
     throw new Error(response.errors?.[0]?.message ?? "Blog post payload is missing");
   }
   return response.data.postBySlug;
+}
+
+/**
+ * Resolves a draft post through a preview token (see the Blog module's
+ * draft-preview-tokens design). Unauthenticated by design: the token itself is
+ * the capability, the tenant still comes from the storefront tenant header.
+ * Returns null for an expired, revoked or unknown token — the backend
+ * deliberately does not distinguish these cases.
+ */
+export async function fetchPostByPreviewToken(
+  graphql: BlogGraphqlExecutor,
+  tenantSlug: string | null,
+  token: string,
+  locale: string
+): Promise<BlogPreviewPostDetail | null> {
+  const response = await graphql<{ postByPreviewToken: BlogPreviewPostDetail | null }, {
+    token: string;
+    locale: string;
+  }>({
+    query: POST_BY_PREVIEW_TOKEN_QUERY,
+    variables: { token, locale },
+    tenant: tenantSlug ?? undefined,
+  });
+  if (response.errors?.length || !response.data) {
+    throw new Error(
+      response.errors?.[0]?.message ?? "Blog preview payload is missing"
+    );
+  }
+  return response.data.postByPreviewToken;
 }
 
 export async function createBlogComment(

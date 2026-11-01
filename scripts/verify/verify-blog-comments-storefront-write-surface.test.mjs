@@ -21,6 +21,7 @@ const files = [
   'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
   'crates/modules/rustok-blog/storefront/README.md',
   'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
   'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
   'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
@@ -84,13 +85,18 @@ test('accepts the canonical active storefront Comments write surface', () => {
 });
 
 test('rejects removal of the active storefront comment composer', () => {
-  const result = rejects((root) =>
+  const result = rejects((root) => {
     mutate(
       root,
       'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
       (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
-    ),
-  );
+    );
+    mutate(
+      root,
+      'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
+      (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
+    );
+  });
   assert.notEqual(result.status, 0);
 });
 
@@ -101,8 +107,8 @@ test('rejects loss of post-create public visibility revalidation', () => {
       'crates/modules/rustok-blog/src/services/comment/commands.rs',
       (source) =>
         source.replace(
-          'match self\n            .ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)',
-          'match self\n            .ensure_post_exists(tenant_id, post_id)',
+          'CommentTargetPolicy::Public => {\n                self.ensure_public_comment_creation_allowed(tenant_id, post_id, public_channel_slug)',
+          'CommentTargetPolicy::Public => {\n                self.ensure_post_exists(tenant_id, post_id)',
         ),
     ),
   );

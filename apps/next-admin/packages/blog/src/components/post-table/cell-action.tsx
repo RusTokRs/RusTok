@@ -13,6 +13,7 @@ import {
 import {
   IconDotsVertical,
   IconEdit,
+  IconEye,
   IconTrash,
   IconWorldUpload,
   IconWorldOff,
@@ -26,6 +27,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PostSummary, GqlOpts } from '../../api/posts';
 import { archivePost, deletePost, pinPost, publishPost, restorePost, unpinPost, unpublishPost } from '../../api/posts';
+import { PreviewTokenModal } from './preview-token-modal';
 
 interface CellActionProps {
   data: PostSummary;
@@ -38,6 +40,7 @@ export const CellAction: React.FC<CellActionProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const router = useRouter();
 
   const onDelete = async () => {
@@ -117,6 +120,13 @@ export const CellAction: React.FC<CellActionProps> = ({
         onConfirm={onDelete}
         loading={loading}
       />
+      <PreviewTokenModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        postId={data.id}
+        postTitle={data.title}
+        opts={gqlOpts}
+      />
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button variant='ghost' className='h-8 w-8 p-0' disabled={loading}>
@@ -159,6 +169,11 @@ export const CellAction: React.FC<CellActionProps> = ({
               ) : (
                 <><IconPinned className='mr-2 h-4 w-4' /> Pin</>
               )}
+            </DropdownMenuItem>
+          )}
+          {data.status === 'DRAFT' && (
+            <DropdownMenuItem disabled={loading} onClick={() => setPreviewOpen(true)}>
+              <IconEye className='mr-2 h-4 w-4' /> Preview link
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />

@@ -12,7 +12,11 @@ messenger-composer-cancel-reply = Cancel
 
 messenger-status-online = Online
 messenger-status-offline = Offline
-messenger-status-members = { $count } members
+messenger-status-members =
+    { $count ->
+        [one] { $count } member
+       *[other] { $count } members
+    }
 messenger-typing = { $user } is typing...
 
 messenger-drawer-members = Members

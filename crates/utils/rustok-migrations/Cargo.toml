@@ -6,6 +6,10 @@ edition.workspace = true
 license = "BUSL-1.1"
 description.workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [[bin]]
 name = "rustok-migrate"
 path = "src/bin/rustok_migrate.rs"

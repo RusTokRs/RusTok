@@ -19,8 +19,15 @@ interface PostsPageProps {
     /** Comma-separated start cursors of the pages before the previous one. */
     history?: string;
     perPage?: string;
+    /** Case-insensitive substring filter on the locale-resolved title. */
     title?: string;
+    /** Case-insensitive substring filter on the post slug. */
+    slug?: string;
     status?: string;
+    /** Locale filter; narrowed to a BCP-47-shaped tag before it reaches the owner. */
+    locale?: string;
+    /** Author filter; the wire value is the author's UUID. */
+    authorId?: string;
     /** Sort column of the keyset order; narrowed before it reaches the owner. */
     sortBy?: string;
     /** Sort direction of the keyset order; narrowed before it reaches the owner. */
@@ -31,9 +38,40 @@ interface PostsPageProps {
   tenantId?: string | null;
 }
 
+/**
+ * Locale filter guard: the owner normalizes and validates locale tags, so an
+ * untrusted route value that cannot be a BCP-47-shaped tag is dropped instead
+ * of turning into a failed list request.
+ */
+function parsePostLocaleFilter(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/.test(trimmed)
+    ? trimmed
+    : undefined;
+}
+
+/**
+ * Author filter guard: the wire value is the author's UUID, so a value that
+ * cannot be one can never match and is dropped instead of failing the request.
+ */
+function parsePostAuthorFilter(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+    trimmed
+  )
+    ? trimmed.toLowerCase()
+    : undefined;
+}
+
 function buildPageHref(params: {
   perPage: number;
+  title?: string;
+  slug?: string;
   status?: BlogPostStatus;
+  locale?: string;
+  authorId?: string;
   sortBy: BlogPostSortField;
   sortOrder: BlogPostSortOrder;
   after?: string;
@@ -41,7 +79,14 @@ function buildPageHref(params: {
 }): string {
   const query = new URLSearchParams();
   query.set('perPage', String(params.perPage));
+  // Paging must keep every list-affecting parameter: the cursor in `after` is
+  // only valid for the filter and sort that issued it, so a page link that
+  // dropped an active filter would resume at a wrong position.
+  if (params.title) query.set('title', params.title);
+  if (params.slug) query.set('slug', params.slug);
   if (params.status) query.set('status', params.status);
+  if (params.locale) query.set('locale', params.locale);
+  if (params.authorId) query.set('authorId', params.authorId);
   // Paging must keep the sort: the cursor in `after` is only valid for the sort that issued it.
   query.set('sortBy', params.sortBy);
   query.set('sortOrder', params.sortOrder);
@@ -66,6 +111,10 @@ export default async function PostsPage({
     searchParams.status === 'ARCHIVED'
       ? searchParams.status
       : undefined;
+  const title = searchParams.title?.trim() || undefined;
+  const slug = searchParams.slug?.trim() || undefined;
+  const locale = parsePostLocaleFilter(searchParams.locale);
+  const authorId = parsePostAuthorFilter(searchParams.authorId);
   const after = searchParams.after || undefined;
   const history = searchParams.history
     ? searchParams.history.split(',').filter(Boolean)
@@ -75,7 +124,7 @@ export default async function PostsPage({
 
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   const data = await listPosts(
-    { after, perPage, status, sortBy, sortOrder },
+    { after, perPage, status, title, slug, locale, authorId, sortBy, sortOrder },
     opts
   );
 
@@ -88,7 +137,11 @@ export default async function PostsPage({
         ? null
         : buildPageHref({
             perPage,
+            title,
+            slug,
             status,
+            locale,
+            authorId,
             sortBy,
             sortOrder,
             after: history[history.length - 1],
@@ -97,7 +150,11 @@ export default async function PostsPage({
     nextHref: data.nextCursor
       ? buildPageHref({
           perPage,
+          title,
+          slug,
           status,
+          locale,
+          authorId,
           sortBy,
           sortOrder,
           after: data.nextCursor,

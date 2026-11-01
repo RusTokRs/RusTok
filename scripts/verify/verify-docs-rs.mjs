@@ -112,13 +112,19 @@ for (const { type, crateDir } of targets) {
   const readmePath = path.join(crateDir, 'README.md');
   const srcContractTestsPath = path.join(crateDir, 'src/contract_tests.rs');
   const testsContractTestsPath = path.join(crateDir, 'tests/contract_tests.rs');
+  const srcTestsContractPath = path.join(crateDir, 'src/tests/contract.rs');
 
   const hasLibRs = fs.existsSync(libRsPath);
   const isNativeModule = fs.existsSync(moduleTomlPath);
   const hasModuleRs = fs.existsSync(moduleRsPath);
   const hasCrateApi = fs.existsSync(crateApiPath);
   const hasReadme = fs.existsSync(readmePath);
-  const hasContractTests = fs.existsSync(srcContractTestsPath) || fs.existsSync(testsContractTestsPath);
+    const hasContractTests =
+      fs.existsSync(srcContractTestsPath) ||
+      fs.existsSync(testsContractTestsPath) ||
+      // Canonical slot for module-owned UI crates (see verify-module-source-layout):
+      // the contract test lives in the dedicated tests module directory.
+      fs.existsSync(srcTestsContractPath);
 
   if (!hasCargoToml && !hasLibRs) {
     // Not a Rust crate directory (e.g. docs, assets, or scripts)
@@ -276,7 +282,11 @@ for (const { type, crateDir } of targets) {
             issues.push('src/contract_tests.rs exists but is not registered in src/lib.rs (missing `mod contract_tests;`)');
           }
         }
-        const testFile = fs.existsSync(srcContractTestsPath) ? srcContractTestsPath : testsContractTestsPath;
+        const testFile = fs.existsSync(srcContractTestsPath)
+          ? srcContractTestsPath
+          : fs.existsSync(testsContractTestsPath)
+            ? testsContractTestsPath
+            : srcTestsContractPath;
         const testContent = fs.readFileSync(testFile, 'utf8');
         if (!testContent.includes('CRATE_API.md') || !testContent.includes('Minimum Contract Set')) {
           issues.push(`${path.relative(crateDir, testFile)} does not assert CRATE_API.md contract markers`);

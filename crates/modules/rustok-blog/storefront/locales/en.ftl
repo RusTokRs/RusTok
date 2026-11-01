@@ -30,6 +30,9 @@ blog-list-noExcerpt = No excerpt yet.
 blog-list-open = Open
 blog-list-title = Published posts
 blog-list-total = total
+blog-posts-firstPage = Back to the first page
+blog-posts-nextPage = Next page
+blog-posts-previousPage = Previous
 blog-selected-emptyBody = Open a post from the list below with `?slug=` or publish one from the blog admin package.
 blog-selected-emptyTitle = Pick a published post
 blog-selected-localeLabel = locale

@@ -668,6 +668,11 @@ pub async fn unpin_post(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BulkPostsInput {
+    /// Mirrors `services::post::bulk::MAX_BULK_POST_IDS` like the GraphQL
+    /// `BulkOperationInput`: the service rejects an over-limit batch, and this
+    /// documents the limit in the OpenAPI schema so generated clients can
+    /// validate up front.
+    #[schema(max_items = 100)]
     pub post_ids: Vec<Uuid>,
 }
 

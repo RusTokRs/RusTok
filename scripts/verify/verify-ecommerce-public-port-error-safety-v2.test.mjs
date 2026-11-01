@@ -203,10 +203,10 @@ tracing::error!();
 "tax.currency_code_invalid";
 "tax.negative_policy_rate";
 "tax.validation";
-"tax calculation request is invalid";
+"tax request is invalid";
 PortError::validation(
                 "tax.validation",
-                "tax calculation request is invalid",
+                "tax request is invalid",
             );
 `;
 }
@@ -522,6 +522,8 @@ function fixture(options = {}) {
     'crates/modules/rustok-product/src/ports/mod.rs',
     'crates/modules/rustok-product/src/ports/types.rs',
     'crates/modules/rustok-product/src/catalog_command_port.rs',
+    'crates/modules/rustok-product/src/catalog_schema_read_port.rs',
+    'crates/modules/rustok-product/src/storefront_http_read_port.rs',
     'crates/modules/rustok-commerce/src/controllers/store/products.rs',
     'crates/modules/rustok-commerce/src/controllers/store/carts.rs',
     'crates/modules/rustok-commerce/src/controllers/store/orders.rs',

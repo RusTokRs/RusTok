@@ -1,5 +1,7 @@
 # rustok-storage
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 Construct the shared direct `object_store` runtime and canonical object keys
