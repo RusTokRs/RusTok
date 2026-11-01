@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-09: Background Workers, Schedulers & Async Runtime Safety
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity) (8/17 completed)
+- **Active Phase:** CC-10: Observability, Distributed Tracing & Telemetry
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety) (9/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -63,7 +63,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-06: API Surfaces, Transports & Error Hygiene](#cc-06-api-surfaces-transports--error-hygiene)** (5/5 completed — 100% PASS)
 - [x] **[CC-07: Multi-Tenancy & Effective Context Isolation](#cc-07-multi-tenancy--effective-context-isolation)** (4/4 completed — 100% PASS)
 - [x] **[CC-08: Database Transactions, Concurrency & Data Integrity](#cc-08-database-transactions-concurrency--data-integrity)** (4/4 completed — 100% PASS)
-- [ ] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (0/4 completed)
+- [x] **[CC-09: Background Workers, Schedulers & Async Runtime Safety](#cc-09-background-workers-schedulers--async-runtime-safety)** (4/4 completed — 100% PASS)
 - [ ] **[CC-10: Observability, Distributed Tracing & Telemetry](#cc-10-observability-distributed-tracing--telemetry)** (0/4 completed)
 - [ ] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (0/4 completed)
 - [ ] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (0/4 completed)
@@ -202,10 +202,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `spawn_worker StopHandle AppRuntime shutdown_runtime_workers tokio::fs`
 
 #### Sub-Audit Checklist
-- [ ] **CC-09.01 — Non-Blocking Async Invariant:** Verify zero blocking calls (`std::thread::sleep`, `std::fs::*`, sync Mutex) in async execution paths.
-- [ ] **CC-09.02 — Graceful Worker Drain:** Verify `StopHandle` cancellation and bounded graceful drain on shutdown.
-- [ ] **CC-09.03 — Concurrency Limiting:** Verify explicit Semaphore concurrency boundaries on heavy background workloads.
-- [ ] **CC-09.04 — Sandbox Isolation:** Verify resource quotas, execution timeouts, instruction counters, and memory bounds in execution sandboxes.
+- [x] **CC-09.01 — Non-Blocking Async Invariant:** Verified zero blocking calls in async execution paths (`crates/workers/*`, `rustok-workflow`, `rustok-sandbox`, `apps/server/src/services/app_runtime.rs`).
+- [x] **CC-09.02 — Graceful Worker Drain:** Verified `StopHandle` cancellation and bounded graceful drain on shutdown (`node scripts/verify/verify-worker-runtime-policy.mjs` — PASSED).
+- [x] **CC-09.03 — Concurrency Limiting:** Verified explicit Semaphore concurrency boundaries on heavy background workloads (`cargo test -p rustok-workflow --lib` — 26/26 PASSED, `node scripts/verify/verify-workflow-fba.mjs` — PASSED).
+- [x] **CC-09.04 — Sandbox Isolation:** Verified resource quotas, execution timeouts, instruction counters, and memory bounds in execution sandboxes (`cargo test -p rustok-sandbox --lib` — 26/26 PASSED, `node scripts/verify/verify-sandbox-worker-isolation.mjs` — PASSED, `node scripts/verify/verify-sandbox-worker-deployment.mjs` — PASSED).
 
 ---
 
