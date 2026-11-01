@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates) (13/17 completed)
+- **Active Phase:** CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting) (14/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -68,7 +68,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-11: Dynamic Settings, Tenant Configuration & Secrets](#cc-11-dynamic-settings-tenant-configuration--secrets)** (4/4 completed — 100% PASS)
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed — 100% PASS)
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed — 100% PASS)
-- [ ] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (0/4 completed)
+- [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed — 100% PASS)
 - [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
 - [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
 - [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
@@ -272,10 +272,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `FieldDefinitionService FieldDefRegistry flex_attached_localized_values RhaiEngine AlloyScript`
 
 #### Sub-Audit Checklist
-- [ ] **CC-14.01 — Unified Donor Opt-in:** Verify attached donors use canonical Flex engine (`flex`) rather than ad-hoc metadata parsing.
-- [ ] **CC-14.02 — Attached Multilingual Separation:** Verify localized attached values reside in `flex_attached_localized_values` rather than inline base JSON.
-- [ ] **CC-14.03 — Fail-Closed Data Classification & AI Export:** Verify fail-closed privacy policies preventing secret or immutable fields from AI exports.
-- [ ] **CC-14.04 — Rhai/Alloy Sandbox Safety:** Verify instruction counters, call stack limits, memory bounds, and timeouts in Rhai execution engines.
+- [x] **CC-14.01 — Unified Donor Opt-in:** Verified attached donors (`user`, `product`, `order`, `topic`, `taxonomy.category`) use canonical Flex engine (`flex`) rather than ad-hoc metadata parsing.
+- [x] **CC-14.02 — Attached Multilingual Separation:** Verified localized attached values reside in `flex_attached_localized_values` rather than inline base JSON (`node scripts/verify/verify-flex-multilingual-contract.mjs` — PASSED, `cargo test -p flex --lib` — 86/86 PASSED).
+- [x] **CC-14.03 — Fail-Closed Data Classification & AI Export:** Verified fail-closed privacy policies preventing secret or immutable fields from AI exports (`FlexAttachedFieldPolicy::validate` rejects `ai_export_allowed` on `Secret` / `ImmutableTransaction`, missing policy defaults to `TenantPrivate` with `ai_export_allowed = false`).
+- [x] **CC-14.04 — Rhai/Alloy Sandbox Safety:** Verified instruction counters (`set_max_operations`), call stack limits (`set_max_call_levels`), string/array memory bounds, and timeouts in Rhai execution engines (`node scripts/verify/verify-alloy-runtime-contract.mjs` — PASSED, `cargo test -p alloy --lib` — 126/126 PASSED).
 
 ---
 
