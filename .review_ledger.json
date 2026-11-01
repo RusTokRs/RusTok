@@ -1022,9 +1022,9 @@
       "category": "modules",
       "files": 91,
       "loc": 24526,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 10:44",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, verified checkout compensation, admission fencing, provider operations, status filter normalizations, non-nil UUID guards; 53/53 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-payment/storefront": {
       "name": "storefront",
@@ -1032,9 +1032,9 @@
       "category": "modules",
       "files": 12,
       "loc": 1390,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-01 10:44",
+      "notes": "Audited and verified. Enforced standardized Cargo.toml metadata, FFA presentation boundaries, decimal-safe refund summaries, UUID parsing invariants; 14/14 tests pass, 0 clippy warnings."
     },
     "crates/modules/rustok-pricing": {
       "name": "rustok-pricing",
