@@ -185,7 +185,7 @@ pub fn author_cell_label(
 /// Date cell for the admin post list: the `YYYY-MM-DD` slice of an RFC 3339
 /// timestamp, or an em dash when there is nothing to show (unpublished).
 pub fn admin_date_cell_label(value: Option<&str>) -> String {
-    match value.map(|raw| raw.get(0..10)).flatten() {
+    match value.and_then(|raw| raw.get(0..10)) {
         Some(date) => date.to_string(),
         None => "—".to_string(),
     }

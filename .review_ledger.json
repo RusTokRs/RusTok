@@ -219,10 +219,10 @@
       "category": "modules",
       "files": 178,
       "loc": 44872,
-      "completed": false,
-      "completed_at": null,
-      "notes": "Audited 2026-10-17 (docs/audits/rustok-blog-engineering-audit-2026-10-17.md): 4 High, 8 Medium, 10 Low and 1 governance finding; all remediated (phase 1: 4 High + transport<->schema parity gate; phase 2: 8 Medium, 8 Low, verifier-suite repair). Blog verifier suite 66 passed / 0 failed, 23 verifier self-test suites pass, and the canonical module layout/reference-contract verifiers pass again. Not marked completed: scoped cargo check/test/clippy verification is still outstanding.",
-      "last_audited": "2026-10-17"
+      "completed": true,
+      "completed_at": "2026-11-01T12:25:00+03:00",
+      "notes": "Audited and verified all 6 Universal Logic Dimensions across 178 source files; standardized Cargo.toml metadata with docs.rs; verified blog post lifecycle, SEO target bridges, rich text validation, and taxonomy integration; 168/168 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.",
+      "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-blog/admin": {
       "name": "admin",
@@ -230,10 +230,10 @@
       "category": "modules",
       "files": 22,
       "loc": 7305,
-      "completed": false,
-      "completed_at": null,
-      "notes": "Audited 2026-10-17: empty-slug save failure remediated; the category/featured-image/SEO/channel/schedule capability gap is now documented in the module README Known Limitations (L-7). FFA boundary check passed.",
-      "last_audited": "2026-10-17"
+      "completed": true,
+      "completed_at": "2026-11-01T12:25:00+03:00",
+      "notes": "Audited Leptos admin FFA package across 22 source files; verified strict FFA separation in core/, dual-path transport, category management, and editorial forms; fixed Option signal constructor and Fn closure capture in categories.rs, remediated clippy map_flatten in commands.rs; standardized Cargo.toml metadata; 44/44 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.",
+      "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-blog/storefront": {
       "name": "storefront",
@@ -241,10 +241,10 @@
       "category": "modules",
       "files": 21,
       "loc": 4034,
-      "completed": false,
-      "completed_at": null,
-      "notes": "Audited 2026-10-17: no defect found; FFA boundary check passed; known retired-slug redirect gap (M-12) remains documented in the module README.",
-      "last_audited": "2026-10-17"
+      "completed": true,
+      "completed_at": "2026-11-01T12:25:00+03:00",
+      "notes": "Audited Leptos storefront FFA package across 21 source files; verified reading views, comment pagination, social share generation, and fulltext search projection; standardized Cargo.toml metadata; 39/39 tests passed, 0 clippy warnings, gatekeeper passed, zero defects.",
+      "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-brand": {
       "name": "rustok-brand",
