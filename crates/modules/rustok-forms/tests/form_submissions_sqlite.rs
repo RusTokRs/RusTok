@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forms_module::dto::{FormSubmissionState, ListFormSubmissionsFilter};
-use rustok_forms_module::{FormsModule, FormsService};
+use rustok_forms::dto::{FormSubmissionState, ListFormSubmissionsFilter};
+use rustok_forms::{FormsModule, FormsService};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,

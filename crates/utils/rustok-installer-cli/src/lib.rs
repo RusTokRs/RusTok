@@ -1,3 +1,9 @@
+//! # rustok-installer-cli
+//!
+//! Selected `rustok-cli` command provider for installer operator commands.
+//! It owns terminal-adapter mapping only and delegates plan, preflight, and
+//! seed semantics to `rustok-installer`.
+
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
@@ -17,10 +23,25 @@ pub struct InstallerCommandProvider {
     runtime: RuntimeComposition,
 }
 
+impl InstallerCommandProvider {
+    pub fn new(runtime: RuntimeComposition) -> Self {
+        Self { runtime }
+    }
+
+    pub fn runtime(&self) -> &RuntimeComposition {
+        &self.runtime
+    }
+}
+
+impl std::fmt::Debug for InstallerCommandProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InstallerCommandProvider")
+            .finish_non_exhaustive()
+    }
+}
+
 pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider> {
-    Box::new(InstallerCommandProvider {
-        runtime: runtime.clone(),
-    })
+    Box::new(InstallerCommandProvider::new(runtime.clone()))
 }
 
 #[async_trait::async_trait]
@@ -821,3 +842,7 @@ mod tests {
         assert_eq!(outcome.data["dry_run"], true);
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

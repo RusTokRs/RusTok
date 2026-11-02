@@ -86,9 +86,8 @@ pub async fn run() -> Result<()> {
 
     initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
 
-    let router = application_router(rustok_settings.runtime.host_mode).with_state(
-        ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()),
-    );
+    let router = application_router(rustok_settings.runtime.host_mode, &rustok_settings)
+        .with_state(ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()));
     let router = bootstrap_application_router(
         router,
         runtime_ctx.clone(),
@@ -258,8 +257,11 @@ fn is_production_environment() -> bool {
     crate::common::settings::is_production_environment()
 }
 
-fn application_router(host_mode: crate::common::settings::RuntimeHostMode) -> ServerRouter {
-    crate::routes::build_application_router(host_mode)
+fn application_router(
+    host_mode: crate::common::settings::RuntimeHostMode,
+    settings: &crate::common::settings::RustokSettings,
+) -> ServerRouter {
+    crate::routes::build_application_router(host_mode, settings)
 }
 
 fn resolve_database_uri(configured_uri: &str) -> String {
@@ -308,26 +310,8 @@ async fn connect_database(
 }
 
 async fn load_config() -> Result<HostConfig> {
-    let environment = std::env::var("RUSTOK_ENV")
-        .or_else(|_| std::env::var("APP_ENV"))
-        .unwrap_or_else(|_| {
-            if cfg!(debug_assertions) {
-                "development".to_string()
-            } else {
-                "production".to_string()
-            }
-        });
-    let environment = environment.trim();
-    if environment.is_empty()
-        || !environment
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
-    {
-        return Err(Error::BadRequest(
-            "RUSTOK_ENV/APP_ENV must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
-                .to_string(),
-        ));
-    }
+    let environment =
+        crate::common::settings::resolve_environment_name().map_err(Error::BadRequest)?;
 
     let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()
@@ -421,12 +405,18 @@ mod tests {
 
     #[test]
     fn registry_only_router_is_composable_without_domain_routes() {
-        let _ = application_router(RuntimeHostMode::RegistryOnly);
+        let _ = application_router(
+            RuntimeHostMode::RegistryOnly,
+            &crate::common::settings::RustokSettings::default(),
+        );
     }
 
     #[test]
     fn worker_router_is_composable_without_http_application_surfaces() {
-        let _ = application_router(RuntimeHostMode::Worker);
+        let _ = application_router(
+            RuntimeHostMode::Worker,
+            &crate::common::settings::RustokSettings::default(),
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -234,10 +234,18 @@ impl OciReleaseAdmissionService {
         // replay identity.
         let request_digest = command.semantic_request_digest()?;
 
-        // 4. Reject a reused owner idempotency key before the global immutable
-        // release lookup can make a changed command appear successful.
-        let existing_by_key = self
+        let tx = self
             .db
+            .begin()
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, &command.scope)
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+
+        // 4. Reject a reused owner idempotency key before the scoped immutable
+        // release lookup can make a changed command appear successful.
+        let existing_by_key = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -277,8 +285,7 @@ impl OciReleaseAdmissionService {
         }
 
         // 5. Check if release already admitted under this release digest.
-        let existing_by_digest = self
-            .db
+        let existing_by_digest = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -286,15 +293,24 @@ impl OciReleaseAdmissionService {
                             payload_digest, payload_media_type, payload_size_bytes, \
                             descriptor_json, actor_id, idempotency_key, admitted_at \
                      FROM module_admitted_oci_releases \
-                     WHERE release_digest = {}",
-                    backend.placeholder(1)
+                     WHERE release_digest = {} AND scope_kind = {} AND scope_tenant_key = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3)
                 ),
-                vec![command.reference.digest.clone().into()],
+                vec![
+                    command.reference.digest.clone().into(),
+                    scope_kind.into(),
+                    scope_tenant_key.clone().into(),
+                ],
             ))
             .await
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
 
         if let Some(row) = existing_by_digest {
+            tx.commit()
+                .await
+                .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
             let descriptor_json: String = row
                 .try_get("", "descriptor_json")
                 .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
@@ -360,7 +376,7 @@ impl OciReleaseAdmissionService {
 
         // 6. Reserve staging intent in admission journal before CAS mutation.
         ReleaseAdmissionIntentJournal::record_staging_intent(
-            &self.db,
+            &tx,
             &command.scope,
             &command.context,
             &request_digest,
@@ -372,6 +388,10 @@ impl OciReleaseAdmissionService {
             }
             other => OciReleaseAdmissionError::Database(other.to_string()),
         })?;
+
+        tx.commit()
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
 
         // 7. Fetch and validate OCI package via registry adapter
         let package = self
@@ -499,7 +519,15 @@ impl OciReleaseAdmissionService {
         let now = self.infrastructure.now();
 
         // 11. Commit immutable admission record in database
-        self.db
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, &command.scope)
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        let inserted = tx
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
@@ -509,7 +537,7 @@ impl OciReleaseAdmissionService {
                         descriptor_json, actor_id, idempotency_key, trace_id, correlation_id, \
                         request_digest, admitted_at\
                     ) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}) \
-                    ON CONFLICT (release_digest) DO NOTHING",
+                    ON CONFLICT (scope_kind, scope_tenant_key, release_digest) DO NOTHING",
                     backend.placeholder(1),
                     backend.placeholder(2),
                     backend.placeholder(3),
@@ -551,6 +579,13 @@ impl OciReleaseAdmissionService {
             .await
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
 
+        if inserted.rows_affected() == 0 {
+            return Err(OciReleaseAdmissionError::Database("Concurrent admission already committed; retry the command to read the durable result".to_string()));
+        }
+        tx.commit()
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+
         let payload_digest = package.descriptor.artifact_digest.clone();
         Ok(OciAdmissionReceipt {
             reference: command.reference,
@@ -565,22 +600,40 @@ impl OciReleaseAdmissionService {
     /// Looks up an already-admitted OCI release by its exact manifest digest.
     pub async fn get_admitted_release(
         &self,
+        scope: &ModuleInstallationScope,
         release_digest: &str,
     ) -> Result<Option<OciAdmissionReceipt>, OciReleaseAdmissionError> {
         let backend = SupportedBackend::new(self.db.get_database_backend())
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
-        let row = self
+        let (scope_kind, scope_tenant_key) = match scope {
+            ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+        };
+        let tx = self
             .db
+            .begin()
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
+        let row = tx
             .query_one_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 format!(
                     "SELECT release_digest, registry, repository, slug, version, payload_digest, \
                             payload_size_bytes, descriptor_json, admitted_at \
                      FROM module_admitted_oci_releases \
-                     WHERE release_digest = {}",
-                    backend.placeholder(1)
+                     WHERE release_digest = {} AND scope_kind = {} AND scope_tenant_key = {}",
+                    backend.placeholder(1),
+                    backend.placeholder(2),
+                    backend.placeholder(3)
                 ),
-                vec![release_digest.into()],
+                vec![
+                    release_digest.into(),
+                    scope_kind.into(),
+                    scope_tenant_key.into(),
+                ],
             ))
             .await
             .map_err(|e| OciReleaseAdmissionError::Database(e.to_string()))?;
@@ -649,10 +702,5 @@ impl OciReleaseAdmissionService {
             cas_published: false,
             admitted_at,
         }))
-    }
-
-    /// Verifies whether the payload bytes for an admitted release exist in platform CAS.
-    pub async fn has_cas_payload(&self, payload_digest: &str) -> bool {
-        self.blobs.get_verified(payload_digest).await.is_ok()
     }
 }

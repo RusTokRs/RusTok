@@ -2,8 +2,11 @@
 name = "rustok-calls-storefront"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Storefront FFA package for WebRTC Calls & Conferencing"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

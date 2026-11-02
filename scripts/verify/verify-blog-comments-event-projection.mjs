@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
@@ -21,6 +21,17 @@ function read(relativePath) {
   return readFileSync(target, 'utf8');
 }
 
+function readTree(relativePath) {
+  const root = repoPath(relativePath);
+  if (!existsSync(root)) return '';
+  const out = [];
+  for (const entry of readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const child = path.join(relativePath, entry.name);
+    if (entry.isDirectory()) out.push(readTree(child));
+    else if (entry.isFile() && entry.name.endsWith('.rs')) out.push(read(child));
+  }
+  return out.join('\n');
+}
 function requireMarker(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
@@ -62,7 +73,8 @@ const postgresHarness = read(postgresHarnessPath);
 const restartHarness = read(restartHarnessPath);
 const serviceExport = read(serviceExportPath);
 const entity = read(entityPath);
-const migration = read(migrationPath);
+const migrationSchemaPath = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema';
+const migration = read(migrationPath) + '\n' + readTree(migrationSchemaPath);
 const migrationRegistry = read(migrationRegistryPath);
 const moduleSource = read(modulePath);
 const targetTypeSource = read(targetTypePath);
@@ -90,7 +102,12 @@ for (const marker of [
   'DomainEvent::CommentStatusChanged',
   'counted: Some(false)',
   'DomainEvent::CommentDeleted',
-  'counted: Some(new_status == "approved")',
+  // The count verdict goes through the typed `status_counts_publicly` helper
+  // (rustok_comments::CommentStatus comparison, unknown statuses fail closed),
+  // not a raw string comparison against "approved".
+  'counted: Some(status_counts_publicly(new_status))',
+  'fn status_counts_publicly(',
+  'Some(CommentStatus::Approved) => true,',
   'fn projection_applied_delta(',
   'fn next_comment_count(comment_count: i32, delta: i32)',
   'comment_count.saturating_add(delta).max(0)',

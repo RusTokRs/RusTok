@@ -170,7 +170,65 @@ pub(crate) fn extract_runtime_string_method(content: &str, method_name: &str) ->
     let body_start_offset = tail.find('{')?;
     let body = &tail[body_start_offset..];
     let first_quote_offset = body.find('"')?;
-    let quoted = &body[(first_quote_offset + 1)..];
-    let end_quote_offset = quoted.find('"')?;
-    Some(quoted[..end_quote_offset].to_string())
+    let mut chars = body[(first_quote_offset + 1)..].chars();
+    let mut decoded = String::new();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => return Some(decoded),
+            '\\' => {
+                let escape = chars.next()?;
+                match escape {
+                    '"' => decoded.push('"'),
+                    '\\' => decoded.push('\\'),
+                    'n' => decoded.push('\n'),
+                    'r' => decoded.push('\r'),
+                    't' => decoded.push('\t'),
+                    '0' => decoded.push('\0'),
+                    'x' => {
+                        let digits = format!("{}{}", chars.next()?, chars.next()?);
+                        decoded.push(char::from(u8::from_str_radix(&digits, 16).ok()?));
+                    }
+                    'u' => {
+                        if chars.next()? != '{' {
+                            return None;
+                        }
+                        let mut digits = String::new();
+                        loop {
+                            let next = chars.next()?;
+                            if next == '}' {
+                                break;
+                            }
+                            digits.push(next);
+                        }
+                        decoded.push(char::from_u32(u32::from_str_radix(&digits, 16).ok()?)?);
+                    }
+                    _ => return None,
+                }
+            }
+            other => decoded.push(other),
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod runtime_string_tests {
+    use super::extract_runtime_string_method;
+
+    #[test]
+    fn parses_escaped_rust_metadata_strings() {
+        let original = "An \"Example\" with backslash \\ and new\nline";
+        let source = format!(
+            "fn name(&self) -> &'static str {{ {:?} }}",
+            original
+        );
+        assert_eq!(extract_runtime_string_method(&source, "name").as_deref(), Some(original));
+    }
+
+    #[test]
+    fn rejects_invalid_rust_metadata_escapes() {
+        let source = r#"fn name(&self) -> &'static str { "broken\q" }"#;
+        assert!(extract_runtime_string_method(source, "name").is_none());
+    }
 }

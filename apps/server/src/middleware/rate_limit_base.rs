@@ -21,6 +21,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::OnceCell;
 use tracing::{debug, warn};
 
 use rustok_cache::CacheService;
@@ -96,6 +97,11 @@ enum RateLimiterBackend {
     Redis {
         client: redis::Client,
         key_prefix: String,
+        /// One reconnecting manager per limiter, shared by all clones and
+        /// namespaces built from the same backend instance. Opening a fresh
+        /// multiplexed connection per request turns Redis outages and normal
+        /// traffic into connection churn.
+        connection: Arc<OnceCell<redis::aio::ConnectionManager>>,
     },
 }
 
@@ -134,10 +140,32 @@ impl RateLimiter {
         namespace: impl Into<String>,
     ) -> Self {
         Self {
-            backend: RateLimiterBackend::Redis { client, key_prefix },
+            backend: RateLimiterBackend::Redis {
+                client,
+                key_prefix,
+                connection: Arc::new(OnceCell::new()),
+            },
             config,
             namespace: namespace.into(),
         }
+    }
+
+    async fn redis_connection(
+        &self,
+        client: &redis::Client,
+        connection: &Arc<OnceCell<redis::aio::ConnectionManager>>,
+    ) -> Result<redis::aio::ConnectionManager, String> {
+        let manager = connection
+            .get_or_try_init(|| async {
+                redis_with_timeout(
+                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
+                    "redis rate-limit connection",
+                    client.get_connection_manager(),
+                )
+                .await
+            })
+            .await?;
+        Ok(manager.clone())
     }
 
     pub fn window_secs(&self) -> u64 {
@@ -176,8 +204,13 @@ impl RateLimiter {
             RateLimiterBackend::Memory { requests } => {
                 self.check_rate_limit_memory(requests, key).await
             }
-            RateLimiterBackend::Redis { client, key_prefix } => {
-                self.check_rate_limit_redis(client, key_prefix, key).await
+            RateLimiterBackend::Redis {
+                client,
+                key_prefix,
+                connection,
+            } => {
+                self.check_rate_limit_redis(client, connection, key_prefix, key)
+                    .await
             }
         }
     }
@@ -240,6 +273,7 @@ impl RateLimiter {
     async fn check_rate_limit_redis(
         &self,
         client: &redis::Client,
+        connection: &Arc<OnceCell<redis::aio::ConnectionManager>>,
         key_prefix: &str,
         key: &str,
     ) -> Result<RateLimitInfo, RateLimitCheckError> {
@@ -258,13 +292,10 @@ return {current, ttl}
 
         let redis_key = redis_rate_limit_key(key_prefix, key);
         let window_secs = bounded_redis_window_seconds(self.config.window);
-        let mut connection = redis_with_timeout(
-            RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
-            "redis rate-limit connection",
-            client.get_multiplexed_async_connection(),
-        )
-        .await
-        .map_err(RateLimitCheckError::BackendUnavailable)?;
+        let mut connection = self
+            .redis_connection(client, connection)
+            .await
+            .map_err(RateLimitCheckError::BackendUnavailable)?;
 
         let (current, ttl): (i64, i64) = redis_with_timeout(
             RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
@@ -315,13 +346,10 @@ return {current, ttl}
     pub async fn check_backend_health(&self) -> Result<(), String> {
         match &self.backend {
             RateLimiterBackend::Memory { .. } => Ok(()),
-            RateLimiterBackend::Redis { client, .. } => {
-                let mut connection = redis_with_timeout(
-                    RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
-                    "redis rate-limit health connection",
-                    client.get_multiplexed_async_connection(),
-                )
-                .await?;
+            RateLimiterBackend::Redis {
+                client, connection, ..
+            } => {
+                let mut connection = self.redis_connection(client, connection).await?;
 
                 let response: String = redis_with_timeout(
                     RATE_LIMIT_REDIS_OPERATION_TIMEOUT,
@@ -807,6 +835,29 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
 #[cfg(test)]
 mod diagnostic_tests {
     use super::*;
+
+    #[test]
+    fn redis_limiter_clones_share_one_reconnecting_connection_slot() {
+        let client = redis::Client::open("redis://127.0.0.1:6379/0").expect("redis client");
+        let limiter = RateLimiter::with_redis(
+            RateLimitConfig::new(10, 60),
+            client,
+            "rate-limit:test".to_string(),
+        );
+        let clone = limiter.clone();
+        let RateLimiterBackend::Redis { connection, .. } = &limiter.backend else {
+            panic!("expected redis backend");
+        };
+        let RateLimiterBackend::Redis {
+            connection: clone_connection,
+            ..
+        } = &clone.backend
+        else {
+            panic!("expected redis backend");
+        };
+        assert!(Arc::ptr_eq(connection, clone_connection));
+        assert!(limiter.is_distributed());
+    }
 
     #[test]
     fn rate_limit_key_diagnostic_fingerprint_does_not_contain_raw_identity() {

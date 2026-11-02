@@ -21,6 +21,13 @@ pub struct GrpcArtifactNodeAgent {
     client: Mutex<ArtifactNodeServiceClient<Channel>>,
 }
 
+impl std::fmt::Debug for GrpcArtifactNodeAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrpcArtifactNodeAgent")
+            .finish_non_exhaustive()
+    }
+}
+
 impl GrpcArtifactNodeAgent {
     pub(crate) fn from_channel(channel: Channel) -> Self {
         Self {

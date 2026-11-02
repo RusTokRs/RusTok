@@ -4,7 +4,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
-use rustok_forms::FormState;
+use rustok_ui_forms::FormState;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{graphql_user_view, prepare_update_user_input};

@@ -372,13 +372,13 @@ async fn test_external_prebuilt_admission_success() {
     assert_eq!(receipt.payload_size_bytes, wasm_bytes.len() as u64);
 
     // Verify payload exists in platform CAS
-    assert!(service.has_cas_payload(&receipt.payload_digest).await);
+    assert!(blobs.get_verified(&receipt.payload_digest).await.is_ok());
     let cas_bytes = blobs.get_verified(&receipt.payload_digest).await.unwrap();
     assert_eq!(cas_bytes.as_slice(), wasm_bytes);
 
     // Verify lookup of admitted ingress record
     let stored = service
-        .get_ingress_record(&manifest_digest)
+        .get_ingress_record(&ModuleInstallationScope::Platform, &manifest_digest)
         .await
         .expect("get_ingress_record succeeds")
         .expect("ingress record found");
@@ -403,7 +403,9 @@ async fn test_external_prebuilt_admission_success() {
     .await
     .expect("corrupt stored descriptor fixture");
     assert!(matches!(
-        service.get_ingress_record(&manifest_digest).await,
+        service
+            .get_ingress_record(&ModuleInstallationScope::Platform, &manifest_digest)
+            .await,
         Err(ExternalPrebuiltIngressError::InvalidDescriptor(_))
     ));
 
@@ -571,7 +573,12 @@ async fn test_external_prebuilt_rejection_does_not_mutate_quarantine_state() {
     assert_eq!(total, 0, "Rejection alone must NOT mutate quarantine state");
 
     // Also verify CAS has NO blobs
-    assert!(!service.has_cas_payload(&sha256_digest(wasm_bytes)).await);
+    assert!(
+        blobs
+            .get_verified(&sha256_digest(wasm_bytes))
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -927,5 +934,71 @@ async fn test_recovery_reads_cas_only_and_never_falls_back_to_oci() {
         spy_registry.call_count(),
         0,
         "Recovery must NEVER contact OCI registry"
+    );
+}
+
+#[tokio::test]
+async fn external_ingress_evidence_is_isolated_per_tenant() {
+    let db = setup_db().await;
+    let blobs = Arc::new(InMemoryArtifactBlobStore::default());
+    let bytes = b"\x00asm\x01\x00\x00\x00-tenant-external-component";
+    let (package, digest) = create_sample_package(bytes, "tenant_payment", "1.0.0");
+    let mut registry = SpyRegistry::new();
+    registry.add_package(package.clone());
+    let service = ExternalPrebuiltIngressService::new(db.clone(), blobs, Arc::new(registry));
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    for tenant_id in [a, b] {
+        let mut evidence = valid_evidence();
+        evidence.publisher.identity = format!("publisher-{tenant_id}");
+        service
+            .admit_external_prebuilt(ExternalPrebuiltIngressCommand {
+                reference: package.reference.clone(),
+                scope: ModuleInstallationScope::Tenant { tenant_id },
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: Some(tenant_id),
+                    idempotency_key: Uuid::new_v4(),
+                    trace_id: "test".into(),
+                    correlation_id: Uuid::new_v4(),
+                },
+                evidence,
+                trust_policy_revision: 1,
+                capability_policy_revision: 1,
+            })
+            .await
+            .expect("each tenant can admit independent evidence for identical content");
+    }
+    let rows = db.query_all_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+        "SELECT scope_tenant_key, publisher_identity FROM module_external_prebuilt_ingress WHERE release_digest = ?1", vec![digest.clone().into()])).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        let tenant: String = row.try_get("", "scope_tenant_key").unwrap();
+        let publisher: String = row.try_get("", "publisher_identity").unwrap();
+        assert_eq!(publisher, format!("publisher-{tenant}"));
+    }
+    let absent = ModuleInstallationScope::Tenant {
+        tenant_id: Uuid::new_v4(),
+    };
+    assert!(
+        service
+            .get_ingress_record(&absent, &digest)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        service
+            .get_ingress_record(&ModuleInstallationScope::Tenant { tenant_id: a }, &digest)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        service
+            .get_ingress_record(&ModuleInstallationScope::Tenant { tenant_id: b }, &digest)
+            .await
+            .unwrap()
+            .is_some()
     );
 }

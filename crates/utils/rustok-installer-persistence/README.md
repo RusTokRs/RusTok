@@ -1,5 +1,7 @@
 # rustok-installer-persistence
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-installer-persistence` is the SeaORM adapter for installer database

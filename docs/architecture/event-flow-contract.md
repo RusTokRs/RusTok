@@ -88,7 +88,8 @@ Module-owned event listeners are published through the module's own runtime cont
 
 - `RusToKModule::register_event_listeners(...)` registers handlers in `ModuleEventListenerRegistry`;
 - `apps/server` collects them through `ModuleRegistry::build_event_listeners(...)` and connects them to the common `EventDispatcher`;
-- runtime dependencies for listeners are passed through `ModuleEventListenerContext` and `ModuleRuntimeExtensions`, not through host-owned manual wiring in `apps/server`.
+- runtime dependencies for listeners are passed through `ModuleEventListenerContext` and `ModuleRuntimeExtensions`, not through host-owned manual wiring in `apps/server`;
+- host shutdown requests a cooperative `EventDispatcher` stop, stops admitting new events, and drains already admitted dispatches plus their handler tasks before join returns; abort remains the emergency fallback after the host drain deadline.
 
 This means the module owns its event consumers just as it owns its
 `GraphQL`, `HTTP` and UI surfaces.

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslations } from '@rustok/next-fluent';
 import { IconAlertTriangle, IconCheck, IconShield } from '@tabler/icons-react';
 
 import { Badge } from '@/shared/ui/shadcn/badge';
@@ -11,6 +12,7 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { Textarea } from '@/shared/ui/shadcn/textarea';
 import {
   approveRegistryPublishRequest,
+  fetchRegistryPublishRequestStatus,
   holdRegistryPublishRequest,
   rejectRegistryPublishRequest,
   requestChangesRegistryPublishRequest,
@@ -20,7 +22,8 @@ import {
   yankRegistryRelease,
   type GqlOpts,
   type MarketplaceModule,
-  type RegistryMutationResult
+  type RegistryMutationResult,
+  type RegistryPublishStatusContract
 } from '@/shared/api/modules';
 
 interface GovernanceFormProps {
@@ -29,11 +32,14 @@ interface GovernanceFormProps {
   onSuccess?: () => void;
 }
 
+const EMPTY_API_OPTIONS: GqlOpts = {};
+
 export function GovernanceForm({
   module,
-  apiOpts = {},
+  apiOpts = EMPTY_API_OPTIONS,
   onSuccess
 }: GovernanceFormProps) {
+  const t = useTranslations('modules');
   const [dryRun, setDryRun] = useState(true);
   const [reasonCode, setReasonCode] = useState('');
   const [reason, setReason] = useState('');
@@ -42,141 +48,219 @@ export function GovernanceForm({
   const [result, setResult] = useState<RegistryMutationResult | null>(null);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
 
-  const activeRelease = module.versions?.[0]?.version ?? module.latestVersion;
-  const requestId = module.slug; // Default to slug or published request identifier
+  const requestId = module.registryLifecycle?.latestRequest?.id ?? null;
+  const activeRelease =
+    module.registryLifecycle?.latestRelease?.version ?? null;
+  const [statusEvidence, setStatusEvidence] = useState<{
+    status: RegistryPublishStatusContract;
+    scope: GqlOpts;
+  } | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusRefresh, setStatusRefresh] = useState(0);
+  const commandKeys = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatusEvidence(null);
+    setStatusError(null);
+    if (!requestId) {
+      setStatusLoading(false);
+      return;
+    }
+    setStatusLoading(true);
+    void fetchRegistryPublishRequestStatus(requestId, apiOpts)
+      .then((status) => {
+        if (status.request_id !== requestId || status.slug !== module.slug) {
+          throw new Error(t('governance.status.mismatch'));
+        }
+        if (!cancelled) setStatusEvidence({ status, scope: apiOpts });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled)
+          setStatusError(
+            error instanceof Error
+              ? error.message
+              : t('governance.status.error')
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setStatusLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId, module.slug, apiOpts, statusRefresh, t]);
+
+  const status =
+    statusEvidence?.scope === apiOpts &&
+    statusEvidence.status.request_id === requestId
+      ? statusEvidence.status
+      : null;
+  const requestActions = new Set([
+    'validate',
+    'approve',
+    'reject',
+    'request_changes',
+    'hold',
+    'resume'
+  ]);
+  const actionFor = (action: string) =>
+    requestActions.has(action)
+      ? status?.governanceActions.find((item) => item.key === action)
+      : module.registryLifecycle?.governanceActions.find(
+          (item) => item.key === action
+        );
+  const signatureFor = (action: string) =>
+    JSON.stringify([
+      action,
+      module.slug,
+      requestId,
+      activeRelease,
+      reason.trim(),
+      reasonCode.trim(),
+      newOwnerUserId.trim(),
+      dryRun,
+      apiOpts.tenantSlug,
+      apiOpts.tenantId,
+      apiOpts.token
+    ]);
 
   const handleAction = async (action: string) => {
-    // Check confirmation for destructive actions if not dry-run
-    if (!dryRun && ['reject', 'yank', 'owner_transfer'].includes(action)) {
-      if (confirmAction !== action) {
-        setConfirmAction(action);
-        return;
-      }
+    const policy = actionFor(action);
+    if (!policy || (requestActions.has(action) && !requestId)) return;
+    const cleanReason = reason.trim();
+    const cleanCode = reasonCode.trim();
+    if (policy.reasonRequired && !cleanReason) {
+      toast.error(t('governance.reason.required'));
+      return;
     }
-
+    if (policy.reasonCodeRequired && !cleanCode) {
+      toast.error(t('governance.reason.code.required'));
+      return;
+    }
+    if (
+      cleanCode &&
+      policy.reasonCodes.length > 0 &&
+      !policy.reasonCodes.includes(cleanCode)
+    ) {
+      toast.error(
+        `${t('governance.reason.code.options')} ${policy.reasonCodes.join(', ')}`
+      );
+      return;
+    }
+    if (action === 'owner_transfer' && !newOwnerUserId.trim()) {
+      toast.error(t('governance.owner.required'));
+      return;
+    }
+    if (action === 'yank' && !activeRelease) {
+      toast.error(t('governance.release.unavailable'));
+      return;
+    }
+    const signature = signatureFor(action);
+    if (!dryRun && policy.destructive && confirmAction !== signature) {
+      setConfirmAction(signature);
+      return;
+    }
     setConfirmAction(null);
     setIsSubmitting(true);
     setResult(null);
-
+    const key = commandKeys.current.get(signature) ?? crypto.randomUUID();
+    commandKeys.current.set(signature, key);
     try {
       let res: RegistryMutationResult;
       switch (action) {
         case 'validate':
           res = await validateRegistryPublishRequest(
-            requestId,
+            requestId!,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'approve':
           res = await approveRegistryPublishRequest(
-            requestId,
-            reason || undefined,
-            reasonCode || undefined,
+            requestId!,
+            cleanReason || undefined,
+            cleanCode || undefined,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'reject':
-          if (!reason || !reasonCode) {
-            toast.error('Reason and Reason Code are required for Reject');
-            setIsSubmitting(false);
-            return;
-          }
           res = await rejectRegistryPublishRequest(
-            requestId,
-            reason,
-            reasonCode,
+            requestId!,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'request_changes':
-          if (!reason || !reasonCode) {
-            toast.error(
-              'Reason and Reason Code are required to request changes'
-            );
-            setIsSubmitting(false);
-            return;
-          }
           res = await requestChangesRegistryPublishRequest(
-            requestId,
-            reason,
-            reasonCode,
+            requestId!,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'hold':
-          if (!reason || !reasonCode) {
-            toast.error('Reason and Reason Code are required to place on Hold');
-            setIsSubmitting(false);
-            return;
-          }
           res = await holdRegistryPublishRequest(
-            requestId,
-            reason,
-            reasonCode,
+            requestId!,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'resume':
-          if (!reason || !reasonCode) {
-            toast.error('Reason and Reason Code are required to Resume');
-            setIsSubmitting(false);
-            return;
-          }
           res = await resumeRegistryPublishRequest(
-            requestId,
-            reason,
-            reasonCode,
+            requestId!,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'owner_transfer':
-          if (!newOwnerUserId.trim() || !reason || !reasonCode) {
-            toast.error(
-              'New Owner User ID, Reason, and Reason Code are required'
-            );
-            setIsSubmitting(false);
-            return;
-          }
           res = await transferRegistryOwner(
             module.slug,
             newOwnerUserId.trim(),
-            reason,
-            reasonCode,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         case 'yank':
-          if (!reason || !reasonCode) {
-            toast.error('Reason and Reason Code are required to Yank release');
-            setIsSubmitting(false);
-            return;
-          }
           res = await yankRegistryRelease(
             module.slug,
-            activeRelease,
-            reason,
-            reasonCode,
+            activeRelease!,
+            cleanReason,
+            cleanCode,
             dryRun,
-            apiOpts
+            apiOpts,
+            key
           );
           break;
         default:
           throw new Error(`Unknown governance action: ${action}`);
       }
-
+      commandKeys.current.delete(signature);
       setResult(res);
       if (res.accepted) {
         toast.success(
           `${dryRun ? '[Dry-run] ' : ''}Action "${action}" completed successfully`
         );
         if (!dryRun) {
+          setStatusRefresh((value) => value + 1);
           onSuccess?.();
         }
       } else {
@@ -184,10 +268,10 @@ export function GovernanceForm({
           `${dryRun ? '[Dry-run] ' : ''}Action completed with warnings or non-accepted status`
         );
       }
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Governance action failed';
-      toast.error(msg);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Governance action failed'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -217,6 +301,24 @@ export function GovernanceForm({
         </div>
       </div>
 
+      {requestId && (
+        <p className='text-muted-foreground text-xs'>
+          {t('governance.request')} {requestId}:{' '}
+          {statusLoading
+            ? t('governance.loading')
+            : (status?.status ?? t('governance.unavailable'))}
+        </p>
+      )}
+      {statusError && (
+        <p className='text-destructive text-xs' role='alert'>
+          {statusError}
+        </p>
+      )}
+      {!requestId && (
+        <p className='text-muted-foreground text-xs'>
+          {t('governance.no.request')}
+        </p>
+      )}
       <div className='grid gap-3 sm:grid-cols-2'>
         <div className='space-y-1.5'>
           <label className='text-muted-foreground text-xs font-medium'>
@@ -260,7 +362,7 @@ export function GovernanceForm({
         <Button
           variant='outline'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('validate')}
           onClick={() => handleAction('validate')}
           className='text-xs'
         >
@@ -269,7 +371,7 @@ export function GovernanceForm({
         <Button
           variant='default'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('approve')}
           onClick={() => handleAction('approve')}
           className='bg-emerald-600 text-xs hover:bg-emerald-500'
         >
@@ -278,7 +380,7 @@ export function GovernanceForm({
         <Button
           variant='outline'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('request_changes')}
           onClick={() => handleAction('request_changes')}
           className='text-xs'
         >
@@ -287,7 +389,7 @@ export function GovernanceForm({
         <Button
           variant='outline'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('hold')}
           onClick={() => handleAction('hold')}
           className='text-xs'
         >
@@ -296,7 +398,7 @@ export function GovernanceForm({
         <Button
           variant='outline'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('resume')}
           onClick={() => handleAction('resume')}
           className='text-xs'
         >
@@ -305,31 +407,33 @@ export function GovernanceForm({
         <Button
           variant='destructive'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('reject')}
           onClick={() => handleAction('reject')}
           className='text-xs'
         >
-          {confirmAction === 'reject' ? 'Confirm Reject?' : 'Reject'}
+          {confirmAction === signatureFor('reject')
+            ? 'Confirm Reject?'
+            : 'Reject'}
         </Button>
         <Button
           variant='outline'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('owner_transfer')}
           onClick={() => handleAction('owner_transfer')}
           className='text-xs'
         >
-          {confirmAction === 'owner_transfer'
+          {confirmAction === signatureFor('owner_transfer')
             ? 'Confirm Transfer?'
             : 'Transfer Owner'}
         </Button>
         <Button
           variant='destructive'
           size='sm'
-          disabled={isSubmitting}
+          disabled={isSubmitting || !actionFor('yank')}
           onClick={() => handleAction('yank')}
           className='text-xs'
         >
-          {confirmAction === 'yank'
+          {confirmAction === signatureFor('yank')
             ? 'Confirm Yank?'
             : `Yank v${activeRelease}`}
         </Button>

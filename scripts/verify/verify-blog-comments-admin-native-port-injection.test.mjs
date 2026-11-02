@@ -15,6 +15,7 @@ const evidencePath =
 const adminAdapterPath =
   'crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs';
 const servicePath = 'crates/modules/rustok-blog/src/services/comment.rs';
+const serviceCommandsPath = 'crates/modules/rustok-blog/src/services/comment/commands.rs';
 const consumerMatrixPath =
   'crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
@@ -118,6 +119,11 @@ PortErrorKind::Unavailable => rustok_core::error::ErrorKind::ExternalService
 PortErrorKind::Timeout => rustok_core::error::ErrorKind::Timeout
 `,
   );
+
+  // The Comment service's port-call half lives in `comment/commands.rs`; the
+  // synthetic fixture keeps every marker in the entry file, the split file only
+  // needs to exist for the gate's concatenation.
+  write(root, serviceCommandsPath, '');
 
   write(
     root,

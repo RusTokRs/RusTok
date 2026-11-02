@@ -128,7 +128,7 @@ interface UpdateStepInput {
 
 // ---------- GraphQL operations (tenantId resolved server-side from headers) ----------
 
-const WORKFLOWS_QUERY = `
+export const WORKFLOWS_QUERY = `
 query Workflows {
   workflows {
     id
@@ -142,7 +142,7 @@ query Workflows {
   }
 }`;
 
-const WORKFLOW_QUERY = `
+export const WORKFLOW_QUERY = `
 query Workflow($id: UUID!) {
   workflow(id: $id) {
     id
@@ -169,7 +169,7 @@ query Workflow($id: UUID!) {
   }
 }`;
 
-const WORKFLOW_EXECUTIONS_QUERY = `
+export const WORKFLOW_EXECUTIONS_QUERY = `
 query WorkflowExecutions($workflowId: UUID!) {
   workflowExecutions(workflowId: $workflowId) {
     id
@@ -190,47 +190,47 @@ query WorkflowExecutions($workflowId: UUID!) {
   }
 }`;
 
-const CREATE_WORKFLOW_MUTATION = `
+export const CREATE_WORKFLOW_MUTATION = `
 mutation CreateWorkflow($input: GqlCreateWorkflowInput!) {
   createWorkflow(input: $input)
 }`;
 
-const UPDATE_WORKFLOW_MUTATION = `
+export const UPDATE_WORKFLOW_MUTATION = `
 mutation UpdateWorkflow($id: UUID!, $input: GqlUpdateWorkflowInput!) {
   updateWorkflow(id: $id, input: $input)
 }`;
 
-const DELETE_WORKFLOW_MUTATION = `
+export const DELETE_WORKFLOW_MUTATION = `
 mutation DeleteWorkflow($id: UUID!) {
   deleteWorkflow(id: $id)
 }`;
 
-const ACTIVATE_WORKFLOW_MUTATION = `
+export const ACTIVATE_WORKFLOW_MUTATION = `
 mutation ActivateWorkflow($id: UUID!) {
   activateWorkflow(id: $id)
 }`;
 
-const PAUSE_WORKFLOW_MUTATION = `
+export const PAUSE_WORKFLOW_MUTATION = `
 mutation PauseWorkflow($id: UUID!) {
   pauseWorkflow(id: $id)
 }`;
 
-const TRIGGER_WORKFLOW_MUTATION = `
+export const TRIGGER_WORKFLOW_MUTATION = `
 mutation TriggerWorkflow($id: UUID!, $payload: JSON, $force: Boolean) {
   triggerWorkflow(id: $id, payload: $payload, force: $force)
 }`;
 
-const ADD_STEP_MUTATION = `
+export const ADD_STEP_MUTATION = `
 mutation AddWorkflowStep($workflowId: UUID!, $input: GqlCreateStepInput!) {
   addWorkflowStep(workflowId: $workflowId, input: $input)
 }`;
 
-const UPDATE_STEP_MUTATION = `
+export const UPDATE_STEP_MUTATION = `
 mutation UpdateWorkflowStep($workflowId: UUID!, $stepId: UUID!, $input: GqlUpdateStepInput!) {
   updateWorkflowStep(workflowId: $workflowId, stepId: $stepId, input: $input)
 }`;
 
-const DELETE_STEP_MUTATION = `
+export const DELETE_STEP_MUTATION = `
 mutation DeleteWorkflowStep($workflowId: UUID!, $stepId: UUID!) {
   deleteWorkflowStep(workflowId: $workflowId, stepId: $stepId)
 }`;
@@ -251,10 +251,14 @@ export async function getWorkflow(
   id: string,
   opts: GqlOpts = {}
 ): Promise<WorkflowResponse | null> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   const data = await graphqlRequest<
     { id: string },
     { workflow: WorkflowResponse | null }
-  >(WORKFLOW_QUERY, { id }, opts.token, opts.tenantSlug);
+  >(WORKFLOW_QUERY, { id: cleanId }, opts.token, opts.tenantSlug);
   return data.workflow;
 }
 
@@ -262,10 +266,14 @@ export async function listWorkflowExecutions(
   workflowId: string,
   opts: GqlOpts = {}
 ): Promise<WorkflowExecution[]> {
+  const cleanId = workflowId?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   const data = await graphqlRequest<
     { workflowId: string },
     { workflowExecutions: WorkflowExecution[] }
-  >(WORKFLOW_EXECUTIONS_QUERY, { workflowId }, opts.token, opts.tenantSlug);
+  >(WORKFLOW_EXECUTIONS_QUERY, { workflowId: cleanId }, opts.token, opts.tenantSlug);
   return data.workflowExecutions;
 }
 
@@ -273,10 +281,18 @@ export async function createWorkflow(
   input: CreateWorkflowInput,
   opts: GqlOpts = {}
 ): Promise<string> {
+  const cleanName = input.name?.trim();
+  if (!cleanName) {
+    throw new Error('Workflow name is required');
+  }
+  const payload: CreateWorkflowInput = {
+    ...input,
+    name: cleanName
+  };
   const data = await graphqlRequest<
     { input: CreateWorkflowInput },
     { createWorkflow: string }
-  >(CREATE_WORKFLOW_MUTATION, { input }, opts.token, opts.tenantSlug);
+  >(CREATE_WORKFLOW_MUTATION, { input: payload }, opts.token, opts.tenantSlug);
   return data.createWorkflow;
 }
 
@@ -285,19 +301,27 @@ export async function updateWorkflow(
   input: UpdateWorkflowInput,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   await graphqlRequest<
     { id: string; input: UpdateWorkflowInput },
     { updateWorkflow: boolean }
-  >(UPDATE_WORKFLOW_MUTATION, { id, input }, opts.token, opts.tenantSlug);
+  >(UPDATE_WORKFLOW_MUTATION, { id: cleanId, input }, opts.token, opts.tenantSlug);
 }
 
 export async function deleteWorkflow(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   await graphqlRequest<{ id: string }, { deleteWorkflow: boolean }>(
     DELETE_WORKFLOW_MUTATION,
-    { id },
+    { id: cleanId },
     opts.token,
     opts.tenantSlug
   );
@@ -307,9 +331,13 @@ export async function activateWorkflow(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   await graphqlRequest<{ id: string }, { activateWorkflow: boolean }>(
     ACTIVATE_WORKFLOW_MUTATION,
-    { id },
+    { id: cleanId },
     opts.token,
     opts.tenantSlug
   );
@@ -319,9 +347,13 @@ export async function pauseWorkflow(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   await graphqlRequest<{ id: string }, { pauseWorkflow: boolean }>(
     PAUSE_WORKFLOW_MUTATION,
-    { id },
+    { id: cleanId },
     opts.token,
     opts.tenantSlug
   );
@@ -333,12 +365,16 @@ export async function triggerWorkflow(
   force?: boolean,
   opts: GqlOpts = {}
 ): Promise<string> {
+  const cleanId = id?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   const data = await graphqlRequest<
     { id: string; payload?: Record<string, unknown>; force?: boolean },
     { triggerWorkflow: string }
   >(
     TRIGGER_WORKFLOW_MUTATION,
-    { id, payload, force },
+    { id: cleanId, payload, force },
     opts.token,
     opts.tenantSlug
   );
@@ -350,10 +386,14 @@ export async function addWorkflowStep(
   input: CreateStepInput,
   opts: GqlOpts = {}
 ): Promise<string> {
+  const cleanId = workflowId?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   const data = await graphqlRequest<
     { workflowId: string; input: CreateStepInput },
     { addWorkflowStep: string }
-  >(ADD_STEP_MUTATION, { workflowId, input }, opts.token, opts.tenantSlug);
+  >(ADD_STEP_MUTATION, { workflowId: cleanId, input }, opts.token, opts.tenantSlug);
   return data.addWorkflowStep;
 }
 
@@ -363,12 +403,17 @@ export async function updateWorkflowStep(
   input: UpdateStepInput,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanWorkflowId = workflowId?.trim();
+  const cleanStepId = stepId?.trim();
+  if (!cleanWorkflowId || !cleanStepId) {
+    throw new Error('Workflow ID and step ID are required');
+  }
   await graphqlRequest<
     { workflowId: string; stepId: string; input: UpdateStepInput },
     { updateWorkflowStep: boolean }
   >(
     UPDATE_STEP_MUTATION,
-    { workflowId, stepId, input },
+    { workflowId: cleanWorkflowId, stepId: cleanStepId, input },
     opts.token,
     opts.tenantSlug
   );
@@ -379,15 +424,25 @@ export async function deleteWorkflowStep(
   stepId: string,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanWorkflowId = workflowId?.trim();
+  const cleanStepId = stepId?.trim();
+  if (!cleanWorkflowId || !cleanStepId) {
+    throw new Error('Workflow ID and step ID are required');
+  }
   await graphqlRequest<
     { workflowId: string; stepId: string },
     { deleteWorkflowStep: boolean }
-  >(DELETE_STEP_MUTATION, { workflowId, stepId }, opts.token, opts.tenantSlug);
+  >(
+    DELETE_STEP_MUTATION,
+    { workflowId: cleanWorkflowId, stepId: cleanStepId },
+    opts.token,
+    opts.tenantSlug
+  );
 }
 
 // ---------- Phase 4: Templates ----------
 
-const WORKFLOW_TEMPLATES_QUERY = `
+export const WORKFLOW_TEMPLATES_QUERY = `
 query WorkflowTemplates {
   workflowTemplates {
     id
@@ -397,19 +452,19 @@ query WorkflowTemplates {
   }
 }`;
 
-const CREATE_FROM_TEMPLATE_MUTATION = `
+export const CREATE_FROM_TEMPLATE_MUTATION = `
 mutation CreateWorkflowFromTemplate($templateId: String!, $name: String!) {
   createWorkflowFromTemplate(templateId: $templateId, name: $name)
 }`;
 
-const GENERATE_WORKFLOW_MUTATION = `
+export const GENERATE_WORKFLOW_MUTATION = `
 mutation GenerateWorkflowFromDescription($description: String!) {
   generateWorkflowFromDescription(description: $description)
 }`;
 
 // ---------- Phase 4: Versions ----------
 
-const WORKFLOW_VERSIONS_QUERY = `
+export const WORKFLOW_VERSIONS_QUERY = `
 query WorkflowVersions($workflowId: UUID!) {
   workflowVersions(workflowId: $workflowId) {
     version
@@ -418,7 +473,7 @@ query WorkflowVersions($workflowId: UUID!) {
   }
 }`;
 
-const RESTORE_VERSION_MUTATION = `
+export const RESTORE_VERSION_MUTATION = `
 mutation RestoreWorkflowVersion($workflowId: UUID!, $version: Int!) {
   restoreWorkflowVersion(workflowId: $workflowId, version: $version)
 }`;
@@ -440,12 +495,17 @@ export async function createWorkflowFromTemplate(
   name: string,
   opts: GqlOpts = {}
 ): Promise<string> {
+  const cleanTemplateId = templateId?.trim();
+  const cleanName = name?.trim();
+  if (!cleanTemplateId || !cleanName) {
+    throw new Error('Template ID and workflow name are required');
+  }
   const data = await graphqlRequest<
     { templateId: string; name: string },
     { createWorkflowFromTemplate: string }
   >(
     CREATE_FROM_TEMPLATE_MUTATION,
-    { templateId, name },
+    { templateId: cleanTemplateId, name: cleanName },
     opts.token,
     opts.tenantSlug
   );
@@ -456,10 +516,19 @@ export async function generateWorkflowFromDescription(
   description: string,
   opts: GqlOpts = {}
 ): Promise<string> {
+  const cleanDescription = description?.trim();
+  if (!cleanDescription) {
+    throw new Error('Description is required');
+  }
   const data = await graphqlRequest<
     { description: string },
     { generateWorkflowFromDescription: string }
-  >(GENERATE_WORKFLOW_MUTATION, { description }, opts.token, opts.tenantSlug);
+  >(
+    GENERATE_WORKFLOW_MUTATION,
+    { description: cleanDescription },
+    opts.token,
+    opts.tenantSlug
+  );
   return data.generateWorkflowFromDescription;
 }
 
@@ -467,10 +536,14 @@ export async function listWorkflowVersions(
   workflowId: string,
   opts: GqlOpts = {}
 ): Promise<WorkflowVersionSummary[]> {
+  const cleanId = workflowId?.trim();
+  if (!cleanId) {
+    throw new Error('Workflow ID is required');
+  }
   const data = await graphqlRequest<
     { workflowId: string },
     { workflowVersions: WorkflowVersionSummary[] }
-  >(WORKFLOW_VERSIONS_QUERY, { workflowId }, opts.token, opts.tenantSlug);
+  >(WORKFLOW_VERSIONS_QUERY, { workflowId: cleanId }, opts.token, opts.tenantSlug);
   return data.workflowVersions;
 }
 
@@ -479,12 +552,16 @@ export async function restoreWorkflowVersion(
   version: number,
   opts: GqlOpts = {}
 ): Promise<void> {
+  const cleanId = workflowId?.trim();
+  if (!cleanId || version <= 0) {
+    throw new Error('Valid workflow ID and positive version number are required');
+  }
   await graphqlRequest<
     { workflowId: string; version: number },
     { restoreWorkflowVersion: boolean }
   >(
     RESTORE_VERSION_MUTATION,
-    { workflowId, version },
+    { workflowId: cleanId, version },
     opts.token,
     opts.tenantSlug
   );

@@ -221,6 +221,17 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)
     }
 
+    /// Security-only client lookup for protocol authentication/revocation.
+    /// Presentation translation failures must not decide credential validity.
+    pub async fn find_security_by_client_id(
+        db: &DatabaseConnection,
+        client_id: Uuid,
+    ) -> Result<Option<oauth_apps::Model>> {
+        OAuthApps::find_active_security_by_client_id(db, client_id)
+            .await
+            .map_err(|_| Error::InternalServerError)
+    }
+
     /// List all apps for a tenant
     pub async fn list_by_tenant(
         db: &DatabaseConnection,
@@ -314,6 +325,7 @@ impl OAuthAppService {
         use sea_orm::sea_query::Expr;
         oauth_tokens::Entity::update_many()
             .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+            .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
             .filter(
                 sea_orm::Condition::all()
                     .add(oauth_tokens::Column::AppId.eq(app_id))
@@ -419,28 +431,54 @@ impl OAuthAppService {
             .into()
     }
 
-    /// Revoke a token by its hash (RFC 7009).
-    /// Returns Ok(()) even if the token doesn't exist (per RFC 7009 spec).
+    /// Revoke an OAuth access or refresh token and its family by hash (RFC 7009).
+    ///
+    /// The lookup and family-wide revocation share one transaction. The token
+    /// predicate is scoped by client and tenant, and unknown tokens succeed
+    /// without revealing whether a hash existed. Access JWTs are registered
+    /// as `token_kind = access` rows, so revocation fences an already-issued
+    /// JWT before its signed TTL; refresh rows fence the rotation lineage.
     pub async fn revoke_token_by_hash(
         db: &DatabaseConnection,
         token_hash: &str,
         app_id: Uuid,
+        tenant_id: Uuid,
     ) -> Result<()> {
-        let token = OAuthTokens::find_active_by_hash(db, token_hash, app_id)
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let token = OAuthTokens::find()
+            .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
+            .filter(oauth_tokens::Column::AppId.eq(app_id))
+            .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+            .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
 
-        if let Some(t) = token {
-            let mut active: oauth_tokens::ActiveModel = t.into();
-            active.revoked_at = Set(Some(Utc::now().into()));
-            active.updated_at = Set(Utc::now().into());
-            active
-                .update(db)
+        if let Some(token) = token {
+            let family_id = token.family_id.unwrap_or(token.id);
+            let now = Utc::now();
+            let mut family_scope = sea_orm::Condition::all()
+                .add(oauth_tokens::Column::AppId.eq(app_id))
+                .add(oauth_tokens::Column::TenantId.eq(tenant_id))
+                .add(
+                    sea_orm::Condition::any()
+                        .add(oauth_tokens::Column::FamilyId.eq(family_id))
+                        .add(oauth_tokens::Column::Id.eq(family_id)),
+                );
+            family_scope = match token.user_id {
+                Some(user_id) => family_scope.add(oauth_tokens::Column::UserId.eq(user_id)),
+                None => family_scope.add(oauth_tokens::Column::UserId.is_null()),
+            };
+            OAuthTokens::update_many()
+                .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+                .filter(family_scope)
+                .exec(&tx)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
         }
 
-        // Per RFC 7009: always succeed even if token not found
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        // Per RFC 7009: always succeed even if token not found.
         Ok(())
     }
 
@@ -554,7 +592,7 @@ impl OAuthAppService {
                 active
                     .update(&tx)
                     .await
-                    .map_err(|error| GrantConsentAttempt::classify(error))?;
+                    .map_err(GrantConsentAttempt::classify)?;
             }
             None => {
                 OAuthConsentActiveModel {
@@ -568,13 +606,13 @@ impl OAuthAppService {
                 }
                 .insert(&tx)
                 .await
-                .map_err(|error| GrantConsentAttempt::classify(error))?;
+                .map_err(GrantConsentAttempt::classify)?;
             }
         }
 
         tx.commit()
             .await
-            .map_err(|error| GrantConsentAttempt::classify(error))?;
+            .map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 
@@ -601,11 +639,15 @@ impl OAuthAppService {
                 .map_err(|_| Error::InternalServerError)?;
         }
 
-        // Revoke all tokens for this user and app
+        // Revoke all access and refresh tokens for this user and app.
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-        let _ = oauth_tokens::Entity::update_many()
+        let revoked_tokens = oauth_tokens::Entity::update_many()
             .col_expr(
                 oauth_tokens::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .col_expr(
+                oauth_tokens::Column::UpdatedAt,
                 sea_orm::sea_query::Expr::value(now),
             )
             .filter(
@@ -618,6 +660,13 @@ impl OAuthAppService {
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+        tracing::debug!(
+            app_id = %app_id,
+            user_id = %user_id,
+            tenant_id = %tenant_id,
+            revoked_tokens = revoked_tokens.rows_affected,
+            "Revoked OAuth token family after consent revocation"
+        );
 
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
@@ -735,6 +784,7 @@ pub async fn sync_app_connections(
 
             oauth_tokens::Entity::update_many()
                 .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+                .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
                 .filter(oauth_tokens::Column::AppId.eq(app.id))
                 .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
                 .filter(oauth_tokens::Column::RevokedAt.is_null())
@@ -1688,16 +1738,203 @@ mod tests {
     // RFC 7009 — Token Revocation
     // ===================================================================
 
-    #[test]
-    fn rfc7009_revocation_always_succeeds() {
-        // RFC 7009 §2.2: The authorization server responds with HTTP status
-        // code 200 for both the case where the token was successfully revoked
-        // and the case where the client submitted an invalid token.
-        // This is tested at the service level — revoke_token_by_hash returns Ok(())
-        // even when token doesn't exist (verified in the implementation).
-        //
-        // The service function signature returns Result<()> and handles
-        // missing tokens gracefully (Ok(()) if no token found).
+    async fn insert_revocation_app(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> oauth_apps::Model {
+        OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            name: Set(slug.to_string()),
+            slug: Set(slug.to_string()),
+            description: Set(None),
+            app_type: Set("third_party".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(None),
+            redirect_uris: Set(serde_json::json!(["https://partner.example.com/callback"])),
+            scopes: Set(serde_json::json!(["openid"])),
+            grant_types: Set(serde_json::json!(["authorization_code", "refresh_token"])),
+            granted_permissions: Set(serde_json::json!([])),
+            manifest_ref: Set(None),
+            auto_created: Set(false),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert revocation app")
+    }
+
+    async fn insert_revocation_token(
+        db: &DatabaseConnection,
+        app: &oauth_apps::Model,
+        token_hash: &str,
+        family_id: Option<Uuid>,
+    ) -> oauth_tokens::Model {
+        oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(app.id),
+            user_id: Set(None),
+            tenant_id: Set(app.tenant_id),
+            token_hash: Set(token_hash.to_string()),
+            family_id: Set(family_id),
+            authorization_code_id: Set(None),
+            grant_type: Set("client_credentials".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert revocation token")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn rfc7009_revocation_always_succeeds() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rfc7009-unknown").await;
+
+        OAuthAppService::revoke_token_by_hash(&db, "missing-token-hash", app.id, tenant.id)
+            .await
+            .expect("RFC 7009 unknown token revocation must succeed");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn rfc7009_revokes_entire_refresh_family_and_is_idempotent() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rfc7009-family").await;
+        let root = insert_revocation_token(&db, &app, "family-root", None).await;
+        let child = insert_revocation_token(&db, &app, "family-child", Some(root.id)).await;
+        let unrelated = insert_revocation_token(&db, &app, "unrelated", None).await;
+
+        OAuthAppService::revoke_token_by_hash(&db, "family-child", app.id, tenant.id)
+            .await
+            .expect("revoke refresh family");
+
+        for id in [root.id, child.id] {
+            let token = oauth_tokens::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("load family token")
+                .expect("family token exists");
+            assert!(token.revoked_at.is_some(), "family token {id} must be revoked");
+        }
+        let unrelated = oauth_tokens::Entity::find_by_id(unrelated.id)
+            .one(&db)
+            .await
+            .expect("load unrelated token")
+            .expect("unrelated token exists");
+        assert!(unrelated.revoked_at.is_none());
+
+        OAuthAppService::revoke_token_by_hash(&db, "family-child", app.id, tenant.id)
+            .await
+            .expect("repeat revocation is idempotent");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn rfc7009_revokes_access_registration_and_its_refresh_family() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let app = insert_revocation_app(&db, tenant.id, "rfc7009-access").await;
+        let root = insert_revocation_token(&db, &app, "access-family-root", None).await;
+        let access_id = Uuid::new_v4();
+        oauth_tokens::ActiveModel {
+            id: Set(access_id),
+            app_id: Set(app.id),
+            user_id: Set(None),
+            tenant_id: Set(app.tenant_id),
+            token_hash: Set("access-jwt-hash".to_string()),
+            family_id: Set(Some(root.id)),
+            authorization_code_id: Set(None),
+            grant_type: Set("client_credentials".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((Utc::now() + chrono::Duration::minutes(15)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert access registration");
+
+        OAuthAppService::revoke_token_by_hash(&db, "access-jwt-hash", app.id, tenant.id)
+            .await
+            .expect("revoke by access hash");
+
+        for id in [root.id, access_id] {
+            let token = oauth_tokens::Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("load family token")
+                .expect("family token exists");
+            assert!(token.revoked_at.is_some(), "family token {id} must be revoked");
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn rfc7009_revocation_is_scoped_to_client_and_tenant() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let other_tenant = tenants::ActiveModel::new(
+            "Other tenant",
+            &format!("tenant-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert other tenant");
+        let app = insert_revocation_app(&db, tenant.id, "rfc7009-scope").await;
+        let other_app = insert_revocation_app(&db, other_tenant.id, "rfc7009-other").await;
+        let root = insert_revocation_token(&db, &app, "scoped-root", None).await;
+        let foreign = insert_revocation_token(&db, &other_app, "foreign-root", Some(root.id)).await;
+
+        OAuthAppService::revoke_token_by_hash(&db, "scoped-root", app.id, other_tenant.id)
+            .await
+            .expect("wrong tenant must not reveal or revoke the token");
+        OAuthAppService::revoke_token_by_hash(&db, "scoped-root", other_app.id, tenant.id)
+            .await
+            .expect("wrong client must not reveal or revoke the token");
+
+        let scoped = oauth_tokens::Entity::find_by_id(root.id)
+            .one(&db)
+            .await
+            .expect("load scoped token")
+            .expect("scoped token exists");
+        assert!(scoped.revoked_at.is_none());
+
+        OAuthAppService::revoke_token_by_hash(&db, "scoped-root", app.id, tenant.id)
+            .await
+            .expect("correct client and tenant revoke the family");
+        let scoped = oauth_tokens::Entity::find_by_id(root.id)
+            .one(&db)
+            .await
+            .expect("reload scoped token")
+            .expect("scoped token exists");
+        assert!(scoped.revoked_at.is_some());
+        let foreign = oauth_tokens::Entity::find_by_id(foreign.id)
+            .one(&db)
+            .await
+            .expect("load foreign token")
+            .expect("foreign token exists");
+        assert!(
+            foreign.revoked_at.is_none(),
+            "family ids must not cross client/tenant boundaries"
+        );
     }
 
     #[test]
@@ -1987,7 +2224,10 @@ mod tests {
             tenant_id: Set(tenant.id),
             token_hash: Set("refresh-token-hash".to_string()),
             family_id: Set(None),
+            authorization_code_id: Set(None),
             grant_type: Set("authorization_code".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
             scopes: Set(serde_json::json!(["catalog:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
             revoked_at: Set(None),
@@ -2129,7 +2369,10 @@ mod tests {
             tenant_id: Set(tenant.id),
             token_hash: Set("orphan-token-hash".to_string()),
             family_id: Set(None),
+            authorization_code_id: Set(None),
             grant_type: Set("client_credentials".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
             scopes: Set(serde_json::json!(["storefront:*"])),
             expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
             revoked_at: Set(None),

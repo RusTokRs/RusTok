@@ -1,14 +1,13 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
+use sea_orm::{DatabaseConnection, DbErr};
 use thiserror::Error;
 
-use rustok_api::{PortError, StaticModuleSettingsReader, StaticTenantModuleView};
+use rustok_api::{PortError, StaticTenantModuleView};
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    DatabaseStaticModuleSettingsReader, ModuleCommandContext, ModuleControlPlane,
-    ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand,
-    ModuleLifecycleSettingsCommand, ModuleLifecycleToggleCommand,
-    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStoreError, ModuleToggleValidationError, SettingsCompatibilityGuard,
+    ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand,
+    ModuleLifecycleToggleCommand, ModuleOperationRecoveryError as ModulesRecoveryError,
+    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
     normalize_module_settings,
 };
 
@@ -159,49 +158,21 @@ impl ModuleLifecycleService {
         context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
-        if let Some(checkpoint) = ModuleControlPlane::new(db.clone())
-            .transitions()
-            .active_checkpoint_for_module(module_slug, Some(tenant_id))
-            .await
-            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
-            && !checkpoint.state.is_terminal()
-        {
-            return Err(ToggleModuleError::Policy(format!(
-                "Module '{module_slug}' has an active release transition in progress (operation_id: {}, state: {}). Enable/disable changes are locked until the transition converges or recovers.",
-                checkpoint.operation_id,
-                checkpoint.state.name(),
-            )));
-        }
-
-        if enabled {
-            let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
-            if !settings_schema.is_empty() {
-                let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
-                let retained_settings = reader
-                    .settings(tenant_id, module_slug)
-                    .await
-                    .map_err(|error| ToggleModuleError::Policy(error.to_string()))?
-                    .map(|snapshot| snapshot.settings)
-                    .unwrap_or_else(|| serde_json::json!({}));
-                if let Err(error) =
-                    normalize_module_settings(module_slug, &settings_schema, retained_settings)
-                {
-                    return Err(ToggleModuleError::SettingsMigrationRequired {
-                        module_slug: module_slug.to_string(),
-                        reason: error.to_string(),
-                    });
-                }
-            }
-        }
-
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
             .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
-        let result = ModuleControlPlane::new(db.clone())
+        let mut writer = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
-            .with_corequisites(co_requisites)
+            .with_corequisites(co_requisites);
+        if enabled {
+            writer = writer.with_static_settings_schema(
+                module_slug.to_string(),
+                ManifestManager::module_settings_schema(module_slug)?,
+            );
+        }
+        let result = writer
             .toggle(ModuleLifecycleToggleCommand {
                 tenant_id,
                 module_slug: module_slug.to_string(),
@@ -308,9 +279,18 @@ impl ModuleLifecycleService {
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)
             .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-        let writer = ModuleControlPlane::new(db.clone())
+        let mut writer = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites);
+        let plan = writer
+            .recovery_plan(tenant_id, operation_id)
+            .await
+            .map_err(map_lifecycle_writer_recovery_error)?;
+        if !plan.requested_enabled {
+            let schema = ManifestManager::module_settings_schema(&plan.module_slug)
+                .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
+            writer = writer.with_static_settings_schema(plan.module_slug, schema);
+        }
         let result = writer
             .compensate_failed_operation(ModuleLifecycleRecoveryCommand {
                 tenant_id,
@@ -334,7 +314,7 @@ impl ModuleLifecycleService {
                     .unwrap_or_else(|| policy.contains(&module_slug)),
                 result.settings,
             ),
-            None => (policy.contains(&module_slug), serde_json::json!({})),
+            None => (policy.contains(&module_slug), result.settings),
         };
         Ok(ModuleLifecycleStateSnapshot {
             module_slug,
@@ -369,39 +349,6 @@ impl ModuleLifecycleService {
             .require_module_definition(module_slug)
             .map_err(map_lifecycle_writer_settings_error)?;
         let settings_schema = ManifestManager::module_settings_schema(module_slug)?;
-
-        // Revalidate against N/N+1 Settings Compatibility Guard if a rollout window is open
-        if let Some(checkpoint) = ModuleControlPlane::new(db.clone())
-            .transitions()
-            .active_observing_checkpoint_for_module(module_slug, Some(tenant_id))
-            .await
-            .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?
-            && let Some(ref pred_digest) = checkpoint.predecessor_digest
-        {
-            let guard = SettingsCompatibilityGuard::from_observing_checkpoint(
-                &checkpoint,
-                pred_digest.clone(),
-                checkpoint.candidate_digest.clone(),
-            );
-            if let Some(guard) = guard {
-                let predecessor_schema = resolve_predecessor_settings_schema(
-                    db,
-                    module_slug,
-                    pred_digest,
-                    &settings_schema,
-                )
-                .await;
-                if let Err(err) = guard.validate_and_normalize_write(
-                    &predecessor_schema,
-                    &settings_schema,
-                    settings.clone(),
-                ) {
-                    return Err(UpdateModuleSettingsError::Validation(format!(
-                        "Settings update rejected by N/N+1 Settings Compatibility Guard during open rollout window: {err}"
-                    )));
-                }
-            }
-        }
 
         let settings = normalize_module_settings(module_slug, &settings_schema, settings).map_err(
             |error| {
@@ -439,50 +386,6 @@ impl ModuleLifecycleService {
     }
 }
 
-async fn resolve_predecessor_settings_schema(
-    db: &DatabaseConnection,
-    module_slug: &str,
-    pred_digest: &str,
-    candidate_schema: &std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
-) -> std::collections::HashMap<String, rustok_modules::ModuleSettingSpec> {
-    let backend = db.get_database_backend();
-    let query = match backend {
-        DbBackend::Postgres => {
-            "SELECT descriptor FROM module_artifact_installations WHERE (payload_digest = $1 OR installation_id = $2) AND slug = $3 LIMIT 1"
-        }
-        _ => {
-            "SELECT descriptor FROM module_artifact_installations WHERE (payload_digest = ?1 OR installation_id = ?2) AND slug = ?3 LIMIT 1"
-        }
-    };
-    let installation_uuid = uuid::Uuid::parse_str(pred_digest).ok();
-    let id_val = installation_uuid
-        .map(|u| u.into())
-        .unwrap_or_else(|| pred_digest.to_string().into());
-    if let Ok(Some(row)) = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            query,
-            vec![
-                pred_digest.to_string().into(),
-                id_val,
-                module_slug.to_string().into(),
-            ],
-        ))
-        .await
-        && let Ok(raw_desc) = row.try_get::<String>("", "descriptor")
-        && let Ok(desc) =
-            serde_json::from_str::<rustok_modules::ModuleArtifactDescriptor>(&raw_desc)
-        && let Some(schema_doc) = desc.settings_schema()
-        && let Ok(spec_map) = serde_json::from_value::<
-            std::collections::HashMap<String, rustok_modules::ModuleSettingSpec>,
-        >(schema_doc.clone())
-    {
-        return spec_map;
-    }
-
-    candidate_schema.clone()
-}
-
 fn map_toggle_validation_error(error: ModuleToggleValidationError) -> ToggleModuleError {
     match error {
         ModuleToggleValidationError::InvalidModuleSlug(module_slug) => {
@@ -511,6 +414,13 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
             ToggleModuleError::Database(DbErr::Custom(error))
         }
         ModuleLifecycleExecutionError::PreHook(error) => ToggleModuleError::PreHookFailed(error),
+        ModuleLifecycleExecutionError::SettingsMigrationRequired {
+            module_slug,
+            reason,
+        } => ToggleModuleError::SettingsMigrationRequired {
+            module_slug,
+            reason,
+        },
         ModuleLifecycleExecutionError::PostHook(error) => ToggleModuleError::PostHookFailed(error),
         ModuleLifecycleExecutionError::InvalidCommandIdentity => {
             ToggleModuleError::InvalidCommandIdentity
@@ -598,6 +508,9 @@ fn map_lifecycle_writer_recovery_error(
         ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::OperationInProgress { .. },
         ) => ModuleOperationRecoveryError::OperationInProgress,
+        ModuleLifecycleDbWriterError::Lifecycle(
+            error @ ModuleLifecycleExecutionError::SettingsMigrationRequired { .. },
+        ) => ModuleOperationRecoveryError::Toggle(map_toggle_execution_error(error)),
         ModuleLifecycleDbWriterError::Lifecycle(error) => {
             ModuleOperationRecoveryError::Toggle(map_toggle_execution_error(error))
         }
@@ -713,12 +626,18 @@ pub(crate) fn map_lifecycle_writer_settings_error(
 pub(crate) fn map_lifecycle_settings_receipt_error(error: PortError) -> UpdateModuleSettingsError {
     match error.code.as_str() {
         "outbox.operation_receipt_conflict" => UpdateModuleSettingsError::IdempotencyConflict,
-        "outbox.operation_receipt_in_progress" => UpdateModuleSettingsError::OperationInProgress,
+        "outbox.operation_receipt_in_progress"
+        | "modules.static_lifecycle_operation_in_progress" => {
+            UpdateModuleSettingsError::OperationInProgress
+        }
         "modules.static_lifecycle_settings_snapshot_conflict" => {
             UpdateModuleSettingsError::SettingsSnapshotConflict
         }
         "modules.static_lifecycle_settings_module_disabled" => {
             UpdateModuleSettingsError::ModuleNotEnabledRecorded
+        }
+        "modules.static_lifecycle_settings_invalid" => {
+            UpdateModuleSettingsError::Validation(error.message.clone())
         }
         "modules.static_lifecycle_revision_conflict" => {
             UpdateModuleSettingsError::RevisionConflictRecorded
@@ -883,6 +802,13 @@ mod tests {
         assert!(matches!(
             map_lifecycle_settings_receipt_error(rustok_api::PortError::unavailable(
                 "outbox.operation_receipt_in_progress",
+                "operation in progress",
+            )),
+            UpdateModuleSettingsError::OperationInProgress
+        ));
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::conflict(
+                "modules.static_lifecycle_operation_in_progress",
                 "operation in progress",
             )),
             UpdateModuleSettingsError::OperationInProgress

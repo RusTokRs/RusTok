@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::use_auth;
 use leptos_router::hooks::{use_navigate, use_query_map};
-use rustok_forms::FormState;
+use rustok_ui_forms::FormState;
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;

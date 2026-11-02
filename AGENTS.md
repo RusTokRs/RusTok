@@ -229,7 +229,7 @@ All UI applications (`apps/*`), module-owned UI packages (`crates/modules/*/admi
      *Invariants:* MUST NOT write raw `<button>` or `<input>` with custom styling, hand-roll modal dialogs, or build ad-hoc alerts.
    - **`rustok-grid` (`rustok-grid-leptos`, `rustok-grid-dioxus`)**: Data grids, paginated tables, column sorting, filtering, row selection.
      *Invariants:* MUST NOT build manual `<table>` loops or custom table pagination in module UI.
-   - **`rustok-forms`**: Schema-driven form rendering, field adapters, and form error state.
+   - **`rustok-ui-forms` (`rustok-forms-leptos`, `rustok-forms-dioxus`)**: Schema-driven form state, validation rule engine, field descriptors, and dirty tracking.
      *Invariants:* MUST NOT hand-roll form validation logic or manual form error bindings.
    - **`fly`**: Cross-framework rendering engine and UI action registry.
    - **`rustok-ui-core` & `leptos-ui-routing`**: Framework-agnostic route context (`UiRouteContext`), route query params, and navigation breadcrumbs.
@@ -324,7 +324,7 @@ Every domain module in RusToK MUST reuse the canonical platform libraries, core 
   *Invariants:* MUST NOT create local notification tables in domain modules.
 - **`rustok-moderation`**: Content moderation cases, reports, review workflows.
   *Invariants:* MUST NOT implement local moderation flags without integrating with `rustok-moderation`.
-- **`rustok-forms`**: Dynamic schema-driven forms rendering and field validation.
+- **`rustok-forms`**: Form submission intake, abuse controls, rate limiting, and lead triage inbox.
 - **`rustok-workflow`**: Workflow automation, orchestration, and state machine transitions.
   *Invariants:* MUST NOT implement ad-hoc custom state machine execution runners.
 - **`rustok-ai`**: Universal AI provider orchestration, embeddings, and generative agents.

@@ -22,7 +22,7 @@ use super::route::record_published_slug_redirects_in_tx;
 use super::{PAGE_KIND, PageService};
 
 impl PageService {
-    #[instrument(skip(self, input))]
+    #[instrument(skip(self, input, security))]
     pub async fn patch_metadata(
         &self,
         tenant_id: Uuid,

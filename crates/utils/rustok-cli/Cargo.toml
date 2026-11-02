@@ -2,8 +2,15 @@
 name = "rustok-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "User-facing RusToK platform CLI runner"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-trait.workspace = true

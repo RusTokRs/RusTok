@@ -526,9 +526,6 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AcceptInviteRecord, AuthLifecycleMutationError> {
-        if !self.runtime_ctx.settings().features.invites_enabled {
-            return Err(AuthLifecycleMutationError::InvalidInviteToken);
-        }
         let accepted = AuthLifecycleService::accept_invite_once_runtime(
             &self.runtime_ctx,
             &self.auth_config,

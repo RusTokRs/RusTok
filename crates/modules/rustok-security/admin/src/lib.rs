@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-security-admin
+//!
+//! Leptos admin FFA package for the `rustok-security` module.
+//!
+//! Provides the admin dashboard UI, security policy controls, API token management,
+//! and audit log presentation.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+pub use core::{SecurityAdminTableRow, filter_rows};
+pub use transport::SecurityAdminTransport;
 pub use ui::SecurityAdminPage;
+
+#[cfg(test)]
+mod contract_tests;

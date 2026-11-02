@@ -1,17 +1,11 @@
 import type { GqlOpts, MediaItem } from '../api/media';
-import { listMedia, mediaUsage } from '../api/media';
+import { formatBytes, listMedia, mediaUsage } from '../api/media';
 import { MediaActions } from '../components/media-actions';
 
 interface MediaPageProps {
   token?: string | null;
   tenantSlug?: string | null;
   tenantId?: string | null;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**

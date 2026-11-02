@@ -15,7 +15,7 @@ The cross-component sequence and completion rules are defined by the
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
 - Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
@@ -25,6 +25,26 @@ The cross-component sequence and completion rules are defined by the
 - Responsible module owner: Platform Foundation Team
 
 ## Current state
+
+The static N/N+1 settings guard is not complete. The static distribution build
+and admitted release do not retain the predecessor and candidate settings
+schemas, and the in-memory guard is not tied to an owner-held rollout fence.
+The owner rejects both ordinary and reviewed settings writes when an unresolved
+tenant or platform checkpoint with a predecessor is detected, without treating
+an artifact descriptor as static-release schema evidence. That check is not
+atomic and static distribution rollout state is not covered. The server now
+supplies the active schema for ordinary enables and enable-direction compensation;
+the owner validates under its lifecycle claim and commits the normalized value.
+Installer seed toggles still need schema composition. Dated claims below that describe this guard as delivered do not
+establish those guarantees. Completion requires immutable schema evidence in
+the build and release, a rollout-owned transactional fence shared by all static
+settings and lifecycle writers, installer schema composition, and
+PostgreSQL race and recovery tests. Post-hook retry binds the source operation
+and compares the current settings with the digest recorded with the original
+state commit; absent historical evidence blocks retry, and the original failure
+and retry completion resolve atomically. Artifact settings writers still lack a
+shared lifecycle fence. The reviewed enabled comparison also needs
+the complete effective policy rather than defaulted tenant intent.
 
 The owner boundary has a standalone dependency profile: `rustok-modules` does
 not directly import or depend on AI, product, commerce, MCP, Alloy, Leptos,

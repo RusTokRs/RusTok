@@ -1,9 +1,9 @@
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Marketplace Commission
+//!
+//! Native module owner for Marketplace Family versioned commission rules and order line assessments.
+//! Computes platform commission and seller net proceeds using immutable snapshot rules and checked integer minor unit math.
 
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 mod allocation_filter;
 #[cfg(test)]
@@ -18,51 +18,26 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 
 pub use commission_service::MarketplaceCommissionService;
-pub use dto::*;
+pub use dto::{
+    AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
+    CreateMarketplaceCommissionRuleVersionInput, ListMarketplaceCommissionAssessmentsByOrderRequest,
+    ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
+    MAX_COMMISSION_ASSESSMENTS_PER_PAGE, MAX_COMMISSION_RULES_PER_PAGE,
+    MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionAssessmentStatus, MarketplaceCommissionRuleListResponse,
+    MarketplaceCommissionRuleResponse, MarketplaceCommissionRuleStatus,
+    ReadMarketplaceCommissionAssessmentRequest,
+};
 pub use error::{MarketplaceCommissionError, MarketplaceCommissionResult};
-pub use ports::*;
+pub use module::MarketplaceCommissionModule;
+pub use ports::{
+    MarketplaceCommissionCommandPort, MarketplaceCommissionReadPort,
+    in_process_marketplace_commission_command_port,
+};
 
-/// Owns versioned commission rules and immutable assessments derived from allocations.
-pub struct MarketplaceCommissionModule;
-
-#[async_trait]
-impl RusToKModule for MarketplaceCommissionModule {
-    fn slug(&self) -> &'static str {
-        "marketplace_commission"
-    }
-
-    fn name(&self) -> &'static str {
-        "Marketplace Commission"
-    }
-
-    fn description(&self) -> &'static str {
-        "Marketplace Family versioned commission rule and assessment owner"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_allocation"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::ORDERS_READ,
-            Permission::ORDERS_LIST,
-            Permission::ORDERS_MANAGE,
-            Permission::MARKETPLACE_SELLERS_READ,
-            Permission::MARKETPLACE_LISTINGS_READ,
-        ]
-    }
-}
-
-impl MigrationSource for MarketplaceCommissionModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

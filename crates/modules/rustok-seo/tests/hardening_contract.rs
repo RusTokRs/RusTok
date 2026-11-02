@@ -34,3 +34,21 @@ fn sitemap_file_reads_are_tenant_scoped() {
     assert!(source.contains("load_sitemap_files_for_jobs(tenant_id"));
     assert!(source.contains("seo_sitemap_file::Column::TenantId.eq(tenant_id)"));
 }
+
+#[test]
+fn preconditions_and_bounds_are_enforced() {
+    let meta_source = include_str!("../src/services/meta.rs");
+    let redirects_source = include_str!("../src/services/redirects.rs");
+    let sitemaps_source = include_str!("../src/services/sitemaps.rs");
+
+    assert!(meta_source.contains("tenant_id must not be nil"));
+    assert!(meta_source.contains("target_id must not be nil"));
+    assert!(meta_source.contains("revision must be greater than zero"));
+
+    assert!(redirects_source.contains("tenant_id must not be nil"));
+    assert!(redirects_source.contains("redirect id must not be nil"));
+
+    assert!(sitemaps_source.contains("tenant_id must not be nil"));
+    assert!(sitemaps_source.contains("job_id must not be nil"));
+    assert!(sitemaps_source.contains("limit.clamp(1, 100)"));
+}

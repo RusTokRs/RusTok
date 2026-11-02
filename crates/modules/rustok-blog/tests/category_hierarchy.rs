@@ -163,6 +163,39 @@ async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position
 }
 
 #[tokio::test]
+async fn move_reorders_siblings_without_changing_their_parent() {
+    let db = setup().await;
+    let (category_service, command_service, _events) = services(&db);
+    let tenant_id = Uuid::new_v4();
+
+    let first = create_category(&category_service, tenant_id, "First", None, 0).await;
+    let second = create_category(&category_service, tenant_id, "Second", None, 1).await;
+    let third = create_category(&category_service, tenant_id, "Third", None, 2).await;
+
+    let reordered = command_service
+        .move_category(
+            tenant_id,
+            third,
+            admin(),
+            MoveCategoryInput {
+                parent_id: None,
+                position: 0,
+            },
+        )
+        .await
+        .expect("same-parent sibling reordering must succeed");
+
+    assert_eq!(reordered.moved.id, third);
+    assert_eq!(reordered.moved.parent_id, None);
+    assert_eq!(reordered.moved.position, 0);
+    for (id, expected_position) in [(third, 0), (first, 1), (second, 2)] {
+        let category = load_category(&db, tenant_id, id).await;
+        assert_eq!(category.parent_id, None);
+        assert_eq!(category.position, expected_position);
+    }
+}
+
+#[tokio::test]
 async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let db = setup().await;
     let (category_service, command_service, _events) = services(&db);
@@ -173,6 +206,8 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     let child = create_category(&category_service, tenant_id, "Child", Some(root_a), 0).await;
     let grandchild =
         create_category(&category_service, tenant_id, "Grandchild", Some(child), 0).await;
+    let destination_sibling =
+        create_category(&category_service, tenant_id, "Destination", Some(root_b), 0).await;
 
     assert_eq!(load_category(&db, tenant_id, child).await.depth, 1);
     assert_eq!(load_category(&db, tenant_id, grandchild).await.depth, 2);
@@ -210,6 +245,10 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
         .expect("child should move under the second root");
     assert_eq!(moved.moved.parent_id, Some(root_b));
     assert_eq!(moved.moved.depth, 1);
+    assert_eq!(moved.moved.position, 0);
+    let displaced = load_category(&db, tenant_id, destination_sibling).await;
+    assert_eq!(displaced.parent_id, Some(root_b));
+    assert_eq!(displaced.position, 1, "existing destination siblings must shift");
 
     let child_after_reparent = load_category(&db, tenant_id, child).await;
     let grandchild_after_reparent = load_category(&db, tenant_id, grandchild).await;

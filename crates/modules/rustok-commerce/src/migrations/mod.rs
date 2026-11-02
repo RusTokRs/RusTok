@@ -159,7 +159,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260713_000009_create_checkout_operations",
             vec![
-                "m20260325_000102_create_cart_tables",
+                "m20261029_000101_create_cart_schema",
                 "m20260325_000101_create_order_tables",
                 "m20260325_000104_create_payment_tables",
             ],

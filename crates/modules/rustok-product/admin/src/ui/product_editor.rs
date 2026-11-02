@@ -874,14 +874,11 @@ pub fn ProductEditorPage(
             match result {
                 Ok(saved) => {
                     set_loaded_product.update(|product| {
-                        if let Some(product) = product {
-                            if let Some(variant) = product
-                                .variants
-                                .iter_mut()
-                                .find(|variant| variant.id == saved.id)
-                            {
-                                *variant = saved;
-                            }
+                        if let Some(variant) = product
+                            .as_mut()
+                            .and_then(|p| p.variants.iter_mut().find(|variant| variant.id == saved.id))
+                        {
+                            *variant = saved;
                         }
                     });
                     set_success_msg.set(Some(

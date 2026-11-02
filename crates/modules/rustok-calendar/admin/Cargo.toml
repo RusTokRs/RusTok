@@ -2,8 +2,11 @@
 name = "rustok-calendar-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Admin FFA package for Calendar & Appointment Scheduling"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

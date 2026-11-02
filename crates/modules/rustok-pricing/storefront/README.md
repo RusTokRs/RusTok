@@ -64,3 +64,7 @@ Source-only: no tests, Rust compilation, mounted or browser execution are certif
 Durable Pricing write receipts/CAS and list-change event completeness remain pending
 in the [owner plan](../docs/implementation-plan.md). Product's real sparse-axis buyer
 selection, quantity refresh and cart-context handoff remain a separate next block.
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)
+- See also `../README.md` and `../docs/README.md`.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readComposedRustSource } from './rust-facade-source.mjs';
+import { readComposedRustSource, readRustModuleTree } from './rust-facade-source.mjs';
 
 const files = {
   'src/root.rs': [
@@ -61,4 +61,36 @@ test('fails loud when a declaration points at a file that no longer exists', () 
     if (!(file in broken)) throw new Error(`ENOENT: ${file}`);
     return broken[file];
   }, 'a.rs'), /ENOENT: gone.rs/);
+});
+
+test('readRustModuleTree composes plain directory-based child modules', () => {
+  const tree = {
+    'entry.rs': 'mod commands;\npub mod nested;',
+    'entry/commands.rs': 'COMMANDS',
+    'entry/nested/mod.rs': 'mod leaf;\nNESTED',
+    'entry/nested/leaf.rs': 'LEAF',
+  };
+  const read = (file) => {
+    if (!(file in tree)) throw new Error(`ENOENT: ${file}`);
+    return tree[file];
+  };
+  // Depth-first in declaration order, mirroring readComposedRustSource.
+  assert.equal(
+    readRustModuleTree(read, 'entry.rs'),
+    [tree['entry.rs'], tree['entry/commands.rs'], tree['entry/nested/mod.rs'], tree['entry/nested/leaf.rs']].join('\n'),
+  );
+});
+
+test('readRustModuleTree skips declarations that resolve to no file', () => {
+  // A prose mention of `mod commands;` inside a comment resolves to nothing and
+  // must not break the composition; inline blocks never match at all.
+  const tree = {
+    'entry.rs': '// see mod commands; elsewhere\nmod real;\nmod inline { }',
+    'entry/real.rs': 'REAL',
+  };
+  const read = (file) => {
+    if (!(file in tree)) throw new Error(`ENOENT: ${file}`);
+    return tree[file];
+  };
+  assert.equal(readRustModuleTree(read, 'entry.rs'), [tree['entry.rs'], tree['entry/real.rs']].join('\n'));
 });

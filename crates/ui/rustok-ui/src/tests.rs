@@ -154,21 +154,21 @@ fn progress_class_and_percentage_normalization_are_consistent() {
     assert!(classes.contains("max-w-sm"));
     assert!(!classes.contains("  "));
 
-    assert_eq!(normalize_progress_value(-1.0), 0.0);
+    assert!((normalize_progress_value(-1.0) - 0.0).abs() < f64::EPSILON);
     assert_eq!(normalize_progress_value(-0.0).to_bits(), 0.0_f64.to_bits());
-    assert_eq!(normalize_progress_value(37.5), 37.5);
-    assert_eq!(normalize_progress_value(101.0), 100.0);
-    assert_eq!(normalize_progress_value(f64::NAN), 0.0);
-    assert_eq!(normalize_progress_value(f64::INFINITY), 0.0);
-    assert_eq!(normalize_progress_value(f64::NEG_INFINITY), 0.0);
+    assert!((normalize_progress_value(37.5) - 37.5).abs() < f64::EPSILON);
+    assert!((normalize_progress_value(101.0) - 100.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_value(f64::NAN) - 0.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_value(f64::INFINITY) - 0.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_value(f64::NEG_INFINITY) - 0.0).abs() < f64::EPSILON);
 
-    assert_eq!(normalize_progress_max(5.0), 5.0);
-    assert_eq!(normalize_progress_max(0.0), 100.0);
-    assert_eq!(normalize_progress_max(f64::NAN), 100.0);
-    assert_eq!(normalize_progress_value_for_max(-1.0, 5.0), 0.0);
-    assert_eq!(normalize_progress_value_for_max(2.5, 5.0), 2.5);
-    assert_eq!(normalize_progress_value_for_max(8.0, 5.0), 5.0);
-    assert_eq!(progress_value_percentage(2.5, 5.0), 50.0);
+    assert!((normalize_progress_max(5.0) - 5.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_max(0.0) - 100.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_max(f64::NAN) - 100.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_value_for_max(-1.0, 5.0) - 0.0).abs() < f64::EPSILON);
+    assert!((normalize_progress_value_for_max(2.5, 5.0) - 2.5).abs() < f64::EPSILON);
+    assert!((normalize_progress_value_for_max(8.0, 5.0) - 5.0).abs() < f64::EPSILON);
+    assert!((progress_value_percentage(2.5, 5.0) - 50.0).abs() < f64::EPSILON);
 }
 
 #[test]

@@ -44,6 +44,10 @@ Reactions by default. Producer composition is a later thin slice once each
 surface has the exact authorized subject revision available at its public UI
 boundary.
 
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)
+
 ## Maintainer verification
 
 No commands are executed by the implementation agent. Suggested checks:

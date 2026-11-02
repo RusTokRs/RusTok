@@ -10,6 +10,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
     match args[0].as_str() {
         "new" | "scaffold" => scaffold_command(&args[1..]),
         "validate" => module_validate_command(&args[1..]),
+        "lint" => module_lint_command(&args[1..]),
         "test" => module_test_command(&args[1..]),
         "stage-run" => module_stage_run_command(&args[1..]),
         "runner" => module_runner_command(&args[1..]),
@@ -30,6 +31,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 pub(crate) fn print_module_usage() {
     println!("Usage:");
     println!("  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]");
+    println!("  cargo xtask module lint <slug>");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
@@ -59,6 +61,30 @@ pub(crate) fn print_module_usage() {
     println!(
         "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--auth-token <token>]"
     );
+}
+
+/// Static architecture validation over the registered local native module.
+/// Does not certify compilation, transport, or FBA/FFA readiness.
+pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
+    let [slug] = args else {
+        anyhow::bail!("Usage: cargo xtask module lint <slug>");
+    };
+    if slug.starts_with('-') {
+        anyhow::bail!("module lint requires a native module slug, not an option");
+    }
+    let root = crate::manifest_io::workspace_root();
+    let script = root.join("scripts").join("verify").join("verify-module-source-layout.mjs");
+    let status = Command::new("node")
+        .arg(&script)
+        .arg("--module")
+        .arg(slug)
+        .current_dir(&root)
+        .status()
+        .with_context(|| format!("Cannot execute native source verifier {}", script.display()))?;
+    if !status.success() {
+        anyhow::bail!("Architecture lint failed for '{slug}' (status {status})");
+    }
+    Ok(())
 }
 
 pub(crate) fn module_test_command(args: &[String]) -> Result<()> {

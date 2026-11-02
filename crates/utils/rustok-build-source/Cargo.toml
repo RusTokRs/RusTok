@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Deterministic digest-addressed source archives for RusToK module builds"
 
 [package.metadata.docs.rs]

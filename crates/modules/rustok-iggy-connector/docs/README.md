@@ -31,6 +31,8 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 
 - used by `rustok-iggy` as a low-level connection layer;
 - must remain a separate connector crate without transport/business semantics;
+- the deployment-scoped extension reports the non-toggleable `Core` trait kind;
+  its manifest runtime remains `extension`, not a tenant module classification;
 - any changes to connector contracts must be synchronized with `rustok-iggy` docs and runtime expectations;
 - disabled SDK support fails configuration explicitly and cannot supply a
   persistent consumer group.

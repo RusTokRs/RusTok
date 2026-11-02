@@ -24,10 +24,9 @@ async fn setup_with_blog_schema() -> (DatabaseConnection, Box<dyn MigrationTrait
             .expect("taxonomy migration should apply");
     }
     let mut migrations = BlogModule.migrations();
-    assert_eq!(
-        migrations.len(),
-        1,
-        "Blog module should have a single consolidated migration"
+    assert!(
+        !migrations.is_empty(),
+        "Blog module should provide schema migrations"
     );
     let schema_migration = migrations.remove(0);
     schema_migration

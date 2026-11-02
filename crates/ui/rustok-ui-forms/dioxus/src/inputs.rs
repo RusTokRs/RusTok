@@ -6,7 +6,7 @@
 //! error state styling (`border-destructive`), and dirty tracking integration.
 
 use dioxus::prelude::*;
-use rustok_forms::FieldOption;
+use rustok_ui_forms::FieldOption;
 
 use crate::context::FieldContext;
 

@@ -1,5 +1,8 @@
+//! # rustok-module-sdk
+//!
 //! Generated Rust guest bindings for the canonical RusToK module Component
-//! Model contract.
+//! Model contract. The SDK records its own release identity, the WIT package
+//! version, and the selected guest world so module builds stay reproducible.
 
 /// Independently released author SDK identity recorded in build provenance.
 pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -43,3 +46,7 @@ mod tests {
         assert!(WIT_SOURCE.contains("export run:"));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

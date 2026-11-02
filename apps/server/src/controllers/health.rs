@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Utc;
+use futures_util::{FutureExt, StreamExt, future::BoxFuture, stream};
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
@@ -40,6 +41,9 @@ use crate::services::runtime_guardrails::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
+// A probe has one bounded budget even when several dependencies are slow.
+const READINESS_TIMEOUT: Duration = Duration::from_secs(5);
+const READINESS_CONCURRENCY: usize = 32;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 3;
 const CIRCUIT_BREAKER_COOLDOWN: Duration = Duration::from_secs(30);
 const CRITICAL_MODULES: &[&str] = &["content", "commerce"];
@@ -90,12 +94,14 @@ struct ReadinessResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ReadinessProfile {
     registry_only: bool,
+    runs_background_workers: bool,
 }
 
 impl ReadinessProfile {
     fn from_settings(settings: &RustokSettings) -> Self {
         Self {
             registry_only: settings.runtime.is_registry_only(),
+            runs_background_workers: settings.runtime.runs_background_workers(),
         }
     }
 
@@ -105,6 +111,10 @@ impl ReadinessProfile {
 
     fn includes_module_health(self) -> bool {
         !self.registry_only
+    }
+
+    fn includes_local_worker_checks(self) -> bool {
+        self.runs_background_workers
     }
 }
 
@@ -175,124 +185,179 @@ pub async fn ready(
     State(ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
+    match tokio::time::timeout(READINESS_TIMEOUT, collect_readiness(ctx, registry)).await {
+        Ok(response) => {
+            Ok((readiness_http_status(response.status), axum::Json(response)).into_response())
+        }
+        Err(_) => {
+            tracing::warn!("readiness probe exceeded its deadline");
+            let response = ReadinessResponse {
+                status: ReadinessStatus::Unhealthy,
+                checks: vec![ReadinessCheck {
+                    name: "readiness_deadline".to_string(),
+                    kind: "runtime",
+                    criticality: DependencyCriticality::Critical,
+                    status: ReadinessStatus::Unhealthy,
+                    latency_ms: READINESS_TIMEOUT.as_millis(),
+                    reason: Some("readiness probe timed out".to_string()),
+                }],
+                modules: Vec::new(),
+                degraded_reasons: vec!["readiness probe timed out".to_string()],
+            };
+            Ok((StatusCode::SERVICE_UNAVAILABLE, axum::Json(response)).into_response())
+        }
+    }
+}
+
+async fn collect_readiness(
+    ctx: ServerRuntimeContext,
+    registry: ModuleRegistry,
+) -> ReadinessResponse {
     let settings = ctx.settings();
     let profile = ReadinessProfile::from_settings(settings);
-
-    let mut checks = vec![
-        run_guarded_check(
-            "database",
-            DependencyCriticality::Critical,
-            "dependency",
-            || check_database(ctx.db()),
-        )
-        .await,
-        run_guarded_check(
-            "database_schema",
-            DependencyCriticality::Critical,
-            "dependency",
-            || check_required_database_schema(&ctx, settings),
-        )
-        .await,
-        run_guarded_check(
-            "cache_backend",
-            DependencyCriticality::NonCritical,
-            "dependency",
-            || check_cache_backend(&ctx),
-        )
-        .await,
-    ];
-    checks.push(marketplace_provider_check(&ctx));
+    // A bounded stream limits simultaneous work per probe; each task is dropped
+    // when the overall deadline expires. The bool identifies module checks.
+    let mut pending: Vec<BoxFuture<'static, (bool, ReadinessCheck)>> = Vec::new();
+    {
+        let db = ctx.db_clone();
+        pending.push(
+            async move {
+                let check = run_guarded_check("database", DependencyCriticality::Critical, "dependency", move || async move {
+                    check_database(&db).await
+                }).await;
+                (false, check)
+            }.boxed(),
+        );
+    }
+    {
+        let ctx = ctx.clone();
+        pending.push(
+            async move {
+                let check = run_guarded_check("database_schema", DependencyCriticality::Critical, "dependency", move || async move {
+                    check_required_database_schema(&ctx, ctx.settings()).await
+                }).await;
+                (false, check)
+            }.boxed(),
+        );
+    }
+    {
+        let ctx = ctx.clone();
+        pending.push(
+            async move {
+                let check = run_guarded_check("cache_backend", DependencyCriticality::NonCritical, "dependency", move || async move {
+                    check_cache_backend(&ctx).await
+                }).await;
+                (false, check)
+            }.boxed(),
+        );
+    }
+    let mut checks = vec![marketplace_provider_check(&ctx)];
+    let mut module_checks = Vec::new();
 
     if profile.includes_runtime_dependencies() {
-        checks.push(
-            run_guarded_check(
-                "tenant_cache_invalidation",
-                DependencyCriticality::NonCritical,
-                "dependency",
-                || check_tenant_invalidation_listener(&ctx),
-            )
-            .await,
-        );
-        checks.push(
-            run_guarded_check(
-                "event_transport",
-                DependencyCriticality::Critical,
-                "dependency",
-                || check_event_transport(&ctx),
-            )
-            .await,
-        );
-
-        if settings.rate_limit.enabled {
-            checks.push(
-                run_guarded_check(
-                    "rate_limit:api",
-                    DependencyCriticality::Critical,
-                    "dependency",
-                    || check_rate_limit_backend(&ctx, "api"),
-                )
-                .await,
-            );
-            checks.push(
-                run_guarded_check(
-                    "rate_limit:auth",
-                    DependencyCriticality::Critical,
-                    "dependency",
-                    || check_rate_limit_backend(&ctx, "auth"),
-                )
-                .await,
-            );
-            checks.push(
-                run_guarded_check(
-                    "rate_limit:oauth",
-                    DependencyCriticality::Critical,
-                    "dependency",
-                    || check_rate_limit_backend(&ctx, "oauth"),
-                )
-                .await,
+        {
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = run_guarded_check("tenant_cache_invalidation", DependencyCriticality::NonCritical, "dependency", move || async move {
+                        check_tenant_invalidation_listener(&ctx).await
+                    }).await;
+                    (false, check)
+                }.boxed(),
             );
         }
-
-        checks.push(
-            run_guarded_check(
-                "search_backend",
-                DependencyCriticality::NonCritical,
-                "dependency",
-                || async {
-                    if !settings.search.enabled
-                        || settings.search.driver.eq_ignore_ascii_case("postgres")
-                        || settings.search.driver.eq_ignore_ascii_case("memory")
-                        || settings.search.url.trim().is_empty()
-                    {
-                        return Ok(());
-                    }
-                    let (host, port) = parse_host_port(&settings.search.url)?;
-                    TcpStream::connect((host.as_str(), port))
-                        .await
-                        .map(|_| ())
-                        .map_err(|_| "search backend connection failed".to_string())
-                },
-            )
-            .await,
-        );
-        checks.push(check_runtime_guardrails(&ctx).await);
-        checks.push(check_outbox_pending_lag(&ctx, settings).await);
+        {
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = run_guarded_check("event_transport", DependencyCriticality::Critical, "dependency", move || async move {
+                        check_event_transport(&ctx).await
+                    }).await;
+                    (false, check)
+                }.boxed(),
+            );
+        }
+        if settings.rate_limit.enabled {
+            for &namespace in &["api", "auth", "oauth"] {
+                let ctx = ctx.clone();
+                pending.push(
+                    async move {
+                        let name = format!("rate_limit:{namespace}");
+                        let check = run_guarded_check(&name, DependencyCriticality::Critical, "dependency", move || async move {
+                            check_rate_limit_backend(&ctx, namespace).await
+                        }).await;
+                        (false, check)
+                    }.boxed(),
+                );
+            }
+        }
+        {
+            let search = settings.search.clone();
+            pending.push(
+                async move {
+                    let check = run_guarded_check(
+                        "search_backend", DependencyCriticality::NonCritical, "dependency", move || async move {
+                            if !search.enabled
+                                || search.driver.eq_ignore_ascii_case("postgres")
+                                || search.driver.eq_ignore_ascii_case("memory")
+                                || search.url.trim().is_empty()
+                            {
+                                return Ok(());
+                            }
+                            let (host, port) = parse_host_port(&search.url)?;
+                            TcpStream::connect((host.as_str(), port)).await.map(|_| ())
+                                .map_err(|_| "search backend connection failed".to_string())
+                        },
+                    ).await;
+                    (false, check)
+                }.boxed(),
+            );
+        }
+        {
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = check_runtime_guardrails(&ctx).await;
+                    (false, check)
+                }.boxed(),
+            );
+        }
+        {
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = check_outbox_pending_lag(&ctx, ctx.settings()).await;
+                    (false, check)
+                }.boxed(),
+            );
+        }
         if settings.features.search_indexing {
-            checks.push(check_search_index_lag(&ctx, settings).await);
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = check_search_index_lag(&ctx, ctx.settings()).await;
+                    (false, check)
+                }.boxed(),
+            );
         }
         checks.push(email_backend_check(settings));
-        checks.extend(check_runtime_workers(&ctx, settings));
-
+        if profile.includes_local_worker_checks() {
+            checks.extend(check_runtime_workers(&ctx, settings));
+        } else {
+            checks.push(worker_host_mode_check());
+        }
         #[cfg(feature = "mod-media")]
-        checks.push(
-            run_guarded_check(
-                "storage",
-                DependencyCriticality::NonCritical,
-                "dependency",
-                || check_storage_backend(&ctx),
-            )
-            .await,
-        );
+        {
+            let ctx = ctx.clone();
+            pending.push(
+                async move {
+                    let check = run_guarded_check(
+                        "storage", DependencyCriticality::NonCritical, "dependency", move || async move { check_storage_backend(&ctx).await },
+                    ).await;
+                    (false, check)
+                }.boxed(),
+            );
+        }
     } else {
         checks.push(ReadinessCheck {
             name: "host_mode".to_string(),
@@ -304,26 +369,27 @@ pub async fn ready(
         });
     }
 
-    let mut module_checks = Vec::new();
     if profile.includes_module_health() {
         for module in registry.modules() {
-            let criticality = if CRITICAL_MODULES.contains(&module.slug()) {
-                DependencyCriticality::Critical
-            } else {
-                DependencyCriticality::NonCritical
-            };
-
-            let slug = module.slug().to_string();
-            let module_name = format!("module:{slug}");
-            let module_health = run_guarded_check(&module_name, criticality, "module", || async {
-                match module.health().await {
-                    HealthStatus::Healthy => Ok(()),
-                    HealthStatus::Degraded => Err("module reported degraded".to_string()),
-                    HealthStatus::Unhealthy => Err("module reported unhealthy".to_string()),
-                }
-            })
-            .await;
-            module_checks.push(module_health);
+            let module = module.clone();
+            pending.push(
+                async move {
+                    let criticality = if CRITICAL_MODULES.contains(&module.slug()) {
+                        DependencyCriticality::Critical
+                    } else {
+                        DependencyCriticality::NonCritical
+                    };
+                    let name = format!("module:{}", module.slug());
+                    let check = run_guarded_check(&name, criticality, "module", move || async move {
+                        match module.health().await {
+                            HealthStatus::Healthy => Ok(()),
+                            HealthStatus::Degraded => Err("module reported degraded".to_string()),
+                            HealthStatus::Unhealthy => Err("module reported unhealthy".to_string()),
+                        }
+                    }).await;
+                    (true, check)
+                }.boxed(),
+            );
         }
     } else {
         module_checks.push(ReadinessCheck {
@@ -336,22 +402,35 @@ pub async fn ready(
         });
     }
 
+    let results = run_readiness_checks(pending).await;
+    for (is_module, check) in results {
+        if is_module {
+            module_checks.push(check);
+        } else {
+            checks.push(check);
+        }
+    }
+    // Stable output is useful to operators and avoids completion-order churn.
+    checks.sort_by(|left, right| left.name.cmp(&right.name));
+    module_checks.sort_by(|left, right| left.name.cmp(&right.name));
     let status = aggregate_status(&checks, &module_checks);
     let degraded_reasons = collect_reasons(&checks, &module_checks);
     tracing::debug!(?status, "health::ready executed");
+    ReadinessResponse {
+        status,
+        checks,
+        modules: module_checks,
+        degraded_reasons,
+    }
+}
 
-    let http_status = readiness_http_status(status);
-
-    Ok((
-        http_status,
-        axum::Json(ReadinessResponse {
-            status,
-            checks,
-            modules: module_checks,
-            degraded_reasons,
-        }),
-    )
-        .into_response())
+async fn run_readiness_checks(
+    pending: Vec<BoxFuture<'static, (bool, ReadinessCheck)>>,
+) -> Vec<(bool, ReadinessCheck)> {
+    stream::iter(pending)
+        .buffer_unordered(READINESS_CONCURRENCY)
+        .collect()
+        .await
 }
 
 fn marketplace_provider_check(ctx: &ServerRuntimeContext) -> ReadinessCheck {
@@ -741,6 +820,20 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
     message.contains("no such table")
         || message.contains("undefinedtable")
         || message.contains("relation") && message.contains("does not exist")
+}
+
+fn worker_host_mode_check() -> ReadinessCheck {
+    ReadinessCheck {
+        name: "worker_host_mode".to_string(),
+        kind: "runtime",
+        criticality: DependencyCriticality::NonCritical,
+        status: ReadinessStatus::Ok,
+        latency_ms: 0,
+        reason: Some(
+            "surface host mode does not run local background workers; worker readiness is owned by the worker host"
+                .to_string(),
+        ),
+    }
 }
 
 fn check_runtime_workers(
@@ -1172,6 +1265,24 @@ mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
 
+    #[tokio::test]
+    async fn readiness_checks_run_concurrently() {
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+        let pending: Vec<BoxFuture<'static, (bool, ReadinessCheck)>> = (0..2)
+            .map(|_| {
+                let barrier = barrier.clone();
+                async move {
+                    barrier.wait().await;
+                    (false, check("parallel", DependencyCriticality::Critical, ReadinessStatus::Ok, None))
+                }.boxed()
+            })
+            .collect();
+        let checks = tokio::time::timeout(Duration::from_secs(1), run_readiness_checks(pending))
+            .await
+            .expect("checks should run concurrently");
+        assert_eq!(checks.len(), 2);
+    }
+
     fn check(
         name: &str,
         criticality: DependencyCriticality,
@@ -1314,6 +1425,31 @@ mod tests {
 
         assert_eq!(healthy.status.metric_value(), 2);
         assert_eq!(degraded.status.metric_value(), 3);
+    }
+
+    #[test]
+    fn readiness_profile_only_requires_local_workers_in_full_and_worker_modes() {
+        for (host_mode, expected) in [
+            (crate::common::settings::RuntimeHostMode::Full, true),
+            (crate::common::settings::RuntimeHostMode::Worker, true),
+            (crate::common::settings::RuntimeHostMode::Api, false),
+            (crate::common::settings::RuntimeHostMode::AdminSsr, false),
+            (crate::common::settings::RuntimeHostMode::StorefrontSsr, false),
+            (crate::common::settings::RuntimeHostMode::RegistryOnly, false),
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = host_mode;
+            let profile = ReadinessProfile::from_settings(&settings);
+            assert_eq!(profile.includes_local_worker_checks(), expected);
+        }
+    }
+
+    #[test]
+    fn surface_host_mode_worker_check_is_non_critical() {
+        let check = worker_host_mode_check();
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(aggregate_status(&[check], &[]), ReadinessStatus::Ok);
     }
 
     #[test]

@@ -28,7 +28,7 @@ const MAX_WALL_CLOCK_MS: u64 = 30_000;
 const CGROUP_MEMORY_CURRENT_PATH: &str = "/sys/fs/cgroup/memory.current";
 const MEMORY_SAMPLE_INTERVAL: Duration = Duration::from_millis(1);
 
-trait MemoryProbe: Send + Sync {
+pub(crate) trait MemoryProbe: Send + Sync {
     fn current_bytes(&self) -> Result<u64, String>;
 }
 
@@ -72,6 +72,12 @@ pub struct WorkerMemoryObserver {
     probe: Arc<dyn MemoryProbe>,
 }
 
+impl std::fmt::Debug for WorkerMemoryObserver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerMemoryObserver").finish()
+    }
+}
+
 impl WorkerMemoryObserver {
     pub fn cgroup_v2() -> Result<Self, String> {
         Ok(Self {
@@ -84,7 +90,7 @@ impl WorkerMemoryObserver {
     }
 
     #[cfg(test)]
-    fn with_probe(probe: Arc<dyn MemoryProbe>) -> Self {
+    pub(crate) fn with_probe(probe: Arc<dyn MemoryProbe>) -> Self {
         Self { probe }
     }
 }
@@ -95,6 +101,15 @@ impl WorkerMemoryObserver {
 pub struct ObservedRhaiExecutor<E> {
     inner: E,
     memory: WorkerMemoryObserver,
+}
+
+impl<E: std::fmt::Debug> std::fmt::Debug for ObservedRhaiExecutor<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObservedRhaiExecutor")
+            .field("inner", &self.inner)
+            .field("memory", &self.memory)
+            .finish()
+    }
 }
 
 impl<E> ObservedRhaiExecutor<E> {
@@ -108,6 +123,15 @@ impl<E> ObservedRhaiExecutor<E> {
 pub struct ObservedWorkerReadiness<R> {
     inner: R,
     memory: WorkerMemoryObserver,
+}
+
+impl<R: std::fmt::Debug> std::fmt::Debug for ObservedWorkerReadiness<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObservedWorkerReadiness")
+            .field("inner", &self.inner)
+            .field("memory", &self.memory)
+            .finish()
+    }
 }
 
 impl<R> ObservedWorkerReadiness<R> {
@@ -232,13 +256,13 @@ fn update_peak(peak: &AtomicU64, value: u64) {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HardenedRuntime {
+pub(crate) enum HardenedRuntime {
     Gvisor,
     Kata,
 }
 
 impl HardenedRuntime {
-    fn parse(value: &str) -> Result<Self, String> {
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "gvisor" => Ok(Self::Gvisor),
             "kata" => Ok(Self::Kata),
@@ -262,6 +286,16 @@ pub struct IsolationPolicy {
     runtime: HardenedRuntime,
     image_digest: String,
     attestation_path: PathBuf,
+}
+
+impl std::fmt::Debug for IsolationPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IsolationPolicy")
+            .field("runtime", &self.runtime)
+            .field("image_digest", &self.image_digest)
+            .field("attestation_path", &self.attestation_path)
+            .finish()
+    }
 }
 
 impl IsolationPolicy {
@@ -480,7 +514,7 @@ impl ResourceLimits {
     }
 }
 
-fn is_sha256_digest(value: &str) -> bool {
+pub(crate) fn is_sha256_digest(value: &str) -> bool {
     value.len() == "sha256:".len() + 64
         && value.starts_with("sha256:")
         && value["sha256:".len()..]
@@ -717,3 +751,7 @@ mod tests {
         std::fs::remove_file(path).expect("remove attestation");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

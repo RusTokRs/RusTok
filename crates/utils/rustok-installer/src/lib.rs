@@ -1,3 +1,5 @@
+//! # rustok-installer
+//!
 //! Shared installer foundation contracts for RusToK.
 //!
 //! The crate intentionally contains no HTTP, CLI, or database adapter code.
@@ -97,3 +99,7 @@ pub use seed::{
     SeedUserRequest, execute_seed_profile,
 };
 pub use state::{InstallState, InstallStep, StateTransitionError};
+
+#[cfg(test)]
+mod contract_tests;
+

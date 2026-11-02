@@ -1218,6 +1218,7 @@ async fn assert_storefront_exact(
             attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,
+            tag: None,
         },
         &channel,
         StorefrontSearchAudienceContext {

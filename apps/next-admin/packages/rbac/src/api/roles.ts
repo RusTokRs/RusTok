@@ -67,7 +67,7 @@ export interface AssignUserRolePayload {
 
 // ---------- GraphQL ----------
 
-const ROLES_QUERY = `
+export const ROLES_QUERY = `
 query Roles {
   roles {
     id
@@ -81,7 +81,7 @@ query Roles {
 }
 `;
 
-const PLATFORM_PERMISSIONS_QUERY = `
+export const PLATFORM_PERMISSIONS_QUERY = `
 query PlatformPermissions {
   platformPermissions {
     id
@@ -94,7 +94,7 @@ query PlatformPermissions {
 }
 `;
 
-const CREATE_ROLE_MUTATION = `
+export const CREATE_ROLE_MUTATION = `
 mutation CreateRole($input: CreateRoleInput!) {
   createRole(input: $input) {
     success
@@ -111,7 +111,7 @@ mutation CreateRole($input: CreateRoleInput!) {
 }
 `;
 
-const UPDATE_ROLE_MUTATION = `
+export const UPDATE_ROLE_MUTATION = `
 mutation UpdateRole($input: UpdateRoleInput!) {
   updateRole(input: $input) {
     success
@@ -128,7 +128,7 @@ mutation UpdateRole($input: UpdateRoleInput!) {
 }
 `;
 
-const DELETE_ROLE_MUTATION = `
+export const DELETE_ROLE_MUTATION = `
 mutation DeleteRole($slug: String!) {
   deleteRole(slug: $slug) {
     success
@@ -137,7 +137,7 @@ mutation DeleteRole($slug: String!) {
 }
 `;
 
-const ASSIGN_USER_ROLE_MUTATION = `
+export const ASSIGN_USER_ROLE_MUTATION = `
 mutation AssignUserRole($input: AssignUserRoleInput!) {
   assignUserRole(input: $input) {
     success
@@ -197,10 +197,28 @@ export async function createRole(
   input: CreateRoleInput,
   opts: GqlOpts = {}
 ): Promise<RoleMutationPayload> {
+  const cleanName = input.name?.trim();
+  if (!cleanName) {
+    throw new Error('Role name is required');
+  }
+  const cleanSlug = input.slug?.trim().toLowerCase();
+  if (!cleanSlug || cleanSlug.length < 2) {
+    throw new Error('Role slug must be at least 2 characters');
+  }
+  const reserved = ['super_admin', 'admin', 'manager', 'customer'];
+  if (reserved.includes(cleanSlug)) {
+    throw new Error(`'${cleanSlug}' is a reserved platform built-in role slug`);
+  }
+  const payload: CreateRoleInput = {
+    name: cleanName,
+    slug: cleanSlug,
+    description: input.description?.trim() || null,
+    permissions: input.permissions ?? []
+  };
   const data = await graphqlRequest<
     { input: CreateRoleInput },
     CreateRoleResponse
-  >(CREATE_ROLE_MUTATION, { input }, opts.token, opts.tenantSlug);
+  >(CREATE_ROLE_MUTATION, { input: payload }, opts.token, opts.tenantSlug);
   return data.createRole;
 }
 
@@ -208,10 +226,24 @@ export async function updateRole(
   input: UpdateRoleInput,
   opts: GqlOpts = {}
 ): Promise<RoleMutationPayload> {
+  const cleanSlug = input.slug?.trim().toLowerCase();
+  if (!cleanSlug) {
+    throw new Error('Role slug is required');
+  }
+  const payload: UpdateRoleInput = {
+    slug: cleanSlug,
+    name: input.name !== undefined ? (input.name?.trim() || null) : undefined,
+    description:
+      input.description !== undefined
+        ? (input.description?.trim() || null)
+        : undefined,
+    permissions:
+      cleanSlug === 'super_admin' ? undefined : (input.permissions ?? undefined)
+  };
   const data = await graphqlRequest<
     { input: UpdateRoleInput },
     UpdateRoleResponse
-  >(UPDATE_ROLE_MUTATION, { input }, opts.token, opts.tenantSlug);
+  >(UPDATE_ROLE_MUTATION, { input: payload }, opts.token, opts.tenantSlug);
   return data.updateRole;
 }
 
@@ -219,9 +251,16 @@ export async function deleteRole(
   slug: string,
   opts: GqlOpts = {}
 ): Promise<DeleteRolePayload> {
+  const cleanSlug = slug?.trim().toLowerCase();
+  if (!cleanSlug) {
+    throw new Error('Role slug is required');
+  }
+  if (cleanSlug === 'super_admin') {
+    throw new Error("Cannot delete protected system role 'super_admin'");
+  }
   const data = await graphqlRequest<{ slug: string }, DeleteRoleResponse>(
     DELETE_ROLE_MUTATION,
-    { slug },
+    { slug: cleanSlug },
     opts.token,
     opts.tenantSlug
   );
@@ -232,9 +271,22 @@ export async function assignUserRole(
   input: AssignUserRoleInput,
   opts: GqlOpts = {}
 ): Promise<AssignUserRolePayload> {
+  const cleanUserId = input.userId?.trim();
+  if (!cleanUserId) {
+    throw new Error('User ID is required');
+  }
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(cleanUserId)) {
+    throw new Error('User ID must be a valid UUID');
+  }
+  const cleanRoleSlug = input.roleSlug?.trim().toLowerCase();
+  if (!cleanRoleSlug) {
+    throw new Error('Role slug is required');
+  }
   const payload = {
-    userId: input.userId,
-    roleSlug: input.roleSlug
+    userId: cleanUserId,
+    roleSlug: cleanRoleSlug
   };
   const data = await graphqlRequest<
     { input: { userId: string; roleSlug: string } },

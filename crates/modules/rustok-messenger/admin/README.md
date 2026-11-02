@@ -14,3 +14,6 @@ This package strictly complies with **FFA (Fluid Frontend Architecture)**:
 3. **`transport/`:** Transport facade decoupling the UI adapter from execution topology (native SSR vs GraphQL/REST).
 4. **`i18n.rs`:** Framework-agnostic Project Fluent localization using `rustok-ui-i18n`.
 5. **`ui/leptos.rs`:** Thin Leptos render/bind adapter using canonical `leptos-ui` design primitives.
+
+## Documentation
+- [CRATE_API.md](CRATE_API.md)

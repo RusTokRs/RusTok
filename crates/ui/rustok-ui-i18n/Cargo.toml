@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Framework-agnostic locale, Accept-Language, and UI message helpers for RusToK"
 
 [package.metadata.docs.rs]
@@ -24,3 +26,6 @@ proptest.workspace = true
 [[bench]]
 name = "lookup"
 harness = false
+
+[lints]
+workspace = true

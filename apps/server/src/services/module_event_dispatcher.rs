@@ -17,6 +17,44 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "blog_public_comments_snapshot.rs"]
 mod blog_public_comments_snapshot;
 
+/// Host-owned lifecycle handle for the module event dispatcher.
+///
+/// The dispatcher is a background consumer: API/SSR/registry profiles compose
+/// the same module registry but must not start local event-loop workers. When
+/// started, the handle is stored in the runtime context so host shutdown can
+/// request a cooperative drain and join the receive loop instead of leaking it
+/// past the server. Abort remains the emergency fallback after the host drain
+/// deadline.
+pub struct ModuleEventDispatcherHandle {
+    running: rustok_core::RunningDispatcher,
+}
+
+impl ModuleEventDispatcherHandle {
+    pub fn is_finished(&self) -> bool {
+        self.running.is_finished()
+    }
+
+    pub fn request_stop(&self) {
+        self.running.request_stop();
+    }
+
+    pub fn abort(&self) {
+        self.running.abort();
+    }
+
+    pub fn abort_handle(&self) -> tokio::task::AbortHandle {
+        self.running.abort_handle()
+    }
+
+    pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
+        self.running.join().await
+    }
+}
+
+fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
+    settings.runtime.runs_background_workers()
+}
+
 pub fn spawn_module_event_dispatcher(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
@@ -26,6 +64,26 @@ pub fn spawn_module_event_dispatcher(
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
+
+    #[cfg(feature = "mod-commerce")]
+    spawn_paid_order_label_worker_if_enabled(ctx);
+    #[cfg(feature = "commerce-marketplace-financial")]
+    spawn_marketplace_financial_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-payment")]
+    spawn_payment_provider_event_worker_if_enabled(ctx);
+
+    if !module_event_dispatcher_enabled(ctx.settings()) {
+        tracing::info!(
+            host_mode = ?ctx.settings().runtime.host_mode,
+            "Module event dispatcher disabled for the current runtime profile"
+        );
+        return Ok(());
+    }
+    if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
+        tracing::debug!("Module event dispatcher already started");
+        return Ok(());
+    }
+
     let bus = ctx
         .shared_get::<Arc<EventRuntime>>()
         .ok_or_else(|| {
@@ -38,13 +96,6 @@ pub fn spawn_module_event_dispatcher(
     let db = ctx.db_clone();
     let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
 
-    #[cfg(feature = "mod-commerce")]
-    spawn_paid_order_label_worker_if_enabled(ctx);
-    #[cfg(feature = "commerce-marketplace-financial")]
-    spawn_marketplace_financial_worker_if_enabled(ctx);
-    #[cfg(feature = "mod-payment")]
-    spawn_payment_provider_event_worker_if_enabled(ctx);
-
     let handler_count = dispatcher.handler_count();
     if handler_count == 0 {
         tracing::info!("No module-owned event listeners registered in ModuleRegistry");
@@ -52,11 +103,7 @@ pub fn spawn_module_event_dispatcher(
     }
 
     let running = dispatcher.start_with_contract_delivery()?;
-    tokio::spawn(async move {
-        if let Err(error) = running.join().await {
-            tracing::error!("Module event dispatcher panicked: {:?}", error);
-        }
-    });
+    ctx.shared_insert(ModuleEventDispatcherHandle { running });
 
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
@@ -66,6 +113,7 @@ fn enrich_runtime_extensions_after_event_start(
     ctx: &ServerRuntimeContext,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Arc<ModuleRuntimeExtensions> {
+    #[allow(unused_mut)]
     let mut enriched = extensions.as_ref().clone();
 
     #[cfg(feature = "mod-pages")]
@@ -689,6 +737,20 @@ pub fn build_module_event_dispatcher(
     dispatcher
 }
 
+#[cfg(feature = "mod-product")]
+fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
+    // Reserve before spawning: concurrent composition must not create two workers.
+    struct ProductMediaReleaseWorkerReservation;
+    if !ctx.settings().runtime.runs_background_workers()
+        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
+    {
+        return;
+    }
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -975,16 +1037,48 @@ mod tests {
     }
 }
 
-#[cfg(feature = "mod-product")]
-fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
-    // Reserve before spawning: concurrent composition must not create two workers.
-    struct ProductMediaReleaseWorkerReservation;
-    if !ctx.settings().runtime.runs_background_workers()
-        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
-    {
-        return;
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use crate::common::settings::RuntimeHostMode;
+
+    #[test]
+    fn module_event_dispatcher_runs_only_in_background_worker_profiles() {
+        for mode in [RuntimeHostMode::Full, RuntimeHostMode::Worker] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = mode;
+            assert!(module_event_dispatcher_enabled(&settings));
+        }
+        for mode in [
+            RuntimeHostMode::Api,
+            RuntimeHostMode::AdminSsr,
+            RuntimeHostMode::StorefrontSsr,
+            RuntimeHostMode::RegistryOnly,
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = mode;
+            assert!(!module_event_dispatcher_enabled(&settings));
+        }
     }
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+
+    #[tokio::test]
+    async fn dispatcher_handle_aborts_and_joins_the_receive_loop() {
+        let bus = EventBus::new();
+        let running = EventDispatcher::new(bus).start();
+        let handle = ModuleEventDispatcherHandle { running };
+        assert!(!handle.is_finished());
+        handle.abort();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), handle.join()).await;
+        assert!(matches!(result, Ok(Err(error)) if error.is_cancelled()));
+    }
+
+    #[tokio::test]
+    async fn dispatcher_handle_requests_cooperative_stop_and_joins() {
+        let bus = EventBus::new();
+        let running = EventDispatcher::new(bus).start();
+        let handle = ModuleEventDispatcherHandle { running };
+        handle.request_stop();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), handle.join()).await;
+        assert!(matches!(result, Ok(Ok(()))));
+    }
 }

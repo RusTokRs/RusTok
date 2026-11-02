@@ -25,7 +25,7 @@ export type { AdminGraphqlExecutor, GqlOpts };
 
 // GRAPHQL QUERIES & MUTATIONS
 
-const SHIPPING_PROFILES_QUERY = `
+export const SHIPPING_PROFILES_QUERY = `
 query CommerceAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) {
   shippingProfiles(tenantId: $tenantId, filter: $filter) {
     total
@@ -48,7 +48,7 @@ query CommerceAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesF
   }
 }`;
 
-const SHIPPING_PROFILE_QUERY = `
+export const SHIPPING_PROFILE_QUERY = `
 query CommerceAdminShippingProfile($tenantId: UUID!, $id: UUID!) {
   shippingProfile(tenantId: $tenantId, id: $id) {
     id
@@ -65,7 +65,7 @@ query CommerceAdminShippingProfile($tenantId: UUID!, $id: UUID!) {
   }
 }`;
 
-const CREATE_SHIPPING_PROFILE_MUTATION = `
+export const CREATE_SHIPPING_PROFILE_MUTATION = `
 mutation CommerceAdminCreateShippingProfile($tenantId: UUID!, $input: CreateShippingProfileInputObject!) {
   createShippingProfile(tenantId: $tenantId, input: $input) {
     id
@@ -82,7 +82,7 @@ mutation CommerceAdminCreateShippingProfile($tenantId: UUID!, $input: CreateShip
   }
 }`;
 
-const UPDATE_SHIPPING_PROFILE_MUTATION = `
+export const UPDATE_SHIPPING_PROFILE_MUTATION = `
 mutation CommerceAdminUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input: UpdateShippingProfileInputObject!) {
   updateShippingProfile(tenantId: $tenantId, id: $id, input: $input) {
     id
@@ -99,7 +99,7 @@ mutation CommerceAdminUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input
   }
 }`;
 
-const DEACTIVATE_SHIPPING_PROFILE_MUTATION = `
+export const DEACTIVATE_SHIPPING_PROFILE_MUTATION = `
 mutation CommerceAdminDeactivateShippingProfile($tenantId: UUID!, $id: UUID!) {
   deactivateShippingProfile(tenantId: $tenantId, id: $id) {
     id
@@ -108,7 +108,7 @@ mutation CommerceAdminDeactivateShippingProfile($tenantId: UUID!, $id: UUID!) {
   }
 }`;
 
-const REACTIVATE_SHIPPING_PROFILE_MUTATION = `
+export const REACTIVATE_SHIPPING_PROFILE_MUTATION = `
 mutation CommerceAdminReactivateShippingProfile($tenantId: UUID!, $id: UUID!) {
   reactivateShippingProfile(tenantId: $tenantId, id: $id) {
     id
@@ -117,7 +117,7 @@ mutation CommerceAdminReactivateShippingProfile($tenantId: UUID!, $id: UUID!) {
   }
 }`;
 
-const PREVIEW_CART_PROMOTION_MUTATION = `
+export const PREVIEW_CART_PROMOTION_MUTATION = `
 mutation CommerceAdminPreviewCartPromotion($tenantId: UUID!, $cartId: UUID!, $input: AdminCartPromotionInput!) {
   previewAdminCartPromotion(tenantId: $tenantId, cartId: $cartId, input: $input) {
     kind
@@ -130,7 +130,7 @@ mutation CommerceAdminPreviewCartPromotion($tenantId: UUID!, $cartId: UUID!, $in
   }
 }`;
 
-const APPLY_CART_PROMOTION_MUTATION = `
+export const APPLY_CART_PROMOTION_MUTATION = `
 mutation CommerceAdminApplyCartPromotion($tenantId: UUID!, $cartId: UUID!, $input: AdminCartPromotionInput!) {
   applyAdminCartPromotion(tenantId: $tenantId, cartId: $cartId, input: $input) {
     id
@@ -149,7 +149,7 @@ mutation CommerceAdminApplyCartPromotion($tenantId: UUID!, $cartId: UUID!, $inpu
   }
 }`;
 
-const ORDER_CHANGES_QUERY = `
+export const ORDER_CHANGES_QUERY = `
 query CommerceAdminOrderChanges($tenantId: UUID!, $filter: OrderChangesFilter) {
   orderChanges(tenantId: $tenantId, filter: $filter) {
     total
@@ -170,7 +170,7 @@ query CommerceAdminOrderChanges($tenantId: UUID!, $filter: OrderChangesFilter) {
   }
 }`;
 
-const ORDER_CHANGE_QUERY = `
+export const ORDER_CHANGE_QUERY = `
 query CommerceAdminOrderChange($tenantId: UUID!, $id: UUID!) {
   orderChange(tenantId: $tenantId, id: $id) {
     id
@@ -185,7 +185,7 @@ query CommerceAdminOrderChange($tenantId: UUID!, $id: UUID!) {
   }
 }`;
 
-const CREATE_ORDER_RETURN_DECISION_MUTATION = `
+export const CREATE_ORDER_RETURN_DECISION_MUTATION = `
 mutation CommerceAdminCreateOrderReturnDecision($tenantId: UUID!, $orderId: UUID!, $input: CreateReturnDecisionInputObject!) {
   createOrderReturnDecision(tenantId: $tenantId, orderId: $orderId, input: $input) {
     action
@@ -227,7 +227,7 @@ mutation CommerceAdminCreateOrderReturnDecision($tenantId: UUID!, $orderId: UUID
   }
 }`;
 
-const APPLY_ORDER_CHANGE_MUTATION = `
+export const APPLY_ORDER_CHANGE_MUTATION = `
 mutation CommerceAdminApplyOrderChange($tenantId: UUID!, $id: UUID!, $input: ApplyOrderChangeInputObject!) {
   applyOrderChange(tenantId: $tenantId, id: $id, input: $input) {
     id
@@ -236,7 +236,7 @@ mutation CommerceAdminApplyOrderChange($tenantId: UUID!, $id: UUID!, $input: App
   }
 }`;
 
-const CANCEL_ORDER_CHANGE_MUTATION = `
+export const CANCEL_ORDER_CHANGE_MUTATION = `
 mutation CommerceAdminCancelOrderChange($tenantId: UUID!, $id: UUID!, $input: CancelOrderChangeInputObject!) {
   cancelOrderChange(tenantId: $tenantId, id: $id, input: $input) {
     id
@@ -245,7 +245,7 @@ mutation CommerceAdminCancelOrderChange($tenantId: UUID!, $id: UUID!, $input: Ca
   }
 }`;
 
-const ORDERS_QUERY = `
+export const ORDERS_QUERY = `
 query CommerceAdminOrders($tenantId: UUID!, $filter: OrdersFilter) {
   orders(tenantId: $tenantId, filter: $filter) {
     total

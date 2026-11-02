@@ -17,4 +17,4 @@ The package calls Marketplace Seller owner contracts and shared UI transport lib
 - `src/lib.rs` — public admin package surface.
 - `src/transport.rs` — owner transport adapters.
 
-See the [Marketplace Seller documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).
+See the [Marketplace Seller documentation](../docs/README.md), the [module UI guide](../../../../docs/UI/module-package-implementation.md), and [CRATE_API.md](CRATE_API.md).

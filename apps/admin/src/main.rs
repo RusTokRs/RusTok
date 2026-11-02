@@ -210,7 +210,10 @@ async fn main() {
             &options,
             unique_routes,
             || {
-                provide_server_auth_snapshot(request_auth_snapshot());
+                let snapshot = use_context::<axum::http::request::Parts>()
+                    .map(|parts| request_auth_snapshot(&parts))
+                    .unwrap_or_default();
+                provide_server_auth_snapshot(snapshot);
                 if let Some(nonce) = request_csp_nonce() {
                     provide_context(nonce);
                 }

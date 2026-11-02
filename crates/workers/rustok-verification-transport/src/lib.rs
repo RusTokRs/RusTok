@@ -3,6 +3,9 @@
 pub mod client;
 pub mod server;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub mod proto {
     tonic::include_proto!("rustok.verification.v1");
 }

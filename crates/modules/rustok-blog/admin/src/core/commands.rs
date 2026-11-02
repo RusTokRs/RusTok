@@ -69,12 +69,23 @@ pub fn busy_key_for_delete(post_id: &str) -> String {
     ui_busy_key_with_id("delete", post_id)
 }
 
+pub fn busy_key_for_preview(post_id: &str) -> String {
+    ui_busy_key_with_id("preview", post_id)
+}
+
 pub fn is_save_busy(busy_key: Option<&str>) -> bool {
     busy_key == Some("create") || ui_busy_key_matches_action(busy_key, "save")
 }
 
 pub fn label_with_id(template: &str, id: &str) -> String {
     template.replace("{id}", id)
+}
+
+/// Final substitution for the preview-token expiry line. A resolved catalog
+/// message already carries the timestamp; a locale without the message falls
+/// back to the caller literal, where the placeholder is substituted here.
+pub fn preview_expires_label(resolved: &str, at: &str) -> String {
+    resolved.replace("{at}", at)
 }
 
 pub fn label_with_optional_id(template: &str, id: Option<&str>) -> String {
@@ -153,6 +164,31 @@ pub fn fallback_post_slug(value: Option<String>, fallback: &str) -> String {
 
 pub fn fallback_post_excerpt(value: Option<String>, fallback: &str) -> String {
     value.unwrap_or_else(|| fallback.to_string())
+}
+
+/// Author cell for the admin post list: the profile display name when the
+/// owner's author enrichment is available, the raw author id otherwise. A post
+/// always has an author id, so the label never falls through to the dash.
+pub fn author_cell_label(
+    author_id: Option<&str>,
+    author_profile: Option<&crate::model::BlogAuthorProfileName>,
+) -> String {
+    if let Some(profile) = author_profile {
+        let name = profile.display_name.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    author_id.unwrap_or("—").to_string()
+}
+
+/// Date cell for the admin post list: the `YYYY-MM-DD` slice of an RFC 3339
+/// timestamp, or an em dash when there is nothing to show (unpublished).
+pub fn admin_date_cell_label(value: Option<&str>) -> String {
+    match value.and_then(|raw| raw.get(0..10)) {
+        Some(date) => date.to_string(),
+        None => "—".to_string(),
+    }
 }
 
 pub fn optional_text_or_default(value: Option<String>) -> String {

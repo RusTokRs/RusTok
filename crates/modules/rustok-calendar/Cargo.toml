@@ -2,6 +2,7 @@
 name = "rustok-calendar"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Calendar & Appointment Scheduling capability module for RusToK"
 repository.workspace = true

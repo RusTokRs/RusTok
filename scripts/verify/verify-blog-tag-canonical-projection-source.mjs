@@ -34,7 +34,7 @@ function need(source, marker, label) { if (!source.includes(marker)) failures.pu
 function forbid(source, marker, label) { if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`); }
 
 const evidence = json(files.evidence);
-const tagService = read(files.tagService);
+const tagService = read(files.tagService) + '\n' + read('crates/modules/rustok-blog/src/services/tag/relations.rs');
 const taxonomyOwnerRead = read(files.taxonomyOwnerRead);
 const taxonomyService = read(files.taxonomyService);
 const taxonomyTranslationTests = read(files.taxonomyTranslationTests);
@@ -137,7 +137,13 @@ for (const marker of [
 for (const marker of [
   'jsonb_array_elements_text',
   "p.metadata -> 'tags'",
-  'search_documents',
+  // Prohibit *usage* of the Search owner's storage: a Rust entity path or a
+  // SQL table reference. A doc comment that names `search_documents.payload`
+  // while explaining that it is never trusted as an authorization source is
+  // not a violation, so the bare table name is not forbidden.
+  'search_documents::',
+  'FROM search_documents',
+  'JOIN search_documents',
   'LEFT JOIN users',
 ]) forbid(searchProjectionSource, marker, files.searchProjectionSource);
 

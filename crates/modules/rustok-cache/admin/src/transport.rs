@@ -28,6 +28,7 @@ query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
     settings
+    schemaVersion
   }
 }
 "#;
@@ -38,6 +39,7 @@ mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
     success
     category
     settings
+    schemaVersion
   }
 }
 "#;
@@ -54,6 +56,8 @@ struct CategoryVariables {
 struct UpdateSettingsInput {
     category: String,
     settings: String,
+    #[serde(rename = "expectedSchemaVersion")]
+    expected_schema_version: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -110,12 +114,12 @@ pub async fn update_cache_settings(
     token: Option<String>,
     tenant_slug: Option<String>,
     settings_json: String,
-) -> Result<bool, String> {
+    expected_schema_version: i32,
+) -> Result<GraphqlUpdatePlatformSettingsResponse, String> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
-            native_server_adapter::update_cache_settings_native(settings_json)
+            native_server_adapter::update_cache_settings_native(settings_json, expected_schema_version)
                 .await
-                .map(|resp| resp.update_platform_settings.success)
                 .map_err(|e| e.to_string())
         }
         UiTransportPath::Graphql => {
@@ -127,6 +131,7 @@ pub async fn update_cache_settings(
                         input: UpdateSettingsInput {
                             category: "cache".to_string(),
                             settings: settings_json,
+                            expected_schema_version,
                         },
                     }),
                 ),
@@ -137,7 +142,7 @@ pub async fn update_cache_settings(
             .await
             .map_err(|e| e.to_string())?;
 
-            Ok(res.update_platform_settings.success)
+            Ok(res)
         }
     }
 }
@@ -255,18 +260,19 @@ mod native_server_adapter {
                     ServerFnError::new("cache settings admin port is not published in the host")
                 })?;
 
-            let settings = port
+            let snapshot = port
                 .port()
                 .read(tenant.id)
                 .await
                 .map_err(ServerFnError::new)?;
-            let settings = serde_json::to_string(&settings)
+            let settings = serde_json::to_string(&snapshot.settings)
                 .map_err(|error| ServerFnError::new(format!("cache settings encoding: {error}")))?;
 
             Ok(GraphqlPlatformSettingsResponse {
                 platform_settings: PlatformSettingsData {
                     category: "cache".to_string(),
                     settings,
+                    schema_version: snapshot.schema_version,
                 },
             })
         }
@@ -279,6 +285,7 @@ mod native_server_adapter {
     #[server(UpdateCacheSettingsNative, "/api")]
     pub async fn update_cache_settings_native(
         settings: String,
+        expected_schema_version: i32,
     ) -> Result<GraphqlUpdatePlatformSettingsResponse, ServerFnError> {
         #[cfg(feature = "ssr")]
         {
@@ -301,23 +308,24 @@ mod native_server_adapter {
             // the adapter only reports what was actually stored.
             let stored = port
                 .port()
-                .update(tenant.id, Some(auth.user_id), draft)
+                .update(tenant.id, Some(auth.user_id), draft, expected_schema_version)
                 .await
                 .map_err(ServerFnError::new)?;
-            let stored = serde_json::to_string(&stored)
+            let settings = serde_json::to_string(&stored.settings)
                 .map_err(|error| ServerFnError::new(format!("cache settings encoding: {error}")))?;
 
             Ok(GraphqlUpdatePlatformSettingsResponse {
                 update_platform_settings: UpdatePlatformSettingsPayload {
                     success: true,
                     category: "cache".to_string(),
-                    settings: stored,
+                    settings,
+                    schema_version: stored.schema_version,
                 },
             })
         }
         #[cfg(not(feature = "ssr"))]
         {
-            let _ = settings;
+            let _ = (settings, expected_schema_version);
             Err(ServerFnError::ServerError("SSR feature not enabled".into()))
         }
     }

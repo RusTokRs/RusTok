@@ -131,6 +131,11 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
         HeaderName::from_static("x-channel-slug"),
         HeaderName::from_static("x-locale"),
         HeaderName::from_static("x-rustok-runner-token"),
+        HeaderName::from_static("x-rustok-session-request"),
+        HeaderName::from_static("idempotency-key"),
+        HeaderName::from_static("x-rustok-host-token"),
+        HeaderName::from_static("x-rustok-setup-token"),
+        HeaderName::from_static("x-rustok-observability-token"),
         HeaderName::from_static("x-requested-with"),
         HeaderName::from_static("apollographql-client-name"),
         HeaderName::from_static("apollographql-client-version"),
@@ -169,6 +174,53 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn preflight_allows_session_idempotency_and_host_credential_headers() {
+        use axum::body::Body;
+        use axum::http::{Method, Request, StatusCode, header};
+        use tower::ServiceExt;
+
+        let origins = vec!["http://localhost:3000".to_string()];
+        let app = axum::Router::new()
+            .route("/api/auth/session/refresh", axum::routing::post(|| async { "" }))
+            .layer(build_cors_layer(false, Some(&origins)));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/api/auth/session/refresh")
+                    .header(header::ORIGIN, "http://localhost:3000")
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                    .header(
+                        header::ACCESS_CONTROL_REQUEST_HEADERS,
+                        "authorization, content-type, x-rustok-session-request, idempotency-key, x-rustok-host-token, x-rustok-setup-token, x-rustok-observability-token",
+                    )
+                    .body(Body::empty())
+                    .expect("preflight request"),
+            )
+            .await
+            .expect("preflight response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let allowed = response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+            .expect("allow-headers")
+            .to_str()
+            .expect("allow-headers utf8")
+            .to_ascii_lowercase();
+        for required in [
+            "x-rustok-session-request",
+            "idempotency-key",
+            "x-rustok-host-token",
+            "x-rustok-setup-token",
+            "x-rustok-observability-token",
+        ] {
+            assert!(allowed.contains(required), "missing {required} in {allowed}");
+        }
+    }
 
     #[test]
     fn development_cors_uses_restricted_dev_origins() {

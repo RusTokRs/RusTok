@@ -46,3 +46,5 @@ negative seller proceeds.
 
 Ledger posting, balance state, refund reversals, and payouts consume commission
 assessments but remain separate modules.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

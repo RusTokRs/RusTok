@@ -18,6 +18,7 @@ fn short_digest(digest: &str) -> String {
 pub fn TransitionControlCard(
     checkpoint: ModuleTransitionCheckpointView,
     #[prop(default = vec![])] retention_holds: Vec<ModuleRetentionHoldView>,
+    retention_holds_available: bool,
     #[prop(optional)] on_refresh: Option<Callback<()>>,
 ) -> impl IntoView {
     let token = use_token();
@@ -249,14 +250,14 @@ pub fn TransitionControlCard(
             })}
 
             // Retention Holds Section
-            <div class="border-t border-border pt-3">
+            {retention_holds_available.then(|| view! { <div class="border-t border-border pt-3">
                 <button
                     type="button"
                     class="text-xs font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
                     on:click=move |_| set_show_holds.update(|v| *v = !*v)
                 >
                     <span>{if show_holds.get() { "▼ Hide" } else { "▶ View" }}</span>
-                    <span>"Active Retention Holds (" {retention_holds.len()} ")"</span>
+                    <span>"Tenant Retention Holds (" {retention_holds.len()} ")"</span>
                 </button>
 
                 {move || if show_holds.get() {
@@ -283,7 +284,7 @@ pub fn TransitionControlCard(
                 } else {
                     None
                 }}
-            </div>
+            </div> })}
 
             // Transition action
             <div class="mt-4 flex flex-col gap-3 border-t border-border pt-4">

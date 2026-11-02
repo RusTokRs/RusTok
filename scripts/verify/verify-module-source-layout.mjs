@@ -9,6 +9,38 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+// The default Blog runner is a legacy/reference profile, not a certification of
+// Blog's architecture. Generic native-module lint is opt-in via --module <slug>.
+import { lintNativeModule, resolveNativeModule } from "./native-module-layout.mjs";
+
+const parameters = process.argv.slice(2);
+if (parameters.length !== 0 &&
+    (parameters.length !== 2 || parameters[0] !== "--module" || !parameters[1])) {
+  console.error("Usage: node scripts/verify/verify-module-source-layout.mjs [--module <slug>]");
+  process.exit(2);
+}
+const explicitModule = parameters.length === 2;
+const selectedModule = explicitModule ? parameters[1] : "blog";
+let modulePath;
+try {
+  modulePath = resolveNativeModule(repoRoot, selectedModule);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+if (explicitModule) {
+  const architectureFailures = lintNativeModule(repoRoot, modulePath, selectedModule);
+  if (architectureFailures.length) {
+    console.error("Native module architecture verification failed:");
+    for (const failure of architectureFailures) console.error("- " + failure);
+    process.exit(1);
+  }
+}
+if (selectedModule !== "blog") {
+  console.log("Native module architecture verification passed for " + selectedModule + ".");
+  process.exit(0);
+}
+
 const profiles = [
   {
     crate: "rustok-blog",
@@ -35,13 +67,13 @@ const uiProfiles = [
   {
     crate: "rustok-blog-admin",
     source: "crates/modules/rustok-blog/admin/src",
-    requiredDirectories: ["core", "transport", "ui"],
+    requiredDirectories: ["core", "transport", "ui", "tests"],
     maxRustFileBytes: 40 * 1024,
   },
   {
     crate: "rustok-blog-storefront",
     source: "crates/modules/rustok-blog/storefront/src",
-    requiredDirectories: ["core", "transport", "ui"],
+    requiredDirectories: ["core", "transport", "ui", "tests"],
     maxRustFileBytes: 40 * 1024,
   },
 ];
@@ -207,6 +239,19 @@ for (const profile of uiProfiles) {
     if (!existsSync(path) || !statSync(path).isDirectory()) {
       fail(`${profile.crate}: missing canonical UI source slot ${directory}/`);
     }
+  }
+
+  // FFA contract tests belong to a dedicated source slot, not a root dump file.
+  const uiLib = join(sourceRoot, "lib.rs");
+  const uiContractTest = join(sourceRoot, "tests", "contract.rs");
+  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").includes("#[cfg(test)]\nmod tests;")) {
+    fail(`${profile.crate}: lib.rs must wire its dedicated tests/ module`);
+  }
+  if (!existsSync(uiContractTest)) {
+    fail(`${profile.crate}: missing tests/contract.rs for the module-owned API contract`);
+  }
+  if (existsSync(join(sourceRoot, "contract_tests.rs")) && !existsSync(uiContractTest)) {
+    fail(`${profile.crate}: root contract_tests.rs cannot replace the canonical tests/contract.rs slot`);
   }
 
   for (const file of rustFiles(sourceRoot)) {

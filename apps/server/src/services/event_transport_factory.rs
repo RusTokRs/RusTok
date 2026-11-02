@@ -609,7 +609,7 @@ mod contract_delivery_tests {
         let envelope = envelope();
         target.publish_contract(envelope.clone()).await.unwrap();
         assert_eq!(*handled.lock().unwrap(), vec![envelope]);
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -627,7 +627,7 @@ mod contract_delivery_tests {
         assert!(target.publish_contract(envelope()).await.is_err());
         assert!(accepted.lock().unwrap().is_empty());
         assert!(handled.lock().unwrap().is_empty());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -654,7 +654,7 @@ mod contract_delivery_tests {
         );
         assert_eq!(*handled.lock().unwrap(), vec![envelope.clone(), envelope]);
         assert!(root.try_recv().is_err());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -746,7 +746,7 @@ mod contract_delivery_tests {
             assert!(target.publish_contract(frame).await.is_err());
         }
         assert!(accepted.lock().unwrap().is_empty());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -775,7 +775,7 @@ mod contract_delivery_tests {
         );
         assert!(accepted.lock().unwrap().is_empty());
         assert!(handled.lock().unwrap().is_empty());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -792,7 +792,7 @@ mod contract_delivery_tests {
             target.publish_contract(frame.clone()).await.unwrap();
         }
         assert_eq!(*handled.lock().unwrap(), frames.to_vec());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
         assert!(target.publish_contract(frames[0].clone()).await.is_err());
     }
 
@@ -818,7 +818,7 @@ mod contract_delivery_tests {
             vec![frame.clone(), frame.clone()]
         );
         assert_eq!(*handled.lock().unwrap(), vec![frame.clone(), frame]);
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 
     #[tokio::test]
@@ -847,6 +847,6 @@ mod contract_delivery_tests {
         target.publish_contract(envelope.clone()).await.unwrap();
         assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
         assert!(handled.lock().unwrap().is_empty());
-        running.stop();
+        running.stop().await.expect("dispatcher stop");
     }
 }

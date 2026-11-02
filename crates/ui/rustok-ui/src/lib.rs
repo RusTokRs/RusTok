@@ -40,6 +40,9 @@ pub mod types;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod contract_tests;
+
 
 pub use classes::{
     alert_classes, avatar_classes, badge_classes, button_classes, card_action_classes,

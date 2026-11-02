@@ -1,6 +1,6 @@
 //! Shared Axum router state and global routing table for the executable server host.
 
-use crate::common::settings::RuntimeHostMode;
+use crate::common::settings::{RuntimeHostMode, RustokSettings};
 use crate::error::Error;
 use crate::services::server_runtime_context::ServerAuthRuntime;
 use axum::response::IntoResponse;
@@ -14,8 +14,14 @@ pub async fn not_found_fallback(uri: axum::http::Uri) -> impl IntoResponse {
     Error::NotFound
 }
 
-/// Builds the un-configured global application router matching the host mode.
-pub fn build_application_router(host_mode: RuntimeHostMode) -> ServerRouter {
+/// Builds the un-configured global application router matching the host mode
+/// and deployment feature gates.
+///
+/// `oauth_enabled` is a real composition gate: when it is false the OAuth
+/// protocol surface and its discovery metadata are not mounted at all. The
+/// default remains fail-closed so a missing feature block cannot silently
+/// expose an authorization server.
+pub fn build_application_router(host_mode: RuntimeHostMode, settings: &RustokSettings) -> ServerRouter {
     let router = axum::Router::new()
         .merge(crate::controllers::health::router())
         .merge(crate::controllers::metrics::router());
@@ -42,12 +48,20 @@ pub fn build_application_router(host_mode: RuntimeHostMode) -> ServerRouter {
     #[cfg(feature = "mod-flex")]
     let router = router.merge(crate::controllers::flex::router());
 
-    router
+    let router = router
         .merge(crate::controllers::graphql::router())
         .merge(crate::controllers::installer::router())
-        .merge(crate::controllers::mcp::router())
-        .merge(crate::controllers::oauth::router())
-        .merge(crate::controllers::oauth_metadata::router())
+        .merge(crate::controllers::mcp::router());
+
+    let router = if settings.features.oauth_enabled {
+        router
+            .merge(crate::controllers::oauth::router())
+            .merge(crate::controllers::oauth_metadata::router())
+    } else {
+        router
+    };
+
+    router
         .merge(crate::controllers::users::router())
         .merge(crate::channels::builds::router())
 }
@@ -75,13 +89,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_mode_router_routes_health_check() {
-        let router = build_application_router(RuntimeHostMode::Worker);
+    async fn oauth_surface_is_not_mounted_when_the_feature_gate_is_closed() {
+        let settings = crate::common::settings::RustokSettings::default();
+        assert!(!settings.features.oauth_enabled);
+        let router = build_application_router(RuntimeHostMode::Api, &settings);
         let db = rustok_test_utils::setup_test_db().await;
-        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
-            db,
-            crate::common::settings::RustokSettings::default(),
-        );
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
+
+        for path in [
+            "/api/oauth/token",
+            "/api/oauth/revoke",
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/openid-configuration",
+        ] {
+            let req = Request::builder()
+                .method("POST")
+                .uri(path)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn oauth_surface_is_mounted_when_the_feature_gate_is_open() {
+        let mut settings = crate::common::settings::RustokSettings::default();
+        settings.features.oauth_enabled = true;
+        let router = build_application_router(RuntimeHostMode::Api, &settings);
+        let db = rustok_test_utils::setup_test_db().await;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/oauth/token")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.oneshot(req).await.unwrap();
+        assert_ne!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn worker_mode_router_routes_health_check() {
+        let settings = crate::common::settings::RustokSettings::default();
+        let router = build_application_router(RuntimeHostMode::Worker, &settings);
+        let db = rustok_test_utils::setup_test_db().await;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
         let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
 
         let req = Request::builder()

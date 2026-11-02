@@ -98,8 +98,9 @@ Short list of typical mistakes before making code changes.
 
 ## Migrations
 
-- Do not modify already applied migrations — create new ones.
-- Do not delete columns without prior ADR and migration plan.
+- In pre-stable development, squashing multiple migrations into a single baseline is permitted, but MUST follow the [Safe Database Migrations and Squashing Guide](../guides/safe-database-migrations-and-squashing.md).
+- Always verify 100% schema parity before and after squashing with `npm run verify:schema-parity -- --module <slug>`.
+- Never delete or drop columns without verifying entity models and updating dependent verification scripts.
 - Do not create migrations outside `RusToKModule::migrations()` — use the standard mechanism.
 - Do not forget to add a migration for every new entity.
 

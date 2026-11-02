@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
 import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
-import { Text, CircleDot } from 'lucide-react';
+import { CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import type { GqlOpts, PostSummary } from '../../api/posts';
 
@@ -19,6 +19,34 @@ const statusLabel: Record<string, string> = {
   ARCHIVED: 'Archived'
 };
 
+/**
+ * ISO `YYYY-MM-DD` date cell: a deterministic slice of the owner's RFC 3339
+ * timestamp, stable across server and client locales.
+ */
+function dateCell(raw: string | null | undefined): string {
+  return raw ? raw.slice(0, 10) : '—';
+}
+
+/**
+ * Author cell: the owner's profile-enriched display name, the raw author id
+ * when no profile is available, and an em dash only for a missing author.
+ */
+function authorCell(post: PostSummary): string {
+  const name = post.authorProfile?.displayName?.trim();
+  if (name) return name;
+  return post.authorId ?? '—';
+}
+
+/**
+ * Column set of the admin post list, mirroring the Leptos admin grid:
+ * title (with excerpt), slug, status, locale, author, created, published,
+ * actions.
+ *
+ * Sorting is owned by `PostSortSelect` (the sort is part of the keyset request,
+ * not a client-side reorder), so no column enables the client sort menu;
+ * filtering is owned by the text-filter controls next to it, which reset the
+ * cursor atomically when a filter changes.
+ */
 export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSummary, any>[] {
   return [
   {
@@ -27,18 +55,34 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Title' />
     ),
-    cell: ({ getValue }) => (
-      <div className='max-w-[300px] truncate font-medium'>
-        {String(getValue() ?? '')}
+    cell: ({ row }) => (
+      <div className='max-w-[300px]'>
+        <div className='truncate font-medium'>{row.original.title}</div>
+        {row.original.excerpt ? (
+          <div className='truncate text-xs text-muted-foreground'>
+            {row.original.excerpt}
+          </div>
+        ) : null}
       </div>
     ),
+    enableSorting: false,
     meta: {
-      label: 'Title',
-      placeholder: 'Search posts...',
-      variant: 'text',
-      icon: Text
-    },
-    enableColumnFilter: true
+      label: 'Title'
+    }
+  },
+  {
+    id: 'slug',
+    accessorKey: 'slug',
+    header: 'Slug',
+    cell: ({ getValue }) => (
+      <span className='text-muted-foreground truncate'>
+        {String(getValue() ?? '—')}
+      </span>
+    ),
+    enableSorting: false,
+    meta: {
+      label: 'Slug'
+    }
   },
   {
     id: 'status',
@@ -58,28 +102,65 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
         </Badge>
       );
     },
-    enableColumnFilter: false
-  },
-  {
-    accessorKey: 'authorId',
-    header: 'Author'
-  },
-  {
-    accessorKey: 'createdAt',
-    header: 'Created',
-    cell: ({ getValue }) => {
-      const raw = getValue() as string | undefined;
-      if (!raw) return '—';
-      return new Date(raw).toLocaleDateString();
+    enableSorting: false,
+    meta: {
+      label: 'Status'
     }
   },
   {
+    id: 'locale',
+    accessorKey: 'effectiveLocale',
+    header: 'Locale',
+    cell: ({ getValue }) => (
+      <span className='text-muted-foreground'>
+        {String(getValue() ?? '')}
+      </span>
+    ),
+    enableSorting: false,
+    meta: {
+      label: 'Locale'
+    }
+  },
+  {
+    id: 'author',
+    accessorKey: 'authorId',
+    header: 'Author',
+    cell: ({ row }) => (
+      <span className='text-muted-foreground truncate'>
+        {authorCell(row.original)}
+      </span>
+    ),
+    enableSorting: false,
+    meta: {
+      label: 'Author'
+    }
+  },
+  {
+    id: 'createdAt',
+    accessorKey: 'createdAt',
+    header: 'Created',
+    cell: ({ row }) => (
+      <span className='text-muted-foreground'>
+        {dateCell(row.original.createdAt)}
+      </span>
+    ),
+    enableSorting: false,
+    meta: {
+      label: 'Created'
+    }
+  },
+  {
+    id: 'publishedAt',
     accessorKey: 'publishedAt',
     header: 'Published',
-    cell: ({ getValue }) => {
-      const raw = getValue() as string | null | undefined;
-      if (!raw) return '—';
-      return new Date(raw).toLocaleDateString();
+    cell: ({ row }) => (
+      <span className='text-muted-foreground'>
+        {dateCell(row.original.publishedAt)}
+      </span>
+    ),
+    enableSorting: false,
+    meta: {
+      label: 'Published'
     }
   },
   {

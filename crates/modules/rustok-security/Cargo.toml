@@ -2,6 +2,7 @@
 name = "rustok-security"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Security Suite and Threat Protection module for RusToK"
 repository.workspace = true
@@ -34,5 +35,6 @@ tokio = { workspace = true, features = ["full", "macros"] }
 [features]
 default = ["captcha-http"]
 captcha-http = ["dep:reqwest"]
+
 [package.metadata.cargo-udeps.ignore]
 normal = ["rustok-outbox"]

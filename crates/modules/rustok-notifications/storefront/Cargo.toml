@@ -2,8 +2,15 @@
 name = "rustok-notifications-storefront"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Module-owned Leptos storefront package for notifications"
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["rlib"]

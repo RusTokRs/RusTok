@@ -26,6 +26,16 @@ pub struct CosignTrustVerifier {
     timeout: Duration,
 }
 
+impl std::fmt::Debug for CosignTrustVerifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosignTrustVerifier")
+            .field("program", &self.program)
+            .field("policy", &self.policy)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
+}
+
 impl CosignTrustVerifier {
     pub fn new(policy: VerificationPolicy) -> Self {
         Self {

@@ -26,4 +26,7 @@ Module-owned storefront UI package for `rustok-payment`.
 
 `rustok-commerce-storefront` may temporarily pass checkout-orchestration payment collection snapshots into this package and execute the async native/GraphQL orchestration callback, but presentation ownership, payment request construction, and create/reuse command metadata stay here.
 
-See the platform documentation map in [`../../../docs/index.md`](../../../../docs/index.md).
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)
+- See the platform documentation map in [`../../../docs/index.md`](../../../../docs/index.md).

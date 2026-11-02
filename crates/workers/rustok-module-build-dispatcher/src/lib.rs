@@ -48,6 +48,14 @@ pub struct IggyModuleBuildDeliverySource {
     pending: Mutex<Option<(Uuid, ConsumedEvent)>>,
 }
 
+impl std::fmt::Debug for IggyModuleBuildDeliverySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IggyModuleBuildDeliverySource")
+            .field("consumer_group", &MODULE_BUILD_CONSUMER_GROUP)
+            .finish()
+    }
+}
+
 impl IggyModuleBuildDeliverySource {
     /// Opens the module-build consumer group on an already initialized remote
     /// Iggy transport. The configured broker topology must provision the
@@ -178,6 +186,13 @@ pub struct ModuleBuildDeliveryConsumer<'a, W: ?Sized> {
     worker: &'a W,
 }
 
+impl<'a, W: ?Sized> std::fmt::Debug for ModuleBuildDeliveryConsumer<'a, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleBuildDeliveryConsumer")
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a, W> ModuleBuildDeliveryConsumer<'a, W>
 where
     W: ModuleBuildWorker + ?Sized,
@@ -234,6 +249,9 @@ fn map_delivery_error(
         error => Err(error),
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
 
 #[cfg(test)]
 mod tests {

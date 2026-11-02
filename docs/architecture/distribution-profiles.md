@@ -77,7 +77,7 @@ RusToK defines 6 standard platform distribution profiles:
   - *All `core` modules*
   - **Publishing:** `rustok-content`, `rustok-pages`, `rustok-page-builder`, `rustok-blog`
   - **Rich Media & Assets:** `rustok-media`, `rustok-storage`, `rustok-taxonomy`
-  - **Interactivity:** `rustok-comments`, `rustok-forms-module`, `rustok-seo`
+  - **Interactivity:** `rustok-comments`, `rustok-forms`, `rustok-seo`
   - **Localization:** `rustok-translation`
 - **Excluded:** Cart, checkout, payments, inventory, messenger, video calls.
 

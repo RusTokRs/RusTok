@@ -232,7 +232,7 @@ pub fn ResetButton(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_forms::FormState;
+    use rustok_ui_forms::FormState;
 
     #[test]
     fn test_submit_button_idle_renders_children() {

@@ -136,7 +136,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         match transaction.commit().await {
             Ok(()) => Ok(Some(claim)),
             Err(error) => {
-                tracing::warn!(error = %error, claim_token = %claim_token, "Comments schedule audit claim commit acknowledgement was ambiguous");
+                tracing::warn!(error = %error, request_id = %claim.request_id, "Comments schedule audit claim commit acknowledgement was ambiguous");
                 self.reconcile_claim(claim_token).await.map(Some)
             }
         }

@@ -30,4 +30,5 @@ Leptos admin UI adapter package for the `rustok-rbac` module.
 
 ## Documentation
 
+- [CRATE_API.md](CRATE_API.md)
 - See [platform docs](../../../../docs/index.md).

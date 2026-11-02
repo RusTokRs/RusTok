@@ -1,9 +1,9 @@
-#![deny(clippy::float_arithmetic)]
+//! # RusToK Marketplace Payout
+//!
+//! Native module owner for Marketplace Family seller payout scheduling and ledger-entry assignments.
+//! Coordinates seller payout batches, payout provider dispatches, and settlement lifecycle tracking.
 
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+#![deny(clippy::float_arithmetic)]
 
 mod receipts;
 #[cfg(test)]
@@ -13,52 +13,19 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod service;
 
-pub use dto::*;
+pub use dto::{
+    ListMarketplaceSellerPayoutsRequest, MAX_PAYOUTS_PER_PAGE, MAX_PAYOUT_ITEMS_PER_BATCH,
+    MarketplacePayoutItemResponse, MarketplacePayoutListResponse, MarketplacePayoutResponse,
+    MarketplacePayoutStatus, ReadMarketplacePayoutRequest, ScheduleMarketplacePayoutInput,
+};
 pub use error::{MarketplacePayoutError, MarketplacePayoutResult};
-pub use ports::*;
+pub use module::MarketplacePayoutModule;
+pub use ports::{MarketplacePayoutCommandPort, MarketplacePayoutReadPort};
 pub use service::MarketplacePayoutService;
 
-/// Owns seller payout scheduling and ledger-entry assignment.
-pub struct MarketplacePayoutModule;
-
-#[async_trait]
-impl RusToKModule for MarketplacePayoutModule {
-    fn slug(&self) -> &'static str {
-        "marketplace_payout"
-    }
-
-    fn name(&self) -> &'static str {
-        "Marketplace Payout"
-    }
-
-    fn description(&self) -> &'static str {
-        "Marketplace Family seller payout scheduling owner"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_balance"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::ORDERS_READ,
-            Permission::ORDERS_LIST,
-            Permission::ORDERS_MANAGE,
-            Permission::MARKETPLACE_SELLERS_READ,
-            Permission::MARKETPLACE_SELLERS_MANAGE,
-        ]
-    }
-}
-
-impl MigrationSource for MarketplacePayoutModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

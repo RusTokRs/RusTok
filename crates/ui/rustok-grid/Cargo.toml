@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Framework-agnostic DataGrid state machine, column math, and filtering engine for RusToK"
-repository = "https://github.com/RusTokRs/RusTok"
-documentation = "https://docs.rs/rustok-grid"
+repository.workspace = true
+rust-version.workspace = true
 readme = "README.md"
 keywords = ["datagrid", "table", "pagination", "filtering", "state"]
 categories = ["web-programming", "gui", "data-structures"]
+
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

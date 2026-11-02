@@ -20,29 +20,47 @@ export interface EmailSettings {
 
 export type EmailSettingsInput = Partial<EmailSettings>;
 
+export const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
+  enabled: false,
+  provider: 'smtp',
+  from: 'noreply@example.com',
+  resetBaseUrl: 'https://example.com',
+  smtpHost: '',
+  smtpPort: 587,
+  smtpUsername: '',
+  smtpPassword: ''
+};
+
 // ---------- GraphQL ----------
 
-const PLATFORM_SETTINGS_QUERY = `
+export const PLATFORM_SETTINGS_QUERY = `
 query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
     settings
+    schemaVersion
   }
 }
 `;
 
-const UPDATE_PLATFORM_SETTINGS_MUTATION = `
+export const UPDATE_PLATFORM_SETTINGS_MUTATION = `
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
   updatePlatformSettings(input: $input) {
     success
     category
     settings
+    schemaVersion
   }
 }
 `;
 
+export interface EmailSettingsSnapshot {
+  settings: EmailSettings;
+  schemaVersion: number;
+}
+
 interface PlatformSettingsResponse {
-  platformSettings: { category: string; settings: string };
+  platformSettings: { category: string; settings: string; schemaVersion: number };
 }
 
 interface UpdateSettingsResponse {
@@ -50,6 +68,7 @@ interface UpdateSettingsResponse {
     success: boolean;
     category: string;
     settings: string;
+    schemaVersion: number;
   };
 }
 
@@ -57,7 +76,7 @@ interface UpdateSettingsResponse {
 
 export async function getEmailSettings(
   opts: GqlOpts = {}
-): Promise<EmailSettings> {
+): Promise<EmailSettingsSnapshot> {
   const data = await graphqlRequest<
     { category: string },
     PlatformSettingsResponse
@@ -68,22 +87,63 @@ export async function getEmailSettings(
     opts.tenantSlug
   );
 
-  return JSON.parse(data.platformSettings.settings) as EmailSettings;
+  const schemaVersion = data.platformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
+  try {
+    const parsed = JSON.parse(
+      data.platformSettings.settings ?? '{}'
+    ) as Partial<EmailSettings>;
+    return {
+      settings: { ...DEFAULT_EMAIL_SETTINGS, ...parsed },
+      schemaVersion
+    };
+  } catch {
+    return { settings: { ...DEFAULT_EMAIL_SETTINGS }, schemaVersion };
+  }
 }
 
 export async function updateEmailSettings(
   settings: EmailSettingsInput,
+  expectedSchemaVersion: number,
   opts: GqlOpts = {}
-): Promise<EmailSettings> {
+): Promise<EmailSettingsSnapshot> {
   const data = await graphqlRequest<
-    { input: { category: string; settings: string } },
+    {
+      input: {
+        category: string;
+        settings: string;
+        expectedSchemaVersion: number;
+      };
+    },
     UpdateSettingsResponse
   >(
     UPDATE_PLATFORM_SETTINGS_MUTATION,
-    { input: { category: 'email', settings: JSON.stringify(settings) } },
+    {
+      input: {
+        category: 'email',
+        settings: JSON.stringify(settings),
+        expectedSchemaVersion
+      }
+    },
     opts.token,
     opts.tenantSlug
   );
 
-  return JSON.parse(data.updatePlatformSettings.settings) as EmailSettings;
+  const schemaVersion = data.updatePlatformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
+  try {
+    const parsed = JSON.parse(
+      data.updatePlatformSettings.settings ?? '{}'
+    ) as Partial<EmailSettings>;
+    return {
+      settings: { ...DEFAULT_EMAIL_SETTINGS, ...parsed },
+      schemaVersion
+    };
+  } catch {
+    return { settings: { ...DEFAULT_EMAIL_SETTINGS }, schemaVersion };
+  }
 }

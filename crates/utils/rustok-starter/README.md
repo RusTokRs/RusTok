@@ -1,5 +1,7 @@
 # rustok-starter
 
+Public surface and contract invariants are documented in [CRATE_API.md](CRATE_API.md).
+
 ## Purpose
 
 `rustok-starter` owns the canonical declarative Starter Blueprint models and data import engine for RusToK.

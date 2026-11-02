@@ -57,6 +57,11 @@ export interface MarketplaceModule {
   installed: boolean;
   installedVersion?: string | null;
   updateAvailable: boolean;
+  registryLifecycle?: {
+    latestRequest?: { id: string; revision: number; status: string } | null;
+    latestRelease?: { version: string; status: string } | null;
+    governanceActions: RegistryGovernanceAction[];
+  } | null;
 }
 
 export interface MarketplaceModuleVersion {
@@ -197,10 +202,11 @@ export interface RegistryGovernanceAction {
 }
 
 export interface RegistryPublishStatusContract {
-  schema_version: number;
   request_id: string;
+  revision: number;
   slug: string;
   version: string;
+  artifactOrigin: string;
   status: string;
   accepted: boolean;
   warnings: string[];
@@ -354,6 +360,11 @@ query Marketplace(
     installed
     installedVersion
     updateAvailable
+    registryLifecycle {
+      latestRequest { id revision status }
+      latestRelease { version status }
+      governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive }
+    }
   }
 }
 `;
@@ -391,6 +402,11 @@ query MarketplaceModule($slug: String!) {
     installed
     installedVersion
     updateAvailable
+    registryLifecycle {
+      latestRequest { id revision status }
+      latestRelease { version status }
+      governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive }
+    }
   }
 }
 `;
@@ -561,6 +577,14 @@ mutation RollbackTenantArtifact(
 }
 `;
 
+const ROLLBACK_MODULE_TRANSITION_MUTATION = `
+mutation RollbackModuleTransition($operationId: UUID!, $reason: String!, $idempotencyKey: UUID!) {
+  rollbackModuleTransition(operationId: $operationId, reason: $reason, idempotencyKey: $idempotencyKey) {
+    operationId sourceInstallationId targetInstallationId sourceRevision targetRevision
+  }
+}
+`;
+
 const MODULE_OPERATION_RECOVERY_PLAN_QUERY = `
 query ModuleOperationRecoveryPlan($operationId: UUID!) {
   moduleOperationRecoveryPlan(operationId: $operationId) {
@@ -714,6 +738,10 @@ interface FinalizeModuleTransitionResponse {
 
 interface RollbackTenantArtifactResponse {
   rollbackTenantArtifact: ArtifactRollback;
+}
+
+interface RollbackModuleTransitionResponse {
+  rollbackModuleTransition: ArtifactRollback;
 }
 
 interface ModuleOperationRecoveryPlanResponse {
@@ -1125,6 +1153,24 @@ export async function rollbackTenantArtifact(
   return data.rollbackTenantArtifact;
 }
 
+export async function rollbackModuleTransition(
+  operationId: string,
+  reason: string,
+  idempotencyKey: string,
+  opts: GqlOpts = {}
+): Promise<ArtifactRollback> {
+  const data = await graphqlRequest<
+    { operationId: string; reason: string; idempotencyKey: string },
+    RollbackModuleTransitionResponse
+  >(
+    ROLLBACK_MODULE_TRANSITION_MUTATION,
+    { operationId, reason, idempotencyKey },
+    opts.token,
+    opts.tenantSlug
+  );
+  return data.rollbackModuleTransition;
+}
+
 export async function getModuleOperationRecoveryPlan(
   operationId: string,
   opts: GqlOpts = {}
@@ -1204,7 +1250,8 @@ async function governanceRestRequest<B, T>(
   method: string,
   path: string,
   body?: B,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<T> {
   const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
   const url = new URL(path.startsWith('/') ? path : `/${path}`, base);
@@ -1220,6 +1267,9 @@ async function governanceRestRequest<B, T>(
   }
   if (opts.tenantId) {
     headers['X-Tenant-ID'] = opts.tenantId;
+  }
+  if (method !== 'GET') {
+    headers['Idempotency-Key'] = idempotencyKey ?? crypto.randomUUID();
   }
 
   const response = await fetch(url.toString(), {
@@ -1245,7 +1295,7 @@ export async function fetchRegistryPublishRequestStatus(
 ): Promise<RegistryPublishStatusContract> {
   return governanceRestRequest<undefined, RegistryPublishStatusContract>(
     'GET',
-    `/v2/catalog/publish/${requestId}`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}`,
     undefined,
     opts
   );
@@ -1254,13 +1304,15 @@ export async function fetchRegistryPublishRequestStatus(
 export async function validateRegistryPublishRequest(
   requestId: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/validate`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/validate`,
     { schema_version: 1, dry_run: dryRun },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1269,18 +1321,20 @@ export async function approveRegistryPublishRequest(
   reason?: string,
   reasonCode?: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/approve`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/approve`,
     {
       schema_version: 1,
       dry_run: dryRun,
       reason: reason || undefined,
       reason_code: reasonCode || undefined
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1289,18 +1343,20 @@ export async function rejectRegistryPublishRequest(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/reject`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/reject`,
     {
       schema_version: 1,
       dry_run: dryRun,
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1309,18 +1365,20 @@ export async function requestChangesRegistryPublishRequest(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/request-changes`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/request-changes`,
     {
       schema_version: 1,
       dry_run: dryRun,
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1329,18 +1387,20 @@ export async function holdRegistryPublishRequest(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/hold`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/hold`,
     {
       schema_version: 1,
       dry_run: dryRun,
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1349,18 +1409,20 @@ export async function resumeRegistryPublishRequest(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
-    `/v2/catalog/publish/${requestId}/resume`,
+    `/v2/catalog/publish/${encodeURIComponent(requestId)}/resume`,
     {
       schema_version: 1,
       dry_run: dryRun,
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1370,7 +1432,8 @@ export async function transferRegistryOwner(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
@@ -1383,7 +1446,8 @@ export async function transferRegistryOwner(
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }
 
@@ -1393,7 +1457,8 @@ export async function yankRegistryRelease(
   reason: string,
   reasonCode: string,
   dryRun = false,
-  opts: GqlOpts = {}
+  opts: GqlOpts = {},
+  idempotencyKey?: string
 ): Promise<RegistryMutationResult> {
   return governanceRestRequest(
     'POST',
@@ -1406,6 +1471,7 @@ export async function yankRegistryRelease(
       reason,
       reason_code: reasonCode
     },
-    opts
+    opts,
+    idempotencyKey
   );
 }

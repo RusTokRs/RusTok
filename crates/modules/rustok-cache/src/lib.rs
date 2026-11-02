@@ -52,7 +52,7 @@ pub use settings::{
     redis_url_has_password, redis_url_without_credentials, redis_url_without_password,
     resolve_redis_url, same_redis_target,
 };
-pub use settings_admin::{CacheSettingsAdminPort, SharedCacheSettingsAdmin};
+pub use settings_admin::{CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin};
 
 pub use backend_generation::{
     CacheBackendGenerationError, CacheBackendGenerationSnapshot,

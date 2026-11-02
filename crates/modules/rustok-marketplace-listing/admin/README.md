@@ -17,4 +17,7 @@ The package consumes Marketplace Listing owner contracts and shared UI/GraphQL l
 - `src/lib.rs` — public admin package surface.
 - `src/transport.rs` — native and GraphQL transport adapters.
 
+## Documentation
+- [CRATE_API.md](CRATE_API.md)
+
 See the [Marketplace Listing documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).

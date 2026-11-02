@@ -1,3 +1,5 @@
+//! # rustok-storage
+//!
 //! Runtime construction and canonical object-key policy for RusToK.
 //!
 //! Domain owners use [`object_store::ObjectStore`] directly. This crate does
@@ -5,6 +7,9 @@
 
 mod key;
 mod runtime;
+
+#[cfg(test)]
+mod contract_tests;
 
 pub use key::{DigestObjectKey, KeyError, ObjectKey, ObjectScope, ObjectZone};
 pub use object_store;

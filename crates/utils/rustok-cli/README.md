@@ -40,4 +40,4 @@ distribution and module command entrypoints.
   `rustok-modules-cli`.
 - Must not depend on `apps/server` or domain crates directly as a central command dump.
 
-See [docs](docs/README.md).
+See [docs](docs/README.md) and [CRATE_API.md](CRATE_API.md).

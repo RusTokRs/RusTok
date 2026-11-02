@@ -2,8 +2,15 @@
 name = "rustok-marketplace-listing"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Marketplace Family seller listing identity, commercial terms, lifecycle, and eligibility owner"
+repository.workspace = true
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-graphql = { workspace = true, optional = true }

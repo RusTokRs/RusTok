@@ -15,7 +15,7 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -26,8 +26,8 @@ use crate::backend::SupportedBackend;
 use crate::installation::{sha256_digest, valid_digest};
 use crate::{
     ArtifactBlobStore, ArtifactPayloadKind, ControlPlaneInfrastructure, InstalledModuleArtifact,
-    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationError, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind,
+    ModuleArtifactDescriptor, ModuleCommandContext, ModuleInstallationError,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -708,6 +708,7 @@ impl ExecutorReadinessService {
                     "receipt validity window exceeds the supported timestamp range".to_string(),
                 )
             })?;
+        let scope = command.target.installed_artifact.scope.clone();
         let receipt = ExecutorSmokeReceipt {
             id: self.infrastructure.new_id(),
             operation_id: command.operation_id,
@@ -727,7 +728,7 @@ impl ExecutorReadinessService {
             valid_until,
         };
 
-        self.persist_receipt(&receipt).await?;
+        self.persist_receipt(&receipt, &scope).await?;
 
         Ok(receipt)
     }
@@ -735,6 +736,7 @@ impl ExecutorReadinessService {
     async fn persist_receipt(
         &self,
         receipt: &ExecutorSmokeReceipt,
+        scope: &ModuleInstallationScope,
     ) -> Result<(), ExecutorReadinessError> {
         let backend = SupportedBackend::new(self.db.get_database_backend())
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
@@ -742,7 +744,11 @@ impl ExecutorReadinessService {
             SandboxExecutorPlacement::InProcess => "in_process",
             SandboxExecutorPlacement::IsolatedWorker => "isolated_worker",
         };
-        let placeholders = (1..=16)
+        let (scope_kind, scope_tenant_key) = match scope {
+            ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+        };
+        let placeholders = (1..=18)
             .map(|position| backend.placeholder(position))
             .collect::<Vec<_>>()
             .join(", ");
@@ -753,7 +759,7 @@ impl ExecutorReadinessService {
                     id, operation_id, installation_id, release_digest, payload_digest, \
                     runtime_fingerprint, pool_id, pool_generation, placement, \
                     placement_policy_revision, capability_routes_verified, smoke_passed, \
-                    smoke_binding_id, smoke_output_digest, evaluated_at, valid_until\
+                    smoke_binding_id, smoke_output_digest, evaluated_at, valid_until, scope_kind, scope_tenant_key\
                  ) VALUES ({placeholders})"
             ),
             vec![
@@ -785,11 +791,24 @@ impl ExecutorReadinessService {
                 receipt.smoke_output_digest.clone().into(),
                 backend.datetime_value(receipt.evaluated_at),
                 backend.datetime_value(receipt.valid_until),
+                scope_kind.into(),
+                scope_tenant_key.into(),
             ],
         );
 
-        self.db
-            .execute_raw(statement)
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        tx.execute_raw(statement)
+            .await
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+
+        tx.commit()
             .await
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
 
@@ -799,6 +818,9 @@ impl ExecutorReadinessService {
     /// Queries the latest durable readiness receipt for a release on a given pool and generation.
     pub async fn get_receipt(
         &self,
+        scope: &ModuleInstallationScope,
+        operation_id: Uuid,
+        installation_id: Uuid,
         release_digest: &str,
         pool_id: &str,
         pool_generation: u64,
@@ -806,6 +828,10 @@ impl ExecutorReadinessService {
     ) -> Result<Option<ExecutorSmokeReceipt>, ExecutorReadinessError> {
         let backend = SupportedBackend::new(self.db.get_database_backend())
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let (scope_kind, scope_tenant_key) = match scope {
+            ModuleInstallationScope::Platform => ("platform", "platform".to_string()),
+            ModuleInstallationScope::Tenant { tenant_id } => ("tenant", tenant_id.to_string()),
+        };
         let statement = Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
@@ -815,12 +841,17 @@ impl ExecutorReadinessService {
                         smoke_binding_id, smoke_output_digest, evaluated_at, valid_until \
                  FROM module_executor_readiness_receipts \
                  WHERE release_digest = {} AND pool_id = {} AND pool_generation = {} \
-                   AND runtime_fingerprint = {} \
+                   AND runtime_fingerprint = {} AND scope_kind = {} AND scope_tenant_key = {} \
+                   AND operation_id = {} AND installation_id = {} \
                  ORDER BY evaluated_at DESC, id DESC LIMIT 1",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.placeholder(3),
                 backend.placeholder(4),
+                backend.placeholder(5),
+                backend.placeholder(6),
+                backend.placeholder(7),
+                backend.placeholder(8),
             ),
             vec![
                 release_digest.to_owned().into(),
@@ -833,11 +864,22 @@ impl ExecutorReadinessService {
                     })?
                     .into(),
                 runtime_fingerprint.to_owned().into(),
+                scope_kind.into(),
+                scope_tenant_key.into(),
+                backend.uuid_value(operation_id),
+                backend.uuid_value(installation_id),
             ],
         );
 
-        let row = self
+        let tx = self
             .db
+            .begin()
+            .await
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        crate::backend::set_installation_scope(&tx, scope)
+            .await
+            .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
+        let row = tx
             .query_one_raw(statement)
             .await
             .map_err(|e| ExecutorReadinessError::Store(e.to_string()))?;
@@ -931,8 +973,9 @@ impl ExecutorReadinessService {
     /// automatic mode is strictly denied.
     pub async fn check_automatic_mode_eligibility(
         &self,
-        candidate_release_digest: &str,
-        predecessor_release_digest: Option<&str>,
+        operation_id: Uuid,
+        candidate: &InstalledModuleArtifact,
+        predecessor: Option<&InstalledModuleArtifact>,
         pools: &[ExecutorPoolIdentity],
         policy: &OwnerPlacementPolicy,
     ) -> Result<(), ExecutorReadinessError> {
@@ -942,6 +985,13 @@ impl ExecutorReadinessService {
             ));
         }
 
+        if operation_id.is_nil() || predecessor.is_some_and(|prior| prior.scope != candidate.scope)
+        {
+            return Err(ExecutorReadinessError::InvalidCommand(
+                "readiness requires one operation and one installation scope".into(),
+            ));
+        }
+        let candidate_release_digest = candidate.reference.digest.as_str();
         let now = self.infrastructure.now();
         for pool in pools {
             pool.validate()?;
@@ -951,6 +1001,9 @@ impl ExecutorReadinessService {
             // Candidate check
             let candidate_receipt = self
                 .get_receipt(
+                    &candidate.scope,
+                    operation_id,
+                    candidate.installation_id,
                     candidate_release_digest,
                     &pool.pool_id,
                     pool.pool_generation,
@@ -958,7 +1011,9 @@ impl ExecutorReadinessService {
                 )
                 .await?;
             match candidate_receipt {
-                Some(r) if r.is_valid_for_at(pool, policy, now) => {}
+                Some(r)
+                    if r.payload_digest == candidate.descriptor.artifact_digest
+                        && r.is_valid_for_at(pool, policy, now) => {}
                 Some(_) => {
                     return Err(ExecutorReadinessError::AutomaticModeDenied(format!(
                         "candidate `{candidate_release_digest}` has invalid or failed smoke receipt on pool `{}` generation {}",
@@ -974,12 +1029,23 @@ impl ExecutorReadinessService {
             }
 
             // Predecessor check (if updating an existing installation)
-            if let Some(pred_digest) = predecessor_release_digest {
+            if let Some(predecessor) = predecessor {
+                let pred_digest = predecessor.reference.digest.as_str();
                 let pred_receipt = self
-                    .get_receipt(pred_digest, &pool.pool_id, pool.pool_generation, &fp)
+                    .get_receipt(
+                        &predecessor.scope,
+                        operation_id,
+                        predecessor.installation_id,
+                        pred_digest,
+                        &pool.pool_id,
+                        pool.pool_generation,
+                        &fp,
+                    )
                     .await?;
                 match pred_receipt {
-                    Some(r) if r.is_valid_for_at(pool, policy, now) => {}
+                    Some(r)
+                        if r.payload_digest == predecessor.descriptor.artifact_digest
+                            && r.is_valid_for_at(pool, policy, now) => {}
                     Some(_) => {
                         return Err(ExecutorReadinessError::AutomaticModeDenied(format!(
                             "predecessor `{pred_digest}` has invalid or failed smoke receipt on pool `{}` generation {} (rollback readiness unproven)",

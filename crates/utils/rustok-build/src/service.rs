@@ -22,6 +22,12 @@ pub struct BuildService {
     event_publisher: Arc<dyn BuildEventPublisher>,
 }
 
+impl std::fmt::Debug for BuildService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuildService").finish()
+    }
+}
+
 impl BuildService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {

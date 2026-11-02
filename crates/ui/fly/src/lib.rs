@@ -237,4 +237,6 @@ pub const RICH_TEXT_PAYLOAD_FORMAT: &str = "fly_rich_text_payload";
 pub type FlyResult<T> = Result<T, FlyError>;
 
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod tests;

@@ -39,15 +39,15 @@ pub async fn render_rss_feed(
         Err(_) => return Err("Blog module state is unavailable"),
     }
 
-    if auth_context.is_none() {
-        if let Some(channel_id) = request_context.and_then(|context| context.channel_id) {
-            let enabled = rustok_channel::ChannelService::new(runtime.db_clone())
-                .is_module_enabled_for_tenant(tenant_id, channel_id, "blog")
-                .await
-                .map_err(|_| "Blog channel state is unavailable")?;
-            if !enabled {
-                return Err("Blog is not enabled for this channel");
-            }
+    if auth_context.is_none()
+        && let Some(channel_id) = request_context.and_then(|context| context.channel_id)
+    {
+        let enabled = rustok_channel::ChannelService::new(runtime.db_clone())
+            .is_module_enabled_for_tenant(tenant_id, channel_id, "blog")
+            .await
+            .map_err(|_| "Blog channel state is unavailable")?;
+        if !enabled {
+            return Err("Blog is not enabled for this channel");
         }
     }
 
@@ -96,7 +96,11 @@ pub async fn render_rss_feed(
         .map_err(|_| "Blog feed cannot be loaded")?;
 
     let is_ru = locale.starts_with("ru");
-    let title = if is_ru { "Блог RusToK" } else { "RusToK Blog" };
+    let title = if is_ru {
+        "Блог RusToK"
+    } else {
+        "RusToK Blog"
+    };
     let description = if is_ru {
         "Последние статьи и публикации RusToK"
     } else {

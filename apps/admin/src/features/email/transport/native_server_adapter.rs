@@ -53,26 +53,32 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
         let statement = match runtime.db().get_database_backend() {
             DbBackend::Sqlite => Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "SELECT settings FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
+                "SELECT settings, schema_version FROM platform_settings WHERE tenant_id = ?1 AND category = ?2 LIMIT 1",
                 vec![tenant.id.into(), "email".into()],
             ),
             _ => Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "SELECT settings FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1",
+                "SELECT settings, schema_version FROM platform_settings WHERE tenant_id = $1 AND category = $2 LIMIT 1",
                 vec![tenant.id.into(), "email".into()],
             ),
         };
-        let settings = match runtime
+        let (settings, schema_version) = match runtime
             .db()
             .query_one_raw(statement)
             .await
             .map_err(|err| server_error(err.to_string()))?
         {
-            Some(row) => row
-                .try_get::<Value>("", "settings")
-                .map(|value| value.to_string())
-                .or_else(|_| row.try_get::<String>("", "settings"))
-                .map_err(|err| server_error(err.to_string()))?,
+            Some(row) => {
+                let settings = row
+                    .try_get::<Value>("", "settings")
+                    .map(|value| value.to_string())
+                    .or_else(|_| row.try_get::<String>("", "settings"))
+                    .map_err(|err| server_error(err.to_string()))?;
+                let schema_version = row
+                    .try_get::<i32>("", "schema_version")
+                    .map_err(|err| server_error(err.to_string()))?;
+                (settings, schema_version)
+            }
             None => {
                 let root = runtime
                     .shared_get::<HostSettingsSnapshot>()
@@ -83,16 +89,20 @@ pub(super) async fn email_settings_native() -> Result<PlatformSettingsResponse, 
                     .and_then(|value| value.get("email"))
                     .cloned()
                     .unwrap_or_else(|| serde_json::json!({}));
-                serde_json::json!({
+                let settings = serde_json::json!({
                     "smtp_host": email.pointer("/smtp/host").and_then(|value| value.as_str()).unwrap_or("localhost"),
                     "smtp_port": email.pointer("/smtp/port").and_then(|value| value.as_u64()).unwrap_or(1025),
                     "smtp_username": email.pointer("/smtp/username").and_then(|value| value.as_str()).unwrap_or(""),
                     "from_address": email.get("from").and_then(|value| value.as_str()).unwrap_or("no-reply@rustok.local"),
-                }).to_string()
+                }).to_string();
+                (settings, 0)
             }
         };
         Ok(PlatformSettingsResponse {
-            platform_settings: PlatformSettingsPayload { settings },
+            platform_settings: PlatformSettingsPayload {
+                settings,
+                schema_version,
+            },
         })
     }
     #[cfg(not(feature = "ssr"))]

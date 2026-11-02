@@ -53,12 +53,13 @@ const fallback = parse(files.fallback);
 const blogRegistry = parse(files.blogRegistry);
 const commentsRegistry = parse(files.commentsRegistry);
 const readme = read(files.readme);
-const ui = read(files.ui);
+const selectedPostUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs';
+const ui = read(files.ui) + '\n' + read(selectedPostUiPath);
 const graphql = read(files.graphql);
 const native = read(files.native);
 const facade = read(files.facade);
 const model = read(files.model);
-const commentService = read('crates/modules/rustok-blog/src/services/comment.rs');
+const commentService = read('crates/modules/rustok-blog/src/services/comment.rs') + '\n' + read('crates/modules/rustok-blog/src/services/comment/commands.rs');
 // The pre-create admission and the post-create revalidation both go through
 // ensure_public_comment_creation_allowed (comments mode + public post
 // visibility), which itself delegates to ensure_public_post_visible.
@@ -79,12 +80,18 @@ need(
 );
 need(
   commentService,
-  'compensate_created_public_comment(',
+  'compensate_created_comment(',
+  'comment service',
+);
+// rustfmt breaks the `if let` across lines; pin the two halves separately.
+need(
+  commentService,
+  'if let Err(compensation_error) =',
   'comment service',
 );
 need(
   commentService,
-  'if let Err(compensation_error) = self',
+  'self.compensate_created_comment(tenant_id, record.id)',
   'comment service',
 );
 need(
@@ -99,7 +106,7 @@ need(
 );
 need(
   commentService,
-  'public visibility could not be confirmed after comment creation',
+  'target policy could not be confirmed after comment creation',
   'comment service',
 );
 need(
@@ -109,11 +116,11 @@ need(
 );
 need(
   commentService,
-  'compensate_created_public_comment',
+  'compensate_created_comment',
   'comment service',
 );
 if (commentService.includes(
-  'compensate_created_public_comment(tenant_id, &security, record.id)',
+  'compensate_created_comment(tenant_id, &security',
 )) {
   failures.push('comment service: compensation must not reuse the caller security context');
 }

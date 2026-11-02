@@ -34,6 +34,8 @@ pub mod toc;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod contract_tests;
 
 pub use alert::Alert;
 pub use avatar::Avatar;

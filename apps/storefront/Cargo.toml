@@ -3,7 +3,14 @@ name = "rustok-storefront"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+description = "Canonical Leptos 0.8 e-commerce storefront application host for RusToK"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -108,7 +115,7 @@ leptos-auth = { workspace = true }
 rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-ui-routing.workspace = true
-rustok-forms = { workspace = true }
+rustok-ui-forms = { workspace = true }
 leptos-use = { workspace = true }
 rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -180,7 +187,7 @@ normal = [
   "leptos-auth",
   "rustok-graphql",
   "rustok-ui-transport",
-  "rustok-forms",
+  "rustok-ui-forms",
   "leptos-use",
   "rustok-ui-i18n",
   "leptos_router",
@@ -210,7 +217,7 @@ normal = [
 [package.metadata.cargo-machete]
 ignored = [
   "futures",
-  "rustok-forms",
+  "rustok-ui-forms",
   "leptos-ui-routing",
   "leptos-use",
   "rustok-ui-i18n",
@@ -228,3 +235,7 @@ ignored = [
   "rustok-calls-storefront",
   "rustok-calendar-storefront",
 ]
+
+[lints]
+workspace = true
+

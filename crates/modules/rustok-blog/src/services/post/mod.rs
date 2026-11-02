@@ -1,7 +1,7 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     Order, QueryFilter, QueryOrder, QuerySelect, Select, Set, TransactionTrait,
-    sea_query::{NullOrdering, Query, SelectStatement},
+    sea_query::{Expr, ExprTrait, Func, LikeExpr, NullOrdering, Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -100,6 +100,116 @@ fn apply_tag_filter(
         .to_owned();
 
     select.filter(blog_post::Column::Id.in_subquery(tagged_post_ids))
+}
+
+/// Escapes the SQL `LIKE` wildcards (`%`, `_`, `\`) so a text-filter needle
+/// matches its characters literally instead of broadening the pattern.
+fn escape_like_pattern(needle: &str) -> String {
+    let mut escaped = String::with_capacity(needle.len());
+    for ch in needle.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
+/// Normalizes an optional admin text filter: surrounding whitespace is trimmed,
+/// a needle that is empty afterwards means "no filter", and the length is capped
+/// so a pathological needle cannot bloat the SQL pattern.
+fn normalize_post_text_filter(
+    value: Option<&str>,
+    field: &'static str,
+) -> BlogResult<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > 255 {
+        return Err(BlogError::validation(format!(
+            "{field} filter must be at most 255 characters"
+        )));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+/// Prepared admin text filters for one list request.
+pub(super) struct PostListTextFilters {
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    /// Locale chain the title filter matches translations in: the same chain
+    /// (requested, explicit fallback, platform fallback) the projection
+    /// resolves the displayed title with.
+    pub title_locales: Vec<String>,
+}
+
+/// Normalizes the list text filters once and computes the title locale chain,
+/// so the query builder receives already-validated needles (or none at all).
+pub(super) fn prepare_post_list_text_filters(
+    query: &PostListQuery,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> BlogResult<PostListTextFilters> {
+    let title = normalize_post_text_filter(query.title.as_deref(), "title")?;
+    let slug = normalize_post_text_filter(query.slug.as_deref(), "slug")?;
+    // The resolver's final unordered fallback cannot be expressed as a SQL IN
+    // list and is intentionally out of the filter's reach: a post without a
+    // translation in the chain has no chain-resolved title to match.
+    let mut title_locales = Vec::new();
+    rustok_api::push_locale_candidate(&mut title_locales, Some(locale), false);
+    rustok_api::push_locale_candidate(&mut title_locales, fallback_locale, false);
+    rustok_api::push_locale_candidate(
+        &mut title_locales,
+        Some(PLATFORM_FALLBACK_LOCALE),
+        false,
+    );
+    Ok(PostListTextFilters {
+        slug,
+        title,
+        title_locales,
+    })
+}
+
+/// Case-insensitive substring filter on the post's own slug column.
+fn apply_post_slug_filter(
+    select: Select<blog_post::Entity>,
+    needle: &str,
+) -> Select<blog_post::Entity> {
+    let pattern = format!("%{}%", escape_like_pattern(needle)).to_lowercase();
+    select.filter(
+        Func::lower(Expr::col(blog_post::Column::Slug)).like(LikeExpr::new(pattern).escape('\\')),
+    )
+}
+
+/// Case-insensitive substring filter on the locale-resolved translation title.
+///
+/// The displayed title is the translation the projection resolves for the
+/// effective locale chain (requested, explicit fallback, platform fallback), so
+/// the filter subquery matches translations in the same chain. A post whose
+/// displayed title comes from the resolver's final unordered fallback (a post
+/// with no translation in any chain locale) is outside a title search's reach;
+/// such posts carry no title the requested locale chain can resolve.
+fn apply_post_title_filter(
+    select: Select<blog_post::Entity>,
+    needle: &str,
+    locales: &[String],
+) -> Select<blog_post::Entity> {
+    let pattern = format!("%{}%", escape_like_pattern(needle)).to_lowercase();
+    let matching_post_ids = Query::select()
+        .column(blog_post_translation::Column::PostId)
+        .from(blog_post_translation::Entity)
+        .and_where(blog_post_translation::Column::Locale.is_in(locales.to_vec()))
+        .and_where(
+            Func::lower(Expr::col(blog_post_translation::Column::Title))
+                .like(LikeExpr::new(pattern).escape('\\')),
+        )
+        .to_owned();
+
+    select.filter(blog_post::Column::Id.in_subquery(matching_post_ids))
 }
 
 fn resolve_translation_record<'a>(

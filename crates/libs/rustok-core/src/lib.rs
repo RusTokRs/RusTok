@@ -108,8 +108,8 @@ pub use migrations::{
     MigrationSafetyMetadata, ModuleMigration,
 };
 pub use module::{
-    MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
-    ModuleKind, ModuleRuntimeExtensions, RusToKModule,
+    MigrationSource, MigrationTrait, ModuleContext, ModuleEventListenerContext,
+    ModuleEventListenerRegistry, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
 pub use rbac::{
     PermissionScope, Rbac, SecurityActorKind, SecurityContext, infer_user_role_from_permissions,

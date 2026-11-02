@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-security-storefront
+//!
+//! Leptos storefront FFA package for the `rustok-security` module.
+//!
+//! Provides account protection views, verification dialogs, and security
+//! setting presentations for storefront users.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+pub use core::SecurityStorefrontViewModel;
+pub use transport::SecurityStorefrontTransport;
 pub use ui::SecurityStorefrontView;
+
+#[cfg(test)]
+mod contract_tests;

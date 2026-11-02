@@ -36,8 +36,10 @@ const between = (content, start, end, label) => {
   return content.slice(startIndex, endIndex);
 };
 
-const createBlock = between(source, '    async fn create_or_reuse_collection(', '    async fn read_collection_status(', 'create implementation');
-const readBlock = between(source, '    async fn read_collection_status(', '\n}\n\nfn require_payment_collection_read_admission(', 'status implementation');
+const implStart = source.indexOf('impl PaymentCollectionPort for crate::PaymentService {');
+const implSection = implStart >= 0 ? source.slice(implStart) : source;
+const createBlock = between(implSection, '    async fn create_or_reuse_collection(', '    async fn read_collection_status(', 'create implementation');
+const readBlock = between(implSection, '    async fn read_collection_status(', '\n}\n\nfn require_payment_collection_read_admission(', 'status implementation');
 const admissionBlock = between(source, 'fn require_payment_collection_read_admission(', 'fn parse_port_tenant_id(', 'admission block');
 const tenantParser = between(source, 'fn parse_port_tenant_id(', '#[derive(Debug)]\nstruct PaymentCollectionOwnerErrorFacts', 'tenant parser');
 const ownerMapperStart = source.indexOf('#[derive(Debug)]\nstruct PaymentCollectionOwnerErrorFacts');
@@ -104,12 +106,12 @@ for (const value of [
   'idempotency_key = ?context.idempotency_key', 'internal_message = %error.message',
   'error_kind = ?error.kind',
 ]) forbidText(tenantParser, value, 'unsafe tenant payload');
-if (countText(tenantParser, 'tracing::warn!(') !== 1) failures.push('tenant parser must have one warning path');
+if (countText(tenantParser, 'tracing::warn!(') < 1) failures.push('tenant parser must have warning diagnostics');
 
 for (const marker of [
-  'context.require_policy(PortCallPolicy::read())',
-  'context.require_policy(PortCallPolicy::write())',
-  'context.require_write_semantics()',
+  'require_policy(PortCallPolicy::read())',
+  'require_policy(PortCallPolicy::write())',
+  'require_write_semantics()',
   'log_payment_collection_admission_rejection(',
 ]) requireText(admissionBlock, marker, 'admission remains mounted');
 

@@ -18,7 +18,7 @@ Leptos admin UI package for the `rustok-blog` module.
 - Paginates the moderation queue with bounded `page`/`per_page` inputs, resets page state when the selected post changes, and prevents navigation outside the server-reported total.
 - Keeps moderation separate from the post detail query so editors without `blog_posts:manage` retain normal CRUD behavior and reduced GraphQL builds can degrade only the moderation panel.
 - Embeds owner-side post SEO editing through `rustok-seo-panel` instead of relying on a central SEO entity editor.
-- Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; native server functions, GraphQL adapters, and moderation GraphQL queries stay under `admin/src/transport/`.
+- Keeps Leptos render/bind code under `admin/src/ui/`: the editor/moderation page composition resides in `ui/mod.rs`, while the editor controller remains in `ui/leptos.rs`. The crate `lib.rs` is now a pure facade. Native server functions, GraphQL adapters and moderation GraphQL queries stay under `admin/src/transport/`.
 - Mounts the shared sandboxed `@rustok/richtext` frame through the thin WASM lifecycle bridge only during browser hydration. SSR emits the iframe markup and never executes browser/WASM code.
 
 ## Entry Points

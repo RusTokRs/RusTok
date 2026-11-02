@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readComposedRustSource } from './lib/rust-facade-source.mjs';
+import { readComposedRustSource, readRustModuleTree } from './lib/rust-facade-source.mjs';
 
 // This guard used to require that the files of the slice stayed byte-identical to a recorded git blob
 // SHA. A digest describes one commit, not an invariant: the pin fired on every legitimate edit of files
@@ -42,7 +42,9 @@ const lockPath = 'Cargo.lock';
 const runtime = readComposedRustSource(read, runtimePath);
 const adapter = readComposedRustSource(read, adapterPath);
 const migrationMod = read(migrationModPath);
-const migration = read(migrationPath);
+// The consolidated baseline declares its tables below its `schema/` module
+// tree, so the marker view is the composed module tree, not the entry file.
+const migration = readRustModuleTree(read, migrationPath);
 const plan = read(planPath);
 const evidence = JSON.parse(read(evidencePath));
 

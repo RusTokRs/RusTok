@@ -262,6 +262,7 @@ for (const marker of [
   "pub struct UserResponse",
   "pub struct UserInfo",
   "pub struct AuthResponse",
+  "pub struct CookieSessionResponse",
   "pub struct LogoutResponse",
 ]) {
   assertContains(restContract, marker, `${restContractPath}: missing auth-owned REST DTO marker ${marker}`);

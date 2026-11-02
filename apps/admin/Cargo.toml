@@ -3,7 +3,14 @@ name = "rustok-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+description = "Canonical Leptos 0.8 administration dashboard application host for RusToK"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -180,7 +187,7 @@ leptos-auth = { workspace = true, default-features = false }
 rustok-graphql = { workspace = true }
 leptos-ui-routing = { workspace = true }
 leptos-ui = { workspace = true }
-rustok-forms = { workspace = true }
+rustok-ui-forms = { workspace = true }
 leptos-use = { workspace = true }
 rustok-ui-i18n.workspace = true
 serde_urlencoded = { workspace = true }
@@ -286,7 +293,7 @@ normal = [
   "leptos-auth",
   "leptos_axum",
   "rustok-graphql",
-  "rustok-forms",
+  "rustok-ui-forms",
   "leptos-use",
   "rustok-ui-i18n",
   "gloo-storage",
@@ -385,3 +392,7 @@ ignored = [
   "rustok-calendar-admin",
   "rustok-tasks-admin",
 ]
+
+[lints]
+workspace = true
+

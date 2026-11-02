@@ -66,16 +66,16 @@ impl BruteForceTrackerPort for MokaBruteForceTracker {
         let now_secs = Utc::now().timestamp().max(0) as u64;
 
         if let Some(record) = self.cache.get(&key).await {
-            if let Some(until) = record.locked_until_secs {
-                if until > now_secs {
-                    let remaining = until - now_secs;
-                    return Ok(LockoutDecision {
-                        is_locked: true,
-                        failed_attempts: record.failed_count,
-                        max_attempts: record.failed_count,
-                        remaining_lockout_secs: Some(remaining),
-                    });
-                }
+            if let Some(until) = record.locked_until_secs
+                && until > now_secs
+            {
+                let remaining = until - now_secs;
+                return Ok(LockoutDecision {
+                    is_locked: true,
+                    failed_attempts: record.failed_count,
+                    max_attempts: record.failed_count,
+                    remaining_lockout_secs: Some(remaining),
+                });
             }
             Ok(LockoutDecision {
                 is_locked: false,
@@ -110,16 +110,16 @@ impl BruteForceTrackerPort for MokaBruteForceTracker {
         });
 
         // Check if currently locked
-        if let Some(until) = record.locked_until_secs {
-            if until > now_secs {
-                let remaining = until - now_secs;
-                return Ok(LockoutDecision {
-                    is_locked: true,
-                    failed_attempts: record.failed_count,
-                    max_attempts,
-                    remaining_lockout_secs: Some(remaining),
-                });
-            }
+        if let Some(until) = record.locked_until_secs
+            && until > now_secs
+        {
+            let remaining = until - now_secs;
+            return Ok(LockoutDecision {
+                is_locked: true,
+                failed_attempts: record.failed_count,
+                max_attempts,
+                remaining_lockout_secs: Some(remaining),
+            });
         }
 
         record.failed_count += 1;

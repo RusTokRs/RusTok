@@ -2,6 +2,7 @@
 name = "rustok-translation"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Owner-safe translation workflow and inventory control plane for RusToK"
 repository.workspace = true

@@ -13,7 +13,7 @@ pub async fn fetch_overview(
     {
         native_server_adapter::fetch_overview(token, tenant_slug)
             .await
-            .map_err(|e| ApiError::Network(e))
+            .map_err(ApiError::Network)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -29,7 +29,7 @@ pub async fn fetch_channels(
     {
         native_server_adapter::fetch_channels(token, tenant_slug)
             .await
-            .map_err(|e| ApiError::Network(e))
+            .map_err(ApiError::Network)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -45,7 +45,7 @@ pub async fn fetch_e2ee_devices(
     {
         native_server_adapter::fetch_e2ee_devices(token, tenant_slug)
             .await
-            .map_err(|e| ApiError::Network(e))
+            .map_err(ApiError::Network)
     }
     #[cfg(not(feature = "ssr"))]
     {

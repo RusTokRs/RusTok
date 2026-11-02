@@ -8,11 +8,21 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+//! # rustok-tasks-admin
+//!
+//! Leptos admin FFA package for the `rustok-tasks` module.
+//!
+//! Provides the admin dashboard UI, DataGrid task view-models, search filtering,
+//! and issue management for team tasks.
+
 pub mod core;
 pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::*;
-pub use transport::*;
+pub use core::{TasksAdminTableRow, filter_rows};
+pub use transport::TasksAdminTransport;
 pub use ui::{TasksAdmin, TasksAdminPage};
+
+#[cfg(test)]
+mod contract_tests;

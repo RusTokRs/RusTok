@@ -1,3 +1,5 @@
+//! # rustok-social-graph-cli
+//!
 //! Owner-local operational command adapters for `rustok-social-graph`.
 //!
 //! This crate derives an explicit receipt cutoff from reviewed retention input
@@ -477,3 +479,6 @@ mod tests {
         assert!(error.to_string().contains("non-existent-action"));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

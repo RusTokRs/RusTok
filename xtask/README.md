@@ -10,6 +10,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 
 - Validate the central module composition contract in `modules.toml`.
 - Validate each scoped path module from `modules.toml` against its publish, runtime, UI, documentation, dependency, permission, and server-wiring contracts.
+- Run native architecture lint with `cargo xtask module lint <slug>`, using the existing source-layout verifier. This is a static gate, not compile/runtime evidence.
 - Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
@@ -23,6 +24,7 @@ Run commands from the repository root:
 
 ```powershell
 cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]
+cargo xtask module lint <slug>
 cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
@@ -58,15 +60,14 @@ does not translate local Cargo execution into that evidence.
 
 ## Scaffolding (FBA / FFA / i18n / docs.rs)
 
-`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) generates a production-grade, canonical platform module conforming to Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multilinguality (Fluent i18n), and `docs.rs` metadata.
+`cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) **improves the existing native module scaffolding**. The default creates a draft native runtime identity, not a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract).
 
 The command:
-- Generates the backend crate `crates/modules/rustok-<slug>` with normative FBA layout: `src/domain/`, `src/dto/`, `src/services/`, `src/error.rs`, `src/module.rs` (implementing `RusToKModule`), and optional SeaORM `entities/` + `migrations/`.
-- Generates UI crates (`admin/` and `storefront/`) adhering to strict FFA:
-  - `core/`: Pure Rust view-models and validation (no UI framework dependencies, pure unit testable).
-  - `transport/`: Facade for server communications.
-  - `ui/`: Leptos component views.
-  - `i18n.rs` and `locales/` (`en.ftl`, `ru.ftl` Fluent catalogs).
+- By default creates a **headless, no-DB native runtime identity**. `--with-db` fails before writing. `--ui admin|storefront|dual` **creates editable Leptos FFA crates** and registers them as Cargo workspace members. The module manifest is `future_ui`, with no live `[provides.*_ui]` or Leptos host mount. Use `--dry-run` to preview without writing.
+- Accepts `--profile native` (default); `--profile support` and `--profile wasi` fail explicitly because support crates and standalone Component Model guests have different owners and templates.
+- Rejects unknown or repeated CLI options, missing option values and conflicting `--title`/`--name` aliases before writing anything. Free-form title, description and category metadata must be single-line text without control characters or Markdown table `|` delimiters, since the generator publishes them in module documentation and the central registry.
+- Generates a minimal native backend crate with `src/lib.rs`, `src/module.rs`, and `src/tests/contract.rs`. No synthetic services, entities, domain state machine, migrations, or event producers are created.
+- Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. It creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The generated FFA source is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
   - `Cargo.toml` (`[workspace.dependencies]` and `members`);
@@ -74,16 +75,44 @@ The command:
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
-- Automatically executes `cargo xtask module validate <slug>` at the end to ensure the generated module is valid out-of-the-box.
+- After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure in either check returns a non-zero result and restores the planned source/registration files.
+
+**Verification and remaining limitations:** The generator builds a complete
+source/registration plan before writing, and `--dry-run` previews every planned
+change without mutating the workspace. A live run snapshots the affected files,
+applies the plan, runs architecture lint and then publish-metadata validation,
+and restores the snapshots if either check fails. This is rollback-protected
+multi-file generation, not isolation from concurrent external workspace writers.
+`--skip-validate` explicitly leaves the module registered but unverified.
+Passing lint and metadata validation still does not prove compilation, behavior,
+FBA runtime readiness or functional FFA/Next.js parity. The generated UI crates
+remain *draft, unmounted* and their adapters fail explicitly until owner
+operations are implemented. Golden plan-tree and renderer snapshots run in
+`cargo test -p xtask`. The dedicated
+`scripts/ci/verify-scaffold-matrix.sh` workflow generates headless, admin,
+storefront and dual modules, runs the scaffold's lint/metadata validation,
+tests every generated crate, and checks both UI surfaces under CSR, hydrate
+and SSR features. This proves generated-source compilation, not business
+behavior or functional cross-client parity. Persistence still requires a
+real owner schema.
+Classic Next.js packages remain Next-host owned; live UI wiring is checked by
+the generic native-module lint, while functional cross-client parity needs
+separate evidence.
 
 ```powershell
-# Create a collaboration module with dual surface UI and DB migrations:
+# Create the minimal native runtime identity (no business CRUD or storage):
 cargo xtask scaffold calls --title "WebRTC Calls & Conferencing" --category collaboration
 
 # Create a headless/no-ui ERP module:
 cargo xtask scaffold finance --title "Operational Finance & Banking" --category erp --no-ui
 
-# Dry-run preview:
+# Create unmounted admin/storefront Leptos FFA development crates:
+cargo xtask scaffold party --ui dual
+
+# Preview the same development files without writing:
+cargo xtask scaffold party --ui dual --dry-run
+
+# Preview the default headless module:
 cargo xtask scaffold party --dry-run
 ```
 
@@ -142,6 +171,7 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
+- `cargo xtask module lint <slug>` checks native source layout, FFA package structure and live Next.js package/route wiring. This is independent of publish-readiness; `module validate` does not run it, while the scaffold command explicitly runs lint before validate unless `--skip-validate` is supplied.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.
 - A crate under `crates/` is treated as a support/capability crate until it is added to `modules.toml`.

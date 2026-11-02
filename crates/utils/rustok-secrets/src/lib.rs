@@ -1,3 +1,5 @@
+//! # rustok-secrets
+//!
 //! Runtime secret references for capability and module integrations.
 //!
 //! Callers persist only [`SecretRef`] values. Resolver endpoints and workload
@@ -672,3 +674,7 @@ mod tests {
         assert_eq!(resolver.calls.load(Ordering::SeqCst), 3);
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

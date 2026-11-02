@@ -3,6 +3,9 @@ name = "rustok-ui-auth"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 description = "Framework-neutral client authentication contracts for RusToK"
 
 [package.metadata.docs.rs]
@@ -12,3 +15,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -28,12 +28,12 @@ mutation CreateUser($input: CreateUserInput!) {
 
 pub const ROLES_QUERY: &str = "query Roles { roles { slug displayName permissions } }";
 
-pub const PLATFORM_SETTINGS_QUERY: &str = "query PlatformSettings($category: String!) { platformSettings(category: $category) { category settings } }";
+pub const PLATFORM_SETTINGS_QUERY: &str = "query PlatformSettings($category: String!) { platformSettings(category: $category) { category settings schemaVersion } }";
 
 pub const UPDATE_PLATFORM_SETTINGS_MUTATION: &str = r#"
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
     updatePlatformSettings(input: $input) {
-        success category
+        success category schemaVersion
     }
 }
 "#;

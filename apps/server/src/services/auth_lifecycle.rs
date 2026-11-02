@@ -8,7 +8,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait,
-    sea_query::{Expr, ExprTrait},
+    sea_query::Expr,
 };
 
 use crate::auth::{
@@ -532,7 +532,7 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?
         {
-            Self::register_failed_login_attempt(db, tenant_id, user.id).await;
+            Self::register_failed_login_attempt(db, tenant_id, &user).await?;
             return Err(AuthLifecycleError::InvalidCredentials);
         }
 
@@ -600,43 +600,32 @@ impl AuthLifecycleService {
             .is_some_and(|locked_until| locked_until.timestamp() > Utc::now().timestamp())
     }
 
-    /// Persist one failed credential check and lock the account once the
-    /// consecutive-failure threshold is reached. Best-effort by design:
-    /// the caller still returns InvalidCredentials either way, and a
-    /// persistence failure is logged rather than leaked to the client.
+    /// Serialize failed attempts with successful login and credential changes.
+    /// A failure verified against an old password must not lock the new owner.
     async fn register_failed_login_attempt(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
-        user_id: uuid::Uuid,
-    ) {
-        let increment = users::Entity::update_many()
-            .col_expr(
-                users::Column::FailedLoginCount,
-                Expr::col(users::Column::FailedLoginCount).add(1),
-            )
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Id.eq(user_id))
-            .exec(db)
-            .await;
-        if let Err(error) = increment {
-            tracing::error!(%error, %user_id, "failed to persist failed-login counter");
-            return;
+        observed_user: &users::Model,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+        let user = Self::find_user_for_password_change_in_tx(&tx, tenant_id, observed_user.id)
+            .await?;
+        if let Some(user) = user.filter(|u| {
+            u.password_hash == observed_user.password_hash && !Self::is_login_locked(u)
+        }) {
+            let attempts = user.failed_login_count.saturating_add(1);
+            let mut active: users::ActiveModel = user.into();
+            if attempts >= MAX_FAILED_LOGIN_ATTEMPTS {
+                active.failed_login_count = Set(0);
+                active.locked_until =
+                    Set(Some((Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)).into()));
+            } else {
+                active.failed_login_count = Set(attempts);
+            }
+            active.update(&tx).await.map_err(AuthLifecycleError::from)?;
         }
-
-        let lock = users::Entity::update_many()
-            .col_expr(users::Column::FailedLoginCount, Expr::value(0))
-            .col_expr(
-                users::Column::LockedUntil,
-                Expr::value(Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)),
-            )
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::Id.eq(user_id))
-            .filter(users::Column::FailedLoginCount.gte(MAX_FAILED_LOGIN_ATTEMPTS))
-            .exec(db)
-            .await;
-        if let Err(error) = lock {
-            tracing::error!(%error, %user_id, "failed to persist login lockout");
-        }
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+        Ok(())
     }
 
     pub async fn refresh_runtime(
@@ -1067,8 +1056,10 @@ impl AuthLifecycleService {
         .await?
         .ok_or(AuthLifecycleError::SessionExpired)?;
 
+        let now = Utc::now();
         let mut user_active: users::ActiveModel = user.into();
         user_active.password_hash = Set(new_password_hash);
+        user_active.password_changed_at = Set(Some(now.into()));
         user_active.failed_login_count = Set(0);
         user_active.locked_until = Set(None);
         user_active
@@ -1083,6 +1074,15 @@ impl AuthLifecycleService {
             Some(current_session_id),
         )
         .await?;
+        let _revoked_oauth_tokens =
+            crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
+                &txn,
+                tenant_id,
+                user_id,
+                now,
+            )
+            .await
+            .map_err(AuthLifecycleError::from)?;
         Self::publish_user_event_in_tx(
             db.clone(),
             &txn,
@@ -1469,6 +1469,52 @@ mod tests {
         assert_eq!(snapshot.change_password_sessions_revoked_total, 0);
         assert_eq!(snapshot.flow_inconsistency_total, 0);
         assert_eq!(snapshot.login_inactive_user_attempt_total, 0);
+    }
+
+    #[tokio::test]
+    async fn failed_attempts_lock_atomically_and_ignore_obsolete_credentials() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "failed-login-lock")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "lock@example.com", "old-hash")
+            .insert(&db)
+            .await
+            .expect("user");
+
+        for _ in 0..super::MAX_FAILED_LOGIN_ATTEMPTS {
+            AuthLifecycleService::register_failed_login_attempt(&db, tenant.id, &user)
+                .await
+                .expect("record failure");
+        }
+        let locked = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("user");
+        assert!(AuthLifecycleService::is_login_locked(&locked));
+        assert_eq!(locked.failed_login_count, 0);
+
+        users::ActiveModel {
+            id: Set(user.id),
+            password_hash: Set("new-hash".to_string()),
+            locked_until: Set(None),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("change credentials");
+        AuthLifecycleService::register_failed_login_attempt(&db, tenant.id, &user)
+            .await
+            .expect("ignore stale attempt");
+        let changed = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("user");
+        assert_eq!(changed.failed_login_count, 0);
+        assert!(changed.locked_until.is_none());
     }
 
     #[test]

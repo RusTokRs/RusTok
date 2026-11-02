@@ -234,6 +234,15 @@ pub struct FixtureCapabilityBroker {
     responses: Arc<Mutex<HashMap<FixtureKey, CapabilityResponse>>>,
 }
 
+impl std::fmt::Debug for FixtureCapabilityBroker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let count = self.responses.lock().map(|r| r.len()).unwrap_or(0);
+        f.debug_struct("FixtureCapabilityBroker")
+            .field("fixture_count", &count)
+            .finish()
+    }
+}
+
 impl FixtureCapabilityBroker {
     /// Adds or replaces one local response for an exact capability operation.
     pub fn respond(
@@ -287,6 +296,15 @@ impl CapabilityBroker for FixtureCapabilityBroker {
 pub struct LocalSandboxHarness {
     runtime: SandboxRuntime,
     fixtures: FixtureCapabilityBroker,
+}
+
+impl std::fmt::Debug for LocalSandboxHarness {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalSandboxHarness")
+            .field("runtime", &self.runtime)
+            .field("fixtures", &self.fixtures)
+            .finish()
+    }
 }
 
 impl LocalSandboxHarness {

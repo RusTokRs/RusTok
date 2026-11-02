@@ -42,8 +42,7 @@ for (const path of [
   docsReadmePath,
   entitiesPath,
   'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
-  'crates/modules/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
-  'crates/modules/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
+  'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
   'crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
 ]) {
   requireFile(path);

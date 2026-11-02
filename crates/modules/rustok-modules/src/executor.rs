@@ -1,12 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::recovery::{
-    apply_tenant_override_enabled, load_current_lifecycle_settings, read_tenant_override_enabled,
-    record_operation_override_state,
+    apply_tenant_override_enabled, hook_settings_digest, load_current_lifecycle_settings,
+    read_tenant_override_enabled, record_operation_override_state, store_hook_settings_digest,
 };
 
 /// Claim leases last 300 seconds; renewing every minute leaves several
@@ -18,8 +18,8 @@ use crate::{
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
     ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
     ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
-    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
-    TenantModuleStateStore, validate_module_toggle,
+    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleSettingsRequest,
+    TenantModuleStateRecord, TenantModuleStateStore, validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]
@@ -36,6 +36,8 @@ pub struct ModuleLifecycleToggleRequest {
     /// aggregate revision. Static/native and admitted-artifact definitions
     /// share this durable claim/CAS pipeline.
     pub expected_revision: u64,
+    /// Original failed operation when this is a compensation.
+    pub recovery_source_id: Option<uuid::Uuid>,
     /// Canonical serving availability, including co-requisite constraints.
     pub effective_enabled_modules: HashSet<String>,
     /// Ordinary dependency-order selection used only to validate sequential
@@ -47,6 +49,8 @@ pub struct ModuleLifecycleToggleRequest {
     pub requested_override_enabled: Option<bool>,
     pub current_settings: serde_json::Value,
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
+    /// Host-composed active static schema, validated under the lifecycle claim.
+    pub static_settings_schema: Option<HashMap<String, crate::ModuleSettingSpec>>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -76,6 +80,8 @@ pub enum ModuleLifecycleExecutionError {
     Persistence(String),
     #[error("module pre-hook failed: {0}")]
     PreHook(String),
+    #[error("settings migration required for module `{module_slug}`: {reason}")]
+    SettingsMigrationRequired { module_slug: String, reason: String },
     #[error("module post-hook failed: {0}")]
     PostHook(String),
     #[error(transparent)]
@@ -118,6 +124,19 @@ pub async fn execute_module_toggle(
     {
         return Err(ModuleLifecycleExecutionError::InvalidCommandIdentity);
     }
+    if request.static_settings_schema.is_some()
+        && matches!(
+            dispatcher
+                .catalog()
+                .get(&request.module_slug)
+                .map(|definition| &definition.source),
+            Some(crate::ModuleDefinitionSource::Artifact { .. })
+        )
+    {
+        return Err(ModuleLifecycleExecutionError::Persistence(
+            "a static settings schema cannot be applied to an artifact module".to_string(),
+        ));
+    }
     let previous_effective_enabled = request
         .effective_enabled_modules
         .contains(request.module_slug.as_str());
@@ -130,6 +149,7 @@ pub async fn execute_module_toggle(
         trace_id: Some(request.context.trace_id.clone()),
         correlation_id: request.context.correlation_id.to_string(),
         idempotency_key: Some(request.context.idempotency_key),
+        recovery_source_id: request.recovery_source_id,
         expected_revision: Some(request.expected_revision),
     };
     if let Some(existing) =
@@ -211,6 +231,52 @@ pub async fn execute_module_toggle(
         return Err(mapped);
     }
     let lifecycle_claim = (expected_revision, idempotency_key);
+    // An unresolved checkpoint in either scope may still recover its
+    // predecessor. This read prevents known conflicts; rollout creation and
+    // this claim still require a shared transactional fence.
+    let checkpoint_result =
+        crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+            db,
+            &request.module_slug,
+            request.tenant_id,
+        )
+        .await;
+    let transition_error = match checkpoint_result {
+        Ok(checkpoints) if !checkpoints.is_empty() => {
+            Some(ModuleLifecycleExecutionError::PolicyTransition(
+                "an unresolved module release transition blocks lifecycle changes".to_string(),
+            ))
+        }
+        Ok(_) => None,
+        Err(error) => Some(ModuleLifecycleExecutionError::Persistence(
+            error.to_string(),
+        )),
+    };
+    if let Some(error) = transition_error {
+        let message = match &error {
+            ModuleLifecycleExecutionError::Persistence(reason) => {
+                format!("transition-read: {reason}")
+            }
+            ModuleLifecycleExecutionError::PolicyTransition(reason) => {
+                format!("transition-fence: {reason}")
+            }
+            _ => unreachable!("transition check emits only persistence or policy errors"),
+        };
+        let error = match ModuleOperationJournal::mark_failed(db, operation.id, &message).await {
+            Ok(()) => error,
+            Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
+                "{error}; additionally, recording the transition failure failed: {journal_error}"
+            )),
+        };
+        return Err(release_claim_after_error(
+            db,
+            request.tenant_id,
+            &request.module_slug,
+            idempotency_key,
+            error,
+        )
+        .await);
+    }
     if let Err(error) = record_override_state_or_fail(
         db,
         operation.id,
@@ -239,16 +305,19 @@ pub async fn execute_module_toggle(
         Ok(current_settings) => current_settings,
         Err(error) => {
             let primary = ModuleLifecycleExecutionError::Persistence(error.to_string());
-            let primary =
-                match ModuleOperationJournal::mark_failed(db, operation.id, &primary.to_string())
-                    .await
-                {
-                    Ok(()) => primary,
-                    Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
-                        "{primary}; additionally, marking the lifecycle operation \
+            let primary = match ModuleOperationJournal::mark_failed(
+                db,
+                operation.id,
+                &format!("settings-read: {primary}"),
+            )
+            .await
+            {
+                Ok(()) => primary,
+                Err(journal_error) => ModuleLifecycleExecutionError::Persistence(format!(
+                    "{primary}; additionally, marking the lifecycle operation \
                          failed did not persist: {journal_error}"
-                    )),
-                };
+                )),
+            };
             return Err(release_claim_after_error(
                 db,
                 request.tenant_id,
@@ -258,6 +327,48 @@ pub async fn execute_module_toggle(
             )
             .await);
         }
+    };
+
+    let normalized_static_settings = if request.enabled {
+        if let Some(schema) = &request.static_settings_schema {
+            match crate::normalize_module_settings(&request.module_slug, schema, settings.clone()) {
+                Ok(normalized) => {
+                    settings = normalized.clone();
+                    Some(normalized)
+                }
+                Err(error) => {
+                    let reason = error.to_string();
+                    let primary = ModuleLifecycleExecutionError::SettingsMigrationRequired {
+                        module_slug: request.module_slug.clone(),
+                        reason: reason.clone(),
+                    };
+                    let primary = match ModuleOperationJournal::mark_failed(
+                        db,
+                        operation.id,
+                        &format!("settings-preflight: {reason}"),
+                    )
+                    .await
+                    {
+                        Ok(()) => primary,
+                        Err(error) => ModuleLifecycleExecutionError::Persistence(format!(
+                            "{primary}; additionally, recording the failed preflight failed: {error}"
+                        )),
+                    };
+                    return Err(release_claim_after_error(
+                        db,
+                        request.tenant_id,
+                        &request.module_slug,
+                        idempotency_key,
+                        primary,
+                    )
+                    .await);
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
     if previous_effective_enabled == request.enabled && request.policy_transition.is_none() {
@@ -279,6 +390,20 @@ pub async fn execute_module_toggle(
                         .map_err(|error| {
                             ModuleLifecycleExecutionError::Persistence(error.to_string())
                         })?;
+                        if let Some(settings) = normalized_static_settings {
+                            TenantModuleStateStore::persist_settings(
+                                transaction,
+                                TenantModuleSettingsRequest {
+                                    tenant_id,
+                                    module_slug: module_slug.clone(),
+                                    settings,
+                                },
+                            )
+                            .await
+                            .map_err(|error| {
+                                ModuleLifecycleExecutionError::Persistence(error.to_string())
+                            })?;
+                        }
                         let committed_revision =
                             expected_revision.checked_add(1).ok_or_else(|| {
                                 ModuleLifecycleExecutionError::Persistence(
@@ -437,6 +562,33 @@ pub async fn execute_module_toggle(
     let policy_transition = request.policy_transition.clone();
     let tenant_id = request.tenant_id;
     let command_context = request.context.clone();
+    let normalized_static_settings = normalized_static_settings.clone();
+    let hook_settings_digest = match hook_settings_digest(&settings) {
+        Ok(digest) => digest,
+        Err(error) => {
+            let primary = ModuleLifecycleExecutionError::Persistence(error.to_string());
+            let primary = match ModuleOperationJournal::mark_failed(
+                db,
+                operation.id,
+                &format!("settings-read: {primary}"),
+            )
+            .await
+            {
+                Ok(()) => primary,
+                Err(error) => ModuleLifecycleExecutionError::Persistence(format!(
+                    "{primary}; recording the failure also failed: {error}"
+                )),
+            };
+            return Err(release_claim_after_error(
+                db,
+                tenant_id,
+                &module_slug,
+                idempotency_key,
+                primary,
+            )
+            .await);
+        }
+    };
     let coordinator = policy_transition_coordinator;
     let state = match db
         .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
@@ -452,6 +604,25 @@ pub async fn execute_module_toggle(
                     .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(error.to_string())
                     })?;
+                    if let Some(settings) = normalized_static_settings {
+                        TenantModuleStateStore::persist_settings(
+                            transaction,
+                            TenantModuleSettingsRequest {
+                                tenant_id,
+                                module_slug: module_slug.clone(),
+                                settings,
+                            },
+                        )
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
+                        })?;
+                    }
+                    store_hook_settings_digest(transaction, operation.id, &hook_settings_digest)
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
+                        })?;
                     ModuleOperationJournal::mark_committed_hook_pending(transaction, operation.id)
                         .await
                         .map_err(|error| {
@@ -902,7 +1073,32 @@ async fn replay_lifecycle_operation(
             let message = operation
                 .error_message
                 .unwrap_or_else(|| "unknown failure".to_string());
-            if let Some(message) = message.strip_prefix("post-hook: ") {
+            if let Some(reason) = message.strip_prefix("settings-preflight: ") {
+                Err(ModuleLifecycleExecutionError::SettingsMigrationRequired {
+                    module_slug: request.module_slug.clone(),
+                    reason: reason.to_string(),
+                })
+            } else if let Some(message) = message.strip_prefix("transition-fence: ") {
+                Err(ModuleLifecycleExecutionError::PolicyTransition(
+                    message.to_string(),
+                ))
+            } else if let Some(message) = message.strip_prefix("transition-read: ") {
+                Err(ModuleLifecycleExecutionError::Persistence(
+                    message.to_string(),
+                ))
+            } else if let Some(message) = message.strip_prefix("settings-read: ") {
+                Err(ModuleLifecycleExecutionError::Persistence(
+                    message.to_string(),
+                ))
+            } else if let Some(message) = message.strip_prefix("aggregate-claim: ") {
+                Err(ModuleLifecycleExecutionError::Persistence(
+                    message.to_string(),
+                ))
+            } else if let Some(message) = message.strip_prefix("recovery-state: ") {
+                Err(ModuleLifecycleExecutionError::Persistence(
+                    message.to_string(),
+                ))
+            } else if let Some(message) = message.strip_prefix("post-hook: ") {
                 Err(ModuleLifecycleExecutionError::PostHook(message.to_string()))
             } else if let Some(message) = message.strip_prefix("state-commit: ") {
                 Err(ModuleLifecycleExecutionError::Persistence(
@@ -1004,6 +1200,7 @@ mod tests {
                     trace_id TEXT, \
                     correlation_id TEXT, \
                     idempotency_key TEXT, \
+                    recovery_source_id TEXT, \
                     expected_revision INTEGER, \
                     error_message TEXT, \
                     result_snapshot TEXT, \
@@ -1020,7 +1217,8 @@ mod tests {
                 "CREATE TABLE module_operation_override_states (\
                     operation_id TEXT PRIMARY KEY NOT NULL, \
                     previous_override_enabled BOOLEAN, \
-                    requested_override_enabled BOOLEAN\
+                    requested_override_enabled BOOLEAN, \
+                    hook_settings_digest TEXT\
                  )"
                 .to_string(),
             ))
@@ -1031,6 +1229,10 @@ mod tests {
 
     async fn journal_and_state_database() -> DatabaseConnection {
         let database = journal_only_database().await;
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&sea_orm_migration::SchemaManager::new(&database))
+            .await
+            .expect("transition checkpoint tables");
         database
             .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
@@ -1110,12 +1312,14 @@ mod tests {
             enabled: true,
             context: command_context(tenant_id, idempotency_key),
             expected_revision: 0,
+            recovery_source_id: None,
             effective_enabled_modules: HashSet::from(["optional_test".to_string()]),
             ordering_enabled_modules: HashSet::new(),
             previous_override_enabled: None,
             requested_override_enabled: Some(true),
             current_settings: serde_json::json!({}),
             policy_transition: None,
+            static_settings_schema: None,
         };
 
         let first = execute_module_toggle(&database, &dispatcher, None, request.clone())
@@ -1155,6 +1359,379 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enable_checks_claimed_settings_and_materializes_defaults_atomically() {
+        struct TrackingModule(std::sync::Arc<AtomicUsize>);
+        impl MigrationSource for TrackingModule {
+            fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+                vec![]
+            }
+        }
+        #[async_trait]
+        impl RusToKModule for TrackingModule {
+            fn slug(&self) -> &'static str {
+                "optional_test"
+            }
+            fn name(&self) -> &'static str {
+                "Tracking"
+            }
+            fn description(&self) -> &'static str {
+                "Lifecycle test"
+            }
+            fn version(&self) -> &'static str {
+                "0.1.0"
+            }
+            async fn pre_enable(
+                &self,
+                _ctx: rustok_core::ModuleContext<'_>,
+            ) -> rustok_core::Result<()> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        let database = journal_and_state_database().await;
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let registry = ModuleRegistry::new().register(TrackingModule(calls.clone()));
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: serde_json::json!({"limit": "invalid"}),
+            },
+        )
+        .await
+        .unwrap();
+        let schema = HashMap::from([(
+            "limit".to_string(),
+            crate::ModuleSettingSpec {
+                value_type: "integer".into(),
+                default: Some(serde_json::json!(5)),
+                ..Default::default()
+            },
+        )]);
+        let mut request = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            // A stale caller snapshot must never authorize this operation.
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: Some(schema),
+        };
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
+            Err(ModuleLifecycleExecutionError::SettingsMigrationRequired { .. })
+        ));
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
+            Err(ModuleLifecycleExecutionError::SettingsMigrationRequired { .. })
+        ));
+        let snapshot = StaticTenantLifecycleStore::snapshot(&database, tenant_id, "optional_test")
+            .await
+            .unwrap();
+        assert_eq!(snapshot.revision, 0);
+        assert!(snapshot.active_idempotency_key.is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        request.context.idempotency_key = uuid::Uuid::new_v4();
+        let result = execute_module_toggle(&database, &dispatcher, None, request.clone())
+            .await
+            .unwrap();
+        assert_eq!(result.settings, serde_json::json!({"limit": 5}));
+        let persisted =
+            load_current_lifecycle_settings(&database, &dispatcher, tenant_id, "optional_test")
+                .await
+                .unwrap();
+        assert_eq!(persisted, result.settings);
+        assert_eq!(
+            execute_module_toggle(&database, &dispatcher, None, request)
+                .await
+                .unwrap(),
+            result
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn lifecycle_replay_survives_transition_while_new_changes_are_blocked() {
+        let database = journal_and_state_database().await;
+        let registry = ModuleRegistry::new().register(OptionalModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        let mut request = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::from(["optional_test".into()]),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: Some(HashMap::new()),
+        };
+        let committed = execute_module_toggle(&database, &dispatcher, None, request.clone())
+            .await
+            .unwrap();
+        let now = chrono::Utc::now();
+        crate::TransitionCheckpointStore::save_checkpoint(
+            &database,
+            &crate::ModuleTransitionCheckpoint {
+                operation_id: uuid::Uuid::new_v4(),
+                revision: 1,
+                module_slug: "optional_test".into(),
+                tenant_id: None,
+                predecessor_digest: Some("predecessor".into()),
+                candidate_digest: "candidate".into(),
+                state: crate::ModuleTransitionState::InterventionRequired {
+                    failure_reason: "recovery needed".into(),
+                },
+                security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+                fences: crate::ConflictFenceSet::new(vec![]),
+                recovery_attempt_count: 0,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone())
+                .await
+                .unwrap(),
+            committed
+        );
+        request.context.idempotency_key = uuid::Uuid::new_v4();
+        request.expected_revision = committed.revision;
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
+            Err(ModuleLifecycleExecutionError::PolicyTransition(_))
+        ));
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request).await,
+            Err(ModuleLifecycleExecutionError::PolicyTransition(_))
+        ));
+        let snapshot = StaticTenantLifecycleStore::snapshot(&database, tenant_id, "optional_test")
+            .await
+            .unwrap();
+        assert_eq!(snapshot.revision, committed.revision);
+        assert!(snapshot.active_idempotency_key.is_none());
+    }
+
+    #[tokio::test]
+    async fn post_hook_recovery_checks_original_settings_and_binds_source_operation() {
+        struct RecoveryModule(std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>);
+        impl MigrationSource for RecoveryModule {
+            fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+                vec![]
+            }
+        }
+        #[async_trait]
+        impl RusToKModule for RecoveryModule {
+            fn slug(&self) -> &'static str {
+                "optional_test"
+            }
+            fn name(&self) -> &'static str {
+                "Recovery"
+            }
+            fn description(&self) -> &'static str {
+                "Recovery test"
+            }
+            fn version(&self) -> &'static str {
+                "0.1.0"
+            }
+            async fn post_enable(
+                &self,
+                ctx: rustok_core::ModuleContext<'_>,
+            ) -> rustok_core::Result<()> {
+                let mut seen = self.0.lock().unwrap();
+                seen.push(ctx.config.clone());
+                if seen.len() == 1 {
+                    Err(rustok_core::Error::External("temporary failure".into()))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        let db = journal_and_state_database().await;
+        let inputs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let registry = ModuleRegistry::new().register(RecoveryModule(inputs.clone()));
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        let settings = serde_json::json!({"limit": 1});
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: settings.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        let toggle_key = uuid::Uuid::new_v4();
+        let toggle = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, toggle_key),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: settings.clone(),
+            policy_transition: None,
+            static_settings_schema: None,
+        };
+        let initial = execute_module_toggle(&db, &dispatcher, None, toggle).await;
+        assert!(
+            matches!(initial, Err(ModuleLifecycleExecutionError::PostHook(_))),
+            "unexpected initial result: {initial:?}"
+        );
+        let original =
+            ModuleOperationJournal::failed_for_tenant(&db, tenant_id, Some("optional_test"))
+                .await
+                .unwrap()
+                .remove(0);
+        let plan = crate::recovery::module_operation_recovery_plan(&db, original.id)
+            .await
+            .unwrap();
+        assert!(plan.retryable && plan.hook_settings_digest_recorded);
+
+        let collision = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(tenant_id, toggle_key),
+            expected_revision: 0,
+        };
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
+            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
+        ));
+
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: serde_json::json!({"limit": 2}),
+            },
+        )
+        .await
+        .unwrap();
+        let mut retry = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 1,
+        };
+        for _ in 0..2 {
+            assert!(
+                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "hook_settings_changed")
+            );
+        }
+        assert_eq!(inputs.lock().unwrap().len(), 1);
+        assert!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .active_idempotency_key
+                .is_none()
+        );
+
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: settings.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        retry.context.idempotency_key = uuid::Uuid::new_v4();
+        db.execute_unprepared("CREATE TRIGGER fail_original_resolution BEFORE UPDATE OF status ON module_operations WHEN OLD.status = 'committed_hook_failed' AND NEW.status = 'committed' BEGIN SELECT RAISE(ABORT, 'forced resolution failure'); END").await.unwrap();
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await,
+            Err(crate::ModuleOperationRecoveryError::Persistence(_))
+        ));
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await,
+            Err(crate::ModuleOperationRecoveryError::OperationInProgress)
+        ));
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::CommittedHookFailed
+        );
+        db.execute_unprepared("DROP TRIGGER fail_original_resolution")
+            .await
+            .unwrap();
+        retry.context.idempotency_key = uuid::Uuid::new_v4();
+        let recovered =
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await
+                .unwrap();
+        assert_eq!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry)
+                .await
+                .unwrap(),
+            recovered
+        );
+        assert_eq!(
+            *inputs.lock().unwrap(),
+            vec![settings.clone(), settings.clone(), settings]
+        );
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::Committed
+        );
+        assert_eq!(
+            ModuleOperationJournal::find(&db, recovered.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::Committed
+        );
+    }
+
+    #[tokio::test]
     async fn state_commit_failure_marks_running_operation_as_failed() {
         let database = journal_and_state_database().await;
         database
@@ -1182,12 +1759,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, uuid::Uuid::new_v4()),
                 expected_revision: 0,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;
@@ -1235,12 +1814,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, contender_key),
                 expected_revision: 0,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;
@@ -1268,12 +1849,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, stale_key),
                 expected_revision: 9,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;
@@ -1308,6 +1891,7 @@ mod tests {
                 trace_id: Some(context.trace_id.clone()),
                 correlation_id: context.correlation_id.to_string(),
                 idempotency_key: Some(idempotency_key),
+                recovery_source_id: None,
                 expected_revision: Some(0),
             },
         )
@@ -1333,12 +1917,14 @@ mod tests {
                 enabled: true,
                 context,
                 expected_revision: 0,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;
@@ -1385,12 +1971,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, uuid::Uuid::new_v4()),
                 expected_revision: 0,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::from(["optional_test".to_string()]),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: Some(true),
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({ "stale": true }),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await
@@ -1427,6 +2015,36 @@ mod tests {
         let artifact_executor = CountingArtifactExecutor(AtomicUsize::new(0));
         let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &artifact_executor);
         let tenant_id = uuid::Uuid::new_v4();
+        let wrong_schema_key = uuid::Uuid::new_v4();
+        let wrong_schema = execute_module_toggle(
+            &database,
+            &dispatcher,
+            None,
+            ModuleLifecycleToggleRequest {
+                tenant_id,
+                module_slug: "artifact_test".into(),
+                enabled: true,
+                context: command_context(tenant_id, wrong_schema_key),
+                expected_revision: 0,
+                recovery_source_id: None,
+                effective_enabled_modules: HashSet::new(),
+                ordering_enabled_modules: HashSet::new(),
+                previous_override_enabled: None,
+                requested_override_enabled: Some(true),
+                current_settings: serde_json::json!({}),
+                policy_transition: None,
+                static_settings_schema: Some(HashMap::new()),
+            },
+        )
+        .await;
+        assert!(matches!(
+            wrong_schema,
+            Err(ModuleLifecycleExecutionError::Persistence(_))
+        ));
+        assert_eq!(
+            operation_count(&database, tenant_id, wrong_schema_key).await,
+            0
+        );
         let holder_key = uuid::Uuid::new_v4();
         StaticTenantLifecycleStore::claim(&database, tenant_id, "artifact_test", 0, holder_key)
             .await
@@ -1443,12 +2061,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, contender_key),
                 expected_revision: 0,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;
@@ -1477,12 +2097,14 @@ mod tests {
                 enabled: true,
                 context: command_context(tenant_id, stale_key),
                 expected_revision: 4,
+                recovery_source_id: None,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
+                static_settings_schema: None,
             },
         )
         .await;

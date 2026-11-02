@@ -34,7 +34,7 @@ ssr = [
 leptos-auth.workspace = true
 rustok-ui-core.workspace = true
 rustok-ui.workspace = true
-rustok-ui-leptos = { workspace = true, default-features = false }
+rustok-ui-leptos = { path = "../../../ui/rustok-ui/leptos", default-features = false }
 rustok-cart-storefront = { workspace = true, default-features = false }
 rustok-pricing-storefront = { workspace = true, default-features = false }
 rustok-grid.workspace = true

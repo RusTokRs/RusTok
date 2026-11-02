@@ -32,7 +32,8 @@ pub enum SettingsGuardState {
     },
 }
 
-/// Durable settings compatibility guard binding predecessor and candidate schema digests.
+/// In-memory settings compatibility evaluation. This value is not persisted
+/// and does not establish the rollout fence or schema-digest provenance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettingsCompatibilityGuard {
     pub id: Uuid,
@@ -157,24 +158,9 @@ pub fn validate_settings_intersection(
     candidate_schema: &HashMap<String, ModuleSettingSpec>,
     settings: serde_json::Value,
 ) -> Result<serde_json::Value, SettingsGuardError> {
-    // 1. Validate against predecessor schema (N)
-    let _normalized_predecessor =
-        normalize_module_settings(module_slug, predecessor_schema, settings.clone()).map_err(
-            |e| match e {
-                ModuleSettingsValidationError::InvalidValue { key, reason, .. }
-                | ModuleSettingsValidationError::InvalidSchema { key, reason, .. } => {
-                    SettingsGuardError::PredecessorIncompatible { key, reason }
-                }
-                ModuleSettingsValidationError::InvalidKey { key, .. } => {
-                    SettingsGuardError::PredecessorIncompatible {
-                        key,
-                        reason: "unknown key in predecessor schema".to_string(),
-                    }
-                }
-            },
-        )?;
-
-    // 2. Validate against candidate schema (N+1)
+    // Validate the exact candidate-normalized document that will be stored.
+    // Candidate defaults can introduce fields absent from the input and rejected
+    // by the predecessor, so validating the input twice is insufficient.
     let normalized_candidate = normalize_module_settings(module_slug, candidate_schema, settings)
         .map_err(|e| match e {
         ModuleSettingsValidationError::InvalidValue { key, reason, .. }
@@ -189,8 +175,23 @@ pub fn validate_settings_intersection(
         }
     })?;
 
-    // Return the candidate-normalized value since N+1 is the active target,
-    // but having proven N also accepts it without error.
+    normalize_module_settings(
+        module_slug,
+        predecessor_schema,
+        normalized_candidate.clone(),
+    )
+    .map_err(|e| match e {
+        ModuleSettingsValidationError::InvalidValue { key, reason, .. }
+        | ModuleSettingsValidationError::InvalidSchema { key, reason, .. } => {
+            SettingsGuardError::PredecessorIncompatible { key, reason }
+        }
+        ModuleSettingsValidationError::InvalidKey { key, .. } => {
+            SettingsGuardError::PredecessorIncompatible {
+                key,
+                reason: "unknown key in predecessor schema".to_string(),
+            }
+        }
+    })?;
     Ok(normalized_candidate)
 }
 
@@ -248,7 +249,8 @@ mod tests {
     #[test]
     fn test_valid_intersection_value_passes_guard() {
         let schema_n = make_schema_n();
-        let schema_n1 = make_schema_n_plus_1();
+        let mut schema_n1 = make_schema_n_plus_1();
+        schema_n1.remove("retries");
         let guard = SettingsCompatibilityGuard::new(
             Some(Uuid::new_v4()),
             "email".to_string(),
@@ -267,8 +269,20 @@ mod tests {
         let normalized = result.unwrap();
         assert_eq!(normalized["timeout"], 45);
         assert_eq!(normalized["mode"], "sync");
-        // candidate default "retries: 3" is applied by candidate normalization
-        assert_eq!(normalized["retries"], 3);
+    }
+
+    #[test]
+    fn candidate_default_must_be_accepted_by_predecessor() {
+        let error = validate_settings_intersection(
+            "email",
+            &make_schema_n(),
+            &make_schema_n_plus_1(),
+            serde_json::json!({"timeout": 45, "mode": "sync"}),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, SettingsGuardError::PredecessorIncompatible { key, .. } if key == "retries")
+        );
     }
 
     #[test]

@@ -81,7 +81,7 @@ function fixture({
     runtimeDataPath,
     `
 use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
-use rustok_comments_api::CommentsThreadPort;
+use rustok_comments::CommentsThreadPort;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 settings_reader: Option<SharedStaticModuleSettingsReader>
 pub fn attach_schema_data(

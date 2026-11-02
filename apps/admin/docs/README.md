@@ -47,6 +47,9 @@ transport path is to be introduced.
 
 The host-owned `/modules` control plane also receives only a narrow database snapshot from
 `HostRuntimeContext`; `apps/admin` has no host-framework dependency.
+Its update workspace displays every active transition and any distinct transition
+selected by URL. Failed transition and retention reads are shown to the operator,
+and queued composition changes refresh the owner-issued installed-module projection.
 
 The host-owned OAuth apps feature follows the same boundary: DTOs live in
 `src/features/oauth_apps/model.rs`, list transport is selected through

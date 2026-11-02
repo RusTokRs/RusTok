@@ -38,3 +38,5 @@ assigned to another payout.
 
 Provider submission, processing, paid, failed, cancellation, retries, transfer
 references, and ledger settlement entries remain separate follow-on slices.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

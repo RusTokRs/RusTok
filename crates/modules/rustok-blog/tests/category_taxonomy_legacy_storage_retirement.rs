@@ -1,5 +1,4 @@
-const MIGRATION: &str =
-    include_str!("../src/migrations/m20261029_000001_create_blog_schema.rs");
+const MIGRATION: &str = include_str!("../src/migrations/m20261029_000001_create_blog_schema.rs");
 const REGISTRY: &str = include_str!("../src/migrations/mod.rs");
 const ENTITIES: &str = include_str!("../src/entities/mod.rs");
 

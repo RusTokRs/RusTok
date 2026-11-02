@@ -1002,10 +1002,12 @@ mod tests {
 
     #[test]
     fn title_suffix_survives_truncation() {
-        let mut settings = crate::dto::SeoModuleSettings::default();
-        settings.title_separator = " | ".to_string();
-        settings.title_suffix = Some("Example Site".to_string());
-        settings.meta_title_max_length = 40;
+        let settings = crate::dto::SeoModuleSettings {
+            title_separator: " | ".to_string(),
+            title_suffix: Some("Example Site".to_string()),
+            meta_title_max_length: 40,
+            ..Default::default()
+        };
 
         let base = "A".repeat(60);
         let (title, _) = super::apply_metadata_settings(base, None, &settings);

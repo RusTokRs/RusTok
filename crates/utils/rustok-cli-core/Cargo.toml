@@ -2,8 +2,15 @@
 name = "rustok-cli-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Core contracts for the RusToK platform CLI and module command providers"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-trait.workspace = true

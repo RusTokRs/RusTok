@@ -1,6 +1,10 @@
-use std::{fmt, time::Duration};
+use std::fmt;
+#[allow(unused_imports)]
+use std::time::Duration;
 
-use crate::error::{Error, Result};
+#[allow(unused_imports)]
+use crate::error::Error;
+use crate::error::Result;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER";

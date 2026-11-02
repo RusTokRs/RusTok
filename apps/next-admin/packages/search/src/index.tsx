@@ -2,6 +2,8 @@
 
 import React from 'react';
 import type { AdminGraphqlExecutor } from '@/lib/graphql';
+import { registerAdminModule } from '@/modules/registry';
+import { searchNavItems } from './nav';
 import {
   Table,
   TableBody,
@@ -10,6 +12,14 @@ import {
   TableHeader,
   TableRow
 } from '@/widgets/data-table';
+
+registerAdminModule({
+  id: 'search',
+  name: 'Search',
+  navItems: searchNavItems
+});
+
+export { searchNavItems } from './nav';
 
 type SearchAdminTab = 'overview' | 'playground' | 'analytics' | 'dictionaries';
 
@@ -202,7 +212,7 @@ type SearchDictionarySnapshotPayload = {
   queryRules: SearchQueryRulePayload[];
 };
 
-const SEARCH_ADMIN_BOOTSTRAP_QUERY = `
+export const SEARCH_ADMIN_BOOTSTRAP_QUERY = `
   query SearchAdminBootstrap {
     availableSearchEngines { kind label providedBy enabled defaultEngine }
     searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt }
@@ -214,7 +224,7 @@ const SEARCH_ADMIN_BOOTSTRAP_QUERY = `
   }
 `;
 
-const SEARCH_PREVIEW_QUERY = `
+export const SEARCH_PREVIEW_QUERY = `
   query SearchPreview($input: SearchPreviewInput!) {
     searchPreview(input: $input) {
       queryLogId presetKey total tookMs engine rankingProfile
@@ -224,7 +234,7 @@ const SEARCH_PREVIEW_QUERY = `
   }
 `;
 
-const SEARCH_FILTER_PRESETS_QUERY = `
+export const SEARCH_FILTER_PRESETS_QUERY = `
   query SearchFilterPresets($input: SearchFilterPresetsInput!) {
     searchFilterPresets(input: $input) {
       key
@@ -237,7 +247,7 @@ const SEARCH_FILTER_PRESETS_QUERY = `
   }
 `;
 
-const SEARCH_LAGGING_DOCUMENTS_QUERY = `
+export const SEARCH_LAGGING_DOCUMENTS_QUERY = `
   query SearchLaggingDocuments($limit: Int) {
     searchLaggingDocuments(limit: $limit) {
       documentKey documentId sourceModule entityType locale status isPublic title updatedAt indexedAt lagSeconds
@@ -245,7 +255,7 @@ const SEARCH_LAGGING_DOCUMENTS_QUERY = `
   }
 `;
 
-const SEARCH_CONSISTENCY_ISSUES_QUERY = `
+export const SEARCH_CONSISTENCY_ISSUES_QUERY = `
   query SearchConsistencyIssues($limit: Int) {
     searchConsistencyIssues(limit: $limit) {
       issueKind documentKey documentId sourceModule entityType locale status title updatedAt indexedAt
@@ -253,7 +263,7 @@ const SEARCH_CONSISTENCY_ISSUES_QUERY = `
   }
 `;
 
-const SEARCH_ANALYTICS_QUERY = `
+export const SEARCH_ANALYTICS_QUERY = `
   query SearchAnalytics($days: Int, $limit: Int) {
     searchAnalytics(days: $days, limit: $limit) {
       summary {
@@ -272,7 +282,7 @@ const SEARCH_ANALYTICS_QUERY = `
   }
 `;
 
-const SEARCH_DICTIONARY_SNAPSHOT_QUERY = `
+export const SEARCH_DICTIONARY_SNAPSHOT_QUERY = `
   query SearchDictionarySnapshot {
     searchDictionarySnapshot {
       synonyms { id term synonyms updatedAt }
@@ -285,19 +295,19 @@ const SEARCH_DICTIONARY_SNAPSHOT_QUERY = `
   }
 `;
 
-const TRIGGER_SEARCH_REBUILD_MUTATION = `
+export const TRIGGER_SEARCH_REBUILD_MUTATION = `
   mutation TriggerSearchRebuild($input: TriggerSearchRebuildInput!) {
     triggerSearchRebuild(input: $input) { success queued tenantId targetType targetId }
   }
 `;
 
-const TRACK_SEARCH_CLICK_MUTATION = `
+export const TRACK_SEARCH_CLICK_MUTATION = `
   mutation TrackSearchClick($input: TrackSearchClickInput!) {
     trackSearchClick(input: $input) { success tracked }
   }
 `;
 
-const UPDATE_SEARCH_SETTINGS_MUTATION = `
+export const UPDATE_SEARCH_SETTINGS_MUTATION = `
   mutation UpdateSearchSettings($input: UpdateSearchSettingsInput!) {
     updateSearchSettings(input: $input) {
       success
@@ -306,37 +316,37 @@ const UPDATE_SEARCH_SETTINGS_MUTATION = `
   }
 `;
 
-const UPSERT_SEARCH_SYNONYM_MUTATION = `
+export const UPSERT_SEARCH_SYNONYM_MUTATION = `
   mutation UpsertSearchSynonym($input: UpsertSearchSynonymInput!) {
     upsertSearchSynonym(input: $input) { success }
   }
 `;
 
-const DELETE_SEARCH_SYNONYM_MUTATION = `
+export const DELETE_SEARCH_SYNONYM_MUTATION = `
   mutation DeleteSearchSynonym($input: DeleteSearchSynonymInput!) {
     deleteSearchSynonym(input: $input) { success }
   }
 `;
 
-const ADD_SEARCH_STOP_WORD_MUTATION = `
+export const ADD_SEARCH_STOP_WORD_MUTATION = `
   mutation AddSearchStopWord($input: AddSearchStopWordInput!) {
     addSearchStopWord(input: $input) { success }
   }
 `;
 
-const DELETE_SEARCH_STOP_WORD_MUTATION = `
+export const DELETE_SEARCH_STOP_WORD_MUTATION = `
   mutation DeleteSearchStopWord($input: DeleteSearchStopWordInput!) {
     deleteSearchStopWord(input: $input) { success }
   }
 `;
 
-const UPSERT_SEARCH_PIN_RULE_MUTATION = `
+export const UPSERT_SEARCH_PIN_RULE_MUTATION = `
   mutation UpsertSearchPinRule($input: UpsertSearchPinRuleInput!) {
     upsertSearchPinRule(input: $input) { success }
   }
 `;
 
-const DELETE_SEARCH_QUERY_RULE_MUTATION = `
+export const DELETE_SEARCH_QUERY_RULE_MUTATION = `
   mutation DeleteSearchQueryRule($input: DeleteSearchQueryRuleInput!) {
     deleteSearchQueryRule(input: $input) { success }
   }
@@ -365,19 +375,19 @@ type SearchPreviewFiltersInput = {
   sortDesc: boolean;
 };
 
-function parseCsv(value: string): string[] {
+export function parseCsv(value: string): string[] {
   return value
     .split(',')
     .map((segment) => segment.trim())
     .filter(Boolean);
 }
 
-function optionalText(value: string): string | undefined {
+export function optionalText(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function prettyJsonString(value: string): string {
+export function prettyJsonString(value: string): string {
   try {
     return JSON.stringify(JSON.parse(value), null, 2);
   } catch {
@@ -385,7 +395,7 @@ function prettyJsonString(value: string): string {
   }
 }
 
-function parseJsonValue(value: string): unknown | null {
+export function parseJsonValue(value: string): unknown | null {
   try {
     return JSON.parse(value);
   } catch {
@@ -393,7 +403,7 @@ function parseJsonValue(value: string): unknown | null {
   }
 }
 
-function extractRankingProfileValue(
+export function extractRankingProfileValue(
   configText: string,
   surface: string
 ): string {
@@ -412,7 +422,7 @@ function extractRankingProfileValue(
   return surface === 'admin_global_search' ? 'exact' : 'balanced';
 }
 
-function extractSurfacePresetsJson(
+export function extractSurfacePresetsJson(
   configText: string,
   surface: string
 ): string {
@@ -431,7 +441,7 @@ function extractSurfacePresetsJson(
   return '[]';
 }
 
-function parseJsonArrayForEditor(label: string, value: string): unknown[] {
+export function parseJsonArrayForEditor(label: string, value: string): unknown[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -444,7 +454,7 @@ function parseJsonArrayForEditor(label: string, value: string): unknown[] {
   return parsed;
 }
 
-function mergeRelevanceEditorConfig(input: {
+export function mergeRelevanceEditorConfig(input: {
   configText: string;
   rankingDefault: string;
   rankingPreview: string;
@@ -453,7 +463,8 @@ function mergeRelevanceEditorConfig(input: {
   previewPresets: string;
   storefrontPresets: string;
 }): string {
-  const parsed = parseJsonValue(input.configText);
+  const text = input.configText?.trim() || '{}';
+  const parsed = parseJsonValue(text);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Settings config root must be a JSON object.');
   }
@@ -479,7 +490,7 @@ function mergeRelevanceEditorConfig(input: {
   return JSON.stringify(config, null, 2);
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unexpected error';
 }
 
@@ -2924,3 +2935,5 @@ function EmptyPanel({
     </article>
   );
 }
+
+export default SearchAdminPage;

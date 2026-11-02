@@ -1,6 +1,6 @@
 # rustok-forms-dioxus
 
-Dioxus 0.7 adapter for the [`rustok-forms`](../) core library.
+Dioxus 0.7 adapter for the [`rustok-ui-forms`](../) core library.
 
 For public component APIs, contexts, and accessibility invariants, see [CRATE_API.md](CRATE_API.md).
 
@@ -50,7 +50,7 @@ Features:
 
 ```rust,ignore
 use dioxus::prelude::*;
-use rustok_forms::{DirtyTracker, FormState, FormValidator};
+use rustok_ui_forms::{DirtyTracker, FormState, FormValidator};
 use rustok_forms_dioxus::*;
 
 #[component]

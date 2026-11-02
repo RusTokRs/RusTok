@@ -1,3 +1,4 @@
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -155,5 +156,27 @@ impl From<FlexEntryView> for FlexEntryResponse {
             created_at: view.created_at,
             updated_at: view.updated_at,
         }
+    }
+}
+
+/// Owner-side tenant lifecycle gate for the standalone Flex REST surface.
+///
+/// Transport adapters must call this before exposing Flex schemas or entries.
+/// A missing/disabled tenant module row is a stable `MODULE_NOT_ENABLED`
+/// denial; storage failures are never treated as enabled.
+#[derive(Debug)]
+pub enum FlexModuleAvailabilityError {
+    Disabled,
+    Unavailable(sea_orm::DbErr),
+}
+
+pub async fn ensure_module_enabled(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> Result<(), FlexModuleAvailabilityError> {
+    match rustok_api::is_tenant_module_enabled(db, tenant_id, "flex").await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(FlexModuleAvailabilityError::Disabled),
+        Err(error) => Err(FlexModuleAvailabilityError::Unavailable(error)),
     }
 }

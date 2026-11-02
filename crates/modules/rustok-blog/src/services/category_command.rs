@@ -142,47 +142,36 @@ impl CategoryCommandService {
                 .await?,
             );
         } else {
-            let source_siblings = sibling_ids(
-                &blog_ids,
-                &placement_by_id,
-                source_parent_id,
-                Some(category_id),
-            );
-            let mut target_siblings =
-                sibling_ids(&blog_ids, &placement_by_id, input.parent_id, None);
-            if target_index > target_siblings.len() {
-                return Err(BlogError::validation(format!(
-                    "Category position {} exceeds destination sibling count {}",
-                    input.position,
-                    target_siblings.len()
-                )));
-            }
-            target_siblings.insert(target_index, category_id);
+            // A parent change is not a sibling reorder. Taxonomy owns the
+            // canonical move and validates cycle, scope and sibling membership
+            // before updating both source and destination inside this transaction.
+            let placements = rustok_taxonomy::move_module_category_in_tx(
+                &txn,
+                tenant_id,
+                category_id,
+                crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
+                input.parent_id,
+                i32::try_from(input.position)
+                    .map_err(|_| BlogError::validation("Category position exceeds i32 range"))?,
+            )
+            .await
+            .map_err(BlogError::from)?;
 
-            // Move the target into its destination first; this makes an empty source
-            // sibling set represent the real post-move state to Taxonomy.
-            updated.extend(
-                persist_sibling_order(
-                    &txn,
-                    tenant_id,
-                    &desired_depths,
-                    input.parent_id,
-                    &target_siblings,
-                    &mut touched,
-                )
-                .await?,
-            );
-            updated.extend(
-                persist_sibling_order(
-                    &txn,
-                    tenant_id,
-                    &desired_depths,
-                    source_parent_id,
-                    &source_siblings,
-                    &mut touched,
-                )
-                .await?,
-            );
+            for placement in placements {
+                let depth = *desired_depths.get(&placement.term_id).ok_or_else(|| {
+                    BlogError::invariant(format!(
+                        "Blog category depth was not computed for category {}",
+                        placement.term_id
+                    ))
+                })?;
+                touched.insert(placement.term_id);
+                updated.push(CategoryPlacementResponse {
+                    id: placement.term_id,
+                    parent_id: placement.parent_id,
+                    position: placement.position,
+                    depth,
+                });
+            }
         }
 
         updated.extend(persist_descendant_depth_changes(

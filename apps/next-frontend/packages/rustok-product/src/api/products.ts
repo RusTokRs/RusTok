@@ -283,6 +283,10 @@ export async function fetchCatalogSearchOptions(
     baseUrl,
   });
 
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Catalog search options query failed");
+  }
+
   return (
     response.data?.storefrontCatalogSearchOptions ?? {
       categoryOptions: [],
@@ -355,6 +359,10 @@ export async function fetchStorefrontCatalogFacets(
     },
     tenant: tenantSlug ?? undefined,
   });
+
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Catalog facets query failed");
+  }
 
   return response.data?.storefrontProductCatalogFacets ?? [];
 }

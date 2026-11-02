@@ -106,7 +106,7 @@ fn map_storefront_customer_port_error(
                 .idempotency_key
                 .as_ref()
                 .map(|value| value.chars().count()),
-            deadline_ms = ?context.deadline_ms,
+            deadline_ms_present = context.deadline_ms.is_some(),
             owner_error_kind,
             owner_code_length,
             retryable,
@@ -142,7 +142,7 @@ fn map_storefront_customer_port_error(
                 .idempotency_key
                 .as_ref()
                 .map(|value| value.chars().count()),
-            deadline_ms = ?context.deadline_ms,
+            deadline_ms_present = context.deadline_ms.is_some(),
             owner_error_kind,
             owner_code_length,
             retryable,

@@ -3,12 +3,12 @@ use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
-#[cfg(feature = "ssr")]
-use crate::model::{BlogModerationComment, BlogPostListItem};
 use crate::model::{
     BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
     BlogPostDraft, BlogPostList,
 };
+#[cfg(feature = "ssr")]
+use crate::model::{BlogModerationComment, BlogPostListItem};
 
 pub(super) async fn fetch_categories(
     locale: Option<String>,
@@ -88,6 +88,36 @@ pub(super) async fn delete_post(id: String) -> Result<bool, ServerFnError> {
     blog_admin_delete_post_native(id).await
 }
 
+pub(super) async fn create_preview_token(
+    post_id: String,
+    ttl_hours: Option<i64>,
+) -> Result<crate::model::BlogPreviewToken, ServerFnError> {
+    blog_admin_create_preview_token_native(post_id, ttl_hours).await
+}
+
+pub(super) async fn fetch_category_details(
+    locale: Option<String>,
+) -> Result<Vec<crate::model::BlogCategoryDetail>, ServerFnError> {
+    blog_admin_category_details_native(locale).await
+}
+
+pub(super) async fn create_category(
+    draft: crate::model::BlogCategoryDraft,
+) -> Result<String, ServerFnError> {
+    blog_admin_create_category_native(draft).await
+}
+
+pub(super) async fn update_category(
+    id: String,
+    update: crate::model::BlogCategoryUpdate,
+) -> Result<crate::model::BlogCategoryDetail, ServerFnError> {
+    blog_admin_update_category_native(id, update).await
+}
+
+pub(super) async fn delete_category(id: String) -> Result<bool, ServerFnError> {
+    blog_admin_delete_category_native(id).await
+}
+
 pub(super) async fn fetch_moderation_comments(
     post_id: String,
     locale: Option<String>,
@@ -112,6 +142,7 @@ struct NativeContext {
     event_bus: rustok_outbox::TransactionalEventBus,
     comments_thread_port: Option<Arc<dyn rustok_blog::CommentsThreadPort>>,
     settings_reader: Option<rustok_api::SharedStaticModuleSettingsReader>,
+    category_delete_cleanup: Option<Arc<dyn rustok_blog::TaxonomyCategoryDeleteCleanupPort>>,
     auth: rustok_api::AuthContext,
     tenant: rustok_api::TenantContext,
 }
@@ -146,12 +177,15 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
         .ok_or_else(public_internal_error)?;
     let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
     let settings_reader = runtime.shared_get::<rustok_api::SharedStaticModuleSettingsReader>();
+    let category_delete_cleanup =
+        runtime.shared_get::<Arc<dyn rustok_blog::TaxonomyCategoryDeleteCleanupPort>>();
 
     Ok(NativeContext {
         db: runtime.db_clone(),
         event_bus,
         comments_thread_port,
         settings_reader,
+        category_delete_cleanup,
         auth,
         tenant,
     })
@@ -191,7 +225,9 @@ fn public_internal_error() -> ServerFnError {
 fn parse_schedule(value: String) -> Result<chrono::DateTime<chrono::Utc>, ServerFnError> {
     chrono::DateTime::parse_from_rfc3339(value.trim())
         .map(|date| date.with_timezone(&chrono::Utc))
-        .map_err(|_| ServerFnError::new("scheduled_at requires an RFC 3339 timestamp with timezone"))
+        .map_err(|_| {
+            ServerFnError::new("scheduled_at requires an RFC 3339 timestamp with timezone")
+        })
 }
 
 #[cfg(feature = "ssr")]
@@ -209,6 +245,40 @@ fn require_moderation_permission(auth: &rustok_api::AuthContext) -> Result<(), S
     } else {
         Err(ServerFnError::new(
             "Permission denied: comments:moderate required",
+        ))
+    }
+}
+
+/// Mirrors the `blog_posts:update` gate that the GraphQL mutation and the REST
+/// controller enforce before minting a preview token.
+#[cfg(feature = "ssr")]
+fn require_blog_posts_update_permission(
+    auth: &rustok_api::AuthContext,
+) -> Result<(), ServerFnError> {
+    if rustok_api::has_any_effective_permission(
+        &auth.permissions,
+        &[rustok_api::Permission::BLOG_POSTS_UPDATE],
+    ) {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "Permission denied: blog_posts:update required",
+        ))
+    }
+}
+
+/// Mirrors the category permission gates that the GraphQL mutations and the
+/// REST controllers enforce before create, update and delete commands.
+#[cfg(feature = "ssr")]
+fn require_category_permission(
+    auth: &rustok_api::AuthContext,
+    permission: rustok_api::Permission,
+) -> Result<(), ServerFnError> {
+    if rustok_api::has_any_effective_permission(&auth.permissions, &[permission]) {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "Permission denied: blog_categories command permission required",
         ))
     }
 }
@@ -381,7 +451,8 @@ async fn blog_admin_create_post_native(
                     slug: optional_text(draft.slug),
                     publish: draft.publish,
                     tags: draft.tags,
-                    category_id: draft.category_id
+                    category_id: draft
+                        .category_id
                         .map(|id| parse_uuid(&id, "category_id"))
                         .transpose()?,
                     featured_image_url: draft.featured_image_url,
@@ -450,13 +521,16 @@ async fn blog_admin_update_post_native(
                         Some(id) => rustok_api::Patch::Set(parse_uuid(&id, "category_id")?),
                         None => rustok_api::Patch::Clear,
                     },
-                    featured_image_url: draft.featured_image_url
+                    featured_image_url: draft
+                        .featured_image_url
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
-                    seo_title: draft.seo_title
+                    seo_title: draft
+                        .seo_title
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
-                    seo_description: draft.seo_description
+                    seo_description: draft
+                        .seo_description
                         .map(rustok_api::Patch::Set)
                         .unwrap_or(rustok_api::Patch::Clear),
                     channel_slugs: Some(draft.channel_slugs),
@@ -545,7 +619,9 @@ async fn blog_admin_pin_post_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (id, locale);
-        Err(ServerFnError::new("blog/admin/pin-post requires the `ssr` feature"))
+        Err(ServerFnError::new(
+            "blog/admin/pin-post requires the `ssr` feature",
+        ))
     }
 }
 
@@ -561,7 +637,9 @@ async fn blog_admin_unpin_post_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (id, locale);
-        Err(ServerFnError::new("blog/admin/unpin-post requires the `ssr` feature"))
+        Err(ServerFnError::new(
+            "blog/admin/unpin-post requires the `ssr` feature",
+        ))
     }
 }
 
@@ -635,11 +713,7 @@ async fn update_status_and_reload(
                 .unpublish_post(context.tenant.id, post_id, security)
                 .await
         }
-        StatusMutation::Pin => {
-            service
-                .pin_post(context.tenant.id, post_id, security)
-                .await
-        }
+        StatusMutation::Pin => service.pin_post(context.tenant.id, post_id, security).await,
         StatusMutation::Unpin => {
             service
                 .unpin_post(context.tenant.id, post_id, security)
@@ -695,6 +769,49 @@ async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError
         let _ = id;
         Err(ServerFnError::new(
             "blog/admin/delete-post requires the `ssr` feature",
+        ))
+    }
+}
+
+/// Mints a draft preview token through the owner service. The plaintext secret
+/// crosses the server-function boundary exactly once; the service stores only
+/// its SHA-256 digest and the listing surface never returns it again.
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-preview-token")]
+async fn blog_admin_create_preview_token_native(
+    post_id: String,
+    ttl_hours: Option<i64>,
+) -> Result<crate::model::BlogPreviewToken, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::PreviewTokenService;
+
+        let context = native_context().await?;
+        require_blog_posts_update_permission(&context.auth)?;
+        let post_id = parse_uuid(&post_id, "post_id")?;
+        let token = PreviewTokenService::new(context.db, context.event_bus)
+            .create_token(
+                context.tenant.id,
+                post_id,
+                security_context(&context.auth),
+                ttl_hours,
+            )
+            .await
+            .map_err(public_blog_error)?;
+        Ok(crate::model::BlogPreviewToken {
+            id: token.id.to_string(),
+            token: token.token.ok_or_else(|| {
+                ServerFnError::new("preview token create result is missing its one-time plaintext")
+            })?,
+            post_id: token.post_id.to_string(),
+            expires_at: token.expires_at.to_rfc3339(),
+            created_at: token.created_at.to_rfc3339(),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (post_id, ttl_hours);
+        Err(ServerFnError::new(
+            "blog/admin/create-preview-token requires the `ssr` feature",
         ))
     }
 }
@@ -814,6 +931,12 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
         slug: Some(post.slug),
         excerpt: post.excerpt,
         status: status_label(post.status),
+        // The native transport has no profile runtime data, so the Author
+        // column falls back to the raw author id.
+        author_id: Some(post.author_id.to_string()),
+        author_profile: post
+            .author_name
+            .map(|display_name| crate::model::BlogAuthorProfileName { display_name }),
         created_at: post.created_at.to_rfc3339(),
         published_at: post.published_at.map(|value| value.to_rfc3339()),
         scheduled_at: post.scheduled_at.map(|value| value.to_rfc3339()),
@@ -872,5 +995,188 @@ mod tests {
     fn admin_native_runtime_exposes_comments_port_selection() {
         let selector: fn(&NativeContext) -> rustok_blog::CommentService = comment_service;
         let _ = selector;
+    }
+}
+
+/// Maps the owner list item into the admin detail projection.
+#[cfg(feature = "ssr")]
+fn map_category_detail(item: rustok_blog::CategoryListItem) -> crate::model::BlogCategoryDetail {
+    crate::model::BlogCategoryDetail {
+        id: item.id.to_string(),
+        locale: item.locale,
+        effective_locale: item.effective_locale,
+        name: item.name,
+        slug: item.slug,
+        description: item.description,
+        parent_id: item.parent_id.map(|id| id.to_string()),
+        position: item.position,
+        created_at: item.created_at.to_rfc3339(),
+        updated_at: Some(item.updated_at.to_rfc3339()),
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/category-details")]
+async fn blog_admin_category_details_native(
+    locale: Option<String>,
+) -> Result<Vec<crate::model::BlogCategoryDetail>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::{CategoryService, ListCategoriesFilter};
+
+        let context = native_context().await?;
+        let locale = requested_locale(locale, context.tenant.default_locale.as_str());
+        let service = CategoryService::new(context.db, context.event_bus);
+        let mut items = Vec::new();
+        for page in 1.. {
+            let (rows, total) = service
+                .list(
+                    context.tenant.id,
+                    security_context(&context.auth),
+                    ListCategoriesFilter {
+                        locale: Some(locale.clone()),
+                        page,
+                        per_page: 100,
+                    },
+                )
+                .await
+                .map_err(public_blog_error)?;
+            items.extend(rows.into_iter().map(map_category_detail));
+            if items.len() as u64 >= total {
+                return Ok(items);
+            }
+            if (items.len() as u64) < page * 100 {
+                return Err(ServerFnError::new("Incomplete Blog categories projection"));
+            }
+        }
+        unreachable!("Blog categories are bounded by the Taxonomy owner")
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = locale;
+        Err(ServerFnError::new(
+            "blog/admin/category-details requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-category")]
+async fn blog_admin_create_category_native(
+    draft: crate::model::BlogCategoryDraft,
+) -> Result<String, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::{CategoryService, CreateCategoryInput};
+
+        let context = native_context().await?;
+        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_CREATE)?;
+        let parent_id = match draft.parent_id.as_deref() {
+            Some(raw) => Some(parse_uuid(raw, "parent_id")?),
+            None => None,
+        };
+        let category_id = CategoryService::new(context.db, context.event_bus)
+            .create(
+                context.tenant.id,
+                security_context(&context.auth),
+                CreateCategoryInput {
+                    locale: draft.locale,
+                    name: draft.name,
+                    slug: draft.slug,
+                    description: draft.description,
+                    parent_id,
+                    position: draft.position,
+                    settings: serde_json::json!({}),
+                },
+            )
+            .await
+            .map_err(public_blog_error)?;
+        Ok(category_id.to_string())
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = draft;
+        Err(ServerFnError::new(
+            "blog/admin/create-category requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/update-category")]
+async fn blog_admin_update_category_native(
+    id: String,
+    update: crate::model::BlogCategoryUpdate,
+) -> Result<crate::model::BlogCategoryDetail, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::{CategoryService, UpdateCategoryInput};
+
+        let context = native_context().await?;
+        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_UPDATE)?;
+        let category_id = parse_uuid(&id, "category_id")?;
+        let response = CategoryService::new(context.db, context.event_bus)
+            .update(
+                context.tenant.id,
+                category_id,
+                security_context(&context.auth),
+                UpdateCategoryInput {
+                    locale: update.locale,
+                    name: update.name,
+                    slug: update.slug,
+                    description: update.description,
+                    settings: None,
+                },
+            )
+            .await
+            .map_err(public_blog_error)?;
+        Ok(crate::model::BlogCategoryDetail {
+            id: response.id.to_string(),
+            locale: response.locale,
+            effective_locale: response.effective_locale,
+            name: response.name,
+            slug: response.slug,
+            description: response.description,
+            parent_id: response.parent_id.map(|parent| parent.to_string()),
+            position: response.position,
+            created_at: response.created_at.to_rfc3339(),
+            updated_at: Some(response.updated_at.to_rfc3339()),
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, update);
+        Err(ServerFnError::new(
+            "blog/admin/update-category requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/admin/delete-category")]
+async fn blog_admin_delete_category_native(id: String) -> Result<bool, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use rustok_blog::CategoryService;
+
+        let context = native_context().await?;
+        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_DELETE)?;
+        let category_id = parse_uuid(&id, "category_id")?;
+        let mut service = CategoryService::new(context.db, context.event_bus);
+        if let Some(cleanup) = context.category_delete_cleanup.clone() {
+            service = service.with_category_delete_cleanup(cleanup);
+        }
+        service
+            .delete(
+                context.tenant.id,
+                category_id,
+                security_context(&context.auth),
+            )
+            .await
+            .map_err(public_blog_error)?;
+        Ok(true)
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "blog/admin/delete-category requires the `ssr` feature",
+        ))
     }
 }

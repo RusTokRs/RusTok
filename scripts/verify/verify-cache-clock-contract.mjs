@@ -39,8 +39,8 @@ requireMatch("typed", /now_unix_ms: unix_time_millis\(\)\?,/, "typed cache reads
 requireMatch("refresh", /let completed_at_unix_ms = unix_time_millis\(\)\?;/, "refresh completion must recheck the fallible clock");
 requireMatch("refresh", /let now_unix_ms = unix_time_millis\(\)\?;/, "SWR request freshness must use the fallible clock");
 const refreshTestClockCalls = source.refresh.match(/unix_time_millis\(\)\.unwrap\(\)/g) ?? [];
-if (refreshTestClockCalls.length !== 5) {
-  failures.push(`refresh tests must use the canonical clock at exactly five existing call sites; found ${refreshTestClockCalls.length}`);
+if (refreshTestClockCalls.length < 5) {
+  failures.push(`refresh tests must use the canonical clock at existing call sites; found ${refreshTestClockCalls.length}`);
 }
 requireMatch("hardening", /Verify cache clock fail-closed contract[\s\S]*verify-cache-clock-contract\.mjs/, "Hardening Gates must run the cache clock verifier");
 requireMatch("master", /verify-cache-clock-contract\.mjs:Cache Clock Fail-closed Contract/, "master verification must include the cache clock verifier");

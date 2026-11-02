@@ -492,10 +492,9 @@ impl SeaOrmModuleTransitionService {
         }
         readiness_services[0]
             .check_automatic_mode_eligibility(
-                &candidate.reference.digest,
-                predecessor
-                    .as_ref()
-                    .map(|artifact| artifact.reference.digest.as_str()),
+                operation_id,
+                &candidate,
+                predecessor.as_ref(),
                 &command.required_pools,
                 &command.placement_policy,
             )

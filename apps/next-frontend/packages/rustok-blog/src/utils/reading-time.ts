@@ -24,16 +24,17 @@ export function calculateReadingTime(plainText: string, wordsPerMinute = 200): n
  * Returns a formatted, localized reading time string.
  */
 export function formatReadingTime(minutes: number, locale = 'en'): string {
+  const safeMinutes = Math.max(1, Math.round(minutes || 1));
   if (locale === 'ru') {
-    const mod10 = minutes % 10;
-    const mod100 = minutes % 100;
+    const mod10 = safeMinutes % 10;
+    const mod100 = safeMinutes % 100;
     let suffix = 'минут';
     if (mod10 === 1 && mod100 !== 11) {
       suffix = 'минута';
     } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
       suffix = 'минуты';
     }
-    return `${minutes} ${suffix} чтения`;
+    return `${safeMinutes} ${suffix} чтения`;
   }
-  return `${minutes} min read`;
+  return `${safeMinutes} min read`;
 }

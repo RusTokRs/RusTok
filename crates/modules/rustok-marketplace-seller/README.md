@@ -79,5 +79,7 @@ uses one serializable command envelope for both native server functions and
 GraphQL, preserves the original idempotency key for explicit retry, and never
 falls back to another transport automatically.
 
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.
+
 The module does not depend on `rustok-commerce`, copy auth users, own product
 catalog content, or own payment, ledger, and payout state.

@@ -135,8 +135,10 @@ Practical rule for the current platform scope:
 - A module with `[provides.admin_ui]` and `[provides.storefront_ui]` must have `dual_surface`;
 - A module with only `[provides.admin_ui]` must have `admin_only`;
 - A module with only `[provides.storefront_ui]` must have `storefront_only`;
-- A module without UI may use `no_ui`, `capability_only` or `future_ui`, but must not simultaneously declare UI sub-crates.
-- `[provides.admin_support]` / `[provides.storefront_support]` declare a UI support sub-crate (reusable components composed into other modules' surfaces or host compositions). A support sub-crate is not a UI surface and does not change `ui_classification`: an `admin_only` module may additionally publish a storefront support crate, and a `future_ui` module may publish support crates before it owns any surface.
+- `no_ui` and `capability_only` describe headless modules and do not permit undeclared UI packages.
+- `future_ui` describes an unmounted UI draft: it has no live `[provides.*_ui]` sections, but may contain Leptos `admin/` and/or `storefront/` development packages. These packages do not create routes, host registrations, or readiness evidence; `cargo xtask module lint <slug>` checks their FFA structure.
+- `admin_only`, `storefront_only` and `dual_surface` describe live surfaces. Their matching Leptos packages and `[provides.*_ui]` sections must exist; the generic native lint also requires the declared Next.js package, host-module import and route-page import.
+- `[provides.admin_support]` / `[provides.storefront_support]` declare reusable UI support sub-crates, not route-owning surfaces. They do not change `ui_classification`: an `admin_only` module may additionally publish a storefront support crate, and a `future_ui` module may publish support crates before it owns any surface. A directory declared as `*_support` is checked against the support-package contract, not the full FFA draft-surface contract.
 
 ### `[crate].entry_type`
 
@@ -260,7 +262,7 @@ Additional sections are allowed, but this minimum must be preserved.
 - `rustok-module.toml` exists at the expected path;
 - `module.slug` matches the slug from `modules.toml`;
 - `module.version` in `rustok-module.toml` matches the version from `Cargo.toml`;
-- `module.ui_classification` exists, uses a supported value and is consistent with actual UI surfaces;
+- `module.ui_classification` exists, uses a supported value and is consistent with the manifest's live `[provides.*_ui]` declarations; physical Leptos package structure and Next.js package/route wiring are checked separately by `cargo xtask module lint <slug>`;
 - If a crate implements `RusToKModule`, `[crate].entry_type` exists and matches the runtime entry type;
 - If a crate implements `RusToKModule`, `module.slug`, `module.name` and `module.description` match its canonical runtime implementation source;
 - If a module is marked as `required = true` in `modules.toml`, the runtime type explicitly returns `ModuleKind::Core`; an optional module does not declare `ModuleKind::Core`;

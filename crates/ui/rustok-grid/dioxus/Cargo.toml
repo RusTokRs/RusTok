@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Dioxus 0.7 DataGrid adapter for RusToK"
-repository = "https://github.com/RusTokRs/RusTok"
-documentation = "https://docs.rs/rustok-grid-dioxus"
+repository.workspace = true
+rust-version.workspace = true
 readme = "README.md"
 keywords = ["dioxus", "datagrid", "table", "ui", "wai-aria"]
 categories = ["gui", "web-programming"]
+
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

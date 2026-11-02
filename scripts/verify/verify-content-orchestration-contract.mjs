@@ -6,7 +6,7 @@ const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/modules/rustok-content/src/services/content_orchestration_service.rs');
 const routeResolver = read('crates/modules/rustok-content-orchestration/src/route_resolver.rs');
 const routePort = read('crates/modules/rustok-content/src/services/canonical_route_resolver.rs');
-const blogRoutesMigration = read('crates/modules/rustok-blog/src/migrations/m20261008_000032_create_blog_post_routes.rs');
+const blogRoutesMigration = read('crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs');
 const forumRoutesMigration = read('crates/modules/rustok-forum/src/migrations/m20261008_000037_create_forum_topic_routes.rs');
 const serverWiring = [
   'apps/server/src/services/app_runtime.rs',

@@ -36,7 +36,7 @@ pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str = "PAGE_BUILDER_REVIEWED_
 type BodyRevisionSnapshot = Vec<(String, String)>;
 
 impl PageService {
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn publish_non_builder(
         &self,
         tenant_id: Uuid,
@@ -47,7 +47,7 @@ impl PageService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn publish_non_builder_if_current(
         &self,
         tenant_id: Uuid,
@@ -81,7 +81,7 @@ impl PageService {
         .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn unpublish(
         &self,
         tenant_id: Uuid,
@@ -92,7 +92,7 @@ impl PageService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn unpublish_if_current(
         &self,
         tenant_id: Uuid,
@@ -119,7 +119,7 @@ impl PageService {
         .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn archive(
         &self,
         tenant_id: Uuid,
@@ -130,7 +130,7 @@ impl PageService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn archive_if_current(
         &self,
         tenant_id: Uuid,

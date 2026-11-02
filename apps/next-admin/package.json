@@ -12,8 +12,19 @@
     "lint": "eslint src",
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:cache": "node --experimental-strip-types --test packages/cache/src/cache-admin.test.mjs",
+    "test:commerce": "node --experimental-strip-types --test packages/commerce/src/commerce-admin.test.mjs",
+    "test:email": "node --experimental-strip-types --test packages/email/src/email-admin.test.mjs",
+    "test:forms": "node --experimental-strip-types --test packages/forms/src/forms-admin.test.mjs",
+    "test:iggy": "node --experimental-strip-types --test packages/iggy-connector/src/iggy-connector-admin.test.mjs",
+    "test:media": "node --experimental-strip-types --test packages/media/src/media-admin.test.mjs",
     "test:pages": "node --experimental-strip-types --test packages/pages/src/pages-admin.test.mjs",
+    "test:product": "node --test packages/rustok-product/src/*.test.mjs",
+    "test:rbac": "node --experimental-strip-types --test packages/rbac/src/rbac-admin.test.mjs",
+    "test:search": "node --experimental-strip-types --test packages/search/src/search-admin.test.mjs",
+    "test:workflow": "node --experimental-strip-types --test packages/workflow/src/workflow-admin.test.mjs",
     "test:events": "node --experimental-strip-types --test packages/events/src/events-admin.test.mjs",
+    "test:modules": "node --test src/shared/api/modules.test.mjs",
     "lint:fix": "eslint src --fix && prettier --write src",
     "lint:strict": "eslint src --max-warnings=0",
     "test:e2e": "playwright test",
@@ -22,7 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:forum": "node --experimental-strip-types --test packages/forum/src/api/forum.test.mjs packages/forum/src/components/forum-reply-editor.test.mjs"
+    "test:forum": "node --experimental-strip-types --test packages/forum/src/api/forum.test.mjs packages/forum/src/components/forum-reply-editor.test.mjs packages/forum/src/forum-contract.test.mjs"
   },
   "lint-staged": {
     "**/*.{js,jsx,tsx,ts,css,less,scss,sass}": [

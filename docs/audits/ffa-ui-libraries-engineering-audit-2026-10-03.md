@@ -2,7 +2,7 @@
 
 - **Дата:** 2026-10-03
 - **Объём:** `crates/ui/*` (rustok-ui-core, rustok-ui-i18n, rustok-ui-transport, rustok-ui-auth,
-  rustok-ui + адаптеры leptos/dioxus, rustok-forms, rustok-grid, rustok-graphql, leptos-auth,
+  rustok-ui + адаптеры leptos/dioxus, rustok-ui-forms, rustok-grid, rustok-graphql, leptos-auth,
   leptos-ui, leptos-ui-routing, fly — выборочно), `crates/libs/rustok-fba`, FFA-реестр хоста
   `apps/next-admin`, Fluent-каталоги хоста, verify-гейты FFA/i18n.
 - **Метод:** статическая вычитка исходников + прогон всех node-verify-гейтов как
@@ -144,7 +144,7 @@ SSR-only-форма запрещена). Манифест и код не мен�
 - **leptos-auth** — двойной транспорт через `UiTransportPath` (CSR→GraphQL,
   hydrate/SSR→`#[server]`), `ServerAuthSnapshot` для SSR, авто-signout/refresh на wasm —
   архитектура согласована с FFA-контрактом. Ниты — в разделе 6.
-- **rustok-forms, rustok-grid** (validation/state/sanitize/dirty, pagination/filter +
+- **rustok-ui-forms, rustok-grid** (validation/state/sanitize/dirty, pagination/filter +
   оба адаптера) — чистые.
 - **rustok-ui + leptos/dioxus-адаптеры** — a11y в dialog/tabs корректна
   (фокус-трап, aria-атрибуты, roving tabindex).

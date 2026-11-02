@@ -288,6 +288,9 @@ pub(super) async fn invalidate_all_redirect_lookup_cache() {
 
 impl SeoService {
     pub async fn list_redirects(&self, tenant_id: Uuid) -> SeoResult<Vec<SeoRedirectRecord>> {
+        if tenant_id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
         if !self
             .load_settings(tenant_id)
             .await?
@@ -310,6 +313,12 @@ impl SeoService {
         tenant: &TenantContext,
         input: SeoRedirectInput,
     ) -> SeoResult<SeoRedirectRecord> {
+        if tenant.id.is_nil() {
+            return Err(SeoError::validation("tenant_id must not be nil"));
+        }
+        if input.id.is_some_and(|id| id.is_nil()) {
+            return Err(SeoError::validation("redirect id must not be nil"));
+        }
         let settings = self.load_settings(tenant.id).await?;
         if !settings.submodule_redirects_enabled {
             return Err(SeoError::configuration(

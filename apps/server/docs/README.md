@@ -96,10 +96,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 The current generic `SettingsService` and `platform_settings` table are live
 migration-target surfaces, not a reference owner model. They mix tenant categories
 whose semantic consumers belong to Email, Auth, tenant locale policy, and platform
-runtime components; validation is partial, `schema_version` is not an effective
-migration contract, and the generic settings-change event is currently published
-after persistence rather than atomically. New owner settings must not extend this
-bag. Follow the accepted
+runtime components, and validation is still partial. Writes now commit settings and
+the generic settings-change event in one transaction through `publish_in_tx`, and
+`schema_version` is a real optimistic-concurrency revision: GraphQL reads expose
+`schemaVersion`, admin updates must send `expectedSchemaVersion`, and stale writes
+fail with `CONFLICT` instead of silently overwriting another admin. Revision
+concurrency does not turn this generic bag into an owner-specific migration
+contract. New owner settings must not extend this bag. Follow the accepted
 [Settings and Configuration Architecture](../../../docs/architecture/settings.md)
 for the owner cutover, secret handles, activation state, and transactional event
 requirements.
@@ -240,12 +243,18 @@ success while a refresh token could remain valid.
   exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
-- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
+- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, caps active operation ids (32, 128-byte ids; duplicate 4409, overflow 4429, invalid id 4400), releases slots on server `complete`, revalidates the connection lease every 30 seconds and at the signed access-token expiry, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
 
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
   state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
+- `settings.rustok.features.oauth_enabled` is a real composition gate. When it is false the host does
+  not mount `/api/oauth/*` or the OAuth discovery metadata, and OpenAPI prunes the OAuth paths. The
+  default is fail-closed; deployments that expose an authorization server must opt in explicitly.
+- Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
+  token families, so a used code remains available as the replay anchor for the delegated lineage it
+  issued while still bounding storage.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
   goes through `rustok_web::json_response`.
@@ -260,6 +269,13 @@ success while a refresh token could remain valid.
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
+  row whose id is the JWT `jti`, and the extractor requires that row to be active,
+  hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
+  revocation, credential change, code replay, and refresh reuse revoke the whole
+  family, so an already-issued access JWT is fenced before its signed TTL. Delegated
+  rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
+  cannot resurrect older tokens.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
@@ -373,7 +389,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
 - For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
 - Registry release, publication, and validation adapters obtain their shared transactional governance aggregate through `ModuleControlPlane`; host authorization and artifact storage remain adapter concerns. A live validation enqueue requires a non-nil UUID `Idempotency-Key`: the server derives one platform-scoped `ModuleCommandContext`, and the owner replays only an exact request revision, actor, trace, correlation, principal, and rejected-retry-policy match from its durable enqueue receipt. A remote validation claim returns the owner-issued `requestRevision`; a terminal runner request must return it as `expectedRequestRevision`, so claim and terminal stage transitions use the same request CAS. Heartbeats only renew an already-issued operational lease.
 - For control-plane composition install/uninstall/upgrade server uses a single orchestration path: full manifest validation, CAS-update `platform_state`, owner-operation receipt completion, and build enqueue are executed atomically within one transaction boundary. The authenticated transport supplies a positive expected revision and UUID idempotency key; the owner admits the immutable command before manifest adaptation and exact retries replay the original build. `platform_state.manifest_hash` is the SHA-256 canonical composition snapshot digest, `manifest_ref` is always `platform_state:<revision>`, and the build's `manifest_hash` is the distinct immutable execution-request identity over the snapshot, composition digest, deployment profile, and execution plan.
-- Server module-control-plane adapters construct `ModuleControlPlane` once per scoped operation and obtain composition, lifecycle, installation, or sandbox-policy services only through that owner facade. Static tenant enablement, normalized settings, post-hook retry, and compensation share the owner-owned `module_static_tenant_lifecycle` aggregate: its inherited/default revision is zero, each authenticated command carries a tenant-matched `ModuleCommandContext` plus its aggregate revision, and its execution claim fails concurrent work closed. The lifecycle journal and settings receipt retain the context actor, trace, correlation, and idempotency evidence; changed-context replay fails closed. The settings writer completes its exact owner-operation receipt in the same transaction as settings persistence, revision advancement, and claim release; direct model writes, server-built lifecycle state, and native settings write fallbacks are not production contracts. GraphQL derives tenant, actor, trace, and `modules:manage`, requires a non-nil UUID plus non-negative expected revision, and returns the owner-issued next revision. `module_operations` retains hook lifecycle status as `validated/running/committed_hook_pending/committed/committed_hook_failed/failed/orphaned`; only pre-validation failures create no journal row. GraphQL maps canonical lifecycle/recovery facts to transport errors (`BAD_USER_INPUT`, `IDEMPOTENCY_CONFLICT`, `REVISION_CONFLICT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`), with idempotency conflict non-retryable; admin/SSR clients must not remap these fields.
+- Server module-control-plane adapters construct `ModuleControlPlane` once per scoped operation and obtain composition, lifecycle, installation, or sandbox-policy services only through that owner facade. Static tenant enablement, normalized settings, post-hook retry, and compensation share the owner-owned `module_static_tenant_lifecycle` aggregate: its inherited/default revision is zero, each authenticated command carries a tenant-matched `ModuleCommandContext` plus its aggregate revision, and its execution claim fails concurrent work closed. The lifecycle journal and settings receipt retain actor, trace, correlation, and idempotency evidence. Lifecycle replay matches tenant, idempotency key, module, requested state, expected revision, and recovery source when present; settings receipts also bind the actor. Trace and correlation remain observability evidence. The settings writer completes its exact owner-operation receipt in the same transaction as settings persistence, revision advancement, and claim release; direct model writes, server-built lifecycle state, and native settings write fallbacks are not production contracts. GraphQL derives tenant, actor, trace, and `modules:manage`, requires a non-nil UUID plus non-negative expected revision, and returns the owner-issued next revision. `module_operations` retains hook lifecycle status as `validated/running/committed_hook_pending/committed/committed_hook_failed/failed/orphaned`; only pre-validation failures create no journal row. GraphQL maps canonical lifecycle/recovery facts to transport errors (`BAD_USER_INPUT`, `IDEMPOTENCY_CONFLICT`, `REVISION_CONFLICT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`), with idempotency conflict non-retryable; admin/SSR clients must not remap these fields.
 - GraphQL `tenantModules` reads bounded explicit override/settings snapshots
   through the module owner facade. It does not query `tenant_modules` or infer
   effective availability; enabled/denied state remains owned by
@@ -430,7 +446,8 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   checksum or server ORM row.
 - Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`. The service returns the owner decision with its deterministic revision, typed facts, and denial reasons; server guards, GraphQL, and installer adapters consume only its enabled projection.
 - Static module manifests and catalog entries are parsed by the server host, but `rustok-modules` owns module metadata, resolved static-catalog topology (defaults, dependencies, conflicts, and version compatibility), static manifest-versus-registry comparison, settings-schema, marketplace metadata, static UI classification, UI i18n semantics, static HTTP provider exclusivity, crate-local runtime binding normalization, deployment build-surface semantics, and settings normalization before lifecycle persistence with the effective-enablement and Core invariants; server filesystem, registry-fact extraction, and ORM code are adapters only.
-- For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope and derives the complete authenticated `ModuleCommandContext`, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals the context tenant-scoped and replays only the same actor/trace/correlation/idempotency evidence without redispatching its hook, while a changed context returns `IDEMPOTENCY_CONFLICT`.
+- For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope and derives the complete authenticated `ModuleCommandContext`, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals the context tenant-scoped and replays the same semantic command without redispatching its hook; actor, trace, and correlation are retained as audit evidence for lifecycle replay.
+- For server-composed static enable and enable-direction compensation, the host supplies the active manifest schema and the lifecycle owner validates retained settings after acquiring the aggregate claim, before calling hooks. It persists normalized settings with the intent and revision. Unresolved tenant or platform transitions block fresh lifecycle changes; this read is not an atomic static-rollout fence. Semantic lifecycle replay preserves the original operation result and binds a recovery to its original operation; actor, trace, and correlation are recorded audit evidence. Post-hook retry requires an exact match of the recorded hook-settings digest and current settings, and fails closed when historical evidence is missing.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
 - Registry publish-request translations are written only through the owner create/publication transactions; the server no longer retains a parallel translation upsert helper.
 - Registry audit payload no longer holds historical runtime fallback: `registry_governance_events.details` is normalized to a typed shape (`stage_key`, nested `owner_transition`, structured principal objects), and the controller maps lifecycle failures from typed `RegistryGovernanceError`, not from substring matching.
@@ -652,6 +669,10 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - Refresh-token rotation verifies that the referenced user belongs to the
   same tenant as the selected refresh session, preventing a malformed
   cross-tenant reference from issuing a token with inconsistent authority.
+- Host shutdown requests a cooperative drain from the module event dispatcher
+  before joining it; already admitted dispatches and their handler tasks are
+  awaited, and the host five-second deadline aborts the dispatcher task only as
+  an emergency fallback.
 - Host shutdown now awaits the payment-provider, paid-order-label,
   marketplace-financial, notification intake/candidate/fanout, Forum search
   inbox, and Product media-release worker handles after broadcasting stop.

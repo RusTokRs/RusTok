@@ -15,10 +15,26 @@ For verification commands, see [Module UI Package Verification](./module-package
 
 ---
 
+### FFA scope versus classical Next.js packages
+
+This guide governs module-owned Rust UI packages under `admin/` and
+`storefront/`, their existing Leptos render adapter `ui/leptos.rs`,
+and the planned Dioxus sibling `ui/dioxus.rs`. Both should call the same
+framework-neutral core, model and transport facade.
+
+Classic Next.js packages are separate React packages, owned by their
+respective Next hosts. They do not follow this FFA layout and are not generated
+by the Rust FFA scaffolding command. For a live module UI surface, the generic
+native-module lint verifies the declared Next.js package, host registry import,
+and route-page import. Those checks prove structural wiring only; functional
+cross-client parity still requires separate evidence.
+
 ## Required File Structure
 
-Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate) should follow
-this target layout when it has enough DTO and transport surface to justify separate files:
+Every module-owned Leptos UI package (`admin/` or `storefront/` sub-crate), including an
+unmounted `future_ui` draft, must follow this minimum layout. The owner may add
+nested submodules as responsibilities grow, but required files must be wired and
+non-empty:
 
 ```
 admin/                            (or storefront/)
@@ -29,8 +45,8 @@ admin/                            (or storefront/)
 │   └── ru.json
 └── src/
     ├── lib.rs                    ← wiring only: mod declarations + root re-export
-    ├── core.rs                   ← NO leptos::* imports — CI enforces this
-    ├── model.rs                  ← transport-neutral DTOs shared by adapters when needed
+    ├── core.rs or core/mod.rs   ← non-empty, framework-independent presentation policy
+    ├── model.rs                  ← non-empty transport-neutral owner/view model and boundary types
     ├── i18n.rs                   ← written manually using rustok-ui-i18n helpers
     ├── transport/
     │   ├── mod.rs                ← public facade; only entry point for ui/leptos.rs
@@ -84,9 +100,13 @@ Use `ui/leptos/` subdirectory instead of `ui/leptos.rs` when page components mul
 Use `transport.rs` instead of `transport/mod.rs` only for small facades. Once the package
 has multiple adapters or subdomains, split it into `transport/`.
 
-Use `model.rs` when request/response DTOs are shared by adapters or reused outside one
-facade. Small native/bootstrap packages may keep transport-neutral DTOs in `core.rs` or
-`transport.rs`; do not create a mechanical `model.rs` that only moves one local type.
+Keep `model.rs` as the stable framework- and transport-neutral owner/view-model seam
+shared by core and adapters. It is required even for an unmounted draft, but it
+must contain a real type rather than an empty placeholder. When no business
+DTO exists yet, model only the truthful capability/error state (for example,
+an explicit unavailable owner contract); never invent records or CRUD data.
+Do not put Leptos, GraphQL transport errors, persistence entities, or host
+context into this module.
 
 If the package currently has only one transport adapter, this is a valid current-state
 exception only when it is documented. Capture it in the module's
@@ -106,8 +126,7 @@ into new public/headless surfaces.
 ```rust
 mod core;
 mod i18n;
-// Include when shared request/response DTOs exist.
-// mod model;
+mod model;
 mod transport;
 mod ui;
 
@@ -304,7 +323,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-ui-core` | **Framework-agnostic UI contracts:** route/query context and intents, table/list pagination, sorting, filtering, selection, presentation policy, input normalization, and busy-key helpers. |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
 | `rustok-ui-auth` | **Framework-agnostic client auth:** `AuthUser`, `AuthSession`, expiry policy, and typed client auth errors. Leptos lifecycle bindings remain in `leptos-auth`. |
-| `rustok-forms` | **Framework-agnostic form state:** submission lifecycle, validation engine, field descriptors, and dirty tracking. Companion adapter: `rustok-forms-leptos`. |
+| `rustok-ui-forms` | **Framework-agnostic form state:** submission lifecycle, validation engine, field descriptors, and dirty tracking. Companion adapter: `rustok-forms-leptos`. |
 | `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Project Fluent `.ftl` catalogs), `declare_module_i18n!`, `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
 | `rustok-seo-panel` | `SeoEntityPanel`, `SeoEntityForm`, `SeoSnippetPreviewCard`, `SeoRecommendationsCard` — embed in owner module admin and authoring packages |
@@ -339,7 +358,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Framework-agnostic GraphQL transport client | `crates/ui/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
 | Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
 | Framework-agnostic auth values and expiry policy | `crates/ui/rustok-ui-auth/` | `AuthUser`, `AuthSession`, `AuthError` |
-| Framework-agnostic form/validation-result state | `crates/ui/rustok-forms/` | `FormState`, `FieldError`, `ValidationIssue`, `FormValidator`, `DirtyTracker` |
+| Framework-agnostic form/validation-result state | `crates/ui/rustok-ui-forms/` | `FormState`, `FieldError`, `ValidationIssue`, `FormValidator`, `DirtyTracker` |
 | Framework-agnostic table/list state | `crates/ui/rustok-ui-core/` | `UiPaginationState`, `UiSortState`, `UiFilterRule`, `UiSelectionState` |
 | Framework-agnostic UI i18n | `crates/ui/rustok-ui-i18n/` | `declare_module_i18n!`, `UiMessages` static catalog storage, Fluent resolution and locale normalization |
 | Host/API/backend contracts | `crates/libs/rustok-api/` | Locale, permissions, ports, server/runtime contracts |
@@ -376,7 +395,7 @@ When creating a new shared library, decide upfront:
 - Name: `crates/ui/rustok-ui-<name>/` for shared UI semantics, or an existing
   owner crate when the contract belongs to a domain/capability
 - **NO** `leptos::*` or `dioxus::*` imports
-- Example: `rustok-ui-core`, `rustok-forms`, `rustok-ui-i18n`, `rustok-graphql`
+- Example: `rustok-ui-core`, `rustok-ui-forms`, `rustok-ui-i18n`, `rustok-graphql`
 - Works with both Leptos and Dioxus UI adapters
 
 ### Current extraction opportunities (examples)
@@ -388,7 +407,7 @@ If you see these patterns duplicated across modules, extract them:
 - **i18n message resolution** -> Already in `rustok-ui-i18n` (`UiMessages` / `LazyUiMessages`)
 - **GraphQL error mapping** -> Already in `rustok-graphql`
 - **Native/GraphQL transport evidence and build-profile transport selection** -> Already in `rustok-ui-transport`
-- **Form submission/validation-result state** -> Already in `rustok-forms` (components in `rustok-forms-leptos`)
+- **Form submission/validation-result state** -> Already in `rustok-ui-forms` (components in `rustok-forms-leptos`)
 - **Table/list pagination, sorting, filtering and selection state** -> Already in `rustok-ui-core`
 - **Selection state URL sync** -> Already in `leptos-ui-routing`
 
@@ -533,7 +552,7 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | `use_cookie("lang")` or local `Accept-Language` parsing | Violates platform i18n contract |
 | `auto_select_first` as selection source of truth | Causes stale state bugs |
 | Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `rustok-graphql`) |
-| Reimplementing portable form, pagination, sorting, filtering, or selection state locally | Duplicates `rustok-forms` / `rustok-ui-core` contracts |
+| Reimplementing portable form, pagination, sorting, filtering, or selection state locally | Duplicates `rustok-ui-forms` / `rustok-ui-core` contracts |
 | Writing `leptos-ui` primitives locally | Duplicates the Leptos design-system adapter |
 | Domain business UI placed inside `apps/admin/src/` | Host becomes domain owner |
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |

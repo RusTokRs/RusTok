@@ -172,6 +172,27 @@ impl std::fmt::Debug for AuthResponse {
     }
 }
 
+/// Cookie-based authentication session response (refresh token delivered via HttpOnly cookie).
+#[derive(Serialize, ToSchema)]
+pub struct CookieSessionResponse {
+    pub access_token: String,
+    pub token_type: &'static str,
+    pub expires_in: u64,
+    pub user: UserInfo,
+}
+
+impl std::fmt::Debug for CookieSessionResponse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CookieSessionResponse")
+            .field("access_token", &"<redacted>")
+            .field("token_type", &self.token_type)
+            .field("expires_in", &self.expires_in)
+            .field("user", &self.user)
+            .finish()
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LogoutResponse {
     pub status: &'static str,

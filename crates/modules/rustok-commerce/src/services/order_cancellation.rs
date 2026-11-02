@@ -761,14 +761,14 @@ mod tests {
     fn shipped_items_block_the_cancellation() {
         let shipped = fulfillment("shipped", 2);
         assert_eq!(
-            plan_fulfillment_cancellation(&[shipped.clone()]),
+            plan_fulfillment_cancellation(std::slice::from_ref(&shipped)),
             Err(CancellationBlock::ShippedItems {
                 fulfillment_id: shipped.id
             })
         );
         let partially = fulfillment("pending", 1);
         assert_eq!(
-            plan_fulfillment_cancellation(&[partially.clone()]),
+            plan_fulfillment_cancellation(std::slice::from_ref(&partially)),
             Err(CancellationBlock::ShippedItems {
                 fulfillment_id: partially.id
             })
@@ -807,7 +807,8 @@ mod tests {
                 refund("cancelled", dec!(50), json!({})),
             ],
         );
-        let plan = plan_payment_cancellation(&[captured.clone()]).expect("plan must succeed");
+        let plan =
+            plan_payment_cancellation(std::slice::from_ref(&captured)).expect("plan must succeed");
         assert_eq!(
             plan,
             vec![PaymentCancellationAction::Refund {
@@ -825,7 +826,8 @@ mod tests {
             dec!(100),
             vec![refund("pending", dec!(100), marker)],
         );
-        let plan = plan_payment_cancellation(&[captured.clone()]).expect("plan must succeed");
+        let plan =
+            plan_payment_cancellation(std::slice::from_ref(&captured)).expect("plan must succeed");
         assert_eq!(
             plan,
             vec![PaymentCancellationAction::Refund {

@@ -19,7 +19,7 @@ The `rustok-forms` module implements form intake endpoints, spam filtering (hone
 ## Verification
 
 - `cargo xtask module validate forms`
-- Run local unit tests: `cargo test -p rustok-forms-module`
+- Run local unit tests: `cargo test -p rustok-forms`
 
 ## Update Rules
 

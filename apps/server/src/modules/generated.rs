@@ -20,7 +20,7 @@ use rustok_customer::CustomerModule;
 use rustok_docs::DocsModule;
 use rustok_email::EmailModule;
 use rustok_events_module::EventsModule;
-use rustok_forms_module::FormsModule;
+use rustok_forms::FormsModule;
 use rustok_forum::ForumModule;
 use rustok_fulfillment::FulfillmentModule;
 use rustok_groups::GroupsModule;

@@ -118,6 +118,15 @@ pub struct ArtifactNodeAgent<C, M> {
     heartbeat_interval: Duration,
 }
 
+impl<C, M> std::fmt::Debug for ArtifactNodeAgent<C, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeAgent")
+            .field("identity", &self.identity)
+            .field("heartbeat_interval", &self.heartbeat_interval)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<C, M> ArtifactNodeAgent<C, M>
 where
     C: ArtifactNodeAssignmentController + 'static,

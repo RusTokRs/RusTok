@@ -32,7 +32,7 @@ export const DEFAULT_CACHE_SETTINGS: CacheSettings = {
   redis_db: 0
 };
 
-const CACHE_HEALTH_QUERY = `
+export const CACHE_HEALTH_QUERY = `
 query CacheHealth {
   cacheHealth {
     redisConfigured
@@ -43,21 +43,23 @@ query CacheHealth {
 }
 `;
 
-const PLATFORM_SETTINGS_QUERY = `
+export const PLATFORM_SETTINGS_QUERY = `
 query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
     settings
+    schemaVersion
   }
 }
 `;
 
-const UPDATE_PLATFORM_SETTINGS_MUTATION = `
+export const UPDATE_PLATFORM_SETTINGS_MUTATION = `
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
   updatePlatformSettings(input: $input) {
     success
     category
     settings
+    schemaVersion
   }
 }
 `;
@@ -66,8 +68,13 @@ interface CacheHealthResponse {
   cacheHealth: CacheHealthPayload;
 }
 
+export interface CacheSettingsSnapshot {
+  settings: CacheSettings;
+  schemaVersion: number;
+}
+
 interface PlatformSettingsResponse {
-  platformSettings: { category: string; settings: string };
+  platformSettings: { category: string; settings: string; schemaVersion: number };
 }
 
 interface UpdateSettingsResponse {
@@ -75,6 +82,7 @@ interface UpdateSettingsResponse {
     success: boolean;
     category: string;
     settings: string;
+    schemaVersion: number;
   };
 }
 
@@ -92,7 +100,7 @@ export async function getCacheHealth(
 
 export async function getCacheSettings(
   opts: GqlOpts = {}
-): Promise<CacheSettings> {
+): Promise<CacheSettingsSnapshot> {
   const data = await graphqlRequest<
     { category: string },
     PlatformSettingsResponse
@@ -103,42 +111,69 @@ export async function getCacheSettings(
     opts.tenantSlug
   );
 
+  const schemaVersion = data.platformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
   try {
     const parsed = JSON.parse(
-      data.platformSettings.settings
+      data?.platformSettings?.settings ?? '{}'
     ) as Partial<CacheSettings>;
     return {
-      ...DEFAULT_CACHE_SETTINGS,
-      ...parsed
+      settings: {
+        ...DEFAULT_CACHE_SETTINGS,
+        ...parsed
+      },
+      schemaVersion
     };
   } catch {
-    return DEFAULT_CACHE_SETTINGS;
+    return { settings: DEFAULT_CACHE_SETTINGS, schemaVersion };
   }
 }
 
 export async function updateCacheSettings(
   settings: CacheSettingsInput,
+  expectedSchemaVersion: number,
   opts: GqlOpts = {}
-): Promise<CacheSettings> {
+): Promise<CacheSettingsSnapshot> {
   const data = await graphqlRequest<
-    { input: { category: string; settings: string } },
+    {
+      input: {
+        category: string;
+        settings: string;
+        expectedSchemaVersion: number;
+      };
+    },
     UpdateSettingsResponse
   >(
     UPDATE_PLATFORM_SETTINGS_MUTATION,
-    { input: { category: 'cache', settings: JSON.stringify(settings) } },
+    {
+      input: {
+        category: 'cache',
+        settings: JSON.stringify(settings),
+        expectedSchemaVersion
+      }
+    },
     opts.token,
     opts.tenantSlug
   );
 
+  const schemaVersion = data.updatePlatformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
   try {
     const parsed = JSON.parse(
-      data.updatePlatformSettings.settings
+      data?.updatePlatformSettings?.settings ?? '{}'
     ) as Partial<CacheSettings>;
     return {
-      ...DEFAULT_CACHE_SETTINGS,
-      ...parsed
+      settings: {
+        ...DEFAULT_CACHE_SETTINGS,
+        ...parsed
+      },
+      schemaVersion
     };
   } catch {
-    return DEFAULT_CACHE_SETTINGS;
+    return { settings: DEFAULT_CACHE_SETTINGS, schemaVersion };
   }
 }

@@ -13,6 +13,7 @@ const MAX_SOURCE_ARCHIVE_ENTRIES: u32 = 16_384;
 /// A request may identify source only as `cas://sha256:<hex>`. The matching
 /// `<hex>.tar` blob must be present under the fixed source root. This module
 /// never receives a storage client or a request-selected filesystem path.
+#[derive(Debug)]
 pub struct SourceMaterializer {
     source_store: CasArchiveStore,
     workspace_root: PathBuf,
@@ -21,11 +22,15 @@ pub struct SourceMaterializer {
 /// Source materialization outcome that the worker can map to a terminal build
 /// result without pretending an immutable source-policy violation is a
 /// retryable transport outage.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SourceMaterializationError {
+    #[error("source archive digest mismatch")]
     DigestMismatch,
+    #[error("unsafe source archive rejected by policy")]
     UnsafeArchive,
+    #[error("source materialization resource limit exceeded")]
     ResourceLimit,
+    #[error("internal source materialization failure: {0}")]
     Internal(String),
 }
 
@@ -68,6 +73,7 @@ impl SourceMaterializer {
 
 /// Job-scoped source directory. Dropping it removes all materialized source so
 /// a worker process does not retain an untrusted workspace between requests.
+#[derive(Debug)]
 pub struct MaterializedSource {
     workspace_root: PathBuf,
     job_dir: PathBuf,

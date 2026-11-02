@@ -22,6 +22,13 @@ pub struct StorageArtifactNodeMaterializer {
     wasm: WasmComponentExecutor,
 }
 
+impl std::fmt::Debug for StorageArtifactNodeMaterializer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StorageArtifactNodeMaterializer")
+            .finish_non_exhaustive()
+    }
+}
+
 impl StorageArtifactNodeMaterializer {
     pub fn new(
         blobs: StorageArtifactBlobStore,

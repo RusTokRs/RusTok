@@ -86,44 +86,29 @@ for (const [value, label] of [
 // The mapper consumes the error into the shared safe HTTP envelope, then classifies by the public
 // status: transport and invariant failures are technical, everything else is a rejected request.
 for (const [value, label] of [
-  ["let public = port_error_to_http_error(error);", "shared safe mapping"],
-  ["let critical = matches!(", "severity selection from the public status"],
-  ["StatusCode::SERVICE_UNAVAILABLE", "unavailable severity input"],
-  ["if critical {", "technical severity branch"],
-  ["tracing::error!(", "technical severity"],
-  ["tracing::warn!(", "ordinary severity"],
-  ["tenant_id_non_nil = !tenant_id.is_nil()", "tenant identity shape"],
-  ["cart_id_present = cart_id.is_some()", "cart identity presence"],
-  ["owner_code_length,", "owner code shape"],
-  [
-    '"storefront cart port operation failed with bounded diagnostics"',
-    "technical event",
-  ],
-  [
-    '"storefront cart port operation was rejected with bounded diagnostics"',
-    "ordinary event",
-  ],
-  ["public\n}", "mapped error return"],
+  ['let public = port_error_to_http_error(error);', 'shared safe mapping'],
+  ['let critical = matches!(', 'severity selection from the public status'],
+  ['StatusCode::SERVICE_UNAVAILABLE', 'unavailable severity input'],
+  ['if critical {', 'technical severity branch'],
+  ['tracing::error!(', 'technical severity'],
+  ['tracing::warn!(', 'ordinary severity'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'tenant identity shape'],
+  ['cart_id_present = cart_id.is_some()', 'cart identity presence'],
+  ['owner_code_length,', 'owner code shape'],
+  ['"storefront cart port operation failed with bounded diagnostics"', 'technical event'],
+  ['"storefront cart port operation was rejected with bounded diagnostics"', 'ordinary event'],
+  ['public\n}', 'mapped error return'],
 ]) {
   requireText(mapper, value, label);
 }
 
 // Route entry diagnostics name the operation and the identity shapes only.
 for (const [value, label] of [
-  ['boundary = "commerce_storefront_cart_http"', "route boundary"],
-  ["tenant_id_non_nil = !tenant_id.is_nil()", "route tenant shape"],
-  [
-    "cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil())",
-    "route cart shape",
-  ],
-  [
-    "line_item_id_non_nil = line_item_id.is_some_and(|value| !value.is_nil())",
-    "route line-item shape",
-  ],
-  [
-    '"storefront cart route entered with bounded diagnostics"',
-    "route entry event",
-  ],
+  ['boundary = "commerce_storefront_cart_http"', 'route boundary'],
+  ['tenant_non_nil = !tenant_id.is_nil()', 'route tenant shape'],
+  ['cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil())', 'route cart shape'],
+  ['line_item_id_non_nil = line_item_id.is_some_and(|value| !value.is_nil())', 'route line-item shape'],
+  ['"storefront cart route entered with bounded diagnostics"', 'route entry event'],
 ]) {
   requireText(routeEntry, value, label);
 }

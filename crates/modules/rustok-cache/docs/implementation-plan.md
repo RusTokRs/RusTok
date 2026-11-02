@@ -338,7 +338,9 @@ None of these are claimed as compiled or live verified until the P0 evidence ste
   for the server to refuse, and target fields are trimmed rather than stored with whitespace.
 - [x] The cache admin server functions are real adapters: runtime `CacheService` health and a
   host-provided `CacheSettingsAdminPort` for settings, and the form builder returns a validation
-  error instead of substituting defaults.
+  error instead of substituting defaults. The port and admin transports carry the persisted
+  `schema_version` in both directions and send `expected_schema_version` on save, so concurrent
+  admin edits fail with a conflict instead of last-write-wins.
 - [x] One authority rule for the cache admin surface: `rustok_api::authorizes_host_or_permission`
   accepts a permission snapshot with the required settings permission **or** the matching
   host-global authority, and the request-scoped host authority itself now lives in `rustok-api`

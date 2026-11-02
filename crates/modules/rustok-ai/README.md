@@ -210,3 +210,7 @@ absent, the billable structured-task runtime is not published. Its shape is:
 Each referenced secret is standard Base64 for exactly 32 bytes. Keep retired
 key references configured until every row encrypted with that key has passed
 the retention window and scheduled cleanup.
+
+## Documentation
+
+- [CRATE_API.md](CRATE_API.md)

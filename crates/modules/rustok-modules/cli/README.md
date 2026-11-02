@@ -54,5 +54,8 @@ with every caller and is not retained as a fallback.
 - `command_provider`
 - `ModuleCommandProvider`
 
+## Documentation
+- [CRATE_API.md](CRATE_API.md)
+
 The selected distribution registers this provider through
 `crates/modules/rustok-modules/rustok-module.toml`.

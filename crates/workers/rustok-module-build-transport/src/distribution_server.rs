@@ -17,6 +17,12 @@ pub struct StaticDistributionGrpcService<E> {
     executor: Arc<E>,
 }
 
+impl<E> std::fmt::Debug for StaticDistributionGrpcService<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticDistributionGrpcService").finish_non_exhaustive()
+    }
+}
+
 impl<E> StaticDistributionGrpcService<E> {
     pub fn new(executor: Arc<E>) -> Self {
         Self { executor }
@@ -60,7 +66,7 @@ where
     }
 }
 
-fn executor_status(error: ModuleStaticDistributionExecutorError) -> Status {
+pub(crate) fn executor_status(error: ModuleStaticDistributionExecutorError) -> Status {
     match error {
         ModuleStaticDistributionExecutorError::Transport(detail) => Status::unavailable(detail),
         ModuleStaticDistributionExecutorError::Rejected(detail) => {

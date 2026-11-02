@@ -219,7 +219,7 @@ async fn enabled_modules_or_empty() -> Vec<String> {
     match fetch_enabled_modules().await {
         Ok(modules) => modules,
         Err(err) => {
-            eprintln!("failed to fetch enabled modules for storefront SSR: {err}");
+            tracing::warn!("failed to fetch enabled modules for storefront SSR: {err}");
             Vec::new()
         }
     }
@@ -355,7 +355,7 @@ async fn resolve_pages_route_response(
     {
         Ok(decision) => decision,
         Err(error) => {
-            eprintln!("failed to resolve Pages host route: {error}");
+            tracing::error!("failed to resolve Pages host route: {error}");
             return Err(private_status_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Page route resolution is temporarily unavailable",
@@ -604,7 +604,7 @@ async fn render_module_page_response(
         )
         .into_response(),
         Err(err) => {
-            eprintln!("failed to resolve SEO page context for storefront SSR: {err}");
+            tracing::warn!("failed to resolve SEO page context for storefront SSR: {err}");
             match fetch_canonical_route(locale, route_segment, &query_params).await {
                 Ok(Some(resolved)) if resolved.redirect_required => Redirect::permanent(
                     build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
@@ -965,6 +965,9 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     let router = router.merge(product_buyer_assets::router());
     router
 }
+
+#[cfg(test)]
+mod contract_tests;
 
 #[cfg(feature = "ssr")]
 #[cfg(test)]

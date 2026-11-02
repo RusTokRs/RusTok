@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const moduleSource = read('apps/server/src/graphql/settings/mod.rs');
 const querySource = read('apps/server/src/graphql/settings/query.rs');
 const mutationSource = read('apps/server/src/graphql/settings/mutation.rs');
+const serviceSource = read('apps/server/src/services/settings_service.rs');
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -76,7 +77,7 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ)',
-    'SettingsService::get(runtime_ctx, tenant.id, &category)',
+    'SettingsService::get_snapshot(runtime_ctx, tenant.id, &category)',
   ],
   'single-category settings read',
 );
@@ -86,7 +87,7 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ)',
-    'SettingsService::get_all(runtime_ctx, tenant.id)',
+    'SettingsService::get_all_snapshots(runtime_ctx, tenant.id)',
   ],
   'all settings read',
 );
@@ -96,11 +97,25 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE)',
-    'SettingsService::update(',
+    'ctx.data::<TransactionalEventBus>()?',
+    'SettingsService::update_if_current(',
     'event_bus',
-    '.publish(',
+    'input.expected_schema_version',
   ],
-  'settings write and event publication',
+  'settings write and event bus binding',
+);
+
+requireOrder(
+  serviceSource,
+  [
+    'pub async fn update_if_current(',
+    'expected_schema_version: i32',
+    'async fn update_inner(',
+    'event_bus',
+    '.publish_in_tx(',
+    'PlatformSettingsChanged',
+  ],
+  'transactional settings write and event publication',
 );
 
 const queryCalls = querySource.match(/require_tenant_settings_scope\(auth, tenant\.id\)\?;/g) ?? [];

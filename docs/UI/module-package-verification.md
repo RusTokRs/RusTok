@@ -21,10 +21,13 @@ For the architectural context, see
 Run in this order:
 
 ```powershell
-# 1. Validate module manifest, sub-crate existence, and wiring
+# 1. Check native/FFA architecture and live Next.js package/route wiring
+cargo xtask module lint <slug>
+
+# 2. Validate module manifest and publish metadata
 cargo xtask module validate <slug>
 
-# 2. Run module-scoped tests
+# 3. Run module-scoped tests
 cargo xtask module test <slug>
 ```
 
@@ -120,7 +123,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 
 | Check | Catches |
 |---|---|
-| `module validate <slug>` | Missing `Cargo.toml`, manifest/sub-crate mismatch, version drift |
+| `module lint <slug>` | Native/FFA source layout, dependency boundaries, private entities, adapter wiring, and structural Next.js package/route imports |
+| `module validate <slug>` | Manifest identity, declared UI metadata, local docs and publish metadata |
 | `module test <slug>` | Broken transport adapters, failed unit/integration tests |
 | `verify:i18n:ui` | Key drift between `admin/locales/` and `apps/next-admin/messages/` |
 | `verify:i18n:contract` | Undeclared locale bundles, missing manifest wiring |
@@ -165,3 +169,22 @@ same operation.
 | [FFA Migration Plan](../research/dioxus-ffa-ui-migration-plan.md) | Phase-gate criteria |
 | [FFA Parity Checklist](../verification/ffa-ui-parity-checklist.md) | Phase-gate evidence tracker |
 | [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Step-by-step for new packages |
+
+## Draft scaffolding UI preview
+
+The existing generator creates unmounted Leptos FFA development packages;
+add `--dry-run` to preview the file set without writing:
+
+```bash
+cargo xtask scaffold example --ui dual
+cargo xtask scaffold example --ui dual --dry-run
+```
+
+The generated crates are **unmounted development skeletons**; no UI
+surface is registered and no business operation is implemented. The Leptos FFA preview includes real
+native/GraphQL selection wiring, but each owner adapter returns a typed
+missing-owner error. Neither adapter performs a business operation.
+Classic Next.js packages belong to their hosts and are not generated here.
+Do not claim runtime readiness. Template structure is checked by the
+unit tests in `xtask/src/scaffold/ui.rs`. Production UI verification
+requires real owner contracts and the commands earlier in this guide.

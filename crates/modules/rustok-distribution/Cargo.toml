@@ -131,7 +131,7 @@ rustok-pages = { workspace = true, optional = true }
 rustok-docs = { workspace = true, optional = true }
 rustok-messenger = { workspace = true, optional = true }
 rustok-navigation = { workspace = true, optional = true }
-rustok-forms = { path = "../rustok-forms", package = "rustok-forms-module", optional = true }
+rustok-forms = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }

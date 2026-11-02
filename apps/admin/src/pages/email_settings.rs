@@ -32,6 +32,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<bool, String>>::None);
     let (loaded, set_loaded) = signal(false);
+    let (schema_version, set_schema_version) = signal(0_i32);
 
     let settings_resource = local_resource(
         move || (token.get(), tenant.get()),
@@ -58,6 +59,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                     set_from_address.set(f.to_string());
                 }
             }
+            set_schema_version.set(response.platform_settings.schema_version);
             set_loaded.set(true);
         }
     });
@@ -78,15 +80,24 @@ pub fn EmailSettingsPage() -> impl IntoView {
             "from_address": from,
         });
 
+        let expected_schema_version = schema_version.get();
         set_saving.set(true);
         set_save_result.set(None);
 
         spawn_local(async move {
-            let result =
-                transport::update_email_settings(token_val, tenant_val, settings.to_string()).await;
+            let result = transport::update_email_settings(
+                token_val,
+                tenant_val,
+                settings.to_string(),
+                expected_schema_version,
+            )
+            .await;
 
             match result {
-                Ok(success) => set_save_result.set(Some(Ok(success))),
+                Ok(response) => {
+                    set_schema_version.set(response.update_platform_settings.schema_version);
+                    set_save_result.set(Some(Ok(response.update_platform_settings.success)));
+                }
                 Err(error) => set_save_result.set(Some(Err(error))),
             }
             set_saving.set(false);

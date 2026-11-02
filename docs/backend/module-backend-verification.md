@@ -19,16 +19,84 @@ removed or split, update the marker list instead of preserving stale checks.
 
 ## Canonical source-layout verification
 
-For a new module or a major module refactor, run the canonical physical-layout
-guard for every enrolled reference module:
+For every new native module or major native source refactor, run the
+per-module structural lint:
+
+```bash
+cargo xtask module lint <slug>
+node scripts/verify/verify-module-source-layout.mjs --module <slug>
+```
+
+The direct Node invocation is the same runner for local debugging. The default
+Blog reference gate remains separate:
 
 ```bash
 npm run verify:module-source-layout
 ```
 
-The initial strict reference is `rustok-blog`. A module should be enrolled only
-after its physical move is complete; enrollment is a one-way architecture gate,
-not an opt-in alternate style.
+That default run adds Blog-owned strict reference checks (including
+retired-path evidence). The shared lint checks canonical file responsibility and module wiring,
+thin crate facades, optional `runtime.rs` / `error.rs` wiring, private
+entities, source size, transport-neutral DTO/port contracts, persistence and
+service dependency direction, framework-independent FFA model/core, transport
+facade boundaries, support-sub-crate identity, declaration-to-package
+alignment, symlink safety, and suspicious scaffold placeholders. Test-only
+dependency exemptions apply only to test directories or Rust modules proven
+to be declared under `#[cfg(test)]`; a filename suffix alone is not enough.
+It also checks structural Next.js package identity, host-module registration,
+and route-page imports for live UI surfaces. It cannot prove functional
+Next.js/Leptos parity for data, authorization, locale, or transport behavior,
+live FBA transport, or publish registration readiness.
+
+Existing unconverted native modules may fail the canonical lint; findings are
+migration tasks, not opt-in exceptions. The canonical `npm run verify:module-source-layout` command also runs the
+shared validator fixtures with `node --test scripts/verify/native-module-layout.test.mjs`.
+This keeps generic native lint behavior under the same CI gate as the Blog reference profile.
+
+## Post-scaffold verification
+
+A non-dry-run `cargo xtask scaffold` registers the module, then runs static
+architecture lint before publish-metadata validation. It prints
+`SCAFFOLDED` only after both checks pass. If architecture lint or publish
+validation fails, the command returns a non-zero error and does not claim the
+module is verified.
+
+`--skip-validate` is an explicit development escape hatch: registration may
+still have been written, but the command reports `REGISTERED BUT UNVERIFIED`
+and prints the two checks the owner must run. `--dry-run` previews all planned
+source and registration edits without writing or running validation.
+
+The generator snapshots its planned targets and restores them if architecture
+lint or publish-metadata validation fails. This is rollback-protected
+multi-file generation, not isolation from concurrent external workspace
+writers; the generated-crate compilation/test matrix remains a separate gate.
+
+
+## Native scaffold golden and generated-crate matrix
+
+The scaffold renderer has golden snapshots for the complete planned file tree
+in headless, admin-only, storefront-only and dual-surface modes, plus focused
+content snapshots for the native module manifest and the generated Leptos UI
+package contracts. Run the unit tests with:
+
+```bash
+cargo test -p xtask
+```
+
+The dedicated CI workflow performs actual generation in a disposable checkout.
+It requires each generated module to pass architecture lint and publish
+metadata validation, then compiles and runs tests for all generated backend
+and UI crates. It also checks the admin and storefront adapters with CSR,
+hydrate and SSR feature selections:
+
+```bash
+bash scripts/ci/verify-scaffold-matrix.sh
+```
+
+The matrix covers generated structure and compilation only. It does not
+establish domain behavior, production runtime integration, or functional
+Next.js/Leptos parity. Database generation remains intentionally unsupported
+until a real owner schema and migration contract exist.
 
 ## Canonical reference-contract verification
 
@@ -46,6 +114,23 @@ derived-revision isolation, safe public errors, private persistence entities,
 owner-service integration seams, and FBA write command identity.
 
 A clean layout with a failing reference-contract guard is not a canonical module.
+
+## Database Schema and Migration Parity Verification
+
+When creating, altering, or squashing database migrations in a module, verify 100% schema parity between SeaORM entities (`src/entities/*.rs`) and migrations (`src/migrations/*.rs`):
+
+```bash
+# Verify schema parity for a specific module:
+npm run verify:schema-parity -- --module <module-slug>
+
+# Verify across all modules:
+npm run verify:schema-parity:all
+
+# Run the test suite for the parity engine:
+npm run test:verify:schema-parity
+```
+
+This guard verifies table existence, column parity, nullability (`Option<T>` vs `NOT NULL`), primary keys, migration registry consistency (`mod.rs`), and detects obsolete migration references in `scripts/verify/`. See the [Safe Database Migrations and Squashing Guide](../guides/safe-database-migrations-and-squashing.md) for full instructions.
 
 ## Module Validation
 

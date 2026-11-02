@@ -6,6 +6,8 @@ use rustok_runtime::RuntimeComposition;
 
 pub fn generated_providers(runtime: &RuntimeComposition) -> Vec<Box<dyn CommandProvider>> {
     vec![
+        // blog / blog
+        rustok_blog_cli::command_provider(runtime),
         // core / core
         rustok_cli_platform::command_provider(runtime),
         // media / media

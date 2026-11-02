@@ -7,7 +7,7 @@
 //! persisted state instead of hardcoded values.
 
 use async_trait::async_trait;
-use rustok_cache::{CacheSettingsAdminPort, SharedCacheSettingsAdmin};
+use rustok_cache::{CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin};
 use uuid::Uuid;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -32,10 +32,14 @@ impl ServerCacheSettingsAdmin {
 
 #[async_trait]
 impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
-    async fn read(&self, tenant_id: Uuid) -> Result<serde_json::Value, String> {
-        SettingsService::get(&self.ctx, tenant_id, category::CACHE)
+    async fn read(&self, tenant_id: Uuid) -> Result<CacheSettingsSnapshot, String> {
+        let snapshot = SettingsService::get_snapshot(&self.ctx, tenant_id, category::CACHE)
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        Ok(CacheSettingsSnapshot {
+            settings: snapshot.settings,
+            schema_version: snapshot.schema_version,
+        })
     }
 
     async fn update(
@@ -43,10 +47,11 @@ impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
         settings: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
+        expected_schema_version: i32,
+    ) -> Result<CacheSettingsSnapshot, String> {
         let event_bus = crate::services::event_bus::transactional_event_bus_from_context(&self.ctx);
         let validators = ValidatorRegistry::default();
-        SettingsService::update(
+        let snapshot = SettingsService::update_if_current(
             &self.ctx,
             &event_bus,
             tenant_id,
@@ -54,9 +59,14 @@ impl CacheSettingsAdminPort for ServerCacheSettingsAdmin {
             settings,
             actor_id,
             &validators,
+            expected_schema_version,
         )
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        Ok(CacheSettingsSnapshot {
+            settings: snapshot.settings,
+            schema_version: snapshot.schema_version,
+        })
     }
 }
 
@@ -84,17 +94,19 @@ mod tests {
             .expect("cache settings read");
         let written = port
             .port()
-            .update(tenant_id, None, current.clone())
+            .update(tenant_id, None, current.settings.clone(), current.schema_version)
             .await
             .expect("cache settings persist");
-        assert_eq!(written["mode"], current["mode"]);
+        assert_eq!(written.settings["mode"], current.settings["mode"]);
+        assert_eq!(written.schema_version, current.schema_version + 1);
 
         let read = port
             .port()
             .read(tenant_id)
             .await
             .expect("cache settings read");
-        assert_eq!(read["redis_port"], current["redis_port"]);
+        assert_eq!(read.settings["redis_port"], current.settings["redis_port"]);
+        assert_eq!(read.schema_version, written.schema_version);
     }
 
     #[tokio::test]
@@ -105,7 +117,7 @@ mod tests {
 
         let error = port
             .port()
-            .update(Uuid::new_v4(), None, json!({ "mode": "memcached" }))
+            .update(Uuid::new_v4(), None, json!({ "mode": "memcached" }), 0)
             .await
             .expect_err("unknown mode must not be persisted");
         assert!(error.contains("mode"), "unexpected error: {error}");

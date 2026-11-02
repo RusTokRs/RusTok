@@ -21,3 +21,7 @@ pub mod widgets;
 pub use app::providers::locale::{
     AdminLocaleContext, AdminLocaleProvider, Locale, use_admin_locale,
 };
+
+#[cfg(test)]
+mod contract_tests;
+

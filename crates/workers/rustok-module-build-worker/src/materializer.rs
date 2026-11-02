@@ -22,14 +22,18 @@ const MAX_CACHE_ENTRIES: usize = 65_536;
 
 /// Deployment-owned client for a separately isolated OCI dependency
 /// materializer. This adapter never lets Cargo in the build worker use egress.
+#[derive(Debug)]
 pub struct OciScopedDependencyMaterializer {
     executable_path: PathBuf,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DependencyMaterializationError {
+    #[error("dependency endpoint denied by network policy")]
     EndpointDenied,
+    #[error("dependency materialization resource limit exceeded")]
     ResourceLimit,
+    #[error("internal dependency materialization failure: {0}")]
     Internal(String),
 }
 
@@ -132,10 +136,16 @@ impl OciScopedDependencyMaterializer {
             }
         };
         let stdout = collect_materializer_output(stdout_task).await?;
-        collect_materializer_output(stderr_task).await?;
+        let stderr = collect_materializer_output(stderr_task).await?;
         if !status.success() {
+            let stderr_text = String::from_utf8_lossy(&stderr);
+            let diagnostic = if stderr_text.trim().is_empty() {
+                String::new()
+            } else {
+                format!(": {}", stderr_text.trim())
+            };
             return Err(DependencyMaterializationError::Internal(format!(
-                "dependency materializer exited with {status}"
+                "dependency materializer exited with {status}{diagnostic}"
             )));
         }
         let receipt: MaterializationReceipt = serde_json::from_slice(&stdout).map_err(|_| {

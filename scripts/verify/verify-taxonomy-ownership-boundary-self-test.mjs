@@ -74,13 +74,22 @@ function writeBaseline(root) {
     ].join("\n"),
   );
 
+  // The consolidated Blog schema migration keeps its iden enums in the
+  // migration file and its DDL in the schema/tables/*.rs tree, so the fixture
+  // mirrors that layout and the ownership markers live in the table files.
   write(
     root,
     "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs",
+    "fn migration() { let _ = TaxonomyTerms::Id; }\n",
+  );
+  write(
+    root,
+    "crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema/schema/tables/post_tags.rs",
     [
-      "fn migration() { let _ = TaxonomyTerms::Id; }",
-      "// .table(BlogPostTags::Table)",
-      "// .to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
+      "fn create() {",
+      "    Table::create().table(BlogPostTags::Table);",
+      "}",
+      '// Alias::new("taxonomy_terms")',
       "",
     ].join("\n"),
   );

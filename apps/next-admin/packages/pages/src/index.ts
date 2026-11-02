@@ -8,5 +8,6 @@ registerAdminModule({
 });
 
 export { pagesNavItems } from './nav';
-export { default as PagesPage } from './pages/pages-page';
+export { default as PagesPage, default as PagesAdminPage } from './pages/pages-page';
+export { PageActions } from './components/page-actions';
 export * from './api/pages';

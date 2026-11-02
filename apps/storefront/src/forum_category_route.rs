@@ -40,7 +40,7 @@ pub(crate) async fn render_forum_category_route_response(
                 );
             }
             Err(error) => {
-                eprintln!("failed to resolve Forum storefront category route: {error}");
+                tracing::error!("failed to resolve Forum storefront category route: {error}");
                 return private_status_response(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Forum category route resolution is temporarily unavailable",
@@ -68,7 +68,7 @@ pub(crate) async fn render_forum_category_route_response(
             {
                 Ok(context) => context,
                 Err(error) => {
-                    eprintln!("failed to resolve Forum category SEO context: {error}");
+                    tracing::warn!("failed to resolve Forum category SEO context: {error}");
                     None
                 }
             };

@@ -34,7 +34,8 @@ notifications module, and cross-module release gates.
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;
-- uses `rustok-taxonomy` as the canonical Category owner (identity, localized copy, hierarchy, routes and presentation) and as the shared dictionary for tag identity;
+- uses `rustok-taxonomy` as the canonical Category owner (identity, localized copy, hierarchy, routes and presentation);
+- uses `rustok-taxonomy` as a shared dictionary for tag identity;
 - uses the Media owner port for attachment reference retention/release; Forum does not read Media tables.
 - uses `rustok-profiles` for the author presentation contract;
 - uses `rustok-channel` for visibility and SEO gating;

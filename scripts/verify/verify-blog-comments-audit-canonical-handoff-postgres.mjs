@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { readRustModuleTree } from "./lib/rust-facade-source.mjs";
 
 const root = process.cwd();
 const read = (relativePath) =>
@@ -30,7 +31,9 @@ for (const file of [
   }
 }
 
-const migration = read(migrationPath);
+// The consolidated baseline declares its tables below its `schema/` module
+// tree, so the marker view is the composed module tree, not the entry file.
+const migration = readRustModuleTree(read, migrationPath);
 const migrationsMod = read(migrationsModPath);
 const service = read(servicePath);
 const runtime = read(runtimePath);

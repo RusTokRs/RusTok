@@ -1,3 +1,5 @@
+//! # rustok-media-cli
+//!
 //! External operational command adapters for `rustok-media`.
 //!
 //! This crate maps platform CLI requests to owner-owned media services. It
@@ -393,3 +395,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

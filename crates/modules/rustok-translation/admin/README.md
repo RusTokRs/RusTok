@@ -68,6 +68,7 @@ The module manifest publishes this package together with the matching
 Next admin surface.
 
 See the
+[CRATE_API.md](CRATE_API.md), the
 [module UI implementation guide](../../../../docs/UI/module-package-implementation.md)
 and the
 [Translation implementation plan](../docs/implementation-plan.md).

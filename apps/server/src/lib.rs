@@ -33,3 +33,7 @@ pub mod static_settings_localization_registry;
 #[cfg(feature = "mod-translation")]
 pub mod static_settings_translation_target;
 pub mod views;
+
+#[cfg(test)]
+mod contract_tests;
+

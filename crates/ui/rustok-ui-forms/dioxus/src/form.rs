@@ -1,7 +1,7 @@
 //! `<Form>` — top-level form wrapper providing [`FormContext`] to descendants.
 
 use dioxus::prelude::*;
-use rustok_forms::{DirtyTracker, FormState};
+use rustok_ui_forms::{DirtyTracker, FormState};
 
 use crate::context::FormContext;
 

@@ -114,7 +114,7 @@ for (const marker of [
   "pub(crate) async fn delete_entity(",
   "pub(crate) async fn delete_tenant(",
   "DELETE FROM search_documents WHERE tenant_id = $1 AND source_module = $2",
-  "self.source.source_module().into()",
+  "self.source.source_module()",
 ]) {
   requireMarker(driver, marker, driverPath);
 }

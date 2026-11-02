@@ -114,13 +114,15 @@ impl OAuthTokenService {
                 authenticate_client(&app, request, true).await?;
                 let requested = parse_requested_scopes(request.scope.as_deref());
                 let scopes = validate_requested_scopes(&app, &requested)?;
-                let (access_token, expires_in) =
-                    issue_service_access_token(&app, auth_config, &scopes)?;
+                let prepared = prepare_service_access_token(&app, auth_config, &scopes)?;
+                prepared.access_model.insert(db).await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error("Failed to persist access token")
+                })?;
 
                 TokenResponse {
-                    access_token,
+                    access_token: prepared.access_token,
                     token_type: "Bearer".to_string(),
-                    expires_in,
+                    expires_in: prepared.expires_in,
                     refresh_token: None,
                     scope: scopes.join(" "),
                 }
@@ -147,6 +149,7 @@ impl OAuthTokenService {
                     &scopes,
                     app.supports_grant_type(REFRESH_TOKEN_GRANT),
                     None,
+                    Some(authorization.id),
                 )
                 .await?;
 
@@ -183,6 +186,7 @@ impl OAuthTokenService {
                     &scopes,
                     true,
                     Some(&family),
+                    current.authorization_code_id,
                 )
                 .await?;
 
@@ -206,6 +210,7 @@ impl OAuthTokenService {
 
 struct PreparedUserTokens {
     access_token: String,
+    access_model: oauth_tokens::ActiveModel,
     refresh_token: Option<String>,
     refresh_model: Option<oauth_tokens::ActiveModel>,
     expires_in: u64,
@@ -336,8 +341,6 @@ async fn validate_authorization_code(
     let code_hash = hex::encode(Sha256::digest(raw_code.as_bytes()));
     let code = oauth_codes::Entity::find()
         .filter(oauth_codes::Column::CodeHash.eq(code_hash))
-        .filter(oauth_codes::Column::UsedAt.is_null())
-        .filter(oauth_codes::Column::ExpiresAt.gt(Utc::now()))
         .one(db)
         .await
         .map_err(|_| {
@@ -370,10 +373,27 @@ async fn validate_authorization_code(
             "PKCE verification failed",
         ));
     }
+    if code.used_at.is_some() {
+        revoke_authorization_code_family(db, code).await?;
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code is invalid, expired, or already used",
+        ));
+    }
+    if code.expires_at.with_timezone(&Utc) <= Utc::now() {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code is invalid, expired, or already used",
+        ));
+    }
 
     let scopes = code.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
+    let (user, _consent_granted_at) =
+        validate_active_subject_and_consent(db, app, tenant_id, code.user_id, &scopes).await?;
+    if user.rejects_delegated_token_issued_at(code.created_at.with_timezone(&Utc)) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code predates the current credential state",
+        ));
+    }
     Ok(code)
 }
 
@@ -389,6 +409,7 @@ async fn validate_refresh_token(
         .filter(oauth_tokens::Column::AppId.eq(app.id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(oauth_tokens::Column::ExpiresAt.gt(Utc::now()))
         .one(db)
@@ -412,7 +433,18 @@ async fn validate_refresh_token(
     })?;
     let scopes = token.scopes_list();
     validate_scope_subset(&app.scopes_list(), &scopes)?;
-    validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
+    let (user, consent_granted_at) =
+        validate_active_subject_and_consent(db, app, tenant_id, user_id, &scopes).await?;
+    if user.rejects_delegated_token_issued_at(token.created_at.with_timezone(&Utc)) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token predates the current credential state",
+        ));
+    }
+    if app.requires_user_consent() && token.consent_granted_at != consent_granted_at {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Refresh token predates the current consent epoch",
+        ));
+    }
     Ok(token)
 }
 
@@ -423,8 +455,9 @@ struct RefreshTokenFamily {
 
 /// Resolve the lineage of the presented refresh token. Pre-migration
 /// rows have no family id and start their own family rooted at
-/// themselves; a missing root row (already purged) falls back to the
-/// current token's creation time.
+/// themselves. A referenced root that is missing or belongs to another
+/// client/tenant/subject fails closed: falling back to the current token
+/// would let an orphaned row reset the absolute lineage lifetime cap.
 async fn resolve_refresh_family(
     db: &DatabaseConnection,
     current: &oauth_tokens::Model,
@@ -433,14 +466,21 @@ async fn resolve_refresh_family(
     let created_at = if family_id == current.id {
         current.created_at.with_timezone(&Utc)
     } else {
-        OAuthTokens::find_by_id(family_id)
+        let root = OAuthTokens::find_by_id(family_id)
+            .filter(oauth_tokens::Column::AppId.eq(current.app_id))
+            .filter(oauth_tokens::Column::TenantId.eq(current.tenant_id))
+            .filter(oauth_tokens::Column::UserId.eq(current.user_id))
+            .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+            .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
             .one(db)
             .await
             .map_err(|_| {
                 OAuthTokenProtocolError::server_error("Failed to resolve refresh token family")
             })?
-            .map(|root| root.created_at.with_timezone(&Utc))
-            .unwrap_or_else(|| current.created_at.with_timezone(&Utc))
+            .ok_or_else(|| {
+                OAuthTokenProtocolError::invalid_grant("Refresh token family root is unavailable")
+            })?;
+        root.created_at.with_timezone(&Utc)
     };
 
     Ok(RefreshTokenFamily {
@@ -465,6 +505,7 @@ async fn detect_oauth_refresh_reuse(
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_not_null())
         .one(db)
         .await;
@@ -490,6 +531,8 @@ async fn detect_oauth_refresh_reuse(
     if let Err(error) = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_tokens::Column::AppId.eq(app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(
             Condition::any()
@@ -507,13 +550,84 @@ async fn detect_oauth_refresh_reuse(
     }
 }
 
+/// Revoke the delegated token lineage issued from one authorization code.
+/// RFC 6749 §4.1.2 requires replay of an authorization code to invalidate the
+/// tokens previously issued from that code. The predicate is scoped to the
+/// authenticated client, tenant, and subject and covers both registered access
+/// rows and refresh rows, so already-issued access JWTs are fenced too.
+async fn revoke_authorization_code_family(
+    db: &DatabaseConnection,
+    code: &oauth_codes::Model,
+) -> Result<(), OAuthTokenProtocolError> {
+    revoke_authorization_code_family_in_tx(db, code).await
+}
+
+async fn revoke_authorization_code_family_in_tx<C>(
+    db: &C,
+    code: &oauth_codes::Model,
+) -> Result<(), OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let now = Utc::now();
+    let revoked = OAuthTokens::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_tokens::Column::AuthorizationCodeId.eq(code.id))
+        .filter(oauth_tokens::Column::AppId.eq(code.app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(code.tenant_id))
+        .filter(oauth_tokens::Column::UserId.eq(code.user_id))
+        .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .exec(db)
+        .await
+        .map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to revoke replayed authorization code")
+        })?;
+    tracing::warn!(
+        app_id = %code.app_id,
+        tenant_id = %code.tenant_id,
+        user_id = %code.user_id,
+        authorization_code_id = %code.id,
+        revoked_tokens = revoked.rows_affected,
+        "OAuth authorization code replay detected; revoked issued token family"
+    );
+    Ok(())
+}
+
+/// Revoke every live delegated token row for a user inside the caller's
+/// credential-change transaction. Registered access rows are revoked here,
+/// and the user's `password_changed_at` epoch remains a second fence at
+/// validation time.
+pub(crate) async fn revoke_user_delegated_tokens_in_tx<C>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    now: chrono::DateTime<Utc>,
+) -> Result<u64, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let revoked = oauth_tokens::Entity::update_many()
+        .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
+        .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::UserId.eq(user_id))
+        .filter(oauth_tokens::Column::GrantType.eq(AUTHORIZATION_CODE_GRANT))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .exec(db)
+        .await?;
+    Ok(revoked.rows_affected)
+}
+
 async fn validate_active_subject_and_consent(
     db: &DatabaseConnection,
     app: &oauth_apps::Model,
     tenant_id: Uuid,
     user_id: Uuid,
     scopes: &[String],
-) -> Result<users::Model, OAuthTokenProtocolError> {
+) -> Result<(users::Model, Option<sea_orm::prelude::DateTimeWithTimeZone>), OAuthTokenProtocolError>
+{
     let user = Users::find_by_id(user_id)
         .filter(users::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -524,6 +638,7 @@ async fn validate_active_subject_and_consent(
             OAuthTokenProtocolError::invalid_grant("OAuth subject is missing or inactive")
         })?;
 
+    let mut consent_granted_at = None;
     if app.requires_user_consent() {
         let consent = OAuthConsents::find_active_consent(db, app.id, user.id, tenant_id)
             .await
@@ -532,20 +647,29 @@ async fn validate_active_subject_and_consent(
                 OAuthTokenProtocolError::invalid_grant("OAuth consent is missing or revoked")
             })?;
         validate_scope_subset(&consent.scopes_list(), scopes)?;
+        consent_granted_at = Some(consent.granted_at);
     }
 
-    Ok(user)
+    Ok((user, consent_granted_at))
 }
 
-fn issue_service_access_token(
+struct PreparedServiceToken {
+    access_token: String,
+    access_model: oauth_tokens::ActiveModel,
+    expires_in: u64,
+}
+
+fn prepare_service_access_token(
     app: &oauth_apps::Model,
     config: &AuthConfig,
     scopes: &[String],
-) -> Result<(String, u64), OAuthTokenProtocolError> {
+) -> Result<PreparedServiceToken, OAuthTokenProtocolError> {
     let granted_permissions = app.parsed_granted_permissions().map_err(|_| {
         OAuthTokenProtocolError::server_error("OAuth app permission policy is invalid")
     })?;
     let role = infer_user_role_from_permissions(&granted_permissions);
+    let now = Utc::now();
+    let token_id = Uuid::new_v4();
     let token = auth::encode_oauth_access_token(
         config,
         app.id,
@@ -555,9 +679,34 @@ fn issue_service_access_token(
         scopes,
         CLIENT_CREDENTIALS_GRANT,
         SERVICE_ACCESS_TOKEN_TTL_SECS,
+        token_id,
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
-    Ok((token, SERVICE_ACCESS_TOKEN_TTL_SECS))
+    let access_model = oauth_tokens::ActiveModel {
+        id: Set(token_id),
+        app_id: Set(app.id),
+        user_id: Set(None),
+        tenant_id: Set(app.tenant_id),
+        token_hash: Set(auth::hash_refresh_token(&token)),
+        family_id: Set(Some(token_id)),
+        authorization_code_id: Set(None),
+        grant_type: Set(CLIENT_CREDENTIALS_GRANT.to_string()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(None),
+        scopes: Set(serde_json::to_value(scopes).map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
+        })?),
+        expires_at: Set((now + chrono::Duration::seconds(SERVICE_ACCESS_TOKEN_TTL_SECS as i64)).into()),
+        revoked_at: Set(None),
+        last_used_at: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    };
+    Ok(PreparedServiceToken {
+        access_token: token,
+        access_model,
+        expires_in: SERVICE_ACCESS_TOKEN_TTL_SECS,
+    })
 }
 
 async fn prepare_user_tokens(
@@ -568,14 +717,18 @@ async fn prepare_user_tokens(
     scopes: &[String],
     include_refresh_token: bool,
     family: Option<&RefreshTokenFamily>,
+    authorization_code_id: Option<Uuid>,
 ) -> Result<PreparedUserTokens, OAuthTokenProtocolError> {
-    validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
+    let (_user, consent_granted_at) =
+        validate_active_subject_and_consent(db, app, app.tenant_id, user_id, scopes).await?;
     let permissions = RbacService::get_user_permissions_authoritative(db, &app.tenant_id, &user_id)
         .await
         .map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to resolve current user permissions")
         })?;
     let role = infer_user_role_from_permissions(&permissions);
+    let now = Utc::now();
+    let access_token_id = Uuid::new_v4();
     let access_token = auth::encode_oauth_access_token(
         config,
         user_id,
@@ -585,22 +738,22 @@ async fn prepare_user_tokens(
         scopes,
         AUTHORIZATION_CODE_GRANT,
         USER_ACCESS_TOKEN_TTL_SECS,
+        access_token_id,
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
+    let scopes_json = serde_json::to_value(scopes).map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
+    })?;
 
-    if !include_refresh_token {
-        return Ok(PreparedUserTokens {
-            access_token,
-            refresh_token: None,
-            refresh_model: None,
-            expires_in: USER_ACCESS_TOKEN_TTL_SECS,
-        });
-    }
-
-    let refresh_token = auth::generate_refresh_token()
-        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to generate refresh token"))?;
-    let refresh_hash = auth::hash_refresh_token(&refresh_token);
-    let now = Utc::now();
+    let refresh_token = if include_refresh_token {
+        Some(
+            auth::generate_refresh_token()
+                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to generate refresh token"))?,
+        )
+    } else {
+        None
+    };
+    let refresh_hash = refresh_token.as_deref().map(auth::hash_refresh_token);
     let token_id = Uuid::new_v4();
     // A fresh authorization-code exchange starts a new family rooted
     // at this token; a rotation inherits the family. Either way the
@@ -609,31 +762,62 @@ async fn prepare_user_tokens(
         Some(family) => (family.family_id, family.created_at),
         None => (token_id, now),
     };
-    let expires_at = (now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).min(
-        family_created_at + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS),
-    );
-    let refresh_model = oauth_tokens::ActiveModel {
-        id: Set(token_id),
+    // Without a refresh grant the access row roots its own revocation
+    // family; with one, it joins the refresh lineage so RFC 7009 and
+    // reuse/replay revocation fence every issued credential together.
+    let access_family_id = if include_refresh_token {
+        family_id
+    } else {
+        access_token_id
+    };
+    let access_model = oauth_tokens::ActiveModel {
+        id: Set(access_token_id),
         app_id: Set(app.id),
         user_id: Set(Some(user_id)),
         tenant_id: Set(app.tenant_id),
-        token_hash: Set(refresh_hash),
-        family_id: Set(Some(family_id)),
+        token_hash: Set(auth::hash_refresh_token(&access_token)),
+        family_id: Set(Some(access_family_id)),
+        authorization_code_id: Set(authorization_code_id),
         grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
-        scopes: Set(serde_json::to_value(scopes).map_err(|_| {
-            OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
-        })?),
-        expires_at: Set(expires_at.into()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(consent_granted_at),
+        scopes: Set(scopes_json.clone()),
+        expires_at: Set((now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64)).into()),
         revoked_at: Set(None),
         last_used_at: Set(None),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
     };
 
+    let refresh_model = refresh_hash.map(|refresh_hash| {
+        let expires_at = (now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).min(
+            family_created_at + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS),
+        );
+        oauth_tokens::ActiveModel {
+            id: Set(token_id),
+            app_id: Set(app.id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(app.tenant_id),
+            token_hash: Set(refresh_hash),
+            family_id: Set(Some(family_id)),
+            authorization_code_id: Set(authorization_code_id),
+            grant_type: Set(AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(consent_granted_at),
+            scopes: Set(scopes_json),
+            expires_at: Set(expires_at.into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+    });
+
     Ok(PreparedUserTokens {
         access_token,
-        refresh_token: Some(refresh_token),
-        refresh_model: Some(refresh_model),
+        access_model,
+        refresh_token,
+        refresh_model,
         expires_in: USER_ACCESS_TOKEN_TTL_SECS,
     })
 }
@@ -647,8 +831,37 @@ async fn commit_authorization_code_exchange(
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
 
-    consume_authorization_code(&tx, code).await?;
-    persist_prepared_refresh(&tx, prepared).await?;
+    if !consume_authorization_code(&tx, code).await? {
+        // A concurrent exchange won the CAS. If the code is now marked used,
+        // revoke its issued lineage and commit that security effect before
+        // reporting invalid_grant. An expired-but-unused code grants nothing.
+        let used = oauth_codes::Entity::find_by_id(code.id)
+            .filter(oauth_codes::Column::AppId.eq(code.app_id))
+            .filter(oauth_codes::Column::TenantId.eq(code.tenant_id))
+            .one(&tx)
+            .await
+            .map_err(|_| {
+                OAuthTokenProtocolError::server_error("Failed to inspect authorization code race")
+            })?
+            .and_then(|stored| stored.used_at)
+            .is_some();
+        if used {
+            revoke_authorization_code_family_in_tx(&tx, code).await?;
+            tx.commit().await.map_err(|_| {
+                OAuthTokenProtocolError::server_error(
+                    "Failed to commit authorization-code replay revocation",
+                )
+            })?;
+        } else {
+            tx.rollback().await.map_err(|_| {
+                OAuthTokenProtocolError::server_error("Failed to roll back authorization-code exchange")
+            })?;
+        }
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code is invalid, expired, or already used",
+        ));
+    }
+    persist_prepared_tokens(&tx, prepared).await?;
 
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit authorization-code exchange")
@@ -672,6 +885,7 @@ async fn commit_refresh_rotation(
         .filter(oauth_tokens::Column::TokenHash.eq(&current.token_hash))
         .filter(oauth_tokens::Column::AppId.eq(current.app_id))
         .filter(oauth_tokens::Column::TenantId.eq(current.tenant_id))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(oauth_tokens::Column::ExpiresAt.gt(now))
         .exec(&tx)
@@ -681,12 +895,14 @@ async fn commit_refresh_rotation(
         tx.rollback().await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")
         })?;
+        detect_oauth_refresh_reuse(db, current.app_id, current.tenant_id, &current.token_hash)
+            .await;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token is invalid, expired, or already used",
         ));
     }
 
-    persist_prepared_refresh(&tx, prepared).await?;
+    persist_prepared_tokens(&tx, prepared).await?;
     tx.commit().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to commit refresh-token rotation")
     })
@@ -695,7 +911,7 @@ async fn commit_refresh_rotation(
 async fn consume_authorization_code<C>(
     db: &C,
     code: &oauth_codes::Model,
-) -> Result<(), OAuthTokenProtocolError>
+) -> Result<bool, OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
@@ -712,22 +928,19 @@ where
             OAuthTokenProtocolError::server_error("Failed to consume authorization code")
         })?;
 
-    if consumed.rows_affected == 1 {
-        Ok(())
-    } else {
-        Err(OAuthTokenProtocolError::invalid_grant(
-            "Authorization code is invalid, expired, or already used",
-        ))
-    }
+    Ok(consumed.rows_affected == 1)
 }
 
-async fn persist_prepared_refresh<C>(
+async fn persist_prepared_tokens<C>(
     db: &C,
     prepared: &PreparedUserTokens,
 ) -> Result<(), OAuthTokenProtocolError>
 where
     C: ConnectionTrait,
 {
+    prepared.access_model.clone().insert(db).await.map_err(|_| {
+        OAuthTokenProtocolError::server_error("Failed to persist access token")
+    })?;
     if let Some(model) = prepared.refresh_model.clone() {
         model.insert(db).await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to persist replacement refresh token")
@@ -784,6 +997,61 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn credential_change_revokes_live_delegated_refresh_tokens() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
+            .await
+            .expect("oauth_tokens table");
+
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+        let token_id = Uuid::new_v4();
+        oauth_tokens::ActiveModel {
+            id: Set(token_id),
+            app_id: Set(Uuid::new_v4()),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
+            token_hash: Set("delegated-refresh-hash".to_string()),
+            family_id: Set(Some(token_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((now + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert delegated refresh token");
+
+        let revoked = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
+            .await
+            .expect("revoke delegated tokens");
+        assert_eq!(revoked, 1);
+
+        let stored = oauth_tokens::Entity::find_by_id(token_id)
+            .one(&db)
+            .await
+            .expect("query token")
+            .expect("token exists");
+        assert!(stored.revoked_at.is_some());
+
+        let second = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
+            .await
+            .expect("idempotent revoke");
+        assert_eq!(second, 0);
     }
 
     #[tokio::test]
@@ -889,7 +1157,10 @@ mod tests {
                 last_used_at TEXT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                family_id TEXT NULL
+                family_id TEXT NULL,
+                authorization_code_id TEXT NULL,
+                token_kind TEXT NOT NULL DEFAULT 'refresh',
+                consent_granted_at TEXT NULL
             )"#,
         )
         .await
@@ -903,7 +1174,10 @@ mod tests {
             tenant_id: Set(Uuid::new_v4()),
             token_hash: Set("current-hash".to_string()),
             family_id: Set(None),
+            authorization_code_id: Set(None),
             grant_type: Set("refresh_token".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
             scopes: Set(serde_json::json!(["profile"])),
             expires_at: Set((now + chrono::Duration::hours(1)).into()),
             revoked_at: Set(None),
@@ -917,6 +1191,24 @@ mod tests {
 
         let replacement = |hash: &str| PreparedUserTokens {
             access_token: "access".to_string(),
+            access_model: oauth_tokens::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                app_id: Set(current.app_id),
+                user_id: Set(current.user_id),
+                tenant_id: Set(current.tenant_id),
+                token_hash: Set(format!("access-{hash}")),
+                family_id: Set(None),
+                authorization_code_id: Set(None),
+                grant_type: Set("authorization_code".to_string()),
+                token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+                consent_granted_at: Set(None),
+                scopes: Set(serde_json::json!(["profile"])),
+                expires_at: Set((now + chrono::Duration::minutes(15)).into()),
+                revoked_at: Set(None),
+                last_used_at: Set(None),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            },
             refresh_token: Some("refresh".to_string()),
             refresh_model: Some(oauth_tokens::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -925,7 +1217,10 @@ mod tests {
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(hash.to_string()),
                 family_id: Set(None),
+                authorization_code_id: Set(None),
                 grant_type: Set("refresh_token".to_string()),
+                token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+                consent_granted_at: Set(None),
                 scopes: Set(serde_json::json!(["profile"])),
                 expires_at: Set((now + chrono::Duration::hours(1)).into()),
                 revoked_at: Set(None),
@@ -949,7 +1244,163 @@ mod tests {
                 .count(&db)
                 .await
                 .expect("token count"),
-            2
+            3
         );
+    }
+
+    #[tokio::test]
+    async fn authorization_code_replay_revokes_only_its_scoped_lineage() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_tokens (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NULL,
+                tenant_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                family_id TEXT NULL,
+                authorization_code_id TEXT NULL,
+                grant_type TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT NULL,
+                last_used_at TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                token_kind TEXT NOT NULL DEFAULT 'refresh',
+                consent_granted_at TEXT NULL
+            )"#,
+        )
+        .await
+        .expect("create token table");
+        let code_id = Uuid::new_v4();
+        let app_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let now = Utc::now();
+        let mut ids = Vec::new();
+        for (index, (token_app, token_tenant, token_user, token_code)) in [
+            (app_id, tenant_id, user_id, code_id),
+            (app_id, tenant_id, user_id, code_id),
+            (Uuid::new_v4(), tenant_id, user_id, code_id),
+            (app_id, Uuid::new_v4(), user_id, code_id),
+            (app_id, tenant_id, Uuid::new_v4(), code_id),
+            (app_id, tenant_id, user_id, Uuid::new_v4()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let id = Uuid::new_v4();
+            ids.push(id);
+            oauth_tokens::ActiveModel {
+                id: Set(id),
+                app_id: Set(token_app),
+                user_id: Set(Some(token_user)),
+                tenant_id: Set(token_tenant),
+                token_hash: Set(format!("code-family-{index}")),
+                family_id: Set(Some(id)),
+                authorization_code_id: Set(Some(token_code)),
+                grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+                token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+                consent_granted_at: Set(None),
+                scopes: Set(serde_json::json!(["openid"])),
+                expires_at: Set((now + chrono::Duration::days(1)).into()),
+                revoked_at: Set(None),
+                last_used_at: Set(None),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }
+            .insert(&db)
+            .await
+            .expect("insert token");
+        }
+        let code = oauth_codes::Model {
+            id: code_id,
+            app_id,
+            user_id,
+            tenant_id,
+            code_hash: "code-hash".to_string(),
+            redirect_uri: "https://client.example/callback".to_string(),
+            scopes: serde_json::json!(["openid"]),
+            code_challenge: "challenge".to_string(),
+            code_challenge_method: "S256".to_string(),
+            expires_at: (now + chrono::Duration::minutes(5)).into(),
+            used_at: Some(now.into()),
+            created_at: now.into(),
+        };
+
+        super::revoke_authorization_code_family(&db, &code)
+            .await
+            .expect("replay revocation succeeds");
+
+        for (index, id) in ids.into_iter().enumerate() {
+            let stored = OAuthTokens::find_by_id(id)
+                .one(&db)
+                .await
+                .expect("load token")
+                .expect("token exists");
+            assert_eq!(stored.revoked_at.is_some(), index < 2);
+        }
+        super::revoke_authorization_code_family(&db, &code)
+            .await
+            .expect("replay revocation is idempotent");
+    }
+
+    #[tokio::test]
+    async fn refresh_family_with_missing_root_fails_closed() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_tokens (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NULL,
+                tenant_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                family_id TEXT NULL,
+                authorization_code_id TEXT NULL,
+                grant_type TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT NULL,
+                last_used_at TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                token_kind TEXT NOT NULL DEFAULT 'refresh',
+                consent_granted_at TEXT NULL
+            )"#,
+        )
+        .await
+        .expect("create token table");
+        let now = Utc::now();
+        let token = oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(Uuid::new_v4()),
+            user_id: Set(Some(Uuid::new_v4())),
+            tenant_id: Set(Uuid::new_v4()),
+            token_hash: Set("orphan-family".to_string()),
+            family_id: Set(Some(Uuid::new_v4())),
+            authorization_code_id: Set(None),
+            grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((now + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert token");
+
+        let error = super::resolve_refresh_family(&db, &token)
+            .await
+            .expect_err("missing family root must not reset the absolute lifetime cap");
+        assert_eq!(error.error, "invalid_grant");
     }
 }

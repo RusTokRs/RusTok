@@ -53,7 +53,7 @@ function forbid(source, marker, label) {
 }
 
 const evidence = json(files.evidence);
-const service = read(files.service);
+const service = read(files.service) + '\n' + read('crates/modules/rustok-blog/src/services/tag/relations.rs');
 const dto = read(files.dto);
 const integrationHarness = read(files.integrationHarness);
 const slice = read(files.slice);

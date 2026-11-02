@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use rustok_api::Permission;
-use rustok_core::{MigrationSource, RusToKModule};
-use sea_orm_migration::MigrationTrait;
+//! # RusToK Marketplace Allocation
+//!
+//! Native module owner for Marketplace Family order-line seller and listing allocations.
+//! Persists immutable mapping between customer order lines, seller organizations, and listing records.
 
 mod receipts;
 #[cfg(test)]
@@ -11,52 +11,24 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod module;
 pub mod ports;
 pub mod service;
 
-pub use dto::*;
+pub use dto::{
+    AllocateMarketplaceOrderLineInput, AllocateMarketplaceOrderLinesInput,
+    AllocateMarketplaceOrderLinesResponse, ListMarketplaceAllocationsByOrderRequest,
+    ListMarketplaceAllocationsBySellerRequest, MAX_ALLOCATION_LINES_PER_COMMAND,
+    MAX_ALLOCATIONS_PER_PAGE, MarketplaceAllocationListResponse, MarketplaceAllocationStatus,
+    MarketplaceOrderAllocationResponse, ReadMarketplaceAllocationByLineRequest,
+};
 pub use error::{MarketplaceAllocationError, MarketplaceAllocationResult};
-pub use ports::*;
+pub use module::MarketplaceAllocationModule;
+pub use ports::{
+    MarketplaceAllocationCommandPort, MarketplaceAllocationReadPort,
+    in_process_marketplace_allocation_command_port,
+};
 pub use service::MarketplaceAllocationService;
 
-/// Owns the immutable seller and listing allocation of every marketplace order line.
-pub struct MarketplaceAllocationModule;
-
-#[async_trait]
-impl RusToKModule for MarketplaceAllocationModule {
-    fn slug(&self) -> &'static str {
-        "marketplace_allocation"
-    }
-
-    fn name(&self) -> &'static str {
-        "Marketplace Allocation"
-    }
-
-    fn description(&self) -> &'static str {
-        "Marketplace Family order-line seller and listing allocation owner"
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["marketplace_seller", "marketplace_listing", "order"]
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::ORDERS_READ,
-            Permission::ORDERS_LIST,
-            Permission::ORDERS_MANAGE,
-            Permission::MARKETPLACE_SELLERS_READ,
-            Permission::MARKETPLACE_LISTINGS_READ,
-        ]
-    }
-}
-
-impl MigrationSource for MarketplaceAllocationModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
-    }
-}
+#[cfg(test)]
+mod contract_tests;

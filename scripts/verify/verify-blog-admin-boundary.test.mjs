@@ -25,12 +25,31 @@ ${omitModeration ? "" : "mod moderation;"}
 mod transport;
 mod ui;
 
-pub fn BlogAdmin() {
-  <BlogEditor />;
-  ${omitModeration ? "" : "<BlogModerationPanel />;"}
-}
+pub use ui::BlogAdmin;
 ${publicTransportPassthrough ? "pub async fn fetch_posts() {}" : ""}
 ${includeApiLikeText ? "// harmless api; text must not be treated as module wiring" : ""}
+`;
+}
+
+function uiModSource({ omitModeration = false } = {}) {
+  return `
+mod components;
+pub mod leptos;
+mod richtext;
+
+use ::leptos::prelude::*;
+${omitModeration ? "" : "use crate::moderation::BlogModerationPanel;"}
+use self::leptos::BlogAdmin as BlogEditor;
+
+#[component]
+pub fn BlogAdmin() -> impl IntoView {
+    view! {
+        <div class="pb-8">
+            <BlogEditor />
+            ${omitModeration ? "" : "<BlogModerationPanel />"}
+        </div>
+    }
+}
 `;
 }
 
@@ -286,6 +305,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/presentation.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/mod.rs", uiModSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/components.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
   writeFixtureFile(root, "crates/ui/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));

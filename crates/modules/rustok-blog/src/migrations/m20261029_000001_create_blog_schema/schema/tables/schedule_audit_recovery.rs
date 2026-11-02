@@ -1,0 +1,96 @@
+use super::super::*;
+
+pub(super) async fn create(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    // 12. Create blog_comments_tcp_delegation_schedule_audit_recovery_audits table
+    manager
+        .create_table(
+            Table::create()
+                .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::AuditId)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(
+                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId,
+                    )
+                    .uuid()
+                    .not_null(),
+                )
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ActorId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Action)
+                        .string_len(32)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Reason)
+                        .string_len(512)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(
+                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::PriorAttemptCount,
+                    )
+                    .big_integer()
+                    .not_null(),
+                )
+                .col(
+                    ColumnDef::new(
+                        BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RecoveryEpoch,
+                    )
+                    .big_integer()
+                    .not_null(),
+                )
+                .col(
+                    ColumnDef::new(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .check(Expr::cust("action = 'requeue'"))
+                .check(Expr::cust("prior_attempt_count > 0"))
+                .check(Expr::cust("recovery_epoch > 0"))
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("uq_blog_comments_delegation_audit_recovery_epoch")
+                .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RecoveryEpoch)
+                .unique()
+                .if_not_exists()
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_blog_comments_delegation_audit_recovery_request")
+                .table(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::Table)
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::ControlPlaneTenantId)
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::RequestId)
+                .col(BlogCommentsTcpDelegationScheduleAuditRecoveryAudits::CreatedAt)
+                .if_not_exists()
+                .to_owned(),
+        )
+        .await?;
+    Ok(())
+}

@@ -3,6 +3,19 @@ import { collectBlogFbaVerificationChainFailures } from './blog-fba-verification
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
+function readTree(path) {
+  if (!fs.existsSync(path)) return '';
+  const out = [];
+  for (const entry of fs.readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const child = path + '/' + entry.name;
+    if (entry.isDirectory()) out.push(readTree(child));
+    else if (entry.isFile() && entry.name.endsWith('.rs')) out.push(read(child));
+  }
+  return out.join('\n');
+}
+function readMigration(path) {
+  return read(path) + '\n' + readTree(path.replace(/\.rs$/u, ''));
+}
 function fail(message) { console.error(`[verify-blog-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
 function hasNone(text, snippets, label) { for (const s of snippets) if (text.includes(s)) fail(`${label} contains forbidden ${s}`); }
@@ -124,7 +137,7 @@ sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module ===
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-const blogInitialMigration = read(blogInitialMigrationPath);
+const blogInitialMigration = readMigration(blogInitialMigrationPath);
 hasAll(
   blogInitialMigration,
   ['ColumnDef::new(BlogPostTranslations::Body).text().not_null()'],
@@ -173,7 +186,7 @@ if (runtimeSmoke.compile_policy !== 'not_run_by_request' || runtimeSmoke.runtime
 if (runtimeSmoke.fallback_smoke?.status !== 'source_verified_no_compile' || runtimeSmoke.fallback_smoke?.runtime_evidence !== 'pending') fail('runtime smoke degraded-mode status drift');
 sameSet(runtimeSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'runtime smoke profiles');
 sameSet(runtimeSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'runtime smoke degraded modes');
-const service = read(runtimeSmoke.source_contract.consumer_service);
+const service = read(runtimeSmoke.source_contract.consumer_service) + '\n' + read('crates/modules/rustok-blog/src/services/comment/commands.rs');
 const errorMapping = read(runtimeSmoke.source_contract.consumer_error_mapping);
 const providerRegistryPath = runtimeSmoke.source_contract.provider_port_registry;
 if (providerRegistryPath !== providerPath) fail('runtime smoke provider registry drift');
@@ -258,7 +271,7 @@ if (registry.verification_chain?.source_gates?.comments_event_projection?.restar
 const snapshotInvalidation = projection.snapshot_invalidation ?? {};
 if (snapshotInvalidation.source !== 'blog_comment_projection_deliveries' || snapshotInvalidation.cursor !== 'latest committed projection_revision for the tenant/post' || snapshotInvalidation.keying !== 'public snapshot identity includes projection_revision' || snapshotInvalidation.redis_enumeration !== false) fail('snapshot_invalidation registry drift');
 const projectionSource = read(projectionHandlerPath);
-const projectionRevisionMigration = read(projectionRevisionMigrationPath);
+const projectionRevisionMigration = readMigration(projectionRevisionMigrationPath);
 const snapshotSource = read('crates/modules/rustok-blog/src/integrations/public_comments_snapshot.rs');
 hasAll(projectionSource, [
   'impl EventHandler for BlogCommentProjectionHandler',
@@ -324,7 +337,7 @@ hasAll(projectionRestartHarness, [
   'count_outbox_events(&restarted_db).await?, 1',
 ], 'blog comment projection restart target');
 hasNone(projectionRestartHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection restart target');
-const migration = read(blogInitialMigrationPath);
+const migration = readMigration(blogInitialMigrationPath);
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
 const moduleSource = read('crates/modules/rustok-blog/src/module.rs');
 hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');

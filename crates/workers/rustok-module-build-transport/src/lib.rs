@@ -18,3 +18,6 @@ pub use distribution_client::GrpcStaticDistributionExecutor;
 pub use distribution_server::StaticDistributionGrpcService;
 pub use server::ModuleBuildGrpcService;
 pub use tonic::transport::ClientTlsConfig;
+
+#[cfg(test)]
+mod contract_tests;

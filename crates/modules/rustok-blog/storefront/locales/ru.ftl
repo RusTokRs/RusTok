@@ -32,6 +32,9 @@ blog-list-noExcerpt = Анонс пока не задан.
 blog-list-open = Открыть
 blog-list-title = Опубликованные посты
 blog-list-total = всего
+blog-posts-firstPage = Вернуться на первую страницу
+blog-posts-nextPage = Вперёд
+blog-posts-previousPage = Назад
 blog-selected-emptyBody = Откройте пост из списка ниже через `?slug=` или опубликуйте его из blog admin package.
 blog-selected-emptyTitle = Выберите опубликованный пост
 blog-selected-localeLabel = locale

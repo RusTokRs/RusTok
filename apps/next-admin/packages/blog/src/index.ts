@@ -16,6 +16,5 @@ export { default as PostForm } from './components/post-form';
 export { default as CategoriesPage } from './pages/categories-page';
 export { CategoryModal } from './components/category-modal';
 export { PostTable } from './components/post-table';
-export { columns as postColumns } from './components/post-table/columns';
 export * from './api/posts';
 export * from './api/categories';

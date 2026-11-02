@@ -43,7 +43,7 @@ struct PostgresRestartEvidenceDb {
 impl PostgresRestartEvidenceDb {
     async fn setup(prefix: &str) -> Result<Option<Self>> {
         let Some(database_url) = postgres_database_url() else {
-            eprintln!(
+            tracing::warn!(
                 "{POSTGRES_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Blog Comments restart/ambiguity evidence"
             );
             return Ok(None);

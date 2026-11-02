@@ -519,6 +519,27 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    let module_event_dispatcher_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>()
+        {
+            // Request a cooperative drain first; if a handler blocks past the
+            // host deadline, abort the dispatcher task as the emergency fallback.
+            worker.request_stop();
+            let abort_handle = worker.abort_handle();
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Module event dispatcher stopped gracefully"),
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, "Module event dispatcher exited with error")
+                }
+                Err(_) => {
+                    abort_handle.abort();
+                    tracing::warn!("Module event dispatcher shutdown timed out after 5s")
+                }
+            }
+        }
+    };
+
     let module_artifact_maintenance_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>() {
             match tokio::time::timeout(timeout_duration, worker.join()).await {
@@ -592,11 +613,14 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(not(feature = "mod-notifications"))]
     let notification_fanout_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
             await_module_worker_shutdown("Forum search inbox", worker.join()).await;
         }
     };
+    #[cfg(not(feature = "mod-forum"))]
+    let forum_search_drain = std::future::ready(());
 
     tokio::join!(
         relay_drain,
@@ -607,6 +631,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         module_work_drain,
         workflow_drain,
         watchdog_drain,
+        module_event_dispatcher_drain,
         module_artifact_maintenance_drain,
         paid_order_label_drain,
         marketplace_financial_drain,
@@ -622,6 +647,15 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 /// Drain module-owned workers after broadcasting the shutdown signal. The
 /// timeout mirrors host worker drains; durable recovery state survives a
 /// process exit even if a provider or database call is still blocked.
+#[cfg(any(
+    test,
+    feature = "mod-order",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+    feature = "mod-product",
+    feature = "mod-notifications",
+    feature = "mod-forum"
+))]
 async fn await_module_worker_shutdown(
     worker: &'static str,
     join: impl std::future::Future<Output = std::result::Result<(), tokio::task::JoinError>>,
@@ -681,11 +715,14 @@ fn spawn_auth_retention_handle(
     }
 }
 
-fn auth_retention_removed_artifacts(purge: &crate::services::auth_retention::AuthRetentionPurge) -> bool {
+fn auth_retention_removed_artifacts(
+    purge: &crate::services::auth_retention::AuthRetentionPurge,
+) -> bool {
     purge.sessions > 0
         || purge.invite_consumptions > 0
         || purge.invites > 0
         || purge.oauth_tokens > 0
+        || purge.oauth_authorization_codes > 0
 }
 
 async fn auth_retention_loop(
@@ -708,6 +745,7 @@ async fn auth_retention_loop(
                     invite_consumptions = purge.invite_consumptions,
                     invites = purge.invites,
                     oauth_tokens = purge.oauth_tokens,
+                    oauth_authorization_codes = purge.oauth_authorization_codes,
                     "Purged expired auth artifacts past retention"
                 );
             }
@@ -1180,6 +1218,11 @@ mod tests {
             ..Default::default()
         };
         assert!(super::auth_retention_removed_artifacts(&oauth_only));
+        let code_only = crate::services::auth_retention::AuthRetentionPurge {
+            oauth_authorization_codes: 2,
+            ..Default::default()
+        };
+        assert!(super::auth_retention_removed_artifacts(&code_only));
         assert!(!super::auth_retention_removed_artifacts(
             &crate::services::auth_retention::AuthRetentionPurge::default()
         ));

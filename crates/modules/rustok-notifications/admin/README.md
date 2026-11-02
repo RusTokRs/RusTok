@@ -8,3 +8,6 @@ state. Inbox, preference, fan-out, delivery-attempt, replay, and reconciliation
 screens are added only after their owner APIs exist.
 
 Public entry point: `NotificationsAdmin`.
+
+## Documentation
+- [CRATE_API.md](CRATE_API.md)

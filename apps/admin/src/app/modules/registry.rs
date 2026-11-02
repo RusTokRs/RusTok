@@ -18,7 +18,7 @@ pub struct AdminComponentRegistration {
     pub render: fn() -> AnyView,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AdminChildPageRegistration {
     pub subpath: &'static str,
     pub title: &'static str,

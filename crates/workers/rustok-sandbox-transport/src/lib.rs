@@ -3,6 +3,8 @@
 mod client;
 mod server;
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod tests;
 
 pub mod proto {

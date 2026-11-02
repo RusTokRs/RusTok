@@ -48,7 +48,9 @@ const coreCommandsPath = "crates/modules/rustok-blog/admin/src/core/commands.rs"
 const corePresentationPath = "crates/modules/rustok-blog/admin/src/core/presentation.rs";
 const modelPath = "crates/modules/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
+const uiModPath = "crates/modules/rustok-blog/admin/src/ui/mod.rs";
 const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs";
+const uiPagePath = "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs";
 const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
 const sharedRichtextAdapterPath = "crates/ui/leptos-ui/src/richtext.rs";
 const moderationPath = "crates/modules/rustok-blog/admin/src/moderation.rs";
@@ -78,6 +80,7 @@ for (const filePath of [
   corePresentationPath,
   modelPath,
   uiPath,
+  uiModPath,
   uiComponentsPath,
   richtextAdapterPath,
   sharedRichtextAdapterPath,
@@ -105,8 +108,10 @@ const core = [corePath, coreCommandsPath, corePresentationPath]
   .join("\n");
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
+const uiMod = readRepo(uiModPath);
 const uiComponents = readRepo(uiComponentsPath);
-const uiBoundary = `${ui}\n${uiComponents}`;
+const uiPage = existsSync(repoPath(uiPagePath)) ? readRepo(uiPagePath) : "";
+const uiBoundary = `${ui}\n${uiPage}\n${uiComponents}`;
 const richtextAdapter = readRepo(richtextAdapterPath);
 const sharedRichtextAdapter = readRepo(sharedRichtextAdapterPath);
 const moderation = readRepo(moderationPath);
@@ -129,9 +134,13 @@ assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod moderation;", `${libPath}: crate root must wire the moderation UI slice`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
-assertContains(lib, "pub fn BlogAdmin()", `${libPath}: crate root must expose the composed BlogAdmin root`);
-assertContains(lib, "<BlogEditor />", `${libPath}: composed root must preserve the existing CRUD editor`);
-assertContains(lib, "<BlogModerationPanel />", `${libPath}: composed root must include moderation`);
+// Page composition moved from the crate root to the UI adapter (see the
+// "Page composition belongs to the UI adapter, not lib.rs" note in ui/mod.rs);
+// the crate root exposes the composed root by re-export.
+assertContains(lib, "pub use ui::BlogAdmin;", `${libPath}: crate root must re-export the composed BlogAdmin root`);
+assertContains(uiMod, "pub fn BlogAdmin()", `${uiModPath}: UI adapter must own the composed BlogAdmin root`);
+assertContains(uiMod, "<BlogEditor />", `${uiModPath}: composed root must preserve the existing CRUD editor`);
+assertContains(uiMod, "<BlogModerationPanel />", `${uiModPath}: composed root must include moderation`);
 for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn archive_/, /pub async fn delete_/, /pub async fn moderate_/]) {
   assertNotContains(lib, marker, `${libPath}: crate root must not expose public transport passthroughs (${marker})`);
 }
@@ -217,7 +226,7 @@ const legacyRichtextAdminMarkers = [
 ];
 for (const marker of legacyRichtextAdminMarkers) {
   assertNotContains(core, marker, `${corePath}: canonical richtext core must not reintroduce legacy admin helper ${marker}`);
-  assertNotContains(ui, marker, `${uiPath}: canonical richtext UI must not reintroduce legacy admin helper ${marker}`);
+  assertNotContains(uiBoundary, marker, `${uiPath}: canonical richtext UI must not reintroduce legacy admin helper ${marker}`);
 }
 
 const legacyRichtextLocaleKeys = ["blog.form.bodyFormat", "blog.form.rawWarning"];
@@ -239,11 +248,11 @@ assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch c
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
 assertContains(ui, "use super::richtext::BlogRichTextEditor;", `${uiPath}: UI must mount the owner richtext lifecycle adapter`);
 assertContains(ui, "let (content, set_content) = signal(RichTextDocument::empty());", `${uiPath}: UI must keep canonical document state`);
-assertContains(ui, "<BlogRichTextEditor", `${uiPath}: UI must render the owner richtext editor`);
-assertContains(ui, "document=content", `${uiPath}: UI must pass canonical document state to the editor`);
-assertContains(ui, "set_document=set_content", `${uiPath}: UI must receive canonical document updates from the editor`);
-assertContains(ui, "content_locale=locale", `${uiPath}: UI must pass the owner-selected content locale`);
-assertContains(ui, "disabled=Signal::derive", `${uiPath}: UI must pass dynamic busy/read-only state`);
+assertContains(uiBoundary, "<BlogRichTextEditor", `${uiPath}: UI must render the owner richtext editor`);
+assertContains(uiBoundary, "document=content", `${uiPath}: UI must pass canonical document state to the editor`);
+assertContains(uiBoundary, "set_document=set_content", `${uiPath}: UI must receive canonical document updates from the editor`);
+assertContains(uiBoundary, "content_locale=locale", `${uiPath}: UI must pass the owner-selected content locale`);
+assertContains(uiBoundary, "disabled=Signal::derive", `${uiPath}: UI must pass dynamic busy/read-only state`);
 for (const [marker, description] of [
   ["pub fn BlogRichTextEditor(", "owner editor component"],
   ["ReadSignal<RichTextDocument>", "typed controlled input"],
@@ -302,13 +311,13 @@ assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use c
 assertContains(ui, "apply_query_intent", `${uiPath}: UI must apply core-owned route/query intents through the Leptos writer adapter`);
 assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
 assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
-assertContains(ui, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification`);
+assertContains(uiBoundary, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
 assertContains(ui, "transport::fetch_posts", `${uiPath}: UI must call the module-owned transport facade`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostService", "CategoryService", "TagService", "CommentService"]) {
-  assertNotContains(ui, marker, `${uiPath}: CRUD UI adapter must not call raw transport or services (${marker})`);
+  assertNotContains(uiBoundary, marker, `${uiPath}: CRUD UI adapter must not call raw transport or services (${marker})`);
 }
 
 for (const marker of [
@@ -392,7 +401,7 @@ for (const marker of ["GraphqlRequest", "BLOG_POSTS_QUERY", "MODERATE_BLOG_COMME
 for (const marker of ["body_format", "bodyFormat", "raw_body", "rawWarning", "rt_json_v1", "rich_text_v1"]) {
   assertNotContains(core, marker, `${corePath}: canonical rich-text admin core must not expose legacy format state (${marker})`);
   assertNotContains(model, marker, `${modelPath}: canonical rich-text admin model must not expose legacy format state (${marker})`);
-  assertNotContains(ui, marker, `${uiPath}: canonical rich-text admin UI must not expose legacy format state (${marker})`);
+  assertNotContains(uiBoundary, marker, `${uiPath}: canonical rich-text admin UI must not expose legacy format state (${marker})`);
 }
 for (const feature of ["rustok-blog-admin/csr", "rustok-blog-admin/hydrate", "rustok-blog-admin/ssr"]) {
   assertContains(hostCargo, feature, `${hostCargoPath}: host must propagate the blog admin ${feature.split("/")[1]} feature`);
@@ -445,7 +454,7 @@ for (const marker of adminRichtextEvidence.required_markers?.core ?? []) {
   assertContains(core, marker, `${corePath}: evidence-required canonical core marker ${marker}`);
 }
 for (const marker of adminRichtextEvidence.required_markers?.ui ?? []) {
-  assertContains(ui, marker, `${uiPath}: evidence-required canonical UI marker ${marker}`);
+  assertContains(uiBoundary, marker, `${uiPath}: evidence-required canonical UI marker ${marker}`);
 }
 for (const marker of adminRichtextEvidence.required_markers?.adapter ?? []) {
   assertContains(richtextAdapter, marker, `${richtextAdapterPath}: evidence-required owner adapter marker ${marker}`);
@@ -458,7 +467,7 @@ for (const marker of adminRichtextEvidence.forbidden_adapter_markers ?? []) {
 }
 for (const marker of adminRichtextEvidence.forbidden_markers ?? []) {
   assertNotContains(core, marker, `${corePath}: evidence-forbidden legacy richtext marker ${marker}`);
-  assertNotContains(ui, marker, `${uiPath}: evidence-forbidden legacy richtext marker ${marker}`);
+  assertNotContains(uiBoundary, marker, `${uiPath}: evidence-forbidden legacy richtext marker ${marker}`);
 }
 const evidenceLocaleKeys = [...(adminRichtextEvidence.forbidden_locale_keys ?? [])].sort();
 const expectedLocaleKeys = [...legacyRichtextLocaleKeys].sort();

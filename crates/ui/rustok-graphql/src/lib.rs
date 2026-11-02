@@ -424,3 +424,7 @@ mod tests {
         assert_eq!(partial.extensions.unwrap().outcome, None);
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

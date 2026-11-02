@@ -382,6 +382,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatcher_stop_refuses_new_contract_delivery_before_join() {
+        let bus = EventBus::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut dispatcher = super::super::EventDispatcher::new(bus.clone());
+        dispatcher.register_boxed(listener(&calls, false));
+        let running = dispatcher.start_with_contract_delivery().unwrap();
+        bus.publish_contract_envelope(envelope()).await.unwrap();
+        running.request_stop();
+        assert!(bus.publish_contract_envelope(envelope()).await.is_err());
+        running.join().await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn dispatcher_abort_closes_contract_delivery_not_only_root_receiver() {
         let bus = EventBus::new();
         let calls = Arc::new(AtomicUsize::new(0));

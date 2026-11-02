@@ -12,6 +12,8 @@
 - Expose connector-owned subscriber metadata (`offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) for offset/ack/retry coordination without defining transport retry, DLQ, or replay policy.
 - Keep `ConnectorAckToken` as the connector-owned Iggy-SDK acknowledgement seam; subscribers validate token scope before ack and higher layers still treat tokens as opaque.
 - Keep connector concerns separate from higher-level event transport behavior.
+- Participate as a deployment-scoped runtime extension; the module trait uses
+  the non-toggleable `Core` kind rather than a separate tenant-lifecycle kind.
 
 ## Entry points
 
@@ -36,6 +38,7 @@
 
 ## Docs
 
+- [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - No-compile source guardrail: `node scripts/verify/verify-iggy-connector-source.mjs` from the repository root

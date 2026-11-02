@@ -3,13 +3,15 @@ use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphq
 use serde::{Deserialize, Serialize};
 
 use crate::core;
-use crate::model::{BlogCategoryOption, BlogPostDetail, BlogPostDraft, BlogPostList};
+use crate::model::{
+    BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate, BlogPostDetail,
+    BlogPostDraft, BlogPostList, BlogPreviewToken,
+};
 
 pub type ApiError = GraphqlHttpError;
 
-const BLOG_CATEGORIES_QUERY: &str =
-    "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
-const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
+const BLOG_CATEGORIES_QUERY: &str = "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status authorId authorProfile { displayName } createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
 const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
@@ -23,6 +25,13 @@ const ARCHIVE_POST_MUTATION: &str =
     "mutation ArchivePost($id: UUID!, $reason: String) { archivePost(id: $id, reason: $reason) }";
 const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restorePost(id: $id) }";
 const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost(id: $id) }";
+const CREATE_PREVIEW_TOKEN_MUTATION: &str = "mutation CreatePreviewToken($input: CreatePreviewTokenInput!) { createPreviewToken(input: $input) { id token postId expiresAt createdAt } }";
+const BLOG_CATEGORY_DETAILS_QUERY: &str = "query BlogCategoryDetailsAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id locale effectiveLocale name slug description parentId position createdAt updatedAt } total } }";
+const CREATE_BLOG_CATEGORY_MUTATION: &str =
+    "mutation CreateBlogCategory($input: CreateBlogCategoryInput!) { createBlogCategory(input: $input) }";
+const UPDATE_BLOG_CATEGORY_MUTATION: &str = "mutation UpdateBlogCategory($id: UUID!, $input: UpdateBlogCategoryInput!) { updateBlogCategory(id: $id, input: $input) { id locale effectiveLocale name slug description parentId position createdAt updatedAt } }";
+const DELETE_BLOG_CATEGORY_MUTATION: &str =
+    "mutation DeleteBlogCategory($id: UUID!) { deleteBlogCategory(id: $id) }";
 
 #[derive(Debug, Deserialize)]
 struct BlogPostsResponse {
@@ -173,6 +182,75 @@ struct PostIdVariables {
 struct ArchivePostVariables {
     id: String,
     reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatePreviewTokenInputPayload {
+    post_id: String,
+    ttl_hours: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreatePreviewTokenVariables {
+    input: CreatePreviewTokenInputPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatePreviewTokenResponse {
+    #[serde(rename = "createPreviewToken")]
+    create_preview_token: BlogPreviewToken,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogCategoryDetailsResponse {
+    #[serde(rename = "blogCategories")]
+    blog_categories: BlogCategoryDetailPage,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogCategoryDetailPage {
+    items: Vec<BlogCategoryDetail>,
+    total: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct CategoryDetailVariables {
+    filter: CategoryFilter,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateBlogCategoryVariables {
+    input: BlogCategoryDraft,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateBlogCategoryVariables {
+    id: String,
+    input: BlogCategoryUpdate,
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteBlogCategoryVariables {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateBlogCategoryResponse {
+    #[serde(rename = "createBlogCategory")]
+    create_blog_category: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateBlogCategoryResponse {
+    #[serde(rename = "updateBlogCategory")]
+    update_blog_category: BlogCategoryDetail,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct DeleteBlogCategoryResponse {
+    #[serde(default, rename = "deleteBlogCategory")]
+    delete_blog_category: bool,
 }
 
 async fn request<V, T>(
@@ -442,7 +520,9 @@ pub async fn unpin_post(
     )
     .await?;
     if !response.unpin_post {
-        return Err(GraphqlHttpError::Graphql("Unpin post returned false".into()));
+        return Err(GraphqlHttpError::Graphql(
+            "Unpin post returned false".into(),
+        ));
     }
     fetch_post(token, tenant_slug, id, locale)
         .await?
@@ -516,4 +596,108 @@ pub async fn delete_post(
     .await?;
 
     Ok(response.delete_post)
+}
+
+pub async fn create_preview_token(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    post_id: String,
+    ttl_hours: Option<i64>,
+) -> Result<crate::model::BlogPreviewToken, ApiError> {
+    let response: CreatePreviewTokenResponse = request(
+        CREATE_PREVIEW_TOKEN_MUTATION,
+        CreatePreviewTokenVariables {
+            input: CreatePreviewTokenInputPayload {
+                post_id,
+                ttl_hours,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.create_preview_token)
+}
+
+pub async fn fetch_category_details(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<Vec<BlogCategoryDetail>, ApiError> {
+    let mut items = Vec::new();
+    for page in 1.. {
+        let result: BlogCategoryDetailsResponse = request(
+            BLOG_CATEGORY_DETAILS_QUERY,
+            CategoryDetailVariables {
+                filter: CategoryFilter {
+                    locale: locale.clone(),
+                    page,
+                    per_page: 100,
+                },
+            },
+            token.clone(),
+            tenant_slug.clone(),
+        )
+        .await?;
+        items.extend(result.blog_categories.items);
+        if items.len() as u64 >= result.blog_categories.total {
+            return Ok(items);
+        }
+        if (items.len() as u64) < page * 100 {
+            return Err(GraphqlHttpError::Graphql(
+                "Incomplete Blog categories projection".into(),
+            ));
+        }
+    }
+    unreachable!("Blog categories are bounded by the Taxonomy owner")
+}
+
+pub async fn create_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    draft: BlogCategoryDraft,
+) -> Result<String, ApiError> {
+    let response: CreateBlogCategoryResponse = request(
+        CREATE_BLOG_CATEGORY_MUTATION,
+        CreateBlogCategoryVariables { input: draft },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.create_blog_category)
+}
+
+pub async fn update_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    update: BlogCategoryUpdate,
+) -> Result<BlogCategoryDetail, ApiError> {
+    let response: UpdateBlogCategoryResponse = request(
+        UPDATE_BLOG_CATEGORY_MUTATION,
+        UpdateBlogCategoryVariables { id, input: update },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.update_blog_category)
+}
+
+pub async fn delete_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<bool, ApiError> {
+    let response: DeleteBlogCategoryResponse = request(
+        DELETE_BLOG_CATEGORY_MUTATION,
+        DeleteBlogCategoryVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.delete_blog_category)
 }

@@ -34,6 +34,7 @@ registerAdminModule({
 });
 
 export { productNavItems } from './nav';
+export { parsePriceAmount, salePercent, discountedPrice } from './money';
 export * from './api/types';
 export * from './api/categories';
 export * from './api/attributes';
@@ -85,7 +86,7 @@ export type ProductCatalogSearchOption = {
   label: string;
 };
 
-const PRODUCTS_QUERY = `
+export const PRODUCTS_QUERY = `
 query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) {
   products(tenantId: $tenantId, locale: $locale, filter: $filter) {
     total
@@ -108,7 +109,7 @@ query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsF
   }
 }`;
 
-const PRODUCT_QUERY = `
+export const PRODUCT_QUERY = `
 query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) {
   product(tenantId: $tenantId, id: $id, locale: $locale) {
     id
@@ -155,7 +156,7 @@ query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) {
   }
 }`;
 
-const PRODUCT_ATTRIBUTES_QUERY = `
+export const PRODUCT_ATTRIBUTES_QUERY = `
 query ProductCatalogSearchAttributes($tenantId: UUID!, $locale: String!) {
   productAttributes(tenantId: $tenantId, locale: $locale) {
     items {
@@ -169,7 +170,7 @@ query ProductCatalogSearchAttributes($tenantId: UUID!, $locale: String!) {
   }
 }`;
 
-const CATALOG_CATEGORIES_QUERY = `
+export const CATALOG_CATEGORIES_QUERY = `
 query ProductCatalogSearchCategories($tenantId: UUID!, $locale: String!) {
   catalogCategories(tenantId: $tenantId, locale: $locale) {
     items {
@@ -370,7 +371,7 @@ export {
   PRODUCT_EDITOR_INTENT_QUERY_KEY
 } from './write-journal';
 
-const CREATE_PRODUCT_MUTATION = `
+export const CREATE_PRODUCT_MUTATION = `
 mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) {
   createProduct(idempotencyKey: $idempotencyKey, input: $input) {
     id

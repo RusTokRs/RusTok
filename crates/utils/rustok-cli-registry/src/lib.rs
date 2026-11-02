@@ -1,3 +1,9 @@
+//! # rustok-cli-registry
+//!
+//! Selected-distribution command registry for the RusToK platform CLI. It
+//! aggregates command providers at runtime and answers provider, command, and
+//! emptiness queries without owning any command's execution semantics.
+
 use rustok_cli_core::{CommandDescriptor, CommandProvider};
 use rustok_runtime::RuntimeComposition;
 
@@ -8,6 +14,15 @@ pub struct SelectedDistributionRegistry {
     providers: Vec<Box<dyn CommandProvider>>,
 }
 
+impl std::fmt::Debug for SelectedDistributionRegistry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SelectedDistributionRegistry")
+            .field("providers_len", &self.providers.len())
+            .finish()
+    }
+}
+
 impl SelectedDistributionRegistry {
     pub fn empty() -> Self {
         Self::default()
@@ -15,6 +30,10 @@ impl SelectedDistributionRegistry {
 
     pub fn from_providers(providers: Vec<Box<dyn CommandProvider>>) -> Self {
         Self { providers }
+    }
+
+    pub fn len(&self) -> usize {
+        self.providers.len()
     }
 
     pub fn providers(&self) -> Vec<&dyn CommandProvider> {
@@ -74,7 +93,12 @@ mod tests {
         let commands = registry.commands();
 
         assert!(!registry.is_empty());
-        assert_eq!(registry.providers().len(), 8);
+        assert_eq!(registry.providers().len(), 9);
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.namespace == "blog" && command.name == "publish-scheduled")
+        );
         assert!(
             commands
                 .iter()
@@ -103,3 +127,6 @@ mod tests {
         assert_eq!(registry.commands()[0].name, "inspect");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

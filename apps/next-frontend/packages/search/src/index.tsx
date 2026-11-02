@@ -11,240 +11,20 @@
 'use client';
 
 import React from 'react';
-import type { storefrontGraphql } from '@/shared/lib/graphql';
+import {
+  fetchStorefrontSearch,
+  fetchStorefrontFilterPresets,
+  fetchStorefrontSuggestions,
+  parseCsv,
+  type SearchCatalogFilterOption,
+  type SearchCatalogFilters,
+  type SearchFilterPreset,
+  type SearchPreviewPayload,
+  type SearchStorefrontPageProps,
+  type SearchSuggestion,
+} from './api';
 
-export type SearchStorefrontPageProps = {
-  graphql: StorefrontGraphqlExecutor;
-  token?: string | null;
-  tenantSlug?: string | null;
-  graphqlUrl?: string;
-  locale?: string;
-  initialQuery?: string;
-  initialFilters?: Partial<SearchCatalogFilters>;
-  categoryOptions?: SearchCatalogFilterOption[];
-  attributeOptions?: SearchCatalogFilterOption[];
-};
-
-type StorefrontGraphqlExecutor = typeof storefrontGraphql;
-
-export type SearchCatalogFilterOption = {
-  value: string;
-  label: string;
-};
-
-export type SearchCatalogFilters = {
-  channelId: string;
-  categoryIds: string;
-  attributeCode: string;
-  attributeValues: string;
-  attributeMin: string;
-  attributeMax: string;
-  sortAttributeCode: string;
-  sortDesc: boolean;
-};
-
-type SearchSuggestion = {
-  text: string;
-  kind: string;
-  locale: string | null;
-  url: string | null;
-  score: number;
-};
-
-type SearchResultItem = {
-  id: string;
-  entityType: string;
-  sourceModule: string;
-  title: string;
-  snippet: string | null;
-  score: number;
-  locale: string | null;
-  url: string | null;
-  payload: string;
-};
-
-type SearchFacetGroup = {
-  name: string;
-  buckets: Array<{
-    value: string;
-    label: string | null;
-    count: number;
-  }>;
-};
-
-type SearchPreviewPayload = {
-  queryLogId: string | null;
-  presetKey: string | null;
-  total: number;
-  tookMs: number;
-  engine: string;
-  rankingProfile: string;
-  items: SearchResultItem[];
-  facets: SearchFacetGroup[];
-};
-
-type SearchFilterPreset = {
-  key: string;
-  label: string;
-  entityTypes: string[];
-  sourceModules: string[];
-  statuses: string[];
-  rankingProfile: string | null;
-};
-
-type StorefrontSearchResponse = {
-  storefrontSearch: SearchPreviewPayload;
-};
-
-type StorefrontSuggestionsResponse = {
-  storefrontSearchSuggestions: SearchSuggestion[];
-};
-
-type StorefrontFilterPresetsResponse = {
-  storefrontSearchFilterPresets: SearchFilterPreset[];
-};
-
-const STOREFRONT_SEARCH_QUERY = `
-  query StorefrontSearch($input: SearchPreviewInput!) {
-    storefrontSearch(input: $input) {
-      queryLogId
-      presetKey
-      total
-      tookMs
-      engine
-      rankingProfile
-      items {
-        id
-        entityType
-        sourceModule
-        title
-        snippet
-        score
-        locale
-        url
-        payload
-      }
-      facets {
-        name
-        buckets {
-          value
-          label
-          count
-        }
-      }
-    }
-  }
-`;
-
-const STOREFRONT_FILTER_PRESETS_QUERY = `
-  query StorefrontSearchFilterPresets {
-    storefrontSearchFilterPresets {
-      key
-      label
-      entityTypes
-      sourceModules
-      statuses
-      rankingProfile
-    }
-  }
-`;
-
-const STOREFRONT_SUGGESTIONS_QUERY = `
-  query StorefrontSearchSuggestions($input: SearchSuggestionsInput!) {
-    storefrontSearchSuggestions(input: $input) {
-      text
-      kind
-      locale
-      url
-      score
-    }
-  }
-`;
-
-async function fetchStorefrontSearch(
-  query: string,
-  presetKey: string | null,
-  filters: SearchCatalogFilters,
-  props: SearchStorefrontPageProps
-): Promise<SearchPreviewPayload> {
-  const categoryIds = parseCsv(filters.categoryIds);
-  const attributeValues = parseCsv(filters.attributeValues);
-  const response = await props.graphql<
-    StorefrontSearchResponse,
-    { input: Record<string, unknown> }
-  >({
-    query: STOREFRONT_SEARCH_QUERY,
-    variables: {
-      input: {
-        query,
-        locale: props.locale || undefined,
-        presetKey: presetKey || undefined,
-        channelId: filters.channelId.trim() || undefined,
-        categoryIds: categoryIds.length ? categoryIds : undefined,
-        attributeFilters: filters.attributeCode.trim()
-          ? [
-              {
-                attributeCode: filters.attributeCode.trim(),
-                values: attributeValues.length ? attributeValues : undefined,
-                min: filters.attributeMin.trim() || undefined,
-                max: filters.attributeMax.trim() || undefined
-              }
-            ]
-          : undefined,
-        sortAttributeCode: filters.sortAttributeCode.trim() || undefined,
-        sortDesc: filters.sortDesc || undefined,
-        limit: 12,
-        offset: 0
-      }
-    },
-    token: props.token ?? undefined,
-    tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl
-  });
-
-  const payload = response.data?.storefrontSearch;
-  if (!payload) {
-    throw new Error('storefrontSearch payload is missing');
-  }
-
-  return payload;
-}
-
-async function fetchStorefrontFilterPresets(
-  props: SearchStorefrontPageProps
-): Promise<SearchFilterPreset[]> {
-  const response = await props.graphql<StorefrontFilterPresetsResponse>({
-    query: STOREFRONT_FILTER_PRESETS_QUERY,
-    token: props.token ?? undefined,
-    tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl
-  });
-
-  return response.data?.storefrontSearchFilterPresets ?? [];
-}
-
-async function fetchStorefrontSuggestions(
-  query: string,
-  props: SearchStorefrontPageProps
-): Promise<SearchSuggestion[]> {
-  const response = await props.graphql<
-    StorefrontSuggestionsResponse,
-    { input: Record<string, unknown> }
-  >({
-    query: STOREFRONT_SUGGESTIONS_QUERY,
-    variables: {
-      input: {
-        query,
-        limit: 6
-      }
-    },
-    token: props.token ?? undefined,
-    tenant: props.tenantSlug ?? undefined,
-    baseUrl: props.graphqlUrl
-  });
-
-  return response.data?.storefrontSearchSuggestions ?? [];
-}
+export * from './api';
 
 export function SearchStorefrontPage(
   props: SearchStorefrontPageProps
@@ -642,13 +422,6 @@ export function SearchStorefrontPage(
       </div>
     </section>
   );
-}
-
-function parseCsv(value: string): string[] {
-  return value
-    .split(',')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
 }
 
 function CatalogField(props: {

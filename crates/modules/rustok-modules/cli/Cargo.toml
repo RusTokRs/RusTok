@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 description = "Authoring command adapters for the RusToK module control plane"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 async-trait.workspace = true
 hex.workspace = true

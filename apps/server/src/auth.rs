@@ -84,6 +84,7 @@ pub fn encode_oauth_access_token(
     scopes: &[String],
     grant_type: &str,
     expires_in_secs: u64,
+    token_id: uuid::Uuid,
 ) -> Result<String> {
     rustok_auth::encode_oauth_access_token(
         config,
@@ -95,6 +96,7 @@ pub fn encode_oauth_access_token(
             scopes,
             grant_type,
             expires_in_secs,
+            token_id,
         },
     )
     .map_err(auth_err)

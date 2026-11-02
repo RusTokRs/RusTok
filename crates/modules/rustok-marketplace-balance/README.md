@@ -135,3 +135,5 @@ level on PostgreSQL, SQLite, and MySQL.
 - external ledger event contracts and transactional outbox publication;
 - authenticated accounting and seller balance transfer operator surfaces;
 - clean/upgraded migration, replay, contention, restart, and provider evidence.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

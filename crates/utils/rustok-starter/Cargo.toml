@@ -3,7 +3,14 @@ name = "rustok-starter"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 description = "Starter blueprints and declarative data import engine for RusToK"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 async-trait.workspace = true
@@ -32,4 +39,5 @@ sea-orm-migration.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["rustok-test-utils"]
+
 

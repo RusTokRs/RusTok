@@ -17,4 +17,7 @@ The package consumes `rustok-mcp` and shared platform contracts. The admin host 
 - `src/lib.rs` — public route and component exports.
 - `src/core.rs` — framework-neutral presentation contracts.
 
+## Documentation
+- [CRATE_API.md](CRATE_API.md)
+
 See the [MCP documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).

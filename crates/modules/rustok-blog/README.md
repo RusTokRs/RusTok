@@ -33,6 +33,17 @@ Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
 
+The baseline Blog migration keeps the **single registered**
+`m20261029_000001_create_blog_schema` identity. Its responsibilities are
+split below `src/migrations/m20261029_000001_create_blog_schema/schema/`:
+ordered table builders, PostgreSQL constraints and SQLite triggers. No
+new migration identity or upgrade/compatibility path is introduced. Tag
+attachments (`blog_post_tags`) and their usage projection
+(`blog_tag_usage`) declare composite `(tenant_id, tag_id)` foreign keys to
+`taxonomy_terms(tenant_id, id)` with `ON DELETE CASCADE` in their shared
+table builders, so term deletion enforces the same tenant-scoped cleanup on
+PostgreSQL and SQLite.
+
 The source shape is guarded by `npm run verify:module-source-layout`. That profile
 admits only `lib.rs` and `module.rs` at the source root, so Blog has no root
 `runtime.rs`: a runtime handle bundle belongs in `src/module.rs` or an existing
@@ -224,17 +235,28 @@ copy must use the canonical Taxonomy owner contract.
 - `featured_image_url` must be an absolute `http`/`https` URL or a root-relative
   path, at most 2048 characters.
 - Public reads use the requested locale with the fallback chain
-  `requested -> explicit fallback -> en -> first available`.
+  `requested -> explicit fallback -> en -> lexicographically smallest available`
+  (the final fallback is deterministic; it cannot depend on query order).
+- Translations are stored one row per `(post, locale)` under a unique index.
+  A locale is the platform-normalized, extension-free BCP-47 identity accepted
+  by `TenantLocale` — up to 32 characters (`rustok_api::MAX_LOCALE_TAG_LEN`).
+  `m20261030_000001_widen_blog_translation_columns` aligned the PostgreSQL
+  `locale`, `title` and `seo_description` column widths with that contract
+  (512-char titles, 1000-char SEO descriptions); SQLite never enforced the old
+  widths. Removing a single locale's translation is not part of the owner
+  contract: a post keeps every locale it has been given, and adding a new
+  locale requires both a title and content in that locale.
 
 See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md).
 
 ## Scheduled publishing
 
-- Blog owns three durable work queues and publishes them to the host scheduler as
+- Blog owns four durable work queues and publishes them to the host scheduler as
   `ModuleWorkRegistrations`; there is no module-local timer. The registration is
   `runtime`-gated in `src/module.rs`, the adapters live in `src/services/scheduler.rs`, and the
   host owns the poll loop and the deployment stop signal: `blog_scheduled_publish`,
-  `blog_preview_token_cleanup` and `blog_route_reconciliation`. A deployment that does not
+  `blog_preview_token_cleanup`, `blog_route_reconciliation` and
+  `blog_comment_projection_retention`. A deployment that does not
   run the host's module-work scheduler in `full`/`worker` mode gets no scheduled publishing.
 - Every work item is tenant-scoped. The first discovery chooses the oldest due
   schedule; later local claims rotate over due tenant ids, even if an earlier
@@ -258,7 +280,9 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   so a published post never carries one.
 - Setting a schedule announces `BlogPostScheduled` in the same transaction (on create and on a
   `Set` patch); clearing it announces `BlogPostScheduleCancelled`. A `Keep` patch publishes
-  neither event.
+  neither event. A schedule-only update publishes no content event at all: the search corpus
+  holds published posts only, so neither `BlogPostUpdated` nor a reindex request accompanies
+  a pure scheduling change.
 - `blog_preview_token_cleanup` deletes the expired preview tokens of one tenant, at most
   `bounded_cleanup_batch(limit)` rows per iteration (clamped into
   `1..=MAX_PREVIEW_TOKEN_CLEANUP_BATCH`, i.e. 500 — `0` means one row, never the whole backlog).
@@ -266,6 +290,14 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   `blog_post` target no longer exists, and reports them through `UrlAliasPurged`. It is the
   safety net for a missed `TargetDeleted` delivery, so it complements the idempotent
   `blog_target_deletion_routes` handler rather than replacing it.
+- `blog_comment_projection_retention` compacts the Comments projection delivery ledger
+  (`blog_comment_projection_deliveries`): for each comment it deletes the deliveries that
+  are at least 30 days old **and** sit strictly below that comment's newest delivery, at
+  most 200 rows per tenant iteration. The newest delivery is the only row the projection
+  ever reads — the ULID idempotency frontier and the carried delta state — and a post's
+  maximum `projection_revision` always lives on one of those frontier rows, so compacting
+  everything below them is exactly lossless, and deleting a whole post still cascades its
+  ledger rows away.
 
 ## Preview tokens
 
@@ -276,7 +308,10 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
   token in the `x-blog-preview-token` header (never in the URL, which leaks into logs and
   browser history); the GraphQL `postByPreviewToken` argument is unchanged. A token read is
   unauthenticated by design: the token is the whole authorization of
-  that read, which is why minting, expiry and revocation are strict.
+  that read, which is why minting, expiry and revocation are strict. Brute-force protection
+  is the 256 bits of entropy in the token (a guessing attempt resolves to "not found"), so
+  the endpoint carries no per-token counter; deployments that want generic HTTP throttling
+  place it at the host gateway, like every other public route.
 - Minting is restricted to **drafts** and to the post author or a caller with post update
   permission. The TTL (`ttl_hours`, default 168) is validated against `1..=720`, so a token can
   neither be born expired nor outlive 30 days; an out-of-range request is refused instead of being
@@ -306,8 +341,11 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 - `posts(filter:)` exposes the tenant's posts as keyset pages: `after`/`perPage` plus
   `sortBy` (`PUBLISHED_AT`, `UPDATED_AT`, `CREATED_AT`) and `sortOrder`
   (`ASC`/`DESC`), defaulting to `CREATED_AT DESC`. Each sort column has its own
-  index from the canonical schema migration (`m20261029_000001_create_blog_schema`), so a sorted page reads the index instead of sorting
-  the table.
+  index from `m20261030_000002_add_blog_list_indexes`
+  (`idx_blog_posts_tenant_created_id`, `idx_blog_posts_tenant_updated_id`,
+  `idx_blog_posts_tenant_published_desc`, `idx_blog_posts_tenant_published_asc`), so a sorted page reads the index instead of sorting
+  the table. The public listing's published-page scan rides the partial
+  `idx_blog_posts_public_keyset` from the same migration.
 - A cursor is bound to the sort it was issued for: reusing it with another
   `sortBy`/`sortOrder` is rejected with a validation error instead of resuming at a
   wrong position.
@@ -320,9 +358,12 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 
 ## Bulk post operations
 
-- Four GraphQL mutations act on a list of post ids — `bulkPublishPosts`,
-  `bulkUnpublishPosts`, `bulkArchivePosts` (post publish permission) and `bulkDeletePosts`
-  (post delete permission). No REST endpoint exposes bulk work.
+- Five GraphQL mutations act on a list of post ids — `bulkPublishPosts`,
+  `bulkUnpublishPosts`, `bulkArchivePosts` (post publish permission), `bulkRestorePosts` and
+  `bulkDeletePosts` (post delete permission). The same five operations exist over REST as
+  `POST /api/blog/posts/bulk/{publish,unpublish,archive,restore,delete}` with the same
+  permissions; both transports delegate to the same `PostService` bulk commands, and the
+  request body is capped at 64 KiB by the host's JSON layer.
 - The request is bounded at `MAX_BULK_POST_IDS` = 100 ids. The GraphQL input mirrors the
   bound with `#[graphql(validator(max_items = 100))]`, and
   `PostService::ensure_bulk_batch_is_bounded` re-checks it before any work starts, because a

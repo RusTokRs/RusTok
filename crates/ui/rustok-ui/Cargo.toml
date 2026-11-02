@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 authors = ["RusToK Team"]
 description = "Framework-agnostic UI design system core: variants, sizes, headless contracts and deterministic Tailwind CSS class resolvers"
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

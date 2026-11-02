@@ -29,7 +29,7 @@ fn log_storefront_cart_route_entry(
     tracing::debug!(
         boundary = "commerce_storefront_cart_http",
         operation,
-        tenant_id_non_nil = !tenant_id.is_nil(),
+        tenant_non_nil = !tenant_id.is_nil(),
         cart_id_present = cart_id.is_some(),
         cart_id_non_nil = cart_id.is_some_and(|value| !value.is_nil()),
         line_item_id_present = line_item_id.is_some(),
@@ -66,7 +66,7 @@ fn map_cart_port_error(
         tracing::error!(
             owner = "rustok_cart",
             operation,
-            tenant_id_non_nil = !tenant_id.is_nil(),
+            tenant_non_nil = !tenant_id.is_nil(),
             cart_id_present = cart_id.is_some(),
             owner_error_kind,
             owner_code_length,
@@ -79,7 +79,7 @@ fn map_cart_port_error(
         tracing::warn!(
             owner = "rustok_cart",
             operation,
-            tenant_id_non_nil = !tenant_id.is_nil(),
+            tenant_non_nil = !tenant_id.is_nil(),
             cart_id_present = cart_id.is_some(),
             owner_error_kind,
             owner_code_length,

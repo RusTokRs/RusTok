@@ -107,21 +107,51 @@ impl rustok_rbac::graphql::RbacModuleAvailabilityProvider for ServerRbacModuleAv
                 tracing::error!(
                     %error,
                     tenant_id = %tenant_id,
-                    "RBAC module availability resolution failed; presenting all permissions as platform-core"
+                    "RBAC module availability resolution failed; failing closed for module-owned permissions"
                 );
-                None
+                // The owner trait uses `None` for hosts with no module registry.
+                // A resolution failure is different: keep ownership known and
+                // mark every module-owned permission dormant instead of
+                // silently presenting disabled-module grants as active.
+                let registry = self.ctx.shared_get::<ModuleRegistry>()?;
+                let ownership = permission_ownership(&self.ctx, &registry);
+                Some(fail_closed_availability(&ownership))
             }
         }
     }
 }
 
+fn fail_closed_availability(ownership: &RbacPermissionOwnership) -> PermissionAvailability {
+    PermissionAvailability::new((*ownership.0).clone(), BTreeSet::new())
+}
+
 pub fn rbac_module_availability_handle(
     ctx: &ServerRuntimeContext,
 ) -> Option<rustok_rbac::graphql::RbacModuleAvailabilityHandle> {
-    if ctx.shared_get::<ModuleRegistry>().is_none() {
-        return None;
-    }
+    ctx.shared_get::<ModuleRegistry>()?;
     Some(rustok_rbac::graphql::RbacModuleAvailabilityHandle(
         Arc::new(ServerRbacModuleAvailabilityProvider::new(ctx.clone())),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_core::Permission;
+
+    #[test]
+    fn failed_availability_snapshot_keeps_module_permissions_dormant() {
+        let ownership = RbacPermissionOwnership(Arc::new(BTreeMap::from([
+            ("posts:manage".to_string(), "blog".to_string()),
+            ("ai:providers:manage".to_string(), "ai".to_string()),
+        ])));
+        let snapshot = fail_closed_availability(&ownership);
+        assert!(!snapshot.is_active(&Permission::POSTS_MANAGE));
+        assert!(!snapshot.is_active(&Permission::AI_PROVIDERS_MANAGE));
+        assert!(snapshot.is_active(&Permission::USERS_MANAGE));
+        assert_eq!(
+            snapshot.dormant_permissions(&[Permission::POSTS_MANAGE, Permission::USERS_MANAGE]),
+            vec![Permission::POSTS_MANAGE]
+        );
+    }
 }

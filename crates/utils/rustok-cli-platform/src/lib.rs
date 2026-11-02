@@ -1,3 +1,8 @@
+//! # RusToK CLI Platform
+//!
+//! Platform-level command provider for the RusToK CLI runner.
+//! Exposes maintenance commands including version inspection, database baselines, manifest rebuilds, and schema migrations.
+
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
@@ -7,8 +12,27 @@ use sea_orm_migration::MigratorTrait;
 mod db_baseline;
 mod rebuild;
 
+#[derive(Clone)]
 pub struct PlatformCommandProvider {
     runtime: RuntimeComposition,
+}
+
+impl std::fmt::Debug for PlatformCommandProvider {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PlatformCommandProvider")
+            .finish_non_exhaustive()
+    }
+}
+
+impl PlatformCommandProvider {
+    pub fn new(runtime: RuntimeComposition) -> Self {
+        Self { runtime }
+    }
+
+    pub fn runtime(&self) -> &RuntimeComposition {
+        &self.runtime
+    }
 }
 
 #[async_trait::async_trait]
@@ -74,9 +98,7 @@ impl CommandProvider for PlatformCommandProvider {
 }
 
 pub fn command_provider(runtime: &RuntimeComposition) -> Box<dyn CommandProvider> {
-    Box::new(PlatformCommandProvider {
-        runtime: runtime.clone(),
-    })
+    Box::new(PlatformCommandProvider::new(runtime.clone()))
 }
 
 fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
@@ -120,3 +142,6 @@ mod tests {
         assert_eq!(outcome.data["package"], "rustok-cli-platform");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -65,6 +65,9 @@ fn map_platform_settings_update_error(error: SettingsError) -> FieldError {
         SettingsError::ValidationFailed(errors) => <FieldError as GraphQLError>::bad_user_input(
             &format!("Settings validation failed: {}", errors.join("; ")),
         ),
+        SettingsError::WriteConflict => <FieldError as GraphQLError>::conflict(
+            "Settings were changed concurrently; re-read the category and retry",
+        ),
         error => graphql_settings_internal_error("Unable to update platform settings", error),
     }
 }
@@ -161,7 +164,7 @@ impl SettingsMutation {
         let validators = ValidatorRegistry::default();
         let event_bus = ctx.data::<TransactionalEventBus>()?;
 
-        let stored = SettingsService::update(
+        let stored = SettingsService::update_if_current(
             runtime_ctx,
             event_bus,
             tenant.id,
@@ -169,11 +172,12 @@ impl SettingsMutation {
             settings_json,
             Some(auth.user_id),
             &validators,
+            input.expected_schema_version,
         )
         .await
         .map_err(map_platform_settings_update_error)?;
 
-        let settings_str = serde_json::to_string(&stored).map_err(|error| {
+        let settings_str = serde_json::to_string(&stored.settings).map_err(|error| {
             graphql_settings_internal_error("Unable to serialize platform settings", error)
         })?;
 
@@ -181,6 +185,7 @@ impl SettingsMutation {
             success: true,
             category: input.category,
             settings: settings_str,
+            schema_version: stored.schema_version,
         })
     }
 }
@@ -203,6 +208,21 @@ mod tests {
             "Invalid JSON in settings",
         );
         assert_eq!(error.message, "Invalid JSON in settings");
+    }
+
+    #[test]
+    fn concurrent_platform_settings_write_is_a_retryable_client_signal() {
+        let error = map_platform_settings_update_error(SettingsError::WriteConflict);
+        assert!(error.message.contains("concurrently"));
+        assert!(error.message.contains("retry"));
+        let actual_code = error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned));
+        assert_eq!(actual_code.as_deref(), Some("CONFLICT"));
     }
 
     #[test]

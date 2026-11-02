@@ -2,8 +2,11 @@
 name = "rustok-comments-storefront-support"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Reusable Leptos storefront authoring UI owned by the Comments capability"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

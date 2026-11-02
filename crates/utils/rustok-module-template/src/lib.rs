@@ -1,4 +1,8 @@
-//! Pure renderer for the canonical Rust module component source tree.
+//! # rustok-module-template
+//!
+//! Pure renderer for the canonical Rust module component source tree. It
+//! turns a validated template input into the deterministic file set used by
+//! owner-local CLI authoring flows, without touching the filesystem.
 
 use rustok_modules::{
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
@@ -322,3 +326,7 @@ mod tests {
         assert_eq!(scenario["expectation"]["output"], scenario["input"]);
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

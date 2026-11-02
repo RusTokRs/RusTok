@@ -1,3 +1,9 @@
+mod published_posts_list;
+mod selected_post_card;
+mod showcase;
+
+use showcase::BlogShowcase;
+
 use leptos::prelude::*;
 use leptos_auth::hooks::use_token;
 use leptos_ui::{RichTextHtml, TableOfContents};
@@ -11,11 +17,11 @@ use super::share::{BlogShareButtons, BlogStatusBadge};
 
 use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
-    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList, BlogPostListItem,
-    StorefrontBlogData,
+    BlogCommentsAvailability, BlogPostAuthorProfile, BlogPostDetail, BlogPostList,
+    BlogPostListItem, StorefrontBlogData,
 };
-use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 use crate::{comments_pagination, core, transport};
+use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
 
 const BLOG_SEARCH_PAGE_SIZE: usize = 9;
 
@@ -52,9 +58,12 @@ pub fn BlogView() -> impl IntoView {
                 .get()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
-            let q = search_query.get().map(|q| q.trim().to_owned())
+            let q = search_query
+                .get()
+                .map(|q| q.trim().to_owned())
                 .filter(|q| !q.is_empty());
-            let search_page = search_page_query.get()
+            let search_page = search_page_query
+                .get()
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(1)
                 .clamp(1, 100);
@@ -73,7 +82,8 @@ pub fn BlogView() -> impl IntoView {
         },
         move |(request, comments_page, query, search_page)| async move {
             let mut data = transport::fetch_blog(request.clone(), comments_page)
-                .await.map_err(|error| error.to_string())?;
+                .await
+                .map_err(|error| error.to_string())?;
             let Some(query) = query else {
                 return Ok::<_, String>((data, None, search_page));
             };
@@ -92,7 +102,9 @@ pub fn BlogView() -> impl IntoView {
                 request.tag,
                 BLOG_SEARCH_PAGE_SIZE,
                 (search_page - 1) * BLOG_SEARCH_PAGE_SIZE,
-            ).await.map_err(|error| error.to_string())?;
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             let total = result.total;
             data.posts = map_blog_search_results(result)?;
             Ok((data, Some(total), search_page))
@@ -150,324 +162,6 @@ pub fn BlogView() -> impl IntoView {
     }
 }
 
-#[component]
-fn BlogShowcase(
-    data: StorefrontBlogData,
-    comments_page: u64,
-    search_total: Option<u64>,
-    search_page: usize,
-) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let posts_query_writer = use_route_query_writer();
-    let first_page_writer = posts_query_writer.clone();
-    let next_page_writer = posts_query_writer.clone();
-    let search_previous_writer = posts_query_writer.clone();
-    let search_next_writer = posts_query_writer;
-    let posts_next_cursor = data.posts.next_cursor.clone();
-    let posts_cursor_query = use_route_query_value(core::POSTS_CURSOR_QUERY_KEY);
-    let first_page_label = t(
-        locale.as_deref(),
-        "blog.posts.firstPage",
-        "Back to the first page",
-    );
-    let selected_post_slug = data.selected_post.as_ref().and_then(|p| p.slug.clone());
-    let is_post_selected = data.selected_post.is_some();
-
-    let mut categories_map = std::collections::BTreeMap::new();
-    for post in &data.posts.items {
-        if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
-            categories_map
-                .entry(id.clone())
-                .or_insert_with(|| name.clone());
-        }
-    }
-    if let Some(ref sel) = data.selected_post
-        && let (Some(id), Some(name)) = (&sel.category_id, &sel.category_name)
-    {
-        categories_map
-            .entry(id.clone())
-            .or_insert_with(|| name.clone());
-    }
-
-    let other_posts = if let Some(slug) = selected_post_slug.as_deref().filter(|_| search_total.is_none()) {
-        data.posts
-            .items
-            .into_iter()
-            .filter(|item| item.slug.as_deref() != Some(slug))
-            .collect::<Vec<_>>()
-    } else {
-        data.posts.items
-    };
-
-    let related_title = t(locale.as_deref(), "blog.related.title", "Related articles");
-
-    let search_query = use_route_query_value("q");
-    let tag_query = use_route_query_value("tag");
-    let category_query = use_route_query_value("category");
-    let active_search = search_query.get().filter(|value| !value.trim().is_empty());
-    let active_tag = tag_query.get().filter(|value| !value.trim().is_empty());
-    let active_category = category_query.get().filter(|value| !value.trim().is_empty());
-
-    let selected_slug = selected_post_slug.as_deref();
-    let remove_category_href = core::filter_query_href(
-        selected_slug, active_tag.as_deref(), None, active_search.as_deref(),
-    );
-    let remove_tag_href = core::filter_query_href(
-        selected_slug, None, active_category.as_deref(), active_search.as_deref(),
-    );
-    let remove_search_href = core::filter_query_href(
-        selected_slug, active_tag.as_deref(), active_category.as_deref(), None,
-    );
-    let clear_filters_href = core::filter_query_href(selected_slug, None, None, None);
-    let all_categories_href = remove_category_href.clone();
-    let tag_for_links = active_tag.clone();
-    let search_for_links = active_search.clone();
-    let slug_for_links = selected_post_slug.clone();
-    let tag_for_form = active_tag.clone();
-    let category_for_form = active_category.clone();
-    let slug_for_form = selected_post_slug.clone();
-
-    // Query results already passed full-text ranking, tenant/channel and
-    // exact category/tag filters *before* Search applied the page offset.
-    // Never locally filter the returned page again.
-
-    let has_active_filter =
-        active_tag.is_some() || active_category.is_some() || active_search.is_some();
-    let filter_bar = if has_active_filter {
-        view! {
-            <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-muted/40 p-3 text-xs">
-                <span class="font-medium text-muted-foreground">
-                    {t(locale.as_deref(), "blog.filter.active", "Active filters:")}
-                </span>
-                {active_category.as_ref().map(|cat| view! {
-                    <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-                        {format!("Category: {cat}")}
-                        <a href=remove_category_href.clone() class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
-                    </span>
-                })}
-                {active_tag.map(|tag| view! {
-                    <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                        {format!("#{tag}")}
-                        <a href=remove_tag_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
-                    </span>
-                })}
-                {active_search.as_ref().map(|q| view! {
-                    <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                        {format!("Search: \"{q}\"")}
-                        <a href=remove_search_href class="ml-1 font-bold text-muted-foreground hover:text-foreground">"×"</a>
-                    </span>
-                })}
-                <a href=clear_filters_href class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
-                    {t(locale.as_deref(), "blog.filter.clear", "Clear all")}
-                </a>
-            </div>
-        }
-        .into_any()
-    } else {
-        ().into_any()
-    };
-
-    let category_pills = if !categories_map.is_empty() {
-        let is_all_active = active_category.is_none();
-        view! {
-            <div class="flex flex-wrap items-center gap-2 pt-1">
-                <a
-                    href=all_categories_href
-                    class=if is_all_active {
-                        "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
-                    } else {
-                        "rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    }
-                >
-                    {t(locale.as_deref(), "blog.category.all", "All")}
-                </a>
-                {categories_map
-                    .into_iter()
-                    .map(|(cat_id, cat_name)| {
-                        let is_active = active_category.as_deref() == Some(&cat_id)
-                            || active_category.as_deref() == Some(&cat_name);
-                        let cat_link = core::filter_query_href(
-                            slug_for_links.as_deref(),
-                            tag_for_links.as_deref(),
-                            Some(cat_id.as_str()),
-                            search_for_links.as_deref(),
-                        );
-                        view! {
-                            <a
-                                href=cat_link
-                                class=if is_active {
-                                    "rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm"
-                                } else {
-                                    "rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                                }
-                            >
-                                {cat_name}
-                            </a>
-                        }
-                    })
-                    .collect_view()}
-            </div>
-        }
-        .into_any()
-    } else {
-        ().into_any()
-    };
-
-    view! {
-        <div class="space-y-6" id="top">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <form method="GET" class="relative max-w-md w-full">
-                    {slug_for_form.map(|slug| view! { <input type="hidden" name="slug" value=slug /> })}
-                    {tag_for_form.map(|tag| view! { <input type="hidden" name="tag" value=tag /> })}
-                    {category_for_form.map(|category| view! { <input type="hidden" name="category" value=category /> })}
-                    <input
-                        type="search"
-                        name="q"
-                        value=active_search.unwrap_or_default()
-                        placeholder=t(locale.as_deref(), "blog.search.placeholder", "Search articles and tags...")
-                        class="w-full rounded-full border border-border bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
-                    />
-                </form>
-                <a
-                    href=core::feed_href(locale.as_deref())
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors shadow-sm"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-orange-500">
-                        <path d="M4 11a9 9 0 0 1 9 9"></path>
-                        <path d="M4 4a16 16 0 0 1 16 16"></path>
-                        <circle cx="5" cy="19" r="1"></circle>
-                    </svg>
-                    <span>"RSS"</span>
-                </a>
-            </div>
-            {category_pills}
-            {filter_bar}
-            <SelectedPostCard post=data.selected_post comments_page />
-            {if is_post_selected {
-                view! {
-                    <a
-                        href="#top"
-                        class="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-200"
-                        aria-label=t(locale.as_deref(), "blog.scrollTop", "Scroll to top")
-                        title=t(locale.as_deref(), "blog.scrollTop", "Scroll to top")
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="12" y1="19" x2="12" y2="5"></line>
-                            <polyline points="5 12 12 5 19 12"></polyline>
-                        </svg>
-                    </a>
-                }.into_any()
-            } else {
-                ().into_any()
-            }}
-
-            {if is_post_selected {
-                if !other_posts.is_empty() {
-                    view! {
-                        <div class="mt-8 border-t border-border pt-6">
-                            <PublishedPostsList
-                                items=other_posts
-                                list_title=related_title
-                            />
-                        </div>
-                    }
-                    .into_any()
-                } else {
-                    ().into_any()
-                }
-            } else {
-                view! {
-                    <PublishedPostsList items=other_posts />
-                }
-                .into_any()
-            }}
-            {move || (search_total.is_none()).then(|| ())
-                .and_then(|_| posts_cursor_query.get().filter(|value| !value.trim().is_empty())).map(|_| {
-                let writer = first_page_writer.clone();
-                view! {
-                    <div class="mt-6 flex justify-center">
-                        <button
-                            type="button"
-                            class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:border-primary/50"
-                            on:click=move |_| {
-                                writer.apply_query_intent(UiRouteQueryIntent::clear(
-                                    core::POSTS_CURSOR_QUERY_KEY,
-                                ));
-                            }
-                        >
-                            {first_page_label.clone()}
-                        </button>
-                    </div>
-                }
-            })}
-            {posts_next_cursor.filter(|_| search_total.is_none()).map(|cursor| {
-                let writer = next_page_writer.clone();
-                view! {
-                    <div class="mt-6 flex justify-center">
-                        <button
-                            type="button"
-                            class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:border-primary/50"
-                            on:click=move |_| {
-                                writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                    core::POSTS_CURSOR_QUERY_KEY,
-                                    cursor.clone(),
-                                ));
-                            }
-                        >
-                            {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
-                        </button>
-                    </div>
-                }
-            })}
-            {search_total.map(|total| {
-                let has_previous = search_page > 1;
-                let has_next = (search_page as u64) * (BLOG_SEARCH_PAGE_SIZE as u64) < total;
-                let previous_writer = search_previous_writer.clone();
-                let next_writer = search_next_writer.clone();
-                view! {
-                    <nav aria-label="Blog search pages" class="mt-6 flex items-center justify-center gap-4">
-                        {has_previous.then(|| {
-                            let writer = previous_writer.clone();
-                            view! {
-                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
-                                    on:click=move |_| {
-                                        if search_page <= 2 {
-                                            writer.apply_query_intent(UiRouteQueryIntent::clear("page"));
-                                        } else {
-                                            writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                                "page", (search_page - 1).to_string(),
-                                            ));
-                                        }
-                                    }>
-                                    {t(locale.as_deref(), "blog.posts.previousPage", "Previous")}
-                                </button>
-                            }
-                        })}
-                        <span class="text-sm text-muted-foreground">
-                            {format!("Page {search_page} · {total} results")}
-                        </span>
-                        {has_next.then(|| {
-                            let writer = next_writer.clone();
-                            view! {
-                                <button type="button" class="rounded-full border px-4 py-2 text-sm"
-                                    on:click=move |_| {
-                                        writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                            "page", (search_page + 1).to_string(),
-                                        ));
-                                    }>
-                                    {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
-                                </button>
-                            }
-                        })}
-                    </nav>
-                }
-            })}
-        </div>
-    }
-}
-
 /// Convert Search's public projection into Blog's canonical presentation
 /// model without requerying/locally filtering a limited Blog page. An invalid
 /// owner projection is an error, never silently shown as zero matches.
@@ -479,15 +173,24 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
         }
         let payload: serde_json::Value = serde_json::from_str(&item.payload)
             .map_err(|_| "Search returned malformed Blog metadata".to_owned())?;
-        let get_string = |key: &str| payload.get(key)
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned);
+        let get_string = |key: &str| {
+            payload
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        };
         let slug = get_string("slug")
             .filter(|value| !value.is_empty())
             .ok_or_else(|| "Search result has no canonical Blog slug".to_owned())?;
-        let tags = payload.get("tags").and_then(serde_json::Value::as_array)
-            .map(|values| values.iter().filter_map(|value| value.as_str().map(ToOwned::to_owned))
-                .collect::<Vec<_>>())
+        let tags = payload
+            .get("tags")
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         let author_profile = match (get_string("author_id"), get_string("author_name")) {
             (Some(user_id), Some(display_name)) if !display_name.trim().is_empty() => {
@@ -516,504 +219,10 @@ fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostList,
             category_name: get_string("category_name"),
         });
     }
-    Ok(BlogPostList { items, next_cursor: None })
-}
-
-#[component]
-fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let token = use_token();
-    let Some(post) = post else {
-        let empty_state = core::selected_post_empty_state_typed_view(
-            t(
-                locale.as_deref(),
-                "blog.selected.emptyTitle",
-                "Pick a published post",
-            ),
-            t(
-                locale.as_deref(),
-                "blog.selected.emptyBody",
-                "Open a post from the list below with `?slug=` or publish one from the blog admin package.",
-            ),
-        );
-        return view! {
-            <article class="rounded-2xl border border-dashed border-border p-6">
-                <h3 class="text-lg font-semibold text-card-foreground">
-                    {empty_state.title}
-                </h3>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {empty_state.body}
-                </p>
-            </article>
-        }
-        .into_any();
-    };
-
-    let post_id = post.id;
-    let title_str = post.title.clone();
-    let effective_locale = post.effective_locale;
-    let status = post.status;
-    let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
-        post.slug,
-        &t(
-            locale.as_deref(),
-            "blog.selected.missingSlug",
-            "missing-slug",
-        ),
-        post.excerpt,
-        &t(
-            locale.as_deref(),
-            "blog.selected.noExcerpt",
-            "No excerpt yet.",
-        ),
-        post.published_at,
-        &t(
-            locale.as_deref(),
-            "blog.selected.unscheduled",
-            "Unscheduled",
-        ),
-    );
-    let tags = post.tags;
-    let public_comments = post.public_comments;
-    let content = post.content;
-    let content_plain_text = core::fallback_text(
-        post.content_plain_text,
-        &t(
-            locale.as_deref(),
-            "blog.selected.noBody",
-            "No body content yet.",
-        ),
-    );
-    let selected_post_status = core::selected_post_status_view(
-        status,
-        t(locale.as_deref(), "blog.selected.unknownStatus", "unknown"),
-    );
-    let selected_post_meta = core::selected_post_meta_view(
-        &t(locale.as_deref(), "blog.selected.slugLabel", "slug"),
-        slug.as_str(),
-        &t(locale.as_deref(), "blog.selected.localeLabel", "locale"),
-        effective_locale.as_str(),
-        &t(
-            locale.as_deref(),
-            "blog.selected.publishedLabel",
-            "published",
-        ),
-        published_at.as_str(),
-    );
-    let author_profile = post.author_profile;
-    let category_name = post.category_name;
-    let category_id = post.category_id;
-    let featured_image_url = post.featured_image_url;
-    let share_slug = slug.clone();
-    let selected_tag_filter = use_route_query_value("tag").get();
-    let selected_category_filter = use_route_query_value("category").get();
-    let selected_search_filter = use_route_query_value("q").get();
-    let selected_slug_filter = slug.clone();
-    let reading_minutes = core::calculate_reading_time(&content_plain_text);
-    let reading_time_label = core::format_reading_time(reading_minutes, locale.as_deref());
-    let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
-    let selected_post_header =
-        core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
-    let comment_form_available = matches!(
-        &public_comments.availability,
-        BlogCommentsAvailability::Available
-    );
-    let comment_post_id = post_id.clone();
-    let comment_locale = effective_locale.clone();
-    let submit_comment = Action::new_local(move |content: &rustok_api::RichTextDocument| {
-        let request = crate::model::BlogCommentCreateRequest::for_post(
-            comment_post_id.clone(),
-            comment_locale.clone(),
-            content.clone(),
-        );
-        let token = token.get_untracked();
-        async move {
-            transport::create_comment(token, request)
-                .await
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-        }
-    });
-    let comment_composer_copy = comment_composer_copy(locale.as_deref());
-    #[cfg(target_arch = "wasm32")]
-    let comment_composer = if comment_form_available {
-        view! {
-            <CommentComposer content_locale=effective_locale.clone() submit_action=submit_comment copy=comment_composer_copy />
-        }
-        .into_any()
-    } else {
-        ().into_any()
-    };
-    #[cfg(not(target_arch = "wasm32"))]
-    let comment_composer = if comment_form_available {
-        let _ = (submit_comment, comment_composer_copy);
-        view! {
-            <section
-                class="mt-6 rounded-2xl border border-border bg-card p-5"
-                data-blog-comment-island="true"
-                data-post-id=post_id
-                data-content-locale=effective_locale.clone()
-            >
-                <h4 class="text-base font-semibold text-foreground">
-                    {t(locale.as_deref(), "blog.comments.composer.title", "Join the discussion")}
-                </h4>
-                <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "blog.comments.composer.signInRequired", "Sign in to join the discussion.")}
-                </p>
-            </section>
-        }.into_any()
-    } else {
-        let _ = (submit_comment, comment_composer_copy);
-        ().into_any()
-    };
-
-    view! {
-        <article class="rounded-2xl border border-border bg-background p-6">
-            <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                {category_name.map(|name| {
-                    let category_label = if let Some(cat_id) = category_id {
-                        view! {
-                            <a
-                                href=core::filter_query_href(
-                                    Some(selected_slug_filter.as_str()),
-                                    selected_tag_filter.as_deref(),
-                                    Some(&cat_id),
-                                    selected_search_filter.as_deref(),
-                                )
-                                class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal hover:bg-secondary/80 transition-colors"
-                            >
-                                {name}
-                            </a>
-                        }.into_any()
-                    } else {
-                        // A display name is not a UUID accepted by the Blog owner.
-                        view! {
-                            <span class="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground text-xs normal-case tracking-normal">
-                                {name}
-                            </span>
-                        }.into_any()
-                    };
-                    view! {
-                        {category_label}
-                        <span>{selected_post_header.meta.separator}</span>
-                    }
-                })}
-                {if let Some(author) = author_profile.as_ref() {
-                    view! {
-                        <span class="font-semibold text-foreground">{author.display_name.clone()}</span>
-                        <span>{selected_post_header.meta.separator}</span>
-                    }
-                    .into_any()
-                } else {
-                    ().into_any()
-                }}
-                <span>{selected_post_header.meta.slug_meta}</span>
-                <span>{selected_post_header.meta.separator}</span>
-                <span>{selected_post_header.meta.locale_meta}</span>
-                <span>{selected_post_header.meta.separator}</span>
-                <span>{selected_post_header.meta.published_meta}</span>
-                <span>{selected_post_header.meta.separator}</span>
-                <span>{reading_time_label}</span>
-            </div>
-            <h3 class="mt-3 text-2xl font-semibold text-foreground">{selected_post_header.title}</h3>
-            <div class="mt-3">
-                <BlogStatusBadge
-                    status=selected_post_header.status.status
-                    unknown_label=selected_post_header.status.unknown_label
-                />
-            </div>
-            <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>
-            {featured_image_url.map(|url| view! {
-                <div class="mt-4 aspect-video w-full overflow-hidden rounded-2xl border border-border shadow-sm">
-                    <img
-                        src=url
-                        alt=title_str.clone()
-                        loading="lazy"
-                        class="h-full w-full object-cover"
-                    />
-                </div>
-            })}
-            {
-                let content_html = content.as_ref().map(|c| c.html.clone());
-                view! {
-                    <div class="mt-4 lg:grid lg:grid-cols-12 lg:gap-8 items-start">
-                        <div class="lg:col-span-8 min-w-0">
-                            {match content {
-                                Some(content) => view! {
-                                    <RichTextHtml
-                                        view=content
-                                        content_locale=effective_locale.clone()
-                                        class="text-sm leading-7 text-foreground"
-                                    />
-                                }
-                                .into_any(),
-                                None => view! {
-                                    <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">
-                                        {selected_post_content.body}
-                                    </p>
-                                }
-                                .into_any(),
-                            }}
-                        </div>
-                        <aside class="hidden lg:block lg:col-span-4 min-w-0">
-                            <TableOfContents
-                                html=content_html.unwrap_or_default()
-                                locale=effective_locale.clone()
-                            />
-                        </aside>
-                    </div>
-                }
-            }
-            {if let Some(tags_view) = core::selected_post_tags_view(tags) {
-                view! {
-                    <div class="mt-5 flex flex-wrap gap-2">
-                        {tags_view
-                            .items
-                            .into_iter()
-                            .map(|tag| {
-                                let tag_link = core::filter_query_href(
-                                    Some(slug.as_str()),
-                                    Some(tag.as_str()),
-                                    selected_category_filter.as_deref(),
-                                    selected_search_filter.as_deref(),
-                                );
-                                view! {
-                                    <a
-                                        href=tag_link
-                                        class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
-                                    >
-                                        {format!("#{tag}")}
-                                    </a>
-                                }
-                            })
-                            .collect_view()}
-                    </div>
-                }
-                .into_any()
-            } else {
-                ().into_any()
-            }}
-            <BlogShareButtons title=title_str slug=share_slug />
-            {if let Some(author) = author_profile {
-                let initial = author
-                    .display_name
-                    .chars()
-                    .next()
-                    .unwrap_or('?')
-                    .to_uppercase()
-                    .to_string();
-                view! {
-                    <div class="mt-6 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-                            {initial}
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <div class="text-sm font-semibold text-foreground">
-                                {author.display_name}
-                            </div>
-                            <div class="text-xs text-muted-foreground">
-                                {format!("@{}", author.handle)}
-                            </div>
-                        </div>
-                    </div>
-                }
-                .into_any()
-            } else {
-                ().into_any()
-            }}
-            {comment_composer}
-            <PublicCommentsList comments=public_comments comments_page />
-        </article>
-    }
-    .into_any()
-}
-
-#[component]
-fn PublishedPostsList(
-    items: Vec<BlogPostListItem>,
-    #[prop(optional)] list_title: Option<String>,
-) -> impl IntoView {
-    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale = route_context.locale.clone();
-    let route_segment = core::route_segment_or_default(
-        route_context.route_segment.as_ref().cloned(),
-        core::DEFAULT_ROUTE_SEGMENT,
-    );
-    let module_route_base = route_context.module_route_base(route_segment.as_str());
-    let list_slug_filter = use_route_query_value("slug").get();
-    let list_tag_filter = use_route_query_value("tag").get();
-    let list_category_filter = use_route_query_value("category").get();
-    let list_search_filter = use_route_query_value("q").get();
-    let unknown_status_label = t(locale.as_deref(), "blog.list.unknownStatus", "unknown");
-    let default_title = t(locale.as_deref(), "blog.list.title", "Published posts");
-    let header_title = list_title.unwrap_or(default_title);
-    // The public list is cursor-paginated and carries no total, so the header
-    // shows the title only.
-
-    let items = match core::published_posts_ready_typed_view(
+    Ok(BlogPostList {
         items,
-        t(
-            locale.as_deref(),
-            "blog.list.empty",
-            "No published blog posts are available for storefront rendering yet.",
-        ),
-    ) {
-        core::PublishedPostsReadyView::Items(items) => items,
-        core::PublishedPostsReadyView::Empty(empty_state) => {
-            return view! {
-                <article class="rounded-2xl border border-dashed border-border p-6">
-                    <p class="text-sm text-muted-foreground">
-                        {empty_state.message}
-                    </p>
-                </article>
-            }
-            .into_any();
-        }
-    };
-
-    view! {
-        <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
-                <h3 class="text-lg font-semibold text-card-foreground">
-                    {header_title}
-                </h3>
-            </div>
-            <div class="grid gap-3 md:grid-cols-2">
-                {items
-                    .into_iter()
-                    .map(|post| {
-                        let module_route_base = module_route_base.clone();
-                        let locale = locale.clone();
-                        let missing_slug_fallback = t(
-                            locale.as_deref(),
-                            "blog.selected.missingSlug",
-                            "missing-slug",
-                        );
-                        let open_label = t(locale.as_deref(), "blog.list.open", "Open");
-                        let locale_label = t(locale.as_deref(), "blog.list.localeLabel", "locale");
-                        let no_excerpt_fallback =
-                            t(locale.as_deref(), "blog.list.noExcerpt", "No excerpt yet.");
-                        let post_card_view = core::published_post_card_view(
-                            core::PublishedPostCardInput {
-                                slug: post.slug,
-                                missing_slug_fallback: missing_slug_fallback.as_str(),
-                                excerpt: post.excerpt,
-                                excerpt_fallback: no_excerpt_fallback.as_str(),
-                                module_route_base: module_route_base.as_str(),
-                                open_label: open_label.as_str(),
-                                locale_label: locale_label.as_str(),
-                                effective_locale: post.effective_locale.as_str(),
-                                status: post.status,
-                            },
-                        );
-                        let published_meta = post.published_at.as_deref().map(|published_at| {
-                            core::label_value_pair(
-                                &t(
-                                    locale.as_deref(),
-                                    "blog.list.publishedLabel",
-                                    "published",
-                                ),
-                                published_at,
-                            )
-                        });
-                        view! {
-                            <article class="rounded-2xl border border-border bg-background p-5">
-                                {post.featured_image_url.as_deref().map(|url| view! {
-                                    <img
-                                        src=url.to_string()
-                                        alt=post.title.clone()
-                                        loading="lazy"
-                                        class="mb-4 aspect-video w-full rounded-lg object-cover"
-                                    />
-                                })}
-                                <div class="flex items-center gap-2">
-                                    <BlogStatusBadge
-                                        status=post_card_view.status
-                                        unknown_label=unknown_status_label.clone()
-                                    />
-                                    {post.category_name.as_deref().map(|cat| {
-                                        if let Some(cat_id) = post.category_id.as_deref() {
-                                            view! {
-                                                <a
-                                                    href=core::filter_query_href(
-                                                        list_slug_filter.as_deref(),
-                                                        list_tag_filter.as_deref(),
-                                                        Some(cat_id),
-                                                        list_search_filter.as_deref(),
-                                                    )
-                                                    class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                                                >
-                                                    {cat.to_string()}
-                                                </a>
-                                            }.into_any()
-                                        } else {
-                                            view! {
-                                                <span class="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                                                    {cat.to_string()}
-                                                </span>
-                                            }.into_any()
-                                        }
-                                    })}
-                                </div>
-                                {if let Some(author) = post.author_profile.as_ref() {
-                                    view! {
-                                        <div class="mt-1 text-xs font-medium text-muted-foreground">
-                                            {author.display_name.clone()}
-                                        </div>
-                                    }
-                                    .into_any()
-                                } else {
-                                    ().into_any()
-                                }}
-                                <h4 class="mt-2 text-base font-semibold text-foreground">{post.title}</h4>
-                                <p class="mt-2 text-sm text-muted-foreground">
-                                    {post_card_view.excerpt}
-                                </p>
-                                {if post.tags.is_empty() {
-                                    ().into_any()
-                                } else {
-                                    view! {
-                                        <div class="mt-3 flex flex-wrap gap-1.5">
-                                            {post.tags
-                                                .iter()
-                                                .map(|tag| {
-                                                    let tag_link = core::filter_query_href(
-                                                        list_slug_filter.as_deref(),
-                                                        Some(tag),
-                                                        list_category_filter.as_deref(),
-                                                        list_search_filter.as_deref(),
-                                                    );
-                                                    view! {
-                                                        <a
-                                                            href=tag_link
-                                                            class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
-                                                        >
-                                                            {format!("#{tag}")}
-                                                        </a>
-                                                    }
-                                                })
-                                                .collect_view()}
-                                        </div>
-                                    }
-                                    .into_any()
-                                }}
-                                {published_meta.map(|meta| view! {
-                                    <div class="mt-3 text-xs text-muted-foreground">{meta}</div>
-                                })}
-                                <a class="mt-4 inline-flex text-sm text-primary hover:underline" href=post_card_view.href>
-                                    {post_card_view.open_label}
-                                </a>
-                                <p class="mt-3 text-xs text-muted-foreground">
-                                    {post_card_view.locale_meta}
-                                </p>
-                            </article>
-                        }
-                    })
-                    .collect_view()}
-            </div>
-        </div>
-    }
-    .into_any()
+        next_cursor: None,
+    })
 }
 
 #[cfg(test)]
@@ -1022,38 +231,40 @@ mod blog_search_mapping_tests {
 
     #[test]
     fn search_result_projection_keeps_cross_page_fulltext_metadata() {
-        let result = serde_json::from_value::<SearchPreviewPayload>(
-            serde_json::json!({
-                "queryLogId": null,
-                "presetKey": null,
-                "total": 51,
-                "tookMs": 3,
-                "engine": "postgres",
-                "rankingProfile": "balanced",
-                "facets": [],
-                "items": [{
-                    "id": "c293edb7-4f5b-432b-9011-096354ba8ba6",
-                    "entityType": "blog_post",
-                    "sourceModule": "blog",
-                    "title": "Article with searchable body",
-                    "snippet": "A matching word from the body",
-                    "score": 0.9,
-                    "locale": "ru",
-                    "url": "/modules/blog?slug=search-guide",
-                    "payload": serde_json::json!({
-                        "slug": "search-guide",
-                        "excerpt": "Excerpt",
-                        "category_id": "4c66bc80-d348-44a9-bce6-a43d74832adf",
-                        "category_name": "Tutorials",
-                        "featured_image_url": "/media/example.webp",
-                        "tags": ["rust", "search"],
-                        "published_at": "2026-10-28T13:00:00Z"
-                    }).to_string()
-                }]
-            }),
-        ).expect("Search GraphQL response must deserialize");
+        let result = serde_json::from_value::<SearchPreviewPayload>(serde_json::json!({
+            "queryLogId": null,
+            "presetKey": null,
+            "total": 51,
+            "tookMs": 3,
+            "engine": "postgres",
+            "rankingProfile": "balanced",
+            "facets": [],
+            "items": [{
+                "id": "c293edb7-4f5b-432b-9011-096354ba8ba6",
+                "entityType": "blog_post",
+                "sourceModule": "blog",
+                "title": "Article with searchable body",
+                "snippet": "A matching word from the body",
+                "score": 0.9,
+                "locale": "ru",
+                "url": "/modules/blog?slug=search-guide",
+                "payload": serde_json::json!({
+                    "slug": "search-guide",
+                    "excerpt": "Excerpt",
+                    "category_id": "4c66bc80-d348-44a9-bce6-a43d74832adf",
+                    "category_name": "Tutorials",
+                    "featured_image_url": "/media/example.webp",
+                    "tags": ["rust", "search"],
+                    "published_at": "2026-10-28T13:00:00Z"
+                }).to_string()
+            }]
+        }))
+        .expect("Search GraphQL response must deserialize");
         let page = map_blog_search_results(result).expect("Blog page projection");
-        assert!(page.next_cursor.is_none(), "Search uses offsets, not Blog cursors");
+        assert!(
+            page.next_cursor.is_none(),
+            "Search uses offsets, not Blog cursors"
+        );
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].slug.as_deref(), Some("search-guide"));
         assert_eq!(page.items[0].effective_locale, "ru");

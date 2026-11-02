@@ -1,6 +1,6 @@
 //! Blog-owned module work adapters for the host scheduler.
 //!
-//! Blog publishes three durable queues to the generic platform scheduler instead of
+//! Blog publishes four durable queues to the generic platform scheduler instead of
 //! running module-local timers. The scheduler owns the poll loop and the deployment
 //! stop signal; each adapter here owns discovery (a read-only hint) and hands the
 //! authoritative work to an owner command:
@@ -10,10 +10,15 @@
 //!   decides which concurrent writer publishes a post;
 //! - `blog_preview_token_cleanup` removes expired preview tokens of one tenant;
 //! - `blog_route_reconciliation` removes Blog routes whose target post no longer
-//!   exists, which is the safety net for a missed `TargetDeleted` delivery.
+//!   exists, which is the safety net for a missed `TargetDeleted` delivery;
+//! - `blog_comment_projection_retention` compacts the per-comment delivery ledger
+//!   of the Comments projection to its causal frontier (the newest event per
+//!   comment), which is all the projection reads; older deliveries of a live post
+//!   are pure storage growth otherwise.
 //!
 //! Every queue is tenant-scoped, like every other platform work item: one tenant's
-//! backlog cannot starve another tenant.
+//! backlog cannot starve another tenant, and every discovery rotates tenants so a
+//! pinned (always failing) tenant cannot starve the others either.
 
 use std::sync::Arc;
 
@@ -44,8 +49,8 @@ pub const BLOG_SCHEDULED_PUBLISH_WORKER: &str = "blog_scheduled_publish";
 pub const BLOG_PREVIEW_TOKEN_CLEANUP_WORKER: &str = "blog_preview_token_cleanup";
 /// Stable scheduler identity for stale Blog route reconciliation.
 pub const BLOG_ROUTE_RECONCILIATION_WORKER: &str = "blog_route_reconciliation";
-/// Upper bound of routes one reconciliation iteration removes.
-const ROUTE_RECONCILIATION_BATCH: u64 = 200;
+/// Deliveries processed before this window carry no replay information the
+/// projection still consults (see the retention worker's safety argument).
 /// Upper bound of stale route rows one reconciliation iteration scans.
 ///
 /// The scan bound is separate from the removal bound: one scanned row points at
@@ -250,15 +255,30 @@ impl ModuleWorkHandler for BlogScheduledPublishWorkAdapter {
 /// Expired tokens have no consumer, so they are pure storage growth. Deleting a post
 /// already removes its tokens through the foreign key cascade; this worker bounds the
 /// purely time-based residue.
+///
+/// Discovery uses the same rotating tenant cursor as the scheduled-publish
+/// adapter: without rotation, a tenant whose delete keeps failing (or whose
+/// backlog is simply very large) would be re-claimed every iteration — the
+/// earliest-expired-token query returns that tenant again — and every other
+/// tenant's cleanup would starve behind it.
 #[derive(Clone)]
 pub struct BlogPreviewTokenCleanupWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only: the expiry predicate remains the durable source of
+    // work. Another host can claim the same tenant concurrently; the delete
+    // re-checks expiry, so a duplicate claim is wasted work, never a double
+    // effect.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogPreviewTokenCleanupWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     pub async fn register_with(
@@ -269,17 +289,48 @@ impl BlogPreviewTokenCleanupWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant owning the earliest expired token. Read-only discovery; the delete
-    /// itself re-checks the expiry predicate.
+    /// Rotate tenants with expired tokens instead of re-claiming the earliest
+    /// expired token's tenant forever. An instance restart simply begins a new
+    /// fair cycle.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
-        blog_preview_token::Entity::find()
-            .filter(blog_preview_token::Column::ExpiresAt.lt(now))
-            .order_by_asc(blog_preview_token::Column::ExpiresAt)
-            .one(&self.database)
-            .await
-            .map(|token| token.map(|token| token.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        let expired_tokens = || {
+            blog_preview_token::Entity::find()
+                .filter(blog_preview_token::Column::ExpiresAt.lt(now))
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = expired_tokens()
+                .filter(blog_preview_token::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_preview_token::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(token) => Some(token.tenant_id),
+                None => expired_tokens()
+                    .order_by_asc(blog_preview_token::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|token| token.map(|token| token.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            expired_tokens()
+                .order_by_asc(blog_preview_token::Column::ExpiresAt)
+                .one(&self.database)
+                .await
+                .map(|token| token.map(|token| token.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 }
 
@@ -362,11 +413,19 @@ impl ModuleWorkHandler for BlogPreviewTokenCleanupWorkAdapter {
 pub struct BlogRouteReconciliationWorkAdapter {
     database: DatabaseConnection,
     events: TransactionalEventBus,
+    // Fairness hint only, like the scheduled-publish cursor: the dangling-route
+    // predicate remains the durable source of truth, and a pinned (always
+    // failing) tenant must not starve the reconciliation of every other tenant.
+    last_claimed_tenant: Arc<tokio::sync::Mutex<Option<Uuid>>>,
 }
 
 impl BlogRouteReconciliationWorkAdapter {
     pub fn new(database: DatabaseConnection, events: TransactionalEventBus) -> Self {
-        Self { database, events }
+        Self {
+            database,
+            events,
+            last_claimed_tenant: Arc::new(tokio::sync::Mutex::new(None)),
+        }
     }
 
     pub async fn register_with(
@@ -377,16 +436,47 @@ impl BlogRouteReconciliationWorkAdapter {
         scheduler.register(adapter.clone(), adapter).await
     }
 
-    /// Tenant owning the first stale route.
+    /// Rotate over tenants that own dangling routes. The first claim serves the
+    /// tenant with the first stale route; later claims advance by tenant id so
+    /// the same failing tenant is not re-claimed on every iteration.
     async fn next_due_tenant(&self) -> Result<Option<Uuid>, ModuleWorkError> {
-        blog_post_route::Entity::find()
-            .filter(dangling_route_condition())
-            .order_by_asc(blog_post_route::Column::TenantId)
-            .order_by_asc(blog_post_route::Column::SourceRoute)
-            .one(&self.database)
-            .await
-            .map(|route| route.map(|route| route.tenant_id))
-            .map_err(|error| ModuleWorkError::Source(error.to_string()))
+        // An async mutex is held over discovery to prevent concurrent local
+        // claims from advancing the fairness cursor based on the same state.
+        let mut last = self.last_claimed_tenant.lock().await;
+        let dangling_routes = || {
+            blog_post_route::Entity::find().filter(dangling_route_condition())
+        };
+
+        let next = if let Some(last_tenant) = *last {
+            let higher = dangling_routes()
+                .filter(blog_post_route::Column::TenantId.gt(last_tenant))
+                .order_by_asc(blog_post_route::Column::TenantId)
+                .one(&self.database)
+                .await
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?;
+            match higher {
+                Some(route) => Some(route.tenant_id),
+                None => dangling_routes()
+                    .order_by_asc(blog_post_route::Column::TenantId)
+                    .one(&self.database)
+                    .await
+                    .map(|route| route.map(|route| route.tenant_id))
+                    .map_err(|error| ModuleWorkError::Source(error.to_string()))?,
+            }
+        } else {
+            dangling_routes()
+                .order_by_asc(blog_post_route::Column::TenantId)
+                .order_by_asc(blog_post_route::Column::SourceRoute)
+                .one(&self.database)
+                .await
+                .map(|route| route.map(|route| route.tenant_id))
+                .map_err(|error| ModuleWorkError::Source(error.to_string()))?
+        };
+
+        if let Some(tenant_id) = next {
+            *last = Some(tenant_id);
+        }
+        Ok(next)
     }
 
     async fn reconcile_tenant(&self, tenant_id: Uuid) -> Result<u64, ModuleWorkError> {
@@ -410,13 +500,13 @@ impl BlogRouteReconciliationWorkAdapter {
         let owner = BlogPostRouteOwner::new(self.events.clone());
         let mut removed = 0u64;
         for route in stale {
-            // The iteration removes at most ROUTE_RECONCILIATION_BATCH routes, no
+            // The iteration removes at most ROUTE_RECONCILIATION_SCAN routes, no
             // matter how many routes one target owns. The remaining routes of a
             // target are removed by the next iteration.
-            if removed >= ROUTE_RECONCILIATION_BATCH {
+            if removed >= ROUTE_RECONCILIATION_SCAN {
                 break;
             }
-            let budget = ROUTE_RECONCILIATION_BATCH - removed;
+            let budget = ROUTE_RECONCILIATION_SCAN - removed;
             removed += owner
                 .remove_target_routes_up_to_in_tx(&txn, tenant_id, None, route.target_id, budget)
                 .await
@@ -491,6 +581,20 @@ impl ModuleWorkHandler for BlogRouteReconciliationWorkAdapter {
     }
 }
 
+/// Tenant-rotating cleanup of the Comments projection delivery ledger.
+///
+/// The projection reads exactly one row per comment — the newest delivery, which
+/// carries the ULID idempotency frontier and the current counted state — and one
+/// aggregate per post: the maximum `projection_revision`, which is always carried
+/// by the newest delivery of its comment (revisions are allocated in processing
+/// order). Everything older is pure storage growth, so retention compacts each
+/// comment's history to that frontier once it is past
+/// [`COMMENT_PROJECTION_DELIVERY_RETENTION_DAYS`], after which every possible
+/// replay of a purged delivery is still rejected by the frontier's
+/// `latest.event_id >= envelope.id` guard. Deleting strictly-below-frontier rows
+/// is idempotent and safe under duplicate execution: newly processed events have
+/// a greater ULID, so a delete computed against an older snapshot of the ledger
+/// can never touch them.
 /// A route of a `blog_post` target whose post is absent in the same tenant.
 ///
 /// The correlated subquery mirrors what the owner checks on read, so discovery and
@@ -522,334 +626,16 @@ fn dangling_route_condition() -> Condition {
         )
 }
 
+#[path = "scheduler/retention.rs"]
+mod retention;
+pub use retention::BlogCommentProjectionRetentionWorkRegistration;
+
 /// The reconciliation worker is `runtime`-gated with the rest of this module, so these
 /// tests run under `cargo test -p rustok-blog --features runtime`.
 #[cfg(test)]
-mod reconciliation_tests {
-    use super::*;
-    use crate::services::canonical_post_route;
-    use crate::tests::hardening::{
-        create_draft_post, insert_route, outbox_event_count, setup_hardening_schema,
-    };
+#[path = "scheduler/reconciliation_tests.rs"]
+mod reconciliation_tests;
 
-    fn adapter(
-        db: &DatabaseConnection,
-        events: &TransactionalEventBus,
-    ) -> BlogRouteReconciliationWorkAdapter {
-        BlogRouteReconciliationWorkAdapter::new(db.clone(), events.clone())
-    }
-
-    #[tokio::test]
-    async fn reconciliation_removes_stale_routes_and_then_stops_claiming() {
-        let (db, events) = setup_hardening_schema().await;
-        let tenant_id = Uuid::new_v4();
-        let ghost_target = Uuid::new_v4();
-        insert_route(
-            &db,
-            tenant_id,
-            "ghost-reconcile",
-            BLOG_POST_TARGET_TYPE,
-            ghost_target,
-        )
-        .await;
-
-        let adapter = adapter(&db, &events);
-        let item = adapter
-            .claim(BLOG_ROUTE_RECONCILIATION_WORKER)
-            .await
-            .expect("claim should not fail")
-            .expect("a stale route must be claimable");
-        assert_eq!(item.tenant_id, tenant_id);
-
-        let outcome = adapter
-            .execute(item)
-            .await
-            .expect("reconciliation should run");
-        assert!(matches!(outcome, ModuleWorkOutcome::Completed));
-        assert!(
-            BlogPostRouteOwner::find_redirect(
-                &db,
-                tenant_id,
-                &canonical_post_route("ghost-reconcile")
-            )
-            .await
-            .expect("route read")
-            .is_none(),
-            "reconciliation must remove the stale route"
-        );
-        assert_eq!(
-            outbox_event_count(&db, "content.url_alias.purged").await,
-            1,
-            "reconciliation must report the purged route"
-        );
-
-        assert!(
-            adapter
-                .claim(BLOG_ROUTE_RECONCILIATION_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "an empty stale set is not a work item"
-        );
-        assert_eq!(
-            outbox_event_count(&db, "content.url_alias.purged").await,
-            1,
-            "a second run must not publish again"
-        );
-
-        // A route whose target still exists belongs to no one: it must be kept.
-        let post_id = create_draft_post(&db, &events, tenant_id, "live-reconcile").await;
-        insert_route(&db, tenant_id, "live-route", BLOG_POST_TARGET_TYPE, post_id).await;
-        assert!(
-            adapter
-                .claim(BLOG_ROUTE_RECONCILIATION_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none()
-        );
-        assert!(
-            BlogPostRouteOwner::find_redirect(&db, tenant_id, &canonical_post_route("live-route"))
-                .await
-                .expect("route read")
-                .is_some(),
-            "a live target keeps its route"
-        );
-    }
-
-    #[tokio::test]
-    async fn reconciliation_claims_only_its_own_worker_slug() {
-        let (db, events) = setup_hardening_schema().await;
-        let adapter = adapter(&db, &events);
-
-        assert!(
-            adapter
-                .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "another Blog worker's slug is not this worker's work"
-        );
-        assert!(
-            adapter
-                .claim(BLOG_ROUTE_RECONCILIATION_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "a schema without stale routes claims nothing"
-        );
-    }
-}
-
-/// The scheduled-publish worker is `runtime`-gated with the rest of this module, so these
-/// tests run under `cargo test -p rustok-blog --features runtime`.
 #[cfg(test)]
-mod scheduled_publish_worker_tests {
-    use super::*;
-    use crate::services::status_to_storage;
-    use crate::tests::hardening::{
-        create_draft_post, make_post_due, set_post_schedule, setup_hardening_schema,
-    };
-
-    fn adapter(
-        db: &DatabaseConnection,
-        events: &TransactionalEventBus,
-    ) -> BlogScheduledPublishWorkAdapter {
-        BlogScheduledPublishWorkAdapter::new(db.clone(), events.clone())
-    }
-
-    /// The stored status of a post row, read from the owner table.
-    async fn post_status(db: &DatabaseConnection, post_id: Uuid) -> String {
-        blog_post::Entity::find_by_id(post_id)
-            .one(db)
-            .await
-            .expect("post read should not fail")
-            .expect("post should exist")
-            .status
-    }
-
-    /// The claim is a read-only scan of due drafts, so the worker must hand the host the
-    /// tenant whose schedule is oldest and never a tenant without due work.
-    #[tokio::test]
-    async fn claim_selects_the_tenant_of_the_earliest_due_draft_and_drains_it() {
-        let (db, events) = setup_hardening_schema().await;
-        let earlier_tenant = Uuid::new_v4();
-        let later_tenant = Uuid::new_v4();
-
-        let later = create_draft_post(&db, &events, later_tenant, "due-later").await;
-        make_post_due(&db, later, 1).await;
-        let earlier = create_draft_post(&db, &events, earlier_tenant, "due-earlier").await;
-        make_post_due(&db, earlier, 3).await;
-
-        let adapter = adapter(&db, &events);
-        let first = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("claim should not fail")
-            .expect("a due draft must be claimable");
-        assert_eq!(
-            first.tenant_id, earlier_tenant,
-            "the tenant with the earliest due schedule is claimed first"
-        );
-        assert!(
-            matches!(
-                adapter
-                    .execute(first)
-                    .await
-                    .expect("the scheduled publish should run"),
-                ModuleWorkOutcome::Completed
-            ),
-            "the worker reports a completed item"
-        );
-        assert_eq!(
-            post_status(&db, earlier).await,
-            status_to_storage(BlogPostStatus::Published),
-            "the claimed tenant's due draft is published"
-        );
-        assert_eq!(
-            post_status(&db, later).await,
-            status_to_storage(BlogPostStatus::Draft),
-            "another tenant's due draft is untouched"
-        );
-
-        let second = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("claim should not fail")
-            .expect("the remaining due tenant must be claimable");
-        assert_eq!(
-            second.tenant_id, later_tenant,
-            "the drained tenant is not claimed again"
-        );
-        adapter
-            .execute(second)
-            .await
-            .expect("the second scheduled publish should run");
-        assert_eq!(
-            post_status(&db, later).await,
-            status_to_storage(BlogPostStatus::Published),
-            "the second tenant's due draft is published by its own claim"
-        );
-
-        assert!(
-            adapter
-                .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "a drained queue claims nothing"
-        );
-    }
-
-    /// Tenant work remains claimable even when an older tenant never makes
-    /// progress. Claims are hints, so the first item is deliberately not
-    /// executed before asking for the second one.
-    #[tokio::test]
-    async fn scheduled_claim_rotates_tenants_when_the_oldest_stays_due() {
-        let (db, events) = setup_hardening_schema().await;
-        let oldest_tenant = Uuid::new_v4();
-        let other_tenant = Uuid::new_v4();
-        let oldest = create_draft_post(&db, &events, oldest_tenant, "oldest-stuck").await;
-        let other = create_draft_post(&db, &events, other_tenant, "other-still-due").await;
-        make_post_due(&db, oldest, 3).await;
-        make_post_due(&db, other, 1).await;
-
-        let adapter = adapter(&db, &events);
-        let first = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("claim must succeed")
-            .expect("oldest tenant has work");
-        assert_eq!(first.tenant_id, oldest_tenant);
-
-        let second = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("second claim must succeed")
-            .expect("second tenant must not be starved");
-        assert_eq!(second.tenant_id, other_tenant);
-
-        let third = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("third claim must succeed")
-            .expect("cycle must wrap back to remaining due work");
-        assert_eq!(third.tenant_id, oldest_tenant);
-    }
-
-    /// The oldest due draft can be permanently invalid. The command must walk
-    /// beyond the first fixed-size page rather than retrying that row forever.
-    #[tokio::test]
-    async fn failed_due_draft_does_not_starve_a_later_healthy_draft() {
-        let (db, events) = setup_hardening_schema().await;
-        let tenant_id = Uuid::new_v4();
-        let invalid = create_draft_post(&db, &events, tenant_id, "poison-due").await;
-        let healthy = create_draft_post(&db, &events, tenant_id, "healthy-due").await;
-        make_post_due(&db, invalid, 3).await;
-        make_post_due(&db, healthy, 1).await;
-
-        // A legacy/corrupt exhausted revision cannot be published: the owner
-        // transition uses checked arithmetic, and must not wrap the version.
-        blog_post::Entity::update_many()
-            .col_expr(blog_post::Column::Version, Expr::value(i32::MAX))
-            .filter(blog_post::Column::Id.eq(invalid))
-            .exec(&db)
-            .await
-            .expect("invalid post revision fixture should be stored");
-
-        let published = PostService::new(db.clone(), events.clone())
-            .publish_scheduled_posts(tenant_id, 1)
-            .await
-            .expect("a failed row must not abort the batch");
-        assert_eq!(published, vec![healthy]);
-        assert_eq!(
-            post_status(&db, healthy).await,
-            status_to_storage(BlogPostStatus::Published)
-        );
-        assert_eq!(
-            post_status(&db, invalid).await,
-            status_to_storage(BlogPostStatus::Draft),
-            "the poisoned post stays due for explicit repair/retry"
-        );
-    }
-
-    /// A schedule in the future is not due work, and another Blog worker's slug is not this
-    /// adapter's source.
-    #[tokio::test]
-    async fn claim_ignores_future_schedules_and_foreign_worker_slugs() {
-        let (db, events) = setup_hardening_schema().await;
-        let tenant_id = Uuid::new_v4();
-        let post_id = create_draft_post(&db, &events, tenant_id, "future-only").await;
-        set_post_schedule(
-            &db,
-            post_id,
-            Some(chrono::Utc::now() + chrono::Duration::hours(2)),
-        )
-        .await;
-
-        let adapter = adapter(&db, &events);
-        assert!(
-            adapter
-                .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "a schedule in the future is not due work"
-        );
-        assert!(
-            adapter
-                .claim(BLOG_ROUTE_RECONCILIATION_WORKER)
-                .await
-                .expect("claim should not fail")
-                .is_none(),
-            "another Blog worker's slug is not this worker's work"
-        );
-
-        make_post_due(&db, post_id, 1).await;
-        let item = adapter
-            .claim(BLOG_SCHEDULED_PUBLISH_WORKER)
-            .await
-            .expect("claim should not fail")
-            .expect("a due draft becomes claimable once its schedule passes");
-        assert_eq!(item.tenant_id, tenant_id);
-    }
-}
+#[path = "scheduler/scheduled_publish_worker_tests.rs"]
+mod scheduled_publish_worker_tests;

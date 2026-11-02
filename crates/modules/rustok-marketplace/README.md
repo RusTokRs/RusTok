@@ -82,3 +82,5 @@ reversal workflows.
 The root consumes owner projections and commands through FBA ports. Owner modules remain
 independently deployable boundaries and publish their own module-owned FFA packages. Host
 applications compose manifests and transports; they do not own marketplace policy.
+
+See [CRATE_API.md](CRATE_API.md) for public contracts, invariants, and capability bindings.

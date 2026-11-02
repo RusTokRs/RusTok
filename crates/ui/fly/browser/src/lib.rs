@@ -1298,3 +1298,6 @@ mod tests {
         assert!(!verify_csrf_token("   ", &csrf));
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

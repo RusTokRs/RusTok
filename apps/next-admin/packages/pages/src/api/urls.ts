@@ -33,8 +33,9 @@ export function storefrontUrlForPage(
   previewSecret?: string
 ): string {
   const base = storefrontBaseUrl.replace(/\/+$/, '');
+  const cleanSlug = slug.replace(/^\/+/, '');
   if (status === 'draft' && previewSecret) {
-    return `${base}/api/draft?slug=${encodeURIComponent(slug)}&locale=${encodeURIComponent(locale)}&secret=${encodeURIComponent(previewSecret)}`;
+    return `${base}/api/draft?slug=${encodeURIComponent(cleanSlug)}&locale=${encodeURIComponent(locale)}&secret=${encodeURIComponent(previewSecret)}`;
   }
-  return `${base}/${encodeURIComponent(locale)}/pages/${encodeURIComponent(slug)}`;
+  return `${base}/${encodeURIComponent(locale)}/pages/${encodeURIComponent(cleanSlug)}`;
 }

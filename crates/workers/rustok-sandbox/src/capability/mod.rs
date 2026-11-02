@@ -152,6 +152,15 @@ pub struct CapabilityBrokerRouter {
     routes: Arc<HashMap<CapabilityName, Arc<dyn CapabilityBroker>>>,
 }
 
+impl fmt::Debug for CapabilityBrokerRouter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CapabilityBrokerRouter")
+            .field("routes", &self.routes.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
 impl CapabilityBrokerRouter {
     pub fn new() -> Self {
         Self::default()
@@ -235,6 +244,19 @@ pub struct SandboxHost {
     budget: Arc<CapabilityBudget>,
     observers: Arc<Vec<Arc<dyn CapabilityObserver>>>,
     cancellation: SandboxCancellation,
+}
+
+impl fmt::Debug for SandboxHost {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SandboxHost")
+            .field("execution_id", &self.execution_id)
+            .field("subject", &self.subject)
+            .field("context", &self.context)
+            .field("capability_calls", &self.capability_calls())
+            .field("cancellation", &self.cancellation)
+            .finish()
+    }
 }
 
 #[derive(Debug, Default)]

@@ -19,3 +19,6 @@ Storefront and workplace collaboration UI package for the `rustok-messenger` mod
    - `transport/`: Dual-path facade wrapping REST, WebSockets (`/api/messenger/*`), and GraphQL.
    - `ui/`: Leptos rendering components.
    - `locales/`: Project Fluent `.ftl` catalogs (`en.ftl`, `ru.ftl`).
+
+## Documentation
+- [CRATE_API.md](CRATE_API.md)

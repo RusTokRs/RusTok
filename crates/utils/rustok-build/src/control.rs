@@ -18,3 +18,9 @@ pub trait BuildControl: Send + Sync {
 
 #[derive(Clone)]
 pub struct SharedBuildControl(pub Arc<dyn BuildControl>);
+
+impl std::fmt::Debug for SharedBuildControl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedBuildControl").finish()
+    }
+}

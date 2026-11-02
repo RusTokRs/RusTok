@@ -8,7 +8,7 @@ registerAdminModule({
 });
 
 export { workflowNavItems } from './nav';
-export { default as WorkflowsPage } from './pages/workflows-page';
+export { default as WorkflowsPage, default as WorkflowsAdminPage } from './pages/workflows-page';
 export { default as WorkflowDetailPage } from './pages/workflow-detail-page';
 export { default as WorkflowFormPage } from './pages/workflow-form-page';
 export { WorkflowStepEditor } from './components/workflow-step-editor';

@@ -1,4 +1,9 @@
+//! # rustok-modules-cli
+//!
 //! Owner-local authoring commands for standalone module components.
+//!
+//! Exposes module initialization, validation, sandboxed testing, deterministic
+//! packaging, and publication workflows.
 
 use std::{
     collections::BTreeSet,
@@ -1873,3 +1878,6 @@ mod tests {
         fs::remove_dir_all(root).expect("remove test directory");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -13,6 +13,18 @@ pub struct VerificationWorker<V> {
     policy: VerificationPolicy,
 }
 
+impl<V> std::fmt::Debug for VerificationWorker<V>
+where
+    V: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VerificationWorker")
+            .field("verifier", &self.verifier)
+            .field("policy", &self.policy)
+            .finish()
+    }
+}
+
 impl<V> VerificationWorker<V> {
     pub fn new(verifier: V, policy: VerificationPolicy) -> Self {
         Self { verifier, policy }

@@ -60,3 +60,6 @@ pub use types::{
     SandboxContext, SandboxExecutorKind, SandboxExecutorPlacement, SandboxOutcome, SandboxPayload,
     SandboxRequest, SandboxSubject,
 };
+
+#[cfg(test)]
+mod contract_tests;

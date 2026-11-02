@@ -12,7 +12,7 @@
 - **`leptos-auth`**: Authentication session token (`use_token`) and tenant context (`use_tenant`).
 
 ## Domain Collaborations
-- **`rustok-forms-module`**: Consumes backend form submission entities, triage state machines, and honeypot indicators.
+- **`rustok-forms`**: Consumes backend form submission entities, triage state machines, and honeypot indicators.
 - **`rustok-page-builder`**: Manages incoming form leads captured by page-builder interaction forms.
 
 ## Public surface

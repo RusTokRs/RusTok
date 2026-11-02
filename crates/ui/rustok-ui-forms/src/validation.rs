@@ -639,7 +639,7 @@ pub mod rules {
 /// # Example
 ///
 /// ```rust
-/// use rustok_forms::FormValidator;
+/// use rustok_ui_forms::FormValidator;
 ///
 /// let validator = FormValidator::new()
 ///     .required("name", "John", "Name is required")

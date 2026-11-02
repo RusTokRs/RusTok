@@ -208,6 +208,12 @@ close the component.
 
 ### Principal and tenant trust
 
+### P1. Explicit actor-kind contract
+
+- [x] Add an explicit actor/principal kind
+- [x] Preserve fail-closed compatibility
+- [x] Add boundary tests proving
+
 - [x] Use one typed principal classifier and fail closed for malformed facts.
 - [x] Require direct, session-bound, tenant-matching principals for control-plane writes.
 - [x] Keep authoritative and cached relation reads tenant-safe.
