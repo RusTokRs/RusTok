@@ -1,0 +1,89 @@
+name: Forum Remediation Oracle (temporary)
+
+# Temporary compile/test oracle for the forum logic-review remediation PR.
+# Converts cargo diagnostics into check annotations so results are readable
+# without job-log access. Delete this file once the PR is verified.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/forum-remediation-oracle.yml"
+      - "crates/modules/rustok-forum/**"
+  push:
+    branches:
+      - "arena/fa9dd997-rustok"
+    paths:
+      - ".github/workflows/forum-remediation-oracle.yml"
+      - "crates/modules/rustok-forum/**"
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: Forum oracle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: rustfmt (forum crate only)
+        run: |
+          cargo fmt -p rustok-forum -- --check > /tmp/fmt.out 2>&1 || true
+          grep '^Diff in ' /tmp/fmt.out | head -50 | while IFS= read -r line; do
+            file=$(printf '%s' "$line" | sed -E 's/^Diff in ([^ ]+) at line.*/\1/')
+            lineno=$(printf '%s' "$line" | sed -E 's/^Diff in [^ ]+ at line ([0-9]+):.*/\1/')
+            echo "::warning file=$file,line=$lineno::rustfmt diff in $file"
+          done
+          echo "::notice::fmt diff files: $(grep -c '^Diff in ' /tmp/fmt.out || true)"
+      - name: cargo check (forum crate, all targets)
+        run: |
+          set -o pipefail
+          cargo check -p rustok-forum --all-targets --message-format=json 2>/dev/null | python3 -c "
+          import json, sys
+          emitted = 0
+          errors = 0
+          for raw in sys.stdin:
+              try:
+                  payload = json.loads(raw)
+              except Exception:
+                  continue
+              if payload.get('reason') != 'compiler-message':
+                  continue
+              msg = payload.get('message') or {}
+              level = msg.get('level')
+              if level not in ('error', 'warning'):
+                  continue
+              if level == 'error':
+                  errors += 1
+              if emitted >= 50:
+                  continue
+              spans = msg.get('spans') or []
+              primary = next((s for s in spans if s.get('is_primary')), spans[0] if spans else {})
+              text = (msg.get('message') or '').replace('%', '%25').replace('\\n', ' ').replace('\\r', ' ')
+              code = (msg.get('code') or {}).get('code') or level
+              fname = primary.get('file_name', 'crates/modules/rustok-forum')
+              line = primary.get('line_start', 1)
+              col = primary.get('column_start', 1)
+              kind = 'error' if level == 'error' else 'warning'
+              print(f'::{kind} file={fname},line={line},col={col}::{code}: {text}')
+              emitted += 1
+          print(f'::notice::cargo check errors: {errors}')
+          sys.exit(1 if errors else 0)
+          "
+      - name: remediation + subscription sqlite tests
+        run: |
+          set -o pipefail
+          cargo test -p rustok-forum --test logic_review_remediation_sqlite --test subscription_levels_sqlite -- --nocapture 2>&1 | tee /tmp/tests.out | python3 -c "
+          import sys
+          for raw in sys.stdin:
+              line = raw.rstrip()
+              if 'FAILED' in line or 'panicked at' in line or line.startswith('test result:'):
+                  safe = line.replace('%', '%25')
+                  kind = 'error' if ('FAILED' in line or 'panicked at' in line) else 'notice'
+                  print(f'::{kind}::{safe}')
+          "
