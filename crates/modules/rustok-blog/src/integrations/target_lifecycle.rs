@@ -8,13 +8,11 @@
 //! matching rows idempotently: the delete is unconditional, and a repeated delivery
 //! finds no rows and publishes no event.
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use rustok_core::Error as CoreError;
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{DatabaseConnection, TransactionTrait};
 
 use crate::error::BlogError;
@@ -26,11 +24,11 @@ pub(crate) struct BlogTargetDeletionRouteHandler {
 }
 
 impl BlogTargetDeletionRouteHandler {
-    /// The listener owns its transactional bus over the same database, exactly like
-    /// the Blog comment projection handler: purge events are written to the outbox
-    /// inside the deletion transaction.
-    pub(crate) fn new(db: DatabaseConnection) -> Self {
-        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    /// Creates the handler with a host-composed transactional event bus. The bus
+    /// is injected rather than constructed here so the handler shares the host's
+    /// outbox transport instead of building a second, independent bus over the
+    /// same database (AGENTS.md §5: host composes owner-owned entrypoints).
+    pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
 }

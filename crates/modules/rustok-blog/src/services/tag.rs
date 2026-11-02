@@ -4,9 +4,9 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait,
-    sea_query::{Expr, OnConflict},
+    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::{Expr, ExprTrait, OnConflict, Query},
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -17,6 +17,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
+    entities::TaxonomyTerm,
     ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
     TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
     delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
@@ -241,8 +242,28 @@ impl TagService {
         let per_page = bounded_tag_page_size(filter.per_page);
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        // Count only tag-usage rows whose Taxonomy term still exists and is
+        // visible to Blog: global terms, or module:blog terms. Rows referencing
+        // a deleted term or a foreign module's term are broken derived state and
+        // must not inflate `total` — otherwise clients see pages that return
+        // fewer items than advertised.
+        let valid_tag_ids = Query::select()
+            .column(rustok_taxonomy::entities::taxonomy_term::Column::Id)
+            .from(TaxonomyTerm)
+            .filter(
+                Condition::all()
+                    .add(
+                        rustok_taxonomy::entities::taxonomy_term::Column::ScopeType
+                            .ne(TaxonomyScopeType::Module),
+                    )
+                    .or(rustok_taxonomy::entities::taxonomy_term::Column::ScopeValue.eq(
+                        BLOG_SCOPE_VALUE,
+                    )),
+            )
+            .to_owned();
         let paginator = blog_tag_usage::Entity::find()
             .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
+            .filter(blog_tag_usage::Column::TagId.is_in_subquery(valid_tag_ids))
             .order_by_desc(blog_tag_usage::Column::UseCount)
             .order_by_asc(blog_tag_usage::Column::CanonicalKey)
             .order_by_asc(blog_tag_usage::Column::TagId)

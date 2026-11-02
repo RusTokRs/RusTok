@@ -249,6 +249,60 @@ fn require_moderation_permission(auth: &rustok_api::AuthContext) -> Result<(), S
     }
 }
 
+/// Mirrors the `blog_posts:create` gate that the GraphQL mutation enforces before
+/// creating a post. The native server path must enforce the same gate.
+#[cfg(feature = "ssr")]
+fn require_blog_posts_create_permission(
+    auth: &rustok_api::AuthContext,
+) -> Result<(), ServerFnError> {
+    if rustok_api::has_any_effective_permission(
+        &auth.permissions,
+        &[rustok_api::Permission::BLOG_POSTS_CREATE],
+    ) {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "Permission denied: blog_posts:create required",
+        ))
+    }
+}
+
+/// Mirrors the `blog_posts:publish` gate that the GraphQL mutation enforces before
+/// changing a post's publish/pin/archive/restore state.
+#[cfg(feature = "ssr")]
+fn require_blog_posts_publish_permission(
+    auth: &rustok_api::AuthContext,
+) -> Result<(), ServerFnError> {
+    if rustok_api::has_any_effective_permission(
+        &auth.permissions,
+        &[rustok_api::Permission::BLOG_POSTS_PUBLISH],
+    ) {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "Permission denied: blog_posts:publish required",
+        ))
+    }
+}
+
+/// Mirrors the `blog_posts:delete` gate that the GraphQL mutation enforces before
+/// deleting a post.
+#[cfg(feature = "ssr")]
+fn require_blog_posts_delete_permission(
+    auth: &rustok_api::AuthContext,
+) -> Result<(), ServerFnError> {
+    if rustok_api::has_any_effective_permission(
+        &auth.permissions,
+        &[rustok_api::Permission::BLOG_POSTS_DELETE],
+    ) {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(
+            "Permission denied: blog_posts:delete required",
+        ))
+    }
+}
+
 /// Mirrors the `blog_posts:update` gate that the GraphQL mutation and the REST
 /// controller enforce before minting a preview token.
 #[cfg(feature = "ssr")]
@@ -437,6 +491,7 @@ async fn blog_admin_create_post_native(
         use rustok_blog::{CreatePostInput, PostService};
 
         let context = native_context().await?;
+        require_blog_posts_create_permission(&context.auth)?;
         let locale = draft.locale.clone();
         let service = PostService::new(context.db, context.event_bus);
         let post_id = service
@@ -496,6 +551,7 @@ async fn blog_admin_update_post_native(
         use rustok_blog::{PostService, UpdatePostInput};
 
         let context = native_context().await?;
+        require_blog_posts_update_permission(&context.auth)?;
         let post_id = parse_uuid(&id, "post_id")?;
         let locale = draft.locale.clone();
         let service = PostService::new(context.db, context.event_bus);
@@ -698,6 +754,7 @@ async fn update_status_and_reload(
     use rustok_blog::PostService;
 
     let context = native_context().await?;
+    require_blog_posts_publish_permission(&context.auth)?;
     let post_id = parse_uuid(&id, "post_id")?;
     let locale = requested_locale(locale, context.tenant.default_locale.as_str());
     let service = PostService::new(context.db, context.event_bus);
@@ -757,6 +814,7 @@ async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError
         use rustok_blog::PostService;
 
         let context = native_context().await?;
+        require_blog_posts_delete_permission(&context.auth)?;
         let post_id = parse_uuid(&id, "post_id")?;
         PostService::new(context.db, context.event_bus)
             .delete_post(context.tenant.id, post_id, security_context(&context.auth))

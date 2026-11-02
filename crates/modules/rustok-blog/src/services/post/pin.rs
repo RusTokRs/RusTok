@@ -98,6 +98,7 @@ impl PostService {
             )
             .filter(blog_post::Column::Id.eq(post_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Version.eq(post.version))
             .exec(&txn)
             .await
             .map_err(BlogError::from)?;

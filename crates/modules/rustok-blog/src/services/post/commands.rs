@@ -120,7 +120,7 @@ impl PostService {
 
         let next_metadata = match metadata {
             Some(metadata) => normalize_custom_metadata(Some(metadata))?,
-            None => scrub_reserved_metadata(post.metadata.clone()),
+            None => post.metadata.clone(),
         };
         let metadata_changed = metadata_changed(&post.metadata, &next_metadata);
         let normalized_channels = channel_slugs
@@ -142,7 +142,11 @@ impl PostService {
             && !has_translation_change
             && !has_relation_change
         {
-            return Err(BlogError::validation("No Blog post changes were supplied"));
+            // A request that changes nothing is a successful no-op: it must not
+            // advance the post version, rewrite any column, or publish a
+            // reindex event. Returning Ok keeps retried requests after a lost
+            // response from failing (idempotent command semantics, AGENTS.md §7).
+            return Ok(());
         }
 
         let full_reindex = has_owner_change || has_relation_change;

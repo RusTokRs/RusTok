@@ -1,8 +1,9 @@
-use std::{env, error::Error, io, process::Command};
+use std::{env, error::Error, io, process::Command, sync::Arc};
 
 use rustok_blog::services::BlogCommentProjectionHandler;
 use rustok_core::events::EventHandler;
 use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
@@ -100,12 +101,18 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
     );
     insert_post(&test_db.db, tenant_id, post_id, actor_id).await?;
 
-    let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus =
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(test_db.db.clone())));
+    let first_handler =
+        BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus.clone());
     first_handler.handle(&envelope).await?;
     drop(first_handler);
 
     let restarted_db = test_db.restarted_connection().await?;
-    let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());
+    let event_bus =
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(restarted_db.clone())));
+    let restarted_handler =
+        BlogCommentProjectionHandler::new(restarted_db.clone(), event_bus);
     restarted_handler.handle(&envelope).await?;
 
     assert_eq!(
@@ -202,7 +209,9 @@ async fn process_restart_worker_applies_envelope_from_env() -> TestResult<()> {
     envelope.id = event_id;
     envelope.correlation_id = event_id;
 
-    let handler = BlogCommentProjectionHandler::new(db);
+    let event_bus =
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let handler = BlogCommentProjectionHandler::new(db, event_bus);
     handler.handle(&envelope).await?;
     Ok(())
 }
