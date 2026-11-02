@@ -22,9 +22,11 @@ use crate::error::{BlogError, BlogResult};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
+use crate::domain::state_machine::BlogPostStatus;
 use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::post::{
     order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,
+    status_to_storage,
 };
 use crate::services::tag::load_post_tags_map;
 use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
@@ -77,7 +79,7 @@ pub async fn filter_public_search_post_ids(
     let published = blog_post::Entity::find()
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Id.is_in(candidate_ids.to_vec()))
-        .filter(blog_post::Column::Status.eq("published"))
+        .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
         .filter(blog_post::Column::PublishedAt.is_not_null())
         .all(db)
         .await
@@ -506,7 +508,7 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
         // is exactly that.
         let mut select = blog_post::Entity::find()
             .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq("published"))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
             .filter(blog_post::Column::PublishedAt.is_not_null());
 
         if let Some(token) = after.as_deref() {
@@ -561,7 +563,7 @@ impl SearchProjectionSource for BlogSearchProjectionSource {
         // document.
         let post = blog_post::Entity::find_by_id(entity_id)
             .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Status.eq("published"))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
             .filter(blog_post::Column::PublishedAt.is_not_null())
             .one(&self.db)
             .await

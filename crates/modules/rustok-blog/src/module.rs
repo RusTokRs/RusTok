@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
 };
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_reactions::register_reaction_subject_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
@@ -124,12 +127,20 @@ impl RusToKModule for BlogModule {
         registry: &mut ModuleEventListenerRegistry,
         ctx: &ModuleEventListenerContext<'_>,
     ) {
-        registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));
+        // One shared bus for both Blog-owned event handlers: they write purge and
+        // projection events into the same outbox transport, on the same database,
+        // instead of each constructing an independent bus (AGENTS.md §5).
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(ctx.db.clone())));
+        registry.register(services::BlogCommentProjectionHandler::new(
+            ctx.db.clone(),
+            event_bus.clone(),
+        ));
         // A post deleted outside the Blog delete path still must not leave a route
         // that redirects to nothing.
         registry.register(
             crate::integrations::target_lifecycle::BlogTargetDeletionRouteHandler::new(
                 ctx.db.clone(),
+                event_bus,
             ),
         );
     }
