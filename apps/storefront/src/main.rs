@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let addr = format!("{host}:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("Storefront SSR running on http://{addr}");
+    tracing::info!("Storefront SSR running on http://{addr}");
     axum::serve(listener, app.into_make_service()).await?;
     Ok(())
 }

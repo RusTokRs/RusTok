@@ -77,6 +77,14 @@ impl StaticModuleArtifactNodeAgentAuthenticator {
     }
 }
 
+impl std::fmt::Debug for StaticModuleArtifactNodeAgentAuthenticator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StaticModuleArtifactNodeAgentAuthenticator")
+            .field("identities_count", &self.identities.len())
+            .finish()
+    }
+}
+
 impl ModuleArtifactNodeAgentAuthenticator for StaticModuleArtifactNodeAgentAuthenticator {
     fn authenticate(
         &self,
@@ -96,6 +104,13 @@ pub struct ArtifactNodeGrpcService<P, A> {
     port: Arc<P>,
     authenticator: A,
     admission: WorkerAdmission,
+}
+
+impl<P, A> std::fmt::Debug for ArtifactNodeGrpcService<P, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeGrpcService")
+            .finish_non_exhaustive()
+    }
 }
 
 impl<P, A> ArtifactNodeGrpcService<P, A> {

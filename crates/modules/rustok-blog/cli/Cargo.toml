@@ -2,7 +2,10 @@
 name = "rustok-blog-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Operational command adapters for the RusToK blog module"
 
 [package.metadata.docs.rs]

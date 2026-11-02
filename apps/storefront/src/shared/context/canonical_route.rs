@@ -156,7 +156,7 @@ fn prefix_locale_to_canonical_url(canonical_url: &str, locale: &str) -> String {
     format!("{locale_prefix}{canonical_url}")
 }
 
-fn build_module_route(route_segment: &str, query_params: &HashMap<String, String>) -> String {
+pub fn build_module_route(route_segment: &str, query_params: &HashMap<String, String>) -> String {
     let base = format!("/modules/{route_segment}");
     let filtered = query_params
         .iter()

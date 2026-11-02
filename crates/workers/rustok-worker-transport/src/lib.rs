@@ -57,6 +57,18 @@ impl PeerCertificateFingerprint {
     }
 }
 
+impl std::fmt::Display for PeerCertificateFingerprint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for PeerCertificateFingerprint {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Extracts the leaf-certificate fingerprint from a request that was accepted
 /// by a mutual-TLS listener. The listener establishes the certificate chain;
 /// this helper only turns the verified peer certificate into a stable
@@ -78,6 +90,7 @@ pub fn peer_certificate_fingerprint<T>(
 /// Deployment-owned mutually authenticated listener configuration. A worker
 /// supplies its uppercase environment-variable prefix, such as
 /// `RUSTOK_VERIFICATION` or `RUSTOK_MODULE_BUILD`.
+#[derive(Clone)]
 pub struct MutualTlsListenerConfig {
     pub address: SocketAddr,
     pub certificate_pem: Vec<u8>,
@@ -87,7 +100,23 @@ pub struct MutualTlsListenerConfig {
     pub admission_timeout: Duration,
     pub concurrency_limit: usize,
     pub max_message_size: usize,
-    message_size_ceiling: usize,
+    pub message_size_ceiling: usize,
+}
+
+impl std::fmt::Debug for MutualTlsListenerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MutualTlsListenerConfig")
+            .field("address", &self.address)
+            .field("certificate_pem_bytes", &self.certificate_pem.len())
+            .field("private_key_pem", &"<redacted>")
+            .field("client_ca_pem_bytes", &self.client_ca_pem.len())
+            .field("request_timeout", &self.request_timeout)
+            .field("admission_timeout", &self.admission_timeout)
+            .field("concurrency_limit", &self.concurrency_limit)
+            .field("max_message_size", &self.max_message_size)
+            .field("message_size_ceiling", &self.message_size_ceiling)
+            .finish()
+    }
 }
 
 impl MutualTlsListenerConfig {
@@ -96,6 +125,33 @@ impl MutualTlsListenerConfig {
     const DEFAULT_MAX_MESSAGE_SIZE: usize = 128 * 1024;
     const ABSOLUTE_MESSAGE_SIZE_CEILING: usize = 128 * 1024 * 1024;
     pub const STANDARD_MESSAGE_SIZE_CEILING: usize = 1024 * 1024;
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        address: SocketAddr,
+        certificate_pem: Vec<u8>,
+        private_key_pem: Vec<u8>,
+        client_ca_pem: Vec<u8>,
+        request_timeout: Duration,
+        admission_timeout: Duration,
+        concurrency_limit: usize,
+        max_message_size: usize,
+        message_size_ceiling: usize,
+    ) -> Result<Self, String> {
+        let config = Self {
+            address,
+            certificate_pem,
+            private_key_pem,
+            client_ca_pem,
+            request_timeout,
+            admission_timeout,
+            concurrency_limit,
+            max_message_size,
+            message_size_ceiling,
+        };
+        config.validate()?;
+        Ok(config)
+    }
 
     pub fn from_env_prefix(prefix: &str, message_size_ceiling: usize) -> Result<Self, String> {
         validate_prefix(prefix)?;
@@ -185,6 +241,15 @@ pub struct WorkerAdmission {
     admission_timeout: Duration,
 }
 
+impl std::fmt::Debug for WorkerAdmission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerAdmission")
+            .field("available_permits", &self.permits.available_permits())
+            .field("admission_timeout", &self.admission_timeout)
+            .finish()
+    }
+}
+
 pub type WorkerPermit = OwnedSemaphorePermit;
 
 impl WorkerAdmission {
@@ -201,6 +266,14 @@ impl WorkerAdmission {
             permits: Arc::new(Semaphore::new(concurrency_limit)),
             admission_timeout,
         })
+    }
+
+    pub fn available_permits(&self) -> usize {
+        self.permits.available_permits()
+    }
+
+    pub fn admission_timeout(&self) -> Duration {
+        self.admission_timeout
     }
 
     pub async fn acquire(&self) -> Result<WorkerPermit, Status> {
@@ -267,6 +340,7 @@ fn validate_message_size_ceiling(message_size_ceiling: usize) -> Result<(), Stri
 /// Deployment-owned client identity for a mutually authenticated worker
 /// connection. The same prefix convention keeps client and listener material
 /// scoped to one named worker without relying on ambient TLS settings.
+#[derive(Clone)]
 pub struct MutualTlsClientConfig {
     certificate_pem: Vec<u8>,
     private_key_pem: Vec<u8>,
@@ -274,7 +348,38 @@ pub struct MutualTlsClientConfig {
     server_domain: String,
 }
 
+impl std::fmt::Debug for MutualTlsClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MutualTlsClientConfig")
+            .field("certificate_pem_bytes", &self.certificate_pem.len())
+            .field("private_key_pem", &"<redacted>")
+            .field("server_ca_pem_bytes", &self.server_ca_pem.len())
+            .field("server_domain", &self.server_domain)
+            .finish()
+    }
+}
+
 impl MutualTlsClientConfig {
+    pub fn new(
+        certificate_pem: Vec<u8>,
+        private_key_pem: Vec<u8>,
+        server_ca_pem: Vec<u8>,
+        server_domain: impl Into<String>,
+    ) -> Result<Self, String> {
+        let config = Self {
+            certificate_pem,
+            private_key_pem,
+            server_ca_pem,
+            server_domain: server_domain.into(),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn server_domain(&self) -> &str {
+        &self.server_domain
+    }
+
     pub fn from_env_prefix(prefix: &str) -> Result<Self, String> {
         validate_prefix(prefix)?;
         let certificate_pem = read_required_file(&env_name(prefix, "CLIENT_CERT_PEM"))?;
@@ -350,7 +455,22 @@ fn required_env(name: &str) -> Result<String, String> {
 }
 
 fn read_required_file(name: &str) -> Result<Vec<u8>, String> {
+    const MAX_TLS_FILE_BYTES: u64 = 10 * 1024 * 1024;
     let path = PathBuf::from(required_env(name)?);
+    let metadata = fs::metadata(&path)
+        .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    if metadata.len() == 0 {
+        return Err(format!("{} is empty", path.display()));
+    }
+    if metadata.len() > MAX_TLS_FILE_BYTES {
+        return Err(format!(
+            "{} exceeds maximum allowed TLS file size of {MAX_TLS_FILE_BYTES} bytes",
+            path.display()
+        ));
+    }
     fs::read(&path).map_err(|error| format!("could not read {}: {error}", path.display()))
 }
 
@@ -485,3 +605,7 @@ mod tests {
         assert!(config.validate().is_err());
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

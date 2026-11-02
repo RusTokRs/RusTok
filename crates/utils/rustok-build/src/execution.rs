@@ -122,6 +122,10 @@ impl BuildCommandSpec {
     pub fn workdir(&self) -> &Path {
         &self.workdir
     }
+
+    pub fn manifest_path(&self) -> &Path {
+        &self.manifest_path
+    }
 }
 
 pub fn build_manifest_snapshot_path(build_id: Uuid) -> PathBuf {

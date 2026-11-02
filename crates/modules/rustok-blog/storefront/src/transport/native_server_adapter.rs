@@ -452,7 +452,7 @@ async fn load_author_profiles(
     {
         Ok(summaries) => summaries,
         Err(error) => {
-            eprintln!(
+            tracing::warn!(
                 "Blog author profile presentation unavailable for tenant {tenant_id}: {}",
                 error.code()
             );

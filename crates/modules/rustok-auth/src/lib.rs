@@ -74,11 +74,11 @@ pub use oauth_app_translation::{
 pub use rest::{
     AcceptInviteParams, AuthResponse, AuthorizeRequest, BrowserAuthorizeRequest,
     BrowserSessionResponse, ChangePasswordParams, ConfirmResetParams, ConfirmVerificationParams,
-    ConsentRequest, GenericStatusResponse, InviteAcceptResponse, LoginParams, LogoutResponse,
-    RefreshRequest, RegisterParams, RequestResetParams, RequestVerificationParams,
-    ResetRequestResponse, RevokeRequest, SessionItem, SessionListParams, SessionsResponse,
-    TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams, UserInfo, UserItem,
-    UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
+    ConsentRequest, CookieSessionResponse, GenericStatusResponse, InviteAcceptResponse,
+    LoginParams, LogoutResponse, RefreshRequest, RegisterParams, RequestResetParams,
+    RequestVerificationParams, ResetRequestResponse, RevokeRequest, SessionItem, SessionListParams,
+    SessionsResponse, TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams,
+    UserInfo, UserItem, UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
 };
 pub use validation::{
     MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,

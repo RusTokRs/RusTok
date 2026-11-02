@@ -13,3 +13,7 @@ pub use persistence::{InstallStepReceiptItem, InstallerPersistenceService};
 pub use seaorm_ports::{
     SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts, SeaOrmInstallerPorts,
 };
+
+#[cfg(test)]
+mod contract_tests;
+

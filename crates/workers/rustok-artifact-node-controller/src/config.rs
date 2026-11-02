@@ -18,6 +18,14 @@ pub struct ArtifactNodeControllerConfig {
     pub agent_authenticator: StaticModuleArtifactNodeAgentAuthenticator,
 }
 
+impl std::fmt::Debug for ArtifactNodeControllerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeControllerConfig")
+            .field("database_url", &"[REDACTED]")
+            .finish_non_exhaustive()
+    }
+}
+
 impl ArtifactNodeControllerConfig {
     pub fn from_environment() -> Result<Self, String> {
         let database_url = required_nonempty_env(DATABASE_URL_ENV)?;

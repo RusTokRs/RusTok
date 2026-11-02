@@ -5,6 +5,7 @@ name = "rustok-admin-dioxus"
 version = "0.1.0"
 edition = "2024"
 license = "BSL-1.1"
+readme = "README.md"
 description = "CONCEPT / DORMANT: Dioxus host shell runner for RusToK FFA UI (Phase E pilot). DO NOT use in production or workspace test sweeps."
 
 [features]

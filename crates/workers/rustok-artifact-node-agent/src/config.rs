@@ -31,6 +31,19 @@ pub struct ArtifactNodeAgentConfig {
     pub heartbeat_interval: Duration,
 }
 
+impl std::fmt::Debug for ArtifactNodeAgentConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeAgentConfig")
+            .field("controller_endpoint", &self.controller_endpoint)
+            .field("sandbox_endpoint", &self.sandbox_endpoint)
+            .field("identity", &self.identity)
+            .field("storage", &"[REDACTED]")
+            .field("poll_interval", &self.poll_interval)
+            .field("heartbeat_interval", &self.heartbeat_interval)
+            .finish()
+    }
+}
+
 impl ArtifactNodeAgentConfig {
     pub fn from_environment() -> Result<Self, String> {
         let controller_endpoint = parse_endpoint(CONTROLLER_ENDPOINT_ENV)?;

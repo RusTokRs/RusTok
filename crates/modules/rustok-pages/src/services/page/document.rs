@@ -34,7 +34,7 @@ impl PageService {
     /// While the page is published the working copy is the page body draft and the public body
     /// stays untouched; every other lifecycle state updates the current body directly. Both
     /// paths append one body-revision journal row.
-    #[instrument(skip(self, input))]
+    #[instrument(skip(self, input, security))]
     pub async fn save_document(
         &self,
         tenant_id: Uuid,
@@ -188,7 +188,7 @@ impl PageService {
     }
 
     /// Restores one journaled body revision into the locale's working copy.
-    #[instrument(skip(self, input))]
+    #[instrument(skip(self, input, security))]
     pub async fn restore_body_revision(
         &self,
         tenant_id: Uuid,
@@ -336,7 +336,7 @@ impl PageService {
     }
 
     /// Returns the newest body-revision journal metadata for one locale, newest first.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn body_revision_history(
         &self,
         tenant_id: Uuid,

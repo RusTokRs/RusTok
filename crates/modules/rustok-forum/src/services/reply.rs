@@ -47,7 +47,7 @@ impl ReplyService {
         self
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -59,7 +59,7 @@ impl ReplyService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,

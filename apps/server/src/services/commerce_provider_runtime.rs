@@ -1,4 +1,9 @@
 use rustok_api::HostRuntimeContext;
+#[cfg(any(
+    feature = "mod-marketplace_seller",
+    feature = "mod-marketplace_listing",
+    all(feature = "mod-commerce", feature = "mod-product")
+))]
 use std::sync::Arc;
 
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -13,6 +18,7 @@ pub fn attach_commerce_provider_registries(
     host: HostRuntimeContext,
     server: &ServerRuntimeContext,
 ) -> HostRuntimeContext {
+    let _ = server;
     #[cfg(feature = "mod-payment")]
     let host = {
         let registry = server

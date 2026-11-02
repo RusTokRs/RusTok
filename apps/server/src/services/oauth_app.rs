@@ -592,7 +592,7 @@ impl OAuthAppService {
                 active
                     .update(&tx)
                     .await
-                    .map_err(|error| GrantConsentAttempt::classify(error))?;
+                    .map_err(GrantConsentAttempt::classify)?;
             }
             None => {
                 OAuthConsentActiveModel {
@@ -606,13 +606,13 @@ impl OAuthAppService {
                 }
                 .insert(&tx)
                 .await
-                .map_err(|error| GrantConsentAttempt::classify(error))?;
+                .map_err(GrantConsentAttempt::classify)?;
             }
         }
 
         tx.commit()
             .await
-            .map_err(|error| GrantConsentAttempt::classify(error))?;
+            .map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 

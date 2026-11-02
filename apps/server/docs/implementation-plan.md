@@ -640,3 +640,36 @@ Regression coverage:
 
 Verification limits: no Rust toolchain or database runtime is available in this workspace, so
 `cargo check` / `cargo test` and the remediation gate remain pending. Static verification only.
+
+## PR integration and verification handoff (2026-11-02)
+
+The P1–P8 changes were prepared from base
+`0aaf455a45556f4e39a5ed66b8a1184369e5e93f`. Before opening the draft PR, `main` was
+refreshed to `a418bbbed64e53cdf841b87dada7ae5799770cd2` and merged into the task branch.
+The integration preserves the upstream runtime/readiness changes, ADR registry repairs,
+and admin contract tests. No audit-ledger advancement is part of the task delta.
+
+The upstream cache/email admin fixtures now exercise the versioned settings contract:
+they submit `expectedSchemaVersion`, retain the returned revision when normalizing invalid
+JSON, propagate conflicts, and reject a missing revision instead of inventing a CAS baseline.
+The settings source guard checks both transactional event publication and the CAS entrypoint.
+
+Executed local evidence:
+
+- `node --test apps/next-admin/packages/cache/src/cache-admin.test.mjs apps/next-admin/packages/email/src/email-admin.test.mjs` — 19 passed, 0 failed.
+- `npm run verify:docs` — passed.
+- `node scripts/verify/verify-adrs.mjs` — passed for 164 decisions.
+- Runtime-context, auth-admin tenant-scope/boundary, explicit RBAC principal-kind, and
+  platform-settings tenant-scope source guards — passed.
+- Task delta against refreshed `main`: `git diff --check` and remediation diff invariants — passed.
+
+Still blocked locally: cargo check/test/clippy/format, Rust crate contract tests, full Rust
+remediation/architecture gates, admin typechecks/builds, and PostgreSQL/Redis fault injection.
+The environment has no Cargo/Rust toolchain, PostgreSQL, Redis, Docker, or installed frontend
+dependencies. These are CI/maintainer gates, not claimed passing results. The PR remains a
+draft until the affected crate and integration checks have actually run.
+
+Deferred work remains the service-token TTL policy, the cross-crate OAuth code-reuse domain
+event, deduplication of `RbacService::record_claim_role_mismatch()`, and database/Redis
+failure-path evidence. The historical source-guard/ADR failures recorded in earlier batches
+were resolved by the refreshed `main`; the current runs above pass.

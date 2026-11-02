@@ -1143,6 +1143,7 @@ async fn assert_storefront_topic(
             attribute_filters: Vec::new(),
             sort_attribute_code: None,
             sort_desc: false,
+            tag: None,
         },
         &channel,
         StorefrontSearchAudienceContext {

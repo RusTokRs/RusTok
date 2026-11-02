@@ -2,8 +2,11 @@
 name = "rustok-iggy-connector"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-description.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Iggy event sink and source connector translating domain events to Iggy streams for RusToK"
 
 [package.metadata.docs.rs]
 all-features = true

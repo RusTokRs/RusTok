@@ -94,6 +94,8 @@ members = [
     "crates/modules/rustok-calendar/admin",
     "crates/modules/rustok-calendar/storefront",
     "crates/modules/rustok-tasks/admin",
+    "crates/modules/rustok-security/admin",
+    "crates/modules/rustok-security/storefront",
     "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",

@@ -20,6 +20,15 @@ pub struct BuildExecutionService {
     workspace_root: PathBuf,
 }
 
+impl std::fmt::Debug for BuildExecutionService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuildExecutionService")
+            .field("build_service", &self.build_service)
+            .field("workspace_root", &self.workspace_root)
+            .finish()
+    }
+}
+
 impl BuildExecutionService {
     pub fn new(
         db: DatabaseConnection,

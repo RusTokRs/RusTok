@@ -12,6 +12,7 @@ import '@rustok/rbac-admin';
 import '@rustok/product-admin';
 import '@rustok/media-admin';
 import '@rustok/pages-admin';
+import '@rustok/search-admin';
 import '@rustok/translation-admin';
 import '@rustok/workflow-admin';
 

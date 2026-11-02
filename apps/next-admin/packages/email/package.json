@@ -5,7 +5,9 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "react": "^19.2.0"
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
+    "react": "^19.2.0",
+    "sonner": "^2.0.8"
   },
   "license": "BUSL-1.1"
 }

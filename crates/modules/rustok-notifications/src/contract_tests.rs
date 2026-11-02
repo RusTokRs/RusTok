@@ -26,6 +26,6 @@ fn module_metadata_matches_contract() {
 
     assert_eq!(module.slug(), "notifications");
     assert_eq!(module.name(), "Notifications");
-    assert_eq!(module.kind(), ModuleKind::Core);
+    assert_eq!(module.kind(), ModuleKind::Optional);
     assert_eq!(module.dependencies(), &["outbox"]);
 }

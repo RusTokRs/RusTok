@@ -273,6 +273,10 @@ export async function fetchCatalogSearchOptions(
     baseUrl,
   });
 
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Catalog search options query failed");
+  }
+
   return (
     response.data?.storefrontCatalogSearchOptions ?? {
       categoryOptions: [],
@@ -300,6 +304,10 @@ export async function fetchStorefrontProducts(
     },
     tenant: tenantSlug ?? undefined,
   });
+
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Product catalog query failed");
+  }
 
   return (
     response.data?.storefrontProductCatalog ?? {
@@ -346,6 +354,10 @@ export async function fetchStorefrontCatalogFacets(
     tenant: tenantSlug ?? undefined,
   });
 
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Catalog facets query failed");
+  }
+
   return response.data?.storefrontProductCatalogFacets ?? [];
 }
 
@@ -371,6 +383,10 @@ export async function fetchStorefrontProduct(
     },
     tenant: tenantSlug ?? undefined,
   });
+
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Product query failed");
+  }
 
   return response.data?.storefrontProduct ?? null;
 }

@@ -4,10 +4,10 @@ use rustok_api::{RichTextDocument, RichTextView, normalize_locale_tag};
 
 #[derive(Clone, Debug)]
 pub struct RichTextFrameCopy {
-    messages: serde_json::Value,
-    serialization_error: String,
-    invalid_payload_error: String,
-    frame_error: String,
+    pub messages: serde_json::Value,
+    pub serialization_error: String,
+    pub invalid_payload_error: String,
+    pub frame_error: String,
 }
 
 pub fn localized_richtext_frame_copy(

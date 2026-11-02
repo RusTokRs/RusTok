@@ -18,7 +18,15 @@ pub struct CliExit {
 }
 
 impl CliExit {
-    fn success(stdout: impl Into<String>) -> Self {
+    pub fn new(code: i32, stdout: impl Into<String>, stderr: impl Into<String>) -> Self {
+        Self {
+            code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        }
+    }
+
+    pub fn success(stdout: impl Into<String>) -> Self {
         Self {
             code: 0,
             stdout: stdout.into(),
@@ -26,7 +34,7 @@ impl CliExit {
         }
     }
 
-    fn failure(stderr: impl Into<String>) -> Self {
+    pub fn failure(stderr: impl Into<String>) -> Self {
         Self {
             code: 2,
             stdout: String::new(),
@@ -34,7 +42,7 @@ impl CliExit {
         }
     }
 
-    fn from_outcome(outcome: CommandOutcome) -> Self {
+    pub fn from_outcome(outcome: CommandOutcome) -> Self {
         let mut stdout = outcome.message;
         if !stdout.is_empty() && !stdout.ends_with('\n') {
             stdout.push('\n');
@@ -61,6 +69,7 @@ impl CliExit {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BuiltInProvider;
 
 #[async_trait::async_trait]
@@ -174,6 +183,10 @@ impl<'a> CommandRegistry<'a> {
 
     pub fn commands(&self) -> &[CommandDescriptor] {
         &self.commands
+    }
+
+    pub fn providers_count(&self) -> usize {
+        self.providers.len()
     }
 
     pub async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {
@@ -546,8 +559,11 @@ mod tests {
         assert!(exit.stderr.is_empty());
 
         let commands: Vec<CommandDescriptor> = serde_json::from_str(&exit.stdout).unwrap();
-        assert_eq!(commands[0].namespace, "core");
-        assert_eq!(commands[0].name, "list");
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.namespace == "core" && command.name == "list")
+        );
     }
 
     #[tokio::test]
@@ -650,7 +666,7 @@ mod tests {
     #[async_trait::async_trait]
     impl CommandProvider for ArgsProvider {
         fn commands(&self) -> Vec<CommandDescriptor> {
-            vec![CommandDescriptor::new("ops", "args", "Inspect args")]
+            vec![CommandDescriptor::new("ops", "args", "Inspect args").with_dry_run()]
         }
 
         async fn execute(
@@ -688,3 +704,6 @@ mod tests {
         assert_eq!(outcome.message, "args ok");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

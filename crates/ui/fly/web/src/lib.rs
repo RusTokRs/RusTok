@@ -46,3 +46,6 @@ pub use browser_runtime::{
     BrowserRuntimeError, EventListenerHandle, IframeJsonSubscription, IframeMessagePort,
     ResizeObserverHandle, WindowMessageSubscription, release_pointer_capture, set_pointer_capture,
 };
+
+#[cfg(test)]
+mod contract_tests;

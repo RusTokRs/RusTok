@@ -1,3 +1,4 @@
+#[allow(clippy::duplicate_mod)]
 pub mod product_media;
 use rustok_cart::entities::{
     cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,

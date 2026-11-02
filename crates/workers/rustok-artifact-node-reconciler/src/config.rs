@@ -20,6 +20,14 @@ pub struct ArtifactNodeReconcilerConfig {
     pub operator_authenticator: StaticModuleArtifactNodeReconciliationAuthenticator,
 }
 
+impl std::fmt::Debug for ArtifactNodeReconcilerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArtifactNodeReconcilerConfig")
+            .field("database_url", &"[REDACTED]")
+            .finish_non_exhaustive()
+    }
+}
+
 impl ArtifactNodeReconcilerConfig {
     pub fn from_environment() -> Result<Self, String> {
         let database_url = required_nonempty_env(DATABASE_URL_ENV)?;

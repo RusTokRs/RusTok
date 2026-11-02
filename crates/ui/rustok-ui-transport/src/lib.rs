@@ -481,3 +481,7 @@ mod tests {
         assert_eq!(result, "graphql fallback success");
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
+

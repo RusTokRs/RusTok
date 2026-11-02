@@ -97,11 +97,11 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         "blog.categories.createNewInstead",
         "Create new instead",
     );
-    let editing_banner_label = t(
+    let (editing_banner_label, _) = signal(t(
         ui_locale.as_deref(),
         "blog.categories.editing",
         "Editing category",
-    );
+    ));
     let parent_label = t(
         ui_locale.as_deref(),
         "blog.categories.form.parent",
@@ -132,7 +132,7 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
     // pattern: render reads the signals and refreshes keep the stale rows
     // until the new page lands (no skeleton flash between mutations).
     let (categories_rows, set_categories_rows) = signal(Vec::<BlogCategoryDetail>::new());
-    let (categories_error, set_categories_error) = signal(Option::<String>::new());
+    let (categories_error, set_categories_error) = signal(Option::<String>::None);
     let (categories_resolved, set_categories_resolved) = signal(false);
     let effect_load_error_label = load_error_label.clone();
     Effect::new(move |_| {
@@ -261,6 +261,7 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         set_delete_confirm_id.set(None);
         let busy = core::busy_key_for_category_delete(category_id.as_str());
         set_busy_key.set(Some(busy));
+        let delete_failure_message = delete_failure_message.clone();
 
         spawn_local(async move {
             match transport::delete_category(token.get_untracked(), tenant.get_untracked(), category_id.clone()).await {
@@ -482,12 +483,11 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
                             <div class="flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2">
                                 <div class="text-sm text-muted-foreground">
                                     {move || {
-                                        let label = editing_banner_label.clone();
                                         let current_name = name.get();
                                         if current_name.is_empty() {
-                                            label
+                                            editing_banner_label.get()
                                         } else {
-                                            format!("{label}: {current_name}")
+                                            format!("{}: {current_name}", editing_banner_label.get())
                                         }
                                     }}
                                 </div>

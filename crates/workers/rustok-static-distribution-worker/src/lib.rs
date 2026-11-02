@@ -4,6 +4,9 @@ mod executor;
 mod job;
 mod publisher;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use executor::{
     StaticDistributionJobReceipt, StaticDistributionJobRequest, StaticDistributionWorker,
 };

@@ -1,9 +1,12 @@
 [package]
 name = "utoipa-swagger-ui-vendored"
-version = "0.1.0"
-edition = "2021"
-license = "MIT OR Apache-2.0"
-description.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+description = "Vendored Swagger UI static assets for embedded OpenAPI documentation in RusToK"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -11,5 +14,4 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 path = "src/lib.rs"
-test = false
-doctest = false
+

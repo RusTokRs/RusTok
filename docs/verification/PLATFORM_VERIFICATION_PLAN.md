@@ -42,9 +42,9 @@ that component's local `docs/implementation-plan.md`.
   merged as `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb`; registered-CLI evidence PR #3590
   merged as `67ed475549598720486188f175fcfce0ab826a3b`; artifact-event-digest evidence PR
   #3617 merged as `65a63a33d457ed5ff7c592f2c81b839cbf690d96`.
-- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed and
-  broad execution verification remains incomplete, so `core/rbac` remains
-  `in_progress`.
+- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed with an
+  explicit typed principal kind, and broad execution verification remains incomplete,
+  so `core/rbac` remains `in_progress`.
 - Current RBAC verification delta: PR #3590 exact-head run `31885429843` at
   `06554657c50535204cdca7f7baf87c7b8d55ba65` completed successfully. All four retained
   source contracts passed; the mutation architecture guard passed; PostgreSQL concurrency

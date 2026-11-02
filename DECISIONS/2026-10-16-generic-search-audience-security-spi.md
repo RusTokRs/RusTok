@@ -78,3 +78,33 @@ A platform-level, module-agnostic Service Provider Interface (SPI) is required s
 - **Tenant:** Strictly tenant-scoped; candidate verification rejects cross-tenant IDs.
 - **Auth & Request Context:** Propagated through `SearchAudienceRequest` to enable actor, role, session, and channel policy resolution.
 - **Locale:** Propagated for localized permission or status evaluation.
+
+## Data, transaction, and concurrency boundary
+
+Not applicable. This SPI defines platform in-memory and trait contracts; persisted search projections remain governed by `SearchProjectionSource` and Postgres FTS indexes.
+
+## Events and projections
+
+Search audience policies evaluate real-time visibility and do not mutate outbox events or projections directly. Domain entities emit existing invalidation events on status/audience changes.
+
+## Failure semantics
+
+All security preflight gates and candidate authorization paths fail closed: unverified or timed-out candidates are excluded from search results without leaking facets or totals.
+
+## Migration and cutover
+
+Superseded by `2026-10-25-search-audience-declared-corpus.md`.
+
+## Alternatives considered
+
+1. **SQL-level row filtering in FTS:** Rejected due to inability to represent dynamic, user-specific ACLs in static search indexes.
+2. **Domain-specific search execution files:** Rejected as an OCP violation.
+
+## Verification
+
+Unit tests in `rustok-core` and integration tests in `rustok-search` verify preflight gates and batch candidate filtering.
+
+## Consequences
+
+Superseded by `2026-10-25-search-audience-declared-corpus.md`.
+

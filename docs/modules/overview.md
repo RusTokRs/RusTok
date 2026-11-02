@@ -118,6 +118,13 @@ It is important to distinguish:
 | `flex` | `flex` | — |
 | `docs` | `rustok-docs` | `outbox`, `flex` |
 | `messenger` | `rustok-messenger` | `outbox` |
+| `party` | `rustok-party` | `outbox` |
+| `deal` | `rustok-deal` | `outbox` |
+| `billing` | `rustok-billing` | `outbox` |
+| `finance` | `rustok-finance` | `outbox` |
+| `calls` | `rustok-calls` | `outbox` |
+| `calendar` | `rustok-calendar` | `outbox` |
+| `tasks` | `rustok-tasks` | `outbox` |
 
 ### Capability Extensions
 

@@ -4,6 +4,15 @@
 
 `rustok-media` owns media asset uploads, metadata, translations, delivery descriptors, and transport adapters for RusToK.
 
+## Microservice Extraction Architecture & Standalone Service Sovereignty
+
+Like the Product ecosystem, the Media subsystem follows the Fluid Backend Architecture (FBA) microservice extraction model:
+- `rustok-media`: Core media domain module, SeaORM entities, upload/rendition processing, and storage abstraction.
+- `rustok-media-transport`: Typed tonic gRPC framing, protobuf definitions (`media.proto`), bearer auth interceptors, and client/server adapters (`GrpcMediaProvider`, `MediaGrpcService`).
+- `rustok-media-service`: Standalone authenticated gRPC microservice host binary (symmetrically equivalent to `rustok-product-catalog-service`), allowing Media to be deployed and scaled as an independent network service outside `apps/server` (`RUSTOK_MEDIA_PROVIDER=grpc`).
+
+Contributors and AI agents MUST NOT collapse or merge these separated boundaries into `rustok-media`. They exist as separate standalone crates specifically to support independent microservice deployment without direct database or in-process coupling.
+
 ## Responsibilities
 
 - Provide the shared media domain service and SeaORM entities for uploads and localized metadata with normalized locale/text translation inputs.

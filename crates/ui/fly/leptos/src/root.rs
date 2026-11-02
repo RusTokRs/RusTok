@@ -17,6 +17,8 @@
 // modules below were outside the lint the comment claimed.
 #![deny(unsafe_code)]
 
+#[cfg(test)]
+mod contract_tests;
 mod editor;
 mod foundation;
 

@@ -647,6 +647,15 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 /// Drain module-owned workers after broadcasting the shutdown signal. The
 /// timeout mirrors host worker drains; durable recovery state survives a
 /// process exit even if a provider or database call is still blocked.
+#[cfg(any(
+    test,
+    feature = "mod-order",
+    feature = "commerce-marketplace-financial",
+    feature = "mod-payment",
+    feature = "mod-product",
+    feature = "mod-notifications",
+    feature = "mod-forum"
+))]
 async fn await_module_worker_shutdown(
     worker: &'static str,
     join: impl std::future::Future<Output = std::result::Result<(), tokio::task::JoinError>>,

@@ -50,6 +50,9 @@ mod error;
 mod migrations;
 mod service;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use api::ContentRevisionApi;
 pub use config::{ContentRevisionConfig, ContentTypeConfig};
 pub use error::ContentRevisionError;

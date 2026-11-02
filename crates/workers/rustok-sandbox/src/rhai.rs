@@ -43,6 +43,14 @@ pub struct RhaiExecutor {
     extensions: Vec<Arc<dyn RhaiHostExtension>>,
 }
 
+impl std::fmt::Debug for RhaiExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RhaiExecutor")
+            .field("extensions_count", &self.extensions.len())
+            .finish()
+    }
+}
+
 /// Local preparation result for an immutable Rhai artifact. It proves syntax
 /// and workspace resolution only; it never executes guest code or grants a
 /// capability.

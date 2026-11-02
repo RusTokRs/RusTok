@@ -3,6 +3,9 @@ name = "rustok-ui-leptos"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 authors = ["RusToK Team"]
 description = "SSR-first Leptos 0.8 design system adapter for RusToK UI"
 
@@ -38,3 +41,6 @@ web-sys = { version = "0.3", features = [
     "NodeList",
     "Window",
 ] }
+
+[lints]
+workspace = true

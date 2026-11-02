@@ -50,6 +50,15 @@ pub struct SandboxWorkerGrpcService {
     execution_permit: Arc<tokio::sync::Semaphore>,
 }
 
+impl std::fmt::Debug for SandboxWorkerGrpcService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SandboxWorkerGrpcService")
+            .field("executor_kind", &self.executor.kind())
+            .field("available_permits", &self.execution_permit.available_permits())
+            .finish()
+    }
+}
+
 impl SandboxWorkerGrpcService {
     pub fn new(
         executor: Arc<dyn SandboxExecutor>,

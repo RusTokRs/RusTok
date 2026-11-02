@@ -16,6 +16,12 @@ pub struct GrpcStaticDistributionExecutor {
     client: Mutex<StaticDistributionBuildServiceClient<Channel>>,
 }
 
+impl std::fmt::Debug for GrpcStaticDistributionExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrpcStaticDistributionExecutor").finish_non_exhaustive()
+    }
+}
+
 impl GrpcStaticDistributionExecutor {
     fn from_channel(channel: Channel) -> Self {
         Self {

@@ -78,7 +78,7 @@ pub struct CategoryListResponse {
     pub per_page: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
 pub struct ListCategoriesFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
@@ -87,6 +87,16 @@ pub struct ListCategoriesFilter {
     #[serde(default = "default_per_page")]
     #[param(minimum = 1, maximum = 100)]
     pub per_page: u64,
+}
+
+impl Default for ListCategoriesFilter {
+    fn default() -> Self {
+        Self {
+            locale: None,
+            page: default_page(),
+            per_page: default_per_page(),
+        }
+    }
 }
 
 fn default_settings() -> serde_json::Value {

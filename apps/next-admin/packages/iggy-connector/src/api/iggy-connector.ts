@@ -31,7 +31,7 @@ export interface IggyConnectorInput {
   tlsDomain: string | null;
 }
 
-const CONFIGURATION_QUERY = `
+export const CONFIGURATION_QUERY = `
 query IggyConnectorConfiguration {
   iggyConnectorConfiguration {
     activeMode desiredMode bundledAvailable externalAddresses externalUsername
@@ -40,7 +40,7 @@ query IggyConnectorConfiguration {
   }
 }`;
 
-const UPDATE_MUTATION = `
+export const UPDATE_MUTATION = `
 mutation UpdateIggyConnectorConfiguration($input: UpdateIggyConnectorConfigurationInput!) {
   updateIggyConnectorConfiguration(input: $input) {
     desiredMode configured restartRequired

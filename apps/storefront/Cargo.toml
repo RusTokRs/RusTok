@@ -3,7 +3,14 @@ name = "rustok-storefront"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+description = "Canonical Leptos 0.8 e-commerce storefront application host for RusToK"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -218,3 +225,7 @@ ignored = [
   "rustok-calls-storefront",
   "rustok-calendar-storefront",
 ]
+
+[lints]
+workspace = true
+

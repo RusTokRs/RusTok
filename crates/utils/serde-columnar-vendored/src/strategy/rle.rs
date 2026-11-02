@@ -711,7 +711,17 @@ impl<'de, T: DeltaOfDeltable> Iterator for DeltaOfDeltaDecoder<'de, T> {
 #[cfg(test)]
 mod test {
     use super::{DeltaOfDeltaEncoder, DeltaRleEncoder};
-    use rand::Rng;
+
+    struct SimpleRng(u64);
+    impl SimpleRng {
+        fn new(seed: u64) -> Self {
+            Self(seed)
+        }
+        fn gen_bool(&mut self, p: f64) -> bool {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((self.0 >> 33) as f64 / (1u64 << 31) as f64) < p
+        }
+    }
 
     #[test]
     fn test_rle() {
@@ -782,7 +792,7 @@ mod test {
 
     #[test]
     fn test_size() {
-        let mut rng = rand::thread_rng();
+        let mut rng = SimpleRng::new(42);
         for p in 1..10 {
             let mut i = 0;
             let mut n = 0;

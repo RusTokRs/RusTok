@@ -1,6 +1,6 @@
 #[cfg(feature = "server")]
 use rustok_core::{
-    MigrationSource, ModuleKind, ModuleRuntimeExtensions, Result as RusToKResult, RusToKModule,
+    MigrationSource, ModuleRuntimeExtensions, Result as RusToKResult, RusToKModule,
 };
 #[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;

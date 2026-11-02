@@ -88,6 +88,13 @@ graph TD
         OPT_FLEX["flex"]
         OPT_DOCS["docs"]
         OPT_MESSENGER["messenger"]
+        OPT_PARTY["party"]
+        OPT_DEAL["deal"]
+        OPT_BILLING["billing"]
+        OPT_FINANCE["finance"]
+        OPT_CALLS["calls"]
+        OPT_CALENDAR["calendar"]
+        OPT_TASKS["tasks"]
     end
 
     subgraph Extensions["Capability extensions (runtime = \"extension\")"]

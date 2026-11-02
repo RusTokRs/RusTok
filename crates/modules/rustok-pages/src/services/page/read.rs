@@ -29,7 +29,7 @@ use super::helpers::{
 use super::{PageResponseParts, PageService, WorkingBody};
 
 impl PageService {
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -40,7 +40,7 @@ impl PageService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -83,7 +83,7 @@ impl PageService {
         .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_by_slug_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -133,7 +133,7 @@ impl PageService {
         .map(Some)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get_by_slug(
         &self,
         tenant_id: Uuid,
@@ -145,7 +145,7 @@ impl PageService {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn list(
         &self,
         tenant_id: Uuid,

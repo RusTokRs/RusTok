@@ -22,6 +22,18 @@ pub struct ModuleBuildDispatcherConfig {
     pub idle_poll_delay: Duration,
 }
 
+impl std::fmt::Debug for ModuleBuildDispatcherConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleBuildDispatcherConfig")
+            .field("database_url", &"[REDACTED]")
+            .field("worker_endpoint", &self.worker_endpoint)
+            .field("iggy_addresses", &self.iggy.external.addresses)
+            .field("iggy_tls_enabled", &self.iggy.external.tls_enabled)
+            .field("idle_poll_delay", &self.idle_poll_delay)
+            .finish()
+    }
+}
+
 impl ModuleBuildDispatcherConfig {
     const DEFAULT_IDLE_POLL_DELAY_MS: u64 = 1_000;
     const MAX_IDLE_POLL_DELAY_MS: u64 = 60_000;

@@ -108,6 +108,7 @@ fn enrich_runtime_extensions_after_event_start(
     ctx: &ServerRuntimeContext,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Arc<ModuleRuntimeExtensions> {
+    #[allow(unused_mut)]
     let mut enriched = extensions.as_ref().clone();
 
     #[cfg(feature = "mod-pages")]
@@ -725,6 +726,20 @@ pub fn build_module_event_dispatcher(
     dispatcher
 }
 
+#[cfg(feature = "mod-product")]
+fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
+    // Reserve before spawning: concurrent composition must not create two workers.
+    struct ProductMediaReleaseWorkerReservation;
+    if !ctx.settings().runtime.runs_background_workers()
+        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
+    {
+        return;
+    }
+    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1011,22 +1026,8 @@ mod tests {
     }
 }
 
-#[cfg(feature = "mod-product")]
-fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
-    use crate::services::product_media_release_worker::spawn_product_media_release_worker;
-    // Reserve before spawning: concurrent composition must not create two workers.
-    struct ProductMediaReleaseWorkerReservation;
-    if !ctx.settings().runtime.runs_background_workers()
-        || !ctx.shared_insert_if_absent(ProductMediaReleaseWorkerReservation)
-    {
-        return;
-    }
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
-    ctx.shared_insert(spawn_product_media_release_worker(ctx.clone(), stop));
-}
-
 #[cfg(test)]
-mod tests {
+mod lifecycle_tests {
     use super::*;
     use crate::common::settings::RuntimeHostMode;
 

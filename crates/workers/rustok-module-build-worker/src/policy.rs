@@ -28,30 +28,41 @@ const MAX_LOCK_TEXT_BYTES: usize = 512;
 /// Policy denials are terminal facts about immutable source. I/O failures stay
 /// distinct so the delivery path may retry a worker whose mounted source is
 /// temporarily unavailable.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SourcePolicyError {
+    #[error("source dependency policy denied")]
     DependencyPolicyDenied,
+    #[error("build script execution denied by policy")]
     BuildScriptDenied,
+    #[error("native link denied by dependency policy")]
     NativeLinkDenied,
+    #[error("internal source policy failure: {0}")]
     Internal(String),
 }
 
 /// Fail-closed result of an image-owned `cargo metadata --locked --offline`
 /// invocation. No source-controlled executable or Cargo configuration chooses
 /// this command or its cache directory.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CargoMetadataError {
+    #[error("cargo metadata dependency policy denied")]
     DependencyPolicyDenied,
+    #[error("cargo metadata build script denied by policy")]
     BuildScriptDenied,
+    #[error("cargo metadata native link denied by policy")]
     NativeLinkDenied,
+    #[error("cargo metadata resource limit exceeded")]
     ResourceLimit,
+    #[error("cargo metadata network policy denied")]
     NetworkPolicyDenied,
+    #[error("internal cargo metadata failure: {0}")]
     Internal(String),
 }
 
 /// Fixed Cargo tool and verified offline dependency cache used exclusively for
 /// metadata inspection. A scoped materializer may supply a fresh job-local
 /// cache, but Cargo remains forced offline in this worker process.
+#[derive(Debug)]
 pub struct CargoMetadataInspector {
     cargo_path: PathBuf,
     cargo_home: PathBuf,

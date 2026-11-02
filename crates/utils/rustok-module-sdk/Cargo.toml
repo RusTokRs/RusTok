@@ -1,11 +1,12 @@
 [package]
 name = "rustok-module-sdk"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Generated Rust guest bindings for the RusToK module component ABI"
+readme = "README.md"
 repository.workspace = true
+description = "Generated Rust guest bindings for the RusToK module component ABI"
 include = ["src/**", "wit/**", "README.md", "docs/**", "Cargo.toml"]
 
 [package.metadata.docs.rs]

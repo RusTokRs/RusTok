@@ -94,7 +94,7 @@ Module local documentation lives inside the crates themselves at
 | `alloy` | [docs](../../crates/modules/alloy/docs/README.md) | [plan](../../crates/modules/alloy/docs/implementation-plan.md) |
 | `flex` | [docs](../../crates/modules/flex/docs/README.md) | [plan](../../crates/modules/flex/docs/implementation-plan.md) |
 | `rustok-commerce-foundation` | [docs](../../crates/modules/rustok-commerce-foundation/docs/README.md) | [plan](../../crates/modules/rustok-commerce-foundation/docs/implementation-plan.md) |
-| `rustok-seo-render` | [docs](../../crates/modules/rustok-seo/render/docs/README.md) | [plan](../../crates/modules/rustok-seo/render/docs/implementation-plan.md) |
+| `rustok-seo-render` | [docs](../../crates/modules/rustok-seo/storefront/README.md) | [plan](../../crates/modules/rustok-seo/docs/implementation-plan.md) |
 | `rustok-seo-panel` | [docs](../../crates/modules/rustok-seo/panel/docs/README.md) | [plan](../../crates/modules/rustok-seo/panel/docs/implementation-plan.md) |
 
 ## Domain Modules
@@ -188,7 +188,7 @@ Module local documentation lives inside the crates themselves at
 
 - `rustok-groups`: [README](../../crates/modules/rustok-groups/storefront/README.md)
 - `rustok-blog`: [README](../../crates/modules/rustok-blog/storefront/README.md)
-- Comments storefront authoring support: [README](../../crates/modules/rustok-comments-storefront-support/README.md)
+- Comments storefront authoring support: [README](../../crates/modules/rustok-comments/storefront/README.md)
 - `rustok-forum`: [README](../../crates/modules/rustok-forum/storefront/README.md)
 - `rustok-notifications`: [README](../../crates/modules/rustok-notifications/storefront/README.md)
 - `rustok-pages`: [README](../../crates/modules/rustok-pages/storefront/README.md)

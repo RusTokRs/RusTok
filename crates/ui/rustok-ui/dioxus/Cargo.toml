@@ -3,6 +3,9 @@ name = "rustok-ui-dioxus"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 authors = ["RusToK Team"]
 description = "Dioxus 0.7 component adapter for RusToK UI"
 
@@ -14,3 +17,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 dioxus = { workspace = true }
 rustok-ui = { path = ".." }
 serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

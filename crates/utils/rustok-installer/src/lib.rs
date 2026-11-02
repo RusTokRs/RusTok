@@ -99,3 +99,7 @@ pub use seed::{
     SeedUserRequest, execute_seed_profile,
 };
 pub use state::{InstallState, InstallStep, StateTransitionError};
+
+#[cfg(test)]
+mod contract_tests;
+

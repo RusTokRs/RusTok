@@ -53,6 +53,9 @@ URL/proxy policy, and its database. Raw blobs are not returned through the
 cross-module port. SEO and AI-media continue to consume descriptors and typed
 degraded outcomes.
 
+**Sovereignty & Anti-Collapse Invariant:**
+`rustok-media-transport` (gRPC framing, client/server adapters, and protobuf definitions) and the standalone host binary `rustok-media-service` (symmetrically equivalent to `rustok-product-catalog-service`) are strictly separated outside `rustok-media`. AI agents and contributors MUST NOT merge, glue, or collapse them into `rustok-media`.
+
 ### Search boundary
 
 `SearchQueryPort` and `SearchSuggestionPort` remain the only query contracts.

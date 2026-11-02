@@ -2,6 +2,7 @@
 name = "rustok-notifications"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Notification inbox, preference, fan-out, and delivery orchestration owner"
 repository.workspace = true

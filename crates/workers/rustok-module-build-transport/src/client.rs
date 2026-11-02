@@ -16,6 +16,12 @@ pub struct GrpcModuleBuildWorker {
     client: Mutex<ModuleBuildServiceClient<Channel>>,
 }
 
+impl std::fmt::Debug for GrpcModuleBuildWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrpcModuleBuildWorker").finish_non_exhaustive()
+    }
+}
+
 impl GrpcModuleBuildWorker {
     fn from_channel(channel: Channel) -> Self {
         Self {

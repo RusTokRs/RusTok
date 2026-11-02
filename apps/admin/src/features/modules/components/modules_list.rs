@@ -2085,17 +2085,24 @@ pub fn ModulesList(
                         {move || (retention_scope.get() == Some((token.get(), tenant.get()))).then(|| retention_error.get()).flatten().map(|message| view! {
                             <div role="alert" class="text-destructive text-sm">{message}</div>
                         })}
-                        {move || (transition_scope.get() == Some((token.get(), tenant.get()))).then(|| active_transitions.get()).unwrap_or_default().into_iter().map(|checkpoint| {
-                            let refresh = refresh_transition_state;
-                            view! {
-                                <TransitionControlCard
-                                    checkpoint=checkpoint
-                                    retention_holds=if retention_scope.get() == Some((token.get(), tenant.get())) { retention_holds.get() } else { Vec::new() }
-                                    retention_holds_available=retention_scope.get() == Some((token.get(), tenant.get())) && retention_error.get().is_none()
-                                    on_refresh=Callback::new(move |()| refresh())
-                                />
-                            }
-                        }).collect_view()}
+                        {move || {
+                            let transitions = if transition_scope.get() == Some((token.get(), tenant.get())) {
+                                active_transitions.get()
+                            } else {
+                                Vec::new()
+                            };
+                            transitions.into_iter().map(|checkpoint| {
+                                let refresh = refresh_transition_state;
+                                view! {
+                                    <TransitionControlCard
+                                        checkpoint=checkpoint
+                                        retention_holds=if retention_scope.get() == Some((token.get(), tenant.get())) { retention_holds.get() } else { Vec::new() }
+                                        retention_holds_available=retention_scope.get() == Some((token.get(), tenant.get())) && retention_error.get().is_none()
+                                        on_refresh=Callback::new(move |()| refresh())
+                                    />
+                                }
+                            }).collect_view()
+                        }}
 
                         {move || if transition_scope.get() == Some((token.get(), tenant.get())) && retention_scope.get() == Some((token.get(), tenant.get())) && active_transitions.get().is_empty() && !retention_holds.get().is_empty() {
                             Some(view! {

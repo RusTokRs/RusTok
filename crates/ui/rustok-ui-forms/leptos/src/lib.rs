@@ -78,3 +78,7 @@ pub use inputs::{
     FormOtpInput, FormPasswordInput, FormRadioGroup, FormRangeInput, FormSearchInput, FormSelect,
     FormSwitch, FormTextarea,
 };
+
+#[cfg(test)]
+mod contract_tests;
+

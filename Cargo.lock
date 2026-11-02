@@ -14155,6 +14155,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "url",
  "uuid",
  "web-sys",
@@ -16319,6 +16320,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "thiserror 2.0.21",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
  "tonic",
@@ -17641,6 +17643,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-security-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-grid",
+ "rustok-grid-leptos",
+ "rustok-security",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-security-storefront"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos",
+ "leptos-auth",
+ "leptos-ui",
+ "leptos-ui-routing",
+ "leptos_axum",
+ "leptos_router",
+ "rustok-api",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-security",
+ "rustok-ui-core",
+ "rustok-ui-i18n",
+ "rustok-ui-transport",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-seo"
 version = "0.1.0"
 dependencies = [
@@ -18330,6 +18384,7 @@ name = "rustok-ui-auth"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

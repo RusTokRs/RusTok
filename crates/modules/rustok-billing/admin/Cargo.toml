@@ -2,7 +2,10 @@
 name = "rustok-billing-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Admin FFA package for B2B Billing & Settlements"
 
 [package.metadata.docs.rs]

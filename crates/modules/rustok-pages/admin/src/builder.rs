@@ -494,10 +494,9 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                     seed.project_data_text.clone(),
                 )
                 .await
+                    && let Ok(injected) = serde_json::from_str::<Value>(&preview_json_str)
                 {
-                    if let Ok(injected) = serde_json::from_str::<Value>(&preview_json_str) {
-                        project = injected;
-                    }
+                    project = injected;
                 }
             }
             let canonical = canonicalize_builder_project(project)

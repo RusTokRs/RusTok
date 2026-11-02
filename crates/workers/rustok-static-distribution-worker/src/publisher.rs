@@ -25,7 +25,7 @@ use crate::{
 };
 
 mod evidence;
-use evidence::{build_cyclonedx_sbom, build_slsa_provenance};
+pub(crate) use evidence::{build_cyclonedx_sbom, build_slsa_provenance};
 
 const PUBLISHER_CONFIG_CONTRACT: &str = "rustok.static_distribution.publisher_config";
 const ARTIFACT_CONFIG_CONTRACT: &str = "rustok.static_distribution.artifact";
@@ -101,7 +101,23 @@ impl StaticDistributionPublisherConfig {
         Ok(config)
     }
 
-    fn validate(&self) -> Result<(), StaticDistributionPublisherError> {
+    pub(crate) fn validate(&self) -> Result<(), StaticDistributionPublisherError> {
+        self.validate_fields()?;
+        CommandRegistryCredentialBroker::new(
+            self.credential_broker_path.clone(),
+            self.credential_broker_digest.clone(),
+        )
+        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+        CosignArtifactSigner::new(
+            self.cosign_path.clone(),
+            self.cosign_digest.clone(),
+            self.cosign_key_reference.clone(),
+        )
+        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
+        Ok(())
+    }
+
+    pub(crate) fn validate_fields(&self) -> Result<(), StaticDistributionPublisherError> {
         let target = self.publication_target();
         if self.contract != PUBLISHER_CONFIG_CONTRACT
             || target.validate().is_err()
@@ -119,17 +135,6 @@ impl StaticDistributionPublisherConfig {
                 "publisher config fields are invalid".to_string(),
             ));
         }
-        CommandRegistryCredentialBroker::new(
-            self.credential_broker_path.clone(),
-            self.credential_broker_digest.clone(),
-        )
-        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
-        CosignArtifactSigner::new(
-            self.cosign_path.clone(),
-            self.cosign_digest.clone(),
-            self.cosign_key_reference.clone(),
-        )
-        .map_err(StaticDistributionPublisherError::InvalidConfig)?;
         Ok(())
     }
 

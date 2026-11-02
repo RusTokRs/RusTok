@@ -3,7 +3,7 @@
 - Date: 2026-10-17
 - Decision status: Accepted
 - Accepted/amended: 2026-10-18 (explicit implementation request)
-- Implementation status: In progress (source implementation; Rust/database/transport gates open)
+- Implementation status: In progress
 - Owners: rustok-product and rustok-media maintainers
 - Extends: [Forum attachment relations use a Forum-owned CAS set and Media durable reference retention](./2026-09-24-forum-attachment-relations.md)
 - Supersedes: None

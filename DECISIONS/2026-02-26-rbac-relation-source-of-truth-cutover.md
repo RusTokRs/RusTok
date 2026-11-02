@@ -1,7 +1,12 @@
 # RBAC source of truth and decision engine
 
-- Date: 2026-02-26 (amended 2026-10-25)
-- Status: Accepted
+- Date: 2026-02-26
+- Decision status: Accepted
+- Implementation status: Implemented
+- Owners: rustok-rbac
+- Extends: None
+- Supersedes: None
+- Superseded by: None
 
 ## Context
 

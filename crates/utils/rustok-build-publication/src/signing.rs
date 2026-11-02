@@ -19,7 +19,7 @@ pub enum CosignAttestationPredicate {
 }
 
 impl CosignAttestationPredicate {
-    fn cosign_type(self) -> &'static str {
+    pub fn cosign_type(self) -> &'static str {
         match self {
             Self::SlsaProvenance => "https://slsa.dev/provenance/v1",
             Self::CycloneDx => "https://cyclonedx.org/bom",
@@ -31,6 +31,16 @@ pub struct CosignArtifactSigner {
     program: PathBuf,
     program_digest: String,
     key_reference: String,
+}
+
+impl std::fmt::Debug for CosignArtifactSigner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosignArtifactSigner")
+            .field("program", &self.program)
+            .field("program_digest", &self.program_digest)
+            .field("key_reference", &self.key_reference)
+            .finish()
+    }
 }
 
 #[derive(Debug, Error)]

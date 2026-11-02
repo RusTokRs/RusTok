@@ -3,6 +3,9 @@ name = "rustok-installer-persistence"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "SeaORM persistence adapter for RusToK installer state"
 
 [package.metadata.docs.rs]
@@ -15,7 +18,7 @@ async-trait.workspace = true
 rustok-core.workspace = true
 rustok-auth.workspace = true
 rustok-installer.workspace = true
-rustok-migrations = { path = "../rustok-migrations" }
+rustok-migrations.workspace = true
 rustok-modules.workspace = true
 rustok-rbac.workspace = true
 rustok-tenant.workspace = true
@@ -30,3 +33,4 @@ uuid.workspace = true
 [dev-dependencies]
 rustok-test-utils.workspace = true
 tokio.workspace = true
+

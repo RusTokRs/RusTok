@@ -2,8 +2,11 @@
 name = "rustok-marketplace-seller"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Marketplace Family seller identity, lifecycle, and membership owner module"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true

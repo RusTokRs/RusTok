@@ -3,3 +3,6 @@
 mod config;
 
 pub use config::ArtifactNodeControllerConfig;
+
+#[cfg(test)]
+mod contract_tests;

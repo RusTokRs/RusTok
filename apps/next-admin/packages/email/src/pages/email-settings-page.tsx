@@ -6,7 +6,7 @@ interface EmailSettingsPageProps {
   tenantSlug?: string | null;
 }
 
-export default async function EmailSettingsPage({
+export async function EmailSettingsPage({
   token,
   tenantSlug
 }: EmailSettingsPageProps) {
@@ -21,3 +21,5 @@ export default async function EmailSettingsPage({
     />
   );
 }
+
+export default EmailSettingsPage;

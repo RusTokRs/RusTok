@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
 description = "Shared credential and signing boundary for RusToK build publication"
 
 [package.metadata.docs.rs]

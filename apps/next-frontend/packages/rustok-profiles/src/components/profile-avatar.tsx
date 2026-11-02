@@ -9,25 +9,10 @@
  */
 
 import React from 'react';
-import type { ProfilesStorefrontImage, ProfilesStorefrontProfile } from '../types';
+import type { ProfilesStorefrontImage } from '../types';
+import { getProfileInitials } from '../avatar';
 
-export function getProfileInitials(
-  profile: Pick<ProfilesStorefrontProfile, 'displayName' | 'handle'>
-): string {
-  const parts = profile.displayName.trim().split(/\s+/).filter(Boolean);
-  const initials = parts
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-
-  if (initials) {
-    return initials;
-  }
-
-  const handle = profile.handle.trim();
-  return handle ? handle[0].toUpperCase() : '?';
-}
+export { getProfileInitials };
 
 export function ProfileAvatar({
   image,

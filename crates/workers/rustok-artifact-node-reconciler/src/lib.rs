@@ -9,3 +9,6 @@
 mod config;
 
 pub use config::ArtifactNodeReconcilerConfig;
+
+#[cfg(test)]
+mod contract_tests;

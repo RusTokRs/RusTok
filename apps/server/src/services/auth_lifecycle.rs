@@ -610,19 +610,19 @@ impl AuthLifecycleService {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
         let user = Self::find_user_for_password_change_in_tx(&tx, tenant_id, observed_user.id)
             .await?;
-        if let Some(user) = user {
-            if user.password_hash == observed_user.password_hash && !Self::is_login_locked(&user) {
-                let attempts = user.failed_login_count.saturating_add(1);
-                let mut active: users::ActiveModel = user.into();
-                if attempts >= MAX_FAILED_LOGIN_ATTEMPTS {
-                    active.failed_login_count = Set(0);
-                    active.locked_until =
-                        Set(Some((Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)).into()));
-                } else {
-                    active.failed_login_count = Set(attempts);
-                }
-                active.update(&tx).await.map_err(AuthLifecycleError::from)?;
+        if let Some(user) = user.filter(|u| {
+            u.password_hash == observed_user.password_hash && !Self::is_login_locked(u)
+        }) {
+            let attempts = user.failed_login_count.saturating_add(1);
+            let mut active: users::ActiveModel = user.into();
+            if attempts >= MAX_FAILED_LOGIN_ATTEMPTS {
+                active.failed_login_count = Set(0);
+                active.locked_until =
+                    Set(Some((Utc::now() + Duration::minutes(LOGIN_LOCKOUT_MINUTES)).into()));
+            } else {
+                active.failed_login_count = Set(attempts);
             }
+            active.update(&tx).await.map_err(AuthLifecycleError::from)?;
         }
         tx.commit().await.map_err(AuthLifecycleError::from)?;
         Ok(())

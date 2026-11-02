@@ -118,3 +118,7 @@ pub use state::{FormState, FormSubmissionStatus};
 pub use step::FormStepTracker;
 #[doc(inline)]
 pub use validation::{FormValidator, rules as validation_rules};
+
+#[cfg(test)]
+mod contract_tests;
+

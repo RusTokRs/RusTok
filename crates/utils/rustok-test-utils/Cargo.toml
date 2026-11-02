@@ -3,6 +3,9 @@ name = "rustok-test-utils"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
 description = "Test utilities for RusToK - fixtures, mocks, and helpers for testing"
 
 [package.metadata.docs.rs]

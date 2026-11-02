@@ -70,7 +70,7 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
                 </div>
                 <div className='flex items-center justify-between'>
                   <span className='text-muted-foreground'>
-                    {t('health.healthy' as any)}
+                    {t('health.status')}
                   </span>
                   {health.redisHealthy ? (
                     <Badge

@@ -32,7 +32,7 @@ export const DEFAULT_CACHE_SETTINGS: CacheSettings = {
   redis_db: 0
 };
 
-const CACHE_HEALTH_QUERY = `
+export const CACHE_HEALTH_QUERY = `
 query CacheHealth {
   cacheHealth {
     redisConfigured
@@ -43,7 +43,7 @@ query CacheHealth {
 }
 `;
 
-const PLATFORM_SETTINGS_QUERY = `
+export const PLATFORM_SETTINGS_QUERY = `
 query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
@@ -53,7 +53,7 @@ query PlatformSettings($category: String!) {
 }
 `;
 
-const UPDATE_PLATFORM_SETTINGS_MUTATION = `
+export const UPDATE_PLATFORM_SETTINGS_MUTATION = `
 mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
   updatePlatformSettings(input: $input) {
     success
@@ -112,9 +112,12 @@ export async function getCacheSettings(
   );
 
   const schemaVersion = data.platformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
   try {
     const parsed = JSON.parse(
-      data.platformSettings.settings
+      data?.platformSettings?.settings ?? '{}'
     ) as Partial<CacheSettings>;
     return {
       settings: {
@@ -156,9 +159,12 @@ export async function updateCacheSettings(
   );
 
   const schemaVersion = data.updatePlatformSettings.schemaVersion;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
+    throw new TypeError('Platform settings response is missing a valid schema version');
+  }
   try {
     const parsed = JSON.parse(
-      data.updatePlatformSettings.settings
+      data?.updatePlatformSettings?.settings ?? '{}'
     ) as Partial<CacheSettings>;
     return {
       settings: {

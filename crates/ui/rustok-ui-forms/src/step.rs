@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(tracker.current_step_name(), Some("A"));
         assert!(tracker.is_first_step());
         assert!(!tracker.is_last_step());
-        assert_eq!(tracker.progress_percentage(), 0.0);
+        assert!(tracker.progress_percentage().abs() < f64::EPSILON);
 
         assert!(tracker.complete_and_next());
         assert_eq!(tracker.current_step_index(), 1);

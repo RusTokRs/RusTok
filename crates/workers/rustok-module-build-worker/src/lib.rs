@@ -6,6 +6,9 @@ pub mod policy;
 pub mod runner;
 pub mod source;
 
+#[cfg(test)]
+mod contract_tests;
+
 pub use artifact::{
     ArtifactDescriptorError, ArtifactDescriptorFinalizer, BuildEvidenceError,
     BuildEvidenceInspector, ComponentArtifactError, ComponentArtifactInspector,

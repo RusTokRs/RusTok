@@ -43,3 +43,7 @@ pub use ui::{
     ui_busy_key_last_segment_matches, ui_busy_key_matches_action, ui_busy_key_with_id,
     ui_optional_busy_key_with_id, ui_scoped_busy_key,
 };
+
+#[cfg(test)]
+mod contract_tests;
+

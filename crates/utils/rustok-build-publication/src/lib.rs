@@ -15,3 +15,7 @@ pub use publication::{
     publish_signed_oci_artifact,
 };
 pub use signing::{CosignArtifactSigner, CosignAttestationPredicate, CosignSigningError};
+
+#[cfg(test)]
+mod contract_tests;
+

@@ -1,7 +1,14 @@
-import { resolveLocale } from "@/i18n";
-import { getStorefrontTenantSlug } from "@/shared/api/modules";
+import { resolveLocale } from "./site";
 
 import type { SeoPageContext } from "./metadata";
+
+function resolveStorefrontTenantSlug(): string | null {
+  return (
+    process.env.NEXT_PUBLIC_TENANT_SLUG ??
+    process.env.NEXT_PUBLIC_DEFAULT_TENANT_SLUG ??
+    null
+  );
+}
 
 const FALLBACK_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -418,7 +425,7 @@ export async function fetchSeoPageContext(
 ): Promise<SeoTransportResult> {
   const normalizedLocale = resolveLocale(options.locale);
   const route = normalizeRoute(options.route);
-  const tenantSlug = options.tenantSlug ?? getStorefrontTenantSlug();
+  const tenantSlug = options.tenantSlug ?? resolveStorefrontTenantSlug();
   const apiBaseUrl = resolveApiBaseUrl(options.apiBaseUrl);
 
   if (options.preferRest !== false) {

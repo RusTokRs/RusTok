@@ -1,12 +1,19 @@
 # rustok-grid-dioxus / CRATE_API
 
-Dioxus 0.7 DataGrid adapter for RusToK.
+## Purpose
+`rustok-grid-dioxus` is the Dioxus 0.7 adapter for the framework-agnostic `rustok-grid` library. It translates headless grid state, column math, and filtering into accessible Dioxus RSX markup and DOM events, maintaining complete SSR and hydration stability.
 
-## Public surface
+## Architecture & Responsibilities
+- **Dioxus RSX View Adapter**: Renders `<DataGrid>` roots, header rows, filter bars, virtualized data rows, and pagination footers.
+- **Controlled & Uncontrolled State Integration**: Supports both uncontrolled self-managed state and controlled external signal state with `on_*_change` notification callbacks.
+- **WAI-ARIA Accessibility**: Binds grid table semantics, `aria-sort`, `aria-selected`, column header IDs, and keyboard navigation keys.
+- **Pointer & Keyboard Resizing**: Integrates `ColumnResizeHandle` with pointer capture and keyboard step events for accessible column resizing.
+- **Filter Commit Modes**: Supports configurable filter dispatch via `FilterCommitMode::OnCommit` and `FilterCommitMode::Live`.
 
-### Primary Public Components
+## Public Surface
+### Primary Components
 - `DataGrid`: Root Dioxus DataGrid RSX view component managing signals, header, filter row, data rows, and pagination bar.
-- `GridCell`: Data context supplied to custom cell renderers (`column_id`, `item`).
+- `GridCell`: Data context supplied to custom cell renderers (`column_id`, `item`, `row_id`).
 - `GridHeader`: Table header rendering column cells, sort triggers, resize handles, and pinned columns.
 - `GridFilterCell`: Input component for column-level filter values.
 - `GridRow`: Table row component rendering cell items and selection checkboxes.
@@ -14,19 +21,18 @@ Dioxus 0.7 DataGrid adapter for RusToK.
 - `GridToolbar`: Grid action bar for global search, bulk selection actions, and facet toggles.
 - `ColumnResizeHandle`: Pointer and keyboard accessible resize gripper.
 
-### Re-exported Core Types
-- `GridState`: Unified state composite.
-- `GridColumnDef`: Column definition builder.
-- `ColumnWidth` / `ColumnWidths`: Width specifications.
-- `CellValue`: Variant row data model.
-- `ColumnFilters`: Filter state map.
-- `SortState`: Sort specification.
-- `GridPagination`: Pagination state.
-- `RowSelection`: Selection tracker.
+### Types & Enums
+- `FilterCommitMode`: Filter dispatch timing (`OnCommit`, `Live`).
+- Re-exports of all core `rustok-grid` state and model types (`GridState`, `GridColumnDef`, `ColumnWidth`, `ColumnWidths`, `CellValue`, `ColumnFilters`, `SortState`, `GridPagination`, `RowSelection`).
 
-## Invariants
+## Invariants & Guarantees
+- **Hydration & SSR Stability**: Renders identically on server (`dioxus-ssr`) and client without effect-driven hydration mismatches.
+- **Component Parity**: Maintained with 1:1 structural, capability, and accessibility parity against `rustok-grid-leptos`.
+- **Accessible Keyboard Controls**: Column resizing (`ColumnResizeHandle`) and header sorts support arrow keys and standard WAI-ARIA grid keys.
+- **Boundary Isolation**: Acts purely as a visual and DOM event adapter over `rustok-grid` state primitives without holding private domain logic.
 
-1. **Hydration and SSR Stability**: State machine renders identically on server (`dioxus-ssr`) and client without effect-driven hydration mismatches.
-2. **Component Parity**: Full parity with `rustok-grid-leptos` API structure, accessibility bindings, and keyboard behavior.
-3. **Accessible Keyboard Controls**: Column resizing (`ColumnResizeHandle`) and header sorts support arrow keys and standard WAI-ARIA grid keys.
-4. **Boundary Isolation**: Acts purely as a visual and DOM event adapter over `rustok-grid` state primitives.
+## Dependencies & Boundaries
+- **Direct Dependencies**:
+  - `rustok-grid`: Framework-agnostic DataGrid state machine and column math core.
+  - `dioxus`: Dioxus 0.7 reactive primitives, component lifecycle, and RSX macro.
+- **Zero Host Coupling**: Can be used in any Dioxus 0.7 application (web, desktop, or mobile).

@@ -25,9 +25,26 @@ struct ExecutorRegistration {
     executor: Arc<dyn SandboxExecutor>,
 }
 
+impl std::fmt::Debug for ExecutorRegistration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutorRegistration")
+            .field("placement", &self.placement)
+            .field("kind", &self.executor.kind())
+            .finish()
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ExecutorRegistry {
     executors: HashMap<SandboxExecutorKind, ExecutorRegistration>,
+}
+
+impl std::fmt::Debug for ExecutorRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutorRegistry")
+            .field("executors", &self.executors)
+            .finish()
+    }
 }
 
 impl ExecutorRegistry {

@@ -71,7 +71,7 @@ fn last_forwarded_header_value(headers: &HeaderMap, name: &str) -> Option<String
     let values = headers.get_all(name);
     values
         .iter()
-        .last()
+        .next_back()
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.rsplit(',').next())
         .map(str::trim)
@@ -97,7 +97,7 @@ fn last_forwarded_pair(headers: &HeaderMap, key: &str) -> Option<String> {
     let values = headers.get_all(FORWARDED);
     values
         .iter()
-        .last()
+        .next_back()
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.rsplit(',').next())
         .and_then(|entry| parse_forwarded_pair(entry, key))
