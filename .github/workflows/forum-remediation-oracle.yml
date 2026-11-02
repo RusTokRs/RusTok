@@ -156,8 +156,10 @@ jobs:
           print(f'::notice::test binaries finished: {len(results)}; {exits}; result lines: {results[:19]}')
           for line in failed[:20]:
               print('::error::' + line.replace('%', '%25')[:280])
-          if not results:
-              for line in lines[-25:]:
-                  print('::error::tail: ' + line.replace('%', '%25')[:280])
+          errors = [l for l in lines if l.startswith('error') or 'could not compile' in l]
+          for line in errors[:20]:
+              print('::error::' + line.replace('%', '%25')[:280])
+          for line in lines[-15:]:
+              print('::notice::tail: ' + line.replace('%', '%25')[:280])
           PYEOF
           exit $status
