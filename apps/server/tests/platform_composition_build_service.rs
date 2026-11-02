@@ -371,6 +371,29 @@ async fn exact_idempotency_retry_replays_original_build_after_composition_change
     assert!(replay.replayed);
     assert_eq!(replay.snapshot.revision, first.snapshot.revision);
     assert_eq!(replay.build.id, first.build.id);
+    let persisted = BuildEntity::find_by_id(first.build.id)
+        .one(&db)
+        .await
+        .expect("load build")
+        .expect("build exists");
+    assert_eq!(
+        first.build, persisted,
+        "initial response must reflect the committed build"
+    );
+    assert_eq!(
+        replay.build, first.build,
+        "receipt replay must preserve the initial build result"
+    );
+    assert_eq!(first.build.reason.as_deref(), Some("exact retry"));
+    let plan =
+        rustok_build::parse_execution_plan(first.build.id, first.build.modules_delta.as_ref())
+            .expect("receipt retains the queued execution plan");
+    let projected = rustok_build::build_snapshot(&replay.build);
+    assert_eq!(projected.reason.as_deref(), Some("exact retry"));
+    assert_eq!(
+        projected.build_command.as_deref(),
+        Some(plan.cargo_command.as_str())
+    );
     assert_eq!(
         BuildEntity::find()
             .all(&db)

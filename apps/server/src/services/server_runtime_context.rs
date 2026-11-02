@@ -144,6 +144,14 @@ impl ServerRuntimeContext {
         self.shared_values.get::<T>()
     }
 
+    /// Atomically resolve a shared runtime singleton without a check-then-insert race.
+    pub(crate) fn shared_get_or_insert_with<T>(&self, make: impl FnOnce() -> T) -> T
+    where
+        T: 'static + Send + Sync + Clone,
+    {
+        self.shared_values.get_or_insert_with(make)
+    }
+
     pub fn shared_insert<T>(&self, value: T)
     where
         T: 'static + Send + Sync,

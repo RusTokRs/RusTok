@@ -28,7 +28,9 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::extractors::auth::{OptionalCurrentUser, resolve_current_user_from_access_token};
+use crate::extractors::auth::{
+    OptionalCurrentUser, WebSocketAuthLease, resolve_current_user_from_access_token,
+};
 use crate::graphql::AppSchema;
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::middleware::tenant;
@@ -42,11 +44,13 @@ const WS_MAX_MESSAGE_SIZE: usize = 256 * 1024;
 const WS_MAX_FRAME_SIZE: usize = 256 * 1024;
 const WS_INCOMING_QUEUE_CAPACITY: usize = 32;
 const WS_CONNECTION_INIT_TIMEOUT: Duration = Duration::from_secs(10);
+const WS_CONNECTION_INIT_VALIDATION_TIMEOUT: Duration = Duration::from_secs(15);
 const WS_CONNECTION_INIT_TIMEOUT_CLOSE: u16 = 4408;
 const WS_CONNECTION_INIT_TIMEOUT_REASON: &str = "Connection initialisation timeout";
 const WS_MAX_ACTIVE_OPERATIONS: usize = 32;
 const WS_MAX_OPERATION_ID_LEN: usize = 128;
 const WS_AUTH_REVALIDATION_INTERVAL: Duration = Duration::from_secs(30);
+const WS_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const WS_CLOSE_DUPLICATE_OPERATION: u16 = 4409;
 const WS_CLOSE_TOO_MANY_OPERATIONS: u16 = 4429;
 const WS_CLOSE_INVALID_OPERATION: u16 = 4400;
@@ -80,14 +84,6 @@ fn graphql_permissions(mut permissions: Vec<Permission>) -> Vec<Permission> {
     permissions.sort_by_cached_key(ToString::to_string);
     permissions.dedup();
     permissions
-}
-
-#[derive(Clone)]
-struct GraphqlWsAuthLease {
-    tenant_id: uuid::Uuid,
-    access_token: String,
-    initial_scope: RbacRequestScope,
-    expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -293,9 +289,9 @@ async fn handle_graphql_ws(
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) =
         tokio::sync::mpsc::channel::<String>(WS_INCOMING_QUEUE_CAPACITY);
-    let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
+    let auth_lease = Arc::new(OnceLock::<WebSocketAuthLease>::new());
     let connection_init_received = Arc::new(OnceLock::<()>::new());
-    let operations = Arc::new(tokio::sync::Mutex::new(WsOperationTracker::default()));
+    let operations = Arc::new(std::sync::Mutex::new(WsOperationTracker::default()));
     let (close_tx, mut close_rx) = tokio::sync::mpsc::channel::<WsCloseReason>(1);
     let _close_tx_keepalive = close_tx.clone();
 
@@ -308,22 +304,24 @@ async fn handle_graphql_ws(
     let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
-        ReceiverStream::new(incoming_rx),
+        WsAdmissionStream::new(incoming_rx, Arc::clone(&operations), close_tx),
         protocol,
     )
     .on_connection_init(move |payload| {
         let _ = connection_init_received_for_init.set(());
-        build_ws_connection_data(
-            runtime_ctx_for_init.clone(),
-            auth_runtime_for_init.clone(),
-            registry_for_init.clone(),
-            channel_for_init.clone(),
-            Arc::clone(&auth_lease_for_init),
-            payload,
+        bounded_ws_connection_init(
+            build_ws_connection_data(
+                runtime_ctx_for_init.clone(),
+                auth_runtime_for_init.clone(),
+                registry_for_init.clone(),
+                channel_for_init.clone(),
+                Arc::clone(&auth_lease_for_init),
+                payload,
+            ),
+            WS_CONNECTION_INIT_VALIDATION_TIMEOUT,
         )
     });
 
-    let operations_for_incoming = Arc::clone(&operations);
     let forward_incoming = tokio::spawn(async move {
         while let Some(message) = source.next().await {
             let text = match message {
@@ -338,14 +336,6 @@ async fn handle_graphql_ws(
                 Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,
                 Err(_) => break,
             };
-
-            {
-                let mut operations = operations_for_incoming.lock().await;
-                if let Err(reason) = operations.observe_client_message(&text) {
-                    let _ = close_tx.send(reason).await;
-                    break;
-                }
-            }
 
             if incoming_tx.send(text).await.is_err() {
                 break;
@@ -362,9 +352,9 @@ async fn handle_graphql_ws(
 
     loop {
         let scope_before_poll = match auth_lease.get() {
-            Some(lease) => match revalidate_ws_auth(&auth_runtime, lease).await {
+            Some(lease) => match lease.revalidate(&auth_runtime).await {
                 Ok(scope) => Some(scope),
-                Err(()) => {
+                Err(_) => {
                     let _ = close_ws_for_auth_change(&mut sink).await;
                     break;
                 }
@@ -373,15 +363,29 @@ async fn handle_graphql_ws(
         };
 
         let next_message = tokio::select! {
-            _ = &mut connection_init_deadline,
-                if auth_lease.get().is_none() && connection_init_received.get().is_none() =>
+            timed_out = connection_init_timed_out(
+                connection_init_deadline.as_mut(), &connection_init_received,
+            ), if auth_lease.get().is_none() && connection_init_received.get().is_none() =>
             {
+                // The init callback may have started while this select was pending.
+                // Guards are evaluated only when select starts, so check again.
+                if !timed_out {
+                    continue;
+                }
                 let _ = close_ws(
                     &mut sink,
                     WS_CONNECTION_INIT_TIMEOUT_CLOSE,
                     WS_CONNECTION_INIT_TIMEOUT_REASON,
                 )
                 .await;
+                break;
+            }
+            _ = async {
+                if let Some(lease) = auth_lease.get() {
+                    tokio::time::sleep(lease.remaining()).await;
+                }
+            }, if auth_lease.get().is_some() => {
+                let _ = close_ws_for_auth_change(&mut sink).await;
                 break;
             }
             reason = close_rx.recv() => {
@@ -392,7 +396,7 @@ async fn handle_graphql_ws(
             }
             _ = auth_revalidation.tick(), if auth_lease.get().is_some() => {
                 if let Some(lease) = auth_lease.get()
-                    && revalidate_ws_auth(&auth_runtime, lease).await.is_err()
+                    && lease.revalidate(&auth_runtime).await.is_err()
                 {
                     let _ = close_ws_for_auth_change(&mut sink).await;
                     break;
@@ -401,34 +405,44 @@ async fn handle_graphql_ws(
             }
             message = with_rbac_request_scope(scope_before_poll, graphql_stream.next()) => message,
         };
+        // Admission may reject an input while the protocol engine also has a
+        // ready output. Prioritize the close over that output.
+        if let Ok(reason) = close_rx.try_recv() {
+            let _ = close_ws(&mut sink, reason.code, reason.message).await;
+            break;
+        }
         let Some(message) = next_message else {
             break;
         };
 
         if let Some(lease) = auth_lease.get()
-            && revalidate_ws_auth(&auth_runtime, lease).await.is_err()
+            && lease.revalidate(&auth_runtime).await.is_err()
         {
             let _ = close_ws_for_auth_change(&mut sink).await;
             break;
         }
 
-        let result = match message {
+        let message = match message {
             WsMessage::Text(text) => {
-                if let Some(id) = ws_server_complete_id(&text) {
-                    operations.lock().await.release(&id);
+                if !ws_should_forward_text(
+                    protocol,
+                    &text,
+                    &mut operations
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                ) {
+                    continue;
                 }
-                sink.send(Message::Text(text.into())).await
+                Message::Text(text.into())
             }
-            WsMessage::Close(code, reason) => {
-                sink.send(Message::Close(Some(CloseFrame {
-                    code,
-                    reason: reason.into(),
-                })))
-                .await
-            }
+            WsMessage::Close(code, reason) => Message::Close(Some(CloseFrame {
+                code,
+                reason: reason.into(),
+            })),
         };
 
-        if result.is_err() {
+        let remaining = auth_lease.get().map(WebSocketAuthLease::remaining);
+        if !send_ws_message(&mut sink, message, remaining).await {
             break;
         }
     }
@@ -436,43 +450,71 @@ async fn handle_graphql_ws(
     forward_incoming.abort();
 }
 
-async fn revalidate_ws_auth(
-    auth_runtime: &ServerAuthRuntime,
-    lease: &GraphqlWsAuthLease,
-) -> Result<RbacRequestScope, ()> {
-    if chrono::Utc::now() >= lease.expires_at {
-        return Err(());
+async fn bounded_ws_connection_init<F>(
+    validation: F,
+    timeout: Duration,
+) -> async_graphql::Result<Data>
+where
+    F: std::future::Future<Output = async_graphql::Result<Data>>,
+{
+    match tokio::time::timeout(timeout, validation).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!("GraphQL WebSocket initialization validation timed out");
+            Err(async_graphql::Error::new(
+                "Connection initialization timed out",
+            ))
+        }
     }
-    let current_user =
-        resolve_current_user_from_access_token(auth_runtime, lease.tenant_id, &lease.access_token)
-            .await
-            .map_err(|_| ())?;
-    let current_scope = RbacRequestScope::new(
-        current_user.user.tenant_id,
-        current_user.user.id,
-        current_user.permissions,
-        current_user.inferred_role,
-    );
-
-    if current_scope != lease.initial_scope {
-        return Err(());
-    }
-
-    Ok(current_scope)
 }
 
-async fn close_ws<S>(sink: &mut S, code: u16, reason: &'static str) -> Result<(), S::Error>
+async fn connection_init_timed_out(
+    deadline: std::pin::Pin<&mut tokio::time::Sleep>,
+    connection_init_received: &OnceLock<()>,
+) -> bool {
+    deadline.await;
+    connection_init_received.get().is_none()
+}
+
+// Bound writes by both a fixed timeout and the remaining credential lifetime;
+// a blocked peer cannot keep the connection task alive indefinitely.
+async fn send_ws_message<S>(sink: &mut S, message: Message, remaining: Option<Duration>) -> bool
 where
     S: futures_util::Sink<Message> + Unpin,
 {
-    sink.send(Message::Close(Some(CloseFrame {
-        code,
-        reason: reason.into(),
-    })))
+    let timeout = remaining.unwrap_or(WS_SEND_TIMEOUT).min(WS_SEND_TIMEOUT);
+    if timeout.is_zero() {
+        return false;
+    }
+    match tokio::time::timeout(timeout, sink.send(message)).await {
+        Ok(Ok(())) => true,
+        Ok(Err(_)) => {
+            tracing::debug!("GraphQL WebSocket send failed");
+            false
+        }
+        Err(_) => {
+            tracing::debug!("GraphQL WebSocket send timed out");
+            false
+        }
+    }
+}
+
+async fn close_ws<S>(sink: &mut S, code: u16, reason: &'static str) -> bool
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    send_ws_message(
+        sink,
+        Message::Close(Some(CloseFrame {
+            code,
+            reason: reason.into(),
+        })),
+        None,
+    )
     .await
 }
 
-async fn close_ws_for_auth_change<S>(sink: &mut S) -> Result<(), S::Error>
+async fn close_ws_for_auth_change<S>(sink: &mut S) -> bool
 where
     S: futures_util::Sink<Message> + Unpin,
 {
@@ -485,9 +527,69 @@ struct WsCloseReason {
     message: &'static str,
 }
 
+/// Admits operations only as the protocol engine consumes the bounded input
+/// queue. A server completion is handled before the engine is polled again,
+/// so cancellation and id reuse cannot race ahead of that completion.
+struct WsAdmissionStream {
+    incoming: ReceiverStream<String>,
+    operations: Arc<std::sync::Mutex<WsOperationTracker>>,
+    close_tx: tokio::sync::mpsc::Sender<WsCloseReason>,
+    rejected: bool,
+}
+
+impl WsAdmissionStream {
+    fn new(
+        incoming: tokio::sync::mpsc::Receiver<String>,
+        operations: Arc<std::sync::Mutex<WsOperationTracker>>,
+        close_tx: tokio::sync::mpsc::Sender<WsCloseReason>,
+    ) -> Self {
+        Self {
+            incoming: ReceiverStream::new(incoming),
+            operations,
+            close_tx,
+            rejected: false,
+        }
+    }
+}
+
+impl futures_util::Stream for WsAdmissionStream {
+    type Item = String;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        if this.rejected {
+            return std::task::Poll::Pending;
+        }
+        let text = match futures_util::Stream::poll_next(std::pin::Pin::new(&mut this.incoming), cx)
+        {
+            std::task::Poll::Ready(Some(text)) => text,
+            std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
+            std::task::Poll::Pending => return std::task::Poll::Pending,
+        };
+        let result = this
+            .operations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .observe_client_message(&text);
+        if let Err(reason) = result {
+            this.rejected = true;
+            // The one-slot channel has a single sender and this stream stops
+            // after its first rejection. Waking the receiver lets the host send
+            // the intended close frame instead of handing invalid input to the engine.
+            let _ = this.close_tx.try_send(reason);
+            return std::task::Poll::Pending;
+        }
+        std::task::Poll::Ready(Some(text))
+    }
+}
+
 #[derive(Default)]
 struct WsOperationTracker {
     active: std::collections::HashSet<String>,
+    cancelling: std::collections::HashSet<String>,
 }
 
 impl WsOperationTracker {
@@ -496,6 +598,14 @@ impl WsOperationTracker {
             return Ok(());
         };
         let message_type = value.get("type").and_then(serde_json::Value::as_str);
+        if matches!(message_type, Some("stop" | "complete")) {
+            if let Some(id) = value.get("id").and_then(serde_json::Value::as_str)
+                && self.active.contains(id)
+            {
+                self.cancelling.insert(id.to_string());
+            }
+            return Ok(());
+        }
         if !matches!(message_type, Some("start" | "subscribe")) {
             return Ok(());
         }
@@ -523,9 +633,27 @@ impl WsOperationTracker {
         Ok(())
     }
 
-    fn release(&mut self, id: &str) {
+    /// Release the engine's completed operation and report whether the
+    /// completion was caused by a client cancellation.
+    fn release(&mut self, id: &str) -> bool {
         self.active.remove(id);
+        self.cancelling.remove(id)
     }
+}
+
+fn ws_should_forward_text(
+    protocol: WebSocketProtocols,
+    text: &str,
+    operations: &mut WsOperationTracker,
+) -> bool {
+    let Some(id) = ws_server_complete_id(text) else {
+        return true;
+    };
+    let cancelled_by_client = operations.release(&id);
+    // graphql-transport-ws treats client completion as final; echoing the
+    // engine's completion may be attributed to a new operation reusing the id.
+    // The legacy subscriptions-transport-ws protocol expects this response.
+    !(cancelled_by_client && protocol == WebSocketProtocols::GraphQLWS)
 }
 
 fn ws_server_complete_id(text: &str) -> Option<String> {
@@ -544,7 +672,7 @@ async fn build_ws_connection_data(
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     channel: Option<ChannelContext>,
-    auth_lease: Arc<OnceLock<GraphqlWsAuthLease>>,
+    auth_lease: Arc<OnceLock<WebSocketAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
     let payload: GraphqlWsInitPayload = serde_json::from_value(payload)
@@ -586,12 +714,7 @@ async fn build_ws_connection_data(
     let locale = resolve_ws_locale(&runtime_ctx, &tenant_ctx, payload.locale.as_deref()).await?;
 
     auth_lease
-        .set(GraphqlWsAuthLease {
-            tenant_id: tenant_ctx.id,
-            access_token,
-            initial_scope: request_scope.clone(),
-            expires_at: current_user.access_token_expires_at,
-        })
+        .set(WebSocketAuthLease::new(access_token, &current_user))
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
     let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
     let auth_ctx = AuthContext {
@@ -887,6 +1010,470 @@ mod tests {
     }
 
     #[test]
+    fn graphql_ws_client_cancellation_completion_is_protocol_specific() {
+        for (protocol, start, stop, forward_cancelled) in [
+            (
+                WebSocketProtocols::GraphQLWS,
+                "subscribe",
+                "complete",
+                false,
+            ),
+            (
+                WebSocketProtocols::SubscriptionsTransportWS,
+                "start",
+                "stop",
+                true,
+            ),
+        ] {
+            let mut tracker = super::WsOperationTracker::default();
+            let start = serde_json::json!({"type": start, "id": "op"}).to_string();
+            let stop = serde_json::json!({"type": stop, "id": "op"}).to_string();
+            let complete = serde_json::json!({"type": "complete", "id": "op"}).to_string();
+            let next = serde_json::json!({"type": "next", "id": "op"}).to_string();
+            // Stopping an unknown ID must not mark a future operation as cancelled.
+            tracker.observe_client_message(&stop).unwrap();
+            tracker.observe_client_message(&start).unwrap();
+            assert!(super::ws_should_forward_text(protocol, &next, &mut tracker));
+            assert!(super::ws_should_forward_text(
+                protocol,
+                &complete,
+                &mut tracker
+            ));
+            tracker.observe_client_message(&start).unwrap();
+            tracker.observe_client_message(&stop).unwrap();
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &complete, &mut tracker),
+                forward_cancelled
+            );
+            tracker.observe_client_message(&start).unwrap();
+            assert!(tracker.active.contains("op"));
+            assert!(tracker.cancelling.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn graphql_ws_admission_follows_protocol_cancellation_order() {
+        use async_graphql::{EmptyMutation, Object, Schema, Subscription};
+        use futures_util::StreamExt;
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
+
+        struct Query;
+        #[Object]
+        impl Query {
+            async fn ping(&self) -> bool {
+                true
+            }
+        }
+        struct Subscriptions;
+        #[Subscription]
+        impl Subscriptions {
+            async fn pending_value(&self) -> impl futures_util::Stream<Item = i32> {
+                futures_util::stream::pending()
+            }
+        }
+
+        for (protocol, start, stop) in [
+            (WebSocketProtocols::GraphQLWS, "subscribe", "complete"),
+            (
+                WebSocketProtocols::SubscriptionsTransportWS,
+                "start",
+                "stop",
+            ),
+        ] {
+            let schema = Schema::build(Query, EmptyMutation, Subscriptions).finish();
+            let (incoming_tx, incoming_rx) = tokio::sync::mpsc::channel(128);
+            let (close_tx, mut close_rx) = tokio::sync::mpsc::channel(1);
+            let operations = Arc::new(Mutex::new(super::WsOperationTracker::default()));
+            let incoming =
+                super::WsAdmissionStream::new(incoming_rx, Arc::clone(&operations), close_tx);
+            let mut stream = async_graphql::http::WebSocket::new(schema, incoming, protocol);
+            incoming_tx
+                .send(serde_json::json!({"type": "connection_init"}).to_string())
+                .await
+                .unwrap();
+            let ack = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(ack, Some(async_graphql::http::WsMessage::Text(text)) if text.contains("connection_ack"))
+            );
+
+            // All input is queued before the protocol stream is polled. Every
+            // cancellation must complete before the next id is admitted.
+            for index in 0..40 {
+                let id = format!("op-{index}");
+                incoming_tx.send(serde_json::json!({"type": start, "id": id, "payload": {"query": "subscription { pendingValue }"}}).to_string()).await.unwrap();
+                incoming_tx
+                    .send(serde_json::json!({"type": stop, "id": id}).to_string())
+                    .await
+                    .unwrap();
+            }
+            for index in 0..40 {
+                let message = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                    .await
+                    .unwrap();
+                let Some(async_graphql::http::WsMessage::Text(text)) = message else {
+                    panic!("expected completion")
+                };
+                let id = super::ws_server_complete_id(&text).expect("complete message");
+                assert_eq!(id, format!("op-{index}"));
+                assert_eq!(
+                    super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
+                    protocol == WebSocketProtocols::SubscriptionsTransportWS
+                );
+            }
+            assert!(close_rx.try_recv().is_err());
+
+            // A natural completion may race an already queued cancellation.
+            // Once its completion has been observed, a redundant stop must not
+            // prevent another operation from reusing that id.
+            incoming_tx.send(serde_json::json!({"type": start, "id": "natural", "payload": {"query": "{ ping }"}}).to_string()).await.unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(response, Some(async_graphql::http::WsMessage::Text(text)) if !text.contains("complete"))
+            );
+            let completion = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
+                panic!("expected natural completion")
+            };
+            let id = super::ws_server_complete_id(&text).unwrap();
+            assert_eq!(id, "natural");
+            assert!(super::ws_should_forward_text(
+                protocol,
+                &text,
+                &mut operations.lock().unwrap()
+            ));
+            incoming_tx
+                .send(serde_json::json!({"type": stop, "id": "natural"}).to_string())
+                .await
+                .unwrap();
+            incoming_tx.send(serde_json::json!({"type": start, "id": "natural", "payload": {"query": "{ ping }"}}).to_string()).await.unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(response, Some(async_graphql::http::WsMessage::Text(text)) if !text.contains("complete"))
+            );
+            let completion = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
+                panic!("expected reused natural completion")
+            };
+            let id = super::ws_server_complete_id(&text).unwrap();
+            assert_eq!(id, "natural");
+            assert!(super::ws_should_forward_text(
+                protocol,
+                &text,
+                &mut operations.lock().unwrap()
+            ));
+
+            // Cancel between the query's response and its natural completion,
+            // then reuse the id before the engine processes that cancellation.
+            let race_query =
+                serde_json::json!({"type": start, "id": "race", "payload": {"query": "{ ping }"}})
+                    .to_string();
+            incoming_tx.send(race_query.clone()).await.unwrap();
+            let response = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(response, Some(async_graphql::http::WsMessage::Text(text)) if !text.contains("complete"))
+            );
+            incoming_tx
+                .send(serde_json::json!({"type": stop, "id": "race"}).to_string())
+                .await
+                .unwrap();
+            incoming_tx.send(race_query).await.unwrap();
+            let completion = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
+                panic!("expected cancelled completion")
+            };
+            let id = super::ws_server_complete_id(&text).unwrap();
+            assert_eq!(id, "race");
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
+                protocol == WebSocketProtocols::SubscriptionsTransportWS
+            );
+            let response = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(response, Some(async_graphql::http::WsMessage::Text(text)) if !text.contains("complete"))
+            );
+            let completion = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            let Some(async_graphql::http::WsMessage::Text(text)) = completion else {
+                panic!("expected reused race completion")
+            };
+            let id = super::ws_server_complete_id(&text).unwrap();
+            assert_eq!(id, "race");
+            assert!(super::ws_should_forward_text(
+                protocol,
+                &text,
+                &mut operations.lock().unwrap()
+            ));
+
+            let start_message = serde_json::json!({"type": start, "id": "reused", "payload": {"query": "subscription { pendingValue }"}}).to_string();
+            let stop_message = serde_json::json!({"type": stop, "id": "reused"}).to_string();
+            incoming_tx.send(start_message.clone()).await.unwrap();
+            incoming_tx.send(stop_message.clone()).await.unwrap();
+            incoming_tx.send(start_message.clone()).await.unwrap();
+            let old = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap();
+            let Some(async_graphql::http::WsMessage::Text(text)) = old else {
+                panic!("expected old completion")
+            };
+            let id = super::ws_server_complete_id(&text).unwrap();
+            assert_eq!(id, "reused");
+            assert_eq!(
+                super::ws_should_forward_text(protocol, &text, &mut operations.lock().unwrap()),
+                protocol == WebSocketProtocols::SubscriptionsTransportWS
+            );
+            // Polling again admits the replacement subscription; the old
+            // completion has already been accounted for, so it remains active.
+            assert!(
+                tokio::time::timeout(Duration::from_millis(20), stream.next())
+                    .await
+                    .is_err()
+            );
+            assert!(operations.lock().unwrap().active.contains("reused"));
+            assert!(close_rx.try_recv().is_err());
+            incoming_tx.send(start_message).await.unwrap();
+            let reason = tokio::time::timeout(Duration::from_secs(2), async {
+                tokio::select! {
+                    reason = close_rx.recv() => reason.expect("duplicate close reason"),
+                    message = stream.next() => panic!("unexpected protocol output: {message:?}"),
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(reason.code, super::WS_CLOSE_DUPLICATE_OPERATION);
+        }
+    }
+
+    #[tokio::test]
+    async fn graphql_ws_admission_rejects_overflow_before_protocol_consumes_it() {
+        use async_graphql::{EmptyMutation, Object, Schema, Subscription};
+        use futures_util::StreamExt;
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
+
+        struct Query;
+        #[Object]
+        impl Query {
+            async fn ping(&self) -> bool {
+                true
+            }
+        }
+        struct Subscriptions;
+        #[Subscription]
+        impl Subscriptions {
+            async fn pending_value(&self) -> impl futures_util::Stream<Item = i32> {
+                futures_util::stream::pending()
+            }
+        }
+        for (protocol, start) in [
+            (WebSocketProtocols::GraphQLWS, "subscribe"),
+            (WebSocketProtocols::SubscriptionsTransportWS, "start"),
+        ] {
+            let schema = Schema::build(Query, EmptyMutation, Subscriptions).finish();
+            let (incoming_tx, incoming_rx) = tokio::sync::mpsc::channel(64);
+            let (close_tx, mut close_rx) = tokio::sync::mpsc::channel(1);
+            let operations = Arc::new(Mutex::new(super::WsOperationTracker::default()));
+            let incoming =
+                super::WsAdmissionStream::new(incoming_rx, Arc::clone(&operations), close_tx);
+            let mut stream = async_graphql::http::WebSocket::new(schema, incoming, protocol);
+            incoming_tx
+                .send(serde_json::json!({"type": "connection_init"}).to_string())
+                .await
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .unwrap()
+                .expect("ack");
+            for index in 0..=super::WS_MAX_ACTIVE_OPERATIONS {
+                incoming_tx.send(serde_json::json!({"type": start, "id": index.to_string(), "payload": {"query": "subscription { pendingValue }"}}).to_string()).await.unwrap();
+            }
+            let reason = tokio::time::timeout(Duration::from_secs(2), async {
+                tokio::select! {
+                    reason = close_rx.recv() => reason.expect("overflow close reason"),
+                    message = stream.next() => panic!("unexpected protocol output: {message:?}"),
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(reason.code, super::WS_CLOSE_TOO_MANY_OPERATIONS);
+            let tracker = operations.lock().unwrap();
+            assert_eq!(tracker.active.len(), super::WS_MAX_ACTIVE_OPERATIONS);
+            assert!(
+                !tracker
+                    .active
+                    .contains(&super::WS_MAX_ACTIVE_OPERATIONS.to_string())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn graphql_ws_slow_received_init_does_not_timeout_and_can_finish() {
+        use async_graphql::{Data, EmptyMutation, EmptySubscription, Object, Schema};
+        use futures_util::StreamExt;
+        use std::sync::{Arc, OnceLock};
+        use std::time::Duration;
+        use tokio_stream::wrappers::ReceiverStream;
+
+        struct Query;
+        #[Object]
+        impl Query {
+            async fn ping(&self) -> bool {
+                true
+            }
+        }
+
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription).finish();
+        let (incoming_tx, incoming_rx) = tokio::sync::mpsc::channel::<String>(1);
+        incoming_tx
+            .send(r#"{"type":"connection_init"}"#.to_string())
+            .await
+            .unwrap();
+        let received = Arc::new(OnceLock::new());
+        let received_for_init = Arc::clone(&received);
+        let (finish_init, wait_for_init) = tokio::sync::oneshot::channel::<()>();
+        let mut stream = async_graphql::http::WebSocket::new(
+            schema,
+            ReceiverStream::new(incoming_rx),
+            WebSocketProtocols::GraphQLWS,
+        )
+        .on_connection_init(move |_| {
+            received_for_init
+                .set(())
+                .expect("init callback called once");
+            async move {
+                wait_for_init.await.expect("initializer released");
+                Ok(Data::default())
+            }
+        });
+        let mut deadline = Box::pin(tokio::time::sleep(Duration::from_millis(20)));
+        let timed_out = tokio::select! {
+            biased;
+            message = stream.next() => panic!("initializer must remain pending: {message:?}"),
+            timed_out = super::connection_init_timed_out(deadline.as_mut(), &received) => timed_out,
+        };
+        assert!(
+            !timed_out,
+            "an accepted init must not time out during validation"
+        );
+        finish_init.send(()).unwrap();
+        let message = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .expect("initializer must resume after the deadline");
+        assert!(
+            matches!(message, Some(async_graphql::http::WsMessage::Text(text)) if text.contains("connection_ack"))
+        );
+
+        let absent = OnceLock::new();
+        let mut deadline = Box::pin(tokio::time::sleep(Duration::from_millis(1)));
+        assert!(super::connection_init_timed_out(deadline.as_mut(), &absent).await);
+    }
+
+    #[tokio::test]
+    async fn graphql_ws_init_validation_is_bounded() {
+        use std::time::Duration;
+
+        let result = super::bounded_ws_connection_init(
+            std::future::pending::<async_graphql::Result<async_graphql::Data>>(),
+            Duration::from_millis(20),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(error) if error.message == "Connection initialization timed out")
+        );
+        assert!(
+            super::bounded_ws_connection_init(
+                std::future::ready(Ok(async_graphql::Data::default())),
+                Duration::from_secs(1),
+            )
+            .await
+            .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn graphql_ws_send_is_bounded_by_expiry_and_backpressure() {
+        use axum::extract::ws::Message;
+        use std::convert::Infallible;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+        use std::time::Duration;
+
+        struct BlockedSink;
+        impl futures_util::Sink<Message> for BlockedSink {
+            type Error = Infallible;
+
+            fn poll_ready(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Result<(), Self::Error>> {
+                Poll::Pending
+            }
+            fn start_send(self: Pin<&mut Self>, _: Message) -> Result<(), Self::Error> {
+                panic!("a blocked sink cannot accept a message")
+            }
+            fn poll_flush(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Result<(), Self::Error>> {
+                Poll::Pending
+            }
+            fn poll_close(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Result<(), Self::Error>> {
+                Poll::Pending
+            }
+        }
+
+        let mut ready = futures_util::sink::drain::<Message>();
+        assert!(
+            !super::send_ws_message(
+                &mut ready,
+                Message::Text("expired".into()),
+                Some(Duration::ZERO),
+            )
+            .await
+        );
+        assert!(
+            super::send_ws_message(
+                &mut ready,
+                Message::Text("valid".into()),
+                Some(Duration::from_secs(1)),
+            )
+            .await
+        );
+        let mut blocked = BlockedSink;
+        let bounded = tokio::time::timeout(
+            Duration::from_secs(1),
+            super::send_ws_message(
+                &mut blocked,
+                Message::Text("blocked".into()),
+                Some(Duration::from_millis(20)),
+            ),
+        )
+        .await
+        .expect("send must not block indefinitely");
+        assert!(!bounded);
+    }
+
+    #[test]
     fn graphql_ws_connection_init_wait_is_bounded_and_protocol_compliant() {
         assert_eq!(
             WS_CONNECTION_INIT_TIMEOUT,
@@ -1015,7 +1602,7 @@ mod tests {
         let lease_set = source
             .find(
                 "auth_lease
-        .set(GraphqlWsAuthLease",
+        .set(WebSocketAuthLease::new",
             )
             .expect("auth lease publication should exist");
         assert!(

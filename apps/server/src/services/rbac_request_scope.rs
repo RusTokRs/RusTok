@@ -93,17 +93,44 @@ pub fn role_for(tenant_id: &Uuid, actor_id: &Uuid) -> Option<UserRole> {
         .flatten()
 }
 
+/// Reject unscoped fallback for an invalidated matching request snapshot.
+///
+/// Absence of a scope, or a scope for a different tenant/actor, retains the
+/// existing persisted-grant behavior. This is task-local and is not a fence for
+/// in-flight checks, other tasks, or other replicas.
+pub(crate) fn ensure_scope_not_invalidated(
+    tenant_id: &Uuid,
+    actor_id: &Uuid,
+) -> crate::error::Result<()> {
+    let invalidated = CURRENT_RBAC_SCOPE
+        .try_with(|state| {
+            state.scope.matches(tenant_id, actor_id) && !state.valid.load(Ordering::Acquire)
+        })
+        .unwrap_or(false);
+    if invalidated {
+        return Err(crate::error::Error::Cache(
+            "request RBAC snapshot was invalidated".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Invalidate the current task-local RBAC snapshot when the mutation targets its exact actor.
 ///
-/// This closes the multi-mutation request window: after a role or permission change commits, later
-/// authorization fields in the same request must resolve permissions again instead of reusing the
-/// middleware snapshot. Other concurrent requests keep their own isolated task-local state.
+/// Later scope-aware checks in this task fail rather than reuse the snapshot or fall back to
+/// unscoped grants. Other concurrent tasks retain their own task-local state; this is not a
+/// request-wide or transaction-spanning revocation fence.
 pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: &Uuid) {
     let _ = CURRENT_RBAC_SCOPE.try_with(|state| {
         if state.scope.matches(tenant_id, actor_id) {
             state.valid.store(false, Ordering::Release);
         }
     });
+}
+
+/// Invalidate the snapshot in this task for a full-cache invalidation.
+pub(crate) fn invalidate_current_rbac_request_scope_for_all() {
+    let _ = CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release));
 }
 
 #[cfg(test)]
@@ -151,6 +178,7 @@ mod tests {
         .await;
 
         assert!(permissions_for(&tenant_id, &actor_id).is_none());
+        assert!(ensure_scope_not_invalidated(&tenant_id, &actor_id).is_ok());
     }
 
     #[tokio::test]
@@ -169,6 +197,12 @@ mod tests {
             invalidate_current_rbac_request_scope(&tenant_id, &actor_id);
             assert!(permissions_for(&tenant_id, &actor_id).is_none());
             assert!(role_for(&tenant_id, &actor_id).is_none());
+            assert!(matches!(
+                ensure_scope_not_invalidated(&tenant_id, &actor_id),
+                Err(crate::error::Error::Cache(_))
+            ));
+            assert!(ensure_scope_not_invalidated(&tenant_id, &Uuid::new_v4()).is_ok());
+            assert!(ensure_scope_not_invalidated(&Uuid::new_v4(), &actor_id).is_ok());
         })
         .await;
     }
@@ -187,12 +221,35 @@ mod tests {
         with_rbac_request_scope(Some(scope), async move {
             invalidate_current_rbac_request_scope(&tenant_id, &Uuid::new_v4());
             invalidate_current_rbac_request_scope(&Uuid::new_v4(), &actor_id);
+            assert!(ensure_scope_not_invalidated(&tenant_id, &actor_id).is_ok());
             assert_eq!(
                 permissions_for(&tenant_id, &actor_id),
                 Some(vec![Permission::USERS_READ])
             );
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn full_invalidation_expires_only_the_current_task_snapshot() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            actor_id,
+            vec![Permission::USERS_READ],
+            UserRole::Admin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            invalidate_current_rbac_request_scope_for_all();
+            assert!(permissions_for(&tenant_id, &actor_id).is_none());
+            assert!(matches!(
+                ensure_scope_not_invalidated(&tenant_id, &actor_id),
+                Err(crate::error::Error::Cache(_))
+            ));
+        })
+        .await;
+        assert!(ensure_scope_not_invalidated(&tenant_id, &actor_id).is_ok());
     }
 
     #[test]

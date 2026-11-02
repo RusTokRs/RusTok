@@ -224,14 +224,33 @@ async fn initialize_module_work_runtime(
     registry: &ModuleRegistry,
     extensions: &ModuleRuntimeExtensions,
 ) -> Result<()> {
+    use crate::services::app_lifecycle::{ModuleWorkSchedulerInitializationLock, StopHandle};
+
+    // Registration can await, so a check-then-spawn permits competing bootstraps
+    // to leave an untracked scheduler running. Cancellation releases this guard.
+    let initialization = ModuleWorkSchedulerInitializationLock::ensure(ctx);
+    let _guard = initialization.0.lock().await;
     if ctx.shared_contains::<crate::services::app_lifecycle::ModuleWorkSchedulerHandle>() {
         return Ok(());
     }
 
-    let Some(registrations) = extensions.get::<rustok_runtime::ModuleWorkRegistrations>() else {
+    let registrations = extensions.get::<rustok_runtime::ModuleWorkRegistrations>();
+    // Record the same registration decision used to start the scheduler so
+    // readiness distinguishes an empty composition from a missing task.
+    ctx.shared_insert(
+        crate::services::app_lifecycle::ModuleWorkSchedulerRequirement(
+            registrations.is_some_and(|registrations| !registrations.is_empty()),
+        ),
+    );
+    let Some(registrations) = registrations else {
         return Ok(());
     };
     if registrations.is_empty() || !ctx.settings().runtime.runs_background_workers() {
+        return Ok(());
+    }
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
+        tracing::info!("Shutdown requested; skipping module work scheduler startup");
         return Ok(());
     }
 
@@ -277,9 +296,13 @@ async fn initialize_module_work_runtime(
         .register_all(&host, &scheduler)
         .await
         .map_err(|error| Error::Message(format!("module work registration failed: {error}")))?;
-    // StopHandle::ensure uses an atomic insert-if-absent path so concurrent bootstrap
-    // calls cannot create divergent shutdown channels or panic between registration and access.
-    let stop = crate::services::app_lifecycle::StopHandle::ensure(ctx).subscribe();
+    // Registration can overlap shutdown. Do not create a new scheduler after
+    // it completes if shutdown has already been requested.
+    if stop.is_stopping() {
+        tracing::info!("Shutdown requested during module work registration; skipping startup");
+        return Ok(());
+    }
+    let stop = stop.subscribe();
     let handle = tokio::spawn(async move {
         scheduler
             .run_until_stopped(stop, std::time::Duration::from_secs(1))
@@ -569,6 +592,355 @@ mod tests {
     use crate::modules::DeploymentSurfaceContract;
     use rustok_build::DeploymentProfile;
     use rustok_test_utils::db::setup_test_db_with_migrations;
+
+    struct TestModuleWorkRegistration {
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl rustok_runtime::ModuleWorkRegistration for TestModuleWorkRegistration {
+        async fn register(
+            &self,
+            _host: &rustok_runtime::HostRuntimeContext,
+            _scheduler: &rustok_runtime::ModuleWorkScheduler,
+        ) -> std::result::Result<(), rustok_runtime::ModuleWorkError> {
+            if self.fail {
+                return Err(rustok_runtime::ModuleWorkError::Source(
+                    "test failure".into(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn module_work_runtime_records_registration_and_host_mode() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerRequirement, StopHandle,
+        };
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
+        use rustok_runtime::ModuleWorkRegistrations;
+        use std::sync::Arc;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let registry = ModuleRegistry::new();
+        let empty_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let mut extensions = ModuleRuntimeExtensions::default();
+        // Both a missing registration collection and an explicitly empty one
+        // are valid and must not require a scheduler.
+        for explicit_empty in [false, true] {
+            if explicit_empty {
+                extensions.insert(ModuleWorkRegistrations::default());
+            }
+            super::initialize_module_work_runtime(&empty_ctx, &registry, &extensions)
+                .await
+                .unwrap();
+            assert!(
+                !empty_ctx
+                    .shared_get::<ModuleWorkSchedulerRequirement>()
+                    .unwrap()
+                    .0
+            );
+            assert!(!empty_ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        }
+
+        let mut registrations = ModuleWorkRegistrations::default();
+        registrations.register(Arc::new(TestModuleWorkRegistration { fail: false }));
+        extensions.insert(registrations);
+        for mode in [
+            RuntimeHostMode::Full,
+            RuntimeHostMode::Worker,
+            RuntimeHostMode::Api,
+            RuntimeHostMode::AdminSsr,
+            RuntimeHostMode::StorefrontSsr,
+            RuntimeHostMode::RegistryOnly,
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = mode;
+            let local = settings.runtime.runs_background_workers();
+            let ctx = ServerRuntimeContext::new(db.clone(), settings);
+            super::initialize_module_work_runtime(&ctx, &registry, &extensions)
+                .await
+                .unwrap();
+            assert!(
+                ctx.shared_get::<ModuleWorkSchedulerRequirement>()
+                    .unwrap()
+                    .0
+            );
+            assert_eq!(ctx.shared_contains::<ModuleWorkSchedulerHandle>(), local);
+            if local {
+                assert_eq!(
+                    ctx.shared_map::<ModuleWorkSchedulerHandle, _>(
+                        ModuleWorkSchedulerHandle::is_finished,
+                    ),
+                    Some(false)
+                );
+                ctx.shared_get::<StopHandle>().unwrap().stop().await;
+                let handle = ctx.shared_take::<ModuleWorkSchedulerHandle>().unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(2), handle.join())
+                    .await
+                    .expect("scheduler should stop")
+                    .expect("scheduler task should not panic");
+            }
+        }
+
+        let mut failing = ModuleWorkRegistrations::default();
+        failing.register(Arc::new(TestModuleWorkRegistration { fail: true }));
+        extensions.insert(failing);
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        assert!(
+            super::initialize_module_work_runtime(&ctx, &registry, &extensions)
+                .await
+                .is_err()
+        );
+        assert!(
+            ctx.shared_get::<ModuleWorkSchedulerRequirement>()
+                .unwrap()
+                .0
+        );
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+
+        // A failed registration must not leave a permanent reservation.
+        let mut retry = ModuleWorkRegistrations::default();
+        retry.register(Arc::new(TestModuleWorkRegistration { fail: false }));
+        extensions.insert(retry);
+        super::initialize_module_work_runtime(&ctx, &registry, &extensions)
+            .await
+            .unwrap();
+        assert!(ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        ctx.shared_get::<StopHandle>().unwrap().stop().await;
+        let handle = ctx.shared_take::<ModuleWorkSchedulerHandle>().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle.join())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    struct BlockingWorkRegistration {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Semaphore,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl BlockingWorkRegistration {
+        fn new() -> Self {
+            Self {
+                entered: tokio::sync::Notify::new(),
+                release: tokio::sync::Semaphore::new(0),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        async fn wait_until_entered(&self) {
+            tokio::time::timeout(std::time::Duration::from_secs(2), self.entered.notified())
+                .await
+                .expect("registration should start");
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl rustok_runtime::ModuleWorkRegistration for BlockingWorkRegistration {
+        async fn register(
+            &self,
+            _host: &rustok_runtime::HostRuntimeContext,
+            _scheduler: &rustok_runtime::ModuleWorkScheduler,
+        ) -> std::result::Result<(), rustok_runtime::ModuleWorkError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.entered.notify_one();
+            self.release
+                .acquire()
+                .await
+                .expect("test semaphore open")
+                .forget();
+            Ok(())
+        }
+    }
+
+    async fn blocking_module_work_fixture() -> (
+        crate::services::server_runtime_context::ServerRuntimeContext,
+        rustok_core::ModuleRegistry,
+        rustok_core::ModuleRuntimeExtensions,
+        std::sync::Arc<BlockingWorkRegistration>,
+    ) {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            db,
+            RustokSettings::default(),
+        );
+        let registration = std::sync::Arc::new(BlockingWorkRegistration::new());
+        let mut registrations = rustok_runtime::ModuleWorkRegistrations::default();
+        registrations.register(registration.clone());
+        let mut extensions = rustok_core::ModuleRuntimeExtensions::default();
+        extensions.insert(registrations);
+        (
+            ctx,
+            rustok_core::ModuleRegistry::new(),
+            extensions,
+            registration,
+        )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_module_work_initialization_registers_only_once() {
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use std::future::{Future, poll_fn};
+        use std::sync::atomic::Ordering;
+        use std::task::Poll;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        let (first_ctx, first_registry, first_extensions) =
+            (ctx.clone(), registry.clone(), extensions.clone());
+        let first = tokio::spawn(async move {
+            super::initialize_module_work_runtime(&first_ctx, &first_registry, &first_extensions)
+                .await
+        });
+        registration.wait_until_entered().await;
+
+        // Poll a second initialization while the first is inside register_all.
+        // It must wait for the same reservation rather than enter registration.
+        let mut second = Box::pin(super::initialize_module_work_runtime(
+            &ctx,
+            &registry,
+            &extensions,
+        ));
+        let state = poll_fn(|cx| Poll::Ready(second.as_mut().poll(cx))).await;
+        assert!(state.is_pending());
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 1);
+        registration.release.add_permits(1);
+        first.await.unwrap().unwrap();
+        second.await.unwrap();
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            ctx.shared_map::<ModuleWorkSchedulerHandle, _>(ModuleWorkSchedulerHandle::is_finished),
+            Some(false),
+        );
+        StopHandle::ensure(&ctx).stop().await;
+        let handle = ctx.shared_take::<ModuleWorkSchedulerHandle>().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle.join())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelled_module_work_initialization_can_be_retried() {
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use std::sync::atomic::Ordering;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        let (first_ctx, first_registry, first_extensions) =
+            (ctx.clone(), registry.clone(), extensions.clone());
+        let first = tokio::spawn(async move {
+            super::initialize_module_work_runtime(&first_ctx, &first_registry, &first_extensions)
+                .await
+        });
+        registration.wait_until_entered().await;
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        registration.release.add_permits(1);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            super::initialize_module_work_runtime(&ctx, &registry, &extensions),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 2);
+        StopHandle::ensure(&ctx).stop().await;
+        let handle = ctx.shared_take::<ModuleWorkSchedulerHandle>().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle.join())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn shutdown_during_module_work_registration_prevents_startup() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, StopHandle, shutdown_runtime_workers,
+        };
+        use std::future::{Future, poll_fn};
+        use std::sync::atomic::Ordering;
+        use std::task::Poll;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        let (first_ctx, first_registry, first_extensions) =
+            (ctx.clone(), registry.clone(), extensions.clone());
+        let first = tokio::spawn(async move {
+            super::initialize_module_work_runtime(&first_ctx, &first_registry, &first_extensions)
+                .await
+        });
+        registration.wait_until_entered().await;
+        let mut shutdown = Box::pin(shutdown_runtime_workers(&ctx));
+        // First poll publishes stop and yields. The second must still be waiting
+        // for the initializer's lock rather than completing the drain early.
+        let state = poll_fn(|cx| Poll::Ready(shutdown.as_mut().poll(cx))).await;
+        assert!(state.is_pending());
+        assert!(StopHandle::ensure(&ctx).is_stopping());
+        let state = poll_fn(|cx| Poll::Ready(shutdown.as_mut().poll(cx))).await;
+        assert!(state.is_pending());
+        registration.release.add_permits(1);
+        first.await.unwrap().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), shutdown)
+            .await
+            .unwrap();
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+
+        // A later bootstrap cannot restart the scheduler in this stopped context.
+        super::initialize_module_work_runtime(&ctx, &registry, &extensions)
+            .await
+            .unwrap();
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 1);
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
+
+    #[tokio::test]
+    async fn shutdown_deadline_bounds_wait_for_stuck_module_work_registration() {
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, shutdown_runtime_workers};
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        let (first_ctx, first_registry, first_extensions) =
+            (ctx.clone(), registry.clone(), extensions.clone());
+        let first = tokio::spawn(async move {
+            super::initialize_module_work_runtime(&first_ctx, &first_registry, &first_extensions)
+                .await
+        });
+        registration.wait_until_entered().await;
+        // The callback is held longer than the host drain deadline.
+        tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            shutdown_runtime_workers(&ctx),
+        )
+        .await
+        .expect("stuck registration must not block shutdown indefinitely");
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+        registration.release.add_permits(1);
+        first.await.unwrap().unwrap();
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
+
+    #[tokio::test]
+    async fn shutdown_before_module_work_initialization_prevents_startup() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerRequirement, shutdown_runtime_workers,
+        };
+        use std::sync::atomic::Ordering;
+
+        let (ctx, registry, extensions, registration) = blocking_module_work_fixture().await;
+        shutdown_runtime_workers(&ctx).await;
+        super::initialize_module_work_runtime(&ctx, &registry, &extensions)
+            .await
+            .unwrap();
+        assert_eq!(registration.calls.load(Ordering::SeqCst), 0);
+        assert!(
+            ctx.shared_get::<ModuleWorkSchedulerRequirement>()
+                .unwrap()
+                .0
+        );
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
 
     #[test]
     fn compiled_surface_contract_rejects_missing_embedded_admin() {

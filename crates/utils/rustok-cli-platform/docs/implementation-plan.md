@@ -9,6 +9,8 @@ The crate remains independent of `apps/server`, the runner, and domain crates.
 `core rebuild` is the platform-owned maintenance command: it
 uses `rustok-build` directly and accepts `--build-id` plus the shared
 `--dry-run` option.
+A dry run previews a queued plan without claiming it or publishing a build
+event; it does not reserve the build against a concurrent executor.
 
 ## FFA/FBA boundary
 

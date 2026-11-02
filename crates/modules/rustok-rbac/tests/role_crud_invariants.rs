@@ -52,6 +52,13 @@ async fn setup_test_db() -> DatabaseConnection {
             role_id TEXT NOT NULL,
             UNIQUE(user_id, role_id)
         );
+        CREATE TABLE rbac_invalidation_state (
+            scope TEXT PRIMARY KEY NOT NULL,
+            generation BIGINT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO rbac_invalidation_state (scope, generation, updated_at)
+        VALUES ('permissions', 0, CURRENT_TIMESTAMP);
         CREATE TABLE rbac_artifact_role_permissions (
             id TEXT PRIMARY KEY,
             tenant_id TEXT NOT NULL,
@@ -658,4 +665,303 @@ async fn test_disabled_module_permissions_are_annotated_and_not_grantable() {
         "Actual error: {}",
         res.errors[0].message
     );
+}
+
+struct RecordingGrantNotifier {
+    db: DatabaseConnection,
+    observations: std::sync::Arc<std::sync::Mutex<Vec<(u64, u64)>>>,
+    fail: bool,
+}
+
+#[async_trait::async_trait]
+impl rustok_rbac::graphql::RbacGraphqlRoleWriter for RecordingGrantNotifier {
+    async fn replace_user_role(
+        &self,
+        _: &Uuid,
+        _: &Uuid,
+        _: &Uuid,
+        _: rustok_core::UserRole,
+    ) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        unreachable!("test only edits role grants")
+    }
+
+    async fn role_permissions_committed(
+        &self,
+        _: &Uuid,
+        _: &Uuid,
+        generation: u64,
+    ) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        let persisted = rustok_rbac::read_permission_invalidation_generation(&self.db)
+            .await
+            .map_err(|error| {
+                rustok_rbac::graphql::RbacGraphqlRoleWriteError::Internal(error.to_string())
+            })?;
+        self.observations
+            .lock()
+            .unwrap()
+            .push((generation, persisted));
+        if self.fail {
+            Err(rustok_rbac::graphql::RbacGraphqlRoleWriteError::Internal(
+                "simulated failure".to_string(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+async fn create_editor(schema: &Schema<RbacQuery, RbacMutation, EmptySubscription>) {
+    let response = schema.execute(r#"
+        mutation { createRole(input: {name: "Editor", slug: "editor", permissions: ["posts:read"]}) { success } }
+    "#).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+}
+
+async fn editor_state(db: &DatabaseConnection) -> (String, Vec<String>) {
+    let row = db
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DbBackend::Sqlite,
+            "SELECT name FROM roles WHERE slug = 'editor'".to_string(),
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let name: String = row.try_get("", "name").unwrap();
+    let rows = db.query_all_raw(sea_orm::Statement::from_string(
+        sea_orm::DbBackend::Sqlite,
+        "SELECT p.resource, p.action FROM roles r JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id WHERE r.slug = 'editor' ORDER BY p.resource, p.action".to_string(),
+    )).await.unwrap();
+    let grants = rows
+        .into_iter()
+        .map(|row| {
+            format!(
+                "{}:{}",
+                row.try_get::<String>("", "resource").unwrap(),
+                row.try_get::<String>("", "action").unwrap()
+            )
+        })
+        .collect();
+    (name, grants)
+}
+
+#[tokio::test]
+async fn role_grant_edit_commits_generation_and_notifies_after_commit() {
+    use rustok_rbac::graphql::RbacGraphqlRoleWriterHandle;
+    let db = setup_test_db().await;
+    let schema = test_schema(
+        db.clone(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+    );
+    create_editor(&schema).await;
+    let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = RbacGraphqlRoleWriterHandle(std::sync::Arc::new(RecordingGrantNotifier {
+        db: db.clone(),
+        observations: observations.clone(),
+        fail: false,
+    }));
+
+    let metadata = schema
+        .execute(
+            async_graphql::Request::new(
+                "mutation { updateRole(input: {slug: \"editor\", name: \"Senior\"}) { success } }",
+            )
+            .data(writer.clone()),
+        )
+        .await;
+    assert!(metadata.errors.is_empty(), "{:?}", metadata.errors);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(observations.lock().unwrap().is_empty());
+
+    let update = "mutation { updateRole(input: {slug: \"editor\", name: \"Changed\", permissions: [\"posts:update\"]}) { success } }";
+    let response = schema
+        .execute(async_graphql::Request::new(update).data(writer.clone()))
+        .await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    assert_eq!(
+        editor_state(&db).await,
+        ("Changed".to_string(), vec!["posts:update".to_string()])
+    );
+    assert_eq!(*observations.lock().unwrap(), vec![(1, 1)]);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        1
+    );
+
+    // The current implementation rewrites even an identical set; this must
+    // still publish a fresh generation rather than pretending it was a no-op.
+    let repeated = schema
+        .execute(async_graphql::Request::new(update).data(writer))
+        .await;
+    assert!(repeated.errors.is_empty(), "{:?}", repeated.errors);
+    assert_eq!(*observations.lock().unwrap(), vec![(1, 1), (2, 2)]);
+}
+
+#[tokio::test]
+async fn role_grant_edit_rolls_back_if_generation_is_missing_or_exhausted() {
+    for exhausted in [false, true] {
+        let db = setup_test_db().await;
+        let schema = test_schema(
+            db.clone(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+        );
+        create_editor(&schema).await;
+        let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let writer = rustok_rbac::graphql::RbacGraphqlRoleWriterHandle(std::sync::Arc::new(
+            RecordingGrantNotifier {
+                db: db.clone(),
+                observations: observations.clone(),
+                fail: false,
+            },
+        ));
+        if exhausted {
+            db.execute_unprepared("UPDATE rbac_invalidation_state SET generation = 9223372036854775807 WHERE scope = 'permissions'").await.unwrap();
+        } else {
+            db.execute_unprepared(
+                "DELETE FROM rbac_invalidation_state WHERE scope = 'permissions'",
+            )
+            .await
+            .unwrap();
+        }
+        let response = schema.execute(async_graphql::Request::new("mutation { updateRole(input: {slug: \"editor\", name: \"Must Roll Back\", permissions: [\"posts:update\"]}) { success } }").data(writer)).await;
+        assert!(!response.errors.is_empty());
+        assert!(observations.lock().unwrap().is_empty());
+        assert!(
+            !response.errors[0]
+                .message
+                .contains("rbac_invalidation_state")
+        );
+        assert_eq!(
+            editor_state(&db).await,
+            ("Editor".to_string(), vec!["posts:read".to_string()])
+        );
+        if exhausted {
+            assert_eq!(
+                rustok_rbac::read_permission_invalidation_generation(&db)
+                    .await
+                    .unwrap(),
+                i64::MAX as u64
+            );
+        } else {
+            assert!(
+                rustok_rbac::read_permission_invalidation_generation(&db)
+                    .await
+                    .is_err()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn role_grant_write_failure_rolls_back_without_advancing_generation() {
+    let db = setup_test_db().await;
+    let schema = test_schema(
+        db.clone(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+    );
+    create_editor(&schema).await;
+    db.execute_unprepared(
+        "CREATE TRIGGER reject_role_grant BEFORE INSERT ON role_permissions BEGIN SELECT RAISE(ABORT, 'simulated grant write failure'); END",
+    ).await.unwrap();
+    let response = schema.execute(
+        "mutation { updateRole(input: {slug: \"editor\", name: \"Must Roll Back\", permissions: [\"posts:update\"]}) { success } }",
+    ).await;
+    assert!(!response.errors.is_empty());
+    assert!(
+        !response.errors[0]
+            .message
+            .contains("simulated grant write failure")
+    );
+    assert_eq!(
+        editor_state(&db).await,
+        ("Editor".to_string(), vec!["posts:read".to_string()])
+    );
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn role_grant_edit_callback_failure_does_not_undo_commit() {
+    use rustok_rbac::graphql::RbacGraphqlRoleWriterHandle;
+    let db = setup_test_db().await;
+    let schema = test_schema(
+        db.clone(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        vec![Permission::SETTINGS_MANAGE, Permission::POSTS_MANAGE],
+    );
+    create_editor(&schema).await;
+    let observations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = RbacGraphqlRoleWriterHandle(std::sync::Arc::new(RecordingGrantNotifier {
+        db: db.clone(),
+        observations: observations.clone(),
+        fail: true,
+    }));
+    let response = schema.execute(async_graphql::Request::new(
+        "mutation { updateRole(input: {slug: \"editor\", permissions: [\"posts:update\"]}) { success } }",
+    ).data(writer)).await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    assert_eq!(
+        response.data.into_json().unwrap()["updateRole"]["success"],
+        true
+    );
+    assert_eq!(*observations.lock().unwrap(), vec![(1, 1), (1, 1)]);
+    assert_eq!(editor_state(&db).await.1, vec!["posts:update".to_string()]);
+    assert_eq!(
+        rustok_rbac::read_permission_invalidation_generation(&db)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+struct LegacyInvalidationNotifier(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+#[async_trait::async_trait]
+impl rustok_rbac::graphql::RbacGraphqlRoleWriter for LegacyInvalidationNotifier {
+    async fn replace_user_role(
+        &self,
+        _: &Uuid,
+        _: &Uuid,
+        _: &Uuid,
+        _: rustok_core::UserRole,
+    ) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        Ok(())
+    }
+    async fn invalidate_role_users(
+        &self,
+        _: &Uuid,
+        _: &Uuid,
+    ) -> Result<(), rustok_rbac::graphql::RbacGraphqlRoleWriteError> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn generation_callback_defaults_to_legacy_membership_hook() {
+    use rustok_rbac::graphql::RbacGraphqlRoleWriter;
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let writer = LegacyInvalidationNotifier(calls.clone());
+    writer
+        .role_permissions_committed(&Uuid::new_v4(), &Uuid::new_v4(), 42)
+        .await
+        .unwrap();
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

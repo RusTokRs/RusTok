@@ -73,3 +73,18 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 
 - [App docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)
+
+## Known Limitations / Pending Implementation
+
+- Platform build history and the process-local build-event hub are exposed to
+  tenant module-read permissions. The host-global versus tenant visibility
+  contract is unresolved and must be decided before changing all transports and
+  clients. Build progress is not a durable cross-process stream.
+- Installer HTTP jobs can remain `running` after a process crash or failure to
+  persist the terminal result; recovery requires fencing and reconciliation of
+  actual effects, not automatic expiry.
+- OAuth manifest synchronization is not one atomic, serialized tenant-wide
+  reconciliation; built-in auth email delivery remains best effort.
+- Module-settings change notification uses a non-transactional event forwarder;
+  notification delivery can be lost. Search lag and worker readiness do not
+  cover all failure modes. See the server implementation plan for these gates.

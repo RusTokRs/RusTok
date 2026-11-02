@@ -724,3 +724,109 @@ async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_fai
         )
     );
 }
+
+#[tokio::test]
+async fn websocket_lease_revalidates_live_authority_and_fails_closed() {
+    use super::{WebSocketAuthLease, WebSocketAuthLeaseError};
+    use sea_orm::EntityTrait;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("WS authority", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .expect("create tenant");
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Manager,
+    )
+    .await
+    .expect("assign manager role");
+    let token = encode_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Manager,
+        session_id,
+    )
+    .expect("encode token");
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .expect("resolve initial authority");
+    let lease = WebSocketAuthLease::new(token, &current);
+    assert!(lease.revalidate(&runtime).await.is_ok());
+
+    let mut expired = lease.clone();
+    expired.expires_at = Utc::now() - Duration::seconds(1);
+    assert_eq!(
+        expired.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::Expired)
+    );
+
+    rustok_rbac::RbacRoleAssignmentDbWriter::replace_role_on(
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Customer,
+    )
+    .await
+    .expect("replace role");
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::AuthorityChanged)
+    );
+
+    sessions::Entity::delete_by_id(session_id)
+        .exec(&db)
+        .await
+        .expect("delete session");
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::ResolutionFailed)
+    );
+}
+
+#[tokio::test]
+async fn websocket_lease_rejects_a_disabled_tenant() {
+    use super::{WebSocketAuthLease, WebSocketAuthLeaseError};
+    use sea_orm::IntoActiveModel;
+
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new("WS tenant", &format!("tenant-{}", Uuid::new_v4()))
+        .insert(&db)
+        .await
+        .expect("create tenant");
+    let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+        &db,
+        tenant.id,
+        user.id,
+        UserRole::Customer,
+    )
+    .await
+    .expect("assign customer role");
+    let token = encode_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        session_id,
+    )
+    .expect("encode token");
+    let current = resolve_current_user_from_access_token(&runtime, tenant.id, &token)
+        .await
+        .expect("resolve initial authority");
+    let lease = WebSocketAuthLease::new(token, &current);
+    assert!(lease.revalidate(&runtime).await.is_ok());
+    let mut update = tenant.into_active_model();
+    update.is_active = Set(false);
+    update.update(&db).await.expect("disable tenant");
+    assert_eq!(
+        lease.revalidate(&runtime).await,
+        Err(WebSocketAuthLeaseError::ResolutionFailed)
+    );
+}

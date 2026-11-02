@@ -31,6 +31,13 @@ impl Drop for AbortOnDropWatchdogTask {
 pub struct RbacInvalidationGenerationWatchdogHandle(Arc<AbortOnDropWatchdogTask>);
 
 impl RbacInvalidationGenerationWatchdogHandle {
+    #[cfg(test)]
+    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
+        let task = tokio::spawn(std::future::pending());
+        let tasks = vec![task.abort_handle()];
+        (Self::new(task), tasks)
+    }
+
     fn new(task: JoinHandle<()>) -> Self {
         Self(Arc::new(AbortOnDropWatchdogTask { task }))
     }
@@ -39,9 +46,9 @@ impl RbacInvalidationGenerationWatchdogHandle {
         !self.0.task.is_finished()
     }
 
-    #[cfg(test)]
-    fn abort(&self) {
+    pub(crate) fn abort(&self) {
         self.0.task.abort();
+        rbac_invalidation_metrics::set_watchdog_running(false);
     }
 }
 

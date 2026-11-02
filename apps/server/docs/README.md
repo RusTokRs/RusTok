@@ -16,12 +16,22 @@ in `rustok-rbac`. Server adapters own authenticated request evidence, user-field
 persistence, caller transactions, outbox composition, cache invalidation after
 commit, and process telemetry.
 
-Request permission snapshots enter the owner `PermissionResolver` through an
-authenticated host adapter; HTTP `RequestContext` likewise consumes only the upstream trusted tenant/locale/channel/auth extensions and does not reconstruct those dimensions. single, any, and all decisions run the owner tenant
-policy engine and preserve the request permission ceiling. Persisted role-user
-membership queries delegate to `load_role_user_ids_on`. The server contains no
-independent permission-membership decision branch or role-membership SQL query
-in `RbacService`. These request snapshots do not establish a revocation fence.
+Request permission snapshots enter through an authenticated host adapter; HTTP
+`RequestContext` consumes upstream trusted tenant/locale/channel/auth extensions.
+A valid request snapshot preserves its permission ceiling, and persisted role-user
+membership queries delegate to `load_role_user_ids_on`. Request-scope fast paths
+also evaluate membership in `RbacService`. After invalidation of a matching
+snapshot, its scope-aware permission and role fallbacks now report unavailable
+authority instead of using unscoped grants; retry needs a freshly authenticated
+scope, and a mutation may already have committed. The GraphQL schema also checks
+the matching task-local scope before starting a normal root resolver; nested
+fields of an already admitted root are not rechecked. GraphQL role-grant
+replacements advance the durable generation transactionally; after commit the
+server role writer clears the local cache, invalidates the calling snapshot, and
+attempts all-users fan-out. These checks do not cover every immutable
+`AuthContext` consumer, other tasks or replicas, and do not establish a
+transaction-spanning revocation fence. See the
+[request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
 
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
@@ -202,7 +212,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
   application context.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
-- `host::run` owns YAML configuration loading, database connection and graceful shutdown for the pure Axum executable; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition.
+- `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. Shutdown is not cancellation- or panic-safe and does not yet drain every detached task; lower-level bootstrap callers own their shutdown.
 - Auth host configuration parsing is fail-closed: malformed `settings.auth` input is returned as a startup error rather than being silently replaced by default auth overrides.
 - GraphQL/native password-reset requests keep the public result generic when token/email/URL preparation fails after an account lookup, so mail/configuration failures cannot disclose account existence.
 - Auth lifecycle provider internal failures are logged on the server and exposed to lifecycle transports only as the stable `Auth lifecycle operation failed` error; database/provider diagnostic strings are not sent through GraphQL error messages.
@@ -219,10 +229,17 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   `BuildService` directly. The
   control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
   only wraps canonical facts and does not map SeaORM models.
-- The build progress WebSocket at `GET /ws/builds` is authenticated at the
-  transport boundary and admits only request contexts with
-  `modules:read`, `modules:list`, or `modules:manage`; this matches the
-  GraphQL `build_progress` subscription authorization contract.
+- The build progress WebSocket at `GET /ws/builds` authenticates its bearer
+  credential and admits only effective `modules:read`, `modules:list`, or
+  `modules:manage` permissions. It uses the same live authority lease as the
+  GraphQL WebSocket: it checks the tenant, token, session, and effective RBAC
+  snapshot on a 30-second interval and before forwarding an event; authority
+  lookup is bounded to five seconds and the remaining token lifetime. An expiry
+  deadline starts a bounded close; outbound writes are bounded by five seconds
+  and the remaining token lifetime.
+  Authority changes attempt a 4401 close; a blocked or disconnected peer may see
+  only a dropped connection. The hub is an
+  atomic process-local singleton, not a distributed or durable event stream.
 - Effective-module-policy snapshots carry the owner-produced tenant and exact
   policy-revision cache identity. Server consumers must match both fields;
   TTL or process generation alone never makes a cached authorization decision
@@ -236,7 +253,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
-- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, caps active operation ids (32, 128-byte ids; duplicate 4409, overflow 4429, invalid id 4400), releases slots on server `complete`, revalidates the connection lease every 30 seconds and at the signed access-token expiry, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
+- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, caps active operation ids (32, 128-byte ids; duplicate 4409, overflow 4429, invalid id 4400), and admits operations as the protocol engine consumes the queue rather than when the socket receives them. Slots are released on engine `complete` before the engine consumes subsequent input. The `graphql-transport-ws` surface suppresses the engine's completion response to an active client cancellation, while legacy `graphql-ws` forwards it. Messages already in flight before cancellation can still arrive; immediate ID reuse cannot disambiguate those messages. It revalidates the connection lease on a 30-second interval and before delivery, schedules closure at signed access-token expiry, bounds outbound writes to five seconds or the remaining token lifetime, fails closed with a 10-second `connection_init` wait (close code 4408) and a separate 15-second initialization-validation limit, and never logs the raw tenant slug from the initialization payload. Operation cancellation/id-reuse behavior depends on the locked GraphQL protocol engine's completion ordering and must be exercised by the protocol regression tests when upgrading it.
 
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting.
@@ -382,6 +399,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
 - For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
 - Registry release, publication, and validation adapters obtain their shared transactional governance aggregate through `ModuleControlPlane`; host authorization and artifact storage remain adapter concerns. A live validation enqueue requires a non-nil UUID `Idempotency-Key`: the server derives one platform-scoped `ModuleCommandContext`, and the owner replays only an exact request revision, actor, trace, correlation, principal, and rejected-retry-policy match from its durable enqueue receipt. A remote validation claim returns the owner-issued `requestRevision`; a terminal runner request must return it as `expectedRequestRevision`, so claim and terminal stage transitions use the same request CAS. Heartbeats only renew an already-issued operational lease.
 - For control-plane composition install/uninstall/upgrade server uses a single orchestration path: full manifest validation, CAS-update `platform_state`, owner-operation receipt completion, and build enqueue are executed atomically within one transaction boundary. The authenticated transport supplies a positive expected revision and UUID idempotency key; the owner admits the immutable command before manifest adaptation and exact retries replay the original build. `platform_state.manifest_hash` is the SHA-256 canonical composition snapshot digest, `manifest_ref` is always `platform_state:<revision>`, and the build's `manifest_hash` is the distinct immutable execution-request identity over the snapshot, composition digest, deployment profile, and execution plan.
+  New build receipts preserve the persisted execution plan and reason. Exact replay of receipts written before this fix preserves the original, possibly incomplete response; query the build read surface for current state.
 - Server module-control-plane adapters construct `ModuleControlPlane` once per scoped operation and obtain composition, lifecycle, installation, or sandbox-policy services only through that owner facade. Static tenant enablement, normalized settings, post-hook retry, and compensation share the owner-owned `module_static_tenant_lifecycle` aggregate: its inherited/default revision is zero, each authenticated command carries a tenant-matched `ModuleCommandContext` plus its aggregate revision, and its execution claim fails concurrent work closed. The lifecycle journal and settings receipt retain actor, trace, correlation, and idempotency evidence. Lifecycle replay matches tenant, idempotency key, module, requested state, expected revision, and recovery source when present; settings receipts also bind the actor. Trace and correlation remain observability evidence. The settings writer completes its exact owner-operation receipt in the same transaction as settings persistence, revision advancement, and claim release; direct model writes, server-built lifecycle state, and native settings write fallbacks are not production contracts. GraphQL derives tenant, actor, trace, and `modules:manage`, requires a non-nil UUID plus non-negative expected revision, and returns the owner-issued next revision. `module_operations` retains hook lifecycle status as `validated/running/committed_hook_pending/committed/committed_hook_failed/failed/orphaned`; only pre-validation failures create no journal row. GraphQL maps canonical lifecycle/recovery facts to transport errors (`BAD_USER_INPUT`, `IDEMPOTENCY_CONFLICT`, `REVISION_CONFLICT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`), with idempotency conflict non-retryable; admin/SSR clients must not remap these fields.
 - GraphQL `tenantModules` reads bounded explicit override/settings snapshots
   through the module owner facade. It does not query `tenant_modules` or infer
@@ -471,6 +489,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   client.
 - The repo-side surface for the current `module-system` is considered closed for the purpose of Admin-driven install/uninstall/upgrade/deploy with progress feedback; ongoing work is limited to targeted verification and docs/audit, while rollout of `modules.rustok.dev` remains an external infra task.
 - GraphQL control-plane surface publishes a read/write contract for lifecycle recovery: `moduleOperationRecoveryPlan` and `failedModuleOperationRecoveryPlans` return tenant-scoped retryability/action metadata from `module_operations`, and `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` perform recovery only via `ModuleLifecycleService` and `modules:manage`, without raw SQL/bypass rollback.
+  Recovery plan projection validates both UUIDs and fails the affected field with a sanitized `INTERNAL_ERROR` rather than panicking or silently omitting a malformed plan. The retry command runs before its response is projected: a projection error does not imply that the command was rolled back. Clients should inspect the operation and use the existing idempotency/revision contract when recovering from an ambiguous response.
 - GraphQL auth surface `me.permissions` returns a request-scoped RBAC snapshot for headless/mobile UI gating; this does not replace server-side permission enforcement on mutations/queries.
 - `PUT` and `DELETE /api/rbac/artifact-permissions/roles/{role_id}` are the
   host transport for RBAC-owned explicit artifact permission grants. They

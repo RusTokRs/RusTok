@@ -9,20 +9,32 @@
 
 use axum::{
     extract::{
-        Extension, State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use axum_extra::{
+    TypedHeader,
+    headers::{Authorization, authorization::Bearer},
+};
 use serde::Serialize;
+use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
+use crate::extractors::auth::{CurrentUser, WebSocketAuthLease};
 use crate::services::build_event_hub::build_event_hub_from_context;
-use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_api::{AuthContextExtension, Permission, has_any_effective_permission};
+use crate::services::server_runtime_context::ServerAuthRuntime;
+use rustok_api::{Permission, has_any_effective_permission};
 use rustok_build::BuildEvent;
+
+const BUILD_WS_AUTH_REVALIDATION_INTERVAL: Duration = Duration::from_secs(30);
+const BUILD_WS_MAX_MESSAGE_SIZE: usize = 64 * 1024;
+const BUILD_WS_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const BUILD_WS_AUTH_CHANGED_CODE: u16 = 4401;
+const BUILD_WS_AUTH_CHANGED_REASON: &str = "authorization changed; reconnect required";
 
 const BUILD_STREAM_PERMISSIONS: [Permission; 3] = [
     Permission::MODULES_READ,
@@ -125,14 +137,11 @@ impl From<BuildEvent> for WsBuildMessage {
 /// Upgrade an HTTP request to a WebSocket connection that streams build events.
 pub async fn ws_builds(
     ws: WebSocketUpgrade,
-    State(ctx): State<ServerRuntimeContext>,
-    auth: Option<Extension<AuthContextExtension>>,
+    State(auth_runtime): State<ServerAuthRuntime>,
+    current_user: CurrentUser,
+    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    let Some(Extension(auth)) = auth else {
-        return (StatusCode::UNAUTHORIZED, "Authentication required").into_response();
-    };
-
-    if !has_any_effective_permission(&auth.0.permissions, &BUILD_STREAM_PERMISSIONS) {
+    if !has_any_effective_permission(&current_user.permissions, &BUILD_STREAM_PERMISSIONS) {
         return (
             StatusCode::FORBIDDEN,
             "Permission denied: modules:read required",
@@ -140,28 +149,81 @@ pub async fn ws_builds(
             .into_response();
     }
 
-    let hub = build_event_hub_from_context(&ctx);
-    ws.on_upgrade(move |socket| handle_socket(socket, hub))
+    let lease = WebSocketAuthLease::new(bearer.token().to_owned(), &current_user);
+    let hub = build_event_hub_from_context(auth_runtime.runtime_ctx());
+    ws.max_message_size(BUILD_WS_MAX_MESSAGE_SIZE)
+        .max_frame_size(BUILD_WS_MAX_MESSAGE_SIZE)
+        .on_upgrade(move |socket| handle_socket(socket, hub, auth_runtime, lease))
         .into_response()
+}
+
+async fn check_build_ws_auth(auth_runtime: &ServerAuthRuntime, lease: &WebSocketAuthLease) -> bool {
+    lease.revalidate(auth_runtime).await.is_ok()
+}
+
+async fn close_for_auth_change(socket: &mut WebSocket) {
+    let result = tokio::time::timeout(
+        BUILD_WS_SEND_TIMEOUT,
+        socket.send(Message::Close(Some(CloseFrame {
+            code: BUILD_WS_AUTH_CHANGED_CODE,
+            reason: BUILD_WS_AUTH_CHANGED_REASON.into(),
+        }))),
+    )
+    .await;
+    if !matches!(result, Ok(Ok(()))) {
+        tracing::debug!("Failed to send build WebSocket authorization close");
+    }
 }
 
 async fn handle_socket(
     mut socket: WebSocket,
     hub: std::sync::Arc<crate::services::build_event_hub::BuildEventHub>,
+    auth_runtime: ServerAuthRuntime,
+    lease: WebSocketAuthLease,
 ) {
     let mut rx = hub.subscribe();
+    let mut revalidation = tokio::time::interval(BUILD_WS_AUTH_REVALIDATION_INTERVAL);
+    revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let expiry = tokio::time::sleep(lease.remaining());
+    tokio::pin!(expiry);
 
     loop {
         tokio::select! {
-            // Forward build events to the client
+            _ = &mut expiry => {
+                close_for_auth_change(&mut socket).await;
+                break;
+            }
+            _ = revalidation.tick() => {
+                if !check_build_ws_auth(&auth_runtime, &lease).await {
+                    close_for_auth_change(&mut socket).await;
+                    break;
+                }
+            }
             result = rx.recv() => {
                 match result {
                     Ok(event) => {
+                        // Revalidate the authority before sending each event,
+                        // even when the periodic validation tick has not fired yet.
+                        if !check_build_ws_auth(&auth_runtime, &lease).await {
+                            close_for_auth_change(&mut socket).await;
+                            break;
+                        }
                         let msg: WsBuildMessage = event.into();
                         match serde_json::to_string(&msg) {
                             Ok(json) => {
-                                if socket.send(Message::Text(json.into())).await.is_err() {
-                                    break; // client disconnected
+                                let send_timeout = BUILD_WS_SEND_TIMEOUT.min(lease.remaining());
+                                if send_timeout.is_zero() {
+                                    close_for_auth_change(&mut socket).await;
+                                    break;
+                                }
+                                if !matches!(
+                                    tokio::time::timeout(
+                                        send_timeout,
+                                        socket.send(Message::Text(json.into())),
+                                    ).await,
+                                    Ok(Ok(()))
+                                ) {
+                                    break;
                                 }
                             }
                             Err(e) => {
@@ -175,13 +237,24 @@ async fn handle_socket(
                     Err(RecvError::Closed) => break,
                 }
             }
-
-            // Detect client-side close / ping-pong
             msg = socket.recv() => {
                 match msg {
-                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
                     Some(Ok(Message::Ping(payload))) => {
-                        let _ = socket.send(Message::Pong(payload)).await;
+                        let send_timeout = BUILD_WS_SEND_TIMEOUT.min(lease.remaining());
+                        if send_timeout.is_zero() {
+                            close_for_auth_change(&mut socket).await;
+                            break;
+                        }
+                        if !matches!(
+                            tokio::time::timeout(
+                                send_timeout,
+                                socket.send(Message::Pong(payload)),
+                            ).await,
+                            Ok(Ok(()))
+                        ) {
+                            break;
+                        }
                     }
                     _ => {}
                 }
@@ -215,6 +288,138 @@ mod tests {
             &[Permission::MODULES_MANAGE],
             &BUILD_STREAM_PERMISSIONS,
         ));
+    }
+
+    #[tokio::test]
+    async fn build_socket_closes_before_forwarding_after_session_revocation() {
+        use super::*;
+        use crate::auth::{AuthSettingsOverrides, encode_access_token};
+        use crate::common::settings::RustokSettings;
+        use crate::context::{TenantContext, TenantContextExtension};
+        use crate::models::{sessions, tenants, users};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use chrono::{Duration as ChronoDuration, Utc};
+        use rustok_core::UserRole;
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        async fn frame(stream: &mut tokio::net::TcpStream) -> (u8, Vec<u8>) {
+            let mut header = [0u8; 2];
+            stream.read_exact(&mut header).await.expect("frame header");
+            let len = match header[1] & 0x7f {
+                126 => stream.read_u16().await.expect("frame length") as usize,
+                127 => stream.read_u64().await.expect("frame length") as usize,
+                value => value as usize,
+            };
+            assert_eq!(header[1] & 0x80, 0, "server frames must not be masked");
+            assert!(len <= 4096, "test frame exceeds bound");
+            let mut payload = vec![0; len];
+            stream
+                .read_exact(&mut payload)
+                .await
+                .expect("frame payload");
+            (header[0] & 0x0f, payload)
+        }
+
+        let db = rustok_test_utils::db::setup_test_db_with_migrations::<
+            rustok_migrations::SqliteTestMigrator,
+        >()
+        .await;
+        let tenant = tenants::ActiveModel::new("WS build test", &format!("ws-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "ws-build@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        rustok_rbac::RbacRoleAssignmentDbWriter::assign_role_on(
+            &db,
+            tenant.id,
+            user.id,
+            UserRole::Admin,
+        )
+        .await
+        .expect("admin role");
+        let mut session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "hash".to_string(),
+            Utc::now() + ChronoDuration::hours(1),
+            None,
+            None,
+        );
+        let session_id = Uuid::new_v4();
+        session.id = Set(session_id);
+        session.insert(&db).await.expect("session");
+        let config = rustok_auth::build_auth_config(
+            "test-secret-key-for-auth-extractor-32b".to_string(),
+            900,
+            AuthSettingsOverrides::default(),
+        )
+        .expect("auth configuration");
+        let token = encode_access_token(&config, user.id, tenant.id, UserRole::Admin, session_id)
+            .expect("access token");
+        let runtime = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let hub = build_event_hub_from_context(&runtime);
+        let auth_runtime = ServerAuthRuntime::new(runtime, config);
+        let tenant_ctx = TenantContext {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            domain: tenant.domain,
+            settings: tenant.settings,
+            default_locale: tenant.default_locale,
+            is_active: true,
+        };
+        let app = router()
+            .layer(axum::Extension(TenantContextExtension(tenant_ctx)))
+            .with_state(auth_runtime);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("server address");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
+        let request = format!(
+            "GET /ws/builds HTTP/1.1\r\nHost: {addr}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nAuthorization: Bearer {token}\r\n\r\n"
+        );
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .expect("upgrade request");
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let mut response = Vec::new();
+            while !response.ends_with(b"\r\n\r\n") {
+                response.push(stream.read_u8().await.expect("upgrade response"));
+                assert!(response.len() < 16 * 1024);
+            }
+            assert!(response.starts_with(b"HTTP/1.1 101"));
+            while hub.receiver_count() == 0 {
+                tokio::task::yield_now().await;
+            }
+            hub.publish(BuildEvent::BuildCompleted {
+                build_id: Uuid::new_v4(),
+            });
+            assert_eq!(frame(&mut stream).await.0, 0x01);
+            sessions::Entity::delete_by_id(session_id)
+                .exec(&db)
+                .await
+                .expect("revoke session");
+            hub.publish(BuildEvent::BuildCompleted {
+                build_id: Uuid::new_v4(),
+            });
+            let (opcode, payload) = frame(&mut stream).await;
+            assert_eq!(opcode, 0x08, "revoked session must not receive the event");
+            assert!(payload.len() >= 2);
+            assert_eq!(
+                u16::from_be_bytes([payload[0], payload[1]]),
+                BUILD_WS_AUTH_CHANGED_CODE
+            );
+        })
+        .await
+        .expect("WebSocket test deadline");
+        server.abort();
     }
 
     #[test]

@@ -11,6 +11,9 @@
   - `RbacPermissionDecisionProvider` wrapping authoritative `PermissionResolver`.
 - **Permission Resolution & Evaluation**:
   - `PermissionResolver`, `RuntimePermissionResolver`, `RelationPermissionStore`
+  - `PermissionCacheResolutionError<E>` distinguishes store failure from exhausted
+    cache-generation validation. Cached resolution returns this typed error;
+    runtime adapters must map it without creating an authorization decision.
   - `evaluate_all_permissions`, `evaluate_any_permission`, `evaluate_single_permission`
   - `authorize_all_permissions`, `authorize_any_permission`, `authorize_permission`
   - `check_all_permissions`, `check_any_permission`, `check_permission`
@@ -19,6 +22,9 @@
   - `RbacRoleAssignmentDbWriter`, `RbacRoleMutationPlan`, `replace_persisted_user_role_on`
   - `read_permission_invalidation_generation`, `reserve_permission_invalidation_generation`
   - `plan_system_role_repair`, `apply_system_role_repair_in_transaction`
+  - `RbacGraphqlRoleWriter::role_permissions_committed` receives the committed
+    grant-change generation; its default delegates to `invalidate_role_users`.
+    Hosts remain responsible for cache integration and generation reconciliation.
 
 ## Domain Collaborations
 - **Core Platform Contract**: Reuses canonical `Permission` vocabulary from `rustok-api` and `rustok-core`.
@@ -57,7 +63,9 @@
 - Permission invalidation: Role mutations must advance the permission invalidation generation before commit.
 
 ### Events / Outbox Side Effects
-- Role assignments and mutations emit lifecycle events through the canonical outbox before commit.
+- Where composed, role assignment lifecycle events use the canonical outbox.
+  GraphQL role-grant replacements commit the durable invalidation generation but
+  do not currently emit a transactional outbox event for the grant edit.
 
 ### Errors / Failure Codes
 - `RbacError`, `RbacRoleMutationPolicyError`, `RbacSystemRoleRepairError`, `RbacPresentationStoreError` represent typed failure contracts.

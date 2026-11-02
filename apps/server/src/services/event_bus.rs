@@ -50,6 +50,13 @@ impl Drop for AbortOnDropEventForwarderTask {
 pub struct EventForwarderHandle(Arc<AbortOnDropEventForwarderTask>);
 
 impl EventForwarderHandle {
+    #[cfg(test)]
+    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
+        let task = tokio::spawn(std::future::pending());
+        let tasks = vec![task.abort_handle()];
+        (Self::new(task), tasks)
+    }
+
     fn new(task: JoinHandle<()>) -> Self {
         Self(Arc::new(AbortOnDropEventForwarderTask::new(task)))
     }
@@ -58,7 +65,7 @@ impl EventForwarderHandle {
         self.0.is_running()
     }
 
-    fn abort(&self) {
+    pub(crate) fn abort(&self) {
         self.0.abort();
     }
 }

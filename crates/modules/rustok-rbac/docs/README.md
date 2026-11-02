@@ -40,6 +40,11 @@ documentation for this module must live inside the crate, not spread across
   exact assignments, and continuity facts. `ensure_user_authority_continuity_on`
   also covers status-only changes and removal; `replace_persisted_user_role_on`
   applies ordinary replacement before host commit and cache delivery;
+- bounded cached permission resolution returns a typed unavailable error when
+  generation-aware publication rejects every attempt; it never returns a rejected
+  read or turns contention into a successful empty grant set. The default cache
+  adapter methods do not provide generation guarantees. See the
+  [cache-resolution decision](../../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md);
 - `apps/server` owns only authenticated adapters, cache integration, transport
   extractors and observability; it no longer implements the persisted relation reader;
 - GraphQL role query/mutation/types live in `rustok-rbac`; `apps/server` only composes roots and passes adapter role records to runtime persistence;
@@ -131,6 +136,13 @@ Release gates for changes in the module:
 - verify compatibility with server adapters;
 - synchronize `README.md`, local docs and verification docs;
 - do not reintroduce rollout-mode or a second live authorization path.
+
+The GraphQL `update_role` grant-edit path reserves the durable generation in the
+same transaction as a supplied grant replacement. The server then clears its local
+cache and attempts all-users fan-out; the generation watchdog can reconcile missed
+notifications. This is eventual recovery rather than an outbox or synchronous
+revocation fence; the added regression tests have not yet run. See the
+[decision](../../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
 
 ## Durable invalidation alert policy
 

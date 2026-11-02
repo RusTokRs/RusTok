@@ -4,6 +4,16 @@
 
 `rustok-rbac` owns the tenant-scoped policy authorization runtime for RusToK.
 
+## Cache consistency failures
+
+Generation-aware cached permission resolution discards relation reads rejected by
+every bounded publication attempt and returns the typed
+`PermissionCacheResolutionError::Invalidated`. It does not grant those permissions
+or fabricate an empty successful grant set. Store errors remain distinct. This
+local check is not a commit-time revocation fence, a multi-query database snapshot,
+or a guarantee for cache adapters using default non-generation-aware methods.
+See [the cache-consistency decision](../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
 ## Responsibilities
 
 - Provide `RbacModule` metadata for the runtime registry.
@@ -75,6 +85,16 @@
   it is not assigned to any user. Role mutations validate every grant
   against the canonical permission vocabulary and the actor's own
   effective authority ceiling.
+
+## GraphQL role-grant invalidation
+
+A supplied `updateRole.permissions` replacement advances the durable RBAC
+permission generation in the same transaction as the grant write. After commit,
+a generation-aware host callback supports cache clearing and best-effort fan-out;
+its compatibility default calls the legacy membership callback. Recovery is
+eventual and depends on healthy generation watchers; this is not a transactional
+outbox or a revocation fence. Metadata-only edits do not advance the generation.
+[ADR](../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
 
 ## Module availability (dormant grants)
 

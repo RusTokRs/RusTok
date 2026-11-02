@@ -22,19 +22,19 @@ impl BuildEventHub {
         self.sender.subscribe()
     }
 
+    #[cfg(test)]
+    pub(crate) fn receiver_count(&self) -> usize {
+        self.sender.receiver_count()
+    }
+
     pub fn publish(&self, event: BuildEvent) {
         let _ = self.sender.send(event);
     }
 }
 
 pub fn build_event_hub_from_context(ctx: &ServerRuntimeContext) -> Arc<BuildEventHub> {
-    if let Some(shared) = ctx.shared_get::<SharedBuildEventHub>() {
-        return shared.0.clone();
-    }
-
-    let hub = Arc::new(BuildEventHub::new(128));
-    ctx.shared_insert(SharedBuildEventHub(hub.clone()));
-    hub
+    ctx.shared_get_or_insert_with(|| SharedBuildEventHub(Arc::new(BuildEventHub::new(128))))
+        .0
 }
 
 pub struct BuildEventHubPublisher {
@@ -73,5 +73,34 @@ impl BuildEventPublisher for CompositeBuildEventPublisher {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::settings::RustokSettings;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_initialization_returns_the_same_hub() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let barrier = Arc::new(tokio::sync::Barrier::new(16));
+        let mut tasks = Vec::new();
+        for _ in 0..16 {
+            let ctx = ctx.clone();
+            let barrier = barrier.clone();
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                build_event_hub_from_context(&ctx)
+            }));
+        }
+        let mut hubs = Vec::new();
+        for task in tasks {
+            hubs.push(task.await.expect("initialization task"));
+        }
+        assert!(hubs.iter().all(|hub| Arc::ptr_eq(hub, &hubs[0])));
     }
 }
