@@ -113,6 +113,32 @@ jobs:
               emitted += 1
           print(f'::notice::clippy warnings: {lints}')
           "
+      - name: probe depth-limit targets
+        run: |
+          set +e
+          export CARGO_BUILD_JOBS=2 CARGO_TERM_COLOR=never
+          cargo test -p rustok-forum --no-run --test subscriptions --test graphql_stats_and_vote_tenant_scope_sqlite --message-format=json 2>/dev/null | python3 -c "
+          import json, sys
+          shown = 0
+          for raw in sys.stdin:
+              try:
+                  payload = json.loads(raw)
+              except Exception:
+                  continue
+              if payload.get('reason') != 'compiler-message':
+                  continue
+              msg = payload.get('message') or {}
+              if msg.get('level') != 'error':
+                  continue
+              rendered = (msg.get('rendered') or msg.get('message') or '')
+              for line in rendered.splitlines()[:45]:
+                  safe = line.replace('%', '%25')
+                  print(f'::error::{safe[:280]}')
+                  shown += 1
+                  if shown > 45:
+                      break
+          print('::notice::probe done')
+          "
       - name: remediation-relevant forum test suites
         run: |
           set +e
