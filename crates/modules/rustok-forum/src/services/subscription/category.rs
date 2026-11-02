@@ -64,7 +64,7 @@ impl SubscriptionService {
         let existing = self
             .find_category_subscription(tenant_id, category_id, user_id)
             .await?;
-        if let Some(existing) = existing {
+        if existing.is_some() {
             self.update_category_subscription(
                 tenant_id,
                 category_id,

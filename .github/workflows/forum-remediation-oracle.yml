@@ -34,12 +34,19 @@ jobs:
       - name: rustfmt (forum crate only)
         run: |
           cargo fmt -p rustok-forum -- --check > /tmp/fmt.out 2>&1 || true
-          grep '^Diff in ' /tmp/fmt.out | head -50 | while IFS= read -r line; do
-            file=$(printf '%s' "$line" | sed -E 's/^Diff in ([^ ]+) at line.*/\1/')
-            lineno=$(printf '%s' "$line" | sed -E 's/^Diff in [^ ]+ at line ([0-9]+):.*/\1/')
-            echo "::warning file=$file,line=$lineno::rustfmt diff in $file"
-          done
-          echo "::notice::fmt diff files: $(grep -c '^Diff in ' /tmp/fmt.out || true)"
+          python3 - << 'PYEOF'
+          import os, re
+          seen = []
+          for raw in open('/tmp/fmt.out'):
+              m = re.match(r'Diff in (.+?) at line (\d+):', raw)
+              if m:
+                  path = os.path.relpath(m.group(1), os.environ['GITHUB_WORKSPACE'])
+                  if path not in [p for p, _ in seen]:
+                      seen.append((path, m.group(2)))
+          for path, line in seen[:45]:
+              print(f'::warning file={path},line={line}::rustfmt diff starts here')
+          print(f'::notice::fmt diff files: {len(seen)}')
+          PYEOF
       - name: cargo check (forum crate, all targets)
         run: |
           set -o pipefail

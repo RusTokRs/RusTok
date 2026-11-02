@@ -67,7 +67,7 @@ impl SubscriptionService {
         let existing = self
             .find_topic_subscription(tenant_id, topic_id, user_id)
             .await?;
-        if let Some(existing) = existing {
+        if existing.is_some() {
             self.write_topic_subscription(
                 tenant_id,
                 topic_id,
