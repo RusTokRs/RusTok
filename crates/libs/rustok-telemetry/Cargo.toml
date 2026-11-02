@@ -2,7 +2,10 @@
 name = "rustok-telemetry"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description.workspace = true
 
 [package.metadata.docs.rs]
