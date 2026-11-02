@@ -82,14 +82,45 @@ jobs:
           print(f'::notice::cargo check errors: {errors}')
           sys.exit(1 if errors else 0)
           "
-      - name: remediation + subscription sqlite tests
+      - name: clippy (forum crate)
         run: |
           set -o pipefail
-          cargo test -p rustok-forum --test logic_review_remediation_sqlite --test subscription_levels_sqlite -- --nocapture 2>&1 | tee /tmp/tests.out | python3 -c "
+          cargo clippy -p rustok-forum --all-targets --message-format=json 2>/dev/null | python3 -c "
+          import json, sys
+          emitted = 0
+          lints = 0
+          for raw in sys.stdin:
+              try:
+                  payload = json.loads(raw)
+              except Exception:
+                  continue
+              if payload.get('reason') != 'compiler-message':
+                  continue
+              msg = payload.get('message') or {}
+              if msg.get('level') != 'warning':
+                  continue
+              lints += 1
+              if emitted >= 50:
+                  continue
+              spans = msg.get('spans') or []
+              primary = next((s for s in spans if s.get('is_primary')), spans[0] if spans else {})
+              text = (msg.get('message') or '').replace('%', '%25').replace('\n', ' ')
+              code = (msg.get('code') or {}).get('code') or 'clippy'
+              fname = primary.get('file_name', 'crates/modules/rustok-forum')
+              line = primary.get('line_start', 1)
+              col = primary.get('column_start', 1)
+              print(f'::warning file={fname},line={line},col={col}::{code}: {text}')
+              emitted += 1
+          print(f'::notice::clippy warnings: {lints}')
+          "
+      - name: full forum test suite
+        run: |
+          set -o pipefail
+          cargo test -p rustok-forum 2>&1 | tee /tmp/tests.out | python3 -c "
           import sys
           for raw in sys.stdin:
               line = raw.rstrip()
-              if 'FAILED' in line or 'panicked at' in line or line.startswith('test result:'):
+              if 'FAILED' in line or 'panicked at' in line or line.startswith('test result:') or line.startswith('failures:'):
                   safe = line.replace('%', '%25')
                   kind = 'error' if ('FAILED' in line or 'panicked at' in line) else 'notice'
                   print(f'::{kind}::{safe}')
