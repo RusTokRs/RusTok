@@ -72,6 +72,32 @@ multi-file generation, not isolation from concurrent external workspace
 writers; the generated-crate compilation/test matrix remains a separate gate.
 
 
+## Native scaffold golden and generated-crate matrix
+
+The scaffold renderer has golden snapshots for the complete planned file tree
+in headless, admin-only, storefront-only and dual-surface modes, plus focused
+content snapshots for the native module manifest and the generated Leptos UI
+package contracts. Run the unit tests with:
+
+```bash
+cargo test -p xtask
+```
+
+The dedicated CI workflow performs actual generation in a disposable checkout.
+It requires each generated module to pass architecture lint and publish
+metadata validation, then compiles and runs tests for all generated backend
+and UI crates. It also checks the admin and storefront adapters with CSR,
+hydrate and SSR feature selections:
+
+```bash
+bash scripts/ci/verify-scaffold-matrix.sh
+```
+
+The matrix covers generated structure and compilation only. It does not
+establish domain behavior, production runtime integration, or functional
+Next.js/Leptos parity. Database generation remains intentionally unsupported
+until a real owner schema and migration contract exist.
+
 ## Canonical reference-contract verification
 
 For a module that is used as a migration/reference template, run both guards:

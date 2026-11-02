@@ -1083,11 +1083,12 @@ fn auto_approve_argument_detects_flag() {
 #[test]
 fn test_scaffold_dry_run() {
     let opts = ScaffoldOptions {
+        profile: ScaffoldProfile::NativeModule,
         slug: "test-scaffold".to_string(),
         title: "Test Scaffold".to_string(),
         description: "Test scaffold capability".to_string(),
         category: "collaboration".to_string(),
-        with_db: true,
+        with_db: false,
         ui: ScaffoldUi::Dual,
         dry_run: true,
         skip_server_wire: false,
@@ -1100,6 +1101,7 @@ fn test_scaffold_dry_run() {
 #[test]
 fn test_scaffold_no_ui_dry_run() {
     let opts = ScaffoldOptions {
+        profile: ScaffoldProfile::NativeModule,
         slug: "test-headless".to_string(),
         title: "Test Headless".to_string(),
         description: "Headless backend service module".to_string(),
@@ -1158,13 +1160,14 @@ fn test_scaffold_parse_options_normalization() {
 }
 
 #[test]
-fn test_scaffold_dry_run_events_and_integrations() {
+fn test_scaffold_dual_ui_dry_run_without_server_wire() {
     let opts = ScaffoldOptions {
+        profile: ScaffoldProfile::NativeModule,
         slug: "video_calls".to_string(),
         title: "Video Calls".to_string(),
         description: "Enterprise encrypted video calls capability".to_string(),
         category: "collaboration".to_string(),
-        with_db: true,
+        with_db: false,
         ui: ScaffoldUi::Dual,
         dry_run: true,
         skip_server_wire: true,

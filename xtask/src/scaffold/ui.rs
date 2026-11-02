@@ -1,5 +1,4 @@
-use super::options::{ScaffoldOptions, ScaffoldUi};
-use anyhow::Result;
+use super::options::ScaffoldOptions;
 use std::path::PathBuf;
 
 /// Creates Leptos FFA *development skeletons* that compile independently
@@ -8,10 +7,7 @@ use std::path::PathBuf;
 /// by each module owner; missing operations remain explicit errors.
 /// Pure renderer used for both dry-run and writable Leptos skeleton creation.
 /// No host mount or live [provides.*_ui] metadata is produced.
-pub(crate) fn render_ui_templates(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-) -> Vec<(PathBuf, String)> {
+pub(crate) fn render_ui_templates(opts: &ScaffoldOptions, pascal: &str) -> Vec<(PathBuf, String)> {
     let mut files = Vec::new();
     if opts.ui.has_admin() {
         files.extend(render_ui_package(opts, pascal, "admin"));
@@ -22,11 +18,7 @@ pub(crate) fn render_ui_templates(
     files
 }
 
-fn render_ui_package(
-    opts: &ScaffoldOptions,
-    pascal: &str,
-    side: &str,
-) -> Vec<(PathBuf, String)> {
+fn render_ui_package(opts: &ScaffoldOptions, pascal: &str, side: &str) -> Vec<(PathBuf, String)> {
     let slug = &opts.slug;
     let crate_name = opts.crate_name();
     let ui_crate = format!("{crate_name}-{side}");
@@ -35,13 +27,18 @@ fn render_ui_package(
     } else {
         format!("{pascal}StorefrontView")
     };
-    let side_name = if side == "admin" { "Admin" } else { "Storefront" };
+    let side_name = if side == "admin" {
+        "Admin"
+    } else {
+        "Storefront"
+    };
     let side_key = format!("{slug}-{side}-unavailable");
     let title_rust = format!("{:?}", opts.title);
     let description_rust = format!("{:?}", opts.description);
     let cargo_description = toml::Value::String(format!(
         "{side_name} FFA adapter for {crate_name} (owner API pending)"
-    )).to_string();
+    ))
+    .to_string();
 
     // No unused graphql, native-server, grid, database or module dependencies:
     // adding any of them requires implementing an actual adapter.
@@ -160,7 +157,8 @@ impl std::fmt::Display for MissingOwnerContract {
 }
 
 impl std::error::Error for MissingOwnerContract {}
-"#.to_string();
+"#
+    .to_string();
 
     let core = r#"//! Pure presentation policy: reusable by a future Dioxus adapter.
 //! Do not put Leptos signals, framework resources or GraphQL requests here.
@@ -172,7 +170,8 @@ pub enum UiCapabilityState {
 pub const fn owner_capability_state() -> UiCapabilityState {
     UiCapabilityState::Unavailable
 }
-"#.to_string();
+"#
+    .to_string();
 
     // This is a real FFA selection facade through the existing platform
     // transport owner. Each adapter explicitly reports missing business logic:
@@ -225,7 +224,8 @@ use crate::model::MissingOwnerContract;
 pub(super) async fn fetch_owner_capability() -> Result<(), MissingOwnerContract> {
     Err(MissingOwnerContract)
 }
-"#.to_string();
+"#
+    .to_string();
 
     let leptos = format!(
         r#"use leptos::prelude::*;
@@ -263,7 +263,7 @@ mod tests;
 "#
     );
 
-    let tests = r#"#[test]
+    let tests = r####"#[test]
 fn pure_presentation_state_does_not_fake_a_connected_owner() {
     assert_eq!(
         crate::core::owner_capability_state(),
@@ -298,14 +298,14 @@ fn documented_ui_is_not_a_fake_business_api() {
     }
     assert!(docs.contains("No CRUD or owner business operation is available"));
 }
-"#.to_string();
+"####
+    .to_string();
 
     let translations_en = format!(
         "{side_key} = This module's UI is not available until its owner API is implemented.\n"
     );
-    let translations_ru = format!(
-        "{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n"
-    );
+    let translations_ru =
+        format!("{side_key} = Интерфейс модуля недоступен до реализации серверного контракта.\n");
 
     [
         ("Cargo.toml", cargo),
@@ -316,11 +316,20 @@ fn documented_ui_is_not_a_fake_business_api() {
         ("src/lib.rs", lib),
         ("src/core/mod.rs", core),
         ("src/model.rs", model),
-        ("src/i18n.rs", "rustok_ui_i18n::declare_module_i18n!();\n".to_string()),
+        (
+            "src/i18n.rs",
+            "rustok_ui_i18n::declare_module_i18n!();\n".to_string(),
+        ),
         ("src/transport/mod.rs", transport),
-        ("src/transport/native_server_adapter.rs", adapter_error.clone()),
+        (
+            "src/transport/native_server_adapter.rs",
+            adapter_error.clone(),
+        ),
         ("src/transport/graphql_adapter.rs", adapter_error),
-        ("src/ui/mod.rs", format!("mod leptos;\npub use leptos::{page};\n")),
+        (
+            "src/ui/mod.rs",
+            format!("mod leptos;\npub use leptos::{page};\n"),
+        ),
         ("src/ui/leptos.rs", leptos),
         ("src/tests/mod.rs", "mod contract;\n".to_string()),
         ("src/tests/contract.rs", tests),
@@ -329,7 +338,6 @@ fn documented_ui_is_not_a_fake_business_api() {
     .map(|(file, source)| (PathBuf::from(side).join(file), source))
     .collect()
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -353,8 +361,66 @@ mod tests {
     }
 
     fn content<'a>(files: &'a [(PathBuf, String)], path: &str) -> &'a str {
-        &files.iter().find(|(entry, _)| entry == &PathBuf::from(path))
-            .unwrap_or_else(|| panic!("missing {path}")).1
+        &files
+            .iter()
+            .find(|(entry, _)| entry == &PathBuf::from(path))
+            .unwrap_or_else(|| panic!("missing {path}"))
+            .1
+    }
+
+    fn golden_options(ui: ScaffoldUi) -> ScaffoldOptions {
+        let mut request = options(ui);
+        request.slug = "example".to_string();
+        request.title = "Example".to_string();
+        request.description = "A native example module without business logic".to_string();
+        request
+    }
+
+    fn normalized_ui_snapshot(files: &[(PathBuf, String)], side: &str) -> String {
+        let surface_title = if side == "admin" {
+            "Admin"
+        } else {
+            "Storefront"
+        };
+        let page = if side == "admin" {
+            "ExampleAdminPage"
+        } else {
+            "ExampleStorefrontView"
+        };
+        let mut snapshot = String::new();
+
+        for relative in [
+            "Cargo.toml",
+            "README.md",
+            "CRATE_API.md",
+            "src/lib.rs",
+            "src/transport/mod.rs",
+            "src/ui/leptos.rs",
+        ] {
+            let source = content(files, &format!("{side}/{relative}"));
+            let normalized = source
+                .replace(page, "{Page}")
+                .replace(side, "{surface}")
+                .replace(surface_title, "{Surface}");
+            snapshot.push_str(&format!("=== {relative} ===\n{normalized}"));
+        }
+
+        snapshot
+    }
+
+    #[test]
+    fn admin_and_storefront_renderers_match_the_shared_ui_golden_snapshot() {
+        for (ui, side) in [
+            (ScaffoldUi::Admin, "admin"),
+            (ScaffoldUi::Storefront, "storefront"),
+        ] {
+            let files = render_ui_templates(&golden_options(ui), "Example");
+            assert_eq!(
+                normalized_ui_snapshot(&files, side),
+                include_str!("goldens/ui-package.golden"),
+                "generated {side} UI contract changed"
+            );
+        }
     }
 
     #[test]
@@ -413,7 +479,15 @@ mod tests {
             for path in ["native_server_adapter.rs", "graphql_adapter.rs"] {
                 let adapter = content(&files, &format!("{root}src/transport/{path}"));
                 assert!(adapter.contains("Err(MissingOwnerContract)"));
-                assert!(!adapter.contains("Ok(())"));
+                let executable = adapter
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert!(
+                    !executable.contains("Ok(())"),
+                    "adapter must not contain a successful fallback"
+                );
             }
             let cargo = content(&files, &format!("{root}Cargo.toml"));
             let parsed: toml::Value = toml::from_str(cargo).unwrap();
@@ -426,13 +500,24 @@ mod tests {
     #[test]
     fn no_nextjs_or_fake_crud_are_generated_by_ffa() {
         let files = render_ui_templates(&options(ScaffoldUi::Dual), "ModuleExample");
-        let all = files.iter().map(|(p, s)| format!("{}:\n{s}", p.display()))
-            .collect::<Vec<_>>().join("\n");
+        let all = files
+            .iter()
+            .map(|(p, s)| format!("{}:\n{s}", p.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(!all.contains("apps/next-"));
         for forbidden in [
-            "sample_rows", "rec-1", "tracing::info!", "create new module_example record",
-            "can_edit: true", "can_delete: true", "DataGrid", "rustok-grid-leptos",
-            "registerAdminModule(", "registerStorefrontModule(", "GraphqlRequest::new(",
+            "sample_rows",
+            "rec-1",
+            "tracing::info!",
+            "create new module_example record",
+            "can_edit: true",
+            "can_delete: true",
+            "DataGrid",
+            "rustok-grid-leptos",
+            "registerAdminModule(",
+            "registerStorefrontModule(",
+            "GraphqlRequest::new(",
         ] {
             assert!(!all.contains(forbidden), "fake UI pattern: {forbidden}");
         }
@@ -447,15 +532,22 @@ mod tests {
                 || path.to_string_lossy().contains("/src/transport/");
             if pure {
                 for framework in ["leptos::", "dioxus::", "leptos_ui::"] {
-                    assert!(!source.contains(framework),
-                        "{framework} must not leak into {}", path.display());
+                    assert!(
+                        !source.contains(framework),
+                        "{framework} must not leak into {}",
+                        path.display()
+                    );
                 }
             }
-            assert!(!path.ends_with("src/ui/dioxus.rs"),
-                "Dioxus is a future sibling adapter, not a replacement yet");
+            assert!(
+                !path.ends_with("src/ui/dioxus.rs"),
+                "Dioxus is a future sibling adapter, not a replacement yet"
+            );
         }
         assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
-        assert!(files.iter().any(|(p, _)| p.ends_with("src/transport/mod.rs")));
+        assert!(files
+            .iter()
+            .any(|(p, _)| p.ends_with("src/transport/mod.rs")));
     }
 
     #[test]
