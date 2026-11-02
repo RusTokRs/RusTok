@@ -131,6 +131,118 @@ pub(crate) fn validate_declared_rule_keys(value: &Value) -> CommerceResult<()> {
     Ok(())
 }
 
+/// Authoring and lifecycle share the schema fence. A writer admitted after an archive
+/// must not introduce a dangling/foreign/archived option reference in a JSON rule.
+pub(super) async fn validate_rule_option_references_in(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    attribute_id: Uuid,
+    value: &Value,
+) -> CommerceResult<()> {
+    let rules = parse_product_attribute_validation(value)?;
+    let Some(ids) = rules.allowed_option_ids else {
+        return Ok(());
+    };
+    let ids = ids.into_iter().collect::<Vec<_>>();
+    let (placeholders, mut values) = uuid_filter_values(tenant_id, &ids);
+    values.push(attribute_id.into());
+    let attribute_placeholder = format!("${}", values.len());
+    #[derive(FromQueryResult)]
+    struct ActiveOption {
+        id: Uuid,
+    }
+    let rows = ActiveOption::find_by_statement(Statement::from_sql_and_values(txn.get_database_backend(),
+        format!("SELECT o.id FROM product_attribute_options o INNER JOIN product_attributes a ON a.tenant_id = o.tenant_id AND a.id = o.attribute_id WHERE o.tenant_id = $1 AND o.id IN ({placeholders}) AND o.attribute_id = {attribute_placeholder} AND o.archived_at IS NULL AND a.archived_at IS NULL"), values,
+    )).all(txn).await?;
+    if rows.len() != ids.len() || rows.iter().any(|row| row.id.is_nil()) {
+        return Err(CommerceError::Validation(
+            "Allowed option rules must reference active values of the same attribute and tenant"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Creation preserves deferred stable-code hints: a new attribute has no options yet.
+/// Explicit UUID references must already resolve to one active same-parent option, never a
+/// foreign/archived value. A deferred hint is metadata, not a validated/applied EAV assignment.
+pub(super) async fn validate_new_select_default_hint_in(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    attribute_id: Uuid,
+    value_type: AttributeValueType,
+    value: Option<&Value>,
+) -> CommerceResult<()> {
+    if !matches!(
+        value_type,
+        AttributeValueType::Select | AttributeValueType::Multiselect
+    ) {
+        return Ok(());
+    }
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(());
+    };
+    let references = match value {
+        Value::String(value) => vec![value.as_str()],
+        Value::Array(values)
+            if values.len() <= MAX_RULE_LIST_ITEMS && values.iter().all(Value::is_string) =>
+        {
+            values.iter().filter_map(Value::as_str).collect()
+        }
+        _ => {
+            return Err(CommerceError::Validation(
+                "Select defaults require explicit option UUIDs or stable codes".into(),
+            ));
+        }
+    };
+    if references.is_empty() {
+        return Ok(());
+    }
+    let mut values = vec![tenant_id.into(), attribute_id.into()];
+    let mut predicates = Vec::new();
+    let mut lookups = Vec::new();
+    for reference in references {
+        let code = reference.trim();
+        let id = Uuid::parse_str(code).ok();
+        if id.is_none() {
+            super::validate_code("default option code", code)?;
+        }
+        if let Some(id) = id {
+            values.push(id.into());
+            predicates.push(format!("o.id = ${}", values.len()));
+        }
+        values.push(code.to_owned().into());
+        predicates.push(format!("o.code = ${}", values.len()));
+        lookups.push((id, code));
+    }
+    #[derive(FromQueryResult)]
+    struct DefaultOption {
+        id: Uuid,
+        code: String,
+        option_archived: bool,
+        attribute_archived: bool,
+    }
+    // One bounded same-parent lookup, not up to 128 individual default queries.
+    let rows = DefaultOption::find_by_statement(Statement::from_sql_and_values(txn.get_database_backend(),
+        format!("SELECT o.id, o.code, (o.archived_at IS NOT NULL) AS option_archived, (a.archived_at IS NOT NULL) AS attribute_archived FROM product_attribute_options o INNER JOIN product_attributes a ON a.tenant_id = o.tenant_id AND a.id = o.attribute_id WHERE o.tenant_id = $1 AND o.attribute_id = $2 AND ({})", predicates.join(" OR ")), values,
+    )).all(txn).await?;
+    for (id, code) in lookups {
+        let mut matches = rows
+            .iter()
+            .filter(|row| Some(row.id) == id || row.code == code);
+        let first = matches.next();
+        if first.is_none() && id.is_none() {
+            continue;
+        }
+        if first.is_none_or(|row| row.id.is_nil() || row.option_archived || row.attribute_archived)
+            || matches.next().is_some()
+        {
+            return Err(CommerceError::Validation("Explicit default UUIDs must identify one active option of the same attribute and tenant; unresolved stable-code hints are not applied automatically".into()));
+        }
+    }
+    Ok(())
+}
+
 /// Merges the attribute-level base rules with the effective binding overrides.
 ///
 /// Later layers win key by key; an explicit `null` override removes an inherited rule, so a

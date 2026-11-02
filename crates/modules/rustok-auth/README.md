@@ -79,3 +79,19 @@ OAuth application presentation copy is owner-localized in `oauth_app_translation
 - [CRATE_API.md](CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Current worker service contexts (2026-11-02; source only)
+
+Auth now owns the narrow current authenticated read-context port used by the selected
+[Inventory Index consumer](../rustok-distribution/docs/inventory-index.md). Its exact tenant/
+consumer/correlation/budget request contains no credential, saved claims or event actor. The
+server resolves canonical deployment SecretRef credentials and current OAuth service permissions;
+it never provisions a service or adds grants. Human transport authentication is unchanged.
+
+### Known Limitations / Pending Implementation
+
+Context/configuration and revocation-double definitions are uncompiled/unrun. Actual canonical
+OAuth/module availability/secret rotation, denied/revoked grants, backend and deployment evidence
+remain pending; absent bindings refuse instead of falling back to system/admin authority.
+The [existing downstream task record](../rustok-inventory/docs/implementation-plan.md) tracks
+recovery/cutover gates. No public transport/UI or new operator capability is exposed here.

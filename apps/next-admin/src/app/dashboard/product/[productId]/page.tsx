@@ -31,6 +31,7 @@ import {
   updateVariantAction,
   deleteVariantAction,
   setVariantAxesAction,
+  previewVariantAxesAction,
   addImageAction,
   deleteImageAction,
   reorderImagesAction,
@@ -133,6 +134,8 @@ export default async function ProductDetailPage({
           onSaveProduct={saveProductAction}
           onChangeStatus={changeProductStatusAction}
           onDeleteProduct={deleteProductAction}
+          onSetVariantAxes={setVariantAxesAction}
+          onAddVariant={addVariantAction}
         />
       </PageContainer>
     );
@@ -195,15 +198,12 @@ export default async function ProductDetailPage({
         onSaveProduct={saveProductAction}
         onChangeStatus={changeProductStatusAction}
         onDeleteProduct={deleteProductAction}
-        onAddVariant={async (pid, v) => {
-          await addVariantAction(pid, v);
-        }}
+        onAddVariant={addVariantAction}
         onUpdateVariant={async (id, v) => {
           await updateVariantAction(id, v);
         }}
-        onSetVariantAxes={async (pid, input) => {
-          return setVariantAxesAction(pid, input);
-        }}
+        onPreviewVariantAxes={previewVariantAxesAction}
+        onSetVariantAxes={setVariantAxesAction}
         onDeleteVariant={async (id) => {
           await deleteVariantAction(id);
         }}

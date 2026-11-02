@@ -477,21 +477,20 @@ fn map_operator_error(error: crate::MarketplaceReversalOperatorError) -> HttpErr
         crate::MarketplaceReversalOperatorError::Database(_) => {
             HttpError::internal("Marketplace reversal operator storage is unavailable")
         }
-        crate::MarketplaceReversalOperatorError::Inbox(error) => {
-            if error.retryable() {
-                HttpError::new(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "marketplace_reversal_recovery_unavailable",
-                    "Marketplace reversal recovery is temporarily unavailable",
-                )
-            } else {
-                HttpError::new(
-                    StatusCode::CONFLICT,
-                    "marketplace_reversal_reconciliation_required",
-                    "Marketplace reversal recovery requires operator review",
-                )
-            }
-        }
+        crate::MarketplaceReversalOperatorError::Inbox(error) => (if error.retryable() {
+            HttpError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "marketplace_reversal_recovery_unavailable",
+                "Marketplace reversal recovery is temporarily unavailable",
+            )
+        } else {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "marketplace_reversal_reconciliation_required",
+                "Marketplace reversal recovery requires operator review",
+            )
+        })
+        .with_retryable(error.retryable()),
         crate::MarketplaceReversalOperatorError::AdaptationFailure(error) => match error {
             crate::MarketplaceReversalAdaptationFailureError::Validation(_) => {
                 HttpError::bad_request(
@@ -516,21 +515,20 @@ fn map_operator_error(error: crate::MarketplaceReversalOperatorError) -> HttpErr
                 HttpError::internal("Marketplace reversal adaptation storage is unavailable")
             }
         },
-        crate::MarketplaceReversalOperatorError::Adapter(error) => {
-            if error.retryable() {
-                HttpError::new(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "marketplace_reversal_adaptation_unavailable",
-                    "Marketplace reversal adaptation is temporarily unavailable",
-                )
-            } else {
-                HttpError::new(
-                    StatusCode::CONFLICT,
-                    "marketplace_reversal_adaptation_requires_review",
-                    "Marketplace reversal adaptation still requires operator review",
-                )
-            }
-        }
+        crate::MarketplaceReversalOperatorError::Adapter(error) => (if error.retryable() {
+            HttpError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "marketplace_reversal_adaptation_unavailable",
+                "Marketplace reversal adaptation is temporarily unavailable",
+            )
+        } else {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "marketplace_reversal_adaptation_requires_review",
+                "Marketplace reversal adaptation still requires operator review",
+            )
+        })
+        .with_retryable(error.retryable()),
     }
 }
 

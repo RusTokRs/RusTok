@@ -15,7 +15,7 @@ The mounted admin route remains:
 - request: existing `CreateFulfillmentInput`
 - success: HTTP 201 with existing `FulfillmentResponse`
 
-The mounted `fulfillments_owner_commands.rs` adapter now defines a local `create_fulfillment` handler. That local item shadows the compatibility re-export from `fulfillments_legacy`, preserving router/OpenAPI names without changing the large admin router.
+The canonical mounted `fulfillments_owner_commands.rs` adapter defines `create_fulfillment` directly, alongside list/show and lifecycle handlers. Router/OpenAPI names remain unchanged. The obsolete `fulfillments.rs` controller and wildcard compatibility re-export are absent.
 
 ## Cross-owner policy remains in Commerce
 
@@ -81,7 +81,12 @@ change the public 409 reconciliation envelope.
 
 The mounted route supplies the caller-owned `Idempotency-Key` through `PortContext`. The owner uses it as the
 provider-operation idempotency identity; no payload-derived or `fulfillment_id`-derived synthetic provider key
-is generated.
+is generated. Header values are admitted at 1..=191 UTF-8 bytes. The common read/write context
+preserves `auth.port_actor()` (human versus OAuth service), permissions/scopes, locale/channel
+and actual request correlation with a two-second call budget; AuthContext has no roles field.
+GraphQL manual creation retains its separate existing input-derived key and is not the HTTP
+header or lifecycle-key policy. Native creation and complete child projections refuse more
+than 1024 items without silently truncating retained work.
 
 ## Runtime composition
 
@@ -102,8 +107,15 @@ The mounted route keeps the existing public families:
 
 The canonical broad Commerce topology P0 remains open. This slice does not remove concrete owner construction from remaining post-order/change/return, GraphQL/provider-operation, checkout, reconciliation, or other Commerce surfaces.
 
-The legacy Commerce fulfillment orchestration files are retained because other workflows still reference them and because they document compatibility behavior. They are not evidence that the mounted admin create route still uses direct concrete construction.
+Remaining Commerce orchestration services have actual embedded/native consumers and are not a
+mounted HTTP controller fallback. Their removal is not inferred from naming. The obsolete
+controller is not retained as a parallel contract. The separate
+[shipment handoff](implementation-plan.md#shipment-stock-provenance-source-evidence) records the
+current native stock/recovery boundary; broader remote operator composition remains open.
 
 ## Validation status
 
-Source/GitHub inspection only. Tests, Cargo commands, formatting, verifier execution, workflows, CI, runtime HTTP calls, restart/lost-response evidence, and external-provider execution were intentionally not run.
+The original slice recorded source/GitHub inspection only. The 2026-11-01 continuation runs
+read-only source checks, syntax parsing and narrow WASM formatting, not Rust compilation,
+SQL/carrier execution, runtime HTTP, restart/lost-response, workflows/CI or remote adapters.
+Tests remain unrun and with the maintainer. Execution evidence remains pending and unvalidated.

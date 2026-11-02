@@ -9,7 +9,8 @@ use crate::ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
     AdminProductPricingProjectionRequest, PreviewVariantDiscountRequest,
     PriceListProjectionRequest, PriceListProjectionSnapshot, PricingReadPort,
-    ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
+    ResolveProductPriceRequest, ResolveProductPricesRequest, ResolvedProductPriceSnapshot,
+    ResolvedProductPricesSnapshot, StorefrontProductPricingListRequest,
     StorefrontProductPricingProjectionRequest,
 };
 use crate::{
@@ -20,6 +21,8 @@ use crate::{
 const PRICING_OWNER: &str = "rustok_pricing";
 const PRICING_READ_BOUNDARY: &str = "pricing_read_port";
 const RESOLVE_PRODUCT_PRICE_OPERATION: &str = "resolve_product_price";
+const RESOLVE_PRODUCT_PRICES_OPERATION: &str = "resolve_product_prices";
+const LIST_STOREFRONT_PRODUCT_PRICING_OPERATION: &str = "list_storefront_product_pricing";
 const READ_PRICE_LIST_PROJECTION_OPERATION: &str = "read_price_list_projection";
 const LIST_ACTIVE_PRICE_LIST_PROJECTIONS_OPERATION: &str = "list_active_price_list_projections";
 const READ_ADMIN_PRODUCT_PRICING_PROJECTION_OPERATION: &str =
@@ -30,6 +33,7 @@ const PREVIEW_VARIANT_DISCOUNT_OPERATION: &str = "preview_variant_discount";
 
 #[derive(Debug, Clone, Default)]
 struct PricingReadDiagnosticFacts {
+    variant_count: usize,
     product_id_present: bool,
     product_id_non_nil: bool,
     variant_id_present: bool,
@@ -83,9 +87,14 @@ pub struct InProcessPricingReadPort {
 }
 
 impl InProcessPricingReadPort {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        product_runtime: rustok_product::ProductCatalogReadRuntime,
+    ) -> Self {
         Self {
-            inner: PricingService::new(db, event_bus),
+            inner: PricingService::new(db, event_bus)
+                .with_product_catalog_read_runtime(product_runtime),
         }
     }
 
@@ -99,8 +108,13 @@ impl InProcessPricingReadPort {
 pub fn in_process_pricing_read_port(
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    product_runtime: rustok_product::ProductCatalogReadRuntime,
 ) -> Arc<dyn PricingReadPort> {
-    Arc::new(InProcessPricingReadPort::new(db, event_bus))
+    Arc::new(InProcessPricingReadPort::new(
+        db,
+        event_bus,
+        product_runtime,
+    ))
 }
 
 #[async_trait]
@@ -144,11 +158,96 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result = PricingReadPort::resolve_product_price(&self.inner, context, request).await;
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::resolve_product_price(&self.inner, context, request),
+        )
+        .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
                 RESOLVE_PRODUCT_PRICE_OPERATION,
+                &diagnostic_facts,
+                error,
+            )
+        })
+    }
+
+    async fn resolve_product_prices(
+        &self,
+        context: PortContext,
+        request: ResolveProductPricesRequest,
+    ) -> Result<ResolvedProductPricesSnapshot, PortError> {
+        let diagnostic_context = context.clone();
+        let diagnostic_facts = PricingReadDiagnosticFacts {
+            variant_count: request.variant_ids.len(),
+            product_id_present: request.product_id.is_some(),
+            product_id_non_nil: request.product_id.is_some_and(|id| !id.is_nil()),
+            region_id_present: request.pricing.region_id.is_some(),
+            region_id_non_nil: request.pricing.region_id.is_some_and(|id| !id.is_nil()),
+            channel_id_non_nil: request.pricing.channel_id.is_some_and(|id| !id.is_nil()),
+            price_list_id_non_nil: request.pricing.price_list_id.is_some_and(|id| !id.is_nil()),
+            channel_id_present: request.pricing.channel_id.is_some(),
+            price_list_id_present: request.pricing.price_list_id.is_some(),
+            quantity_present: request.pricing.quantity.is_some(),
+            quantity_nonzero: request
+                .pricing
+                .quantity
+                .is_some_and(|quantity| quantity != 0),
+            quantity_negative: request
+                .pricing
+                .quantity
+                .is_some_and(|quantity| quantity < 0),
+            currency_code_length: Some(request.pricing.currency_code.chars().count()),
+            channel_slug_length: request
+                .pricing
+                .channel_slug
+                .as_ref()
+                .map(|value| value.chars().count()),
+            ..PricingReadDiagnosticFacts::default()
+        };
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::resolve_product_prices(&self.inner, context, request),
+        )
+        .await;
+        result.map_err(|error| {
+            map_pricing_read_local_port_error(
+                &diagnostic_context,
+                RESOLVE_PRODUCT_PRICES_OPERATION,
+                &diagnostic_facts,
+                error,
+            )
+        })
+    }
+
+    async fn list_storefront_product_pricing(
+        &self,
+        context: PortContext,
+        request: StorefrontProductPricingListRequest,
+    ) -> Result<crate::StorefrontPricingProductList, PortError> {
+        let diagnostic_context = context.clone();
+        let diagnostic_facts = PricingReadDiagnosticFacts {
+            channel_id_present: request.channel_id.is_some(),
+            channel_slug_length: request
+                .channel_slug
+                .as_ref()
+                .map(|value| value.chars().count()),
+            fallback_locale_length: request
+                .fallback_locale
+                .as_ref()
+                .map(|value| value.chars().count()),
+            ..PricingReadDiagnosticFacts::default()
+        };
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::list_storefront_product_pricing(&self.inner, context, request),
+        )
+        .await;
+        result.map_err(|error| {
+            map_pricing_read_local_port_error(
+                &diagnostic_context,
+                LIST_STOREFRONT_PRODUCT_PRICING_OPERATION,
                 &diagnostic_facts,
                 error,
             )
@@ -167,8 +266,11 @@ impl PricingReadPort for InProcessPricingReadPort {
             locale_length: request.locale.as_ref().map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result =
-            PricingReadPort::read_price_list_projection(&self.inner, context, request).await;
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::read_price_list_projection(&self.inner, context, request),
+        )
+        .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -201,9 +303,11 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result =
-            PricingReadPort::list_active_price_list_projections(&self.inner, context, request)
-                .await;
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::list_active_price_list_projections(&self.inner, context, request),
+        )
+        .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -234,9 +338,11 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result =
-            PricingReadPort::read_admin_product_pricing_projection(&self.inner, context, request)
-                .await;
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::read_admin_product_pricing_projection(&self.inner, context, request),
+        )
+        .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -254,6 +360,8 @@ impl PricingReadPort for InProcessPricingReadPort {
     ) -> Result<Option<StorefrontPricingProductDetail>, PortError> {
         let diagnostic_context = context.clone();
         let diagnostic_facts = PricingReadDiagnosticFacts {
+            channel_id_present: request.public_channel_id.is_some(),
+            channel_id_non_nil: request.public_channel_id.is_some_and(|id| !id.is_nil()),
             handle_length: Some(request.handle.chars().count()),
             fallback_locale_length: request
                 .fallback_locale
@@ -265,10 +373,13 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result = PricingReadPort::read_storefront_product_pricing_projection(
-            &self.inner,
-            context,
-            request,
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::read_storefront_product_pricing_projection(
+                &self.inner,
+                context,
+                request,
+            ),
         )
         .await;
         result.map_err(|error| {
@@ -307,7 +418,11 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result = PricingReadPort::preview_variant_discount(&self.inner, context, request).await;
+        let result = crate::ports::read_with_deadline(
+            &diagnostic_context,
+            PricingReadPort::preview_variant_discount(&self.inner, context, request),
+        )
+        .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -329,7 +444,7 @@ fn classify_pricing_read_local_outcome(
             sanitized_message: Some("pricing request context is invalid"),
         },
         (
-            RESOLVE_PRODUCT_PRICE_OPERATION,
+            RESOLVE_PRODUCT_PRICE_OPERATION | RESOLVE_PRODUCT_PRICES_OPERATION,
             PortErrorKind::Validation,
             "pricing.variant_product_mismatch",
         ) => PricingReadLocalOutcome {
@@ -503,6 +618,7 @@ fn log_pricing_read_local_outcome(
             idempotency_key_present = context_facts.idempotency_key_present,
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
+            variant_count = facts.variant_count,
             product_id_present = facts.product_id_present,
             product_id_non_nil = facts.product_id_non_nil,
             variant_id_present = facts.variant_id_present,
@@ -554,6 +670,7 @@ fn log_pricing_read_local_outcome(
             idempotency_key_present = context_facts.idempotency_key_present,
             idempotency_key_length = ?context_facts.idempotency_key_length,
             deadline_ms = ?context_facts.deadline_ms,
+            variant_count = facts.variant_count,
             product_id_present = facts.product_id_present,
             product_id_non_nil = facts.product_id_non_nil,
             variant_id_present = facts.variant_id_present,

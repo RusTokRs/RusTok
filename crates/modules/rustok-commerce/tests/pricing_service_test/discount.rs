@@ -158,13 +158,12 @@ async fn test_price_precision() {
 }
 
 #[tokio::test]
-async fn test_price_with_many_decimal_places() {
+async fn test_excess_usd_precision_is_rejected_without_changing_the_base_price() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
-
-    service
+    let (_, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let result = service
         .set_price(
             tenant_id,
             actor_id,
@@ -173,14 +172,15 @@ async fn test_price_with_many_decimal_places() {
             dec!(19.999999),
             None,
         )
-        .await
-        .unwrap();
-
-    let price = service
-        .get_price(tenant_id, variant_id, "USD")
-        .await
-        .unwrap();
-    assert!(price.is_some());
+        .await;
+    assert!(matches!(result, Err(CommerceError::InvalidPrice(_))));
+    assert_eq!(
+        service
+            .get_price(tenant_id, variant_id, "USD")
+            .await
+            .unwrap(),
+        Some(dec!(99.99))
+    );
 }
 
 #[tokio::test]
@@ -428,7 +428,7 @@ async fn test_apply_percentage_discount_targets_base_row_only() {
 
     let resolved_base = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -444,7 +444,7 @@ async fn test_apply_percentage_discount_targets_base_row_only() {
         .unwrap();
     let resolved_tier = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -470,6 +470,7 @@ async fn test_preview_percentage_discount_supports_channel_scoped_base_row() {
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, channel_id, "web-store").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
@@ -517,6 +518,7 @@ async fn test_apply_percentage_discount_targets_channel_scoped_base_row_only() {
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, channel_id, "web-store").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
@@ -557,7 +559,7 @@ async fn test_apply_percentage_discount_targets_channel_scoped_base_row_only() {
 
     let resolved_global = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -573,7 +575,7 @@ async fn test_apply_percentage_discount_targets_channel_scoped_base_row_only() {
         .unwrap();
     let resolved_channel = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -683,7 +685,7 @@ async fn test_apply_price_list_percentage_discount_targets_override_only() {
 
     let resolved_base = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -699,7 +701,7 @@ async fn test_apply_price_list_percentage_discount_targets_override_only() {
         .unwrap();
     let resolved_price_list = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -726,6 +728,7 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let price_list_id = create_price_list_with_channel(
         &db,
         tenant_id,
@@ -779,7 +782,7 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
 
     let resolved_base = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -795,7 +798,7 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
         .unwrap();
     let resolved_channel_override = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -941,6 +944,7 @@ async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_with
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let web_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, web_channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -1011,7 +1015,7 @@ async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_with
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -1148,6 +1152,7 @@ async fn test_preview_price_list_percentage_discount_rejects_requested_channel_m
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let web_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, web_channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -1232,7 +1237,7 @@ async fn test_resolve_variant_price_reports_discount_percent() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -1272,7 +1277,7 @@ async fn test_resolve_variant_price_rounds_fractional_discount_percent() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -1307,7 +1312,7 @@ async fn test_resolve_variant_price_omits_discount_percent_for_non_sale_price() 
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -229,7 +227,7 @@ pub(super) async fn clear_detached_product_attribute_values(
 }
 
 #[cfg(feature = "ssr")]
-fn ensure_permission(
+pub(super) fn ensure_permission(
     permissions: &[rustok_api::Permission],
     required: &[rustok_api::Permission],
     message: &str,
@@ -242,7 +240,7 @@ fn ensure_permission(
 }
 
 #[cfg(feature = "ssr")]
-fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
+pub(super) fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
 }
@@ -261,7 +259,7 @@ fn parse_optional_uuid(
 }
 
 #[cfg(feature = "ssr")]
-fn map_product_internal_error() -> ServerFnError {
+pub(super) fn map_product_internal_error() -> ServerFnError {
     ServerFnError::new(rustok_product::ProductPublicError::internal().to_string())
 }
 
@@ -321,6 +319,7 @@ fn map_attribute_record(
         id: value.id.to_string(),
         code: value.code,
         value_type: value.value_type.as_str().to_string(),
+        scope: value.scope,
         is_localized: value.is_localized,
         is_filterable: value.is_filterable,
         is_searchable: value.is_searchable,
@@ -549,17 +548,94 @@ async fn native_context() -> Result<
     Ok((service, auth, tenant))
 }
 
+/// Shared authenticated admission for selected-provider Product aggregate commands. Client
+/// scope is an expectation, not authority; the host's tenant/actor/module/permission decide.
 #[cfg(feature = "ssr")]
-const SCHEMA_WRITE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
-#[cfg(feature = "ssr")]
-const MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+pub(super) async fn catalog_update_scope(
+    tenant_id: &str,
+    actor_id: &str,
+    locale: &str,
+) -> Result<
+    (
+        rustok_product::ProductCatalogCommandRuntime,
+        rustok_api::AuthContext,
+        rustok_api::TenantContext,
+        String,
+    ),
+    ServerFnError,
+> {
+    let (host, auth, tenant, locale) = catalog_actor_scope(
+        tenant_id,
+        actor_id,
+        locale,
+        &[rustok_api::Permission::PRODUCTS_UPDATE],
+    )
+    .await?;
+    let runtime = host
+        .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+        .ok_or_else(map_product_internal_error)?;
+    Ok((runtime, auth, tenant, locale))
+}
 
-/// Builds the owner write context for a schema mutation.
+#[cfg(feature = "ssr")]
+pub(super) async fn catalog_actor_scope(
+    tenant_id: &str,
+    actor_id: &str,
+    locale: &str,
+    permissions: &[rustok_api::Permission],
+) -> Result<
+    (
+        rustok_api::HostRuntimeContext,
+        rustok_api::AuthContext,
+        rustok_api::TenantContext,
+        String,
+    ),
+    ServerFnError,
+> {
+    let host =
+        use_context::<rustok_api::HostRuntimeContext>().ok_or_else(map_product_internal_error)?;
+    let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+        .await
+        .map_err(|_| ServerFnError::new("Authentication required"))?;
+    let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+        .await
+        .map_err(|_| map_product_internal_error())?;
+    if tenant.id.is_nil()
+        || auth.user_id.is_nil()
+        || auth.tenant_id != tenant.id
+        || parse_uuid(tenant_id, "tenant_id")? != tenant.id
+        || parse_uuid(actor_id, "actor_id")? != auth.user_id
+    {
+        return Err(ServerFnError::new("Product authenticated context changed"));
+    }
+    ensure_permission(
+        &auth.permissions,
+        permissions,
+        "Product permission required",
+    )?;
+    match rustok_api::is_tenant_module_enabled(host.db(), tenant.id, "product").await {
+        Ok(true) => {}
+        Ok(false) => return Err(ServerFnError::new("Product module is not enabled")),
+        Err(_) => return Err(map_product_internal_error()),
+    }
+    let locale = rustok_api::TenantLocale::new(locale)
+        .map_err(|_| ServerFnError::new("Invalid Product locale"))?
+        .into_inner();
+    Ok((host, auth, tenant, locale))
+}
+
+#[cfg(feature = "ssr")]
+const PRODUCT_WRITE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
+#[cfg(feature = "ssr")]
+const MAX_PRODUCT_IDEMPOTENCY_KEY_LENGTH: usize = 191;
+
+/// Builds the owner write context for a Product mutation.
 ///
 /// The owner key is derived with the same formula as the mounted GraphQL resolvers, so the
-/// native attempt and its GraphQL fallback for one logical operation share one receipt.
+/// native and GraphQL projections of one logical operation share one receipt. This does not
+/// authorize transport/provider fallback after an unknown outcome.
 #[cfg(feature = "ssr")]
-fn schema_write_context(
+pub(super) fn write_context(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
     locale: String,
@@ -573,9 +649,9 @@ fn schema_write_context(
             "Product mutation idempotency key must not be empty",
         ));
     }
-    if caller_key.len() > MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH {
+    if caller_key.len() > MAX_PRODUCT_IDEMPOTENCY_KEY_LENGTH {
         return Err(ServerFnError::new(format!(
-            "Product mutation idempotency key must contain at most {MAX_SCHEMA_IDEMPOTENCY_KEY_LENGTH} bytes"
+            "Product mutation idempotency key must contain at most {MAX_PRODUCT_IDEMPOTENCY_KEY_LENGTH} bytes"
         )));
     }
     let scoped_key = rustok_product::scoped_caller_idempotency_key(
@@ -592,7 +668,7 @@ fn schema_write_context(
         scoped_key.clone(),
     )
     .with_idempotency_key(scoped_key)
-    .with_deadline(SCHEMA_WRITE_DEADLINE);
+    .with_deadline(PRODUCT_WRITE_DEADLINE);
     for permission in &auth.permissions {
         context = context.with_claim(permission.to_string());
     }
@@ -887,6 +963,7 @@ async fn product_admin_effective_form_native(
                     code: definition.code.clone(),
                     label: definition.label.clone(),
                     value_type: definition.value_type.as_str().to_string(),
+                    scope: definition.scope.clone(),
                     is_localized: definition.is_localized,
                     options: options_by_attribute
                         .remove(&binding.attribute_id.to_string())
@@ -993,7 +1070,7 @@ async fn product_admin_save_attribute_values_native(
         let locale = locale.trim().to_string();
         ProductCatalogSchemaWritePort::save_product_attribute_values(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1051,7 +1128,7 @@ async fn product_admin_clear_detached_attribute_values_native(
         let locale = locale.trim().to_string();
         ProductCatalogSchemaWritePort::clear_detached_product_attribute_values(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1105,7 +1182,7 @@ async fn product_admin_create_attribute_native(
         }
         ProductCatalogSchemaWritePort::create_attribute(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1116,7 +1193,7 @@ async fn product_admin_create_attribute_native(
             rustok_product::services::CreateProductAttributeInput {
                 code: draft.code,
                 value_type: parse_attribute_value_type(&draft.value_type)?,
-                scope: "product".to_string(),
+                scope: draft.scope,
                 is_localized: draft.is_localized,
                 is_filterable: draft.is_filterable,
                 is_searchable: draft.is_searchable,
@@ -1176,7 +1253,7 @@ async fn product_admin_create_attribute_option_native(
         }
         ProductCatalogSchemaWritePort::create_attribute_option(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1231,7 +1308,7 @@ async fn product_admin_create_category_native(
         }
         ProductCatalogSchemaWritePort::create_category(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1292,7 +1369,7 @@ async fn product_admin_create_schema_native(
         }
         ProductCatalogSchemaWritePort::create_schema(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1348,7 +1425,7 @@ async fn product_admin_set_category_schema_mode_native(
         }
         ProductCatalogSchemaWritePort::set_category_schema_mode(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 tenant.default_locale.clone(),
@@ -1401,7 +1478,7 @@ async fn product_admin_bind_schema_attribute_native(
         }
         ProductCatalogSchemaWritePort::bind_schema_attribute(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 tenant.default_locale.clone(),
@@ -1418,6 +1495,13 @@ async fn product_admin_bind_schema_attribute_native(
                 position: draft.position,
                 visibility_overrides: empty_json(),
                 validation_overrides: empty_json(),
+                variant_axis_policy: draft
+                    .variant_axis_policy
+                    .as_deref()
+                    .map(str::parse::<rustok_product::dto::VariantAxisPolicy>)
+                    .transpose()
+                    .map_err(|_| ServerFnError::new("Invalid variant axis policy"))?,
+                default_variant_axis: draft.default_variant_axis,
                 metadata: empty_json(),
             },
         )
@@ -1457,7 +1541,7 @@ async fn product_admin_create_schema_group_native(
         }
         ProductCatalogSchemaWritePort::create_schema_group(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1512,7 +1596,7 @@ async fn product_admin_create_category_group_native(
         }
         ProductCatalogSchemaWritePort::create_category_group(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 locale.clone(),
@@ -1566,7 +1650,7 @@ async fn product_admin_bind_category_attribute_native(
         }
         ProductCatalogSchemaWritePort::bind_category_attribute(
             &service,
-            schema_write_context(
+            write_context(
                 &auth,
                 &tenant,
                 tenant.default_locale.clone(),
@@ -1584,6 +1668,13 @@ async fn product_admin_bind_category_attribute_native(
                 position: draft.position,
                 visibility_overrides: empty_json(),
                 validation_overrides: empty_json(),
+                variant_axis_policy: draft
+                    .variant_axis_policy
+                    .as_deref()
+                    .map(str::parse::<rustok_product::dto::VariantAxisPolicy>)
+                    .transpose()
+                    .map_err(|_| ServerFnError::new("Invalid variant axis policy"))?,
+                default_variant_axis: draft.default_variant_axis,
                 metadata: empty_json(),
             },
         )

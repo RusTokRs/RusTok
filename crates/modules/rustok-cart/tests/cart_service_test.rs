@@ -187,6 +187,7 @@ async fn reprice_line_items_snapshots_pricing_adjustment_without_double_discount
             cart.id,
             vec![rustok_cart::services::cart::CartLineItemPricingUpdate {
                 line_item_id,
+                quantity: cart.line_items[0].quantity,
                 unit_price: Decimal::from_str("20.00").unwrap(),
                 pricing_adjustment: Some(CartPricingAdjustmentUpdate {
                     source_id: Some("price-list-1".to_string()),
@@ -198,6 +199,7 @@ async fn reprice_line_items_snapshots_pricing_adjustment_without_double_discount
                     }),
                 }),
             }],
+            rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
         )
         .await
         .unwrap();
@@ -907,14 +909,18 @@ async fn update_cart_context_rewrites_snapshot_fields() {
     let updated = service
         .update_context(
             tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: Some("checkout@example.com".to_string()),
-                region_id: Some(updated_region_id),
-                country_code: Some("pl".to_string()),
-                locale_code: Some("pl_PL".to_string()),
-                selected_shipping_option_id: Some(updated_shipping_option_id),
-                shipping_selections: None,
+            rustok_cart::CartContextUpdateRequest {
+                cart_id: cart.id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+                pricing: rustok_cart::CartContextPricing::Preserve,
+                input: UpdateCartContextInput {
+                    email: Some("checkout@example.com".to_string()),
+                    region_id: Some(updated_region_id),
+                    country_code: Some("pl".to_string()),
+                    locale_code: Some("pl_PL".to_string()),
+                    selected_shipping_option_id: Some(updated_shipping_option_id),
+                    shipping_selections: None,
+                },
             },
         )
         .await
@@ -946,13 +952,28 @@ async fn update_and_remove_line_items_recalculate_cart() {
     let line_item_id = cart.line_items[0].id;
 
     let cart = service
-        .update_line_item_quantity(tenant_id, cart.id, line_item_id, 3)
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: line_item_id,
+                quantity: 3,
+                unit_price: cart.line_items[0].unit_price,
+                pricing_adjustment: None,
+            },
+            rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(cart.total_amount, Decimal::from_str("46.50").unwrap());
 
     let cart = service
-        .remove_line_item(tenant_id, cart.id, line_item_id)
+        .remove_line_item(
+            tenant_id,
+            cart.id,
+            line_item_id,
+            rustok_cart::CartPricingContextGuard::capture_removal(&cart, line_item_id).unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(cart.line_items.len(), 0);
@@ -1449,27 +1470,31 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
     let updated = service
         .update_context(
             tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: cart.email.clone(),
-                region_id: cart.region_id,
-                country_code: cart.country_code.clone(),
-                locale_code: cart.locale_code.clone(),
-                selected_shipping_option_id: None,
-                shipping_selections: Some(vec![
-                    CartShippingSelectionInput {
-                        shipping_profile_slug: "default".to_string(),
-                        seller_id: Some(seller_a_id.to_string()),
-                        seller_scope: None,
-                        selected_shipping_option_id: Some(seller_a_option_id),
-                    },
-                    CartShippingSelectionInput {
-                        shipping_profile_slug: "default".to_string(),
-                        seller_id: Some(seller_b_id.to_string()),
-                        seller_scope: None,
-                        selected_shipping_option_id: Some(seller_b_option_id),
-                    },
-                ]),
+            rustok_cart::CartContextUpdateRequest {
+                cart_id: cart.id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+                pricing: rustok_cart::CartContextPricing::Preserve,
+                input: UpdateCartContextInput {
+                    email: cart.email.clone(),
+                    region_id: cart.region_id,
+                    country_code: cart.country_code.clone(),
+                    locale_code: cart.locale_code.clone(),
+                    selected_shipping_option_id: None,
+                    shipping_selections: Some(vec![
+                        CartShippingSelectionInput {
+                            shipping_profile_slug: "default".to_string(),
+                            seller_id: Some(seller_a_id.to_string()),
+                            seller_scope: None,
+                            selected_shipping_option_id: Some(seller_a_option_id),
+                        },
+                        CartShippingSelectionInput {
+                            shipping_profile_slug: "default".to_string(),
+                            seller_id: Some(seller_b_id.to_string()),
+                            seller_scope: None,
+                            selected_shipping_option_id: Some(seller_b_option_id),
+                        },
+                    ]),
+                },
             },
         )
         .await
@@ -1744,14 +1769,18 @@ async fn create_cart_and_update_context_normalize_whitespace_email() {
     let updated = service
         .update_context(
             tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: Some("  updated@example.com  ".to_string()),
-                region_id: None,
-                country_code: None,
-                locale_code: None,
-                selected_shipping_option_id: None,
-                shipping_selections: None,
+            rustok_cart::CartContextUpdateRequest {
+                cart_id: cart.id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+                pricing: rustok_cart::CartContextPricing::Preserve,
+                input: UpdateCartContextInput {
+                    email: Some("  updated@example.com  ".to_string()),
+                    region_id: None,
+                    country_code: None,
+                    locale_code: None,
+                    selected_shipping_option_id: None,
+                    shipping_selections: None,
+                },
             },
         )
         .await
@@ -1762,14 +1791,18 @@ async fn create_cart_and_update_context_normalize_whitespace_email() {
     let cleared = service
         .update_context(
             tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: Some("   ".to_string()),
-                region_id: None,
-                country_code: None,
-                locale_code: None,
-                selected_shipping_option_id: None,
-                shipping_selections: None,
+            rustok_cart::CartContextUpdateRequest {
+                cart_id: cart.id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture(&updated).unwrap(),
+                pricing: rustok_cart::CartContextPricing::Preserve,
+                input: UpdateCartContextInput {
+                    email: Some("   ".to_string()),
+                    region_id: None,
+                    country_code: None,
+                    locale_code: None,
+                    selected_shipping_option_id: None,
+                    shipping_selections: None,
+                },
             },
         )
         .await
@@ -1791,4 +1824,749 @@ fn normalize_locale_code_validates_and_lowercases() {
     assert!(normalize_locale_code("$$").is_err());
     assert!(normalize_locale_code("").is_err());
     assert!(normalize_locale_code("toolonglocalecode").is_err());
+}
+
+// Regression sources for priced adoption. The maintainer runs these; no execution is implied.
+#[tokio::test]
+async fn concurrent_quantity_observation_cannot_overwrite_the_first_priced_write() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let guard = rustok_cart::CartPricingContextGuard::capture(&cart).unwrap();
+    let id = cart.line_items[0].id;
+    service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 3,
+                unit_price: Decimal::from(9),
+                pricing_adjustment: None,
+            },
+            guard.clone(),
+        )
+        .await
+        .unwrap();
+    let error = service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 4,
+                unit_price: Decimal::from(8),
+                pricing_adjustment: None,
+            },
+            guard,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, CartError::PricingContextChanged));
+    let current = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.line_items[0].quantity, 3);
+    assert_eq!(current.line_items[0].unit_price, Decimal::from(9));
+    assert_eq!(current.line_items[0].total_price, Decimal::from(27));
+}
+
+#[tokio::test]
+async fn bulk_adoption_rejects_duplicates_unknown_lines_and_wrong_tier_quantity_without_partial_writes()
+ {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let update = rustok_cart::CartLineItemPricingUpdate {
+        line_item_id: cart.line_items[0].id,
+        quantity: cart.line_items[0].quantity,
+        unit_price: Decimal::from(99),
+        pricing_adjustment: None,
+    };
+    let mut unknown = update.clone();
+    unknown.line_item_id = Uuid::new_v4();
+    let mut wrong_quantity = update.clone();
+    wrong_quantity.quantity += 1;
+    for updates in [
+        vec![update.clone(), update.clone()],
+        vec![update.clone(), unknown],
+        vec![wrong_quantity],
+    ] {
+        let guard = rustok_cart::CartPricingContextGuard::capture(&cart).unwrap();
+        assert!(
+            service
+                .reprice_line_items(tenant_id, cart.id, updates, guard)
+                .await
+                .is_err()
+        );
+        let current = service.get_cart(tenant_id, cart.id).await.unwrap();
+        assert_eq!(current.line_items[0].quantity, cart.line_items[0].quantity);
+        assert_eq!(
+            current.line_items[0].unit_price,
+            cart.line_items[0].unit_price
+        );
+        assert_eq!(current.adjustment_total, cart.adjustment_total);
+    }
+}
+
+#[tokio::test]
+async fn batch_quote_for_an_old_quantity_is_refused_after_an_intervening_update() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let guard = rustok_cart::CartPricingContextGuard::capture(&cart).unwrap();
+    let id = cart.line_items[0].id;
+    service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 3,
+                unit_price: Decimal::from(12),
+                pricing_adjustment: None,
+            },
+            guard.clone(),
+        )
+        .await
+        .unwrap();
+    let error = service
+        .reprice_line_items(
+            tenant_id,
+            cart.id,
+            vec![rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 2,
+                unit_price: Decimal::from(7),
+                pricing_adjustment: None,
+            }],
+            guard,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, CartError::PricingContextChanged));
+    let current = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.line_items[0].quantity, 3);
+    assert_eq!(current.line_items[0].unit_price, Decimal::from(12));
+}
+
+#[tokio::test]
+async fn decrement_to_removal_cannot_delete_a_line_changed_since_observation() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let mut input = line_item_input();
+    input.quantity = 1;
+    let cart = service
+        .add_line_item(tenant_id, cart.id, input)
+        .await
+        .unwrap();
+    let guard = rustok_cart::CartPricingContextGuard::capture(&cart).unwrap();
+    let removal =
+        rustok_cart::CartPricingContextGuard::capture_removal(&cart, cart.line_items[0].id)
+            .unwrap();
+    let id = cart.line_items[0].id;
+    service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 2,
+                unit_price: Decimal::from(8),
+                pricing_adjustment: None,
+            },
+            guard.clone(),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        service
+            .remove_line_item(tenant_id, cart.id, id, removal)
+            .await
+            .unwrap_err(),
+        CartError::PricingContextChanged
+    ));
+    assert_eq!(
+        service
+            .get_cart(tenant_id, cart.id)
+            .await
+            .unwrap()
+            .line_items[0]
+            .quantity,
+        2
+    );
+}
+
+#[tokio::test]
+async fn root_and_module_storefront_providers_preserve_the_prequote_add_guard() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    for port in [
+        rustok_cart::in_process_cart_storefront_port(db.clone()),
+        rustok_cart::ports::in_process_cart_storefront_port(db.clone()),
+    ] {
+        let cart = service
+            .create_cart(tenant_id, create_cart_input())
+            .await
+            .unwrap();
+        let guard = rustok_cart::CartPricingContextGuard::capture_add(&cart).unwrap();
+        service
+            .add_line_item(tenant_id, cart.id, line_item_input())
+            .await
+            .unwrap();
+        let context = rustok_api::PortContext::new(
+            tenant_id.to_string(),
+            rustok_api::PortActor::service("cart-test"),
+            "en",
+            Uuid::new_v4().to_string(),
+        )
+        .with_deadline(std::time::Duration::from_secs(2))
+        .with_idempotency_key(Uuid::new_v4().to_string());
+        let error = port
+            .add_storefront_line_item(
+                context,
+                rustok_cart::CartStorefrontAddLineItemRequest {
+                    cart_id: cart.id,
+                    input: line_item_input(),
+                    pricing_adjustment: None,
+                    pricing_context: guard,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, rustok_api::PortErrorKind::Conflict);
+        assert_eq!(error.code, "cart.pricing_context_changed");
+        assert!(!error.retryable);
+        assert_eq!(
+            service
+                .get_cart(tenant_id, cart.id)
+                .await
+                .unwrap()
+                .line_items
+                .len(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn target_removal_observation_does_not_require_priced_cart_validity_and_cannot_authorize_prices()
+ {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let id = cart.line_items[0].id;
+    let removal = rustok_cart::CartPricingContextGuard::capture_removal(&cart, id).unwrap();
+    let error = service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: id,
+                quantity: 3,
+                unit_price: Decimal::ONE,
+                pricing_adjustment: None,
+            },
+            removal,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, CartError::Validation(_)));
+    let mut oversized = cart.clone();
+    while oversized.line_items.len() <= rustok_cart::MAX_PRICED_CART_LINES {
+        let mut line = cart.line_items[0].clone();
+        line.id = Uuid::new_v4();
+        oversized.line_items.push(line);
+    }
+    oversized.line_items[0].unit_price = -Decimal::ONE;
+    assert!(rustok_cart::CartPricingContextGuard::capture(&oversized).is_err());
+    assert!(rustok_cart::CartPricingContextGuard::capture_removal(&oversized, id).is_ok());
+    assert_eq!(
+        service
+            .get_cart(tenant_id, cart.id)
+            .await
+            .unwrap()
+            .line_items[0]
+            .quantity,
+        2
+    );
+}
+
+#[tokio::test]
+async fn explicit_target_removal_can_reduce_an_oversized_persisted_cart() {
+    use rustok_cart::entities::cart_line_item;
+    use sea_orm::EntityTrait;
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let id = cart.line_items[0].id;
+    // Fixture-owned historical state; production code does not bypass Cart admission.
+    let template = cart_line_item::Entity::find_by_id(id)
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    let rows: Vec<cart_line_item::ActiveModel> = (0..rustok_cart::MAX_PRICED_CART_LINES)
+        .map(|_| {
+            let mut row: cart_line_item::ActiveModel = template.clone().into();
+            row.id = Set(Uuid::new_v4());
+            row
+        })
+        .collect();
+    for chunk in rows.chunks(128) {
+        cart_line_item::Entity::insert_many(chunk.to_vec())
+            .exec(&db)
+            .await
+            .unwrap();
+    }
+    let cart = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(
+        cart.line_items.len(),
+        rustok_cart::MAX_PRICED_CART_LINES + 1
+    );
+    assert!(rustok_cart::CartPricingContextGuard::capture(&cart).is_err());
+    let guard = rustok_cart::CartPricingContextGuard::capture_removal(&cart, id).unwrap();
+    let current = service
+        .remove_line_item(tenant_id, cart.id, id, guard)
+        .await
+        .unwrap();
+    assert_eq!(current.line_items.len(), rustok_cart::MAX_PRICED_CART_LINES);
+    assert!(rustok_cart::CartPricingContextGuard::capture(&current).is_ok());
+}
+
+#[tokio::test]
+async fn quantity_tier_adoption_replaces_pricing_discount_and_preserves_manual_adjustments() {
+    let service = setup().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let mut input = line_item_input();
+    input.quantity = 2;
+    input.unit_price = Decimal::from(10);
+    let cart = service
+        .add_line_item_with_pricing_adjustment(
+            tenant_id,
+            cart.id,
+            input,
+            Some(CartPricingAdjustmentUpdate {
+                source_id: None,
+                amount: Decimal::from(2),
+                metadata: serde_json::json!({"kind":"sale"}),
+            }),
+        )
+        .await
+        .unwrap();
+    let cart = service
+        .apply_fixed_promotion(
+            tenant_id,
+            cart.id,
+            None,
+            "manual-keep",
+            Decimal::ONE,
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+    let guard = rustok_cart::CartPricingContextGuard::capture(&cart).unwrap();
+    let current = service
+        .update_line_item_pricing(
+            tenant_id,
+            cart.id,
+            rustok_cart::CartLineItemPricingUpdate {
+                line_item_id: cart.line_items[0].id,
+                quantity: 5,
+                unit_price: Decimal::from(10),
+                pricing_adjustment: Some(CartPricingAdjustmentUpdate {
+                    source_id: None,
+                    amount: Decimal::from(15),
+                    metadata: serde_json::json!({"kind":"sale"}),
+                }),
+            },
+            guard,
+        )
+        .await
+        .unwrap();
+    assert_eq!(current.line_items[0].quantity, 5);
+    assert_eq!(current.subtotal_amount, Decimal::from(50));
+    assert_eq!(current.total_amount, Decimal::from(34));
+    assert_eq!(
+        current
+            .adjustments
+            .iter()
+            .filter(|a| a.source_type == "pricing")
+            .count(),
+        1
+    );
+    assert!(
+        current
+            .adjustments
+            .iter()
+            .any(|a| a.source_type == "pricing" && a.amount == Decimal::from(15))
+    );
+    assert!(
+        current
+            .adjustments
+            .iter()
+            .any(|a| a.source_id.as_deref() == Some("manual-keep") && a.amount == Decimal::ONE)
+    );
+}
+
+fn repriced_context_command(
+    cart: &rustok_cart::CartResponse,
+) -> rustok_cart::CartContextUpdateRequest {
+    let input = UpdateCartContextInput {
+        email: cart.email.clone(),
+        region_id: cart.region_id,
+        country_code: cart.country_code.clone(),
+        locale_code: Some("fr".into()),
+        selected_shipping_option_id: cart.selected_shipping_option_id,
+        shipping_selections: None,
+    };
+    let scope = rustok_cart::CartPricingScope::capture(&cart.project_context(&input).unwrap());
+    rustok_cart::CartContextUpdateRequest {
+        cart_id: cart.id,
+        input,
+        pricing_context: rustok_cart::CartPricingContextGuard::capture(cart).unwrap(),
+        pricing: rustok_cart::CartContextPricing::Reprice(rustok_cart::CartContextPricingPlan {
+            scope,
+            updates: cart
+                .line_items
+                .iter()
+                .map(|line| rustok_cart::CartLineItemPricingUpdate {
+                    line_item_id: line.id,
+                    quantity: line.quantity,
+                    unit_price: Decimal::from(20),
+                    pricing_adjustment: Some(CartPricingAdjustmentUpdate {
+                        source_id: None,
+                        amount: Decimal::from(4),
+                        metadata: serde_json::json!({"quoted_locale":"fr"}),
+                    }),
+                })
+                .collect(),
+        }),
+    }
+}
+
+async fn cart_for_context_adoption(service: &CartService) -> rustok_cart::CartResponse {
+    let tenant = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant, create_cart_input())
+        .await
+        .unwrap();
+    service
+        .add_line_item(
+            tenant,
+            cart.id,
+            AddCartLineItemInput {
+                fulfillment_requirement: CartLineFulfillmentRequirement::Digital,
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn context_and_complete_price_plan_commit_together_with_adjustments_and_totals() {
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    let updated = service
+        .update_context(cart.tenant_id, repriced_context_command(&cart))
+        .await
+        .unwrap();
+    assert_eq!(updated.locale_code.as_deref(), Some("fr"));
+    assert_eq!(updated.line_items[0].quantity, 2);
+    assert_eq!(updated.line_items[0].unit_price, Decimal::from(20));
+    assert_eq!(updated.line_items[0].total_price, Decimal::from(40));
+    assert_eq!(updated.total_amount, Decimal::from(36));
+    assert_eq!(
+        updated
+            .adjustments
+            .iter()
+            .filter(|item| item.source_type == "pricing")
+            .count(),
+        1
+    );
+    assert!(
+        updated
+            .context_is_current(&repriced_context_command(&updated).input)
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn nonempty_context_cannot_preserve_a_different_unit_price_basis() {
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    let mut command = repriced_context_command(&cart);
+    command.pricing = rustok_cart::CartContextPricing::Preserve;
+    let error = service
+        .update_context(cart.tenant_id, command)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, CartError::PricingContextChanged));
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.locale_code, cart.locale_code);
+    assert_eq!(current.updated_at, cart.updated_at);
+    assert_eq!(
+        current.line_items[0].unit_price,
+        cart.line_items[0].unit_price
+    );
+    assert_eq!(current.total_amount, cart.total_amount);
+}
+
+#[tokio::test]
+async fn context_plan_rejects_missing_duplicate_unknown_quantity_scope_and_stale_observations() {
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    for fault in 0..5 {
+        let mut command = repriced_context_command(&cart);
+        let rustok_cart::CartContextPricing::Reprice(plan) = &mut command.pricing else {
+            unreachable!()
+        };
+        match fault {
+            0 => plan.updates.clear(),
+            1 => plan.updates.push(plan.updates[0].clone()),
+            2 => plan.updates[0].line_item_id = Uuid::new_v4(),
+            3 => plan.updates[0].quantity += 1,
+            _ => plan.scope.locale_code = Some("de".into()),
+        }
+        assert!(
+            service
+                .update_context(cart.tenant_id, command)
+                .await
+                .is_err()
+        );
+        let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+        assert_eq!(current.locale_code, cart.locale_code);
+        assert_eq!(current.updated_at, cart.updated_at);
+        assert_eq!(
+            current.line_items[0].unit_price,
+            cart.line_items[0].unit_price
+        );
+    }
+    let stale = repriced_context_command(&cart);
+    let accepted = service
+        .update_context(cart.tenant_id, repriced_context_command(&cart))
+        .await
+        .unwrap();
+    assert!(matches!(
+        service
+            .update_context(cart.tenant_id, stale)
+            .await
+            .unwrap_err(),
+        CartError::PricingContextChanged
+    ));
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.updated_at, accepted.updated_at);
+    assert_eq!(current.locale_code.as_deref(), Some("fr"));
+}
+
+#[tokio::test]
+async fn shipping_refusal_rolls_back_already_materialized_context_line_and_adjustment_changes() {
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    let mut command = repriced_context_command(&cart);
+    // The scope/price plan is valid; group application fails after line/adjustment writes.
+    command.input.shipping_selections = Some(vec![CartShippingSelectionInput {
+        shipping_profile_slug: "unavailable".into(),
+        seller_id: None,
+        seller_scope: None,
+        selected_shipping_option_id: Some(Uuid::new_v4()),
+    }]);
+    assert!(
+        service
+            .update_context(cart.tenant_id, command)
+            .await
+            .is_err()
+    );
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.locale_code, cart.locale_code);
+    assert_eq!(current.updated_at, cart.updated_at);
+    assert_eq!(current.total_amount, cart.total_amount);
+    assert_eq!(current.adjustments.len(), cart.adjustments.len());
+    assert_eq!(
+        current.line_items[0].unit_price,
+        cart.line_items[0].unit_price
+    );
+    assert_eq!(
+        current.line_items[0].updated_at,
+        cart.line_items[0].updated_at
+    );
+}
+
+#[tokio::test]
+async fn context_write_refuses_removal_observation_and_locked_or_completed_carts() {
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    let mut command = repriced_context_command(&cart);
+    command.pricing_context =
+        rustok_cart::CartPricingContextGuard::capture_removal(&cart, cart.line_items[0].id)
+            .unwrap();
+    assert!(
+        service
+            .update_context(cart.tenant_id, command)
+            .await
+            .is_err()
+    );
+    service
+        .begin_checkout(cart.tenant_id, cart.id)
+        .await
+        .unwrap();
+    assert!(matches!(
+        service
+            .update_context(cart.tenant_id, repriced_context_command(&cart))
+            .await
+            .unwrap_err(),
+        CartError::InvalidTransition { .. }
+    ));
+    service
+        .complete_cart(cart.tenant_id, cart.id)
+        .await
+        .unwrap();
+    assert!(matches!(
+        service
+            .update_context(cart.tenant_id, repriced_context_command(&cart))
+            .await
+            .unwrap_err(),
+        CartError::InvalidTransition { .. }
+    ));
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.status, "completed");
+    assert_eq!(current.locale_code, cart.locale_code);
+    assert_eq!(
+        current.line_items[0].unit_price,
+        cart.line_items[0].unit_price
+    );
+}
+
+#[tokio::test]
+async fn full_replacement_scalar_none_clears_the_single_group_shipping_selection() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let option = Uuid::new_v4();
+    insert_shipping_option(&db, tenant_id, option, "USD", Decimal::from(7)).await;
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                selected_shipping_option_id: Some(option),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    assert_eq!(cart.shipping_total, Decimal::from(7));
+    let command = rustok_cart::CartContextUpdateRequest {
+        cart_id: cart.id,
+        input: UpdateCartContextInput {
+            email: cart.email.clone(),
+            region_id: cart.region_id,
+            country_code: cart.country_code.clone(),
+            locale_code: cart.locale_code.clone(),
+            selected_shipping_option_id: None,
+            shipping_selections: None,
+        },
+        pricing_context: rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+        pricing: rustok_cart::CartContextPricing::Preserve,
+    };
+    let target = cart.project_context(&command.input).unwrap();
+    assert_eq!(target.delivery_groups[0].selected_shipping_option_id, None);
+    assert!(!cart.context_is_current(&command.input).unwrap());
+    let updated = service.update_context(tenant_id, command).await.unwrap();
+    assert_eq!(updated.selected_shipping_option_id, None);
+    assert_eq!(updated.delivery_groups[0].selected_shipping_option_id, None);
+    assert_eq!(updated.shipping_total, Decimal::ZERO);
+}
+
+#[tokio::test]
+async fn planless_checkout_refuses_new_price_basis_and_locked_snapshot_prepare_never_reapplies_it()
+{
+    let service = setup().await;
+    let cart = cart_for_context_adoption(&service).await;
+    let input = repriced_context_command(&cart).input;
+    let request = rustok_cart::PrepareCartCheckoutSnapshotRequest {
+        cart_id: cart.id,
+        input,
+    };
+    assert!(matches!(
+        service
+            .prepare_checkout(cart.tenant_id, request.clone())
+            .await
+            .unwrap_err(),
+        CartError::PricingContextChanged
+    ));
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.status, "active");
+    assert_eq!(current.locale_code, cart.locale_code);
+    service
+        .begin_checkout(cart.tenant_id, cart.id)
+        .await
+        .unwrap();
+    let port = rustok_cart::checkout_snapshot::in_process_cart_checkout_port(service.clone());
+    let context = rustok_api::PortContext::new(
+        cart.tenant_id.to_string(),
+        rustok_api::PortActor::service("test"),
+        "en",
+        "original-checkout",
+    )
+    .with_deadline(std::time::Duration::from_secs(1))
+    .with_idempotency_key("original-checkout");
+    assert_eq!(
+        port.prepare_checkout(context, request)
+            .await
+            .unwrap_err()
+            .kind,
+        rustok_api::PortErrorKind::Conflict
+    );
+    let current = service.get_cart(cart.tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.status, "checking_out");
+    assert_eq!(current.locale_code, cart.locale_code);
+    assert_eq!(
+        current.line_items[0].unit_price,
+        cart.line_items[0].unit_price
+    );
 }

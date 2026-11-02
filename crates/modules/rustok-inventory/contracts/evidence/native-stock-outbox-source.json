@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-01",
+  "status": "source_implemented_runtime_unvalidated",
+  "source_base_revision": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed_revision": "920c0e3f5c4bfb6698caedfbc683684f4c51fa0c",
+  "scope": "native Inventory physical stock and canonical root outbox invalidations; shipment uses caller Fulfillment transaction, returned stock uses Inventory transaction",
+  "step8_complete": false,
+  "runtime_executed": false,
+  "owners": {
+    "inventory": "tenant-proved saved Variant/Product/item/location, physical arithmetic, event construction and publication",
+    "fulfillment": "shipment/cancel/reopen lifecycle transaction and consumer protocol",
+    "commerce": "selected owner composition, current caller context and frozen return plan",
+    "outbox": "canonical validated envelope persistence and relay; unconditional writes require one inserted row",
+    "search": "existing root invalidation listener refetches Product and live stock; no event delta accounting"
+  },
+  "contract": {
+    "max_changed_levels": 1024,
+    "event": "inventory.updated",
+    "schema_version": 1,
+    "new_event_schema_or_migration": false,
+    "canonical_publisher": "TransactionalEventBus::publish_root_in_tx",
+    "per_physically_changed_item_location": true,
+    "equal_available_counters_still_invalidate": true,
+    "quantity_semantics": "descriptive global Variant availability before/after the entire native batch; not location deltas, a movement history, source-exclusive causality or a reservation guarantee",
+    "same_variant_multiple_locations_share_global_snapshots": true,
+    "global_snapshot_aggregate_rows_bounded_to_proved_items": true,
+    "missing_or_foreign_contributing_location_refuses": true,
+    "unrepresentable_negative_or_over_i32_max_availability_refuses_without_clamping": true,
+    "tenant_proved_saved_product_not_fresh_catalog_eligibility": true,
+    "current_user_non_nil_uuid_service_system_none": true,
+    "no_provider_metadata_reasons_or_claims_in_stock_event": true,
+    "preparation_no_publication_or_outbox_storage_dependency": true,
+    "exact_receipt_replay_sku_less_and_no_physical_change_no_publication": true,
+    "only_inserted_fresh_return_receipts_contribute_to_new_events": true,
+    "required_outbox_failure_rolls_back_local_stock_proof_receipt_and_counters": true,
+    "unconditional_root_and_typed_zero_row_insert_rejected": true,
+    "write_once_conflict_still_requires_exact_saved_envelope_correlation": true,
+    "shipment_final_budget_gate_after_event_io": true,
+    "no_broker_peer_calls_or_historical_backfill": true,
+    "no_distributed_atomicity_with_carrier_order_finance_or_commerce_checkpoint": true
+  },
+  "source_regressions": {
+    "executed": false,
+    "rust_cases": [
+      {
+        "file": "crates/modules/rustok-inventory/src/stock_events.rs",
+        "names": [
+          "physical_shipment_with_equal_available_counters_still_invalidates",
+          "changed_locations_share_one_variant_binding_and_grouped_global_quantity",
+          "duplicate_level_and_contradictory_variant_binding_are_refused",
+          "unrepresentable_global_quantity_refuses_instead_of_saturation",
+          "current_human_actor_is_preserved_without_fabricating_service_users"
+        ]
+      },
+      {
+        "file": "crates/modules/rustok-commerce/tests/shipment_stock_provenance/stock_events.rs",
+        "names": [
+          "shipment_enqueues_current_actor_event_even_when_available_quantity_is_unchanged",
+          "cancellation_restoration_and_reconsumption_publish_original_location_snapshots",
+          "preparation_never_publishes_or_requires_outbox_storage",
+          "late_fulfillment_failure_rolls_back_stock_proof_and_queued_event",
+          "missing_outbox_rolls_back_shipment_instead_of_acknowledging_eventless_stock",
+          "suppressed_outbox_insert_is_not_a_successful_shipment",
+          "exact_return_replay_does_not_enqueue_another_event_or_require_outbox",
+          "missing_outbox_rolls_back_new_return_receipt_and_stock",
+          "global_event_counter_overflow_refuses_before_any_native_movement"
+        ]
+      },
+      {
+        "file": "crates/modules/rustok-outbox/src/transport.rs",
+        "names": [
+          "unconditional_publication_rejects_zero_or_multiple_inserted_rows",
+          "unconditional_publication_accepts_exactly_one_inserted_row"
+        ]
+      }
+    ],
+    "rust_definition_count": 16,
+    "node_file": "scripts/verify/verify-inventory-stock-events.test.mjs",
+    "node_definition_count": 10,
+    "coverage_intent": [
+      "equal-availability physical shipment with the current human actor",
+      "original-location cancellation restoration and reopening reconsumption",
+      "rolled-back preparation without sys_events storage",
+      "late Fulfillment rollback removes a queued stock invalidation",
+      "missing outbox refuses fresh shipment and rolls back new returned receipt",
+      "suppressed zero-row outbox insertion is not success",
+      "exact return replay preserves receipt and avoids a new outbox dependency",
+      "global quantity representability and duplicate/binding/actor checks",
+      "source guard rejects removal of canonical publisher, tenant check, actor policy, budget fence or regression registration"
+    ]
+  },
+  "read_only_verification": {
+    "status": "passed_source_syntax_format_only",
+    "rust_compilation": false,
+    "tests_executed": false,
+    "sql_executed": false,
+    "migrations_applied": false,
+    "relay_or_consumer_runtime_executed": false,
+    "rust_syntax": {
+      "tool": "tree-sitter 0.25.2 / Rust 0.24.0",
+      "files": 57,
+      "parse_errors_or_missing_nodes": 0,
+      "typechecked": false
+    },
+    "rust_format": {
+      "tool": "@scalar/rust-fmt@0.3.0",
+      "edition": "2024",
+      "files": 57,
+      "changes_required": 0
+    },
+    "selected_platform_native_call_shapes": {
+      "symbols": 7,
+      "calls": 60,
+      "arity_failures": 0,
+      "name_resolution_or_typechecking": false
+    },
+    "node_syntax_files": 9,
+    "prettier_files": 5,
+    "pure_source_guards": [
+      "verify-inventory-stock-events.mjs",
+      "verify-commerce-shipment-stock-provenance.mjs",
+      "verify-commerce-admin-fulfillment-create-owner-port-cutover.mjs",
+      "verify-commerce-admin-fulfillment-owner-command-cutover.mjs",
+      "verify-commerce-graphql-fulfillment-command-owner-port-cutover.mjs",
+      "verify-commerce-return-restock-identity.mjs",
+      "verify-commerce-checkout-inventory-adoption.mjs"
+    ],
+    "document_local_file_targets": {
+      "files": 22,
+      "checked": 477,
+      "missing": 0,
+      "external_urls_or_heading_slug_resolution": false
+    },
+    "historical_migrations": {
+      "fulfillment_111_113_inventory_024": "HEAD-byte-identical; SHA256 recorded during source check",
+      "executed": false
+    },
+    "tracked_worktree_whitespace_diff": "passed",
+    "architecture_dependency_gate": "blocked_missing_cargo_for_metadata",
+    "remediation_gate": "diff invariants passed; architecture phase blocked by missing Cargo even with --skip-cargo; no full gate approval",
+    "new_event_schema_migration_or_public_sdk_capability": false
+  },
+  "remaining_gates": [
+    "maintainer Rust typecheck and the unrun 16 Rust / 10 Node definitions",
+    "PostgreSQL/SQLite SQL, trigger, lock/concurrency and same-transaction rollback execution",
+    "actual relay/Search delivery, duplicate/out-of-order and restart/lag recovery",
+    "generic Index convergence and normal reservation-write notifications",
+    "historical shipment proof rollout and full Product step 8",
+    "unpaid-return policy and partial inspection top-ups are separate unspecified business work"
+  ]
+}

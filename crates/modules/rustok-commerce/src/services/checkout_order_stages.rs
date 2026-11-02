@@ -116,9 +116,13 @@ impl CheckoutOrderStageExecutor {
             inventory_executor: CheckoutInventoryReservationExecutor::new(
                 db.clone(),
                 event_bus.clone(),
+                inventory_port.clone(),
+            ),
+            order_creation: CheckoutOrderCreationExecutor::new(
+                db.clone(),
+                event_bus.clone(),
                 inventory_port,
             ),
-            order_creation: CheckoutOrderCreationExecutor::new(db.clone(), event_bus.clone()),
             order_confirmation: CheckoutOrderConfirmationExecutor::new(
                 db.clone(),
                 event_bus.clone(),
@@ -191,7 +195,7 @@ impl CheckoutOrderStageExecutor {
                     self.inventory_executor
                         .reserve_and_checkpoint(
                             tenant_id,
-                            PortActor::user(actor_id.to_string()),
+                            super::checkout_catalog::checkout_actor(actor_id),
                             operation_id,
                             lease_owner.clone(),
                             snapshot,

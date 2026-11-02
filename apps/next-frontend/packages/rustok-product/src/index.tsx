@@ -25,8 +25,13 @@ export type {
   StorefrontProductListResponse,
   StorefrontProductPrice,
   StorefrontProductPricing,
+  StorefrontProductPricingDetail,
+  StorefrontPriceSource,
+  StorefrontPricingContext,
   StorefrontProductTranslation,
   StorefrontProductVariant,
+  StorefrontVariantAxis,
+  StorefrontVariantAxisValue,
 } from "./api/types";
 
 export type {
@@ -71,7 +76,10 @@ export {
 
 export { CatalogSection } from "./components/catalog-section";
 export { ProductCard } from "./components/product-card";
-export { ProductDetailView } from "./components/product-detail-view";
+export {
+  ProductDetailView,
+  type ProductDetailViewProps,
+} from "./components/product-detail-view";
 export { ProductFilters } from "./components/product-filters";
 export { ProductGrid } from "./components/product-grid";
 
@@ -89,3 +97,5 @@ registerStorefrontModule({
     />
   ),
 });
+
+export * from "./catalog/buyer";

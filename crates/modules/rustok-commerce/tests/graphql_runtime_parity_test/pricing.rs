@@ -58,6 +58,8 @@ async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() 
                 id
                 channelSlug
               }}
+              mobileIdOnly: storefrontActivePriceLists(channelId: "{mobile_channel_id}") {{ id channelSlug }}
+              mobileSlugOnly: storefrontActivePriceLists(channelSlug: "mobile-app") {{ id channelSlug }}
             }}
             "#
         )))
@@ -71,6 +73,9 @@ async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() 
         .data
         .into_json()
         .expect("GraphQL response must serialize");
+
+    assert_eq!(json["mobileIdOnly"], json["explicitMobile"]);
+    assert_eq!(json["mobileSlugOnly"], json["explicitMobile"]);
 
     let channel_slugs = json["storefrontPricingChannels"]
         .as_array()
@@ -2334,4 +2339,105 @@ async fn pricing_graphql_facades_preserve_seller_id_as_identity_boundary() {
         json["storefrontPricingProduct"]["vendor"],
         Value::from("Localized Vendor Display")
     );
+}
+
+#[tokio::test]
+async fn admin_pricing_product_cannot_relabel_the_authenticated_tenant() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema.execute(Request::new(format!(
+        r#"query {{ adminPricingProduct(tenantId: "{}", id: "{}", currencyCode: "EUR") {{ id }} }}"#,
+        Uuid::new_v4(), Uuid::new_v4(),
+    ))).await;
+    assert!(
+        !response.errors.is_empty(),
+        "foreign tenant must be rejected before Product/Pricing access"
+    );
+    assert!(response.data.into_json().unwrap()["adminPricingProduct"].is_null());
+}
+
+#[tokio::test]
+async fn storefront_pricing_catalog_and_quotes_expose_owner_counts_context_and_source() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let product = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let product = catalog
+        .publish_product(tenant_id, actor_id, product.id)
+        .await
+        .unwrap();
+    let handle = product
+        .translations
+        .iter()
+        .find(|copy| copy.locale == "en")
+        .unwrap()
+        .handle
+        .clone();
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        None,
+    );
+    let response = schema.execute(Request::new(format!(r#"
+        query {{
+          storefrontPricingCatalog(locale: "en") {{
+            items {{ id variantCount saleVariantCount currencies }}
+          }}
+          priced: storefrontPricingProduct(handle: "{handle}", currencyCode: "EUR", quantity: 3) {{
+            resolutionContext {{ currencyCode quantity }} resolvedAt
+            variants {{ id effectivePrice {{ amount currencyCode source {{ priceId kind ruleKind adjustmentPercent }} }} }}
+          }}
+          unpriced: storefrontPricingProduct(handle: "{handle}", currencyCode: "KWD", quantity: 3) {{
+            resolutionContext {{ currencyCode quantity }} resolvedAt
+            variants {{ id effectivePrice {{ amount }} }}
+          }}
+        }}
+    "#))).await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected pricing facade errors: {:?}",
+        response.errors
+    );
+    let value = response.data.into_json().unwrap();
+    let row = value["storefrontPricingCatalog"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == product.id.to_string())
+        .unwrap();
+    assert_eq!(
+        row["variantCount"],
+        Value::from(product.variants.len() as u64)
+    );
+    assert_eq!(row["currencies"], serde_json::json!(["EUR"]));
+    assert_eq!(
+        value["priced"]["resolutionContext"]["quantity"],
+        Value::from(3)
+    );
+    assert!(value["priced"]["resolvedAt"].as_str().is_some());
+    let quote = &value["priced"]["variants"][0]["effectivePrice"];
+    assert_eq!(quote["amount"], Value::from("19.99"));
+    assert_eq!(quote["source"]["kind"], Value::from("base"));
+    assert!(
+        !Uuid::parse_str(quote["source"]["priceId"].as_str().unwrap())
+            .unwrap()
+            .is_nil()
+    );
+    assert_eq!(
+        value["unpriced"]["resolutionContext"]["currencyCode"],
+        Value::from("KWD")
+    );
+    assert!(value["unpriced"]["variants"][0]["effectivePrice"].is_null());
 }

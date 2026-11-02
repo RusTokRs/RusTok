@@ -34,3 +34,14 @@ For full public interface and contract definitions, see [CRATE_API.md](CRATE_API
 - [Module docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Host-resolved public tenant binding
+
+`AuthProvider` accepts optional `tenant_slug`. Before browser silent refresh, it calls
+`storage::bind_request_tenant`: a missing public tenant may populate the existing canonical
+`ADMIN_TENANT_KEY`, but a foreign existing tenant/session is never overwritten. Failed binding
+refuses restoration rather than silently borrowing a default tenant. It issues no credentials,
+creates no auth storage key/protocol and does not invent an SSR session. Browser native headers
+still read canonical auth storage; header application failures now refuse before IO. SSR hosts
+must validate and supply their own auth snapshot where required; native Product reads use the
+validated Axum request context. These sources remain uncompiled/unmounted in this work session.

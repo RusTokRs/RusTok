@@ -148,3 +148,13 @@ If such a component starts being reused across multiple hosts or modules, it sho
 - [Leptos storefront docs](../../apps/storefront/docs/README.md)
 - [Next.js admin docs](../../apps/next-admin/docs/README.md)
 - [Next.js storefront docs](../../apps/next-frontend/docs/README.md)
+
+## Product buyer native controls (2026-10-30)
+
+`packages/rustok-ui-controls` now owns the portable React Input, NativeSelect and Label used by
+Product buyer UI. Admin's existing Input path re-exports that control. NativeSelect is explicitly
+an HTML select counterpart of the Leptos native select, **not** a claim of full Admin Radix-popup
+parity. Leptos Input exposes numeric input-mode and validation/description ARIA bindings through
+shared UI class contracts. Styles, host transpilation and manifests include the shared package.
+Mounted keyboard/focus/controlled-state/screen-reader verification remains pending; type/source
+checks do not promote the provisional component parity statuses above.

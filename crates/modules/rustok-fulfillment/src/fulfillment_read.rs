@@ -22,6 +22,11 @@ pub trait FulfillmentReadPort: Send + Sync {
         request: ReadFulfillmentProjectionRequest,
     ) -> Result<FulfillmentResponse, PortError>;
 
+    /// Return complete child projections (at most MAX_SHIPMENT_STOCK_ITEMS), never truncated
+    /// items. Native pagination accepts 1..=100 parents per page with a stable created-at/ID
+    /// order. Selected readers must honor that bounded page size, not silently shorten pages.
+    /// Totals are owner read facts, not a snapshot lease across requests; consumers may refuse
+    /// changing totals, incomplete pages or repeated identities before any effect.
     async fn list_fulfillment_projections(
         &self,
         context: PortContext,
@@ -393,6 +398,7 @@ fn fulfillment_lifecycle_owner_error_facts(
             0,
             false,
         ),
+        FulfillmentError::OwnerPort(_) => ("owner_port", 0, 0, 0, 0, true),
         FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     FulfillmentLifecycleOwnerErrorFacts {
@@ -526,6 +532,20 @@ fn map_owner_error(
             false,
             false,
         ),
+        FulfillmentError::OwnerPort(stock) => {
+            let cause = crate::error::owner_port_error(stock);
+            let technical = matches!(
+                &cause.kind,
+                PortErrorKind::Unavailable | PortErrorKind::Timeout
+            );
+            (
+                cause.kind,
+                "fulfillment.shipment_stock_refused",
+                "shipment stock requires owner reconciliation",
+                cause.retryable,
+                technical,
+            )
+        }
         FulfillmentError::Database(_) => (
             PortErrorKind::Unavailable,
             "fulfillment.database_unavailable",
@@ -616,6 +636,9 @@ fn map_owner_error(
         );
     }
 
+    if let FulfillmentError::OwnerPort(stock) = &error {
+        return crate::error::owner_port_error(stock);
+    }
     PortError::new(kind, code, message, retryable)
 }
 

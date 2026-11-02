@@ -27,7 +27,8 @@ This work does not change:
 - `validate_selected_shipping_option` delegation or its `SHIPPING_OPTION_INVALID` envelope;
 - compatibility line-item resolution delegation or its existing selected public envelope;
 - `reprice_storefront_cart_line_items` delegation or its `CART_REPRICE_FAILED` envelope;
-- compatibility quantity validation delegation or its existing selected public envelope;
+- current typed quantity workflow and its existing selected public envelope (the old compatibility
+  quantity validator was retired in the 2026-10-30 continuation);
 - error-level diagnostic severity;
 - `public_graphql_error` construction;
 - the previously hardened customer and Cart/Pricing port mappers;
@@ -63,3 +64,15 @@ Still open:
 ## Validation disclosure
 
 No tests, Node verifiers, formatting, Cargo commands, mounted GraphQL scenarios, workflows, or CI were run. No compile, runtime, FFA, or FBA status is promoted.
+
+
+## Affected-boundary correction (2026-10-31)
+
+The current typed compatibility source used a tuple diagnostic wrapper whose Debug formatted
+private database/Pricing/Inventory/metadata cause text. It now consumes those causes after typed
+classification and formats only `redacted`; a focused Rust regression source is added, unrun.
+The source guard retains bounded customer/cart/typed diagnostics, corrects its false match of a
+safe retry-bit local binding as a raw log, and fences the live shared quantity workflow instead
+of requiring the retired quantity validator. The atomic context price mapper keeps the established
+public refresh envelope and owner retry bit. These source checks do not certify all remaining
+compatibility cleanup or compile/mounted/runtime behavior; see the [current handoff](implementation-plan.md#atomic-cart-context-adoption-2026-10-31).

@@ -1,5 +1,11 @@
 {
   "scripts": {
+    "verify:commerce:shipment-stock-provenance": "node scripts/verify/verify-commerce-shipment-stock-provenance.mjs",
+    "test:verify:commerce:shipment-stock-provenance": "node scripts/verify/verify-commerce-shipment-stock-provenance.test.mjs",
+    "verify:inventory:stock-events": "node scripts/verify/verify-inventory-stock-events.mjs",
+    "test:verify:inventory:stock-events": "node scripts/verify/verify-inventory-stock-events.test.mjs",
+    "verify:commerce:return-restock-identity": "node scripts/verify/verify-commerce-return-restock-identity.mjs",
+    "test:verify:commerce:return-restock-identity": "node scripts/verify/verify-commerce-return-restock-identity.test.mjs",
     "verify:pricing:public-error": "node scripts/verify/verify-pricing-public-error.mjs",
     "verify:product:error-boundary": "node scripts/verify/verify-product-error-boundary.mjs",
     "verify:product:variant-patches": "node scripts/verify/verify-product-variant-patches.mjs",
@@ -174,8 +180,8 @@
     "test:verify:product:runtime-fallback-smoke": "node scripts/verify/verify-product-runtime-fallback-smoke.test.mjs",
     "verify:product:grpc-test-attestation": "node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.mjs",
     "test:verify:product:grpc-test-attestation": "node scripts/verify/verify-product-catalog-grpc-maintainer-test-attestation.test.mjs",
-    "verify:ecommerce:fba": "npm run verify:ecommerce:public-port-errors && npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:fba-runtime-smoke && npm run verify:product:catalog-schema && npm run verify:product:storefront-media-price && npm run verify:product:lifecycle-collaboration && npm run verify:server:ai-optional-dependency && npm run verify:commerce:storefront-transport-errors && npm run verify:product:runtime-fallback-smoke && npm run verify:product:grpc-test-attestation && npm run verify:ecommerce:provider-spi-evidence && npm run verify:payment:refund-identity && npm run verify:payment:provider-outcomes && npm run verify:payment:stripe-runtime && npm run verify:marketplace && npm run verify:product:admin-category-sort && npm run verify:product:admin-read-diagnostics && npm run verify:product:admin-mutation-error-safety && npm run verify:product:admin-operation-results && npm run verify:product:admin-variant-axes && npm run verify:product:admin-schema-authoring && npm run verify:product:attribute-validation-rules && npm run verify:product:catalog-receipts && npm run verify:product:atomic-save && npm run verify:product:lifecycle-events && npm run verify:product:relations-bundles-idempotency",
-    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:public-port-errors && npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:fba-runtime-smoke && npm run test:verify:product:catalog-schema && npm run test:verify:product:runtime-fallback-smoke && npm run test:verify:product:grpc-test-attestation && npm run test:verify:ecommerce:provider-spi-evidence && npm run test:verify:product:admin-category-sort",
+    "verify:ecommerce:fba": "npm run verify:ecommerce:public-port-errors && npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:fba-runtime-smoke && npm run verify:product:catalog-schema && npm run verify:product:storefront-media-price && npm run verify:product:lifecycle-collaboration && npm run verify:server:ai-optional-dependency && npm run verify:commerce:storefront-transport-errors && npm run verify:product:runtime-fallback-smoke && npm run verify:product:grpc-test-attestation && npm run verify:ecommerce:provider-spi-evidence && npm run verify:payment:refund-identity && npm run verify:payment:provider-outcomes && npm run verify:payment:stripe-runtime && npm run verify:marketplace && npm run verify:product:admin-category-sort && npm run verify:product:admin-read-diagnostics && npm run verify:product:admin-mutation-error-safety && npm run verify:product:admin-operation-results && npm run verify:product:admin-variant-axes && npm run verify:product:admin-schema-authoring && npm run verify:product:attribute-validation-rules && npm run verify:product:catalog-receipts && npm run verify:product:atomic-save && npm run verify:product:lifecycle-events && npm run verify:product:relations-bundles-idempotency && npm run verify:commerce:return-restock-identity && npm run verify:commerce:shipment-stock-provenance && npm run verify:inventory:stock-events && npm run verify:inventory:quantity-release && npm run verify:inventory:reservation-events && npm run verify:inventory:catalog-deletion && npm run verify:inventory:quantity-writes && npm run verify:inventory:source-history",
+    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:public-port-errors && npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:fba-runtime-smoke && npm run test:verify:product:catalog-schema && npm run test:verify:product:runtime-fallback-smoke && npm run test:verify:product:grpc-test-attestation && npm run test:verify:ecommerce:provider-spi-evidence && npm run test:verify:product:admin-category-sort && npm run test:verify:commerce:return-restock-identity && npm run test:verify:commerce:shipment-stock-provenance && npm run test:verify:inventory:stock-events && npm run test:verify:inventory:quantity-release && npm run test:verify:inventory:reservation-events && npm run test:verify:inventory:catalog-deletion && npm run test:verify:inventory:quantity-writes",
     "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs && node scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
@@ -272,7 +278,21 @@
     "verify:product:atomic-save": "node scripts/verify/verify-product-atomic-save.mjs",
     "test:verify:product:atomic-save": "node --test scripts/verify/verify-product-atomic-save.test.mjs",
     "verify:product:media-retention": "node scripts/verify/verify-product-media-retention.mjs",
-    "test:verify:product:media-retention": "node --test scripts/verify/verify-product-media-retention.test.mjs"
+    "test:verify:product:media-retention": "node --test scripts/verify/verify-product-media-retention.test.mjs",
+    "verify:inventory:quantity-release": "node scripts/verify/verify-inventory-quantity-release.mjs",
+    "test:verify:inventory:quantity-release": "node scripts/verify/verify-inventory-quantity-release.test.mjs",
+    "verify:inventory:reservation-events": "node scripts/verify/verify-inventory-reservation-events.mjs",
+    "test:verify:inventory:reservation-events": "node scripts/verify/verify-inventory-reservation-events.test.mjs",
+    "verify:inventory:catalog-deletion": "node scripts/verify/verify-inventory-catalog-deletion.mjs",
+    "test:verify:inventory:catalog-deletion": "node scripts/verify/verify-inventory-catalog-deletion.test.mjs",
+    "verify:inventory:quantity-writes": "node scripts/verify/verify-inventory-quantity-writes.mjs",
+    "test:verify:inventory:quantity-writes": "node scripts/verify/verify-inventory-quantity-writes.test.mjs",
+    "verify:inventory:source-history": "node scripts/verify/verify-inventory-source-history.mjs",
+    "test:verify:inventory:source-history": "node --test scripts/verify/verify-inventory-source-history.test.mjs",
+    "verify:inventory:source-delivery": "node scripts/verify/verify-inventory-source-delivery.mjs",
+    "test:verify:inventory:source-delivery": "node scripts/verify/verify-inventory-source-delivery.test.mjs",
+    "verify:inventory:index-consumer": "node scripts/verify/verify-inventory-index-consumer.mjs",
+    "test:verify:inventory:index-consumer": "node --test scripts/verify/verify-inventory-index-consumer.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.35.5"

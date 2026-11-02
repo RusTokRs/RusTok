@@ -163,17 +163,17 @@ pub fn InventoryAdmin() -> impl IntoView {
     let reserve_quantity_error_label = t(
         ui_locale.as_deref(),
         "inventory.error.reserveQuantity",
-        "Failed to reserve variant quantity",
+        "Failed to create anonymous reservation",
     );
     let release_reservation_error_label = t(
         ui_locale.as_deref(),
         "inventory.error.releaseReservation",
-        "Failed to release reserved variant quantity",
+        "Failed to release anonymous reserved quantity",
     );
     let release_reservation_notice_label = t(
         ui_locale.as_deref(),
         "inventory.notice.releasedReservation",
-        "Released reserved quantity",
+        "Released anonymous quantity",
     );
     let availability_quantity_error_label = t(
         ui_locale.as_deref(),
@@ -536,7 +536,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
-                                    {t(ui_locale_for_detail.as_deref(), "inventory.detail.transportGap", "Dedicated inventory set/adjust/reserve/release/check-availability transport is available for targeted stock corrections, validation and reservation flows through the module-owned native facade.")}
+                                    {t(ui_locale_for_detail.as_deref(), "inventory.detail.transportGap", "Native quantity reserve/release applies only to anonymous operator reservations. Cart/Order reservations require durable identity; quantities here are global observations.")}
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5">
@@ -786,7 +786,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                 <button
                                                                     type="button"
                                                                     class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                                    title=t(variant_locale.as_deref(), "inventory.action.releaseReservation", "Release reservation")
+                                                                    title=t(variant_locale.as_deref(), "inventory.action.releaseReservation", "Release anonymous reservation")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
                                                                         let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
@@ -833,12 +833,12 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                         });
                                                                     }
                                                                 >
-                                                                    {t(variant_locale.as_deref(), "inventory.action.releaseReservation", "Release")}
+                                                                    {t(variant_locale.as_deref(), "inventory.action.releaseReservation", "Release anonymous reservation")}
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                                    title=t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve")
+                                                                    title=t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve anonymous quantity")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
                                                                         let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
@@ -878,7 +878,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                         });
                                                                     }
                                                                 >
-                                                                    {t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve")}
+                                                                    {t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve anonymous quantity")}
                                                                 </button>
                                                             </div>
                                                         </div>

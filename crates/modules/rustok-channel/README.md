@@ -2,6 +2,14 @@
 
 `rustok-channel` is an experimental core module that introduces a platform-level channel context for external delivery surfaces such as websites, applications, API clients, embedded targets, and other entry points.
 
+## Known Limitations / Pending Implementation
+
+- The Product downstream saved-selector read completes/validates Channel ID/slug through
+  `ChannelReadPort::read_selected_channel` without page/default fallback. Its new regression
+  sources and selected syntax checks are not Rust, database, cancellation or mounted/remote
+  execution evidence. See the [owner plan](docs/implementation-plan.md#selected-commerce-channel-reads-2026-10-30-source-work).
+  This does not certify the pre-existing cache/routing flows or promote their readiness.
+
 ## Purpose
 
 `rustok-channel` owns the canonical channel model and resolution pipeline for RusToK delivery surfaces.

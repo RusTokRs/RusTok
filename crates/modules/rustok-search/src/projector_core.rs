@@ -1,5 +1,5 @@
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, IsolationLevel, Statement,
     TransactionTrait,
 };
 use std::time::{Duration, Instant};
@@ -98,7 +98,7 @@ impl SearchProjector {
     pub async fn rebuild_product_scope(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         let started_at = Instant::now();
-        let tx = self.begin_transaction().await?;
+        let tx = self.begin_product_transaction(tenant_id).await?;
         let result = async {
             self.delete_documents_in(
                 &tx,
@@ -222,7 +222,7 @@ impl SearchProjector {
     pub async fn upsert_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
         let started_at = Instant::now();
-        let tx = self.begin_transaction().await?;
+        let tx = self.begin_product_transaction(tenant_id).await?;
         let result = async {
             self.delete_product_in(&tx, tenant_id, product_id).await?;
             self.upsert_product_documents_in(&tx, tenant_id, Some(product_id))
@@ -241,8 +241,9 @@ impl SearchProjector {
     }
 
     pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
-        self.delete_product_in(&self.db, tenant_id, product_id)
-            .await
+        let tx = self.begin_product_transaction(tenant_id).await?;
+        self.delete_product_in(&tx, tenant_id, product_id).await?;
+        self.commit_transaction(tx).await
     }
 
     fn ensure_postgres(&self) -> Result<()> {
@@ -253,6 +254,36 @@ impl SearchProjector {
         }
 
         Ok(())
+    }
+
+    /// One Search-owned tenant/product scope lock also covers rebuild and deletion. Acquire
+    /// it before authoritative reads and use READ COMMITTED: a waiter must not retain the
+    /// snapshot from before the preceding refresher committed. Hash collisions only serialize
+    /// unrelated scopes; every read/write remains explicitly tenant-filtered.
+    async fn begin_product_transaction(&self, tenant_id: Uuid) -> Result<DatabaseTransaction> {
+        self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Product search refresh requires a tenant".to_owned(),
+            ));
+        }
+        let tx = self
+            .db
+            .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
+            .await
+            .map_err(Error::Database)?;
+        let lock = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![format!("rustok-search:products:{tenant_id}").into()],
+        );
+        tx.query_one_raw(lock)
+            .await
+            .map_err(Error::Database)?
+            .ok_or_else(|| {
+                Error::External("Product search projection lock was not acquired".to_owned())
+            })?;
+        Ok(tx)
     }
 
     async fn begin_transaction(&self) -> Result<DatabaseTransaction> {
@@ -595,7 +626,7 @@ impl SearchProjector {
                     MAX(price_agg.max_amount)::bigint AS price_max
                 FROM product_variants pv
                 LEFT JOIN LATERAL (
-                    SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS available_quantity
+                    SELECT COALESCE(SUM(il.stocked_quantity::bigint - il.reserved_quantity::bigint), 0) AS available_quantity
                     FROM inventory_items ii
                     LEFT JOIN inventory_levels il ON il.inventory_item_id = ii.id
                     WHERE ii.variant_id = pv.id

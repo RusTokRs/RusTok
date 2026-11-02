@@ -17,7 +17,7 @@ impl From<rustok_graphql::GraphqlHttpError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode fulfillmentRequirement shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelId channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode fulfillmentRequirement shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -85,6 +85,8 @@ struct GraphqlCart {
     shipping_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
+    #[serde(rename = "channelId")]
+    channel_id: Option<String>,
     #[serde(rename = "channelSlug")]
     channel_slug: Option<String>,
     email: Option<String>,
@@ -164,25 +166,6 @@ struct GraphqlCartShippingOption {
     active: bool,
 }
 
-fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
-}
-
 async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,
@@ -191,8 +174,8 @@ where
     execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(query, Some(variables)),
-        None,
-        configured_tenant_slug(),
+        leptos_auth::storage::get_token(),
+        leptos_auth::storage::get_tenant(),
         None,
     )
     .await
@@ -303,6 +286,7 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
         adjustment_total: value.adjustment_total,
         shipping_total: value.shipping_total,
         total_amount: value.total_amount,
+        channel_id: value.channel_id,
         channel_slug: value.channel_slug,
         email: value.email,
         customer_id: value.customer_id,
@@ -364,3 +348,50 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
             .collect(),
     }
 }
+
+#[derive(Debug, Deserialize)]
+struct CreateBuyerCartResponse {
+    #[serde(rename = "createStorefrontCart")]
+    cart: CreateBuyerCartPayload,
+}
+#[derive(Debug, Deserialize)]
+struct CreateBuyerCartPayload {
+    cart: GraphqlCart,
+}
+#[derive(Debug, Deserialize)]
+struct AddBuyerVariantResponse {
+    #[serde(rename = "addStorefrontCartLineItem")]
+    cart: GraphqlCart,
+}
+
+pub(super) async fn create_cart(
+    request: crate::core::CartCreateRequest,
+) -> Result<StorefrontCart, ApiError> {
+    crate::core::validate_cart_create(&request)
+        .map_err(|error| ApiError::Graphql(error.to_string()))?;
+    let locale = request.locale.clone();
+    let response: CreateBuyerCartResponse = execute_graphql(&graphql_url(), GraphqlRequest::new(
+        CREATE_BUYER_CART, Some(serde_json::json!({ "input": {
+            "currencyCode": request.currency_code, "regionId": request.region_id, "locale": request.locale,
+        }}))), leptos_auth::storage::get_token(), leptos_auth::storage::get_tenant(), locale).await?;
+    Ok(map_graphql_cart(response.cart.cart))
+}
+
+pub(super) async fn add_variant(
+    request: crate::core::CartAddVariantRequest,
+) -> Result<StorefrontCart, ApiError> {
+    crate::core::validate_cart_add(&request)
+        .map_err(|error| ApiError::Graphql(error.to_string()))?;
+    let context = request.expected_context;
+    let response: AddBuyerVariantResponse = execute_graphql(&graphql_url(), GraphqlRequest::new(
+        ADD_BUYER_VARIANT, Some(serde_json::json!({ "cartId": request.cart_id, "input": {
+            "variantId": request.variant_id, "quantity": request.quantity, "expectedLocale": request.locale,
+            "expectedContext": { "currencyCode": context.currency_code, "regionId": context.region_id,
+                "priceListId": context.price_list_id, "channelId": context.channel_id,
+                "channelSlug": context.channel_slug, "quantity": context.quantity },
+        }}))), leptos_auth::storage::get_token(), leptos_auth::storage::get_tenant(), request.locale).await?;
+    Ok(map_graphql_cart(response.cart))
+}
+
+const CREATE_BUYER_CART: &str = "mutation CreateBuyerCart($input: CreateStorefrontCartInput!) { createStorefrontCart(input: $input) { cart { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelId channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode fulfillmentRequirement shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } } }";
+const ADD_BUYER_VARIANT: &str = "mutation AddBuyerVariant($cartId: UUID!, $input: AddStorefrontCartLineItemInput!) { addStorefrontCartLineItem(cartId: $cartId, input: $input) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelId channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode fulfillmentRequirement shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";

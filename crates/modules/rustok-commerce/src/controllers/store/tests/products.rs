@@ -161,6 +161,8 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
             default_locale: "en",
             public_channel_slug: None,
             input: StoreAddCartLineItemInput {
+                expected_context: None,
+                expected_locale: None,
                 variant_id: variant.id,
                 quantity: 2,
                 metadata: json!({ "source": "store-line-item-test" }),
@@ -226,6 +228,8 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
             default_locale: "en",
             public_channel_slug: None,
             input: StoreAddCartLineItemInput {
+                expected_context: None,
+                expected_locale: None,
                 variant_id: variant.id,
                 quantity: 1,
                 metadata: json!({}),
@@ -278,6 +282,8 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
             default_locale: "en",
             public_channel_slug: None,
             input: StoreAddCartLineItemInput {
+                expected_context: None,
+                expected_locale: None,
                 variant_id: variant.id,
                 quantity: 1,
                 metadata: json!({}),
@@ -320,6 +326,8 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
             default_locale: "en",
             public_channel_slug: None,
             input: StoreAddCartLineItemInput {
+                expected_context: None,
+                expected_locale: None,
                 variant_id: Uuid::new_v4(),
                 quantity: 1,
                 metadata: json!({}),
@@ -372,6 +380,8 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
             default_locale: "en",
             public_channel_slug: Some("web-store"),
             input: StoreAddCartLineItemInput {
+                expected_context: None,
+                expected_locale: None,
                 variant_id: variant.id,
                 quantity: 1,
                 metadata: json!({}),

@@ -4,6 +4,8 @@
 
 @import 'tw-animate-css';
 
+@source "../../../../packages/rustok-ui-controls/src";
+
 @custom-variant dark (&:is(.dark *));
 
 @import './theme.css';

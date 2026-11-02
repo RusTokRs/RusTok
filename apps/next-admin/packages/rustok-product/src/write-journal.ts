@@ -6,10 +6,42 @@
 import type {
   ProductWriteRequests,
   ProductWriteScope,
-  ProductWriteOutcome
+  ProductWriteOutcome,
+  ProductVariantCreateRequest
 } from './write-attempt';
 
+import {
+  isDefinitionId,
+  isAttributeDefinitionRequest,
+  isAttributeDefinitionResult,
+  isAttributeDefinitionRefusalCode,
+  attributeDefinitionRefusalCode
+} from './attribute-lifecycle.ts';
+import type { AttributeDefinitionWriteRequest } from './attribute-lifecycle';
+
+import {
+  isAxesApplicationInput,
+  isAxesDurableRefusalCode
+} from './axis-reconfiguration.ts';
+
+import {
+  isVariantCreateInput,
+  isVariantCreateRefusalCode,
+  isVariantId
+} from './variant-create.ts';
+
 export const PRODUCT_EDITOR_INTENT_QUERY_KEY = 'editor_intent' as const;
+export const ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY =
+  'attribute_recovery' as const;
+type CatalogJournalKind = 'product' | 'attribute_definition';
+const journalPrefix = (kind: CatalogJournalKind) =>
+  kind === 'product'
+    ? 'rustok.product.editor_attempt'
+    : 'rustok.product.attribute_definition_attempt';
+const intentQuery = (kind: CatalogJournalKind) =>
+  kind === 'product'
+    ? PRODUCT_EDITOR_INTENT_QUERY_KEY
+    : ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY;
 export const PRODUCT_RECOVERY_UNAVAILABLE =
   'Product recovery is unavailable. No new operation will be sent. Restore browser storage and retry recovery; do not discard an unresolved attempt.';
 export type ProductWriteOperation = keyof ProductWriteRequests;
@@ -21,13 +53,30 @@ export type ProductPendingAttempt = {
   };
 }[ProductWriteOperation];
 export type ProductJournalRecord =
+  | AttributeDefinitionJournalRecord
   | { phase: 'pending'; attempt: ProductPendingAttempt }
   | {
       phase: 'settled';
-      operation: ProductWriteOperation;
+      operation: Exclude<ProductWriteOperation, 'variant' | 'definition'>;
       key: string;
       outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
+    }
+  | {
+      phase: 'settled';
+      operation: 'variant';
+      key: string;
+      request: ProductVariantCreateRequest;
+      outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
     };
+
+// Terminal dictionary requests retain their full body, just like standalone SKU attempts.
+export type AttributeDefinitionJournalRecord = {
+  phase: 'settled';
+  operation: 'definition';
+  key: string;
+  request: AttributeDefinitionWriteRequest;
+  outcome: Exclude<ProductWriteOutcome, { status: 'unknown' }>;
+};
 
 export interface ProductJournalDriver {
   read(): string | null;
@@ -63,7 +112,8 @@ export class ProductWriteJournal {
     scope: ProductWriteScope,
     resource: string,
     intent: string,
-    driver: ProductJournalDriver
+    driver: ProductJournalDriver,
+    readonly resourceKind: CatalogJournalKind = 'product'
   ) {
     this.scope = Object.freeze({
       tenantId: scope.tenantId,
@@ -85,7 +135,7 @@ export class ProductWriteJournal {
   }
 
   get storageKey(): string {
-    return `rustok.product.editor_attempt:${JSON.stringify([this.scope.tenantId, this.scope.actorId, this.resource, this.intent])}`;
+    return `${journalPrefix(this.resourceKind)}:${JSON.stringify([this.scope.tenantId, this.scope.actorId, this.resource, this.intent])}`;
   }
 
   private requestValid(
@@ -100,6 +150,37 @@ export class ProductWriteJournal {
       value.scope.actorId !== this.scope.actorId
     )
       return false;
+    if (this.resourceKind === 'attribute_definition') {
+      return (
+        operation === 'definition' &&
+        this.resource !== 'new' &&
+        isAttributeDefinitionRequest(value) &&
+        value.id === this.resource
+      );
+    }
+    if (operation === 'definition') return false;
+    if (operation === 'variant') {
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        only(value, ['id', 'scope', 'input', 'locale']) &&
+        typeof value.locale === 'string' &&
+        value.locale.length > 0 &&
+        value.locale.length <= 32 &&
+        isVariantCreateInput(value.input)
+      );
+    }
+    if (operation === 'axes') {
+      return (
+        this.resource !== 'new' &&
+        value.id === this.resource &&
+        only(value, ['id', 'scope', 'input', 'locale']) &&
+        typeof value.locale === 'string' &&
+        value.locale.length > 0 &&
+        value.locale.length <= 32 &&
+        isAxesApplicationInput(value.input)
+      );
+    }
     if (operation !== 'save') {
       return (
         this.resource !== 'new' &&
@@ -130,6 +211,8 @@ export class ProductWriteJournal {
         'status',
         'revision',
         'initialVariant',
+        'variantAxes',
+        'initialVariants',
         'attributePatches',
         'activeLocale'
       ]) ||
@@ -210,8 +293,10 @@ export class ProductWriteJournal {
       )
     )
       return false;
-    if (value.initialVariant !== undefined) {
-      const variant = value.initialVariant;
+    const scalarVariantValid = (
+      variant: unknown,
+      withAxes: boolean
+    ): boolean => {
       if (
         !object(variant) ||
         !only(variant, [
@@ -221,7 +306,8 @@ export class ProductWriteJournal {
           'currencyCode',
           'compareAtAmount',
           'inventoryQuantity',
-          'inventoryPolicy'
+          'inventoryPolicy',
+          ...(withAxes ? ['axisValues'] : [])
         ]) ||
         ![
           'sku',
@@ -236,11 +322,62 @@ export class ProductWriteJournal {
         (variant.inventoryQuantity as number) > 2147483647
       )
         return false;
-    }
+      return (
+        !withAxes ||
+        (object(variant) &&
+          Array.isArray(variant.axisValues) &&
+          variant.axisValues.length <= 32 &&
+          variant.axisValues.every(
+            (value) =>
+              object(value) &&
+              only(value, ['attributeId', 'optionId']) &&
+              typeof value.attributeId === 'string' &&
+              typeof value.optionId === 'string'
+          ))
+      );
+    };
+    if (
+      value.initialVariant !== undefined &&
+      !scalarVariantValid(value.initialVariant, false)
+    )
+      return false;
+    if (
+      value.initialVariants !== undefined &&
+      (!value.isNew ||
+        value.initialVariant !== undefined ||
+        !Array.isArray(value.initialVariants) ||
+        value.initialVariants.length < 1 ||
+        value.initialVariants.length > 128 ||
+        !value.initialVariants.every((variant) =>
+          scalarVariantValid(variant, true)
+        ))
+    )
+      return false;
+    if (
+      value.variantAxes !== undefined &&
+      (!value.isNew ||
+        !Array.isArray(value.variantAxes) ||
+        value.variantAxes.length > 32 ||
+        !value.variantAxes.every(
+          (axis) =>
+            object(axis) &&
+            only(axis, ['attributeId', 'position', 'allowedOptionIds']) &&
+            typeof axis.attributeId === 'string' &&
+            (axis.position === undefined ||
+              axis.position === null ||
+              (Number.isInteger(axis.position) &&
+                (axis.position as number) >= 0 &&
+                (axis.position as number) <= 2147483647)) &&
+            strings(axis.allowedOptionIds) &&
+            axis.allowedOptionIds.length >= 1 &&
+            axis.allowedOptionIds.length <= 256
+        ))
+    )
+      return false;
     return true;
   }
 
-  private validate(raw: unknown): ProductJournalRecord {
+  private validate(raw: unknown): ProductJournalRecord | null {
     if (
       !object(raw) ||
       !only(raw, ['scope', 'resource', 'intent', 'record']) ||
@@ -250,17 +387,22 @@ export class ProductWriteJournal {
       raw.scope.actorId !== this.scope.actorId ||
       raw.resource !== this.resource ||
       raw.intent !== this.intent ||
-      !object(raw.record)
+      (raw.record !== null && !object(raw.record))
     )
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     const record = raw.record;
+    // An explicit empty baseline differs from missing browser storage after reload.
+    if (record === null) return null;
     if (record.phase === 'pending') {
       const attempt = record.attempt;
       if (
         only(record, ['phase', 'attempt']) &&
         object(attempt) &&
         only(attempt, ['operation', 'key', 'request']) &&
-        ['save', 'status', 'delete'].includes(attempt.operation as string) &&
+        (this.resourceKind === 'product'
+          ? ['save', 'status', 'delete', 'axes', 'variant']
+          : ['definition']
+        ).includes(attempt.operation as string) &&
         typeof attempt.key === 'string' &&
         uuid.test(attempt.key) &&
         this.requestValid(
@@ -271,19 +413,55 @@ export class ProductWriteJournal {
         return record as ProductJournalRecord;
     } else if (
       record.phase === 'settled' &&
-      only(record, ['phase', 'operation', 'key', 'outcome']) &&
-      ['save', 'status', 'delete'].includes(record.operation as string) &&
+      only(
+        record,
+        record.operation === 'variant' || record.operation === 'definition'
+          ? ['phase', 'operation', 'key', 'request', 'outcome']
+          : ['phase', 'operation', 'key', 'outcome']
+      ) &&
+      (this.resourceKind === 'product'
+        ? ['save', 'status', 'delete', 'axes', 'variant']
+        : ['definition']
+      ).includes(record.operation as string) &&
       (this.resource !== 'new' || record.operation === 'save') &&
       typeof record.key === 'string' &&
       uuid.test(record.key) &&
-      object(record.outcome)
+      object(record.outcome) &&
+      (!['variant', 'definition'].includes(record.operation as string) ||
+        this.requestValid(
+          record.operation as 'variant' | 'definition',
+          record.request
+        ))
     ) {
       const outcome = record.outcome;
       if (
         outcome.status === 'rejected' &&
-        only(outcome, ['status', 'code', 'message']) &&
+        only(
+          outcome,
+          record.operation === 'definition'
+            ? ['status', 'code', 'message', 'definition']
+            : ['status', 'code', 'message']
+        ) &&
         typeof outcome.code === 'string' &&
         outcome.code.length > 0 &&
+        (record.operation !== 'axes' ||
+          isAxesDurableRefusalCode(outcome.code)) &&
+        (record.operation !== 'variant' ||
+          isVariantCreateRefusalCode(outcome.code)) &&
+        (record.operation !== 'definition' ||
+          (isAttributeDefinitionRefusalCode(outcome.code) &&
+            (outcome.code === 'PRODUCT_VALIDATION'
+              ? outcome.definition === undefined
+              : isAttributeDefinitionResult(
+                  outcome.definition,
+                  (record.request as AttributeDefinitionWriteRequest).input
+                ) &&
+                !outcome.definition.applied &&
+                outcome.definition.refusal !== null &&
+                outcome.code ===
+                  attributeDefinitionRefusalCode(
+                    outcome.definition.refusal
+                  )))) &&
         typeof outcome.message === 'string'
       )
         return record as ProductJournalRecord;
@@ -291,13 +469,31 @@ export class ProductWriteJournal {
         outcome.status === 'confirmed' &&
         only(outcome, ['status', 'value']) &&
         object(outcome.value) &&
-        only(outcome.value, ['id', 'revision']) &&
+        only(
+          outcome.value,
+          record.operation === 'variant'
+            ? ['id', 'revision', 'variantId']
+            : record.operation === 'definition'
+              ? ['id', 'revision', 'definition']
+              : ['id', 'revision']
+        ) &&
+        (record.operation !== 'variant' ||
+          isVariantId(outcome.value.variantId)) &&
+        (record.operation !== 'definition' ||
+          (isAttributeDefinitionResult(
+            outcome.value.definition,
+            (record.request as AttributeDefinitionWriteRequest).input
+          ) &&
+            outcome.value.definition.applied)) &&
         typeof outcome.value.id === 'string' &&
         outcome.value.id.length > 0 &&
         (this.resource === 'new'
           ? record.operation === 'save'
           : outcome.value.id === this.resource) &&
-        (record.operation === 'delete'
+        (record.operation === 'delete' ||
+        record.operation === 'axes' ||
+        record.operation === 'variant' ||
+        record.operation === 'definition'
           ? outcome.value.revision === null
           : outcome.value.revision !== null && revision(outcome.value.revision))
       )
@@ -318,7 +514,10 @@ export class ProductWriteJournal {
     }
   }
 
-  write(record: ProductJournalRecord): ProductJournalRecord {
+  write(
+    record: ProductJournalRecord,
+    expected: ProductJournalRecord | null
+  ): ProductJournalRecord {
     const projection = {
       scope: this.scope,
       resource: this.resource,
@@ -332,6 +531,26 @@ export class ProductWriteJournal {
     if (text.length > MAX_RECORD_LENGTH)
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     const canonical = this.validate(JSON.parse(text));
+    if (!canonical || JSON.stringify(this.read()) !== JSON.stringify(expected))
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const transition =
+      expected === null
+        ? canonical.phase === 'pending'
+        : expected.phase === 'pending' &&
+          canonical.phase === 'settled' &&
+          expected.attempt.operation === canonical.operation &&
+          expected.attempt.key === canonical.key &&
+          (!['variant', 'definition'].includes(canonical.operation) ||
+            JSON.stringify(expected.attempt.request) ===
+              JSON.stringify(
+                (
+                  canonical as Extract<
+                    ProductJournalRecord,
+                    { operation: 'variant' | 'definition' }
+                  >
+                ).request
+              ));
+    if (!transition) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     this.driver.write(text);
     // Read-after-write detects an unsuccessful storage adapter before owner IO.
     if (this.driver.read() !== text)
@@ -350,41 +569,156 @@ export function browserProductWriteJournal(
   resource: string,
   newIntent = false
 ): ProductWriteJournal {
+  return browserCatalogWriteJournal(scope, resource, newIntent, 'product');
+}
+export function browserAttributeDefinitionJournal(
+  scope: ProductWriteScope,
+  resource: string,
+  newIntent = false,
+  optionId?: string | null
+): ProductWriteJournal {
+  return browserCatalogWriteJournal(
+    scope,
+    resource,
+    newIntent,
+    'attribute_definition',
+    optionId
+  );
+}
+function attributeDocumentOption(
+  url: URL,
+  resource: string,
+  expected?: string | null
+): string | null {
+  const attributes = url.searchParams.getAll('attribute_id');
+  const options = url.searchParams.getAll('option_id');
+  const option = options[0] ?? null;
+  if (
+    attributes.length !== 1 ||
+    attributes[0] !== resource ||
+    !isDefinitionId(resource) ||
+    options.length > 1 ||
+    (option !== null && !isDefinitionId(option)) ||
+    (expected !== undefined && option !== expected)
+  )
+    throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+  return option;
+}
+function browserCatalogWriteJournal(
+  scope: ProductWriteScope,
+  resource: string,
+  newIntent: boolean,
+  kind: CatalogJournalKind,
+  expectedOptionId?: string | null
+): ProductWriteJournal {
+  const queryKey = intentQuery(kind);
   if (!window.isSecureContext || !navigator.locks)
     throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
   const url = new URL(window.location.href);
-  const intents = url.searchParams.getAll(PRODUCT_EDITOR_INTENT_QUERY_KEY);
-  if (!newIntent && intents.length > 1)
-    throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
-  let intent = newIntent ? null : (intents[0] ?? null);
+  let documentOption =
+    kind === 'attribute_definition'
+      ? attributeDocumentOption(url, resource, expectedOptionId)
+      : null;
+  const verifySelection = () => {
+    if (kind === 'attribute_definition')
+      attributeDocumentOption(
+        new URL(window.location.href),
+        resource,
+        documentOption
+      );
+  };
+  const intents = url.searchParams.getAll(queryKey);
+  if (intents.length > 1) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+  let intent: string | null = intents[0] ?? null;
   if (intent !== null && !uuid.test(intent))
     throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+  const storage = window.localStorage;
+  const storageKey = (intent: string) =>
+    `${journalPrefix(kind)}:${JSON.stringify([scope.tenantId, scope.actorId, resource, intent])}`;
+  const journal = (intent: string) => {
+    const key = storageKey(intent);
+    return new ProductWriteJournal(
+      scope,
+      resource,
+      intent,
+      {
+        read: () => {
+          verifySelection();
+          const raw = storage.getItem(key);
+          if (raw === null) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+          return raw;
+        },
+        write: (value) => {
+          verifySelection();
+          storage.setItem(key, value);
+        },
+        exclusive: async (work) => {
+          return await navigator.locks.request(
+            key,
+            { mode: 'exclusive', ifAvailable: true },
+            async (lock) => {
+              // Check after lock acquisition too: native query changes cannot submit an old page.
+              verifySelection();
+              const current = new URL(window.location.href).searchParams.getAll(
+                queryKey
+              );
+              if (!lock || current.length !== 1 || current[0] !== intent)
+                throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+              return work();
+            }
+          );
+        }
+      },
+      kind
+    );
+  };
+  if (newIntent) {
+    // Rotation itself requires durable terminal proof, not merely a caller's boolean.
+    if (!intent) throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const previous = journal(intent).read();
+    if (previous?.phase !== 'settled')
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    if (kind === 'attribute_definition') {
+      if (previous.operation !== 'definition')
+        throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+      // Ready has no body: publish its original target before committing a new baseline.
+      // A failed full navigation/reload must not reinterpret the old URL as another option.
+      documentOption = previous.request.input.optionId;
+      url.searchParams.set('attribute_id', previous.request.id);
+      if (documentOption === null) url.searchParams.delete('option_id');
+      else url.searchParams.set('option_id', documentOption);
+      window.history.replaceState(window.history.state, '', url);
+      verifySelection();
+    }
+    intent = null;
+  }
   if (!intent) {
     intent = crypto.randomUUID();
-    url.searchParams.set(PRODUCT_EDITOR_INTENT_QUERY_KEY, intent);
+    // Validate scope before touching storage. Initialize/read back before the URL is attached;
+    // no owner write can occur if either storage or the host history annotation fails.
+    const initialized = journal(intent);
+    const key = storageKey(intent);
+    if (storage.getItem(key) !== null)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    const baseline = JSON.stringify({
+      scope: { tenantId: scope.tenantId, actorId: scope.actorId },
+      resource,
+      intent,
+      record: null
+    });
+    storage.setItem(key, baseline);
+    if (storage.getItem(key) !== baseline)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    initialized.read();
+    url.searchParams.set(queryKey, intent);
     window.history.replaceState(window.history.state, '', url);
+    const attached = new URL(window.location.href).searchParams.getAll(
+      queryKey
+    );
+    if (attached.length !== 1 || attached[0] !== intent)
+      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
   }
-  const storage = window.localStorage;
-  const key = `rustok.product.editor_attempt:${JSON.stringify([scope.tenantId, scope.actorId, resource, intent])}`;
-  return new ProductWriteJournal(scope, resource, intent, {
-    read: () => storage.getItem(key),
-    write: (value) => storage.setItem(key, value),
-    exclusive: async (work) => {
-      return await navigator.locks.request(
-        key,
-        { mode: 'exclusive', ifAvailable: true },
-        async (lock) => {
-          // Check after lock acquisition too: Web Locks schedules this callback.
-          // A native query change must not submit an old mounted editor intent.
-          const current = new URL(window.location.href).searchParams.getAll(
-            PRODUCT_EDITOR_INTENT_QUERY_KEY
-          );
-          if (!lock || current.length !== 1 || current[0] !== intent) {
-            throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
-          }
-          return work();
-        }
-      );
-    }
-  });
+  const result = journal(intent);
+  result.read(); // Existing pending/terminal records retain their original envelope and hash.
+  return result;
 }

@@ -241,25 +241,32 @@ impl CommercePricingMutation {
         );
         let error_context = port_context.clone();
 
-        let price = in_process_pricing_write_port(db.clone(), event_bus.clone())
-            .upsert_variant_price(
-                port_context,
-                UpsertVariantPriceRequest {
-                    variant_id,
-                    price_list_id: input.price_list_id,
-                    currency_code,
-                    amount,
-                    compare_at_amount,
-                    channel_id: input.channel_id,
-                    channel_slug,
-                    min_quantity: input.min_quantity,
-                    max_quantity: input.max_quantity,
-                },
-            )
-            .await
-            .map_err(|error| {
-                pricing_port_graphql_error(&error_context, "upsert_variant_price", error)
-            })?;
+        let price = in_process_pricing_write_port(
+            db.clone(),
+            event_bus.clone(),
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
+        )
+        .upsert_variant_price(
+            port_context,
+            UpsertVariantPriceRequest {
+                variant_id,
+                price_list_id: input.price_list_id,
+                currency_code,
+                amount,
+                compare_at_amount,
+                channel_id: input.channel_id,
+                channel_slug,
+                min_quantity: input.min_quantity,
+                max_quantity: input.max_quantity,
+            },
+        )
+        .await
+        .map_err(|error| {
+            pricing_port_graphql_error(&error_context, "upsert_variant_price", error)
+        })?;
 
         Ok(price.into())
     }
@@ -291,22 +298,29 @@ impl CommercePricingMutation {
         );
         let error_context = port_context.clone();
 
-        let preview = in_process_pricing_read_port(db.clone(), event_bus.clone())
-            .preview_variant_discount(
-                port_context,
-                PreviewVariantDiscountRequest {
-                    variant_id,
-                    price_list_id: input.price_list_id,
-                    currency_code,
-                    discount_percent,
-                    channel_id: input.channel_id,
-                    channel_slug,
-                },
-            )
-            .await
-            .map_err(|error| {
-                pricing_port_graphql_error(&error_context, "preview_variant_discount", error)
-            })?;
+        let preview = in_process_pricing_read_port(
+            db.clone(),
+            event_bus.clone(),
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
+        )
+        .preview_variant_discount(
+            port_context,
+            PreviewVariantDiscountRequest {
+                variant_id,
+                price_list_id: input.price_list_id,
+                currency_code,
+                discount_percent,
+                channel_id: input.channel_id,
+                channel_slug,
+            },
+        )
+        .await
+        .map_err(|error| {
+            pricing_port_graphql_error(&error_context, "preview_variant_discount", error)
+        })?;
 
         Ok(preview.into())
     }
@@ -339,22 +353,29 @@ impl CommercePricingMutation {
         );
         let error_context = port_context.clone();
 
-        let preview = in_process_pricing_write_port(db.clone(), event_bus.clone())
-            .apply_variant_discount(
-                port_context,
-                ApplyVariantDiscountRequest {
-                    variant_id,
-                    price_list_id: input.price_list_id,
-                    currency_code,
-                    discount_percent,
-                    channel_id: input.channel_id,
-                    channel_slug,
-                },
-            )
-            .await
-            .map_err(|error| {
-                pricing_port_graphql_error(&error_context, "apply_variant_discount", error)
-            })?;
+        let preview = in_process_pricing_write_port(
+            db.clone(),
+            event_bus.clone(),
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
+        )
+        .apply_variant_discount(
+            port_context,
+            ApplyVariantDiscountRequest {
+                variant_id,
+                price_list_id: input.price_list_id,
+                currency_code,
+                discount_percent,
+                channel_id: input.channel_id,
+                channel_slug,
+            },
+        )
+        .await
+        .map_err(|error| {
+            pricing_port_graphql_error(&error_context, "apply_variant_discount", error)
+        })?;
 
         Ok(preview.into())
     }
@@ -386,19 +407,26 @@ impl CommercePricingMutation {
             price_list_id,
         );
         let error_context = port_context.clone();
-        let option = in_process_pricing_write_port(db.clone(), event_bus.clone())
-            .set_price_list_percentage_rule(
-                port_context,
-                SetPriceListPercentageRuleRequest {
-                    price_list_id,
-                    adjustment_percent,
-                    fallback_locale: Some(tenant.default_locale.clone()),
-                },
-            )
-            .await
-            .map_err(|error| {
-                pricing_port_graphql_error(&error_context, "set_price_list_percentage_rule", error)
-            })?;
+        let option = in_process_pricing_write_port(
+            db.clone(),
+            event_bus.clone(),
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
+        )
+        .set_price_list_percentage_rule(
+            port_context,
+            SetPriceListPercentageRuleRequest {
+                price_list_id,
+                adjustment_percent,
+                fallback_locale: Some(tenant.default_locale.clone()),
+            },
+        )
+        .await
+        .map_err(|error| {
+            pricing_port_graphql_error(&error_context, "set_price_list_percentage_rule", error)
+        })?;
 
         Ok(option.into())
     }
@@ -427,19 +455,26 @@ impl CommercePricingMutation {
             price_list_id,
         );
         let error_context = port_context.clone();
-        let option = in_process_pricing_write_port(db.clone(), event_bus.clone())
-            .set_price_list_scope(
-                port_context,
-                SetPriceListScopeRequest {
-                    price_list_id,
-                    channel_id: input.channel_id,
-                    channel_slug: normalize_pricing_channel_slug(input.channel_slug.as_deref()),
-                },
-            )
-            .await
-            .map_err(|error| {
-                pricing_port_graphql_error(&error_context, "set_price_list_scope", error)
-            })?;
+        let option = in_process_pricing_write_port(
+            db.clone(),
+            event_bus.clone(),
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
+        )
+        .set_price_list_scope(
+            port_context,
+            SetPriceListScopeRequest {
+                price_list_id,
+                channel_id: input.channel_id,
+                channel_slug: normalize_pricing_channel_slug(input.channel_slug.as_deref()),
+            },
+        )
+        .await
+        .map_err(|error| {
+            pricing_port_graphql_error(&error_context, "set_price_list_scope", error)
+        })?;
 
         Ok(option.into())
     }

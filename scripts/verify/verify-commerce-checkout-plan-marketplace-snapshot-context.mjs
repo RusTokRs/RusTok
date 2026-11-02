@@ -9,7 +9,10 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs', root),
+  new URL(
+    'crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs',
+    root,
+  ),
   'utf8',
 );
 const failures = [];
@@ -73,34 +76,72 @@ for (const [value, label] of [
     'const CHECKOUT_PLAN_MARKETPLACE_SNAPSHOT_BOUNDARY: &str =\n    "commerce_checkout_plan_marketplace_snapshot";',
     'stable marketplace snapshot boundary identity',
   ],
-  ['const MARKETPLACE_SNAPSHOT_OWNER: &str = "rustok_cart";', 'truthful cart owner'],
+  [
+    'const MARKETPLACE_SNAPSHOT_OWNER: &str = "rustok_cart";',
+    'truthful cart owner',
+  ],
   [
     'const MARKETPLACE_SNAPSHOT_OPERATION: &str = "list_marketplace_line_snapshots";',
     'exact marketplace snapshot owner operation',
   ],
-]) requireText(source, value, label);
+])
+  requireText(source, value, label);
 
 for (const [value, label] of [
-  ['let marketplace_snapshot_context =', 'retained marketplace snapshot context'],
-  ['marketplace_snapshot_context(', 'marketplace snapshot context construction'],
-  ['normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref()', 'normalized channel context input'],
+  [
+    'let marketplace_snapshot_context =',
+    'retained marketplace snapshot context',
+  ],
+  [
+    'marketplace_snapshot_context(',
+    'marketplace snapshot context construction',
+  ],
+  [
+    'normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref()',
+    'normalized channel context input',
+  ],
   ['.list_marketplace_line_snapshots(', 'marketplace snapshot owner call'],
-  ['marketplace_snapshot_context.clone()', 'marketplace snapshot context delegation clone'],
-  ['ListMarketplaceCartLineSnapshotsRequest { cart_id: cart.id }', 'cart snapshot request identity'],
-  ['&marketplace_snapshot_context', 'marketplace snapshot mapper context input'],
+  [
+    'marketplace_snapshot_context.clone()',
+    'marketplace snapshot context delegation clone',
+  ],
+  [
+    'ListMarketplaceCartLineSnapshotsRequest { cart_id: cart.id }',
+    'cart snapshot request identity',
+  ],
+  [
+    '&marketplace_snapshot_context',
+    'marketplace snapshot mapper context input',
+  ],
   [
     'checkout_plan_marketplace_snapshot_boundary_error(',
     'context-aware marketplace snapshot mapper',
   ],
-  ['build_marketplace_plan_lines(cart, marketplace_snapshots)', 'typed marketplace plan construction'],
-  ['line.snapshot.seller_id.to_string()', 'typed marketplace seller projection'],
-  ['self.validate_cart_inventory(tenant_id, actor_id, cart)', 'inventory validation remains mounted'],
-]) requireText(buildBlock, value, label);
+  [
+    'build_marketplace_plan_lines(cart, marketplace_snapshots)',
+    'typed marketplace plan construction',
+  ],
+  [
+    'line.snapshot.seller_id.to_string()',
+    'typed marketplace seller projection',
+  ],
+  [
+    '.validate_cart_inventory(tenant_id, actor_id, cart)',
+    'inventory validation remains mounted',
+  ],
+])
+  requireText(buildBlock, value, label);
 
-const contextBindings = buildBlock.match(/let marketplace_snapshot_context\s*=/g) ?? [];
-const contextClones = buildBlock.match(/marketplace_snapshot_context\.clone\(\)/g) ?? [];
+const contextBindings =
+  buildBlock.match(/let marketplace_snapshot_context\s*=/g) ?? [];
+const contextClones =
+  buildBlock.match(/marketplace_snapshot_context\.clone\(\)/g) ?? [];
 const mapperInputs = buildBlock.match(/&marketplace_snapshot_context/g) ?? [];
-if (contextBindings.length !== 1 || contextClones.length !== 1 || mapperInputs.length !== 1) {
+if (
+  contextBindings.length !== 1 ||
+  contextClones.length !== 1 ||
+  mapperInputs.length !== 1
+) {
   failures.push(
     `expected one retained marketplace snapshot context, one clone, and one mapper input, found ${contextBindings.length}/${contextClones.length}/${mapperInputs.length}`,
   );
@@ -113,16 +154,24 @@ for (const [value, label] of [
   ['cart,', 'cart context input'],
   ['channel_slug,', 'channel context input'],
   ['"marketplace-snapshot"', 'marketplace correlation boundary selection'],
-]) requireText(marketplaceContextBlock, value, label);
+])
+  requireText(marketplaceContextBlock, value, label);
 
 for (const [value, label] of [
   ['normalize_locale_tag', 'locale normalization'],
   ['PLATFORM_FALLBACK_LOCALE.to_string()', 'fallback locale'],
-  ['PortActor::user(actor_id.to_string())', 'checkout actor'],
+  [
+    'super::checkout_catalog::checkout_actor(actor_id)',
+    'guest-aware checkout delegation',
+  ],
   ['format!("checkout:{}:{boundary}", cart.id)', 'cart correlation identity'],
   ['.with_deadline(Duration::from_secs(2))', 'owner deadline'],
-  ['Some(channel_slug) => context.with_channel(channel_slug)', 'normalized channel context'],
-]) requireText(sharedContextBlock, value, label);
+  [
+    'Some(channel_slug) => context.with_channel(channel_slug)',
+    'normalized channel context',
+  ],
+])
+  requireText(sharedContextBlock, value, label);
 
 for (const [value, label] of [
   ['context: &PortContext', 'retained context input'],
@@ -135,7 +184,10 @@ for (const [value, label] of [
     'boundary_error("read_marketplace_cart_snapshots", error)',
     'unchanged public stage mapping',
   ],
-  ['fn log_checkout_plan_marketplace_snapshot_boundary_failure(', 'structured diagnostic helper'],
+  [
+    'fn log_checkout_plan_marketplace_snapshot_boundary_failure(',
+    'structured diagnostic helper',
+  ],
   ['error = ?error', 'original port error'],
   ['owner = MARKETPLACE_SNAPSHOT_OWNER', 'truthful owner field'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
@@ -160,9 +212,16 @@ for (const [value, label] of [
   ],
   ['tracing::error!(', 'technical failure severity'],
   ['tracing::warn!(', 'ordinary rejection severity'],
-  ['"checkout plan marketplace snapshot owner boundary failed"', 'technical event'],
-  ['"checkout plan marketplace snapshot owner boundary was rejected"', 'rejection event'],
-]) requireText(marketplaceMapper, value, label);
+  [
+    '"checkout plan marketplace snapshot owner boundary failed"',
+    'technical event',
+  ],
+  [
+    '"checkout plan marketplace snapshot owner boundary was rejected"',
+    'rejection event',
+  ],
+])
+  requireText(marketplaceMapper, value, label);
 
 const diagnosticsIndex = marketplaceMapper.indexOf(
   'log_checkout_plan_marketplace_snapshot_boundary_failure(context, &error);',
@@ -171,14 +230,26 @@ const mappingIndex = marketplaceMapper.indexOf(
   'boundary_error("read_marketplace_cart_snapshots", error)',
 );
 if (!(diagnosticsIndex >= 0 && diagnosticsIndex < mappingIndex)) {
-  failures.push('marketplace snapshot diagnostics must run before public boundary mapping');
+  failures.push(
+    'marketplace snapshot diagnostics must run before public boundary mapping',
+  );
 }
 
 for (const [value, label] of [
-  ['checkout_plan_inventory_boundary_error(', 'inventory mapper remains context-aware'],
-  ['log_checkout_plan_inventory_boundary_failure(context, &error);', 'inventory diagnostics remain mounted'],
-  ['boundary_error("check_inventory_availability", error)', 'inventory public mapping remains stable'],
-]) requireText(inventoryMapper, value, label);
+  [
+    'checkout_plan_inventory_boundary_error(',
+    'inventory mapper remains context-aware',
+  ],
+  [
+    'log_checkout_plan_inventory_boundary_failure(context, &error);',
+    'inventory diagnostics remain mounted',
+  ],
+  [
+    'boundary_error("check_inventory_availability", error)',
+    'inventory public mapping remains stable',
+  ],
+])
+  requireText(inventoryMapper, value, label);
 
 for (const [value, label] of [
   ['CheckoutError::BoundaryFailure {', 'stable public boundary envelope'],
@@ -187,7 +258,8 @@ for (const [value, label] of [
   ['code: error.code', 'stable code'],
   ['message: error.message', 'stable message'],
   ['retryable: error.retryable', 'stable retryability'],
-]) requireText(genericMapper, value, label);
+])
+  requireText(genericMapper, value, label);
 
 for (const [value, label] of [
   [
@@ -202,10 +274,13 @@ for (const [value, label] of [
     'checkout_plan_marketplace_snapshot_boundary_error(error)',
     'context-free marketplace snapshot mapper',
   ],
-]) forbidText(buildBlock, value, label);
+])
+  forbidText(buildBlock, value, label);
 
 if (failures.length > 0) {
-  console.error('Checkout plan marketplace snapshot context verification failed:');
+  console.error(
+    'Checkout plan marketplace snapshot context verification failed:',
+  );
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }

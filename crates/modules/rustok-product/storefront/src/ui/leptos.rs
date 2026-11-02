@@ -5,14 +5,11 @@ use crate::catalog_controls::{
 use crate::core::{
     CatalogFacetFiltersViewModel, build_catalog_facet_codes,
     build_catalog_facet_filters_view_model, build_catalog_rail_view_model, build_fetch_request,
-    build_product_catalog_rail_labels, build_route_input, build_selected_product_empty_view_model,
+    build_product_catalog_rail_labels, build_selected_product_empty_view_model,
     build_selected_product_view_model, build_shell_view_model, build_transport_error_dom_evidence,
     resolve_route_segment,
 };
-use crate::model::{
-    ProductCatalogSearchOptions, ProductDetail, ProductListItem, ProductPricingContext,
-    ProductPricingDetail, StorefrontProductsData,
-};
+use crate::model::{ProductDetail, ProductListItem, StorefrontProductsData};
 use crate::transport;
 use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
@@ -21,16 +18,13 @@ use rustok_ui_core::UiRouteContext;
 #[component]
 pub fn ProductView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let route_input = build_route_input(
-        read_route_query_value(&route_context, "handle"),
-        route_context.locale.clone(),
-        read_route_query_value(&route_context, "currency"),
-        read_route_query_value(&route_context, "region_id"),
-        read_route_query_value(&route_context, "price_list_id"),
-        read_route_query_value(&route_context, "channel_id"),
-        read_route_query_value(&route_context, "channel_slug"),
-        read_route_query_value(&route_context, "quantity"),
-    );
+    let route_input = match crate::core::buyer::route_input(&route_context) {
+        Ok(input) => input,
+        Err(_) => return view! {
+            <rustok_ui_leptos::Alert>{crate::core::buyer::error_message(crate::core::buyer::BuyerError::Request, route_context.locale.as_deref())}</rustok_ui_leptos::Alert>
+            <a class="text-sm underline" href=crate::core::buyer::reset_href(&route_context)>{crate::core::buyer::labels(route_context.locale.as_deref()).reset}</a>
+        }.into_any(),
+    };
     let catalog_input = build_catalog_list_input(
         read_route_query_value(&route_context, "search"),
         read_route_query_value(&route_context, "category_id"),
@@ -61,17 +55,14 @@ pub fn ProductView() -> impl IntoView {
     let catalog_support_resource = Resource::new_blocking(
         move || (options_locale.clone(), support_controls.clone()),
         move |(locale, controls)| async move {
-            let options = transport::fetch_catalog_search_options(locale.clone())
-                .await
-                .unwrap_or_else(|_| ProductCatalogSearchOptions::default());
+            let options = transport::fetch_catalog_search_options(locale.clone()).await?;
             let facets = transport::fetch_catalog_facets(
                 locale,
                 controls,
                 build_catalog_facet_codes(&options),
             )
-            .await
-            .unwrap_or_default();
-            (options, facets)
+            .await?;
+            Ok::<_, transport::ProductTransportError>((options, facets))
         },
     );
     let search_label = control_labels.search_label;
@@ -99,6 +90,8 @@ pub fn ProductView() -> impl IntoView {
     let channel_slug = route_input.channel_slug.clone();
     let quantity = route_input.quantity.map(|value| value.to_string());
     let shell = build_shell_view_model(route_input.locale.as_deref());
+    let category_load_error = shell.load_error.clone();
+    let facets_load_error = shell.load_error.clone();
     let fetch_request = build_fetch_request(&route_input);
 
     let resource = Resource::new_blocking(
@@ -144,8 +137,12 @@ pub fn ProductView() -> impl IntoView {
                             let catalog_support_resource = catalog_support_resource;
                             let selected_category_id = category_options_selected.clone();
                             let all_categories = category_options_all_label.clone();
+                            let load_error = category_load_error.clone();
                             Suspend::new(async move {
-                                let (options, _facets) = catalog_support_resource.await;
+                                let (options, _facets) = match catalog_support_resource.await {
+                                    Ok(support) => support,
+                                    Err(error) => return view! { <ProductTransportErrorMessage context=load_error error /> }.into_any(),
+                                };
                                 view! {
                                     <select
                                         id="product-catalog-category"
@@ -160,7 +157,7 @@ pub fn ProductView() -> impl IntoView {
                                             }
                                         }).collect_view()}
                                     </select>
-                                }
+                                }.into_any()
                             })
                         }}
                     </Suspense>
@@ -224,15 +221,19 @@ pub fn ProductView() -> impl IntoView {
                     let facet_route_base = facet_route_base.clone();
                     let facet_controls = facet_controls.clone();
                     let facet_labels = facet_labels.clone();
+                    let load_error = facets_load_error.clone();
                     Suspend::new(async move {
-                        let (_options, facets) = catalog_support_resource.await;
+                        let (_options, facets) = match catalog_support_resource.await {
+                            Ok(support) => support,
+                            Err(error) => return view! { <ProductTransportErrorMessage context=load_error error /> }.into_any(),
+                        };
                         let view_model = build_catalog_facet_filters_view_model(
                             facet_route_base.as_str(),
                             facets.as_slice(),
                             &facet_controls,
                             facet_labels,
                         );
-                        view! { <CatalogFacetFilters view_model /> }
+                        view! { <CatalogFacetFilters view_model /> }.into_any()
                     })
                 }}
             </Suspense>
@@ -251,7 +252,7 @@ pub fn ProductView() -> impl IntoView {
                 </Suspense>
             </div>
         </section>
-    }
+    }.into_any()
 }
 
 /// Storefront facet panel: every bucket toggles one `code=value` selection in the URL, so the
@@ -357,6 +358,7 @@ fn ProductTransportErrorMessage(
     view! {
         <div
             class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            role="alert"
             data-product-transport-failed-path=evidence.failed_path
             data-product-transport-fallback-attempted=evidence.fallback_attempted
             data-product-transport-native-error=evidence.native_error
@@ -373,8 +375,6 @@ fn ProductShowcase(data: StorefrontProductsData) -> impl IntoView {
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <SelectedProductCard
                 product=data.selected_product
-                pricing=data.selected_pricing
-                resolution_context=data.resolution_context
                 selected_handle=data.selected_handle
             />
             <CatalogRail items=data.products.items total=data.products.total />
@@ -385,8 +385,6 @@ fn ProductShowcase(data: StorefrontProductsData) -> impl IntoView {
 #[component]
 fn SelectedProductCard(
     product: Option<ProductDetail>,
-    pricing: Option<ProductPricingDetail>,
-    resolution_context: Option<ProductPricingContext>,
     selected_handle: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -406,16 +404,15 @@ fn SelectedProductCard(
         .into_any();
     };
 
-    let pricing_route_base = route_context.module_route_base("pricing");
-    let view_model = build_selected_product_view_model(
-        &product,
-        pricing.as_ref(),
-        resolution_context.as_ref(),
-        selected_handle.as_deref(),
-        locale.as_deref(),
-        pricing_route_base.as_str(),
-    );
-
+    let view_model = build_selected_product_view_model(&product, locale.as_deref());
+    #[cfg(feature = "ssr")]
+    let tenant = use_context::<rustok_api::TenantContext>().map(|tenant| tenant.slug);
+    #[cfg(not(feature = "ssr"))]
+    let tenant = leptos_auth::storage::get_tenant();
+    let buyer = selected_handle.and_then(|handle| {
+        let tenant = tenant?;
+        crate::core::buyer::snapshot(product.clone(), route_context.clone(), handle, tenant).ok()
+    });
     let is_bundle = product
         .product_type
         .as_deref()
@@ -487,30 +484,13 @@ fn SelectedProductCard(
                     </section>
                 }.into_any()
             }}
-            {view_model.pricing_context.as_ref().map(|pricing_context| view! {
-                <div class="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-2 text-xs text-primary">
-                    <span class="font-semibold uppercase tracking-[0.16em]">
-                        {view_model.preview_context_label.clone()}
-                    </span>
-                    <span>{pricing_context.clone()}</span>
-                </div>
-            })}
-            <p class="mt-4 text-xs text-muted-foreground">
-                {view_model.pricing_ownership_note.clone()}
-            </p>
-            <div class="mt-6 grid gap-3 md:grid-cols-3">
-                <MetricCard title=view_model.catalog_snapshot_label.clone() value=view_model.catalog_snapshot />
-                <MetricCard title=view_model.pricing_preview_label.clone() value=view_model.pricing_preview />
-                <MetricCard title=view_model.inventory_label.clone() value=view_model.inventory.to_string() />
-            </div>
-            <div class="mt-4">
-                <a
-                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
-                    href=view_model.pricing_href
-                >
-                    {view_model.open_pricing_label}
-                </a>
-            </div>
+            {match buyer {
+                Some(snapshot) => view! { <super::buyer::ProductBuyerIsland snapshot /> }.into_any(),
+                None => view! {
+                    <rustok_ui_leptos::Alert>{crate::core::buyer::error_message(crate::core::buyer::BuyerError::Projection, locale.as_deref())}</rustok_ui_leptos::Alert>
+                    <a class="text-sm underline" href=crate::core::buyer::reset_href(&route_context)>{crate::core::buyer::labels(locale.as_deref()).reset}</a>
+                }.into_any(),
+            }}
         </article>
     }.into_any()
 }
@@ -608,9 +588,4 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
             </div>
         </div>
     }.into_any()
-}
-
-#[component]
-fn MetricCard(title: String, value: String) -> impl IntoView {
-    view! { <article class="rounded-2xl border border-border bg-card p-4"><div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</div><div class="mt-2 text-lg font-semibold text-card-foreground">{value}</div></article> }
 }

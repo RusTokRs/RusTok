@@ -124,3 +124,44 @@ The Product family remains narrow:
 
 No legacy/v2 payload, compatibility decoder or dual publication family is permitted for this repository-owned
 pre-release contract.
+
+## Pending Inventory reservation admission (2026-11-01)
+
+`InventoryReservationEvent::Changed` now adds `inventory.reservation.changed` v1 to the sealed
+payload and canonical registry. It is quantity-free: stable non-nil Product/Variant UUIDs only.
+The root `InventoryUpdated` and root wire are unchanged. This is an additional **pending**
+admission, not a claim that the historical Product-family admission regenerated the current tree.
+The existing 2026-10-07 Checkout-family pending admission above remains outstanding too.
+
+Cargo/rustc are unavailable in this authoring environment. The generated release artifact has
+not been modified and no values were hand-authored. The sole admitted regeneration command is:
+
+```bash
+cargo run --locked -p rustok-events --example event_contract_digests -- --write
+```
+
+Review the generator's actual full-tree output, then run scoped event contract checks. Registry
+and sealed payload/envelope schemas are affected; do not guess their digests or certify root
+schema equality from a source marker. Four new family definitions and downstream regressions are
+uncompiled/unrun. [Source packet](../../../modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+## Pending Inventory source admission (2026-11-02)
+
+`InventorySourceEvent` additively registers `inventory.source.changed` and
+`inventory.source.baseline_activated` v1. Changed carries exact baseline/Variant/positive Inventory
+revision; activation carries baseline only. Envelope identity is retained change UUID or the
+globally unique original baseline UUID. Root `InventoryUpdated` v1 and the reservation wire
+are not widened. Required module handling is compiled policy, not serialized input metadata.
+
+Earlier pending reservation/Checkout admissions remain outstanding. Cargo/rustc are unavailable;
+no generator, tests, SQL or runtime ran and no digest was hand-authored. The committed release
+artifact is unchanged. The admitted generator remains:
+
+```bash
+cargo run --locked -p rustok-events --example event_contract_digests -- --write
+```
+
+Review actual full-tree output (registry and sealed payload/envelope schemas) and run maintainer
+checks before admission. The [source packet](../../../modules/rustok-inventory/contracts/evidence/source-delivery-source.json)
+keeps digest/compiler/runtime, selected Distribution authority/replay/consumer, Index and step-8
+gates false. No live baseline before real handlers plus operator preflight/recovery are selected.

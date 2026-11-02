@@ -3,9 +3,9 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    PricingRouteParams, StorefrontPricingQuery, build_pricing_route_href,
-    build_product_storefront_href, format_channel_option_label, format_effective_context,
-    format_effective_price, format_price_list_option_label, format_seller_boundary,
+    PricingRouteParams, PricingSelectorViewModel, StorefrontPricingQuery, build_currency_links,
+    build_pricing_route_href, build_product_storefront_href, build_resolution_selector,
+    format_effective_context, format_effective_price, format_seller_boundary,
     format_variant_identity, format_variant_prices, pricing_health_badge, pricing_health_label,
     pricing_translation_for_locale, selector_badge_class, summarize_pricing,
 };
@@ -26,8 +26,7 @@ pub fn PricingView() -> impl IntoView {
     let selected_price_list_id = read_route_query_value(&route_context, "price_list_id");
     let selected_channel_id = read_route_query_value(&route_context, "channel_id");
     let selected_channel_slug = read_route_query_value(&route_context, "channel_slug");
-    let selected_quantity = read_route_query_value(&route_context, "quantity")
-        .and_then(|value| value.parse::<i32>().ok());
+    let selected_quantity = read_route_query_value(&route_context, "quantity");
     let badge = t(selected_locale.as_deref(), "pricing.badge", "pricing");
     let title = t(
         selected_locale.as_deref(),
@@ -55,7 +54,7 @@ pub fn PricingView() -> impl IntoView {
                 selected_price_list_id.clone(),
                 selected_channel_id.clone(),
                 selected_channel_slug.clone(),
-                selected_quantity,
+                selected_quantity.clone(),
             )
         },
         move |(
@@ -68,16 +67,19 @@ pub fn PricingView() -> impl IntoView {
             channel_slug,
             quantity,
         )| async move {
-            transport::fetch_storefront_pricing(StorefrontPricingQuery {
-                selected_handle: handle,
-                locale,
-                currency_code,
-                region_id,
-                price_list_id,
-                channel_id,
-                channel_slug,
+            transport::fetch_storefront_pricing_route(
+                StorefrontPricingQuery {
+                    selected_handle: handle,
+                    locale,
+                    currency_code,
+                    region_id,
+                    price_list_id,
+                    channel_id,
+                    channel_slug,
+                    quantity: None,
+                },
                 quantity,
-            })
+            )
             .await
         },
     );
@@ -184,6 +186,19 @@ fn SelectedPricingCard(
             .or_else(|| translation.as_ref().map(|item| item.handle.as_str())),
     );
 
+    let currency_links =
+        build_currency_links(&module_route_base, selected_handle.as_deref(), &product);
+    let selector = resolution_context.as_ref().map(|context| {
+        build_resolution_selector(
+            locale.as_deref(),
+            &module_route_base,
+            selected_handle.as_deref(),
+            context,
+            &available_channels,
+            &active_price_lists,
+        )
+    });
+
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -202,15 +217,13 @@ fn SelectedPricingCard(
                     <span>{format_effective_context(locale.as_deref(), context, active_price_lists.as_slice())}</span>
                 </div>
             })}
-            {resolution_context.as_ref().map(|context| view! {
-                <ResolutionSelector
-                    module_route_base=module_route_base.clone()
-                    selected_handle=selected_handle.clone()
-                    resolution_context=context.clone()
-                    available_channels=available_channels.clone()
-                    active_price_lists=active_price_lists.clone()
-                />
-            })}
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold text-muted-foreground">{t(locale.as_deref(), "pricing.selected.currencyLabel", "currency")}</span>
+                {currency_links.into_iter().map(|option| view! {
+                    <a class=selector_badge_class(option.selected) href=option.href>{option.label}</a>
+                }).collect_view()}
+            </div>
+            {selector.map(|model| view! { <ResolutionSelector model /> })}
             <h3 class="mt-4 text-3xl font-semibold text-foreground">{title}</h3>
             <p class="mt-4 text-sm leading-7 text-muted-foreground">{description}</p>
             <div class="mt-4">
@@ -260,103 +273,36 @@ fn SelectedPricingCard(
 }
 
 #[component]
-fn ResolutionSelector(
-    module_route_base: String,
-    selected_handle: Option<String>,
-    resolution_context: PricingResolutionContext,
-    available_channels: Vec<PricingChannelOption>,
-    active_price_lists: Vec<PricingPriceListOption>,
-) -> impl IntoView {
+fn ResolutionSelector(model: PricingSelectorViewModel) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let current_price_list_id = resolution_context.price_list_id.clone();
-    let current_channel_id = resolution_context.channel_id.clone();
-    let current_channel_slug = resolution_context.channel_slug.clone();
-    let base_params = PricingRouteParams {
-        selected_handle: selected_handle.as_deref(),
-        currency_code: Some(resolution_context.currency_code.as_str()),
-        region_id: resolution_context.region_id.as_deref(),
-        quantity: Some(resolution_context.quantity),
-        ..PricingRouteParams::default()
-    };
-    let base_price_list_href = build_pricing_route_href(module_route_base.as_str(), base_params);
-    let global_channel_href = build_pricing_route_href(
-        module_route_base.as_str(),
-        PricingRouteParams {
-            price_list_id: resolution_context.price_list_id.as_deref(),
-            ..base_params
-        },
-    );
-
     view! {
         <div class="mt-4 rounded-2xl border border-border bg-card p-4">
-            <div class="space-y-1">
-                <h4 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    {t(locale.as_deref(), "pricing.selected.priceListSwitcherTitle", "price list")}
-                </h4>
-                <p class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "pricing.selected.priceListSwitcherSubtitle", "Switch between base prices and currently active price lists without leaving the pricing module route.")}
-                </p>
-            </div>
+            <h4 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t(locale.as_deref(), "pricing.selected.priceListSwitcherTitle", "price list")}
+            </h4>
+            <p class="text-sm text-muted-foreground">
+                {t(locale.as_deref(), "pricing.selected.priceListSwitcherSubtitle", "Switch between base prices and currently active price lists without leaving the pricing module route.")}
+            </p>
             <div class="mt-3 flex flex-wrap gap-2">
-                <a
-                    class={
-                        let current_price_list_id = current_price_list_id.clone();
-                        move || selector_badge_class(current_price_list_id.is_none())
-                    }
-                    href=base_price_list_href
-                >
+                <a class=selector_badge_class(model.base_price_list_selected) href=model.base_price_list_href>
                     {t(locale.as_deref(), "pricing.selected.basePriceListFallback", "base prices")}
                 </a>
-                {active_price_lists.into_iter().map(|option| {
-                    let href = build_pricing_route_href(module_route_base.as_str(), PricingRouteParams {
-                        price_list_id: Some(option.id.as_str()),
-                        channel_id: resolution_context.channel_id.as_deref(),
-                        channel_slug: resolution_context.channel_slug.as_deref(),
-                        ..base_params
-                    });
-                    let is_active = current_price_list_id.as_deref() == Some(option.id.as_str());
-                    let label = format_price_list_option_label(locale.as_deref(), &option);
-                    view! {
-                        <a class=selector_badge_class(is_active) href=href>{label}</a>
-                    }
+                {model.lists.into_iter().map(|option| view! {
+                    <a class=selector_badge_class(option.selected) href=option.href>{option.label}</a>
                 }).collect_view()}
             </div>
-            <div class="mt-4 space-y-1">
-                <h4 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    {t(locale.as_deref(), "pricing.selected.channelSwitcherTitle", "channel")}
-                </h4>
-                <p class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "pricing.selected.channelSwitcherSubtitle", "Switch between global pricing and channel-scoped pricing without leaving the pricing module route.")}
-                </p>
-            </div>
+            <h4 class="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {t(locale.as_deref(), "pricing.selected.channelSwitcherTitle", "channel")}
+            </h4>
+            <p class="text-sm text-muted-foreground">
+                {t(locale.as_deref(), "pricing.selected.channelSwitcherSubtitle", "Use the current storefront channel or explicitly select another channel.")}
+            </p>
             <div class="mt-3 flex flex-wrap gap-2">
-                <a
-                    class={
-                        let current_channel_id = current_channel_id.clone();
-                        let current_channel_slug = current_channel_slug.clone();
-                        move || selector_badge_class(
-                            current_channel_id.as_deref().map(str::trim).unwrap_or_default().is_empty()
-                                && current_channel_slug.as_deref().map(str::trim).unwrap_or_default().is_empty()
-                        )
-                    }
-                    href=global_channel_href
-                >
-                    {t(locale.as_deref(), "pricing.selected.globalChannelFallback", "global channel")}
+                <a class=selector_badge_class(model.current_channel_selected) href=model.current_channel_href>
+                    {t(locale.as_deref(), "pricing.selected.currentChannelFallback", "current channel")}
                 </a>
-                {available_channels.into_iter().map(|option| {
-                    let href = build_pricing_route_href(module_route_base.as_str(), PricingRouteParams {
-                        price_list_id: resolution_context.price_list_id.as_deref(),
-                        channel_id: Some(option.id.as_str()),
-                        channel_slug: Some(option.slug.as_str()),
-                        ..base_params
-                    });
-                    let is_active =
-                        current_channel_id.as_deref() == Some(option.id.as_str())
-                            || current_channel_slug.as_deref() == Some(option.slug.as_str());
-                    let label = format_channel_option_label(locale.as_deref(), &option);
-                    view! {
-                        <a class=selector_badge_class(is_active) href=href>{label}</a>
-                    }
+                {model.channels.into_iter().map(|option| view! {
+                    <a class=selector_badge_class(option.selected) href=option.href>{option.label}</a>
                 }).collect_view()}
             </div>
         </div>

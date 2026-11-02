@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc,
+    Arc, RwLock,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -7,12 +7,14 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use super::backpressure::BackpressureController;
+use super::contract_delivery::ContractListenerRegistry;
 use super::{DomainEvent, EventEnvelope};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 128;
 
 #[derive(Debug)]
 pub struct EventBus {
+    pub(super) contract_listeners: ContractListenerRegistry,
     sender: broadcast::Sender<EventEnvelope>,
     stats: Arc<EventBusStats>,
     backpressure: Option<Arc<BackpressureController>>,
@@ -47,6 +49,7 @@ impl EventBus {
     pub fn with_capacity(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self {
+            contract_listeners: Arc::new(RwLock::new(None)),
             sender,
             stats: Arc::new(EventBusStats::default()),
             backpressure: None,
@@ -57,10 +60,22 @@ impl EventBus {
     pub fn with_backpressure(capacity: usize, backpressure: BackpressureController) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self {
+            contract_listeners: Arc::new(RwLock::new(None)),
             sender,
             stats: Arc::new(EventBusStats::default()),
             backpressure: Some(Arc::new(backpressure)),
         }
+    }
+
+    pub(super) fn record_contract_published(
+        &self,
+        envelope: &rustok_events::ContractEventEnvelope,
+    ) {
+        self.stats.events_published.fetch_add(1, Ordering::Relaxed);
+        rustok_telemetry::metrics::record_event_published(
+            envelope.event_type(),
+            &envelope.tenant_id().to_string(),
+        );
     }
 
     pub fn stats(&self) -> Arc<EventBusStats> {
@@ -190,6 +205,7 @@ impl Default for EventBus {
 impl Clone for EventBus {
     fn clone(&self) -> Self {
         Self {
+            contract_listeners: Arc::clone(&self.contract_listeners),
             sender: self.sender.clone(),
             stats: Arc::clone(&self.stats),
             backpressure: self.backpressure.as_ref().map(Arc::clone),

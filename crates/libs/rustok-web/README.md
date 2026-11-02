@@ -27,6 +27,8 @@ adapters.
 
 - Used by `apps/server` and module HTTP controllers for shared response mapping.
 - Maps typed module port errors into matching HTTP status codes while hiding infrastructure details.
+- Carries exact optional owner `retryable` advice, preserving false and omitting unknown advice;
+  neither status nor message text determines that field.
 - Does not own runtime composition, domain errors, FBA metadata, CLI contracts, or UI transport.
 See [CRATE_API.md](CRATE_API.md) for the formal public API surface and contract invariants.
 

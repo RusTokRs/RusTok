@@ -1,4 +1,10 @@
-import { ApolloClient, CombinedGraphQLErrors, gql, HttpLink, InMemoryCache } from "@apollo/client/core";
+import {
+  ApolloClient,
+  CombinedGraphQLErrors,
+  gql,
+  HttpLink,
+  InMemoryCache,
+} from "@apollo/client/core";
 import type { OperationVariables } from "@apollo/client/core";
 
 export const GRAPHQL_ENDPOINT = "/api/graphql";
@@ -35,6 +41,9 @@ export type FrontendGraphqlOptions<V> = {
 const apolloClients = new Map<string, ApolloClient>();
 
 export function defaultGraphqlBaseUrl(): string {
+  // Browser requests use the host proxy, including guest HttpOnly capabilities. Never call
+  // the sandbox/server localhost (or expose its configured origin) from a buyer browser.
+  if (typeof window !== "undefined") return "";
   const configured =
     process.env.NEXT_PUBLIC_API_URL ??
     (typeof window === "undefined" ? process.env.RUSTOK_API_URL : undefined);
@@ -48,6 +57,9 @@ function apolloClientFor(baseUrl = defaultGraphqlBaseUrl()): ApolloClient {
   if (existing) return existing;
 
   const client = new ApolloClient({
+    // Apollo's in-flight key excludes headers. A client shared by endpoint must not
+    // combine identical documents/variables from different tenants or actors.
+    queryDeduplication: false,
     cache: new InMemoryCache(),
     link: new HttpLink({
       uri: endpoint,
@@ -83,24 +95,32 @@ export async function storefrontGraphql<T, V = Record<string, unknown>>(
   const document = gql(query);
   // Browser and Next server requests must not retain a viewer's response in an
   // HTTP/data cache. Apollo's `no-cache` option alone only covers Apollo storage.
-  const context = { headers, fetchOptions: token ? { cache: "no-store" as const } : undefined };
+  const context = {
+    headers,
+    fetchOptions: {
+      cache: "no-store" as const,
+      credentials: "same-origin" as const,
+    },
+  };
   const client = apolloClientFor(baseUrl);
   const isMutation = query.trimStart().toLowerCase().startsWith("mutation");
   const apolloVariables =
     variables === undefined ? undefined : (variables as OperationVariables);
-  const result = (isMutation
-    ? await client.mutate<T>({
-        mutation: document,
-        variables: apolloVariables,
-        context,
-        errorPolicy: "all",
-      })
-    : await client.query<T>({
-        query: document,
-        variables: apolloVariables,
-        context,
-        errorPolicy: "all",
-      })) as ApolloExecutionResult<T>;
+  const result = (
+    isMutation
+      ? await client.mutate<T>({
+          mutation: document,
+          variables: apolloVariables,
+          context,
+          errorPolicy: "all",
+        })
+      : await client.query<T>({
+          query: document,
+          variables: apolloVariables,
+          context,
+          errorPolicy: "all",
+        })
+  ) as ApolloExecutionResult<T>;
 
   return {
     data: result.data ?? undefined,

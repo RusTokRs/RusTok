@@ -153,7 +153,7 @@ fn media_error(error: MediaError) -> HttpError {
 }
 
 fn public_image_error(error: PortError) -> HttpError {
-    match error.kind {
+    (match error.kind {
         PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Forbidden => {
             HttpError::not_found("media_public_image_not_found", "Media image not found")
         }
@@ -163,7 +163,8 @@ fn public_image_error(error: PortError) -> HttpError {
         | PortErrorKind::InvariantViolation => {
             HttpError::internal("Media image is temporarily unavailable".to_string())
         }
-    }
+    })
+    .with_retryable(error.retryable)
 }
 
 fn require_media_permission(

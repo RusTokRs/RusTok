@@ -23,8 +23,8 @@ use crate::spinner::Spinner;
 pub fn Button(
     #[prop(default = ButtonVariant::Default)] variant: ButtonVariant,
     #[prop(default = Size::Md)] size: Size,
-    #[prop(default = false)] disabled: bool,
-    #[prop(default = false)] loading: bool,
+    #[prop(into, default = false.into())] disabled: Signal<bool>,
+    #[prop(into, default = false.into())] loading: Signal<bool>,
     #[prop(optional, into)] class: String,
     #[prop(optional)] on_click: Option<Box<dyn Fn() + 'static>>,
     #[prop(default = "button")] r#type: &'static str,
@@ -32,14 +32,14 @@ pub fn Button(
 ) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     let full_class = button_classes(variant, size, custom);
-    let is_disabled = disabled || loading;
+    let is_disabled = move || disabled.get() || loading.get();
 
     view! {
         <button
             type=r#type
             class=full_class
             disabled=is_disabled
-            aria-busy=loading
+            aria-busy=move || loading.get()
             on:click=move |_| {
                 if let Some(ref handler) = on_click {
                     handler();
@@ -47,7 +47,7 @@ pub fn Button(
             }
         >
             {move || {
-                if loading {
+                if loading.get() {
                     Some(view! { <Spinner size=Size::Sm class="mr-2" /> })
                 } else {
                     None

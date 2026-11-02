@@ -85,3 +85,21 @@
 - Audience policy errors keep their taxonomy: `NotFound`/`Forbidden` exclude the module and keep the request successful; `Unavailable`/`Timeout` become operational errors; `Validation`/`Conflict` stay caller errors; `InvariantViolation` becomes an internal error.
 - `StorefrontChannelAuthorityError` and `ForumSearchContractIngressError` for domain-specific contract violations.
 - A policy that returns an unrequested id, a duplicate id, or more ids than it received is an invariant violation, not a partial result.
+
+## Inventory reservation refetch (2026-11-01; source only)
+
+`SearchIngestionHandler` explicitly opts into sealed `InventoryReservationEvent::Changed` and
+calls the existing Product projector using envelope tenant and stable Product identity. Other
+bounded families are not treated as Product refreshes. It reads fresh persisted stock, never
+payload arithmetic, a fabricated root event or a Product revision. Production Search registration
+exists in Distribution and the server module registry.
+
+Product upsert, product-scope rebuild and delete share a PostgreSQL transaction advisory lock
+per tenant product scope, acquired before fresh reads under READ COMMITTED. A waiter does not
+reuse a pre-lock repeatable snapshot. Tenant filters remain authoritative even on hash collision.
+Stock subtraction uses bigint before SUM. Root product paths share this serialization; root
+fanout itself remains best-effort. The refetch is an existing **direct-table projection**, not
+an Inventory owner-read API or generic Index's owned source/revision contract; positive stock
+is not backorder/channel sellability. Two new definitions are uncompiled/unrun. PostgreSQL
+ordering/rebuild/delete, real relay/Iggy/restart and generic Index remain open; see the
+[Inventory source packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).

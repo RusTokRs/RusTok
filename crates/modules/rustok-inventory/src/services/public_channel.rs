@@ -235,22 +235,12 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         .map(|location| location.id)
         .collect();
 
-    let mut available_by_variant = HashMap::new();
-    for level in levels {
-        if !visible_location_ids.contains(&level.location_id) {
-            continue;
-        }
-
-        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            let available = level
-                .stocked_quantity
-                .saturating_sub(level.reserved_quantity);
-            let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
-            *entry = (*entry).saturating_add(available);
-        }
-    }
-
-    Ok(available_by_variant)
+    super::quantity::available_by_variant(
+        &item_to_variant,
+        levels
+            .iter()
+            .filter(|level| visible_location_ids.contains(&level.location_id)),
+    )
 }
 
 pub async fn load_available_inventory_for_variant_in_public_channel(

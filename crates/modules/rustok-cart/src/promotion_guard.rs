@@ -351,6 +351,13 @@ fn cart_promotion_owner_error_facts(error: &CartError) -> CartPromotionOwnerErro
             tax_message_present: false,
             tax_message_length: None,
         },
+        CartError::PricingContextChanged => CartPromotionOwnerErrorFacts {
+            error_variant: "pricing_context_changed", validation_detail_present: false,
+            validation_detail_length: None, resource_id_non_nil: None,
+            transition_from_length: None, transition_to_length: None,
+            database_error_present: false, tax_code_present: false, tax_code_length: None,
+            tax_message_present: false, tax_message_length: None,
+        },
         CartError::Database(_) => CartPromotionOwnerErrorFacts {
             error_variant: "database",
             validation_detail_present: false,
@@ -636,6 +643,9 @@ fn cart_promotion_error(
             "cart.promotion_state_conflict",
             "cart promotion conflicts with the current cart state",
         ),
+        CartError::PricingContextChanged => PortError::conflict(
+            "cart.pricing_context_changed", "Cart pricing context changed; refresh the cart and quote",
+        ),
         CartError::Database(_) => PortError::unavailable(
             "cart.database_unavailable",
             "cart storage is temporarily unavailable",
@@ -775,6 +785,7 @@ fn cart_promotion_error_code(error: &CartError) -> &str {
         CartError::CartNotFound(_) => "cart.cart_not_found",
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.promotion_state_conflict",
+        CartError::PricingContextChanged => "cart.pricing_context_changed",
         CartError::Database(_) => "cart.database_unavailable",
         CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
             code.as_str()

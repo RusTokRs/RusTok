@@ -446,9 +446,19 @@ pub fn attach_schema_data(
             "commerce GraphQL requires CommercePaymentCommandRuntime in host composition"
                 .to_string()
         })?;
+    let order_read_runtime = inputs
+        .shared_get::<CommerceOrderReadRuntime>()
+        .ok_or_else(|| {
+            "commerce GraphQL requires CommerceOrderReadRuntime in host composition".to_string()
+        })?;
     let fulfillment_command_runtime = inputs
         .shared_get::<CommerceFulfillmentCommandRuntime>()
-        .unwrap_or_else(|| CommerceFulfillmentCommandRuntime::from_graphql_inputs(inputs));
+        .unwrap_or_else(|| {
+            CommerceFulfillmentCommandRuntime::from_graphql_inputs(
+                inputs,
+                order_read_runtime.order_read_port(),
+            )
+        });
     let fulfillment_lifecycle_read_runtime = inputs
         .shared_get::<CommerceFulfillmentLifecycleReadRuntime>()
         .unwrap_or_else(|| CommerceFulfillmentLifecycleReadRuntime::in_process(inputs.db_clone()));
@@ -479,11 +489,7 @@ pub fn attach_schema_data(
                     .to_string()
             })?,
         fulfillment_lifecycle_read_runtime,
-        order_read_runtime: inputs
-            .shared_get::<CommerceOrderReadRuntime>()
-            .ok_or_else(|| {
-                "commerce GraphQL requires CommerceOrderReadRuntime in host composition".to_string()
-            })?,
+        order_read_runtime,
         order_admin_command_runtime: inputs
             .shared_get::<OrderAdminCommandRuntime>()
             .ok_or_else(|| {
@@ -549,9 +555,18 @@ pub(crate) fn fulfillment_command_runtime_from_context(
                     provider_registry,
                     port.clone(),
                 ),
-                None => {
-                    CommerceFulfillmentCommandRuntime::in_process(db.clone(), provider_registry)
-                }
+                None => match ctx.data_opt::<CommerceOrderReadRuntime>() {
+                    Some(reads) => CommerceFulfillmentCommandRuntime::in_process(
+                        db.clone(),
+                        provider_registry,
+                        reads.order_read_port(),
+                    ),
+                    None => CommerceFulfillmentCommandRuntime::in_process_with_shipment_stock(
+                        db.clone(),
+                        provider_registry,
+                        std::sync::Arc::new(rustok_fulfillment::UnconfiguredShipmentStockPort),
+                    ),
+                },
             }
         });
     // Order shipment status follows fulfillment truth. Without an event bus in the request scope
@@ -588,9 +603,27 @@ pub(crate) fn order_admin_command_runtime_from_context(
     // Admin cancellation must unwind fulfillments and payments, not only flip the status.
     crate::orchestrated_order_admin_command_runtime(
         inner,
-        crate::OrderCancellationOrchestrator::new(db, event_bus)
+        crate::OrderCancellationOrchestrator::new(db.clone(), event_bus)
             .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
-            .with_fulfillment_provider_registry(fulfillment_provider_registry),
+            .with_fulfillment_provider_registry(fulfillment_provider_registry)
+            .with_fulfillment_read_port(
+                ctx.data_opt::<CommerceGraphqlRuntimeData>()
+                    .map(|runtime| {
+                        runtime
+                            .fulfillment_lifecycle_read_runtime()
+                            .fulfillment_read_port()
+                    })
+                    .or_else(|| {
+                        ctx.data_opt::<CommerceFulfillmentLifecycleReadRuntime>()
+                            .map(|runtime| runtime.fulfillment_read_port())
+                    })
+                    .unwrap_or_else(|| {
+                        rustok_fulfillment::in_process_fulfillment_read_port(db.clone())
+                    }),
+            )
+            .with_fulfillment_admin_command_port(
+                fulfillment_command_runtime_from_context(ctx, db).lifecycle_command_port(),
+            ),
     )
 }
 
@@ -633,7 +666,10 @@ pub(crate) fn fulfillment_orchestration_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
 ) -> crate::FulfillmentOrchestrationService {
-    let service = crate::FulfillmentOrchestrationService::new(db);
+    let service = crate::FulfillmentOrchestrationService::new(db.clone())
+        .with_fulfillment_admin_command_port(
+            fulfillment_command_runtime_from_context(ctx, db).lifecycle_command_port(),
+        );
     match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
         Some(runtime) => service.with_provider_registry(runtime.fulfillment_provider_registry()),
         None => service,

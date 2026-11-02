@@ -24,6 +24,8 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+#[path = "shipment_stock_provenance.rs"]
+mod shipment_stock_provenance;
 mod support;
 
 async fn setup() -> (
@@ -327,7 +329,10 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
 
     // Stock moves in the owner's transaction through the inventory-backed port; the former
     // `fulfillment_inventory_consume_on_ship` trigger is gone.
-    let fulfillment_service = rustok_commerce::fulfillment_service(db.clone());
+    let fulfillment_service = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
     let fulfillment = fulfillment_service
         .create_fulfillment(
             tenant_id,
@@ -351,7 +356,7 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
 
     let partial = fulfillment_service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -379,7 +384,7 @@ async fn fulfillment_shipping_consumes_reservation_and_gates_order_delivery() {
 
     let fully_shipped = fulfillment_service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -703,20 +708,27 @@ fn ship_all_input(fulfillment_item_id: Uuid) -> ShipFulfillmentInput {
 #[tokio::test]
 async fn cancelling_a_shipped_fulfillment_returns_stock_and_reopening_takes_it_again() {
     let (db, catalog, inventory, orders) = setup().await;
-    let service = rustok_commerce::fulfillment_service(db.clone());
+    let service = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
     let (tenant_id, variant_id, fulfillment) =
         paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
     let item_id = fulfillment.items[0].id;
 
     service
-        .ship_fulfillment(tenant_id, fulfillment.id, ship_all_input(item_id))
+        .ship_fulfillment(
+            support::shipment_context(tenant_id),
+            fulfillment.id,
+            ship_all_input(item_id),
+        )
         .await
         .expect("shipping should consume the reservation");
     assert_eq!(inventory_quantities(&db, variant_id).await, (2, 0));
 
     service
         .cancel_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             CancelFulfillmentInput {
                 reason: Some("lost in transit".to_string()),
@@ -733,7 +745,7 @@ async fn cancelling_a_shipped_fulfillment_returns_stock_and_reopening_takes_it_a
 
     let reopened = service
         .reopen_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ReopenFulfillmentInput {
                 items: None,
@@ -753,22 +765,25 @@ async fn cancelling_a_shipped_fulfillment_returns_stock_and_reopening_takes_it_a
 #[tokio::test]
 async fn shipping_through_an_unwired_fulfillment_service_fails_closed() {
     let (db, catalog, inventory, orders) = setup().await;
-    let wired = rustok_commerce::fulfillment_service(db.clone());
+    let wired = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
     let (tenant_id, variant_id, fulfillment) =
         paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &wired).await;
 
     let unwired = FulfillmentService::new(db.clone());
     let error = unwired
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ship_all_input(fulfillment.items[0].id),
         )
         .await
         .expect_err("a service without a stock port must refuse to ship");
     assert!(
-        error.to_string().contains("stock port is not configured"),
-        "unexpected error: {error}"
+        matches!(error, rustok_fulfillment::FulfillmentError::OwnerPort(cause)
+        if cause.code == "fulfillment.shipment_stock_not_configured" && !cause.retryable)
     );
     assert_eq!(
         inventory_quantities(&db, variant_id).await,
@@ -782,12 +797,15 @@ async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
     use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
 
     let (db, catalog, inventory, orders) = setup().await;
-    let service = rustok_commerce::fulfillment_service(db.clone());
+    let service = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
     let (tenant_id, variant_id, fulfillment) =
         paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
     service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ship_all_input(fulfillment.items[0].id),
         )
@@ -799,18 +817,24 @@ async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
         return_item_id: Uuid::new_v4(),
         return_id: Uuid::new_v4(),
         order_line_item_id: fulfillment.items[0].order_line_item_id,
+        variant_id: Some(variant_id),
         quantity: 2,
     };
     let untracked = ReturnRestockLine {
         return_item_id: Uuid::new_v4(),
         return_id: line.return_id,
         order_line_item_id: Uuid::new_v4(),
+        variant_id: None,
         quantity: 1,
     };
 
-    let first = restock_returned_items(&db, tenant_id, &[line, untracked])
-        .await
-        .expect("restock should succeed");
+    let first = restock_returned_items(
+        &db,
+        return_restock_context(tenant_id, line.return_id),
+        &[line, untracked],
+    )
+    .await
+    .expect("restock should succeed");
     assert_eq!(first.restocked, vec![(line.return_item_id, 2)]);
     assert_eq!(first.untracked, vec![untracked.return_item_id]);
     assert_eq!(
@@ -819,9 +843,13 @@ async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
         "returned units are available again"
     );
 
-    let replay = restock_returned_items(&db, tenant_id, &[line])
-        .await
-        .expect("replay should succeed");
+    let replay = restock_returned_items(
+        &db,
+        return_restock_context(tenant_id, line.return_id),
+        &[line],
+    )
+    .await
+    .expect("replay should succeed");
     assert!(replay.restocked.is_empty());
     assert_eq!(replay.already_restocked, vec![line.return_item_id]);
     assert_eq!(
@@ -836,9 +864,522 @@ async fn return_restock_adds_stock_once_and_skips_untracked_lines() {
         ..line
     };
     assert!(
-        restock_returned_items(&db, tenant_id, &[invalid])
-            .await
-            .is_err(),
+        restock_returned_items(
+            &db,
+            return_restock_context(tenant_id, line.return_id),
+            &[invalid]
+        )
+        .await
+        .is_err(),
         "non-positive restock quantities are rejected"
     );
+}
+
+fn return_restock_context(tenant_id: Uuid, return_id: Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::system(),
+        "en",
+        "inventory-return-regression",
+    )
+    .with_idempotency_key(format!("return:{return_id}:restock"))
+    .with_deadline(std::time::Duration::from_secs(3))
+}
+
+struct ReturnStockFixture {
+    db: DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    order_id: Uuid,
+    line: rustok_inventory::return_restock::ReturnRestockLine,
+}
+
+async fn shipped_return_stock_fixture() -> ReturnStockFixture {
+    let (db, catalog, inventory, orders) = setup().await;
+    let service = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
+    let (tenant_id, variant_id, fulfillment) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
+    service
+        .ship_fulfillment(
+            support::shipment_context(tenant_id),
+            fulfillment.id,
+            ship_all_input(fulfillment.items[0].id),
+        )
+        .await
+        .expect("consume the saved shipment allocation");
+    ReturnStockFixture {
+        db,
+        tenant_id,
+        variant_id,
+        order_id: fulfillment.order_id,
+        line: rustok_inventory::return_restock::ReturnRestockLine {
+            return_item_id: Uuid::new_v4(),
+            return_id: Uuid::new_v4(),
+            order_line_item_id: fulfillment.items[0].order_line_item_id,
+            variant_id: Some(variant_id),
+            quantity: 2,
+        },
+    }
+}
+
+async fn return_stock_receipts(
+    f: &ReturnStockFixture,
+) -> Vec<rustok_inventory::return_restock::ledger::Model> {
+    use rustok_inventory::return_restock::ledger;
+    ledger::Entity::find()
+        .filter(ledger::Column::TenantId.eq(f.tenant_id))
+        .filter(ledger::Column::ReturnId.eq(f.line.return_id))
+        .all(&f.db)
+        .await
+        .expect("read tenant-scoped restock receipts")
+}
+
+#[tokio::test]
+async fn return_restock_refuses_foreign_tenant_and_does_not_reclassify_missing_tracked_allocation()
+{
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+    let f = shipped_return_stock_fixture().await;
+    let foreign = return_restock_context(Uuid::new_v4(), f.line.return_id);
+    assert!(
+        restock_returned_items(&f.db, foreign, &[f.line])
+            .await
+            .is_err()
+    );
+    let missing = ReturnRestockLine {
+        order_line_item_id: Uuid::new_v4(),
+        ..f.line
+    };
+    let error = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[missing],
+    )
+    .await
+    .expect_err("a tracked missing allocation is not SKU-less");
+    assert_eq!(error.code, "inventory.return_restock_allocation_unverified");
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+    assert!(return_stock_receipts(&f).await.is_empty());
+}
+
+#[tokio::test]
+async fn return_restock_refuses_ambiguous_consumed_allocations_instead_of_taking_the_oldest() {
+    let f = shipped_return_stock_fixture().await;
+    let saved = reservation_item::Entity::find()
+        .filter(reservation_item::Column::LineItemId.eq(f.line.order_line_item_id))
+        .one(&f.db)
+        .await
+        .expect("read allocation")
+        .expect("saved allocation");
+    let mut duplicate: reservation_item::ActiveModel = saved.into();
+    duplicate.id = Set(Uuid::new_v4());
+    duplicate.external_id = Set(None);
+    reservation_item::Entity::insert(duplicate)
+        .exec(&f.db)
+        .await
+        .expect("second consumed historical allocation");
+    let error = rustok_inventory::return_restock::restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[f.line],
+    )
+    .await
+    .expect_err("allocation ambiguity refuses");
+    assert_eq!(error.code, "inventory.return_restock_allocation_unverified");
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+    assert!(return_stock_receipts(&f).await.is_empty());
+}
+
+#[tokio::test]
+async fn return_restock_changed_replay_refuses_and_preserves_the_original_receipt() {
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+    let f = shipped_return_stock_fixture().await;
+    restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[f.line],
+    )
+    .await
+    .expect("initial restock");
+    let before = return_stock_receipts(&f).await;
+    for changed in [
+        ReturnRestockLine {
+            quantity: 1,
+            ..f.line
+        },
+        ReturnRestockLine {
+            return_id: Uuid::new_v4(),
+            ..f.line
+        },
+        ReturnRestockLine {
+            order_line_item_id: Uuid::new_v4(),
+            ..f.line
+        },
+        ReturnRestockLine {
+            variant_id: None,
+            ..f.line
+        },
+    ] {
+        assert!(
+            restock_returned_items(
+                &f.db,
+                return_restock_context(f.tenant_id, changed.return_id),
+                &[changed]
+            )
+            .await
+            .is_err()
+        );
+    }
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (4, 0));
+    assert_eq!(return_stock_receipts(&f).await, before);
+}
+
+#[tokio::test]
+async fn return_restock_exact_replay_uses_saved_receipt_without_reselecting_a_level_or_reservation()
+{
+    use rustok_inventory::entities::stock_location;
+    use rustok_inventory::return_restock::restock_returned_items;
+    let f = shipped_return_stock_fixture().await;
+    restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[f.line],
+    )
+    .await
+    .expect("initial restock");
+    let before = return_stock_receipts(&f).await;
+    let saved = &before[0];
+    // Fixture-only removal proves that exact replay does not require a replacement allocation.
+    reservation_item::Entity::delete_many()
+        .filter(reservation_item::Column::LineItemId.eq(f.line.order_line_item_id))
+        .exec(&f.db)
+        .await
+        .expect("remove fixture reservation history");
+    inventory_level::Entity::delete_many()
+        .filter(inventory_level::Column::InventoryItemId.eq(saved.inventory_item_id))
+        .filter(inventory_level::Column::LocationId.eq(saved.location_id))
+        .exec(&f.db)
+        .await
+        .expect("remove fixture level");
+    let location = stock_location::Entity::find_by_id(saved.location_id)
+        .one(&f.db)
+        .await
+        .expect("read location")
+        .expect("location");
+    let mut archived: stock_location::ActiveModel = location.into();
+    archived.deleted_at = Set(Some(chrono::Utc::now().into()));
+    stock_location::Entity::update(archived)
+        .exec(&f.db)
+        .await
+        .expect("archive saved fixture location");
+    let replay = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[f.line],
+    )
+    .await
+    .expect("exact saved receipt");
+    assert_eq!(replay.already_restocked, vec![f.line.return_item_id]);
+    assert!(replay.restocked.is_empty());
+    assert_eq!(return_stock_receipts(&f).await, before);
+}
+
+#[tokio::test]
+async fn return_restock_overflow_rolls_back_every_new_receipt_and_stock_addition() {
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+    let f = shipped_return_stock_fixture().await;
+    let first = ReturnRestockLine {
+        return_item_id: Uuid::from_u128(1),
+        quantity: i32::MAX,
+        ..f.line
+    };
+    let second = ReturnRestockLine {
+        return_item_id: Uuid::from_u128(2),
+        quantity: 1,
+        ..f.line
+    };
+    let error = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[first, second],
+    )
+    .await
+    .expect_err("checked grouped addition overflows after receipt admissions");
+    assert_eq!(error.code, "inventory.return_restock_quantity_overflow");
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+    assert!(return_stock_receipts(&f).await.is_empty());
+    let error = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[first],
+    )
+    .await
+    .expect_err("checked on-hand addition also rolls back its receipt");
+    assert_eq!(error.code, "inventory.return_restock_quantity_overflow");
+    assert!(return_stock_receipts(&f).await.is_empty());
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+}
+
+#[tokio::test]
+async fn return_restock_rejects_a_later_invalid_line_without_partial_batch_effects() {
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+    let f = shipped_return_stock_fixture().await;
+    let invalid = ReturnRestockLine {
+        return_item_id: Uuid::new_v4(),
+        order_line_item_id: Uuid::new_v4(),
+        ..f.line
+    };
+    assert!(
+        restock_returned_items(
+            &f.db,
+            return_restock_context(f.tenant_id, f.line.return_id),
+            &[f.line, invalid]
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+    assert!(return_stock_receipts(&f).await.is_empty());
+}
+
+#[tokio::test]
+async fn return_restock_global_primary_key_collision_never_adopts_a_foreign_tenant_receipt() {
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+    let (db, catalog, inventory, orders) = setup().await;
+    let service = rustok_commerce::fulfillment_service(
+        db.clone(),
+        rustok_order::in_process_order_read_port(db.clone(), mock_transactional_event_bus()),
+    );
+    let (tenant_a, variant_a, a) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
+    let (tenant_b, variant_b, b) =
+        paid_order_with_pending_fulfillment(&db, &catalog, &inventory, &orders, &service).await;
+    for (tenant, fulfillment) in [(tenant_a, &a), (tenant_b, &b)] {
+        service
+            .ship_fulfillment(
+                support::shipment_context(tenant),
+                fulfillment.id,
+                ship_all_input(fulfillment.items[0].id),
+            )
+            .await
+            .expect("ship");
+    }
+    let line = ReturnRestockLine {
+        return_item_id: Uuid::new_v4(),
+        return_id: Uuid::new_v4(),
+        order_line_item_id: a.items[0].order_line_item_id,
+        variant_id: Some(variant_a),
+        quantity: 1,
+    };
+    restock_returned_items(
+        &db,
+        return_restock_context(tenant_a, line.return_id),
+        &[line],
+    )
+    .await
+    .expect("tenant A restock");
+    let conflicting = ReturnRestockLine {
+        return_id: Uuid::new_v4(),
+        order_line_item_id: b.items[0].order_line_item_id,
+        variant_id: Some(variant_b),
+        ..line
+    };
+    let error = restock_returned_items(
+        &db,
+        return_restock_context(tenant_b, conflicting.return_id),
+        &[conflicting],
+    )
+    .await
+    .expect_err("foreign key claim refuses");
+    assert_eq!(error.code, "inventory.return_restock_identity_conflict");
+    assert_eq!(inventory_quantities(&db, variant_a).await, (3, 0));
+    assert_eq!(inventory_quantities(&db, variant_b).await, (2, 0));
+}
+
+#[tokio::test]
+async fn order_owner_reads_only_requested_saved_inventory_bindings_and_never_a_foreign_or_partial_batch()
+ {
+    let f = shipped_return_stock_fixture().await;
+    let port =
+        rustok_order::in_process_order_read_port(f.db.clone(), mock_transactional_event_bus());
+    let request = rustok_order::ReadOrderLineInventoryBindingsRequest {
+        order_id: f.order_id,
+        order_line_item_ids: vec![f.line.order_line_item_id],
+    };
+    let snapshot = port
+        .read_order_line_inventory_bindings(
+            return_restock_context(f.tenant_id, f.line.return_id),
+            request.clone(),
+        )
+        .await
+        .expect("saved binding");
+    assert_eq!(snapshot.tenant_id, f.tenant_id);
+    assert_eq!(snapshot.order_id, f.order_id);
+    assert_eq!(snapshot.items.len(), 1);
+    assert_eq!(snapshot.items[0].variant_id, Some(f.variant_id));
+    assert_eq!(snapshot.items[0].quantity, 3);
+    assert!(
+        port.read_order_line_inventory_bindings(
+            return_restock_context(Uuid::new_v4(), f.line.return_id),
+            request.clone()
+        )
+        .await
+        .is_err()
+    );
+    let mut partial = request;
+    partial.order_line_item_ids.push(Uuid::new_v4());
+    assert!(
+        port.read_order_line_inventory_bindings(
+            return_restock_context(f.tenant_id, f.line.return_id),
+            partial
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (2, 0));
+}
+
+#[tokio::test]
+async fn concurrent_return_restock_keeps_one_receipt_and_one_stock_addition() {
+    use rustok_inventory::return_restock::restock_returned_items;
+    let f = shipped_return_stock_fixture().await;
+    let lines = [f.line];
+    let (left, right) = tokio::join!(
+        restock_returned_items(
+            &f.db,
+            return_restock_context(f.tenant_id, f.line.return_id),
+            &lines
+        ),
+        restock_returned_items(
+            &f.db,
+            return_restock_context(f.tenant_id, f.line.return_id),
+            &lines
+        ),
+    );
+    assert!(left.is_ok() || right.is_ok());
+    for error in [left.err(), right.err()].into_iter().flatten() {
+        assert!(
+            error.retryable,
+            "contention must not authorize a changed request: {error:?}"
+        );
+    }
+    assert_eq!(return_stock_receipts(&f).await.len(), 1);
+    assert_eq!(inventory_quantities(&f.db, f.variant_id).await, (4, 0));
+    let replay = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &lines,
+    )
+    .await
+    .expect("same-identity replay");
+    assert_eq!(replay.already_restocked, vec![f.line.return_item_id]);
+}
+
+#[tokio::test]
+async fn archived_return_location_replays_exactly_but_refuses_new_or_mixed_stock() {
+    use rustok_inventory::entities::stock_location;
+    use rustok_inventory::return_restock::{ReturnRestockLine, restock_returned_items};
+
+    let mut f = shipped_return_stock_fixture().await;
+    f.line.quantity = 1; // Split the selected two units across replay and fresh inspection.
+    // Install the actual storage rule, not an entity-only fixture approximation. This test
+    // remains unrun; it defines the expected native refusal before a database-trigger error.
+    commerce_inventory_migration(
+        "m20260713_000021_bound_reservation_metadata_and_inactive_locations",
+    )
+    .up(&SchemaManager::new(&f.db))
+    .await
+    .expect("install the existing inactive-location storage guard");
+    let reservation = reservation_item::Entity::find()
+        .filter(reservation_item::Column::LineItemId.eq(f.line.order_line_item_id))
+        .one(&f.db)
+        .await
+        .expect("read saved fixture allocation")
+        .expect("saved allocation");
+    let location = stock_location::Entity::find_by_id(reservation.location_id)
+        .one(&f.db)
+        .await
+        .expect("read saved location")
+        .expect("saved location");
+    let mut hidden: stock_location::ActiveModel = location.into();
+    hidden.metadata = Set(serde_json::json!({"allowed_channel_slugs": ["internal-only"]}));
+    let hidden = stock_location::Entity::update(hidden)
+        .exec(&f.db)
+        .await
+        .expect("hide the saved location from the caller's publication channel");
+    restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id).with_channel("public-shop"),
+        &[f.line],
+    )
+    .await
+    .expect("saved active location does not require fresh channel visibility");
+    let receipts_before = return_stock_receipts(&f).await;
+    assert_eq!(receipts_before.len(), 1);
+    let receipt = &receipts_before[0];
+    assert_eq!(receipt.location_id, hidden.id);
+    let level = inventory_level::Entity::find()
+        .filter(inventory_level::Column::InventoryItemId.eq(receipt.inventory_item_id))
+        .filter(inventory_level::Column::LocationId.eq(receipt.location_id))
+        .one(&f.db)
+        .await
+        .expect("read saved level")
+        .expect("saved level");
+    // Fixture-only later depletion makes archival legal under the real storage guard.
+    let mut depleted: inventory_level::ActiveModel = level.into();
+    depleted.stocked_quantity = Set(0);
+    let depleted = inventory_level::Entity::update(depleted)
+        .exec(&f.db)
+        .await
+        .expect("deplete fixture stock before archival");
+    let mut archived: stock_location::ActiveModel = hidden.into();
+    archived.deleted_at = Set(Some(chrono::Utc::now().into()));
+    let archived = stock_location::Entity::update(archived)
+        .exec(&f.db)
+        .await
+        .expect("archive the empty saved location");
+
+    let replay = restock_returned_items(
+        &f.db,
+        return_restock_context(f.tenant_id, f.line.return_id),
+        &[f.line],
+    )
+    .await
+    .expect("exact archived receipt still proves an earlier movement");
+    assert_eq!(replay.already_restocked, vec![f.line.return_item_id]);
+    let fresh = ReturnRestockLine {
+        return_item_id: Uuid::new_v4(),
+        ..f.line
+    };
+    // The mixed batch also proves that cached read-only replay ownership cannot bypass
+    // the independent receiving-location lock and active-state preflight.
+    for lines in [vec![fresh], vec![f.line, fresh]] {
+        let error = restock_returned_items(
+            &f.db,
+            return_restock_context(f.tenant_id, f.line.return_id),
+            &lines,
+        )
+        .await
+        .expect_err("fresh archived-location movement requires reconciliation");
+        assert_eq!(error.code, "inventory.return_restock_location_archived");
+        assert_eq!(error.kind, rustok_api::PortErrorKind::InvariantViolation);
+        assert!(!error.retryable);
+        assert_eq!(return_stock_receipts(&f).await, receipts_before);
+        assert_eq!(
+            inventory_level::Entity::find_by_id(depleted.id)
+                .one(&f.db)
+                .await
+                .expect("read unchanged level"),
+            Some(depleted.clone()),
+        );
+        assert_eq!(
+            stock_location::Entity::find_by_id(archived.id)
+                .one(&f.db)
+                .await
+                .expect("read unchanged archived location"),
+            Some(archived.clone()),
+        );
+    }
 }

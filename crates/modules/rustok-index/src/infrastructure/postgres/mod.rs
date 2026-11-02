@@ -29,6 +29,7 @@ mod source_reconciliation_scheduler;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_retry;
+mod source_replay_scheduler;
 mod source_replay_timeout;
 mod source_replay_runner {
     include!("source_replay_runner.rs");
@@ -181,8 +182,9 @@ pub use source_reconciliation_scheduler::{
 };
 pub use source_replay::PostgresIndexReplayCheckpointStore;
 pub use source_replay_job::{
-    IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
-    IndexReplayJobLeaseRequest, PostgresIndexReplayJobStore,
+    IndexReplayJobAcquireOutcome, IndexReplayJobEnqueueOutcome, IndexReplayJobEnqueueRequest,
+    IndexReplayJobError, IndexReplayJobLease, IndexReplayJobLeaseRequest,
+    PostgresIndexReplayJobStore,
 };
 pub use source_replay_retry::{
     IndexReplayRetryDisposition, IndexReplayRetryError, IndexReplayRetryFailure,
@@ -191,6 +193,9 @@ pub use source_replay_retry::{
 pub use source_replay_runner::{
     IndexReplayCancelOutcome, IndexReplayRunError, IndexReplayRunOutcome, IndexReplayRunRequest,
     IndexReplayRunStatus, IndexReplayTerminalState, PostgresIndexReplayRunner,
+};
+pub use source_replay_scheduler::{
+    INDEX_REPLAY_WORKER, PostgresIndexReplayWorkAdapter, register_postgres_index_replay_work,
 };
 
 #[cfg(test)]

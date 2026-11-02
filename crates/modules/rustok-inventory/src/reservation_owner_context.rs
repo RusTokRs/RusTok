@@ -6,15 +6,17 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::ports::{
+    InventoryIdentityReservationAdoptionRequest, InventoryIdentityReservationAdoptionSnapshot,
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
     InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
-    InventoryReservationIdentityPort,
+    InventoryReservationIdentityPort, MAX_RESERVATION_ADOPTION_ITEMS,
 };
 
 const INVENTORY_OWNER: &str = "rustok_inventory";
 const INVENTORY_RESERVATION_BOUNDARY: &str = "inventory_reservation_identity_port";
 const RESERVE_OPERATION: &str = "reserve_inventory_by_identity";
 const RELEASE_OPERATION: &str = "release_inventory_by_identity";
+const ADOPT_OPERATION: &str = "adopt_inventory_by_identity";
 
 struct InventoryReservationContextFacts {
     tenant_id_length: usize,
@@ -35,6 +37,7 @@ struct InventoryReservationContextFacts {
 }
 
 struct InventoryReservationIdentityDiagnostic {
+    binding_count: usize,
     reservation_id_present: bool,
     reservation_id_non_nil: bool,
     variant_id_present: bool,
@@ -48,8 +51,51 @@ struct InventoryReservationIdentityDiagnostic {
 }
 
 impl InventoryReservationIdentityDiagnostic {
+    fn adopt(request: &InventoryIdentityReservationAdoptionRequest) -> Self {
+        Self {
+            binding_count: request.items.len(),
+            reservation_id_present: !request.items.is_empty(),
+            reservation_id_non_nil: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .all(|item| !item.reservation_id.is_nil()),
+            variant_id_present: !request.items.is_empty(),
+            variant_id_non_nil: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .all(|item| !item.variant_id.is_nil()),
+            quantity_present: !request.items.is_empty(),
+            quantity_nonzero: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .all(|item| item.quantity != 0),
+            quantity_negative: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .any(|item| item.quantity < 0),
+            line_item_id_present: !request.items.is_empty(),
+            line_item_id_non_nil: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .all(|item| !item.cart_line_item_id.is_nil() && !item.order_line_item_id.is_nil()),
+            external_id_length: request
+                .items
+                .iter()
+                .take(MAX_RESERVATION_ADOPTION_ITEMS + 1)
+                .map(|item| item.external_id.chars().take(192).count())
+                .max()
+                .unwrap_or(0),
+        }
+    }
+
     fn reserve(request: &InventoryIdentityReservationRequest) -> Self {
         Self {
+            binding_count: 1,
             reservation_id_present: true,
             reservation_id_non_nil: !request.reservation_id.is_nil(),
             variant_id_present: true,
@@ -65,6 +111,7 @@ impl InventoryReservationIdentityDiagnostic {
 
     fn release(request: &InventoryIdentityReservationReleaseRequest) -> Self {
         Self {
+            binding_count: 1,
             reservation_id_present: true,
             reservation_id_non_nil: !request.reservation_id.is_nil(),
             variant_id_present: false,
@@ -87,7 +134,7 @@ pub struct PersistentInventoryReservationIdentityPort {
 impl PersistentInventoryReservationIdentityPort {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            inner: Arc::new(crate::ports::PersistentInventoryReservationIdentityPort::new(db)),
+            inner: Arc::new(crate::ports_impl::PersistentInventoryReservationIdentityPort::new(db)),
         }
     }
 }
@@ -100,6 +147,29 @@ pub fn in_process_inventory_reservation_identity_port(
 
 #[async_trait]
 impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentityPort {
+    async fn adopt_inventory_by_identity(
+        &self,
+        context: PortContext,
+        request: InventoryIdentityReservationAdoptionRequest,
+    ) -> Result<InventoryIdentityReservationAdoptionSnapshot, PortError> {
+        require_inventory_reservation_write_admission(&context, ADOPT_OPERATION)?;
+        parse_inventory_reservation_tenant_id(&context, ADOPT_OPERATION)?;
+        let diagnostic_context = context.clone();
+        let identity = InventoryReservationIdentityDiagnostic::adopt(&request);
+        let result = self
+            .inner
+            .adopt_inventory_by_identity(context, request)
+            .await;
+        result.map_err(|error| {
+            map_inventory_reservation_identity_local_port_error(
+                &diagnostic_context,
+                ADOPT_OPERATION,
+                &identity,
+                error,
+            )
+        })
+    }
+
     async fn reserve_inventory_by_identity(
         &self,
         context: PortContext,
@@ -108,10 +178,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         tracing::debug!(
             target: "rustok_inventory::reservation_owner_context",
             operation = RESERVE_OPERATION,
-            reservation_id = %request.reservation_id,
-            external_id = %request.external_id,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
+            reservation_id_non_nil = !request.reservation_id.is_nil(),
+            external_id_length = request.external_id.chars().count(),
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
             "in-process reserve inventory by identity received"
         );
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
@@ -140,8 +210,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         tracing::debug!(
             target: "rustok_inventory::reservation_owner_context",
             operation = RELEASE_OPERATION,
-            reservation_id = %request.reservation_id,
-            external_id = %request.external_id,
+            reservation_id_non_nil = !request.reservation_id.is_nil(),
+            external_id_length = request.external_id.chars().count(),
             "in-process release inventory by identity received"
         );
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;
@@ -217,6 +287,38 @@ fn map_inventory_reservation_identity_local_port_error(
 ) -> PortError {
     let local_operation = match (error.code.as_str(), error.message.as_str()) {
         (
+            "inventory.adoption_metadata_too_large",
+            "saved metadata has no capacity for order adoption; explicit reconciliation is required",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_metadata_capacity",
+        (
+            "inventory.adoption_metadata_size_unverified",
+            "reservation adoption metadata size could not be verified",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_metadata_size",
+        (
+            "inventory.adoption_backend_unsupported",
+            "reservation adoption metadata validation requires PostgreSQL or SQLite",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_metadata_backend",
+        (
+            "inventory.adoption_ledger_inconsistent",
+            "saved reservation allocation does not match its reserved inventory level",
+        ) if operation == ADOPT_OPERATION => "validate_saved_allocation_ledger",
+        (
+            "inventory.adoption_batch_invalid",
+            "reservation adoption requires 1 to 1024 bindings",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_batch",
+        (
+            "inventory.adoption_binding_invalid",
+            "reservation adoption bindings must have positive quantities and unique identities",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_bindings",
+        (
+            "inventory.adoption_binding_invalid",
+            "cart and order line identities must not overlap",
+        ) if operation == ADOPT_OPERATION => "validate_adoption_line_identity",
+        (
+            "inventory.adoption_identity_conflict",
+            "saved reservation does not match the checkout order adoption identity",
+        ) if operation == ADOPT_OPERATION => "validate_saved_adoption_identity",
+        (
             "inventory.reservation_external_id_invalid",
             "reservation external_id must contain 1 to 191 characters",
         ) => "normalize_external_id",
@@ -250,7 +352,7 @@ fn map_inventory_reservation_identity_local_port_error(
             "reservation id is bound to another external identity",
         ) if operation == RELEASE_OPERATION => "validate_release_external_identity",
         ("inventory.reservation_item_missing", "reservation inventory item is missing")
-            if operation == RELEASE_OPERATION =>
+            if operation == RELEASE_OPERATION || operation == ADOPT_OPERATION =>
         {
             "load_reservation_inventory_item"
         }
@@ -310,6 +412,7 @@ fn log_inventory_reservation_local_outcome(
             idempotency_key_present = facts.idempotency_key_present,
             idempotency_key_length = ?facts.idempotency_key_length,
             deadline_ms = ?facts.deadline_ms,
+            binding_count = identity.binding_count,
             reservation_id_present = identity.reservation_id_present,
             reservation_id_non_nil = identity.reservation_id_non_nil,
             variant_id_present = identity.variant_id_present,
@@ -349,6 +452,7 @@ fn log_inventory_reservation_local_outcome(
             idempotency_key_present = facts.idempotency_key_present,
             idempotency_key_length = ?facts.idempotency_key_length,
             deadline_ms = ?facts.deadline_ms,
+            binding_count = identity.binding_count,
             reservation_id_present = identity.reservation_id_present,
             reservation_id_non_nil = identity.reservation_id_non_nil,
             variant_id_present = identity.variant_id_present,

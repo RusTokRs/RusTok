@@ -7,8 +7,8 @@ registry used by capability and module integrations.
 
 It stores no credentials. Callers persist `SecretRef { resolver, key }`, while
 the process composes trusted resolver aliases and workload identities. Secret
-values remain redacted through `secrecy::SecretString`, are cached for at most
-60 seconds, and can be invalidated after profile changes or rotation.
+values remain redacted through `secrecy::SecretString`. Ordinary resolutions cache
+values for at most 60 seconds and can be invalidated after profile changes or rotation.
 `SecretString` is re-exported for trusted host-consumer ports so downstream
 owners do not need to unwrap secret material into an ordinary `String`.
 
@@ -23,3 +23,12 @@ Every resolver registration has an exact-key, prefix, or tenant-prefix policy.
 `resolve_for_tenant(...)` checks that policy before reading or returning a cached
 value, so a persisted tenant reference cannot become an arbitrary environment or
 cross-tenant secret read.
+
+`resolve_fresh_for_tenant(...)` enforces the same policy and invokes the registered
+resolver directly, without reading, writing or invalidating the registry cache.
+Authentication consumers use this when every invocation needs a current credential.
+`invalidate` followed by cached resolution is not a freshness fence: an overlapping
+older resolution can refill the cache after invalidation. The fresh operation does
+not change the caching behavior of existing consumers and does not promise a
+linearizable external-secret snapshot. Focused cache/rotation/policy regression
+definitions are authored but unrun; no provider/deployment evidence is implied.

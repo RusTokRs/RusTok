@@ -4,7 +4,7 @@ Status: `source_complete_unvalidated`
 
 ## Scope
 
-This slice continues the canonical ecommerce topology P0 by moving the mounted Commerce GraphQL Fulfillment provider-operation mutations behind host-composed owner ports while preserving the existing public GraphQL fields, permissions, DTO shapes, and public error families.
+This slice continues the canonical ecommerce topology P0 by moving the mounted Commerce GraphQL Fulfillment provider-operation mutations behind host-composed owner ports. Field names, permissions, input DTOs and public error families remain; the 2026-11-01 continuation adds a required caller-owned `idempotencyKey` argument to the five lifecycle fields listed below.
 
 Mounted fields covered by this slice:
 
@@ -25,7 +25,11 @@ Provider journal ownership remains in `rustok-fulfillment`. This slice does not 
 
 ## Request context and public errors
 
-GraphQL builds typed `PortContext` values from validated `AuthContext` and `RequestContext` data. Lifecycle commands receive deterministic transport idempotency identities and two-second deadlines. Manual creation uses separate read/write contexts and an input-sensitive deterministic write idempotency identity, matching the established admin HTTP cross-owner create pattern.
+GraphQL builds typed `PortContext` values from validated `AuthContext` and `RequestContext` data, checking Auth/Tenant/target tenant agreement. It preserves canonical `auth.port_actor()` (human versus OAuth service), permissions/scopes, locale/channel and actual request correlation; only directly embedded schemas without RequestContext retain the resource-scoped correlation fallback. AuthContext has no roles field.
+
+Each of `shipFulfillment`, `deliverFulfillment`, `reopenFulfillment`, `reshipFulfillment` and `cancelFulfillment` requires a caller-owned `idempotencyKey` of 1..=191 UTF-8 bytes and uses a two-second call budget. A distinct later intent must use a distinct key; uncertain retries retain key and payload. The owner journal uses that key literally, rather than regenerating the old per-resource or FNV lifecycle identity. Local recovery alone loads deployed historical keys from its scoped saved journal. Manual creation keeps separate read/write contexts and its existing input-sensitive deterministic GraphQL create identity; it is not the lifecycle key policy.
+
+Native lifecycle composition now receives the selected Order reader for saved SKU preparation. Host-selected F commands still win, and unavailable selected dependencies are never converted to Noop. See the [shipment handoff](implementation-plan.md#shipment-stock-provenance-source-evidence) for the prepared stock protocol, caller transaction and honest provider-outcome boundary.
 
 Owner `PortError` values are mapped back to the existing GraphQL Fulfillment public families:
 
@@ -44,4 +48,6 @@ The broad canonical topology item remains open. Other mounted Commerce concrete-
 
 ## Validation
 
-No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, CI, runtime calls, provider execution, lost-response scenarios, restart scenarios, or remote-adapter scenarios were executed for this slice. The maintainer explicitly requested to run tests independently.
+The original 2026-08-09 slice carried no execution evidence. The 2026-11-01 continuation runs only read-only source guards, source syntax parsing and narrow WASM formatting. Source guards, syntax parsing and formatting are not compilation or runtime evidence.
+
+Tests remain unrun and with the maintainer. No Rust typecheck, SQL/carrier execution, mounted GraphQL scenario, CI/workflow, lost-response/restart or remote-adapter validation is claimed. The broad topology and Product step-8 gates remain open.

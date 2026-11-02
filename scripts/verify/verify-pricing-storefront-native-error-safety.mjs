@@ -1,171 +1,90 @@
 #!/usr/bin/env node
+// Source invariants only. Does not execute tests, native handlers, SQL or Rust compilation.
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
-const rootPath = configuredRoot
-  ? path.resolve(configuredRoot)
-  : fileURLToPath(new URL("../../", import.meta.url));
-const read = (relativePath) => readFileSync(path.join(rootPath, relativePath), "utf8");
-
-const cargo = read("crates/modules/rustok-pricing/storefront/Cargo.toml");
-const source = read(
-  "crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs",
-);
-const evidence = JSON.parse(
-  read(
-    "crates/modules/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json",
-  ),
-);
-
+const root = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim()
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : fileURLToPath(new URL('../../', import.meta.url));
+const read = (file) => readFileSync(path.join(root, file), 'utf8');
+const source = read('crates/modules/rustok-pricing/storefront/src/transport/native_server_adapter.rs');
+const cargo = read('crates/modules/rustok-pricing/storefront/Cargo.toml');
+const evidence = JSON.parse(read('crates/modules/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json'));
+const compact = (text) => text.replace(/\s+/g, '');
 const failures = [];
-const requireText = (content, value, label) => {
-  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
+const requireText = (text, value, label) => {
+  if (!compact(text).includes(compact(value))) failures.push(`${label}: missing ${value}`);
 };
-const forbidText = (content, value, label) => {
-  if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
+const forbidText = (text, value, label) => {
+  if (compact(text).includes(compact(value))) failures.push(`${label}: forbidden ${value}`);
 };
-const countText = (content, value) => content.split(value).length - 1;
 
-requireText(cargo, "tracing.workspace = true", "Pricing storefront tracing dependency");
-forbidText(cargo, '"dep:tracing"', "Pricing storefront stale SSR-only tracing feature");
-forbidText(
-  cargo,
-  "tracing = { workspace = true, optional = true }",
-  "Pricing storefront stale optional tracing dependency",
-);
+requireText(cargo, 'tracing.workspace = true', 'all-profile tracing');
+forbidText(cargo, 'tracing = { workspace = true, optional = true }', 'tracing must not disappear in CSR');
+for (const marker of [
+  'const PRICING_STOREFRONT_NATIVE_OWNER', 'const PRICING_STOREFRONT_NATIVE_BOUNDARY',
+  'fn map_runtime_dependency_error(', 'fn map_request_context_error<',
+  'fn map_tenant_context_error<', 'fn map_owner_runtime_error<',
+  'owner = PRICING_STOREFRONT_NATIVE_OWNER', 'boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY',
+  'request_context_rejected = true',
+  'leptos_axum::extract::<rustok_api::RequestContext>()', '.map_err(map_request_context_error)?',
+  'endpoint = "pricing/storefront-data"', 'expect_context::<HostRuntimeContext>()',
+  'shared_get::<TransactionalEventBus>()', 'in_process_pricing_read_port(',
+  'normalize_pricing_context(', 'parse_optional_uuid_string(query.channel_id, "channel_id")',
+  '.list_channels(tenant.id, 1, 250)',
+  '.list_active_price_list_projections(', '.list_storefront_product_pricing(',
+  '.read_storefront_product_pricing_projection(', '.resolve_product_prices(',
+  'StorefrontProductPricingListRequest {', 'StorefrontProductPricingProjectionRequest {',
+  'ResolveProductPricesRequest {', 'public_channel_id: selected_channel_id',
+  'rustok_pricing::map_pricing_port_error(&error).to_string()',
+  'quotes.remove(&variant.id)', 'snapshot.context', 'snapshot.resolved_at.to_rfc3339()',
+  'value.source.price_id()', 'value.source.kind()', 'value.source.rule()',
+  'products: map_native_list(products)', 'Self::ServerFn(value.to_string())',
+  'Storefront pricing is temporarily unavailable', 'Pricing storefront context is unavailable',
+]) requireText(source, marker, 'native Pricing owner boundary');
+for (const marker of [
+  'record_optional_request_context_error', 'PricingService::new(', '.resolve_variant_price(',
+  '.list_published_product_pricing_with_locale_fallback(',
+  '.get_published_product_pricing_by_handle_with_locale_fallback(',
+  '.map_err(ServerFnError::new)?',
+  'Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?',
+]) forbidText(source, marker, 'no bypass, context downgrade or raw public error');
 
-for (const [value, label] of [
-  ["const PRICING_STOREFRONT_NATIVE_OWNER", "native owner constant"],
-  ["const PRICING_STOREFRONT_NATIVE_BOUNDARY", "native boundary constant"],
-  ["fn map_runtime_dependency_error(", "runtime dependency mapper"],
-  ["fn record_optional_request_context_error<E: std::fmt::Display>(", "optional request context logger"],
-  ["fn map_tenant_context_error<E: std::fmt::Display>(", "tenant context mapper"],
-  ["fn map_owner_runtime_error<E: std::fmt::Display>(", "owner runtime mapper"],
-  ["owner = PRICING_STOREFRONT_NATIVE_OWNER", "owner diagnostics"],
-  ["owner_operation = operation", "owner operation diagnostics"],
-  ["tenant_id = %tenant_id", "tenant diagnostics"],
-  ["channel_id = ?request_context.channel_id", "channel id diagnostics"],
-  ["channel_slug = ?request_context.channel_slug", "channel slug diagnostics"],
-  ["locale = %request_context.locale", "locale diagnostics"],
-  ["boundary = PRICING_STOREFRONT_NATIVE_BOUNDARY", "boundary diagnostics"],
-  ["error = %error", "internal cause diagnostics"],
-]) requireText(source, value, label);
-forbidText(
-  source,
-  "request_context.correlation_id",
-  "removed RequestContext correlation field",
-);
-
-for (const [value, label] of [
-  ['endpoint = "pricing/storefront-data"', "pricing endpoint"],
-  ["expect_context::<HostRuntimeContext>()", "host runtime composition"],
-  ["shared_get::<TransactionalEventBus>()", "event-bus composition"],
-  ["resolve_requested_locale(", "locale fallback"],
-  ["normalize_public_channel_slug(ctx.channel_slug.as_deref())", "channel slug fallback"],
-  ["sanitize_resolution_context(", "resolution-context validation"],
-  [".list_channels(tenant.id, 1, 250)", "channel pagination"],
-  [".list_active_price_lists_for_channel(", "active price-list operation"],
-  [".list_published_product_pricing_with_locale_fallback(", "pricing list operation"],
-  [".get_published_product_pricing_by_handle_with_locale_fallback(", "pricing detail operation"],
-  [".resolve_variant_price(tenant.id, variant_id, context.clone())", "effective price operation"],
-  ["Self::ServerFn(value.to_string())", "outer ServerFn error variant"],
-  ["products: map_native_list(products)", "product result composition"],
-  ["selected_product,", "selected product result composition"],
-  ["resolution_context,", "resolution context result composition"],
-  ["active_price_lists,", "price-list result composition"],
-]) requireText(source, value, label);
-
-for (const operation of [
-  "list_channels",
-  "list_active_price_lists_for_channel",
-  "list_published_product_pricing_with_locale_fallback",
-  "get_published_product_pricing_by_handle_with_locale_fallback",
-  "parse_pricing_variant_id",
-  "resolve_variant_price",
-]) {
-  requireText(source, `"${operation}"`, `owner operation ${operation}`);
-}
-
-for (const [value, label] of [
-  ["pricing.storefront_runtime_unavailable", "runtime stable code"],
-  ["pricing.storefront_request_context_unavailable", "request context stable code"],
-  ["pricing.storefront_tenant_context_unavailable", "tenant context stable code"],
-  ["pricing.storefront_owner_runtime_failed", "owner runtime stable code"],
-  ["Storefront pricing is temporarily unavailable", "pricing unavailable public message"],
-  ["Pricing storefront context is unavailable", "context unavailable public message"],
-]) requireText(source, value, label);
-
-if (countText(source, "map_owner_runtime_error") !== 7) {
-  failures.push("owner runtime mapper must cover six operations plus its definition");
-}
-if (countText(source, ".map_err(|err| ServerFnError::new(err.to_string()))?;") !== 2) {
-  failures.push("exactly two transport-validation mappings must remain user-facing");
-}
-if (countText(source, 'ServerFnError::new("Storefront pricing is temporarily unavailable")') !== 2) {
-  failures.push("runtime dependency and owner failures must share two stable pricing envelope definitions");
-}
-if (countText(source, 'ServerFnError::new("Pricing storefront context is unavailable")') !== 1) {
-  failures.push("tenant extraction must use exactly one stable context envelope definition");
-}
-if (countText(source, "Self::ServerFn(value.to_string())") !== 1) {
-  failures.push("outer native facade must preserve exactly one ServerFn conversion");
-}
-
-for (const value of [
-  "pricing/storefront-data requires TransactionalEventBus in host runtime context",
-  ".map_err(ServerFnError::new)?",
-  "Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?",
-]) forbidText(source, value, "raw Pricing storefront runtime mapping");
-
-if (evidence.status !== "pricing_storefront_native_error_safety_source_unvalidated") {
-  failures.push(`evidence status mismatch: ${evidence.status}`);
+if (evidence.status !== 'pricing_storefront_native_error_safety_source_unvalidated') {
+  failures.push('native evidence must remain source-only / runtime unvalidated');
 }
 for (const [key, expected] of Object.entries({
   runtime_dependency_static_public_envelope: true,
   tenant_context_static_public_envelope: true,
-  optional_request_context_preserved: true,
-  optional_request_context_failure_logged: true,
+  trusted_request_context_required: true,
+  rejected_request_context_fails_closed: true,
   owner_runtime_static_public_envelope: true,
   internal_variant_id_failure_static_public_envelope: true,
   correlation_logging_when_available: true,
   transport_validation_messages_preserved: true,
-  query_contract_changed: false,
-  resolution_context_changed: false,
+  query_contract_changed: true,
+  resolution_context_changed: true,
   pagination_changed: false,
   locale_fallback_changed: false,
-  channel_fallback_changed: false,
-  request_response_dto_changed: false,
+  channel_fallback_changed: true,
+  request_response_dto_changed: true,
+  owner_read_port_batch: true,
+  owner_catalog_projection: true,
   outer_error_variant_changed: false,
   raw_runtime_error_public: false,
 })) {
-  if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`evidence source_contract.${key} must be ${expected}`);
-  }
+  if (evidence.source_contract?.[key] !== expected) failures.push(`source_contract.${key} must be ${expected}`);
 }
-for (const key of [
-  "tests_run",
-  "cargo_run",
-  "format_run",
-  "verifiers_run",
-  "workflow_checks_run",
-  "ci_run",
-  "native_runtime_proven",
-  "mounted_parity_proven",
-]) {
-  if (evidence.validation?.[key] !== false) {
-    failures.push(`evidence validation.${key} must remain false`);
-  }
+for (const key of ['tests_run', 'cargo_run', 'workflow_checks_run', 'ci_run', 'native_runtime_proven', 'mounted_parity_proven']) {
+  if (evidence.validation?.[key] !== false) failures.push(`unrun runtime gate ${key} must remain false`);
 }
-
-if (failures.length > 0) {
-  console.error("Pricing storefront native error-safety verification failed:");
-  for (const failure of failures) console.error(`✗ ${failure}`);
+for (const key of ['format_run', 'verifiers_run']) {
+  if (typeof evidence.validation?.[key] !== 'boolean') failures.push(`validation.${key} must be an explicit static-check boolean`);
+}
+if (failures.length) {
+  console.error('Pricing storefront native error-safety verification failed:');
+  failures.forEach((failure) => console.error(`✗ ${failure}`));
   process.exit(Math.min(failures.length, 255));
 }
-
-console.log(
-  "✔ Pricing storefront native runtime and owner failures use static public envelopes; runtime evidence remains open",
-);
+console.log('✔ Pricing native reads use owner catalog/batch ports and fail closed on rejected context; runtime evidence remains open');

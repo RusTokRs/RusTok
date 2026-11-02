@@ -8,9 +8,10 @@ use uuid::Uuid;
 use crate::{
     BlogCommentsDelegationScheduleAuditEvent, CheckoutOperationEvent, DomainEvent, EventEnvelope,
     EventValidationError, FormSubmissionEvent, ForumMentionEvent, ForumSearchProjectionEvent,
-    MarketplaceListingEvent, MarketplaceSellerEvent, ProductIndexRefreshEvent,
-    RbacArtifactPermissionEvent, RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent,
-    TranslationWorkflowEvent, ValidateEvent,
+    InventoryReservationEvent, InventorySourceEvent, MarketplaceListingEvent,
+    MarketplaceSellerEvent, ProductIndexRefreshEvent, RbacArtifactPermissionEvent,
+    RbacRoleMutationEvent, ReactionsEvent, SocialGraphRelationEvent, TranslationWorkflowEvent,
+    ValidateEvent,
 };
 
 pub(crate) mod sealed {
@@ -64,9 +65,22 @@ pub enum ContractEventPayload {
     SocialGraphRelation(SocialGraphRelationEvent),
     #[serde(rename = "translation_workflow")]
     TranslationWorkflow(TranslationWorkflowEvent),
+    #[serde(rename = "inventory_reservation")]
+    InventoryReservation(InventoryReservationEvent),
+    #[serde(rename = "inventory_source")]
+    InventorySource(InventorySourceEvent),
 }
 
 impl ContractEventPayload {
+    /// Compiled sealed-family delivery contract, never caller-supplied envelope metadata.
+    /// Broker acceptance alone is insufficient for owner facts with required module projections.
+    pub const fn requires_module_delivery(&self) -> bool {
+        matches!(
+            self,
+            Self::InventoryReservation(_) | Self::InventorySource(_)
+        )
+    }
+
     fn event_type(&self) -> &'static str {
         match self {
             Self::Root(event) => event.event_type(),
@@ -83,6 +97,8 @@ impl ContractEventPayload {
             Self::Reactions(event) => event.event_type(),
             Self::SocialGraphRelation(event) => event.event_type(),
             Self::TranslationWorkflow(event) => event.event_type(),
+            Self::InventoryReservation(event) => event.event_type(),
+            Self::InventorySource(event) => event.event_type(),
         }
     }
 
@@ -102,6 +118,8 @@ impl ContractEventPayload {
             Self::Reactions(event) => event.schema_version(),
             Self::SocialGraphRelation(event) => event.schema_version(),
             Self::TranslationWorkflow(event) => event.schema_version(),
+            Self::InventoryReservation(event) => event.schema_version(),
+            Self::InventorySource(event) => event.schema_version(),
         }
     }
 }
@@ -123,6 +141,8 @@ impl ValidateEvent for ContractEventPayload {
             Self::Reactions(event) => event.validate(),
             Self::SocialGraphRelation(event) => event.validate(),
             Self::TranslationWorkflow(event) => event.validate(),
+            Self::InventoryReservation(event) => event.validate(),
+            Self::InventorySource(event) => event.validate(),
         }
     }
 }

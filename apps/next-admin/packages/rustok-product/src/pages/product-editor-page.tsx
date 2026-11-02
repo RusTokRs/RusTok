@@ -10,26 +10,42 @@
 
 'use client';
 
-import type { UpdateVariantInput } from '../api/products';
+import type { CreateVariantInput, UpdateVariantInput } from '../api/products';
 import * as React from 'react';
-import { parsePriceAmount } from '../money';
+import { useTranslations } from '@rustok/next-fluent';
 import {
   ProductWriteAttempt,
+  type ProductAxesWriteRequest,
+  type ProductVariantCreateRequest,
   type ProductSavePayload,
   type ProductWriteOutcome,
   type ProductWriteScope
 } from '../write-attempt';
 import {
   browserProductWriteJournal,
-  PRODUCT_EDITOR_INTENT_QUERY_KEY,
   PRODUCT_RECOVERY_UNAVAILABLE,
-  type ProductJournalRecord
+  type ProductJournalRecord,
+  type ProductWriteOperation
 } from '../write-journal';
+import {
+  prepareVariantCreateInput,
+  variantCreateRefusalKey
+} from '../variant-create';
 import { useRouter } from 'next/navigation';
 import { ProductHeaderBar } from '../components/products/product-header-bar';
 import { ProductGeneralCard } from '../components/products/product-general-card';
 import { ProductCategoryCard } from '../components/products/product-category-card';
 import { ProductVariantsCard } from '../components/products/product-variants-card';
+import { InitialVariantsCard } from '../components/products/initial-variants-card';
+import {
+  emptyInitialVariant,
+  normalizeInitialCatalog,
+  suggestedInitialAxes,
+  orderedInitialAxes,
+  type InitialVariantDraft
+} from '../variant-draft';
+import type { VariantAxisDraftInput } from '../api/types';
+import { axesRefusalKey } from '../axis-reconfiguration';
 import { ProductVariantAxesCard } from '../components/products/product-variant-axes-card';
 import { ProductMediaCard } from '../components/products/product-media-card';
 import { ProductRelationsCard } from '../components/products/product-relations-card';
@@ -39,7 +55,7 @@ import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import type {
   SetVariantAxesInput,
-  VariantAxisConfig,
+  VariantAxesPreview,
   ProductListItem,
   ProductDetail,
   ProductTranslation,
@@ -85,15 +101,21 @@ export interface ProductEditorPageProps {
     scope: ProductWriteScope
   ) => Promise<ProductWriteOutcome>;
   onAddVariant?: (
-    productId: string,
-    variant: Omit<ProductVariant, 'id'>
-  ) => Promise<void>;
+    request: ProductVariantCreateRequest,
+    idempotencyKey: string
+  ) => Promise<ProductWriteOutcome>;
   onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
-  onSetVariantAxes?: (
+  onPreviewVariantAxes?: (
     productId: string,
-    input: SetVariantAxesInput
-  ) => Promise<VariantAxisConfig[] | void>;
+    input: SetVariantAxesInput,
+    scope: ProductWriteScope,
+    locale: string
+  ) => Promise<VariantAxesPreview>;
+  onSetVariantAxes?: (
+    request: ProductAxesWriteRequest,
+    idempotencyKey: string
+  ) => Promise<ProductWriteOutcome>;
   onAddImage?: (
     productId: string,
     input: { mediaId: string; altText?: string }
@@ -139,6 +161,7 @@ export function ProductEditorPage({
   onAddVariant,
   onUpdateVariant,
   onDeleteVariant,
+  onPreviewVariantAxes,
   onSetVariantAxes,
   onAddImage,
   onDeleteImage,
@@ -154,6 +177,8 @@ export function ProductEditorPage({
   onRemoveBundleItem
 }: ProductEditorPageProps) {
   const router = useRouter();
+  const axesText = useTranslations('product.axes');
+  const variantCreateText = useTranslations('product.variantCreate');
   // This predecessor belongs to the local document draft, not to the latest server
   // props. A router refresh must not silently rebase dirty fields onto someone else's
   // revision. Only this editor's confirmed catalog writes advance it; reload to rebase.
@@ -171,9 +196,16 @@ export function ProductEditorPage({
   > | null>(null);
   const createdProduct = React.useRef<string | null>(null);
   const deletedProduct = React.useRef(false);
-  const [pendingOperation, setPendingOperation] = React.useState<
-    'save' | 'status' | 'delete' | null
-  >(null);
+  const [pendingOperation, setPendingOperation] =
+    React.useState<ProductWriteOperation | null>(null);
+  const [variantCreationDraft, setVariantCreationDraft] = React.useState<{
+    input: CreateVariantInput;
+    intent: string;
+  } | null>(null);
+  const [pendingVariantInput, setPendingVariantInput] =
+    React.useState<ProductVariantCreateRequest | null>(null);
+  const [pendingAxesInput, setPendingAxesInput] =
+    React.useState<ProductAxesWriteRequest | null>(null);
   const initializeRecovery = React.useCallback(() => {
     try {
       if (!writeAttempt.current) {
@@ -186,6 +218,16 @@ export function ProductEditorPage({
         throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
       setPendingOperation(writeAttempt.current.pendingOperation);
       setSettledWrite(record?.phase === 'settled' ? record : null);
+      setPendingAxesInput(
+        record?.phase === 'pending' && record.attempt.operation === 'axes'
+          ? record.attempt.request
+          : null
+      );
+      setPendingVariantInput(
+        record?.phase === 'pending' && record.attempt.operation === 'variant'
+          ? record.attempt.request
+          : null
+      );
       setRecoveryError(null);
       setRecoveryReady(true);
     } catch {
@@ -294,15 +336,26 @@ export function ProductEditorPage({
   const [variants, setVariants] = React.useState<ProductVariant[]>(
     initialProduct?.variants || []
   );
-  const [newVariantDraft, setNewVariantDraft] = React.useState({
-    sku: '',
-    barcode: '',
-    priceAmount: '0',
-    currencyCode: 'USD',
-    compareAtAmount: null as string | null,
-    inventoryQuantity: 0,
-    inventoryPolicy: 'deny'
-  });
+  const [initialAxes, setInitialAxes] = React.useState<VariantAxisDraftInput[]>(
+    []
+  );
+  const [initialVariants, setInitialVariants] = React.useState<
+    InitialVariantDraft[]
+  >(() => [emptyInitialVariant()]);
+  const initialAxesSeeded = React.useRef(false);
+  React.useEffect(() => {
+    if (!isNew || !effectiveForm || initialAxesSeeded.current) return;
+    initialAxesSeeded.current = true;
+    try {
+      setInitialAxes(suggestedInitialAxes(effectiveForm));
+    } catch (failure) {
+      setErrorMessage(
+        failure instanceof Error
+          ? failure.message
+          : 'Review the category axis defaults.'
+      );
+    }
+  }, [isNew, effectiveForm]);
   const [images, setImages] = React.useState<ProductImage[]>(
     initialProduct?.images || []
   );
@@ -409,6 +462,16 @@ export function ProductEditorPage({
     setPendingOperation(writer?.pendingOperation ?? null);
     const record = writer?.recovery;
     setSettledWrite(record?.phase === 'settled' ? record : null);
+    setPendingAxesInput(
+      record?.phase === 'pending' && record.attempt.operation === 'axes'
+        ? record.attempt.request
+        : null
+    );
+    setPendingVariantInput(
+      record?.phase === 'pending' && record.attempt.operation === 'variant'
+        ? record.attempt.request
+        : null
+    );
     setRecoveryError(writer?.recoveryError ?? null);
   };
 
@@ -426,6 +489,8 @@ export function ProductEditorPage({
       });
       const result = await writer.resume({
         save: onSaveProduct,
+        axes: onSetVariantAxes ?? unavailable,
+        variant: onAddVariant ?? unavailable,
         status: onChangeStatus
           ? (request, key) =>
               onChangeStatus(
@@ -441,7 +506,21 @@ export function ProductEditorPage({
           : unavailable
       });
       if (result && result.outcome.status !== 'confirmed') {
-        setErrorMessage(result.outcome.message);
+        setErrorMessage(
+          result.operation === 'axes'
+            ? axesText(
+                result.outcome.status === 'rejected'
+                  ? axesRefusalKey(result.outcome.code)
+                  : 'pending'
+              )
+            : result.operation === 'variant'
+              ? variantCreateText(
+                  result.outcome.status === 'rejected'
+                    ? variantCreateRefusalKey(result.outcome.code)
+                    : 'pending'
+                )
+              : result.outcome.message
+        );
       }
       // A recovered acknowledgement deliberately does not rebase current fields.
       // The settled panel opens a fresh owner document (or the catalog).
@@ -466,6 +545,12 @@ export function ProductEditorPage({
       );
       next.restore();
       writeAttempt.current = next;
+      if (record.operation === 'variant')
+        setVariantCreationDraft({
+          input: structuredClone(record.request.input),
+          intent: next.storageKey
+        });
+      setPendingVariantInput(null);
       setSettledWrite(null);
       setPendingOperation(null);
       setRecoveryError(null);
@@ -497,16 +582,51 @@ export function ProductEditorPage({
         `/dashboard/product/${encodeURIComponent(id)}`,
         window.location.origin
       );
-      url.searchParams.set(
-        PRODUCT_EDITOR_INTENT_QUERY_KEY,
-        crypto.randomUUID()
-      );
+      // The fresh page initializes and verifies an empty browser baseline before attaching
+      // its new marker. A pre-attached random marker without storage would fail closed.
       // Full navigation is intentional: draft state and predecessor are not rebased
       // on new props by a router refresh. The new intent reads a fresh owner document.
       window.location.assign(url);
     } catch {
       setRecoveryError(PRODUCT_RECOVERY_UNAVAILABLE);
       setRecoveryReady(false);
+    }
+  };
+
+  const handleAddVariant = async (input: CreateVariantInput) => {
+    assertEditorialWriteResolved();
+    const writer = writeAttempt.current;
+    if (!writer || !onAddVariant || isNew || !initialProduct?.id)
+      throw new Error(variantCreateText('storage'));
+    if (
+      variants.length >= 256 ||
+      (!initialProduct.variantAxes.length && variants.length > 0)
+    )
+      throw new Error(variantCreateText('creationUnavailable'));
+    const request: ProductVariantCreateRequest = {
+      scope: writeScope,
+      id: initialProduct.id,
+      locale: activeLocale,
+      input: prepareVariantCreateInput(input)
+    };
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const result = await writer.execute('variant', request, onAddVariant);
+      if (!result || result.outcome.status !== 'confirmed') {
+        const message = variantCreateText(
+          result?.outcome.status === 'rejected'
+            ? variantCreateRefusalKey(result.outcome.code)
+            : 'pending'
+        );
+        setErrorMessage(message);
+        throw new Error(message);
+      }
+      // The acknowledgement is an SKU UUID, never a replacement Product predecessor.
+      router.refresh();
+    } finally {
+      syncRecoveryState();
+      setIsSaving(false);
     }
   };
 
@@ -540,30 +660,21 @@ export function ProductEditorPage({
       return;
     }
 
-    // Admit deterministic initial-Variant scalars before retaining a command.
-    // A local decimal/Int error must leave the draft editable, not strand it as
-    // an "unknown commit" when no request was ever sent.
-    let initialVariant = isNew ? { ...newVariantDraft } : undefined;
-    if (initialVariant && !writeAttempt.current.pendingOperation) {
+    let normalizedVariants: InitialVariantDraft[] | undefined;
+    if (isNew) {
       try {
-        initialVariant.priceAmount = parsePriceAmount(
-          initialVariant.priceAmount
+        if (selectedCategoryId && !effectiveForm)
+          throw new Error('Load the selected category form before saving.');
+        normalizedVariants = normalizeInitialCatalog(
+          initialAxes,
+          initialVariants,
+          effectiveForm
         );
-        initialVariant.compareAtAmount = initialVariant.compareAtAmount?.trim()
-          ? parsePriceAmount(initialVariant.compareAtAmount)
-          : null;
-        if (
-          !Number.isInteger(initialVariant.inventoryQuantity) ||
-          initialVariant.inventoryQuantity < 0 ||
-          initialVariant.inventoryQuantity > 2_147_483_647
-        ) {
-          throw new Error(
-            'Initial inventory must be a non-negative 32-bit integer.'
-          );
-        }
-      } catch (error) {
+      } catch (failure) {
         setErrorMessage(
-          error instanceof Error ? error.message : 'Initial variant is invalid.'
+          failure instanceof Error
+            ? failure.message
+            : 'Initial variants are invalid.'
         );
         return;
       }
@@ -597,7 +708,9 @@ export function ProductEditorPage({
           tags,
           status,
           revision: documentRevision,
-          initialVariant,
+          ...(isNew
+            ? { variantAxes: initialAxes, initialVariants: normalizedVariants }
+            : {}),
           attributePatches: patches,
           activeLocale
         },
@@ -724,6 +837,7 @@ export function ProductEditorPage({
     // Portal dialogs are outside the disabled fieldset. Guard the callbacks too,
     // including stale closures opened before the editorial request began.
     const writer = writeAttempt.current;
+    writer?.restore();
     if (
       !recoveryReady ||
       !writer ||
@@ -759,16 +873,44 @@ export function ProductEditorPage({
       {pendingOperation && (
         <Alert>
           <AlertDescription>
-            The previous {pendingOperation} has an unconfirmed outcome. Its
-            original request and key are saved in this browser. Do not start a
-            different operation.
+            {pendingOperation === 'axes' ? (
+              axesText('pending')
+            ) : pendingOperation === 'variant' ? (
+              variantCreateText('pending')
+            ) : (
+              <>
+                The previous {pendingOperation} has an unconfirmed outcome. Its
+                original request and key are saved in this browser. Do not start
+                a different operation.
+              </>
+            )}
+            {pendingVariantInput ? (
+              <details className='mt-2 text-xs'>
+                <summary>{variantCreateText('savedRequest')}</summary>
+                <pre className='max-h-64 overflow-auto whitespace-pre-wrap'>
+                  {JSON.stringify(pendingVariantInput, null, 2)}
+                </pre>
+              </details>
+            ) : null}
+            {pendingAxesInput ? (
+              <details className='mt-2 text-xs'>
+                <summary>{axesText('savedRequest')}</summary>
+                <pre className='max-h-64 overflow-auto whitespace-pre-wrap'>
+                  {JSON.stringify(pendingAxesInput, null, 2)}
+                </pre>
+              </details>
+            ) : null}
             <button
               type='button'
               className='ml-3 underline'
               disabled={isSaving || !recoveryReady}
               onClick={handleResume}
             >
-              Retry previous operation
+              {pendingOperation === 'axes'
+                ? axesText('retry')
+                : pendingOperation === 'variant'
+                  ? variantCreateText('retry')
+                  : 'Retry previous operation'}
             </button>
           </AlertDescription>
         </Alert>
@@ -777,9 +919,35 @@ export function ProductEditorPage({
         <Alert>
           <AlertDescription>
             {settledWrite.outcome.status === 'rejected'
-              ? settledWrite.outcome.message
-              : `The previous ${settledWrite.operation} is confirmed. This editor intent is complete.`}
-            Opening a fresh editor discards local unsaved fields.
+              ? settledWrite.operation === 'axes'
+                ? axesText(axesRefusalKey(settledWrite.outcome.code))
+                : settledWrite.operation === 'variant'
+                  ? variantCreateText(
+                      variantCreateRefusalKey(settledWrite.outcome.code)
+                    )
+                  : settledWrite.outcome.message
+              : settledWrite.operation === 'axes'
+                ? axesText('saved')
+                : settledWrite.operation === 'variant'
+                  ? variantCreateText('confirmed')
+                  : `The previous ${settledWrite.operation} is confirmed. This editor intent is complete.`}
+            {settledWrite.operation === 'variant' &&
+            settledWrite.outcome.status === 'confirmed' ? (
+              <code className='ml-2'>
+                {settledWrite.outcome.value.variantId}
+              </code>
+            ) : null}
+            {settledWrite.operation === 'variant' ? (
+              <details className='mt-2 text-xs'>
+                <summary>{variantCreateText('savedRequest')}</summary>
+                <pre className='max-h-64 overflow-auto whitespace-pre-wrap'>
+                  {JSON.stringify(settledWrite.request, null, 2)}
+                </pre>
+              </details>
+            ) : null}
+            {settledWrite.operation === 'variant'
+              ? variantCreateText('freshWarning')
+              : 'Opening a fresh editor discards local unsaved fields.'}
             <button
               type='button'
               className='ml-3 underline'
@@ -789,7 +957,9 @@ export function ProductEditorPage({
               {settledWrite.operation === 'delete' &&
               settledWrite.outcome.status === 'confirmed'
                 ? 'Open catalog'
-                : 'Open fresh editor'}
+                : settledWrite.operation === 'variant'
+                  ? variantCreateText('fresh')
+                  : 'Open fresh editor'}
             </button>
             {!recoveryOnly && settledWrite.outcome.status === 'rejected' && (
               <button
@@ -798,7 +968,9 @@ export function ProductEditorPage({
                 disabled={isSaving || !recoveryReady}
                 onClick={handleCorrectDraft}
               >
-                Correct this draft as a new operation
+                {settledWrite.operation === 'variant'
+                  ? variantCreateText('correct')
+                  : 'Correct this draft as a new operation'}
               </button>
             )}
           </AlertDescription>
@@ -899,17 +1071,86 @@ export function ProductEditorPage({
                   disabled={isSaving || pendingOperation !== null}
                 />
 
+                {initialProduct &&
+                selectedCategoryId !==
+                  (initialProduct.primaryCategoryId ?? '') ? (
+                  <p role='status' className='text-muted-foreground text-sm'>
+                    The category has unsaved changes. Save or discard the
+                    category change before editing persisted axes.
+                  </p>
+                ) : null}
                 {/* Variant axes (ADR identity model) */}
                 {initialProduct?.id ? (
                   <ProductVariantAxesCard
+                    productId={initialProduct.id}
+                    locale={activeLocale}
                     axes={initialProduct.variantAxes ?? []}
-                    effectiveForm={initialEffectiveForm}
-                    disabled={isSaving || pendingOperation !== null}
+                    effectiveForm={
+                      selectedCategoryId ===
+                      (initialProduct.primaryCategoryId ?? '')
+                        ? effectiveForm
+                        : initialEffectiveForm
+                    }
+                    disabled={
+                      isSaving ||
+                      !recoveryReady ||
+                      !!recoveryError ||
+                      !!settledWrite ||
+                      pendingOperation !== null ||
+                      selectedCategoryId !==
+                        (initialProduct.primaryCategoryId ?? '')
+                    }
+                    onPreviewAxes={
+                      onPreviewVariantAxes
+                        ? async (input) => {
+                            assertEditorialWriteResolved();
+                            return onPreviewVariantAxes(
+                              initialProduct.id,
+                              input,
+                              writeScope,
+                              activeLocale
+                            );
+                          }
+                        : undefined
+                    }
                     onSaveAxes={
                       onSetVariantAxes
                         ? async (input) => {
                             assertEditorialWriteResolved();
-                            return onSetVariantAxes(initialProduct.id, input);
+                            const writer = writeAttempt.current;
+                            if (!writer)
+                              throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+                            setIsSaving(true);
+                            setErrorMessage(null);
+                            try {
+                              const attempt = await writer.execute(
+                                'axes',
+                                {
+                                  id: initialProduct.id,
+                                  scope: writeScope,
+                                  locale: activeLocale,
+                                  input
+                                },
+                                onSetVariantAxes
+                              );
+                              if (!attempt)
+                                throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+                              if (attempt.outcome.status !== 'confirmed') {
+                                const message = axesText(
+                                  attempt.outcome.status === 'rejected'
+                                    ? axesRefusalKey(attempt.outcome.code)
+                                    : 'pending'
+                                );
+                                setErrorMessage(message);
+                                throw new Error(message);
+                              }
+                              // The canonical receipt returns axes, not a Product revision. Do not
+                              // invent a predecessor or silently rebase a dirty document. The settled
+                              // recovery panel opens a fresh owner document on an explicit action.
+                            } finally {
+                              syncRecoveryState();
+                              setIsSaving(false);
+                            }
                           }
                         : undefined
                     }
@@ -917,45 +1158,60 @@ export function ProductEditorPage({
                 ) : null}
 
                 {/* Pricing & Variants Matrix */}
-                <ProductVariantsCard
-                  variants={variants}
-                  isNew={isNew}
-                  newVariantDraft={newVariantDraft}
-                  onNewVariantDraftChange={(draft) =>
-                    setNewVariantDraft({
-                      ...draft,
-                      compareAtAmount: draft.compareAtAmount ?? null
-                    })
-                  }
-                  onAddVariant={
-                    initialProduct?.id && onAddVariant
-                      ? async (v) => {
-                          assertEditorialWriteResolved();
-                          await onAddVariant(initialProduct.id, v);
-                          router.refresh();
-                        }
-                      : undefined
-                  }
-                  onUpdateVariant={
-                    onUpdateVariant
-                      ? async (id, patch) => {
-                          assertEditorialWriteResolved();
-                          await onUpdateVariant(id, patch);
-                          router.refresh();
-                        }
-                      : undefined
-                  }
-                  onDeleteVariant={
-                    onDeleteVariant
-                      ? async (id) => {
-                          assertEditorialWriteResolved();
-                          await onDeleteVariant(id);
-                          router.refresh();
-                        }
-                      : undefined
-                  }
-                  disabled={isSaving || pendingOperation !== null}
-                />
+                {isNew ? (
+                  <InitialVariantsCard
+                    form={effectiveForm}
+                    axes={initialAxes}
+                    variants={initialVariants}
+                    onAxesChange={(axes) => {
+                      initialAxesSeeded.current = true;
+                      setInitialAxes(orderedInitialAxes(axes));
+                    }}
+                    onVariantsChange={(rows) => {
+                      initialAxesSeeded.current = true;
+                      setInitialVariants(rows);
+                    }}
+                    disabled={
+                      isSaving || pendingOperation !== null || isLoadingForm
+                    }
+                  />
+                ) : (
+                  <ProductVariantsCard
+                    variants={variants}
+                    axes={initialProduct?.variantAxes ?? []}
+                    creationDraft={variantCreationDraft}
+                    onAddVariant={
+                      initialProduct?.id && onAddVariant
+                        ? handleAddVariant
+                        : undefined
+                    }
+                    onUpdateVariant={
+                      onUpdateVariant
+                        ? async (id, patch) => {
+                            assertEditorialWriteResolved();
+                            await onUpdateVariant(id, patch);
+                            router.refresh();
+                          }
+                        : undefined
+                    }
+                    onDeleteVariant={
+                      onDeleteVariant
+                        ? async (id) => {
+                            assertEditorialWriteResolved();
+                            await onDeleteVariant(id);
+                            router.refresh();
+                          }
+                        : undefined
+                    }
+                    disabled={
+                      !recoveryReady ||
+                      !!recoveryError ||
+                      isSaving ||
+                      pendingOperation !== null ||
+                      settledWrite !== null
+                    }
+                  />
+                )}
 
                 {/* Product Relations (Cross-sell, Up-sell, Accessories, Alternatives) */}
                 {!isNew && initialProduct?.id && (

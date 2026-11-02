@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-30",
+  "generated_at": "2026-10-31",
   "status": "mounted_consumer_cutover_unvalidated",
-  "source_base_revision": "89c7cde43e994df08b7764fe31861b41a0022ddd",
-  "scope": "complete order, return, and order-change projections for mounted Commerce query consumers",
+  "source_base_revision": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "scope": "complete order, return, and order-change projections for mounted Commerce query consumers; bounded saved Order-line inventory bindings for operator return-restock planning",
   "owner": {
     "crate": "rustok-order",
     "port": "OrderReadPort",
@@ -70,6 +70,17 @@
         "change_type"
       ],
       "ordering": "created_at_desc"
+    },
+    {
+      "name": "read_order_line_inventory_bindings",
+      "request": "ReadOrderLineInventoryBindingsRequest",
+      "result": "OrderLineInventoryBindingsSnapshot",
+      "maximum_line_count": 1024,
+      "nonempty_distinct_non_nil_line_ids": true,
+      "tenant_order_complete_correlation": true,
+      "saved_variant_and_quantity_only": true,
+      "pricing_or_catalog_refresh": false,
+      "partial_response_allowed": false
     }
   ],
   "context": {
@@ -146,8 +157,8 @@
     "admin_order_mutations": "concrete_order_service",
     "admin_detail_payment_lookup": "concrete_payment_service",
     "admin_detail_fulfillment_lookup": "concrete_fulfillment_service",
-    "storefront_return_mutation": "concrete_order_service",
-    "storefront_refund_reads": "concrete_payment_service",
+    "storefront_return_mutation": "selected_order_post_order_command_port",
+    "storefront_refund_reads": "selected_payment_order_read_port",
     "unmounted_admin_compatibility_handlers": "removed_from_admin_returns_and_changes_source"
   },
   "decision": {
@@ -158,10 +169,27 @@
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "verifiers_run": false,
+    "format_run": true,
+    "verifiers_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "runtime_parity_proven": false
+  },
+  "initial_publication": {
+    "generated_at": "2026-07-30",
+    "source_base_revision": "89c7cde43e994df08b7764fe31861b41a0022ddd",
+    "read_operation_count": 6
+  },
+  "return_restock_binding_continuation": {
+    "recorded_at": "2026-10-31",
+    "status": "source_implemented_runtime_unvalidated",
+    "selected_existing_arc_required": true,
+    "embedded_fallback_allowed": false,
+    "commerce_consumer": "ReturnCompletionOrchestrationService before resolution effects",
+    "source_evidence": "crates/modules/rustok-commerce/contracts/evidence/return-restock-identity-source.json",
+    "tests_executed": false,
+    "sql_executed": false,
+    "readiness_promoted": false,
+    "nullable_sku_presence_required": true
   }
 }

@@ -283,6 +283,12 @@ impl CommerceCheckoutMutation {
         let runtime = crate::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
             db.clone(),
             event_bus.clone(),
+        )
+        .with_product_catalog_read_runtime(
+            crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+                db.clone(),
+                event_bus.clone(),
+            ),
         );
         let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input(
             &runtime,

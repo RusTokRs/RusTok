@@ -147,7 +147,7 @@ fn ProductAttributesGrid(
                 }
             }
             "actions" => {
-                let is_option = attr.value_type == "option" || attr.value_type == "multi_option";
+                let is_option = attr.value_type == "select" || attr.value_type == "multiselect";
                 if is_option {
                     let attr_clone = attr.clone();
                     view! {
@@ -196,6 +196,7 @@ pub fn AttributesPage() -> impl IntoView {
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (is_busy, set_is_busy) = signal(false);
+    let definition_locked = RwSignal::new(false);
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
     let (success_msg, set_success_msg) = signal(Option::<String>::None);
 
@@ -207,6 +208,7 @@ pub fn AttributesPage() -> impl IntoView {
     let (attr_label, set_attr_label) = signal(String::new());
     let (attr_code, set_attr_code) = signal(String::new());
     let (attr_value_type, set_attr_value_type) = signal("text".to_string());
+    let (attr_scope, set_attr_scope) = signal("product".to_string());
     let (attr_help_text, set_attr_help_text) = signal(String::new());
     let (attr_is_localized, set_attr_is_localized) = signal(false);
     let (attr_is_filterable, set_attr_is_filterable) = signal(true);
@@ -285,6 +287,7 @@ pub fn AttributesPage() -> impl IntoView {
         set_attr_label.set(String::new());
         set_attr_code.set(String::new());
         set_attr_value_type.set("text".to_string());
+        set_attr_scope.set("product".to_string());
         set_attr_help_text.set(String::new());
         set_attr_is_localized.set(false);
         set_attr_is_filterable.set(true);
@@ -369,6 +372,11 @@ pub fn AttributesPage() -> impl IntoView {
                 </div>
             </div>
 
+            <super::attribute_lifecycle::AttributeLifecyclePanel
+                parent_busy=Signal::derive(move || is_busy.get())
+                on_lock_change=Callback::new(move |locked| definition_locked.set(locked))
+            />
+            <fieldset disabled=move || definition_locked.get() class="contents">
             // Alerts
             <Show when=move || error_msg.get().is_some()>
                 <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive flex items-center justify-between">
@@ -677,18 +685,29 @@ pub fn AttributesPage() -> impl IntoView {
                                         class="w-full text-xs rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary"
                                     >
                                         <option value="text">{if is_ru { "Текст (Строка)" } else { "Text (Single line)" }}</option>
-                                        <option value="rich_text">{if is_ru { "Форматированный текст" } else { "Rich Text" }}</option>
+                                        <option value="richtext">{if is_ru { "Форматированный текст" } else { "Rich Text" }}</option>
                                         <option value="integer">{if is_ru { "Целое число" } else { "Integer" }}</option>
                                         <option value="decimal">{if is_ru { "Дробное число" } else { "Decimal" }}</option>
                                         <option value="boolean">{if is_ru { "Логический (Да/Нет)" } else { "Boolean (Yes/No)" }}</option>
-                                        <option value="option">{if is_ru { "Один выбор из словаря" } else { "Single Option (Select)" }}</option>
-                                        <option value="multi_option">{if is_ru { "Множественный выбор" } else { "Multi Option (Checklist)" }}</option>
+                                        <option value="select">{if is_ru { "Один выбор из словаря" } else { "Single Option (Select)" }}</option>
+                                        <option value="multiselect">{if is_ru { "Множественный выбор" } else { "Multi Option (Checklist)" }}</option>
                                         <option value="date">{if is_ru { "Дата" } else { "Date" }}</option>
                                         <option value="datetime">{if is_ru { "Дата и время" } else { "Date & Time" }}</option>
                                         <option value="json">{if is_ru { "JSON структура" } else { "JSON (Structured)" }}</option>
                                     </select>
                                 </div>
 
+                                <label class="space-y-1.5">
+                                    <span>"Value scope"</span>
+                                    <leptos_ui::Select
+                                        options=vec![
+                                            leptos_ui::SelectOption::new("product", "Product"),
+                                            leptos_ui::SelectOption::new("variant", "Variant (SKU)"),
+                                            leptos_ui::SelectOption::new("both", "Product and variant"),
+                                        ]
+                                        value=attr_scope set_value=set_attr_scope
+                                    />
+                                </label>
                                 <div class="space-y-1.5">
                                     <label class="text-xs font-medium text-foreground">
                                         {if is_ru { "Подсказка для оператора" } else { "Help Text" }}
@@ -779,6 +798,7 @@ pub fn AttributesPage() -> impl IntoView {
                                             let draft = ProductAttributeDraft {
                                                 code,
                                                 value_type: attr_value_type.get_untracked(),
+                                                scope: attr_scope.get_untracked(),
                                                 label,
                                                 help_text,
                                                 is_localized: attr_is_localized.get_untracked(),
@@ -818,6 +838,7 @@ pub fn AttributesPage() -> impl IntoView {
                     }.into_any()
                 }
             }}
+            </fieldset>
         </div>
     }
 }

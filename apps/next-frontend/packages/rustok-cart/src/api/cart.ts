@@ -11,6 +11,7 @@
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 import type {
   Cart,
+  CartPricingExpectation,
   CompleteCheckoutResult,
   CompleteStorefrontCheckoutInput,
   StorefrontShippingSelectionInput,
@@ -20,6 +21,8 @@ export type CartGraphqlExecutor = typeof storefrontGraphql;
 
 const CART_FIELDS = `
   id
+  channelId
+  channelSlug
   currencyCode
   subtotalAmount
   adjustmentTotal
@@ -52,7 +55,7 @@ const CART_FIELDS = `
     lineItemId
     sourceType
     sourceId
-    adjustedAmount
+    amount
   }
   deliveryGroups {
     shippingProfileSlug
@@ -96,79 +99,89 @@ const ADD_CART_LINE_ITEM_MUTATION = `
 `;
 
 const UPDATE_CART_LINE_ITEM_MUTATION = `
-  mutation UpdateStorefrontCartLineItemQuantity(
-    $cartId: UUID!
-    $lineItemId: UUID!
-    $quantity: Int!
-  ) {
-    updateStorefrontCartLineItemQuantity(
-      cartId: $cartId
-      lineItemId: $lineItemId
-      quantity: $quantity
-    ) {
+  mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) {
+    updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) {
       ${CART_FIELDS}
     }
   }
 `;
 
 const REMOVE_CART_LINE_ITEM_MUTATION = `
-  mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineItemId: UUID!) {
-    removeStorefrontCartLineItem(cartId: $cartId, lineItemId: $lineItemId) {
+  mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) {
+    removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) {
       ${CART_FIELDS}
     }
   }
 `;
 
+function assertCartResponse(response: { errors?: readonly unknown[] }): void {
+  if (response.errors?.length)
+    throw new Error("Cart operation could not be confirmed");
+}
+
 export async function fetchStorefrontCart(
   graphql: CartGraphqlExecutor,
   cartId: string,
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<Cart | null> {
   const cleanId = cartId.trim();
   if (!cleanId) return null;
 
-  try {
-    const response = await graphql<{
+  const response = await graphql<
+    {
       storefrontCart: Cart | null;
-    }, { id: string }>({
-      query: STOREFRONT_CART_QUERY,
-      variables: { id: cleanId },
-      tenant: tenantSlug ?? undefined,
-    });
+    },
+    { id: string }
+  >({
+    query: STOREFRONT_CART_QUERY,
+    variables: { id: cleanId },
+    tenant: tenantSlug ?? undefined,
+    token: token ?? undefined,
+  });
 
-    return response.data?.storefrontCart ?? null;
-  } catch {
-    return null;
-  }
+  assertCartResponse(response);
+  if (!response.data || !("storefrontCart" in response.data))
+    throw new Error("Cart read is incomplete");
+  return response.data.storefrontCart;
 }
 
 export async function createStorefrontCart(
   graphql: CartGraphqlExecutor,
   input: {
     currencyCode?: string;
+    regionId?: string | null;
     locale?: string;
   } = {},
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<Cart | null> {
   try {
-    const response = await graphql<{
-      createStorefrontCart: { cart: Cart };
-    }, {
-      input: {
-        currencyCode?: string;
-        locale?: string;
-      };
-    }>({
+    const response = await graphql<
+      {
+        createStorefrontCart: { cart: Cart };
+      },
+      {
+        input: {
+          currencyCode?: string;
+          regionId?: string | null;
+          locale?: string;
+        };
+      }
+    >({
       query: CREATE_STOREFRONT_CART_MUTATION,
       variables: {
         input: {
           currencyCode: input.currencyCode,
+          regionId: input.regionId,
           locale: input.locale,
         },
       },
       tenant: tenantSlug ?? undefined,
+      token: token ?? undefined,
     });
 
+    assertCartResponse(response);
     return response.data?.createStorefrontCart.cart ?? null;
   } catch {
     return null;
@@ -179,35 +192,39 @@ export async function addStorefrontCartLineItem(
   graphql: CartGraphqlExecutor,
   cartId: string,
   variantId: string,
-  quantity = 1,
-  tenantSlug?: string | null,
+  quantity: number,
+  tenantSlug: string | null | undefined,
+  expectedContext: CartPricingExpectation,
+  token?: string | null,
 ): Promise<Cart | null> {
-  try {
-    const response = await graphql<{
-      addStorefrontCartLineItem: Cart;
-    }, {
+  const { locale: expectedLocale, ...pricingContext } = expectedContext;
+  const response = await graphql<
+    { addStorefrontCartLineItem: Cart },
+    {
       cartId: string;
       input: {
         variantId: string;
         quantity: number;
+        expectedContext: Omit<CartPricingExpectation, "locale">;
+        expectedLocale: string;
       };
-    }>({
-      query: ADD_CART_LINE_ITEM_MUTATION,
-      variables: {
-        cartId,
-        input: {
-          variantId,
-          quantity,
-        },
+    }
+  >({
+    query: ADD_CART_LINE_ITEM_MUTATION,
+    variables: {
+      cartId,
+      input: {
+        variantId,
+        quantity,
+        expectedContext: pricingContext,
+        expectedLocale,
       },
-      tenant: tenantSlug ?? undefined,
-    });
-
-    return response.data?.addStorefrontCartLineItem ?? null;
-  } catch (error) {
-    console.error("Failed to add line item to cart:", error);
-    return null;
-  }
+    },
+    tenant: tenantSlug ?? undefined,
+    token: token ?? undefined,
+  });
+  assertCartResponse(response);
+  return response.data?.addStorefrontCartLineItem ?? null;
 }
 
 export async function updateStorefrontCartLineItemQuantity(
@@ -216,25 +233,31 @@ export async function updateStorefrontCartLineItemQuantity(
   lineItemId: string,
   quantity: number,
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<Cart | null> {
   try {
-    const response = await graphql<{
-      updateStorefrontCartLineItemQuantity: Cart;
-    }, {
-      cartId: string;
-      lineItemId: string;
-      quantity: number;
-    }>({
+    const response = await graphql<
+      {
+        updateStorefrontCartLineItem: Cart;
+      },
+      {
+        cartId: string;
+        lineId: string;
+        input: { quantity: number };
+      }
+    >({
       query: UPDATE_CART_LINE_ITEM_MUTATION,
       variables: {
         cartId,
-        lineItemId,
-        quantity,
+        lineId: lineItemId,
+        input: { quantity },
       },
       tenant: tenantSlug ?? undefined,
+      token: token ?? undefined,
     });
 
-    return response.data?.updateStorefrontCartLineItemQuantity ?? null;
+    assertCartResponse(response);
+    return response.data?.updateStorefrontCartLineItem ?? null;
   } catch (error) {
     console.error("Failed to update cart line item quantity:", error);
     return null;
@@ -246,22 +269,28 @@ export async function removeStorefrontCartLineItem(
   cartId: string,
   lineItemId: string,
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<Cart | null> {
   try {
-    const response = await graphql<{
-      removeStorefrontCartLineItem: Cart;
-    }, {
-      cartId: string;
-      lineItemId: string;
-    }>({
+    const response = await graphql<
+      {
+        removeStorefrontCartLineItem: Cart;
+      },
+      {
+        cartId: string;
+        lineId: string;
+      }
+    >({
       query: REMOVE_CART_LINE_ITEM_MUTATION,
       variables: {
         cartId,
-        lineItemId,
+        lineId: lineItemId,
       },
       tenant: tenantSlug ?? undefined,
+      token: token ?? undefined,
     });
 
+    assertCartResponse(response);
     return response.data?.removeStorefrontCartLineItem ?? null;
   } catch (error) {
     console.error("Failed to remove cart line item:", error);
@@ -288,28 +317,36 @@ export async function updateStorefrontCartShipping(
   shippingOptionId: string,
   shippingSelections?: StorefrontShippingSelectionInput[],
   tenantSlug?: string | null,
+  token?: string | null,
 ): Promise<Cart | null> {
   try {
-    const response = await graphql<{
-      updateStorefrontCartContext: { cart: Cart };
-    }, {
-      cartId: string;
-      input: {
-        selectedShippingOptionId: string;
-        shippingSelections?: StorefrontShippingSelectionInput[];
-      };
-    }>({
+    const response = await graphql<
+      {
+        updateStorefrontCartContext: { cart: Cart };
+      },
+      {
+        cartId: string;
+        input: {
+          selectedShippingOptionId: string;
+          shippingSelections?: StorefrontShippingSelectionInput[];
+        };
+      }
+    >({
       query: UPDATE_STOREFRONT_CART_SHIPPING_MUTATION,
       variables: {
         cartId,
         input: {
           selectedShippingOptionId: shippingOptionId,
-          ...(shippingSelections && shippingSelections.length > 0 ? { shippingSelections } : {}),
+          ...(shippingSelections && shippingSelections.length > 0
+            ? { shippingSelections }
+            : {}),
         },
       },
       tenant: tenantSlug ?? undefined,
+      token: token ?? undefined,
     });
 
+    assertCartResponse(response);
     return response.data?.updateStorefrontCartContext.cart ?? null;
   } catch (error) {
     console.error("Failed to update storefront cart shipping option:", error);
@@ -360,17 +397,21 @@ export async function completeStorefrontCheckout(
   input: CompleteStorefrontCheckoutInput,
   tenantSlug?: string | null,
 ): Promise<CompleteCheckoutResult | null> {
-  const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const idempotencyKey =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
   try {
-    const response = await graphql<{
-      completeStorefrontCheckout: CompleteCheckoutResult;
-    }, {
-      idempotencyKey: string;
-      input: CompleteStorefrontCheckoutInput;
-    }>({
+    const response = await graphql<
+      {
+        completeStorefrontCheckout: CompleteCheckoutResult;
+      },
+      {
+        idempotencyKey: string;
+        input: CompleteStorefrontCheckoutInput;
+      }
+    >({
       query: COMPLETE_STOREFRONT_CHECKOUT_MUTATION,
       variables: {
         idempotencyKey,
@@ -379,10 +420,10 @@ export async function completeStorefrontCheckout(
       tenant: tenantSlug ?? undefined,
     });
 
+    assertCartResponse(response);
     return response.data?.completeStorefrontCheckout ?? null;
   } catch (error) {
     console.error("Failed to complete storefront checkout:", error);
     throw error;
   }
 }
-

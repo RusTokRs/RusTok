@@ -1,5 +1,37 @@
 # Implementation plan for `rustok-index`
 
+## Selected Inventory consumption and neutral replay work (2026-11-02; source only)
+
+Ordinary downstream development, not audit advancement. Distribution now authors the native
+Inventory bridge; Index stays domain-neutral and the primary M6 concrete-repair evidence gate
+is not advanced. The canonical runtime materializer registers generic `index_replay` work and
+uses the existing single shared replay runtime, exact original job and durable checkpoint.
+
+- [x] Author persistence-only exact refresh and preserve the loaded immutable owner mutation UUID;
+      the original notification UUID/token remains delivery/ACK identity. Define unrun regressions.
+- [x] Author transactional original-ID enqueue and exact existing-job acquisition/run fences,
+      retained cancellation/terminal history, bounded selected-only work and durable result checks.
+- [ ] Integrate the existing retry owner before terminalization and define a failure budget that
+      does not consume normal yielded lease acquisitions. Current page errors park terminally.
+- [ ] Provide authorized, auditable recovery of the original failed/cancelled job without replacing
+      identity/checkpoint. Full native/HTTP/GraphQL/Next/Leptos operator parity is pending.
+- [ ] Compile/run focused regressions and validate PostgreSQL concurrency, crash/yield/restart,
+      real current authority/credentials, schema installation, broker delivery and operational cutover.
+
+Targeted source review checked principal identity against canonical `AuthContext::port_actor()`
+and reused that mapper without changing service identity. It replaced racy cached
+credential refresh with the Secrets owner's fresh-resolution operation, refused orphan-checkpoint
+enqueue and unproven already-complete acquisition, made mutation-inbox INTEGER decoding explicit
+for PostgreSQL duplicate delivery, and aligned regression SQL with the actual
+`index_entities.is_deleted` storage contract. New/updated regressions remain uncompiled/unrun.
+This is a correction of the selected slice, not a new retry/recovery capability or audit phase.
+
+Source/worker/empty-source/failure definitions are not executed evidence. See
+[refresh identity](m5-source-refresh-event.md),
+[actual composition](../../rustok-distribution/docs/inventory-index.md) and
+[source packet](../../rustok-inventory/contracts/evidence/source-index-consumer-source.json).
+No Index/Inventory or Product step-8 readiness is promoted; existing audit status is untouched.
+
 ## FS-07 deep audit remediation — 2026-10-30 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all 137 source files in `crates/modules/rustok-index` and 9 files in `crates/modules/rustok-index/admin`.
@@ -582,6 +614,16 @@ cutover remain open. See [`m7-product-graph-source.md`](./m7-product-graph-sourc
 
 ### M8 - Commerce scale slice
 
+The 2026-11-01 Inventory investigation first implements an owner-side
+[catalog deletion retention prerequisite](../../rustok-inventory/docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only).
+Its 31 Rust/10 Node definitions remain uncompiled/unrun; no Inventory source/schema/version,
+bootstrap baseline, retained tombstone, selected Distribution bridge or consumer worker is
+chosen or certified. This does not advance M5/M8, audit progress or Product step 8. All native
+set/adjust, reservation, shipment/restore/reconsume, return and Product bootstrap writers still
+need Inventory-owned atomic revision/publication/history coverage. Product revisions are not a
+substitute; empty loads are not absence, and ACK requires exact committed version/schema/key,
+stale fencing and persisted upsert/retained-delete results. Index remains owner-neutral.
+
 - [ ] Add Pricing, Inventory, Category, Collection, Tags, Region/Currency, and
       Marketplace Seller schemas/sources.
 - [ ] Filter by price, stock, category, channel, and seller in one query.
@@ -740,7 +782,7 @@ node scripts/verify/verify-index-sales-channel-source.mjs
 - 2026-07-30: added atomic PostgreSQL source-factory composition, an Index-owned stable
   source event-ID helper, a Product-owned monotonic `index_revision`, and the first
   selected locale-required Product current-state source with stable `(product_id,
-  locale)` cursor and targeted loads. Product delete/translation tombstones,
+locale)` cursor and targeted loads. Product delete/translation tombstones,
   incremental acknowledgement, related schemas, and live evidence remain open.
 - 2026-07-31: rechecked merged M7 work and actualized this plan. ProductVariant and
   SalesChannel sources, Product v2 graph links, retained Product/translation/

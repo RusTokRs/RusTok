@@ -5,25 +5,36 @@
  */
 import type {
   StorefrontProductVariant,
-  StorefrontProductPricing
-} from '../api/types';
+  StorefrontProductPricing,
+} from "../api/types";
+
+export type ProductVariantPriceView = StorefrontProductVariant & {
+  pricingStatus: "unavailable" | "unpriced" | "priced";
+};
 
 export function mergeProductPricing(
   variants: StorefrontProductVariant[],
-  pricingVariants: StorefrontProductPricing[]
-): StorefrontProductVariant[] {
+  pricingVariants: StorefrontProductPricing[],
+): ProductVariantPriceView[] {
   const pricingById = new Map(
-    pricingVariants.map((price) => [price.id, price])
+    pricingVariants.map((price) => [price.id, price]),
   );
   return variants.map((variant) => {
     const pricing = pricingById.get(variant.id);
-    if (!pricing) return { ...variant, prices: [], effectivePrice: null };
+    if (!pricing || pricing.effectivePrice === undefined)
+      return {
+        ...variant,
+        prices: [],
+        effectivePrice: null,
+        pricingStatus: "unavailable",
+      };
     // An explicit empty Pricing result is authoritative, not permission to fall
     // back to an out-of-context catalog price. Null SKUs are never join keys.
     return {
       ...variant,
-      prices: pricing.prices,
-      effectivePrice: pricing.effectivePrice ?? null
+      pricingStatus: pricing.effectivePrice ? "priced" : "unpriced",
+      prices: [],
+      effectivePrice: pricing.effectivePrice ?? null,
     };
   });
 }

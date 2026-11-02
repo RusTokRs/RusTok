@@ -25,8 +25,8 @@
     "typed_parse_validity_logged": true,
     "closed_graphql_error_category_logged": true,
     "transport_validation_messages_preserved": true,
-    "native_adapter_changed": false,
-    "query_contract_changed": false,
+    "native_adapter_changed": true,
+    "query_contract_changed": true,
     "transport_selection_changed": false,
     "fallback_added": false,
     "broad_ecommerce_cleanup_closed": false
@@ -102,9 +102,9 @@
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "focused_verifier_run": false,
-    "aggregate_verifier_run": false,
+    "format_run": true,
+    "focused_verifier_run": true,
+    "aggregate_verifier_run": true,
     "broad_ecommerce_verifier_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
@@ -112,5 +112,23 @@
     "browser_runtime_proven": false,
     "mounted_parity_proven": false
   },
-  "execution": []
+  "execution": [
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-storefront-boundary.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "source_format",
+      "tool": "@scalar/rust-fmt 0.3.0 WASM; edition/styleEdition 2024",
+      "scope": "39 scoped Rust files",
+      "rust_compilation": false
+    }
+  ],
+  "continuation_date": "2026-10-29"
 }

@@ -188,7 +188,7 @@ fn map_order_port_error(
         boundary = ADMIN_ORDER_BOUNDARY,
         "commerce admin order owner port failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_payment_detail_port_error(
@@ -244,7 +244,7 @@ fn map_payment_detail_port_error(
         boundary = ADMIN_ORDER_DETAIL_BOUNDARY,
         "commerce admin order detail payment owner read failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_fulfillment_detail_port_error(
@@ -300,7 +300,7 @@ fn map_fulfillment_detail_port_error(
         boundary = ADMIN_ORDER_DETAIL_BOUNDARY,
         "commerce admin order detail fulfillment owner read failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 #[utoipa::path(

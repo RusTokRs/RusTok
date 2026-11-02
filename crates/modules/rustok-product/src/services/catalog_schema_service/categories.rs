@@ -1,3 +1,4 @@
+use super::policy::{BindingOwner, lock_schema_for_policy_write, resolve_binding_axis_policy_in};
 mod seo_translation;
 mod translation;
 
@@ -43,6 +44,7 @@ impl ProductCatalogSchemaService {
         let translations = normalize_category_translations(&input.translations)?;
         let category_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_policy_write(&txn, tenant_id).await?;
 
         if input.kind == CatalogCategoryKind::Virtual {
             let rule = parse_virtual_category_rule_v1(&input.rule_config)
@@ -179,15 +181,33 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<()> {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_policy_write(&txn, tenant_id).await?;
+        let previous_policies = Self::axis_policy_snapshot_in(&txn, tenant_id).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         if let Some(schema_id) = input.schema_id {
             ensure_schema(&txn, tenant_id, schema_id).await?;
         }
 
         let snapshot = if let Some(source_category_id) = input.clone_from_category_id {
-            let form = self
-                .load_effective_form_for_category(tenant_id, source_category_id, &[])
+            let form =
+                Self::load_effective_form_for_category_in(&txn, tenant_id, source_category_id, &[])
+                    .await?;
+            for binding in &form.attributes {
+                super::attribute_validation::validate_rule_option_references_in(
+                    &txn,
+                    tenant_id,
+                    binding.attribute_id,
+                    &binding.validation,
+                )
                 .await?;
+                super::attribute_validation::validate_rule_option_references_in(
+                    &txn,
+                    tenant_id,
+                    binding.attribute_id,
+                    &binding.validation_overrides,
+                )
+                .await?;
+            }
             serde_json::to_value(form.attributes)
                 .map_err(|error| CommerceError::Validation(error.to_string()))?
         } else {
@@ -205,7 +225,7 @@ impl ProductCatalogSchemaService {
                 schema_id = EXCLUDED.schema_id,
                 cloned_from_category_id = EXCLUDED.cloned_from_category_id,
                 snapshot = EXCLUDED.snapshot,
-                updated_at = now()
+                updated_at = CURRENT_TIMESTAMP
             "#,
             vec![
                 generate_id().into(),
@@ -218,6 +238,8 @@ impl ProductCatalogSchemaService {
             ],
         ))
         .await?;
+
+        Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
         txn.publish(
             tenant_id,
@@ -240,8 +262,27 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<()> {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_policy_write(&txn, tenant_id).await?;
         ensure_structural_category(&txn, tenant_id, input.category_id).await?;
         ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
+        super::attribute_validation::validate_rule_option_references_in(
+            &txn,
+            tenant_id,
+            input.attribute_id,
+            &input.validation_overrides,
+        )
+        .await?;
+        let previous_policies = Self::axis_policy_snapshot_in(&txn, tenant_id).await?;
+        let (axis_policy, default_axis) = resolve_binding_axis_policy_in(
+            &txn,
+            tenant_id,
+            BindingOwner::Category(input.category_id),
+            input.attribute_id,
+            input.variant_axis_policy,
+            input.default_variant_axis,
+        )
+        .await?;
+
         let group_id = match input.group_code.as_deref() {
             Some(code) => Some(
                 load_category_group_id(&txn, tenant_id, input.category_id, code)
@@ -257,8 +298,8 @@ impl ProductCatalogSchemaService {
             INSERT INTO category_attributes (
                 id, tenant_id, category_id, attribute_id, group_id, binding_kind,
                 is_required, is_disabled, position, visibility_overrides,
-                validation_overrides, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                validation_overrides, metadata, variant_axis_policy, default_variant_axis
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             ON CONFLICT (category_id, attribute_id) DO UPDATE SET
                 group_id = EXCLUDED.group_id,
                 binding_kind = EXCLUDED.binding_kind,
@@ -267,7 +308,9 @@ impl ProductCatalogSchemaService {
                 position = EXCLUDED.position,
                 visibility_overrides = EXCLUDED.visibility_overrides,
                 validation_overrides = EXCLUDED.validation_overrides,
-                metadata = EXCLUDED.metadata
+                metadata = EXCLUDED.metadata,
+                variant_axis_policy = EXCLUDED.variant_axis_policy,
+                default_variant_axis = EXCLUDED.default_variant_axis
             "#,
             vec![
                 generate_id().into(),
@@ -282,9 +325,13 @@ impl ProductCatalogSchemaService {
                 input.visibility_overrides.clone().into(),
                 input.validation_overrides.clone().into(),
                 input.metadata.clone().into(),
+                axis_policy.as_str().into(),
+                default_axis.into(),
             ],
         ))
         .await?;
+
+        Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
         txn.publish(
             tenant_id,

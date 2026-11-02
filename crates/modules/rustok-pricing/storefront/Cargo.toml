@@ -18,6 +18,7 @@ ssr = [
   "dep:rustok-channel",
   "dep:rustok-pricing",
   "dep:rustok-outbox",
+    "dep:rustok-product",
   "rustok-api/server",
 ]
 
@@ -34,7 +35,8 @@ rustok-ui-i18n.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
 tracing.workspace = true
-futures = "0.3"
 serde = { workspace = true, features = ["derive"] }
+chrono.workspace = true
 uuid.workspace = true

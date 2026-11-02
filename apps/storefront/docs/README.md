@@ -161,3 +161,18 @@ The GraphQL path remains a working and supported headless contract for module-ow
 - [Manifest layer contract](../../../docs/modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [Documentation map](../../../docs/index.md)
+
+## Product buyer mounting (2026-10-30)
+
+SSR middleware copies the already-resolved `TenantContextExtension`, request parts and runtime
+into a request Leptos Owner. Tenant resolution is an outer middleware in the server composition;
+child render Owners inherit it through scoped futures. Native SSR auth remains Axum request
+metadata, not a browser-auth snapshot fabricated by the host.
+
+The public Product snapshot includes only resolved tenant slug, catalog and route state. Its
+browser AuthProvider binds a missing canonical public tenant before refresh and refuses foreign
+stored scope. No bearer or guest capability is serialized. Build the client with
+`node apps/storefront/scripts/build-product-buyer-client.mjs` and explicitly enable
+`product-buyer-assets`; generated target assets are not tracked. Without a client, SSR controls
+remain disabled with an explicit notice. This build, CSP bootstrap, cookie/Set-Cookie propagation,
+Owner inheritance and WASM behavior are **not runtime-proven** by source checks.

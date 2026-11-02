@@ -23,15 +23,19 @@ mod write_context;
 
 #[cfg(test)]
 mod contract_tests;
+#[cfg(test)]
+mod product_identity_tests;
 
 pub use module::PricingModule;
 pub use ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
     AdminProductPricingProjectionRequest, ApplyVariantDiscountRequest,
-    PreviewVariantDiscountRequest, PriceListProjectionRequest, PriceListProjectionSnapshot,
-    PricingReadPort, PricingWritePort, ResolveProductPriceRequest, ResolvedProductPriceSnapshot,
-    SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
-    StorefrontProductPricingProjectionRequest, UpsertVariantPriceRequest,
+    MAX_PRICE_RESOLUTION_VARIANTS, PreviewVariantDiscountRequest, PriceListProjectionRequest,
+    PriceListProjectionSnapshot, PricingReadPort, PricingWritePort, ProductPriceResolutionSnapshot,
+    ResolveProductPriceRequest, ResolveProductPricesRequest, ResolvedProductPriceSnapshot,
+    ResolvedProductPricesSnapshot, SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
+    StorefrontProductPricingListRequest, StorefrontProductPricingProjectionRequest,
+    UpsertVariantPriceRequest,
 };
 pub use price_list_owner_port::{PriceListOwnerPort, in_process_price_list_owner_port};
 pub use public_error::{PricingPublicError, map_pricing_port_error, map_pricing_service_error};
@@ -46,10 +50,10 @@ pub use services::{
     PriceListTranslationExactLocaleApply, PriceListTranslationExactLocaleApplyReceipt,
     PriceListTranslationExactLocaleError, PriceListTranslationExactLocaleRecord,
     PriceListTranslationExactLocaleResult, PriceListTranslationExactLocaleSnapshot,
-    PriceListTranslationService, PriceResolutionContext, PricingService, ResolvedPrice,
-    StorefrontPricingPrice, StorefrontPricingProductDetail, StorefrontPricingProductList,
-    StorefrontPricingProductListItem, StorefrontPricingProductTranslation,
-    StorefrontPricingVariant, UpdatePriceListOwnerInput,
+    PriceListTranslationService, PriceResolutionContext, PriceResolutionSource, PricingService,
+    ResolvedPrice, StorefrontPricingPrice, StorefrontPricingProductDetail,
+    StorefrontPricingProductList, StorefrontPricingProductListItem,
+    StorefrontPricingProductTranslation, StorefrontPricingVariant, UpdatePriceListOwnerInput,
 };
 pub use translation_changes::{
     PriceListTranslationChangeLifecycle, PriceListTranslationChangeRecord,

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-01",
+  "generated_at": "2026-10-30",
   "status": "cart_storefront_graphql_error_safety_source_reviewed_unvalidated",
   "base_main_sha": "1bd2286cef47fe79f9f53c5788ff0ba008124dfe",
   "scope": "Cart storefront GraphQL public and diagnostic error boundary",
@@ -49,9 +49,9 @@
     "all_three_operations_preserved": true,
     "per_call_correlation_id": true,
     "safe_request_shape_only": true,
-    "private_graphql_adapter_changed": false,
-    "native_path_changed": false,
-    "graphql_documents_changed": false,
+    "private_graphql_adapter_changed": true,
+    "native_path_changed": true,
+    "graphql_documents_changed": true,
     "transport_selection_changed": false,
     "runtime_evidence_claimed": false
   },
@@ -96,5 +96,10 @@
     "ffa_promoted": false,
     "fba_promoted": false,
     "production_promoted": false
+  },
+  "buyer_continuation": {
+    "operation_count": 5,
+    "source_scope": "Canonical-tenant bounded technical envelopes now also cover buyer create/add. Native/GraphQL selection and no fallback remain.",
+    "runtime_proven": false
   }
 }

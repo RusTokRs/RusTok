@@ -31,7 +31,7 @@ Leptos storefront UI package for the `rustok-cart` module.
 ## Interactions
 
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
-- Reads `CartService` through server functions, resolves DB/event bus handles from the host runtime context, and enforces customer-owned cart access with the host auth context.
+- Reads guarded Cart owner ports through server functions, resolves DB/event bus handles from the host runtime context, and enforces customer-owned cart access with the host auth context.
 - Stays compatible with locale-prefixed module routes via `UiRouteContext::module_route_base()`.
 - Coexists with the `rustok-commerce` storefront/transport layer while checkout and shipping orchestration remain aggregate concerns.
 
@@ -39,3 +39,30 @@ Leptos storefront UI package for the `rustok-cart` module.
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).
+
+## Product buyer lifecycle
+
+`use_buyer_cart` exposes read-only, actor-bound session state to Product and keeps checkpoint,
+authorization fences and command execution in Cart. Native/GraphQL create/add use the Commerce
+workflow and guarded Cart ports; restore is a read-only owner GET, not repricing. Known original
+scope references and pending warning hints are preserved conservatively. See the [Cart plan](../docs/implementation-plan.md#product-buyer-continuation-2026-10-30).
+The source is uncompiled/unrun; hints are not server receipts or a multi-tab/exactly-once protocol.
+
+
+## Known Limitations / Pending Implementation
+
+- Product step-8 Cart add now passes the Inventory owner explicitly into the shared Commerce
+  workflow. Stock is probed for combined same-SKU demand in the canonical quote channel, not
+  inferred from Product's global stock numbers; UUID/quantity mismatches and owner failure/timeout
+  refuse before line insertion. Native, REST and GraphQL currently compose the in-process owner;
+  this does not certify selected remote Inventory or reserve stock. SSR Cargo/lock dependency
+  updates are manual, not resolver/compiler evidence. The
+  [Commerce plan](../../rustok-commerce/docs/implementation-plan.md#product-downstream-continuation-2026-10-30)
+  retains remaining owner/mounted/concurrency gates; regression sources are unrun.
+
+- Quantity/decrement/remove now share the guarded Cart observation contract. Native decrement
+  uses Commerce's selected-owner workflow, not raw CartService writes or native price math.
+  Target-only removal preserves the original quantity and can reduce larger historical carts;
+  it cannot authorize repricing. The shared native owner-error envelope is static and asks the
+  user to inspect before retrying. These source changes do not provide durable replay/receipts,
+  atomic context patch + repricing, remote execution or live authorization-revocation proof.

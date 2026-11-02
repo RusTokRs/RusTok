@@ -35,6 +35,18 @@
 - `pub struct ChannelDetailResponse`
 - `pub enum ChannelError`
 
+## Saved commerce selector read (2026-10-30; source only)
+
+`ChannelReadPort::read_selected_channel(context, channel_id, channel_slug)` returns
+`Result<Option<ChannelReadProjection>, PortError>` by composing the selected provider's
+`read_channel`. Explicit selectors must describe one active, tenant-owned, non-nil Channel;
+slug-only or ID-only requests complete the pair. Blank/nil, contradictory, missing, foreign,
+inactive and unavailable results refuse. Neither selector means global (`None`), independent
+of page/host/default context. This does not change `ChannelResolver` request-routing precedence.
+Pricing retains its separate trusted-context admission before delegating to this owner method.
+No storage, migration or public GraphQL/HTTP shape changes are implied; regression sources
+are unexecuted and mounted/provider/runtime evidence remains open.
+
 ## Dependencies on Other RusToK Crates
 - `rustok-core`
 - `rustok-api`

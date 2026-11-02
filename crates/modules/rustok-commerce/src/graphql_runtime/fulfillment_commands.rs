@@ -32,12 +32,10 @@ impl CommerceFulfillmentCommandRuntime {
     pub fn in_process(
         db: DatabaseConnection,
         provider_registry: FulfillmentProviderRegistry,
+        order_reads: Arc<dyn rustok_order::OrderReadPort>,
     ) -> Self {
-        Self::in_process_with_shipment_stock(
-            db,
-            provider_registry,
-            crate::inventory_shipment_stock_port(),
-        )
+        let stock = crate::inventory_shipment_stock_port(db.clone(), order_reads);
+        Self::in_process_with_shipment_stock(db, provider_registry, stock)
     }
 
     /// In-process runtime whose lifecycle commands move stock through `shipment_stock`.
@@ -56,7 +54,10 @@ impl CommerceFulfillmentCommandRuntime {
         )
     }
 
-    pub(crate) fn from_graphql_inputs(inputs: &rustok_api::graphql::GraphqlRuntimeInputs) -> Self {
+    pub(crate) fn from_graphql_inputs(
+        inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
+        order_reads: Arc<dyn rustok_order::OrderReadPort>,
+    ) -> Self {
         let provider_registry = inputs
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);
@@ -66,6 +67,7 @@ impl CommerceFulfillmentCommandRuntime {
                 crate::fulfillment_admin_command_runtime(
                     inputs.db_clone(),
                     provider_registry.clone(),
+                    order_reads,
                 )
             });
         let create_commands = inputs

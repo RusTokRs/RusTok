@@ -94,3 +94,22 @@
 - [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Unconditional publication admission
+
+Unconditional root and typed envelope inserts must persist exactly one row; zero-row
+suppression is a persistence error, not a successful owner publication. The separate
+write-once path still proves replay from the exact stored envelope. This has no schema or
+broker protocol change. The [source continuation](docs/implementation-plan.md#unconditional-publication-row-admission-2026-11-01-source-only)
+records unrun pure and native stock rollback definitions; consumer delivery remains a
+separate, unverified boundary.
+
+## Known Limitations / Pending Implementation
+
+The fresh sealed transaction-only helper and server acknowledged-local target are source-wired
+for Inventory reservation invalidations. They reuse canonical `sys_events` and the existing
+relay retry/DLQ policy, not a new bus/queue. Under Iggy-first delivery a local failure may resend
+the same identity remotely; publication is not persistent remote consumption/ACK. Current scoped
+Rust/backend/real relay/Iggy/restart/DLQ evidence remains open. See the
+[API](CRATE_API.md#fresh-sealed-facts-and-local-acknowledgement-2026-11-01-source-only) and
+[Inventory source packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).

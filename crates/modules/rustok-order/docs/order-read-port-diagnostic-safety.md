@@ -5,14 +5,15 @@ Status: `source_reviewed_unvalidated`
 This continuation closes the correlation-safe diagnostic gap in
 `crates/modules/rustok-order/src/order_read.rs`.
 
-The reviewed boundary contains six owner read operations:
+The reviewed boundary contains seven owner read operations:
 
 - order detail;
 - order list;
 - return detail;
 - return list;
 - order-change detail;
-- order-change list.
+- order-change list;
+- bounded saved Order-line inventory bindings (2026-10-31 continuation).
 
 The broad ecommerce mapper-cleanup item remains open.
 
@@ -64,7 +65,7 @@ value is logged by the reviewed parser or mapper.
 
 ## Preserved contracts
 
-All six owner service calls, input forwarding, pagination, filtering, locale
+All original six owner service calls, input forwarding, pagination, filtering, locale
 fallback, totals, and projections remain unchanged.
 
 The exact public mappings remain:
@@ -85,7 +86,7 @@ not-found, and lifecycle conflicts remain warning-level diagnostics.
 
 ## Deliberately open
 
-This slice does not change:
+The original six-operation diagnostic slice did not change:
 
 - checkout recovery identity, hash/serde, read-not-found, or lifecycle logs;
 - other Order adapters and public HTTP/GraphQL envelopes;
@@ -95,8 +96,23 @@ This slice does not change:
 
 The master implementation-plan item therefore remains open.
 
-## Validation disclosure
+## Original diagnostic-review validation disclosure
 
 No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were
 executed. The accompanying verifier is retained as a source contract and was
 not run. No compile or runtime status is promoted from this review.
+
+## Saved-binding continuation (2026-10-31; source only)
+
+The seventh operation shares read-policy admission, tenant parsing, bounded error mapping
+and the original context/owner-error diagnostic shapes. Its entry log adds only a bounded
+requested-line count; it never logs the requested UUID vector or the returned SKU payload.
+The original six reads and their locale, pagination and filter semantics are unchanged.
+The new owner service delegation and Commerce restock-planning consumer are real source
+flow changes, recorded as such in the existing evidence packet rather than hidden behind
+old `flow_changed: false` assertions.
+
+Current syntax, formatting and read-only source-guard execution is separate from the
+historical no-execution disclosure above. Tests, Cargo, SQL/locks, mounted/remote behavior,
+workflows and CI remain unexecuted. The broad ecommerce mapper-cleanup item remains open;
+no owner/module readiness is promoted.

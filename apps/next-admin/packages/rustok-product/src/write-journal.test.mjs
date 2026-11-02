@@ -360,27 +360,28 @@ test('browser intent preserves URL state, binds namespaces and only rotates expl
     browserProductWriteJournal(testScope, 'new').storageKey,
     first.storageKey
   );
-  assert.notEqual(
-    browserProductWriteJournal({ ...testScope, actorId: 'other' }, 'new')
-      .storageKey,
-    first.storageKey
+  assert.throws(
+    () => browserProductWriteJournal({ ...testScope, actorId: 'other' }, 'new'),
+    /recovery is unavailable/
   );
-  assert.notEqual(
-    browserProductWriteJournal(testScope, 'product').storageKey,
-    first.storageKey
+  assert.throws(
+    () => browserProductWriteJournal(testScope, 'product'),
+    /recovery is unavailable/
   );
-  await new ProductWriteAttempt(first).execute(
-    'save',
-    save(),
-    async () => unknown
+  const writer = new ProductWriteAttempt(first);
+  await writer.execute('save', save(), async () => unknown);
+  assert.throws(
+    () => browserProductWriteJournal(testScope, 'new', true),
+    /recovery is unavailable/
   );
+  await writer.resume({ save: async () => confirmation('save') });
   const next = browserProductWriteJournal(testScope, 'new', true);
   assert.notEqual(next.storageKey, first.storageKey);
   assert.equal(next.read(), null);
   assert.equal(
     records.size,
-    1,
-    'rotation does not delete the unresolved old intent'
+    2,
+    'rotation retains the terminal tombstone and the new empty baseline'
   );
 });
 
@@ -408,9 +409,13 @@ for (const failure of [
     if (failure === 'ambiguous-intent')
       win.location.href = `https://admin.example/dashboard/product/new?editor_intent=${testIntent}&editor_intent=${testIntent}`;
     if (
-      ['insecure', 'no-locks', 'invalid-intent', 'ambiguous-intent'].includes(
-        failure
-      )
+      [
+        'insecure',
+        'no-locks',
+        'storage',
+        'invalid-intent',
+        'ambiguous-intent'
+      ].includes(failure)
     ) {
       assert.throws(
         () => browserProductWriteJournal(testScope, 'new'),
@@ -508,4 +513,108 @@ test('URL intent is checked inside the asynchronously acquired browser lock', as
   });
   assert.equal(sends, 0);
   assert.equal(result.outcome.status, 'unknown');
+});
+
+test('sparse initial creation resumes the exact original axes and selected tuples after reload', async () => {
+  const storage = state();
+  const request = {
+    ...save(),
+    variantAxes: [
+      { attributeId: 'color', position: 0, allowedOptionIds: ['red', 'blue'] }
+    ],
+    initialVariants: [
+      {
+        sku: 'RED',
+        barcode: '',
+        priceAmount: '1.25',
+        currencyCode: 'USD',
+        compareAtAmount: null,
+        inventoryQuantity: 3,
+        inventoryPolicy: 'deny',
+        axisValues: [{ attributeId: 'color', optionId: 'red' }]
+      }
+    ]
+  };
+  let original;
+  await new ProductWriteAttempt(memoryJournal('new', storage)).execute(
+    'save',
+    request,
+    async (snapshot, key) => {
+      original = { request: JSON.parse(JSON.stringify(snapshot)), key };
+      return unknown;
+    }
+  );
+  request.variantAxes[0].allowedOptionIds = ['blue'];
+  request.initialVariants[0].axisValues[0].optionId = 'blue';
+  const restored = new ProductWriteAttempt(memoryJournal('new', storage));
+  await restored.resume({
+    save: async (snapshot, key) => {
+      assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), original.request);
+      assert.equal(key, original.key);
+      return confirmation('save');
+    },
+    status: () => assert.fail('must not change operation'),
+    delete: () => assert.fail('must not delete')
+  });
+  assert.equal(restored.recovery.phase, 'settled');
+});
+
+test('pre-axis persisted default-SKU requests remain replayable unchanged', async () => {
+  const storage = state();
+  const request = {
+    ...save(),
+    initialVariant: {
+      sku: 'DEFAULT',
+      barcode: '',
+      priceAmount: '0',
+      currencyCode: 'USD',
+      inventoryQuantity: 0,
+      inventoryPolicy: 'deny'
+    }
+  };
+  let originalKey;
+  await new ProductWriteAttempt(memoryJournal('new', storage)).execute(
+    'save',
+    request,
+    async (_, key) => {
+      originalKey = key;
+      return unknown;
+    }
+  );
+  await new ProductWriteAttempt(memoryJournal('new', storage)).resume({
+    save: async (snapshot, key) => {
+      assert.equal(key, originalKey);
+      assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), request);
+      return confirmation('save');
+    }
+  });
+});
+
+test('an existing URL marker with a removed baseline fails closed even after reload', async (t) => {
+  const { records } = browser(t);
+  const journal = browserProductWriteJournal(testScope, 'new');
+  assert.equal(journal.read(), null);
+  records.delete(journal.storageKey);
+  assert.throws(
+    () => browserProductWriteJournal(testScope, 'new'),
+    /recovery is unavailable/
+  );
+});
+
+test('missing pending storage cannot mint a new caller key on a reloaded browser page', async (t) => {
+  const { records } = browser(t);
+  const journal = browserProductWriteJournal(testScope, 'new');
+  const writer = new ProductWriteAttempt(journal);
+  await writer.execute('save', save(), async () => unknown);
+  const key = writer.recovery.attempt.key;
+  records.delete(journal.storageKey);
+  assert.throws(
+    () => browserProductWriteJournal(testScope, 'new'),
+    /recovery is unavailable/
+  );
+  assert.throws(
+    () => browserProductWriteJournal(testScope, 'new', true),
+    /recovery is unavailable/
+  );
+  assert.equal(writer.recovery.attempt.key, key);
 });

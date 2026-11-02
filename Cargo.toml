@@ -335,7 +335,7 @@ rustok-marketplace-payout = { path = "crates/modules/rustok-marketplace-payout" 
 rustok-accounting = { path = "crates/modules/rustok-accounting" }
 rustok-moderation = { path = "crates/modules/rustok-moderation", default-features = false }
 rustok-cart = { path = "crates/modules/rustok-cart" }
-rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront" }
+rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront", default-features = false }
 rustok-customer = { path = "crates/modules/rustok-customer" }
 rustok-product = { path = "crates/modules/rustok-product" }
 rustok-product-relations = { path = "crates/modules/rustok-product-relations" }
@@ -349,6 +349,7 @@ rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
+rustok-pricing-storefront = { path = "crates/modules/rustok-pricing/storefront", default-features = false }
 rustok-pricing-persistence = { path = "crates/libs/rustok-pricing-persistence" }
 rustok-tax = { path = "crates/modules/rustok-tax" }
 rustok-inventory = { path = "crates/modules/rustok-inventory" }

@@ -79,9 +79,9 @@ pub enum CheckoutOperationStatus {
     RetryableError,
     CompensationRequired,
     Compensating,
-    /// Terminal parking state written by the journal when a compensation ends
-    /// in `ManualReconciliation`: the operation must be reconciled by an
-    /// operator before the cart can start a new checkout.
+    /// Terminal parking state for manual compensation reconciliation or an unverifiable
+    /// owner-command handoff. A false retry hint is not proof of a side-effect-free failure:
+    /// the existing identity must be reconciled before the cart can start a new checkout.
     ReconciliationRequired,
     Completed,
     Compensated,
@@ -1139,6 +1139,32 @@ impl CheckoutOperationJournal {
                 lease_owner: lease_owner.into(),
                 expected_status: CheckoutOperationStatus::Executing,
                 next_status: CheckoutOperationStatus::RetryableError,
+                error_code: error_code.into(),
+                error_message: error_message.into(),
+            },
+        )
+        .await
+    }
+
+    /// Parks an executing checkout whose owner-command outcome cannot be safely reconciled
+    /// automatically. Retains the bounded original failure code; no compensation or new
+    /// mutation identity is inferred from a false retry hint. Existing park/admission events
+    /// and the lease-fenced transition commit together in release_lease_with_error.
+    pub async fn mark_reconciliation_required(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        lease_owner: impl Into<String>,
+        error_code: impl Into<String>,
+        error_message: impl Into<String>,
+    ) -> CheckoutOperationResult<checkout_operation::Model> {
+        self.release_lease_with_error(
+            tenant_id,
+            id,
+            LeaseErrorTransition {
+                lease_owner: lease_owner.into(),
+                expected_status: CheckoutOperationStatus::Executing,
+                next_status: CheckoutOperationStatus::ReconciliationRequired,
                 error_code: error_code.into(),
                 error_message: error_message.into(),
             },

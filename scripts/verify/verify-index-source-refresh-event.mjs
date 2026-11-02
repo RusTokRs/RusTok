@@ -1,103 +1,135 @@
 #!/usr/bin/env node
+// Supplementary read-only source contract check; never executes Rust or test callbacks.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { containsMarker, spaced } from "./lib/source-text.mjs";
+import { rustFunctionBody } from "./verify-cart-priced-write-context.mjs";
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
-const fail = (message) => {
-  console.error(`[verify-index-source-refresh-event] ${message}`);
-  process.exit(1);
-};
-const requireMarkers = (relative, markers) => {
-  const source = read(relative);
-  for (const marker of markers) {
-    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+const repository = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+export function verifyIndexSourceRefreshEvent({ root = repository } = {}) {
+  const failures = [];
+  const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+  const require = (text, marker, label) => {
+    if (!containsMarker(text, marker))
+      failures.push(`${label}: missing ${marker}`);
+  };
+  const source = read(
+    "crates/modules/rustok-index/src/application/source_refresh_event.rs",
+  );
+  const persist = rustFunctionBody(source, "persist_index_source_refresh");
+  const process = rustFunctionBody(source, "process");
+  if (!persist || !process)
+    failures.push("missing canonical persistence/wrapper boundary");
+  const code = spaced(persist);
+  const ordered = [
+    "event_registry.get(&event_domain)",
+    "key.schema != expected_schema",
+    ".source_for_schema(&key.schema)",
+    "source.source_name() != expected_source_name",
+    "IndexSourceLoadRequest::new(vec![key.clone()])",
+    ".load(request)",
+    "source_version < minimum_source_version",
+    "mutation.event_id().is_nil()",
+    ".apply_replay_mutation(schema_registry, &expected_source_name, &mutation)",
+  ];
+  let previous = -1;
+  for (const marker of ordered) {
+    const index = code.indexOf(spaced(marker));
+    if (index <= previous) failures.push(`persistence order: ${marker}`);
+    previous = index;
   }
-  return source;
-};
+  for (const marker of [
+    "rebind_event_id",
+    "acknowledge(",
+    "Uuid::new_v4",
+    "SELECT ",
+    "INSERT INTO",
+    "tokio::spawn",
+    "Noop",
+  ]) {
+    if (containsMarker(persist, marker))
+      failures.push(`persistence boundary forbidden: ${marker}`);
+  }
+  for (const marker of [
+    "MissingSourceMutation",
+    "AmbiguousSourceMutation",
+    "SourceVersionBehind",
+    "ReplaySourceMismatch",
+    "NilSourceEventId",
+  ]) {
+    require(source, marker, "failure contract");
+  }
+  const wrapper = spaced(process);
+  const persisted = wrapper.indexOf(spaced("persist_index_source_refresh("));
+  const acknowledged = wrapper.indexOf(
+    spaced(".acknowledge(delivery.acknowledgement_token())"),
+  );
+  if (
+    persisted < 0 ||
+    acknowledged <= persisted ||
+    !wrapper.slice(persisted, acknowledged).includes(".await?")
+  ) {
+    failures.push(
+      "wrapper must await durable persistence before original-token ACK",
+    );
+  }
+  const application = read(
+    "crates/modules/rustok-index/src/application/mod.rs",
+  );
+  const publicApi = read("crates/modules/rustok-index/src/lib.rs");
+  for (const text of [application, publicApi])
+    require(text, "persist_index_source_refresh", "canonical export");
+  const tests = read(
+    "crates/modules/rustok-index/src/application/source_refresh_event_tests.rs",
+  );
+  for (const marker of [
+    "canonical_source_mutation_identity_is_preserved_before_acknowledgement",
+    "missing_or_behind_source_state_suppresses_apply_and_ack",
+    "schema_mismatch_fails_before_source_load_apply_or_ack",
+    "delivery_rejects_invalid_identity_and_revision",
+    "nil_loaded_owner_mutation_identity_is_refused_before_persistence_or_ack",
+    "old_delivery_preserves_each_successively_loaded_owner_mutation_identity",
+    "durable_persistence_failure_withholds_the_original_transport_ack",
+    'vec!["apply", "ack"]',
+    "Some(mutation(9).event_id())",
+  ])
+    require(tests, marker, "unrun regression definition");
+  const docs = read(
+    "crates/modules/rustok-index/docs/m5-source-refresh-event.md",
+  );
+  for (const marker of [
+    "loaded owner mutation UUID is the durable Index inbox identity",
+    "one bounded `IndexSourceLoadRequest` for exactly one key",
+    "original opaque token",
+  ])
+    require(docs, marker, "owner documentation");
+  if (
+    !containsMarker(docs, /automatic backoff/i) ||
+    !containsMarker(docs, "M6 - execute and admit concrete repair evidence")
+  ) {
+    failures.push("owner documentation must retain recovery/evidence gates");
+  }
+  return failures;
+}
 
-requireMarkers('crates/modules/rustok-index/src/application/mod.rs', [
-  'mod source_refresh_event;',
-  'mod source_refresh_event_tests;',
-  'IndexSourceRefreshEventDelivery',
-  'IndexSourceRefreshEventWorker',
-  'IndexSourceRefreshEventProcessError',
-]);
-
-const contractPath = 'crates/modules/rustok-index/src/application/source_refresh_event.rs';
-const contract = requireMarkers(contractPath, [
-  'pub struct IndexSourceRefreshEventDelivery<T>',
-  'minimum_source_version: u64',
-  'pub struct IndexSourceRefreshEventWorker<M, A>',
-  'source_registry.source_for_schema(&key.schema)',
-  'IndexSourceLoadRequest::new(vec![key.clone()])',
-  '.load(request)',
-  'source_version < minimum_source_version',
-  'rebind_event_id(mutation, event_id)',
-  '.apply_replay_mutation(',
-  '.acknowledge(&acknowledgement_token)',
-  'MissingSourceMutation',
-  'AmbiguousSourceMutation',
-  'SourceVersionBehind',
-  'ReplaySourceMismatch',
-]);
-
-const routePosition = contract.indexOf('source_registry.source_for_schema(&key.schema)');
-const loadPosition = contract.indexOf('.load(request)');
-const fencePosition = contract.indexOf('source_version < minimum_source_version');
-const applyPosition = contract.indexOf('.apply_replay_mutation(');
-const acknowledgePosition = contract.indexOf('.acknowledge(&acknowledgement_token)');
 if (
-  routePosition < 0 ||
-  loadPosition <= routePosition ||
-  fencePosition <= loadPosition ||
-  applyPosition <= fencePosition ||
-  acknowledgePosition <= applyPosition
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  fail(`${contractPath} must route, load, fence, durably apply, and then acknowledge`);
+  const failures = verifyIndexSourceRefreshEvent();
+  if (failures.length) {
+    console.error(
+      failures
+        .map((failure) => `[verify-index-source-refresh-event] ${failure}`)
+        .join("\n"),
+    );
+    process.exitCode = 1;
+  } else
+    console.log(
+      "[verify-index-source-refresh-event] source contract only; no tests, compilation or runtime evidence",
+    );
 }
-
-for (const forbidden of [
-  'iggy::',
-  'rdkafka::',
-  'async_nats::',
-  'lapin::',
-  'tokio::spawn',
-  'std::thread::spawn',
-  'sleep(',
-  'SELECT ',
-  'INSERT INTO',
-  'UPDATE ',
-  'DELETE FROM',
-  'tracing::',
-  'acknowledgement_token.clone()',
-  'format!("{acknowledgement_token',
-]) {
-  if (contract.includes(forbidden)) {
-    fail(`${contractPath} contains forbidden transport/task/SQL/token coupling: ${forbidden}`);
-  }
-}
-
-requireMarkers('crates/modules/rustok-index/src/application/source_refresh_event_tests.rs', [
-  'canonical_source_mutation_is_rebound_committed_and_then_acknowledged',
-  'missing_or_behind_source_state_suppresses_apply_and_ack',
-  'schema_mismatch_fails_before_source_load_apply_or_ack',
-  'delivery_rejects_invalid_identity_and_revision',
-  'vec!["apply", "ack"]',
-  'Some(Uuid::from_u128(7))',
-]);
-
-requireMarkers('crates/modules/rustok-index/docs/m5-source-refresh-event.md', [
-  'Status: `source_complete_owner_event_publication_and_runtime_wiring_pending`',
-  '`IndexSourceRefreshEventWorker`',
-  'one bounded `IndexSourceLoadRequest` for exactly one key',
-  'replace the replay-only mutation UUID with the broker event UUID',
-  'A missing result or a revision below the event fence',
-  'does not add Product wire events or publish Product routes',
-  'The primary implementation cursor remains `M6 - execute and admit concrete repair evidence`',
-  'No tests, Node verifiers, Cargo checks',
-]);
-
-console.log('[verify-index-source-refresh-event] exact source refresh commit-before-ack contract verified');

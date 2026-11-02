@@ -8,11 +8,45 @@ use uuid::Uuid;
 use crate::dto::{
     AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
     ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
-    UpdateVariantInput, VariantAxisConfigResponse, VariantResponse,
+    UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
 };
 use crate::ports::{product_owner_error_facts, product_port_context_facts};
 use crate::services::{fail_product_operation_receipt, with_product_operation_receipt};
 use crate::{CatalogService, CommerceError};
+
+/// True only for a deterministic decision from a Product command port whose receipt was
+/// durably finalized/replayed. Context, admission, lease and infrastructure failures are not
+/// terminal, even when an HTTP status or message happens to resemble a business refusal.
+pub fn product_catalog_command_error_is_terminal(error: &PortError) -> bool {
+    !error.retryable
+        && matches!(
+            error.kind,
+            PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict
+        )
+        && (crate::error::inventory_deletion_blocker(error).is_some()
+            || crate::error::inventory_quantity_blocker(error).is_some()
+            || matches!(
+                error.code.as_str(),
+                "product.validation"
+                    | "product.variant_axis_policy_conflict"
+                    | "product.schema_validation"
+                    | "product.conflict"
+                    | "product.dependency_not_found"
+                    | "product.duplicate_handle"
+                    | "product.duplicate_sku"
+                    | "product.revision_conflict"
+                    | "product.variant_axes_preview_required"
+                    | "product.variant_axes_stale"
+                    | "product.variant_axes_conflict"
+                    | "product.variant_axes_limit_exceeded"
+                    | "product.no_variants"
+                    | "product.lifecycle_conflict"
+                    | "product.cannot_delete_only_variant"
+                    | "product.product_not_found"
+                    | "product.variant_not_found"
+                    | "product.image_not_found"
+            ))
+}
 
 /// Transport-neutral owner boundary for Product catalog lifecycle commands.
 ///
@@ -26,6 +60,14 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         context: PortContext,
         input: CreateProductInput,
     ) -> Result<ProductResponse, PortError>;
+
+    /// Consistent, read-policy planning capability of this selected owner. No receipt or writes.
+    async fn preview_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<VariantAxesPreviewResponse, PortError>;
 
     async fn set_variant_axes(
         &self,
@@ -132,6 +174,19 @@ impl ProductCatalogCommandPort for CatalogService {
             self.create_product(tenant_id, actor_id, input),
         )
         .await
+    }
+
+    async fn preview_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<VariantAxesPreviewResponse, PortError> {
+        let operation = "preview_variant_axes";
+        let (tenant_id, _) = catalog_scope(&context, operation, PortCallPolicy::read())?;
+        CatalogService::preview_variant_axes(self, tenant_id, product_id, input)
+            .await
+            .map_err(|error| product_command_error(&context, operation, error))
     }
 
     async fn set_variant_axes(
@@ -575,8 +630,16 @@ fn command_scope(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(Uuid, Uuid), PortError> {
+    catalog_scope(context, operation, PortCallPolicy::write())
+}
+
+fn catalog_scope(
+    context: &PortContext,
+    operation: &'static str,
+    policy: PortCallPolicy,
+) -> Result<(Uuid, Uuid), PortError> {
     context
-        .require_policy(PortCallPolicy::write())
+        .require_policy(policy)
         .map_err(|error| command_context_error(context, operation, error))?;
 
     let tenant_id = Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
@@ -682,16 +745,33 @@ fn product_command_error(
             "product.duplicate_sku",
             "product SKU conflicts with an existing variant",
         ),
-        CommerceError::Validation(ref message)
-            if crate::services::catalog::revision_conflict_of(message).is_some() =>
-        {
-            PortError::conflict(
-                "product.revision_conflict",
-                "product was modified by another editor",
-            )
-        }
-        CommerceError::Validation(_) => {
-            PortError::validation("product.validation", "product request is invalid")
+        CommerceError::Validation(message) => {
+            if crate::services::catalog::revision_conflict_of(&message).is_some() {
+                PortError::conflict(
+                    "product.revision_conflict",
+                    "product was modified by another editor",
+                )
+            } else if let Some(code) =
+                crate::services::catalog::reconfiguration_error_code(&message)
+            {
+                let message = match code {
+                    "product.variant_axes_preview_required" => {
+                        "preview the exact variant axes proposal before applying it"
+                    }
+                    "product.variant_axes_stale" => {
+                        "variant axes or assignments changed; preview the proposal again"
+                    }
+                    "product.variant_axes_limit_exceeded" => {
+                        "atomic variant axes reconfiguration supports at most 256 variants, 32 axes and 256 options per axis"
+                    }
+                    _ => {
+                        "resolve the missing assignments and duplicate combinations reported by preview"
+                    }
+                };
+                PortError::conflict(code, message)
+            } else {
+                PortError::validation("product.validation", "product request is invalid")
+            }
         }
         CommerceError::NoVariants => PortError::validation(
             "product.no_variants",
@@ -705,11 +785,19 @@ fn product_command_error(
             "product.lifecycle_conflict",
             "product operation conflicts with the current state",
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
     }
 }
 
@@ -724,6 +812,8 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::Validation(message) => {
             if crate::services::catalog::revision_conflict_of(message).is_some() {
                 "revision_conflict"
+            } else if crate::services::catalog::reconfiguration_error_code(message).is_some() {
+                "variant_axes_refusal"
             } else {
                 "validation"
             }
@@ -731,8 +821,10 @@ fn product_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::NoVariants => "no_variants",
         CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
+        CommerceError::InventoryDeletionBlocked(_) => "inventory_deletion_blocked",
+        CommerceError::InventoryQuantityBlocked(_) => "inventory_quantity_blocked",
         CommerceError::Core(_) => "core",
-        CommerceError::Conflict(_) => "conflict",
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => "conflict",
     }
 }
 
@@ -754,8 +846,16 @@ fn product_error_code(error: &CommerceError) -> &'static str {
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_error_code(blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_error_code(blocker)
+        }
         CommerceError::Core(error) => crate::error::core_error_code(error),
-        CommerceError::Conflict(_) => "product.conflict",
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            "product.conflict"
+        }
     }
 }
 

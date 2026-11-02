@@ -1,10 +1,7 @@
 use async_graphql::{ErrorExtensions, Result};
 use rustok_api::{PortContext, PortError, PortErrorKind, RequestContext};
 use rustok_cart::{CartStorefrontPort, CartStorefrontRepriceRequest};
-use rustok_pricing::ResolveProductPriceRequest;
 use uuid::Uuid;
-
-use crate::storefront_channel::normalize_public_channel_slug;
 
 const STOREFRONT_REPRICE_GRAPHQL_BOUNDARY: &str = "commerce_graphql_storefront_reprice";
 
@@ -51,11 +48,17 @@ impl RepriceFailure {
     }
 }
 
-fn public_graphql_error() -> async_graphql::Error {
+fn public_graphql_error(retryable: bool) -> async_graphql::Error {
     async_graphql::Error::new("Cart pricing could not be refreshed").extend_with(|_, extensions| {
         extensions.set("code", "CART_REPRICE_FAILED");
-        extensions.set("retryable", true);
+        extensions.set("retryable", retryable);
     })
+}
+
+/// Context preparation still uses the established price-refresh public envelope. The
+/// selected contextual Pricing decorator retains owner diagnostics; no owner text is exposed.
+pub(crate) fn cart_context_preparation_error(error: PortError) -> async_graphql::Error {
+    public_graphql_error(error.retryable)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -111,7 +114,7 @@ fn reprice_graphql_error(
             owner_kind = ?failure.error.kind,
             owner_retryable = failure.error.retryable,
             public_code = "CART_REPRICE_FAILED",
-            public_retryable = true,
+            public_retryable = failure.error.retryable,
             boundary = STOREFRONT_REPRICE_GRAPHQL_BOUNDARY,
             "commerce GraphQL storefront reprice owner call failed"
         );
@@ -143,13 +146,13 @@ fn reprice_graphql_error(
             owner_kind = ?failure.error.kind,
             owner_retryable = failure.error.retryable,
             public_code = "CART_REPRICE_FAILED",
-            public_retryable = true,
+            public_retryable = failure.error.retryable,
             boundary = STOREFRONT_REPRICE_GRAPHQL_BOUNDARY,
             "commerce GraphQL storefront reprice owner call was rejected"
         );
     }
 
-    public_graphql_error()
+    public_graphql_error(failure.error.retryable)
 }
 
 pub(crate) async fn reprice_storefront_cart_line_items(
@@ -164,65 +167,59 @@ pub(crate) async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
-        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
-    let request_channel_slug_length = public_channel_slug
+    let request_channel_slug_length = cart
+        .channel_slug
         .as_deref()
         .map(str::chars)
         .map(Iterator::count);
     let currency_code_length = cart.currency_code.chars().count();
     let cart_line_item_count = cart.line_items.len();
-    let pricing_read_port =
-        super::cart::contextual_pricing_read_port(db.clone(), event_bus.clone());
+    let pricing_context = rustok_cart::CartPricingContextGuard::capture(&cart)
+        .map_err(|error| public_graphql_error(error.retryable))?;
+    let pricing_read_port = super::cart::contextual_pricing_read_port(
+        db.clone(),
+        event_bus.clone(),
+        crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+            db.clone(),
+            event_bus.clone(),
+        ),
+    );
     let mut updates = Vec::new();
 
     for line_item in &cart.line_items {
         let Some(variant_id) = line_item.variant_id else {
             continue;
         };
-        let pricing_context = super::cart_safe_helpers::build_storefront_pricing_context(
-            &cart,
-            request_context,
-            public_channel_slug.as_deref(),
-            line_item.quantity,
-        );
         let pricing_port_context = super::cart_safe_helpers::storefront_pricing_port_context(
             tenant_id,
             request_context,
             cart.id,
             line_item.id,
         );
-        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-            .resolve_product_price(
-                pricing_port_context.clone(),
-                ResolveProductPriceRequest {
-                    product_id: line_item.product_id,
-                    variant_id,
-                    region_id: pricing_context.region_id,
-                    channel_id: pricing_context.channel_id,
-                    channel_slug: pricing_context.channel_slug,
-                    price_list_id: pricing_context.price_list_id,
-                    quantity: pricing_context.quantity,
-                    currency_code: pricing_context.currency_code,
-                },
+        let resolved_price: rustok_pricing::ResolvedPrice = crate::read_storefront_cart_line_quote(
+            pricing_read_port.as_ref(),
+            pricing_port_context.clone(),
+            &cart,
+            line_item.id,
+            line_item.quantity,
+        )
+        .await
+        .map_err(|error| {
+            reprice_graphql_error(
+                RepriceFailure::pricing(error),
+                &pricing_port_context,
+                cart.id,
+                Some(line_item.id),
+                Some(variant_id),
+                line_item.product_id,
+                Some(line_item.quantity),
+                updates.len(),
+                cart_line_item_count,
+                currency_code_length,
+                request_channel_slug_length,
             )
-            .await
-            .map_err(|error| {
-                reprice_graphql_error(
-                    RepriceFailure::pricing(error),
-                    &pricing_port_context,
-                    cart.id,
-                    Some(line_item.id),
-                    Some(variant_id),
-                    line_item.product_id,
-                    Some(line_item.quantity),
-                    updates.len(),
-                    cart_line_item_count,
-                    currency_code_length,
-                    request_channel_slug_length,
-                )
-            })?
-            .into();
+        })?
+        .into();
         updates.push(super::cart_safe_helpers::storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -249,6 +246,7 @@ pub(crate) async fn reprice_storefront_cart_line_items(
             CartStorefrontRepriceRequest {
                 cart_id: cart.id,
                 updates,
+                pricing_context,
             },
         )
         .await
@@ -267,4 +265,26 @@ pub(crate) async fn reprice_storefront_cart_line_items(
                 request_channel_slug_length,
             )
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_reprice_envelope_keeps_owner_retryability_without_diagnostics() {
+        for retryable in [false, true] {
+            let public = public_graphql_error(retryable);
+            assert_eq!(public.message, "Cart pricing could not be refreshed");
+            let extensions = public.extensions.as_ref().unwrap();
+            assert_eq!(
+                extensions.get("code"),
+                Some(&async_graphql::Value::from("CART_REPRICE_FAILED"))
+            );
+            assert_eq!(
+                extensions.get("retryable"),
+                Some(&async_graphql::Value::Boolean(retryable))
+            );
+        }
+    }
 }

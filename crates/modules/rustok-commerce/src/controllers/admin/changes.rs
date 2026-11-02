@@ -252,7 +252,7 @@ fn map_admin_order_change_port_error(
         boundary = ADMIN_ORDER_CHANGE_BOUNDARY,
         "commerce admin order-change owner port failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_admin_order_change_orchestration_error(

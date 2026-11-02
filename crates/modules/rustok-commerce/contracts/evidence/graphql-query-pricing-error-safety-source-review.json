@@ -10,17 +10,17 @@
     "crates/modules/rustok-commerce/docs/graphql-query-pricing-error-safety.md"
   ],
   "source_contract": {
-    "query_resolver_source_changed": false,
-    "pricing_owner_call_count": 4,
+    "query_resolver_source_changed": true,
+    "pricing_owner_call_count": 5,
     "pricing_owner_port_preserved": true,
-    "pricing_owner_requests_preserved": true,
+    "pricing_owner_requests_preserved": false,
     "pricing_port_contexts_preserved": true,
-    "pricing_success_projections_preserved": true,
+    "pricing_success_projections_preserved": false,
     "admin_not_found_none_preserved": true,
-    "effective_price_not_found_none_preserved": true,
+    "effective_price_not_found_none_preserved": false,
     "storefront_projection_option_preserved": true,
     "not_found_derived_from_port_error_kind": true,
-    "owner_code_used_for_control_flow": false,
+    "owner_code_used_for_control_flow": true,
     "complete_pricing_port_error_public": false,
     "owner_message_content_public": false,
     "typed_port_error_kind_policy_preserved": true,
@@ -30,32 +30,48 @@
     "forbidden_public_code": "PRICING_ACCESS_DENIED",
     "unavailable_public_code": "PRICING_TEMPORARILY_UNAVAILABLE",
     "invariant_public_code": "PRICING_OPERATION_FAILED",
-    "unavailable_retryable": true,
-    "other_retryable": false,
     "complete_pricing_port_error_logged": false,
     "owner_message_content_logged": false,
     "owner_code_kind_retryability_logged": true,
     "diagnostic_debug_redacted": true,
     "technical_error_severity_preserved": true,
     "ordinary_rejection_warning_severity_preserved": true,
-    "graphql_fields_or_dtos_changed": false,
-    "pricing_owner_contract_changed": false,
+    "graphql_fields_or_dtos_changed": true,
+    "pricing_owner_contract_changed": true,
     "pricing_ffa_status_changed": false,
     "pricing_fba_status_changed": false,
     "broad_ecommerce_cleanup_closed": false,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "explicit_unpriced_batch_items": true,
+    "only_closed_owner_codes_used_for_control_flow": true,
+    "unavailable_retryability": "owner",
+    "other_retryability": "owner",
+    "unsupported_capability_public_code": "PRICING_CAPABILITY_UNAVAILABLE"
   },
   "validation": {
     "tests_run": false,
-    "verifiers_run": false,
+    "verifiers_run": true,
     "cargo_run": false,
-    "format_run": false,
+    "format_run": true,
     "mounted_graphql_run": false,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "runtime_proven": false
   },
-  "execution": [],
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, or CI were executed."
+  "execution": [
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-commerce-graphql-query-pricing-error-safety.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "source_format",
+      "tool": "@scalar/rust-fmt 0.3.0 WASM; edition/styleEdition 2024",
+      "scope": "39 scoped Rust files",
+      "rust_compilation": false
+    }
+  ],
+  "validation_disclosure": "No tests, Cargo commands, mounted GraphQL scenarios, workflows or CI were executed. The 2026-10-29 continuation adds an owner catalog projection and batch quotes; scoped static checks are disclosed in the Pricing implementation plan.",
+  "continuation_date": "2026-10-30"
 }

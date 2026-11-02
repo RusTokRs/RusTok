@@ -9,7 +9,8 @@ This source wave closes the public error-envelope gap in
 
 The private compatibility implementation in
 `crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs` still converts owner
-and persistence failures into a legacy dynamic `Debug` message. The mounted
+and persistence failures into a legacy dynamic `Debug` message. Typed repricing failures now
+also retain an optional owner retryability projection; this contains no owner payload. The mounted
 module previously re-exported that error type and the four non-checkout helper
 functions directly, so a Rust consumer could receive the dynamic compatibility
 message even though the current native payment and fulfillment transports
@@ -28,7 +29,7 @@ not changed by this source wave.
 
 ## Public envelopes
 
-| Mounted operation | Public code | Public message | Retryable |
+| Mounted operation | Public code | Public message | Default retryable (when no typed owner flag exists) |
 | --- | --- | --- | --- |
 | Payment collection read | `STOREFRONT_PAYMENT_COLLECTION_UNAVAILABLE` | `Storefront payment collection is temporarily unavailable` | true |
 | Refund summary read | `STOREFRONT_REFUND_SUMMARY_UNAVAILABLE` | `Storefront refund summary is temporarily unavailable` | true |
@@ -37,7 +38,9 @@ not changed by this source wave.
 
 `StorefrontCheckoutRuntimeError` exposes `public_message()`,
 `public_code()`, and `retryable()` without retaining the private compatibility
-message.
+message. Typed Pricing/Cart failures during repricing override the default with the exact owner
+retry bit, including permanent unavailable-capability refusals. Non-port legacy failures retain
+the pre-existing policy; this does not claim a full legacy error-classification cutover.
 
 ## Bounded diagnostics
 
@@ -59,8 +62,8 @@ channel, and locale values are not copied into the mounted diagnostic event.
 
 ## Preserved contracts
 
-- The compatibility source file is unchanged and remains private to the mounted
-  module.
+- The compatibility implementation remains private. Its typed repricing error projection
+  now preserves owner retryability without exposing the legacy message.
 - The same four legacy operations are delegated with the same runtime, tenant,
   request context, authentication context, resource ids, commands, and success
   DTOs.
@@ -95,5 +98,8 @@ cargo check -p rustok-payment-storefront --features ssr
 cargo check -p rustok-fulfillment-storefront --features ssr
 ```
 
-No tests, Node verifiers, Cargo commands, formatting, native server functions,
-HTTP requests, workflows, or CI were executed.
+The original source wave executed no commands. The 2026-10-30 targeted review performs
+read-only source guards and source formatting; actual results are in the
+[Commerce review record](implementation-plan.md#targeted-pricing-review-2026-10-30).
+Its new regression sources remain unrun. No Rust compilation, database, native server functions,
+HTTP requests, workflows or CI execution is claimed.

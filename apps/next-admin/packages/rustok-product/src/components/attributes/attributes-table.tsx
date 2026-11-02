@@ -113,7 +113,7 @@ export function AttributesTable({
       cellClassName: 'text-right',
       cell: (attr) => {
         const isOptionType =
-          attr.valueType === 'option' || attr.valueType === 'multi_option';
+          attr.valueType === 'select' || attr.valueType === 'multiselect';
         return isOptionType ? (
           <Button
             variant='ghost'

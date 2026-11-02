@@ -10,6 +10,19 @@
 
 import * as React from 'react';
 import {
+  buildAxisPolicyPatch,
+  effectiveAxisPolicyLabel,
+  isAxisAttribute
+} from '../../schema-policy';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/shared/ui/shadcn/select';
+import { DataTableStatic } from '@/widgets/data-table/data-table-static';
+import {
   Card,
   CardContent,
   CardDescription,
@@ -22,6 +35,8 @@ import { Label } from '@/shared/ui/shadcn/label';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
+  ProductEffectiveForm,
+  ProductEffectiveFormAttribute,
   BindCategoryAttributePayload,
   BindSchemaAttributePayload,
   CatalogCategorySummary,
@@ -33,6 +48,11 @@ import type {
 } from '../../api/types';
 
 interface SchemaAuthoringCardProps {
+  locale: string;
+  fetchEffectiveForm: (
+    categoryId: string,
+    locale: string
+  ) => Promise<ProductEffectiveForm | null>;
   categories: CatalogCategorySummary[];
   schemas: ProductAttributeSchemaSummary[];
   attributes: ProductAttributeSummary[];
@@ -63,6 +83,8 @@ const selectClassName =
  * `custom`, and `addition`/`override`/`removal`).
  */
 export function SchemaAuthoringCard({
+  locale,
+  fetchEffectiveForm,
   categories,
   schemas,
   attributes,
@@ -73,6 +95,43 @@ export function SchemaAuthoringCard({
   onBindCategoryAttribute
 }: SchemaAuthoringCardProps) {
   const [pending, setPending] = React.useState<string | null>(null);
+  const [previewCategory, setPreviewCategory] = React.useState('');
+  const [preview, setPreview] = React.useState<ProductEffectiveForm | null>(
+    null
+  );
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewRefresh, setPreviewRefresh] = React.useState(0);
+  React.useEffect(() => {
+    let cancelled = false;
+    setPreview(null);
+    setPreviewError(null);
+    if (!previewCategory) {
+      setPreviewLoading(false);
+      return;
+    }
+    setPreviewLoading(true);
+    void fetchEffectiveForm(previewCategory, locale)
+      .then((form) => {
+        if (!cancelled) {
+          setPreview(form);
+          setPreviewLoading(false);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setPreviewError(
+            error instanceof Error
+              ? error.message
+              : 'Effective policy could not be loaded.'
+          );
+          setPreviewLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewCategory, locale, previewRefresh, fetchEffectiveForm]);
 
   // 1. Category schema mode
   const [modeCategory, setModeCategory] = React.useState('');
@@ -93,6 +152,10 @@ export function SchemaAuthoringCard({
   const [bindSchemaRequired, setBindSchemaRequired] = React.useState(false);
   const [bindSchemaDisabled, setBindSchemaDisabled] = React.useState(false);
   const [bindSchemaPosition, setBindSchemaPosition] = React.useState('0');
+  const [bindSchemaAxisPolicy, setBindSchemaAxisPolicy] =
+    React.useState('keep');
+  const [bindSchemaDefaultAxis, setBindSchemaDefaultAxis] =
+    React.useState('keep');
 
   // 4. Category group
   const [categoryGroupCategory, setCategoryGroupCategory] = React.useState('');
@@ -107,6 +170,10 @@ export function SchemaAuthoringCard({
   const [bindCategoryKind, setBindCategoryKind] = React.useState('addition');
   const [bindCategoryDisabled, setBindCategoryDisabled] = React.useState(false);
   const [bindCategoryPosition, setBindCategoryPosition] = React.useState('0');
+  const [bindCategoryAxisPolicy, setBindCategoryAxisPolicy] =
+    React.useState('keep');
+  const [bindCategoryDefaultAxis, setBindCategoryDefaultAxis] =
+    React.useState('keep');
 
   const run = async (
     key: string,
@@ -117,6 +184,7 @@ export function SchemaAuthoringCard({
     try {
       await action();
       toast.success(success);
+      setPreviewRefresh((value) => value + 1);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Schema authoring failed'
@@ -142,6 +210,63 @@ export function SchemaAuthoringCard({
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
+        <section className='space-y-3 rounded-lg border p-4'>
+          <h3 className='text-sm font-semibold'>
+            Effective variant axis policies
+          </h3>
+          <p className='text-muted-foreground text-xs'>
+            Category overrides take priority over reusable schemas. Changing a
+            policy is refused if it would invalidate an existing product.
+          </p>
+          <Select value={previewCategory} onValueChange={setPreviewCategory}>
+            <SelectTrigger aria-label='Preview category'>
+              <SelectValue placeholder='Select a structural category' />
+            </SelectTrigger>
+            <SelectContent>
+              {categories
+                .filter((category) => category.kind === 'structural')
+                .map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          {previewError ? (
+            <p role='alert' className='text-destructive text-sm'>
+              {previewError}
+            </p>
+          ) : null}
+          {preview ? (
+            <DataTableStatic<ProductEffectiveFormAttribute>
+              rows={preview.attributes}
+              getRowKey={(attribute) => attribute.attributeId}
+              columns={[
+                {
+                  id: 'label',
+                  header: 'Attribute',
+                  cell: (attribute) => attribute.label
+                },
+                {
+                  id: 'scope',
+                  header: 'Type / scope',
+                  cell: (attribute) =>
+                    `${attribute.valueType} / ${attribute.scope}`
+                },
+                {
+                  id: 'policy',
+                  header: 'Effective rule / source',
+                  cell: effectiveAxisPolicyLabel
+                }
+              ]}
+            />
+          ) : previewLoading ? (
+            <p role='status'>Loading effective policies…</p>
+          ) : previewCategory && !previewError ? (
+            <p>No effective form is available for this category.</p>
+          ) : null}
+        </section>
+
         <section className='space-y-3 rounded-lg border p-4'>
           <h3 className='text-sm font-semibold'>Category schema mode</h3>
           <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
@@ -394,6 +519,19 @@ export function SchemaAuthoringCard({
               Disabled
             </label>
           </div>
+          <AxisPolicyFields
+            id='schema-axis-policy'
+            eligible={isAxisAttribute(
+              attributes.find(
+                (attribute) => attribute.id === bindSchemaAttribute
+              ) ?? { valueType: '', scope: '' }
+            )}
+            policy={bindSchemaAxisPolicy}
+            onPolicyChange={setBindSchemaAxisPolicy}
+            defaultAxis={bindSchemaDefaultAxis}
+            onDefaultAxisChange={setBindSchemaDefaultAxis}
+            disabled={pending !== null}
+          />
           <Button
             type='button'
             size='sm'
@@ -409,6 +547,10 @@ export function SchemaAuthoringCard({
                   onBindSchemaAttribute({
                     schemaId: bindSchema,
                     attributeId: bindSchemaAttribute,
+                    ...buildAxisPolicyPatch(
+                      bindSchemaAxisPolicy,
+                      bindSchemaDefaultAxis
+                    ),
                     groupCode: bindSchemaGroup.trim() || null,
                     isRequired: bindSchemaRequired,
                     isDisabled: bindSchemaDisabled,
@@ -588,6 +730,19 @@ export function SchemaAuthoringCard({
               Disabled
             </label>
           </div>
+          <AxisPolicyFields
+            id='category-axis-policy'
+            eligible={isAxisAttribute(
+              attributes.find(
+                (attribute) => attribute.id === bindCategoryAttribute
+              ) ?? { valueType: '', scope: '' }
+            )}
+            policy={bindCategoryAxisPolicy}
+            onPolicyChange={setBindCategoryAxisPolicy}
+            defaultAxis={bindCategoryDefaultAxis}
+            onDefaultAxisChange={setBindCategoryDefaultAxis}
+            disabled={pending !== null}
+          />
           <Button
             type='button'
             size='sm'
@@ -603,6 +758,10 @@ export function SchemaAuthoringCard({
                   onBindCategoryAttribute({
                     categoryId: bindCategory,
                     attributeId: bindCategoryAttribute,
+                    ...buildAxisPolicyPatch(
+                      bindCategoryAxisPolicy,
+                      bindCategoryDefaultAxis
+                    ),
                     groupCode: bindCategoryGroup.trim() || null,
                     bindingKind: bindCategoryKind,
                     isDisabled: bindCategoryDisabled,
@@ -620,5 +779,76 @@ export function SchemaAuthoringCard({
         </section>
       </CardContent>
     </Card>
+  );
+}
+
+function AxisPolicyFields({
+  id,
+  eligible,
+  policy,
+  onPolicyChange,
+  defaultAxis,
+  onDefaultAxisChange,
+  disabled
+}: {
+  id: string;
+  eligible: boolean;
+  policy: string;
+  onPolicyChange: (value: string) => void;
+  defaultAxis: string;
+  onDefaultAxisChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className='grid gap-3 md:grid-cols-2'>
+      <div className='grid gap-1.5'>
+        <Label htmlFor={id}>Variant axis policy</Label>
+        <Select
+          value={policy}
+          onValueChange={onPolicyChange}
+          disabled={disabled}
+        >
+          <SelectTrigger id={id}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='keep'>
+              Keep existing (new binding: forbidden)
+            </SelectItem>
+            <SelectItem value='forbidden'>Forbidden</SelectItem>
+            <SelectItem value='allowed' disabled={!eligible}>
+              Allowed
+            </SelectItem>
+            <SelectItem value='required' disabled={!eligible}>
+              Required
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className='grid gap-1.5'>
+        <Label htmlFor={`${id}-default`}>Default axis hint</Label>
+        <Select
+          value={defaultAxis}
+          onValueChange={onDefaultAxisChange}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`${id}-default`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='keep'>
+              Keep existing (new binding: no)
+            </SelectItem>
+            <SelectItem value='false'>No</SelectItem>
+            <SelectItem
+              value='true'
+              disabled={!eligible || policy === 'forbidden'}
+            >
+              Yes
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   );
 }

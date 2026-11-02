@@ -179,7 +179,7 @@ fn map_admin_post_order_port_error(
         boundary = ADMIN_POST_ORDER_BOUNDARY,
         "commerce admin post-order owner read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 #[utoipa::path(

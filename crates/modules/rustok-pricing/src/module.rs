@@ -43,7 +43,7 @@ impl RusToKModule for PricingModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["product"]
+        &["product", "region"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -86,7 +86,7 @@ mod tests {
         assert!(!module.version().is_empty());
         assert_eq!(module.kind(), ModuleKind::Optional);
         assert_eq!(module.health().await, HealthStatus::Healthy);
-        assert_eq!(module.dependencies(), &["product"]);
+        assert_eq!(module.dependencies(), &["product", "region"]);
         assert_eq!(module.permissions().len(), 8);
         assert!(!module.migrations().is_empty());
     }

@@ -9,7 +9,6 @@
     "crates/modules/rustok-pricing/docs/read-local-context.md"
   ],
   "review_findings": {
-    "all_six_read_operations_preserved": true,
     "owner_delegation_preserved": true,
     "public_error_envelope_preserved": true,
     "public_message_mapping_preserved": true,
@@ -27,7 +26,8 @@
     "read_wrapper_source_closed": true,
     "write_wrapper_remains_open": true,
     "broad_ecommerce_cleanup_remains_open": true,
-    "runtime_evidence_claimed": false
+    "runtime_evidence_claimed": false,
+    "all_eight_read_operations_preserved": true
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, CI, or mounted runtime validation was executed."
+  "validation_disclosure": "No tests, Cargo commands, workflows, CI or mounted runtime checks were executed. The quote continuation changes the owner read DTOs/operations; scoped non-test verification is recorded in the implementation plan."
 }

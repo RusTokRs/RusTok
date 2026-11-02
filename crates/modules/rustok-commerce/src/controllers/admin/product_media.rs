@@ -50,7 +50,7 @@ pub struct BackfillInput {
     pub limit: u64,
 }
 fn map_error(error: PortError) -> HttpError {
-    match error.kind {
+    (match error.kind {
         PortErrorKind::Forbidden => HttpError::forbidden(
             "product_media_maintenance_forbidden",
             "Permission denied for Product Media maintenance",
@@ -64,7 +64,8 @@ fn map_error(error: PortError) -> HttpError {
             "product_media_maintenance_unavailable",
             "Product Media maintenance is unavailable",
         ),
-    }
+    })
+    .with_retryable(error.retryable)
 }
 fn maintenance(
     runtime: &CommerceHttpRuntime,

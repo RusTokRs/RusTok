@@ -42,3 +42,12 @@ does not define or re-export `Port*` types.
 - [Public Contract Reference (CRATE_API.md)](./CRATE_API.md)
 - [Crate docs](./docs/README.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Known Limitations / Pending Implementation
+
+The existing bus/dispatcher/Memory path now has explicit acknowledged sealed-handler opt-in
+without changing root fanout. Lifecycle/capacity/no-handler/failure refusals are source-wired;
+no second queue or domain publisher is introduced. Six new regression definitions remain
+uncompiled/unrun; source format/parser/guards do not prove runtime behavior, shutdown races,
+real Iggy or Outbox recovery. See the [public contract](CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
+and [live plan](docs/implementation-plan.md#acknowledged-sealed-module-delivery-2026-11-01-source-only).

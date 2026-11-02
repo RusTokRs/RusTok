@@ -231,6 +231,7 @@ pub struct GqlProductAttributeSummary {
     pub id: Uuid,
     pub code: String,
     pub value_type: String,
+    pub scope: String,
     pub is_localized: bool,
     pub is_filterable: bool,
     pub is_searchable: bool,
@@ -294,6 +295,7 @@ pub struct GqlProductEffectiveFormAttribute {
     pub code: String,
     pub label: String,
     pub value_type: String,
+    pub scope: String,
     pub is_localized: bool,
     pub options: Vec<GqlProductAttributeOption>,
     pub group_code: Option<String>,
@@ -487,7 +489,119 @@ pub struct GqlActivePriceListOption {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlStorefrontPricingCatalog {
+    pub items: Vec<GqlStorefrontPricingCatalogItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub has_next: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlStorefrontPricingCatalogItem {
+    pub id: Uuid,
+    pub title: String,
+    pub handle: String,
+    pub seller_id: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub created_at: String,
+    pub published_at: Option<String>,
+    pub variant_count: u64,
+    pub sale_variant_count: u64,
+    pub currencies: Vec<String>,
+}
+
+impl From<rustok_pricing::StorefrontPricingProductList> for GqlStorefrontPricingCatalog {
+    fn from(page: rustok_pricing::StorefrontPricingProductList) -> Self {
+        Self {
+            total: page.total,
+            page: page.page,
+            per_page: page.per_page,
+            has_next: page.has_next,
+            items: page
+                .items
+                .into_iter()
+                .map(|item| GqlStorefrontPricingCatalogItem {
+                    id: item.id,
+                    title: item.title,
+                    handle: item.handle,
+                    seller_id: item.seller_id,
+                    vendor: item.vendor,
+                    product_type: item.product_type,
+                    created_at: item.created_at.to_rfc3339(),
+                    published_at: item.published_at.map(|time| time.to_rfc3339()),
+                    variant_count: item.variant_count,
+                    sale_variant_count: item.sale_variant_count,
+                    currencies: item.currencies,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingResolutionContext {
+    pub currency_code: String,
+    pub region_id: Option<Uuid>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub quantity: i32,
+}
+
+impl From<rustok_pricing::PriceResolutionContext> for GqlPricingResolutionContext {
+    fn from(context: rustok_pricing::PriceResolutionContext) -> Self {
+        Self {
+            currency_code: context.currency_code,
+            region_id: context.region_id,
+            price_list_id: context.price_list_id,
+            channel_id: context.channel_id,
+            channel_slug: context.channel_slug,
+            quantity: context.quantity.unwrap_or(1),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingPriceSource {
+    pub price_id: Uuid,
+    pub kind: String,
+    pub rule_kind: Option<String>,
+    pub adjustment_percent: Option<String>,
+}
+
+impl From<rustok_pricing::PriceResolutionSource> for GqlPricingPriceSource {
+    fn from(source: rustok_pricing::PriceResolutionSource) -> Self {
+        let price_id = source.price_id();
+        let kind = source.kind().to_string();
+        let (rule_kind, adjustment_percent) = match source {
+            rustok_pricing::PriceResolutionSource::PriceListRule { rule, .. } => (
+                Some(
+                    match rule.kind {
+                        rustok_pricing::PriceListRuleKind::PercentageDiscount => {
+                            "percentage_discount"
+                        }
+                    }
+                    .to_string(),
+                ),
+                Some(rule.adjustment_percent.normalize().to_string()),
+            ),
+            rustok_pricing::PriceResolutionSource::Base { .. }
+            | rustok_pricing::PriceResolutionSource::PriceListOverride { .. } => (None, None),
+        };
+        Self {
+            price_id,
+            kind,
+            rule_kind,
+            adjustment_percent,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
 pub struct GqlPricingEffectivePrice {
+    pub source: GqlPricingPriceSource,
     pub currency_code: String,
     pub amount: String,
     pub compare_at_amount: Option<String>,
@@ -529,6 +643,8 @@ pub struct GqlPricingVariant {
 
 #[derive(SimpleObject)]
 pub struct GqlPricingProductDetail {
+    pub resolution_context: Option<GqlPricingResolutionContext>,
+    pub resolved_at: Option<String>,
     pub id: Uuid,
     pub status: String,
     pub seller_id: Option<String>,
@@ -1041,6 +1157,7 @@ pub struct ProductTranslationInput {
 pub struct CreateProductAttributeInput {
     pub code: String,
     pub value_type: String,
+    pub scope: Option<String>,
     pub label: String,
     pub help_text: Option<String>,
     pub is_localized: bool,
@@ -1111,6 +1228,8 @@ pub struct BindSchemaAttributeInput {
     pub position: i32,
     /// Schema-level rule overrides applied on top of the attribute-level `validation`.
     pub validation_overrides: Option<Json<serde_json::Value>>,
+    pub variant_axis_policy: Option<String>,
+    pub default_variant_axis: Option<bool>,
 }
 
 #[derive(InputObject)]
@@ -1124,6 +1243,8 @@ pub struct BindCategoryAttributeInput {
     pub position: Option<i32>,
     /// Category-level rule overrides applied on top of the schema binding rules.
     pub validation_overrides: Option<Json<serde_json::Value>>,
+    pub variant_axis_policy: Option<String>,
+    pub default_variant_axis: Option<bool>,
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -1177,6 +1298,125 @@ pub struct VariantAxisValueInputObject {
 #[derive(InputObject)]
 pub struct SetVariantAxesInputObject {
     pub axes: Vec<VariantAxisInputObject>,
+    pub expected_state: Option<String>,
+    pub reassignments: Option<Vec<VariantAxisReassignmentInputObject>>,
+}
+
+#[derive(InputObject)]
+pub struct VariantAxisReassignmentInputObject {
+    pub variant_id: Uuid,
+    pub axis_values: Vec<VariantAxisValueInputObject>,
+}
+
+impl From<SetVariantAxesInputObject> for rustok_product::dto::SetVariantAxesInput {
+    fn from(input: SetVariantAxesInputObject) -> Self {
+        Self {
+            axes: input
+                .axes
+                .into_iter()
+                .map(|axis| rustok_product::dto::VariantAxisInput {
+                    attribute_id: axis.attribute_id,
+                    position: axis.position.unwrap_or(0),
+                    allowed_option_ids: axis.allowed_option_ids.unwrap_or_default(),
+                })
+                .collect(),
+            expected_state: input.expected_state,
+            reassignments: input
+                .reassignments
+                .unwrap_or_default()
+                .into_iter()
+                .map(|row| rustok_product::dto::VariantAxisReassignmentInput {
+                    variant_id: row.variant_id,
+                    axis_values: row
+                        .axis_values
+                        .into_iter()
+                        .map(|value| rustok_product::dto::VariantAxisValueInput {
+                            attribute_id: value.attribute_id,
+                            option_id: value.option_id,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlVariantAxesPreview {
+    pub product_id: Uuid,
+    pub product_revision: i32,
+    pub state_token: String,
+    pub variant_count: i32,
+    pub can_apply: bool,
+    pub has_changes: bool,
+    pub conflicts: Vec<GqlVariantAxesConflict>,
+    pub has_more_conflicts: bool,
+    pub variants: Vec<GqlVariantAxesPreviewVariant>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlVariantAxesConflict {
+    pub kind: String,
+    pub attribute_id: Option<Uuid>,
+    pub option_id: Option<Uuid>,
+    pub variant_ids: Vec<Uuid>,
+    pub has_more_variants: bool,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlVariantAxesPreviewVariant {
+    pub variant_id: Uuid,
+    pub sku: Option<String>,
+    pub current_values: Vec<GqlVariantAxisValue>,
+    pub proposed_values: Vec<GqlVariantAxisValue>,
+    pub changes: bool,
+}
+
+impl From<rustok_product::dto::VariantAxesPreviewResponse> for GqlVariantAxesPreview {
+    fn from(preview: rustok_product::dto::VariantAxesPreviewResponse) -> Self {
+        let values = |values: Vec<rustok_product::dto::VariantAxisValueInput>| {
+            values
+                .into_iter()
+                .map(|value| GqlVariantAxisValue {
+                    attribute_id: value.attribute_id,
+                    option_id: value.option_id,
+                    code: None,
+                    label: None,
+                })
+                .collect()
+        };
+        Self {
+            product_id: preview.product_id,
+            product_revision: preview.product_revision,
+            state_token: preview.state_token,
+            variant_count: preview.variant_count,
+            can_apply: preview.can_apply,
+            has_changes: preview.has_changes,
+            conflicts: preview
+                .conflicts
+                .into_iter()
+                .map(|conflict| GqlVariantAxesConflict {
+                    kind: conflict.kind.as_str().to_owned(),
+                    attribute_id: conflict.attribute_id,
+                    option_id: conflict.option_id,
+                    variant_ids: conflict.variant_ids,
+                    has_more_variants: conflict.has_more_variants,
+                })
+                .collect(),
+            has_more_conflicts: preview.has_more_conflicts,
+            variants: preview
+                .variants
+                .into_iter()
+                .map(|variant| GqlVariantAxesPreviewVariant {
+                    variant_id: variant.variant_id,
+                    sku: variant.sku,
+                    current_values: values(variant.current_values),
+                    proposed_values: values(variant.proposed_values),
+                    changes: variant.changes,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(InputObject)]
@@ -1628,6 +1868,32 @@ pub struct AddStorefrontCartLineItemInput {
     pub variant_id: Uuid,
     pub quantity: i32,
     pub metadata: Option<String>,
+    /// An observation/precondition, never an amount or customer price-list eligibility.
+    pub expected_context: Option<StorefrontCartPricingContextInput>,
+    pub expected_locale: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct StorefrontCartPricingContextInput {
+    pub currency_code: String,
+    pub region_id: Option<Uuid>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub quantity: i32,
+}
+
+impl From<StorefrontCartPricingContextInput> for rustok_pricing::PriceResolutionContext {
+    fn from(value: StorefrontCartPricingContextInput) -> Self {
+        Self {
+            currency_code: value.currency_code,
+            region_id: value.region_id,
+            price_list_id: value.price_list_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            quantity: Some(value.quantity),
+        }
+    }
 }
 
 #[derive(InputObject)]
@@ -1911,6 +2177,7 @@ impl From<rustok_product::services::ProductAttributeListRecord> for GqlProductAt
             id: value.id,
             code: value.code,
             value_type: value.value_type.as_str().to_string(),
+            scope: value.scope,
             is_localized: value.is_localized,
             is_filterable: value.is_filterable,
             is_searchable: value.is_searchable,
@@ -2275,6 +2542,7 @@ impl From<rustok_pricing::ActivePriceListProjectionSnapshot> for GqlActivePriceL
 impl From<rustok_pricing::ResolvedPrice> for GqlPricingEffectivePrice {
     fn from(value: rustok_pricing::ResolvedPrice) -> Self {
         Self {
+            source: value.source.into(),
             currency_code: value.currency_code,
             amount: value.amount.normalize().to_string(),
             compare_at_amount: value
@@ -2395,6 +2663,8 @@ impl From<rustok_pricing::StorefrontPricingProductTranslation> for GqlProductTra
 impl From<rustok_pricing::AdminPricingProductDetail> for GqlPricingProductDetail {
     fn from(value: rustok_pricing::AdminPricingProductDetail) -> Self {
         Self {
+            resolution_context: None,
+            resolved_at: None,
             id: value.id,
             status: value.status.to_string(),
             seller_id: value.seller_id,
@@ -2413,6 +2683,8 @@ impl From<rustok_pricing::AdminPricingProductDetail> for GqlPricingProductDetail
 impl From<rustok_pricing::StorefrontPricingProductDetail> for GqlPricingProductDetail {
     fn from(value: rustok_pricing::StorefrontPricingProductDetail) -> Self {
         Self {
+            resolution_context: None,
+            resolved_at: None,
             id: value.id,
             status: value.status.to_string(),
             seller_id: value.seller_id,
@@ -3307,5 +3579,94 @@ mod revision_tests {
         assert_eq!(input.revision, Some(4));
         assert_eq!(graphql_patch(input.vendor), Patch::Clear);
         assert_eq!(graphql_patch(input.seller_id), Patch::Keep);
+    }
+}
+
+/// Definition lifecycle inputs map once to the Product owner command. Responses use the
+/// owner-owned, bounded JSON projection identically in GraphQL and native server functions.
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum AttributeDefinitionActionInput {
+    Update,
+    Archive,
+    Restore,
+}
+
+#[derive(InputObject)]
+pub struct AttributeDefinitionCopyInput {
+    pub label: String,
+    pub help_text: Option<String>,
+    pub facet_label: Option<String>,
+    pub seo_label: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct AttributeDefinitionPatchInput {
+    pub translation: Option<AttributeDefinitionCopyInput>,
+    pub is_filterable: Option<bool>,
+    pub is_searchable: Option<bool>,
+    pub is_sortable: Option<bool>,
+    pub is_comparable: Option<bool>,
+    pub show_on_storefront: Option<bool>,
+    pub show_in_admin_grid: Option<bool>,
+    pub search_weight: Option<i32>,
+    pub position: Option<i32>,
+}
+
+#[derive(InputObject)]
+pub struct AttributeOptionDefinitionPatchInput {
+    pub label: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "UpdateProductAttributeDefinitionInput")]
+pub struct UpdateAttributeDefinitionInputObject {
+    pub attribute_id: Uuid,
+    pub option_id: Option<Uuid>,
+    pub locale: String,
+    pub expected_state: String,
+    pub action: AttributeDefinitionActionInput,
+    pub attribute_patch: Option<AttributeDefinitionPatchInput>,
+    pub option_patch: Option<AttributeOptionDefinitionPatchInput>,
+}
+
+impl From<UpdateAttributeDefinitionInputObject>
+    for rustok_product::services::UpdateAttributeDefinitionInput
+{
+    fn from(value: UpdateAttributeDefinitionInputObject) -> Self {
+        use rustok_product::services::*;
+        Self {
+            attribute_id: value.attribute_id,
+            option_id: value.option_id,
+            locale: value.locale,
+            expected_state: value.expected_state,
+            action: match value.action {
+                AttributeDefinitionActionInput::Update => AttributeDefinitionAction::Update,
+                AttributeDefinitionActionInput::Archive => AttributeDefinitionAction::Archive,
+                AttributeDefinitionActionInput::Restore => AttributeDefinitionAction::Restore,
+            },
+            attribute_patch: value.attribute_patch.map(|patch| AttributeDefinitionPatch {
+                translation: patch.translation.map(|copy| AttributeDefinitionCopy {
+                    label: copy.label,
+                    help_text: copy.help_text,
+                    facet_label: copy.facet_label,
+                    seo_label: copy.seo_label,
+                }),
+                is_filterable: patch.is_filterable,
+                is_searchable: patch.is_searchable,
+                is_sortable: patch.is_sortable,
+                is_comparable: patch.is_comparable,
+                show_on_storefront: patch.show_on_storefront,
+                show_in_admin_grid: patch.show_in_admin_grid,
+                search_weight: patch.search_weight,
+                position: patch.position,
+            }),
+            option_patch: value
+                .option_patch
+                .map(|patch| AttributeOptionDefinitionPatch {
+                    label: patch.label,
+                    position: patch.position,
+                }),
+        }
     }
 }

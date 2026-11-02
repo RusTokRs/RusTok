@@ -36,6 +36,7 @@ rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }
 leptos = { workspace = true, features = ["csr"] }
 leptos_router.workspace = true
+leptos-ui.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
@@ -55,3 +56,6 @@ uuid.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 tracing.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Storage", "Location", "History", "Url", "UrlSearchParams"] }

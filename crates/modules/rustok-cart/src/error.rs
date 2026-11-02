@@ -14,6 +14,8 @@ pub enum CartError {
     CartLineItemNotFound(Uuid),
     #[error("invalid cart status transition: {from} -> {to}")]
     InvalidTransition { from: String, to: String },
+    #[error("Cart pricing inputs changed; refresh the cart and quote before changing it")]
+    PricingContextChanged,
     #[error(transparent)]
     Database(#[from] DbErr),
     #[error("tax boundary failed with `{code}` ({kind:?}, retryable={retryable}): {message}")]

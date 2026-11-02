@@ -65,6 +65,27 @@ impl GraphqlCallContext {
         )
     }
 
+    pub(super) fn create_cart(request: &crate::core::CartCreateRequest) -> Self {
+        Self::new(
+            "create_cart",
+            None,
+            request.locale.as_deref().map(|value| value.chars().count()),
+            None,
+            None,
+            Some("create"),
+        )
+    }
+    pub(super) fn add_variant(request: &crate::core::CartAddVariantRequest) -> Self {
+        Self::new(
+            "add_variant",
+            None,
+            request.locale.as_deref().map(|value| value.chars().count()),
+            Some(request.cart_id.chars().count()),
+            None,
+            Some("add"),
+        )
+    }
+
     fn new(
         owner_operation: &'static str,
         selected_cart_id_length: Option<usize>,
@@ -180,16 +201,6 @@ impl GraphqlCallContext {
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let value = value.trim();
-            (!value.is_empty()).then_some(value.chars().count())
-        })
-    })
+    // Observe the same canonical reader as the actual GraphQL request, not an env-only shadow.
+    leptos_auth::storage::get_tenant().map(|value| value.chars().count())
 }

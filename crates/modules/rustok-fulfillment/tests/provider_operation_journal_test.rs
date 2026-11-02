@@ -3,7 +3,7 @@ use rustok_fulfillment::entities::fulfillment;
 use rustok_fulfillment::{
     BeginProviderOperation, DeliverFulfillmentInput, FulfillmentProviderOperationJournal,
     FulfillmentProviderOperationRecovery, FulfillmentService, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
     PROVIDER_OPERATION_SUCCEEDED, ReopenFulfillmentInput,
 };
 use rustok_test_utils::db::setup_test_db;
@@ -25,6 +25,13 @@ async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
             .await
             .expect("provider journal migration should run");
     }
+    rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261101_000121_enforce_provider_effect_admission")
+        .expect("provider admission migration")
+        .up(&manager)
+        .await
+        .expect("current provider guard");
 }
 
 async fn insert_test_fulfillment(
@@ -150,8 +157,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
         journal
             .claim_execution(wrong_tenant, operation.id)
             .await
-            .expect("foreign claim should be evaluated")
-            .is_none(),
+            .is_err(),
         "foreign tenant must not claim provider operation"
     );
     assert!(
@@ -197,7 +203,7 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
         .resolve_unknown_as_failed(tenant_id, operation.id, "carrier confirmed no shipment")
         .await
         .expect("confirmed failure should become retryable");
-    assert_eq!(retryable.status, PROVIDER_OPERATION_ERROR);
+    assert_eq!(retryable.status, PROVIDER_OPERATION_PENDING);
     assert!(retryable.provider_completed_at.is_none());
 
     assert!(
@@ -1257,7 +1263,7 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
 
     service
         .reopen_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment_id,
             ReopenFulfillmentInput {
                 items: None,

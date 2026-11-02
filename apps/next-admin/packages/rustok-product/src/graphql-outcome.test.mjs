@@ -127,3 +127,13 @@ test('missing data without owner metadata is an unknown outcome', async () => {
     (error) => error.retryable === undefined
   );
 });
+
+test('explicit frozen locale is sent even in a Server Action without a DOM', async () => {
+  const executor = transport({ data: { ok: true } });
+  await executor.graphqlRequest('mutation Test { ok }', {}, 'token', 'tenant', {
+    tenantId: 'tenant-id',
+    locale: 'ru'
+  });
+  assert.equal(executor.calls[0].context.headers['Accept-Language'], 'ru');
+  assert.equal(executor.calls[0].context.headers['X-Tenant-ID'], 'tenant-id');
+});

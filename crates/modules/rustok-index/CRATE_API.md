@@ -20,6 +20,7 @@ Source-specific Product, Content, Flex, search, scheduler, and long-running work
 implementations remain outside the engine core.
 
 ## Platform Capability Bindings
+
 - **Core Module Registration**: Exposes `IndexModule` implementing `RusToKModule` (slug `"index"`, kind `ModuleKind::Core`) and `MigrationSource`.
 - **Relational Query Engine**:
   - `IndexQueryPort`, `PostgresIndexQueryPort`, `SharedIndexQueryRuntime`.
@@ -33,6 +34,7 @@ implementations remain outside the engine core.
   - Drift diagnosis, candidate confirmation, and repair workflows.
 
 ## Domain Collaborations
+
 - **Core Platform**: Integrates with `rustok-core` module system and runtime extensions.
 - **Source Modules**: Consumes generic schema definitions and replay sources from domain modules (`rustok-product`, `rustok-content`, etc.) without circular coupling.
 - **Search Integration**: Feeds normalized cross-module relational projections into `rustok-search`.
@@ -423,3 +425,41 @@ builders or DTOs.
 - Encoding Decimal aggregate order values as JSON numbers or floats instead of exact strings.
 - Treating a source-complete aggregate compiler as PostgreSQL/reference execution evidence.
 - Executing compiler SQL outside `PostgresIndexQueryPort` or splitting page/count snapshots.
+
+## Source refresh identity and durable replay requests (2026-11-02)
+
+The source refresh persistence boundary can be awaited separately from transport ACK. It
+validates the registered source/schema/key and minimum committed version, then persists the
+loaded owner's stable mutation UUID unchanged. The envelope UUID remains the delivery/ACK
+identity. Inbox duplicate decoding explicitly projects the persisted INTEGER schema version as
+BIGINT for the Rust `i64` getter; it must not rely on a PostgreSQL driver widening INT4 implicitly. Rebinding successively newer owner payloads to one old envelope UUID is forbidden:
+otherwise an ordinary redelivery would collide with the immutable inbox payload hash.
+
+The existing PostgreSQL source-factory catalog optionally contributes real module event
+listeners after shared capabilities have been materialized; Index stays domain-neutral.
+The job store accepts an original-identity replay enqueue without acquiring a worker lease or
+reading owner tables. It atomically checks schema/scope/identity and persists the pending job
+before success; identical enqueue retains job/checkpoint, while terminal or identity drift
+refuses. A checkpoint without its retained original job refuses a fresh enqueue rather than
+letting an orphan completed cursor stand in for an initial replay. Already-complete acquisition
+also requires the exact durable null-cursor checkpoint before returning success. Run requests
+can fence an exact existing job UUID, including after restart.
+
+The generic replay module-work adapter discovers bounded due rebuild work and delegates
+lease acquisition, page persistence/checkpoints, heartbeat, yield and completion to the
+existing replay owner. It does not reconstruct source authority from job or event metadata.
+Source invocation resolves its own current authority. No source-specific SQL, baseline,
+permission, absence certificate or global commit watermark is added to the engine.
+
+Replay discovery filters the immutable selected source/schema bindings. `Busy` is held, not
+completed; a page-budget yield is resumable, not job success. Module-work completion checks the
+retained exact job result and never substitutes an acknowledgement for persistence. The adapter
+uses the single `SharedIndexReplayRuntime`, not a second runner materialization.
+
+**Pending recovery boundary:** the current runner terminalizes page errors, including retryable
+owner failures. This slice does not wire automatic backoff or original-job operator recovery.
+A crash/lease expiry or successful bounded yield resumes its original checkpoint, but a retained
+`failed`/`cancelled` job stays parked and activation redelivery refuses instead of replacing it.
+Lease `attempt_count` includes normal yielded acquisitions and is not a consecutive-failure
+budget. The existing retry store requires an active lease; calling it after terminalization is
+invalid. Recovery integration and runtime/concurrency evidence remain open.

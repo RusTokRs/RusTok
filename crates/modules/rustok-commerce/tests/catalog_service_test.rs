@@ -25,6 +25,15 @@ use uuid::Uuid;
 
 mod support;
 
+#[path = "inventory_catalog_deletion.rs"]
+mod inventory_catalog_deletion;
+
+#[path = "inventory_quantity_writes.rs"]
+mod inventory_quantity_writes;
+
+#[path = "inventory_source_history.rs"]
+mod inventory_source_history;
+
 mod product_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("product_field_definitions");
 }
@@ -146,11 +155,13 @@ async fn bind_test_category_attribute(
     db.execute_raw(sea_orm::Statement::from_sql_and_values(
         sea_orm::DatabaseBackend::Sqlite,
         "INSERT INTO category_attributes (id, tenant_id, category_id, attribute_id, binding_kind, is_disabled, variant_axis_policy)
-         VALUES (?, ?, ?, ?, 'addition', 0, 'allowed')",
+         SELECT ?, tenant_id, ?, id, 'addition', 0,
+                CASE WHEN value_type = 'select' AND scope IN ('variant', 'both') THEN 'allowed' ELSE 'forbidden' END
+         FROM product_attributes WHERE tenant_id = ? AND id = ?",
         vec![
             Uuid::new_v4().into(),
-            tenant_id.into(),
             category_id.into(),
+            tenant_id.into(),
             attribute_id.into(),
         ],
     ))

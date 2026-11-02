@@ -43,10 +43,10 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        entity::Entity::insert(Self::model_from_envelope(envelope)?)
+        let affected = entity::Entity::insert(Self::model_from_envelope(envelope)?)
             .exec_without_returning(txn)
             .await?;
-        Ok(())
+        require_inserted_event(affected)
     }
 
     /// Writes one validated sealed contract event through an owner transaction.
@@ -57,10 +57,10 @@ impl OutboxTransport {
     where
         C: ConnectionTrait,
     {
-        entity::Entity::insert(Self::model_from_contract_envelope(envelope)?)
+        let affected = entity::Entity::insert(Self::model_from_contract_envelope(envelope)?)
             .exec_without_returning(txn)
             .await?;
-        Ok(())
+        require_inserted_event(affected)
     }
 
     /// Writes one sealed contract exactly once under its caller-supplied envelope ID.
@@ -212,6 +212,15 @@ impl OutboxTransport {
     }
 }
 
+// Unconditional publication is not write-once replay. A suppressed/zero-row insert
+// cannot acknowledge an owner mutation whose required event was never persisted.
+fn require_inserted_event(affected: u64) -> Result<()> {
+    if affected != 1 {
+        return Err(sea_orm::DbErr::RecordNotInserted.into());
+    }
+    Ok(())
+}
+
 fn same_contract_publication(
     stored: &ContractEventEnvelope,
     expected: &ContractEventEnvelope,
@@ -296,7 +305,18 @@ mod tests {
     };
     use uuid::Uuid;
 
-    use super::{OutboxTransport, same_contract_publication};
+    use super::{OutboxTransport, require_inserted_event, same_contract_publication};
+
+    #[test]
+    fn unconditional_publication_rejects_zero_or_multiple_inserted_rows() {
+        assert!(require_inserted_event(0).is_err());
+        assert!(require_inserted_event(2).is_err());
+    }
+
+    #[test]
+    fn unconditional_publication_accepts_exactly_one_inserted_row() {
+        require_inserted_event(1).expect("one durable canonical event");
+    }
 
     fn envelope() -> EventEnvelope {
         EventEnvelope::new(

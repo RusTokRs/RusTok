@@ -1,3 +1,7 @@
+mod deletion;
+
+pub use deletion::{CatalogDeletionBlocker, CatalogDeletionError, MAX_CATALOG_DELETE_VARIANTS};
+
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
@@ -44,25 +48,9 @@ impl BootstrapService {
                 "tenant_id cannot be nil".to_string(),
             ));
         }
-        if let Some(location) = entities::stock_location::Entity::find()
-            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-            .filter(entities::stock_location::Column::Code.eq("default"))
-            .filter(entities::stock_location::Column::DeletedAt.is_null())
-            .one(conn)
-            .await?
-        {
+        if let Some(location) = Self::find_default_location_in_tx(conn, tenant_id).await? {
             return Ok(location);
         }
-        if let Some(location) = entities::stock_location::Entity::find()
-            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-            .filter(entities::stock_location::Column::DeletedAt.is_null())
-            .order_by_asc(entities::stock_location::Column::CreatedAt)
-            .one(conn)
-            .await?
-        {
-            return Ok(location);
-        }
-
         if conn.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             let lock_key = format!("inventory:stock_location_bootstrap:{tenant_id}");
             conn.execute_raw(Statement::from_sql_and_values(
@@ -71,23 +59,7 @@ impl BootstrapService {
                 [lock_key.into()],
             ))
             .await?;
-
-            if let Some(location) = entities::stock_location::Entity::find()
-                .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-                .filter(entities::stock_location::Column::Code.eq("default"))
-                .filter(entities::stock_location::Column::DeletedAt.is_null())
-                .one(conn)
-                .await?
-            {
-                return Ok(location);
-            }
-            if let Some(location) = entities::stock_location::Entity::find()
-                .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-                .filter(entities::stock_location::Column::DeletedAt.is_null())
-                .order_by_asc(entities::stock_location::Column::CreatedAt)
-                .one(conn)
-                .await?
-            {
+            if let Some(location) = Self::find_default_location_in_tx(conn, tenant_id).await? {
                 return Ok(location);
             }
         }
@@ -144,18 +116,19 @@ impl BootstrapService {
         Ok(location)
     }
 
-    pub async fn create_initial_records_in_tx<C>(
-        conn: &C,
+    pub async fn create_initial_records_in_tx(
+        conn: &sea_orm::DatabaseTransaction,
         location: &entities::stock_location::Model,
+        actor_id: Uuid,
         input: InitialInventory,
-    ) -> Result<(), sea_orm::DbErr>
-    where
-        C: ConnectionTrait,
-    {
+    ) -> Result<(), sea_orm::DbErr> {
         if location.id.is_nil() {
             return Err(sea_orm::DbErr::Custom(
                 "location.id cannot be nil".to_string(),
             ));
+        }
+        if actor_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom("actor_id cannot be nil".to_owned()));
         }
         if input.variant_id.is_nil() {
             return Err(sea_orm::DbErr::Custom(
@@ -201,45 +174,64 @@ impl BootstrapService {
         .insert(conn)
         .await?;
 
+        crate::source_history::record_created(
+            conn,
+            location.tenant_id,
+            input.variant_id,
+            Some(actor_id),
+        )
+        .await?;
         Ok(())
     }
 
-    pub async fn update_initial_quantity_in_tx<C>(
+    /// Read-only owner selector shared with quantity planning; creation is a separate operation.
+    pub(super) async fn find_default_location_in_tx<C>(
         conn: &C,
-        variant_id: Uuid,
-        quantity: i32,
-    ) -> Result<(), sea_orm::DbErr>
+        tenant_id: Uuid,
+    ) -> Result<Option<entities::stock_location::Model>, sea_orm::DbErr>
     where
         C: ConnectionTrait,
     {
-        if variant_id.is_nil() {
-            return Err(sea_orm::DbErr::Custom(
-                "variant_id cannot be nil".to_string(),
-            ));
-        }
-        if quantity < 0 {
-            return Err(sea_orm::DbErr::Custom(
-                "quantity cannot be negative".to_string(),
-            ));
-        }
-        let Some(item) = entities::inventory_item::Entity::find()
-            .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
-            .one(conn)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        if let Some(level) = entities::inventory_level::Entity::find()
-            .filter(entities::inventory_level::Column::InventoryItemId.eq(item.id))
+        if let Some(location) = entities::stock_location::Entity::find()
+            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::Code.eq("default"))
+            .filter(entities::stock_location::Column::DeletedAt.is_null())
+            .order_by_asc(entities::stock_location::Column::CreatedAt)
+            .order_by_asc(entities::stock_location::Column::Id)
             .one(conn)
             .await?
         {
-            let mut active: entities::inventory_level::ActiveModel = level.into();
-            active.stocked_quantity = Set(quantity);
-            active.updated_at = Set(Utc::now().into());
-            active.update(conn).await?;
+            return Ok(Some(location));
         }
+        entities::stock_location::Entity::find()
+            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::DeletedAt.is_null())
+            .order_by_asc(entities::stock_location::Column::CreatedAt)
+            .order_by_asc(entities::stock_location::Column::Id)
+            .one(conn)
+            .await
+    }
+
+    /// Caller owns commit/rollback, including canonical stock notification and Product effects.
+    pub async fn update_initial_quantity_in_tx(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        quantity: i32,
+    ) -> Result<(), super::QuantityWriteError> {
+        if quantity < 0 {
+            return Err(super::quantity::QuantityWriteBlocker::InvalidRequest.into());
+        }
+        super::quantity::write_quantity(
+            txn,
+            tenant_id,
+            actor_id,
+            variant_id,
+            super::quantity::Change::Set(quantity),
+            None,
+        )
+        .await?;
         Ok(())
     }
 
@@ -280,75 +272,25 @@ impl BootstrapService {
             .all(conn)
             .await?;
 
-        let mut available_by_variant = HashMap::new();
-        for level in levels {
-            if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-                let available = level
-                    .stocked_quantity
-                    .saturating_sub(level.reserved_quantity);
-                let entry = available_by_variant.entry(*variant_id).or_insert(0_i32);
-                *entry = (*entry).saturating_add(available);
-            }
-        }
-
-        Ok(available_by_variant)
+        super::quantity::available_by_variant(&item_to_variant, &levels)
     }
 
-    pub async fn delete_records_for_variants_in_tx<C>(
-        conn: &C,
+    /// Remove only proved empty bookkeeping; never purge stock or retained history.
+    /// The caller must propagate errors and roll back the enclosing transaction.
+    pub async fn delete_records_for_variants_in_tx(
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Uuid,
         variant_ids: &[Uuid],
-    ) -> Result<(), sea_orm::DbErr>
-    where
-        C: ConnectionTrait,
-    {
-        if variant_ids.is_empty() {
-            return Ok(());
-        }
-
-        if variant_ids.iter().any(|id| id.is_nil()) {
-            return Err(sea_orm::DbErr::Custom(
-                "variant_ids must not contain a nil UUID".to_string(),
-            ));
-        }
-
-        let inventory_item_ids: Vec<Uuid> = entities::inventory_item::Entity::find()
-            .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-            .all(conn)
-            .await?
-            .into_iter()
-            .map(|item| item.id)
-            .collect();
-        if inventory_item_ids.is_empty() {
-            return Ok(());
-        }
-
-        entities::reservation_item::Entity::delete_many()
-            .filter(
-                entities::reservation_item::Column::InventoryItemId
-                    .is_in(inventory_item_ids.clone()),
-            )
-            .exec(conn)
-            .await?;
-        entities::inventory_level::Entity::delete_many()
-            .filter(
-                entities::inventory_level::Column::InventoryItemId
-                    .is_in(inventory_item_ids.clone()),
-            )
-            .exec(conn)
-            .await?;
-        entities::inventory_item::Entity::delete_many()
-            .filter(entities::inventory_item::Column::Id.is_in(inventory_item_ids))
-            .exec(conn)
-            .await?;
-
-        Ok(())
+    ) -> Result<(), CatalogDeletionError> {
+        deletion::delete_records(txn, tenant_id, actor_id, variant_ids).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::Database;
+    use sea_orm::{Database, TransactionTrait};
 
     #[test]
     fn initial_inventory_debug_derives_correctly() {
@@ -386,9 +328,14 @@ mod tests {
             sku: None,
             available_quantity: 10,
         };
-        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, input)
-            .await
-            .expect_err("nil location.id must be rejected");
+        let err = BootstrapService::create_initial_records_in_tx(
+            &db.begin().await.unwrap(),
+            &loc,
+            Uuid::new_v4(),
+            input,
+        )
+        .await
+        .expect_err("nil location.id must be rejected");
         assert!(err.to_string().contains("location.id cannot be nil"));
     }
 
@@ -416,9 +363,14 @@ mod tests {
             sku: None,
             available_quantity: 10,
         };
-        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, nil_variant_input)
-            .await
-            .expect_err("nil variant_id must be rejected");
+        let err = BootstrapService::create_initial_records_in_tx(
+            &db.begin().await.unwrap(),
+            &loc,
+            Uuid::new_v4(),
+            nil_variant_input,
+        )
+        .await
+        .expect_err("nil variant_id must be rejected");
         assert!(err.to_string().contains("variant_id cannot be nil"));
 
         let negative_qty_input = InitialInventory {
@@ -426,9 +378,14 @@ mod tests {
             sku: None,
             available_quantity: -5,
         };
-        let err = BootstrapService::create_initial_records_in_tx(&db, &loc, negative_qty_input)
-            .await
-            .expect_err("negative available_quantity must be rejected");
+        let err = BootstrapService::create_initial_records_in_tx(
+            &db.begin().await.unwrap(),
+            &loc,
+            Uuid::new_v4(),
+            negative_qty_input,
+        )
+        .await
+        .expect_err("negative available_quantity must be rejected");
         assert!(
             err.to_string()
                 .contains("available_quantity cannot be negative")
@@ -436,17 +393,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn initial_inventory_requires_current_actor_before_any_bookkeeping_write() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let location = entities::stock_location::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            code: Some("default".into()),
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            province: None,
+            postal_code: None,
+            country_code: None,
+            phone: None,
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+            deleted_at: None,
+        };
+        let txn = db.begin().await.unwrap();
+        let error = BootstrapService::create_initial_records_in_tx(
+            &txn,
+            &location,
+            Uuid::nil(),
+            InitialInventory {
+                variant_id: Uuid::new_v4(),
+                sku: None,
+                available_quantity: 0,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("actor_id cannot be nil"));
+        txn.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_bootstrap_service_update_initial_quantity_guards() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
-        let err = BootstrapService::update_initial_quantity_in_tx(&db, Uuid::nil(), 5)
+        let txn = db.begin().await.unwrap();
+        let tenant = Uuid::new_v4();
+        let actor = Uuid::new_v4();
+        for (variant, quantity) in [(Uuid::nil(), 5), (Uuid::new_v4(), -1)] {
+            let error = BootstrapService::update_initial_quantity_in_tx(
+                &txn, tenant, actor, variant, quantity,
+            )
             .await
-            .expect_err("nil variant_id must be rejected");
-        assert!(err.to_string().contains("variant_id cannot be nil"));
-
-        let err = BootstrapService::update_initial_quantity_in_tx(&db, Uuid::new_v4(), -1)
-            .await
-            .expect_err("negative quantity must be rejected");
-        assert!(err.to_string().contains("quantity cannot be negative"));
+            .expect_err("invalid quantity input must fail before querying missing tables");
+            assert!(matches!(
+                error,
+                super::super::quantity::QuantityWriteError::Rejected(
+                    super::super::quantity::QuantityWriteBlocker::InvalidRequest
+                )
+            ));
+        }
+        txn.rollback().await.unwrap();
     }
 
     #[tokio::test]
@@ -460,15 +461,19 @@ mod tests {
                 .contains("variant_ids must not contain a nil UUID")
         );
 
+        let txn = db.begin().await.unwrap();
         let err = BootstrapService::delete_records_for_variants_in_tx(
-            &db,
+            &txn,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
             &[Uuid::new_v4(), Uuid::nil()],
         )
         .await
         .expect_err("nil variant_id in delete slice must be rejected");
-        assert!(
-            err.to_string()
-                .contains("variant_ids must not contain a nil UUID")
-        );
+        assert!(matches!(
+            err,
+            CatalogDeletionError::Rejected(CatalogDeletionBlocker::InvalidRequest)
+        ));
+        txn.rollback().await.unwrap();
     }
 }

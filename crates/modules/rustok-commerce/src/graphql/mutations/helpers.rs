@@ -818,22 +818,6 @@ pub(crate) fn resolve_commerce_graphql_locale(
         .unwrap_or_else(|| tenant_default_locale.to_string())
 }
 
-pub(crate) fn build_storefront_pricing_context(
-    cart: &crate::dto::CartResponse,
-    request_context: &RequestContext,
-    public_channel_slug: Option<&str>,
-    quantity: i32,
-) -> PriceResolutionContext {
-    PriceResolutionContext {
-        currency_code: cart.currency_code.to_ascii_uppercase(),
-        region_id: cart.region_id,
-        price_list_id: None,
-        channel_id: cart.channel_id.or(request_context.channel_id),
-        channel_slug: public_channel_slug.map(|slug| slug.to_string()),
-        quantity: Some(quantity),
-    }
-}
-
 pub(crate) async fn reprice_storefront_cart_line_items(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -846,37 +830,31 @@ pub(crate) async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
-        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
-    let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus.clone());
+    let pricing_context =
+        rustok_cart::CartPricingContextGuard::capture(&cart).map_err(cart_port_error)?;
+    let pricing_read_port = in_process_pricing_read_port(
+        db.clone(),
+        event_bus.clone(),
+        crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
+            db.clone(),
+            event_bus.clone(),
+        ),
+    );
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
-        let Some(variant_id) = line_item.variant_id else {
+        if line_item.variant_id.is_none() {
             continue;
-        };
-        let pricing_context = build_storefront_pricing_context(
+        }
+        let resolved_price: rustok_pricing::ResolvedPrice = crate::read_storefront_cart_line_quote(
+            pricing_read_port.as_ref(),
+            storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id),
             &cart,
-            request_context,
-            public_channel_slug.as_deref(),
+            line_item.id,
             line_item.quantity,
-        );
-        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-            .resolve_product_price(
-                storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id),
-                ResolveProductPriceRequest {
-                    product_id: line_item.product_id,
-                    variant_id,
-                    region_id: pricing_context.region_id,
-                    channel_id: pricing_context.channel_id,
-                    channel_slug: pricing_context.channel_slug,
-                    price_list_id: pricing_context.price_list_id,
-                    quantity: pricing_context.quantity,
-                    currency_code: pricing_context.currency_code,
-                },
-            )
-            .await
-            .map_err(cart_port_error)?
-            .into();
+        )
+        .await
+        .map_err(cart_port_error)?
+        .into();
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -900,6 +878,7 @@ pub(crate) async fn reprice_storefront_cart_line_items(
                 CartStorefrontRepriceRequest {
                     cart_id: cart.id,
                     updates,
+                    pricing_context,
                 },
             )
             .await
@@ -917,8 +896,9 @@ pub(crate) fn storefront_pricing_port_context(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.storefront-pricing"),
         request_context.locale.as_str(),
-        format!("storefront-pricing:{cart_id}:{line_item_id}"),
+        request_context.correlation_id.clone(),
     )
+    .with_causation_id(format!("storefront-pricing:{cart_id}:{line_item_id}"))
     .with_deadline(std::time::Duration::from_secs(2));
     request_context
         .channel_slug
@@ -937,6 +917,7 @@ pub(crate) fn storefront_cart_pricing_update(
 
     rustok_cart::services::cart::CartLineItemPricingUpdate {
         line_item_id,
+        quantity,
         unit_price: base_unit_price,
         pricing_adjustment,
     }
@@ -1026,27 +1007,6 @@ pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
             "id": seller_id,
         }
     })
-}
-
-pub(crate) async fn validate_storefront_line_item_quantity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> Result<()> {
-    validate_storefront_variant_inventory(
-        db,
-        tenant_id,
-        &product_variant::Entity::find_by_id(variant_id)
-            .filter(product_variant::Column::TenantId.eq(tenant_id))
-            .one(db)
-            .await?
-            .ok_or_else(|| async_graphql::Error::new("Variant not found"))?,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
 }
 
 pub(crate) async fn validate_storefront_variant_inventory(

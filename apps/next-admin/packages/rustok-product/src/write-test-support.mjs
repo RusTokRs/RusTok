@@ -10,21 +10,28 @@ export function memoryJournal(
   resource = 'new',
   state = { text: null, locked: false },
   scope = testScope,
-  intent = testIntent
+  intent = testIntent,
+  kind = 'product'
 ) {
-  return new ProductWriteJournal(scope, resource, intent, {
-    read: () => state.text,
-    write: (value) => {
-      state.text = value;
-    },
-    exclusive: async (work) => {
-      if (state.locked) throw new Error('busy');
-      state.locked = true;
-      try {
-        return await work();
-      } finally {
-        state.locked = false;
+  return new ProductWriteJournal(
+    scope,
+    resource,
+    intent,
+    {
+      read: () => state.text,
+      write: (value) => {
+        state.text = value;
+      },
+      exclusive: async (work) => {
+        if (state.locked) throw new Error('busy');
+        state.locked = true;
+        try {
+          return await work();
+        } finally {
+          state.locked = false;
+        }
       }
-    }
-  });
+    },
+    kind
+  );
 }

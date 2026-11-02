@@ -280,6 +280,9 @@ fn map_cart_error(
             "cart.invalid_transition",
             "cart lifecycle transition conflicts with the current state",
         ),
+        CartError::PricingContextChanged => PortError::conflict(
+            "cart.pricing_context_changed", "Cart pricing context changed; refresh the cart and quote",
+        ),
         CartError::Database(_) => PortError::unavailable(
             "cart.marketplace_snapshot_storage_unavailable",
             "marketplace cart snapshot storage is temporarily unavailable",
@@ -310,6 +313,7 @@ fn cart_error_code(error: &CartError) -> &str {
         CartError::CartNotFound(_) => "cart.not_found",
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.invalid_transition",
+        CartError::PricingContextChanged => "cart.pricing_context_changed",
         CartError::Database(_) => "cart.marketplace_snapshot_storage_unavailable",
         CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
             code.as_str()

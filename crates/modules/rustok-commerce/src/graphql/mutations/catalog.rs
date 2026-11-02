@@ -40,7 +40,7 @@ fn invalid_product_idempotency_key(message: impl Into<String>) -> async_graphql:
         .extend_with(|_, extensions| extensions.set("code", "BAD_USER_INPUT"))
 }
 
-fn product_command_runtime(ctx: &Context<'_>) -> Result<ProductCatalogCommandRuntime> {
+pub(crate) fn product_command_runtime(ctx: &Context<'_>) -> Result<ProductCatalogCommandRuntime> {
     let db = ctx.data::<sea_orm::DatabaseConnection>()?;
     let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
     Ok(
@@ -112,38 +112,15 @@ fn product_schema_write_context(
     product_command_context(ctx, actor, product_id, idempotency_key, operation)
 }
 
-/// These domain codes are returned by the catalog owner only after its
-/// deterministic failure is durably finalized (or replayed). Admission/context
-/// errors must not be confused with a decision about an earlier uncertain write.
 fn product_command_error_outcome(error: &PortError) -> &'static str {
-    if !error.retryable
-        && matches!(
-            error.kind,
-            PortErrorKind::Validation | PortErrorKind::NotFound | PortErrorKind::Conflict
-        )
-        && matches!(
-            error.code.as_str(),
-            "product.validation"
-                | "product.conflict"
-                | "product.dependency_not_found"
-                | "product.duplicate_handle"
-                | "product.duplicate_sku"
-                | "product.revision_conflict"
-                | "product.no_variants"
-                | "product.lifecycle_conflict"
-                | "product.cannot_delete_only_variant"
-                | "product.product_not_found"
-                | "product.variant_not_found"
-                | "product.image_not_found"
-        )
-    {
+    if rustok_product::product_catalog_command_error_is_terminal(error) {
         "rejected"
     } else {
         "unknown"
     }
 }
 
-fn product_command_port_error(
+pub(crate) fn product_command_port_error(
     context: &PortContext,
     error: PortError,
     operation: &'static str,
@@ -188,6 +165,22 @@ fn product_command_port_error(
             "Product was modified by another editor; reload it and apply your changes again",
             "PRODUCT_REVISION_CONFLICT",
         ),
+        (PortErrorKind::Conflict, "product.variant_axes_preview_required") => (
+            "Preview the exact axes proposal before applying it",
+            "PRODUCT_VARIANT_AXES_PREVIEW_REQUIRED",
+        ),
+        (PortErrorKind::Conflict, "product.variant_axes_stale") => (
+            "Product axes or assignments changed; preview the proposal again",
+            "PRODUCT_VARIANT_AXES_STALE",
+        ),
+        (PortErrorKind::Conflict, "product.variant_axes_conflict") => (
+            "Resolve the missing assignments and duplicate combinations reported by preview",
+            "PRODUCT_VARIANT_AXES_CONFLICT",
+        ),
+        (PortErrorKind::Conflict, "product.variant_axes_limit_exceeded") => (
+            "Atomic reconfiguration supports at most 256 variants, 32 axes and 256 options per axis; no changes were made",
+            "PRODUCT_VARIANT_AXES_LIMIT_EXCEEDED",
+        ),
         (PortErrorKind::Validation, "product.revision_required") => (
             "Product update requires the revision of the document that was read",
             "PRODUCT_REVISION_REQUIRED",
@@ -203,20 +196,58 @@ fn product_command_port_error(
         ),
     };
 
+    let deletion_failure = rustok_product::error::inventory_deletion_public_failure(&error)
+        .or_else(|| rustok_product::error::inventory_quantity_public_failure(&error));
+    let (message, code) = if let Some((message, code, _)) = deletion_failure {
+        (message, code)
+    } else {
+        (message, code)
+    };
+
     tracing::error!(
         operation,
-        internal_code = %error.code,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
+        tenant_id_length = context.tenant_id.chars().count(),
         public_code = code,
         "Product GraphQL owner command failed"
     );
 
+    // Only this owner-defined code carries bounded UUID/closed-reason diagnostics.
+    // Other owner text remains redacted by the exhaustive mapping above.
+    let message = if error.kind == PortErrorKind::Conflict
+        && error.code == "product.variant_axis_policy_conflict"
+    {
+        error.message.as_str()
+    } else {
+        message
+    };
+    let code = if error.code == "product.variant_axis_policy_conflict"
+        && error.kind == PortErrorKind::Conflict
+    {
+        "PRODUCT_VARIANT_AXIS_POLICY_CONFLICT"
+    } else {
+        code
+    };
     async_graphql::Error::new(message).extend_with(|_, extensions| {
         extensions.set("code", code);
-        extensions.set("retryable", error.retryable);
-        extensions.set("outcome", product_command_error_outcome(&error));
+        extensions.set(
+            "retryable",
+            if deletion_failure.is_some() {
+                false
+            } else {
+                error.retryable
+            },
+        );
+        extensions.set(
+            "outcome",
+            if operation == "preview_variant_axes" {
+                "unknown" // A read must never finalize an earlier uncertain mutation.
+            } else {
+                product_command_error_outcome(&error)
+            },
+        );
         extensions.set("correlation_id", context.correlation_id.clone());
     })
 }
@@ -502,16 +533,7 @@ impl CommerceCatalogMutation {
         )?;
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
 
-        let axes = input
-            .axes
-            .into_iter()
-            .map(|axis| rustok_product::dto::VariantAxisInput {
-                attribute_id: axis.attribute_id,
-                position: axis.position.unwrap_or(0),
-                allowed_option_ids: axis.allowed_option_ids.unwrap_or_default(),
-            })
-            .collect();
-        let domain_input = rustok_product::dto::SetVariantAxesInput { axes };
+        let domain_input = input.into();
         let port_context = product_command_context(
             ctx,
             (tenant_id, user_id),
@@ -1361,6 +1383,37 @@ impl CommerceCatalogMutation {
         Ok(true)
     }
 
+    async fn update_product_attribute_definition(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        input: UpdateAttributeDefinitionInputObject,
+    ) -> Result<async_graphql::Json<rustok_product::services::AttributeDefinitionResult>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_MANAGE],
+            "Permission denied: products:manage required",
+        )?;
+        let actor = product_mutation_actor(ctx)?;
+        let input: rustok_product::services::UpdateAttributeDefinitionInput = input.into();
+        let mut context = product_schema_write_context(
+            ctx,
+            actor,
+            None,
+            idempotency_key,
+            "update_attribute_definition",
+        )?;
+        context.locale = input.locale.clone();
+        let result = product_schema_write_port(ctx, &context)?
+            .update_attribute_definition(context.clone(), input)
+            .await
+            .map_err(|error| {
+                product_command_port_error(&context, error, "update_attribute_definition")
+            })?;
+        Ok(async_graphql::Json(result))
+    }
+
     async fn create_product_attribute(
         &self,
         ctx: &Context<'_>,
@@ -1382,7 +1435,7 @@ impl CommerceCatalogMutation {
         let domain_input = rustok_product::services::CreateProductAttributeInput {
             code: input.code,
             value_type: parse_attribute_value_type(&input.value_type)?,
-            scope: "product".to_string(),
+            scope: input.scope.unwrap_or_else(|| "product".to_string()),
             is_localized: input.is_localized,
             is_filterable: input.is_filterable,
             is_searchable: input.is_searchable,
@@ -1683,6 +1736,13 @@ impl CommerceCatalogMutation {
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
             validation_overrides,
+            variant_axis_policy: input
+                .variant_axis_policy
+                .as_deref()
+                .map(str::parse::<rustok_product::dto::VariantAxisPolicy>)
+                .transpose()
+                .map_err(invalid_catalog_input)?,
+            default_variant_axis: input.default_variant_axis,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(
@@ -1728,6 +1788,13 @@ impl CommerceCatalogMutation {
             position: input.position,
             visibility_overrides: serde_json::Value::Object(Default::default()),
             validation_overrides,
+            variant_axis_policy: input
+                .variant_axis_policy
+                .as_deref()
+                .map(str::parse::<rustok_product::dto::VariantAxisPolicy>)
+                .transpose()
+                .map_err(invalid_catalog_input)?,
+            default_variant_axis: input.default_variant_axis,
             metadata: serde_json::Value::Object(Default::default()),
         };
         let port_context = product_schema_write_context(
@@ -2116,5 +2183,131 @@ mod product_error_outcome_tests {
                 "unknown"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod deletion_errors {
+    use super::*;
+    use rustok_inventory::CatalogDeletionBlocker;
+
+    fn context() -> PortContext {
+        PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "current-deletion-correlation",
+        )
+    }
+
+    #[test]
+    fn graphql_deletion_refusals_use_fixed_copy_and_current_correlation() {
+        let context = context();
+        for reason in CatalogDeletionBlocker::ALL {
+            let mut owner = rustok_product::error::inventory_deletion_port_error(&reason);
+            owner.message = "private-provider-details".into();
+            let expected = rustok_product::error::inventory_deletion_public_policy(&reason);
+            let error = product_command_port_error(&context, owner, "delete_product");
+            assert_eq!(error.message, reason.message());
+            let extensions = error.extensions.as_ref().unwrap();
+            assert_eq!(
+                extensions.get("code"),
+                Some(&async_graphql::Value::String(expected.1.into()))
+            );
+            assert_eq!(
+                extensions.get("retryable"),
+                Some(&async_graphql::Value::Boolean(false))
+            );
+            assert_eq!(
+                extensions.get("correlation_id"),
+                Some(&async_graphql::Value::String(
+                    context.correlation_id.clone()
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn contradictory_provider_retry_hint_is_not_a_finalized_outcome() {
+        let context = context();
+        let mut owner = rustok_product::error::inventory_deletion_port_error(
+            &CatalogDeletionBlocker::HistoryPresent,
+        );
+        owner.retryable = true;
+        owner.message = "private-provider-details".into();
+        let error = product_command_port_error(&context, owner, "delete_product");
+        assert!(!error.message.contains("private-provider-details"));
+        let extensions = error.extensions.as_ref().unwrap();
+        assert_eq!(
+            extensions.get("retryable"),
+            Some(&async_graphql::Value::Boolean(false))
+        );
+        assert_eq!(
+            extensions.get("outcome"),
+            Some(&async_graphql::Value::String("unknown".into()))
+        );
+    }
+}
+
+#[cfg(test)]
+mod quantity_errors {
+    use super::*;
+    use rustok_inventory::QuantityWriteBlocker;
+
+    fn context() -> PortContext {
+        PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::user(Uuid::new_v4().to_string()),
+            "en",
+            "current-quantity-correlation",
+        )
+    }
+
+    #[test]
+    fn quantity_graphql_has_fixed_copy_current_correlation_and_finite_public_code() {
+        let context = context();
+        for reason in QuantityWriteBlocker::ALL {
+            let mut port = rustok_product::error::inventory_quantity_port_error(&reason);
+            port.message = "private-provider-details".into();
+            let expected = rustok_product::error::inventory_quantity_public_policy(&reason);
+            let error = product_command_port_error(&context, port, "update_variant");
+            assert_eq!(error.message, reason.message());
+            let extensions = error.extensions.as_ref().unwrap();
+            assert_eq!(
+                extensions.get("code"),
+                Some(&async_graphql::Value::String(expected.1.into()))
+            );
+            assert_eq!(
+                extensions.get("retryable"),
+                Some(&async_graphql::Value::Boolean(false))
+            );
+            assert_eq!(
+                extensions.get("correlation_id"),
+                Some(&async_graphql::Value::String(
+                    context.correlation_id.clone()
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn quantity_graphql_retry_hint_does_not_certify_original_command_outcome() {
+        let context = context();
+        let mut port = rustok_product::error::inventory_quantity_port_error(
+            &QuantityWriteBlocker::InsufficientStock,
+        );
+        port.retryable = true;
+        port.message = "private-provider-details".into();
+        let error = product_command_port_error(&context, port, "update_variant");
+        let extensions = error.extensions.as_ref().unwrap();
+        assert!(!error.message.contains("private-provider-details"));
+        assert_eq!(
+            extensions.get("retryable"),
+            Some(&async_graphql::Value::Boolean(false))
+        );
+        assert_eq!(
+            extensions.get("outcome"),
+            Some(&async_graphql::Value::String("unknown".into()))
+        );
     }
 }

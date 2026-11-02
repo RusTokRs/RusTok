@@ -2,6 +2,7 @@
 // These tests verify price management, currency support,
 // discounts, and price validation logic.
 
+use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use rustok_commerce::CommerceError;
 use rustok_events::DomainEvent;
@@ -24,6 +25,71 @@ use uuid::Uuid;
 
 #[path = "../support/mod.rs"]
 mod support;
+
+pub(crate) fn pricing_read_context(tenant_id: Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::service("pricing-owner-test"),
+        "en",
+        "pricing-owner-test",
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+}
+
+pub(crate) async fn seed_pricing_channel(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    id: Uuid,
+    slug: &str,
+) {
+    use rustok_channel::entities::channel;
+    if let Some(existing) = channel::Entity::find_by_id(id).one(db).await.unwrap() {
+        assert_eq!(existing.tenant_id, tenant_id);
+        assert_eq!(existing.slug, slug);
+        return;
+    }
+    let now = chrono::Utc::now();
+    channel::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        slug: Set(slug.into()),
+        name: Set(slug.into()),
+        is_active: Set(true),
+        is_default: Set(false),
+        status: Set("active".into()),
+        settings: Set(serde_json::json!({})),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .unwrap();
+}
+
+pub(crate) async fn seed_pricing_region(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    id: Uuid,
+    currency: &str,
+) {
+    use rustok_region::entities::region;
+    let now = chrono::Utc::now();
+    region::ActiveModel {
+        id: Set(id),
+        tenant_id: Set(tenant_id),
+        currency_code: Set(currency.into()),
+        tax_provider_id: Set(None),
+        tax_rate: Set(Decimal::ZERO),
+        tax_included: Set(false),
+        countries: Set(serde_json::json!([])),
+        metadata: Set(serde_json::json!({})),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .unwrap();
+}
 
 pub(crate) async fn setup() -> (DatabaseConnection, PricingService, CatalogService) {
     let db = setup_test_db().await;

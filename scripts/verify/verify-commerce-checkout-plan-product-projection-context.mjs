@@ -9,13 +9,37 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs', root),
+  new URL(
+    'crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs',
+    root,
+  ),
   'utf8',
 );
+const catalog = readFileSync(
+  new URL(
+    'crates/modules/rustok-commerce/src/services/checkout_catalog.rs',
+    root,
+  ),
+  'utf8',
+);
+const direct = readFileSync(
+  new URL('crates/modules/rustok-commerce/src/services/checkout.rs', root),
+  'utf8',
+);
+const cart = readFileSync(
+  new URL(
+    'crates/modules/rustok-commerce/src/storefront_cart_runtime.rs',
+    root,
+  ),
+  'utf8',
+);
+const compactCatalog = catalog.replace(/\s+/g, ' ');
 const failures = [];
 
 const requireText = (content, value, label) => {
-  if (!content.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!content.replace(/\s+/g, ' ').includes(value.replace(/\s+/g, ' '))) {
+    failures.push(`${label}: missing ${value}`);
+  }
 };
 const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
@@ -79,7 +103,10 @@ for (const [value, label] of [
     'const CHECKOUT_PLAN_PRODUCT_PROJECTION_BOUNDARY: &str =\n    "commerce_checkout_plan_product_projection";',
     'stable product projection boundary identity',
   ],
-  ['const PRODUCT_PROJECTION_OWNER: &str = "rustok_product";', 'truthful product owner'],
+  [
+    'const PRODUCT_PROJECTION_OWNER: &str = "rustok_product";',
+    'truthful product owner',
+  ],
   [
     'const PRODUCT_PROJECTION_READ_OPERATION: &str = "read_product_projection";',
     'exact product projection operation',
@@ -88,7 +115,8 @@ for (const [value, label] of [
     'const VARIANT_PRODUCT_PROJECTION_READ_OPERATION: &str = "read_variant_product_projection";',
     'exact variant projection operation',
   ],
-]) requireText(source, value, label);
+])
+  requireText(source, value, label);
 
 for (const [value, label] of [
   ['let product_context =', 'retained product context'],
@@ -107,27 +135,164 @@ for (const [value, label] of [
   ['fallback_locale: None', 'unchanged projection fallback'],
   ['&product_context', 'product mapper context input'],
   ['PRODUCT_PROJECTION_READ_OPERATION', 'product owner operation selection'],
-  ['VARIANT_PRODUCT_PROJECTION_READ_OPERATION', 'variant owner operation selection'],
+  [
+    'VARIANT_PRODUCT_PROJECTION_READ_OPERATION',
+    'variant owner operation selection',
+  ],
   [
     'checkout_plan_product_projection_boundary_error(',
     'context-aware product projection mapper',
   ],
-  ['ProductStatus::Active', 'product active validation'],
-  ['product.published_at.is_none()', 'product publication validation'],
-  ['is_metadata_visible_for_public_channel(', 'product channel visibility validation'],
-  ['.find(|variant| variant.id == variant_id)', 'variant membership validation'],
   [
-    'current_shipping_profile_slug != line_item.shipping_profile_slug',
-    'shipping profile snapshot validation',
+    'super::checkout_catalog::variant_demands(cart)?',
+    'shared bounded SKU demand admission',
   ],
-  ['checkout_plan_inventory_boundary_error(&inventory_context, error)', 'inventory mapper remains context-aware'],
-]) requireText(inventoryValidationBlock, value, label);
+  ['for demand in demands', 'one preflight per actual SKU UUID'],
+  [
+    'for line_item in demand.line_items',
+    'every original fulfillment snapshot retained',
+  ],
+  [
+    'super::checkout_catalog::validate_variant_line(',
+    'shared exact SKU and fulfillment validation',
+  ],
+  ['requested_quantity: demand.quantity', 'combined inventory demand'],
+  [
+    'super::checkout_catalog::validate_inventory_observation(',
+    'SKU and quantity observation correlation',
+  ],
+  [
+    'crate::storefront_channel::resolve_cart_channel(',
+    'saved selectors resolved by the Channel owner',
+  ],
+  [
+    'checkout_plan_inventory_boundary_error(&inventory_context, error)',
+    'inventory mapper remains context-aware',
+  ],
+])
+  requireText(inventoryValidationBlock, value, label);
 
-const contextBindings = inventoryValidationBlock.match(/let product_context\s*=/g) ?? [];
-const contextClones = inventoryValidationBlock.match(/product_context\.clone\(\)/g) ?? [];
+// Validation moved to the shared Commerce preflight, not into a second resolver or a
+// dead marker. Require its real invariants and the direct checkout call sites as well.
+for (const [value, label] of [
+  [
+    'pub(crate) const MAX_CHECKOUT_LINE_ITEMS: usize = 1024;',
+    'explicit checkout processing bound',
+  ],
+  ['BTreeMap::<Uuid, CheckoutVariantDemand', 'UUID-keyed inventory demand'],
+  ['checked_add(line.quantity)', 'checked combined quantity'],
+  ['product.tenant_id != tenant_id', 'owner tenant correlation'],
+  [
+    'line.product_id.is_some_and(|id| id != product.id)',
+    'expected Product correlation',
+  ],
+  [
+    '.filter(|variant| variant.id == variant_id)',
+    'exact selected UUID membership',
+  ],
+  ['variant.product_id != product.id', 'selected SKU parent correlation'],
+  ['matches.next().is_some()', 'duplicate selected UUID refusal'],
+  ['ProductStatus::Active', 'active publication requirement'],
+  ['product.published_at.is_none()', 'publication presence'],
+  ['is_metadata_visible_for_public_channel(', 'channel visibility'],
+  [
+    'product.fulfillment_requirement != cart_requirement',
+    'stale fulfillment refusal',
+  ],
+  ['Digital line item', 'digital profile refusal'],
+  [
+    'line.shipping_profile_slug.as_deref() != Some(current.as_str())',
+    'effective profile snapshot check',
+  ],
+  ['observation.variant_id != variant_id', 'availability SKU correlation'],
+  [
+    'observation.requested_quantity != quantity',
+    'availability quantity correlation',
+  ],
+  ['if actor_id.is_nil()', 'guest is not a nil User'],
+  [
+    'rustok_api::PortActor::service("rustok-commerce.checkout")',
+    'truthful guest delegation',
+  ],
+  [
+    'rustok_api::PortActor::user(actor_id.to_string())',
+    'authenticated user delegation',
+  ],
+])
+  requireText(compactCatalog, value, label);
+for (const [value, label] of [
+  [
+    'super::checkout_catalog::variant_demands(cart)?',
+    'direct demand admission',
+  ],
+  [
+    'super::checkout_catalog::validate_variant_line(',
+    'direct exact SKU and fulfillment guard',
+  ],
+  ['requested_quantity: demand.quantity', 'direct combined demand'],
+  [
+    'super::checkout_catalog::validate_inventory_observation(',
+    'direct observation correlation',
+  ],
+])
+  requireText(direct, value, label);
+for (const value of ['variants.first()', 'variants[0]', 'variant.sku ==']) {
+  forbidText(catalog, value, 'no SKU fallback or text identity');
+}
+
+for (const [value, label] of [
+  [
+    'inventory: Arc<dyn InventoryReservationPort>',
+    'Cart requires an Inventory owner port',
+  ],
+  ['self.inventory.as_ref()', 'Cart delegates to the composed Inventory owner'],
+  ['require_cart_inventory(', 'Cart inventory admission call'],
+  [
+    '.filter(|line| line.variant_id == Some(variant_id) && Some(line.id) != replaced_line)',
+    'existing same-SKU Cart demand',
+  ],
+  ['quantity.checked_add(line.quantity)', 'checked Cart aggregate demand'],
+  ['requested_quantity: quantity', 'Cart probes exact combined demand'],
+  [
+    'channel_slug: context.channel.clone()',
+    'Cart probes canonical quote channel',
+  ],
+  ['.check_availability(context, request)', 'Cart stock owner call'],
+  [
+    'crate::services::checkout_catalog::validate_inventory_observation(',
+    'Cart observation correlation',
+  ],
+])
+  requireText(cart, value, label);
+for (const value of [
+  'variant.inventory_quantity',
+  'variant.in_stock',
+  'inventory_policy_allows_backorder',
+]) {
+  forbidText(
+    cart,
+    value,
+    'Product descriptive stock is not Cart admission authority',
+  );
+}
+const stockAdmission = cart.indexOf('        require_cart_inventory(');
+const cartInsertion = cart.indexOf('.add_storefront_line_item(');
+if (stockAdmission < 0 || cartInsertion < stockAdmission) {
+  failures.push('Cart stock admission must precede Cart line insertion');
+}
+
+const contextBindings =
+  inventoryValidationBlock.match(/let product_context\s*=/g) ?? [];
+const contextClones =
+  inventoryValidationBlock.match(/product_context\.clone\(\)/g) ?? [];
 const mapperInputs = inventoryValidationBlock.match(/&product_context/g) ?? [];
-const productOperations = inventoryValidationBlock.match(/PRODUCT_PROJECTION_READ_OPERATION/g) ?? [];
-const variantOperations = inventoryValidationBlock.match(/VARIANT_PRODUCT_PROJECTION_READ_OPERATION/g) ?? [];
+const productOperations =
+  inventoryValidationBlock.match(/\bPRODUCT_PROJECTION_READ_OPERATION\b/g) ??
+  [];
+const variantOperations =
+  inventoryValidationBlock.match(
+    /\bVARIANT_PRODUCT_PROJECTION_READ_OPERATION\b/g,
+  ) ?? [];
 if (
   contextBindings.length !== 1 ||
   contextClones.length !== 2 ||
@@ -141,17 +306,28 @@ if (
 }
 
 for (const [value, label] of [
-  ['port_context(tenant_id, actor_id, cart, channel_slug, "product")', 'product correlation boundary selection'],
-]) requireText(productContextBlock, value, label);
+  [
+    'port_context(tenant_id, actor_id, cart, channel_slug, "product")',
+    'product correlation boundary selection',
+  ],
+])
+  requireText(productContextBlock, value, label);
 
 for (const [value, label] of [
   ['normalize_locale_tag', 'locale normalization'],
   ['PLATFORM_FALLBACK_LOCALE.to_string()', 'fallback locale'],
-  ['PortActor::user(actor_id.to_string())', 'checkout actor'],
+  [
+    'super::checkout_catalog::checkout_actor(actor_id)',
+    'guest-aware checkout delegation',
+  ],
   ['format!("checkout:{}:{boundary}", cart.id)', 'cart correlation identity'],
   ['.with_deadline(Duration::from_secs(2))', 'owner deadline'],
-  ['Some(channel_slug) => context.with_channel(channel_slug)', 'normalized channel context'],
-]) requireText(sharedContextBlock, value, label);
+  [
+    'Some(channel_slug) => context.with_channel(channel_slug)',
+    'normalized channel context',
+  ],
+])
+  requireText(sharedContextBlock, value, label);
 
 for (const [value, label] of [
   ['context: &PortContext', 'retained context input'],
@@ -165,7 +341,10 @@ for (const [value, label] of [
     'boundary_error("read_checkout_product_projection", error)',
     'unchanged public stage mapping',
   ],
-  ['fn log_checkout_plan_product_projection_boundary_failure(', 'structured diagnostic helper'],
+  [
+    'fn log_checkout_plan_product_projection_boundary_failure(',
+    'structured diagnostic helper',
+  ],
   ['error = ?error', 'original port error'],
   ['owner = PRODUCT_PROJECTION_OWNER', 'truthful owner field'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
@@ -190,9 +369,16 @@ for (const [value, label] of [
   ],
   ['tracing::error!(', 'technical failure severity'],
   ['tracing::warn!(', 'ordinary rejection severity'],
-  ['"checkout plan product projection owner boundary failed"', 'technical event'],
-  ['"checkout plan product projection owner boundary was rejected"', 'rejection event'],
-]) requireText(productMapper, value, label);
+  [
+    '"checkout plan product projection owner boundary failed"',
+    'technical event',
+  ],
+  [
+    '"checkout plan product projection owner boundary was rejected"',
+    'rejection event',
+  ],
+])
+  requireText(productMapper, value, label);
 
 const diagnosticsIndex = productMapper.indexOf(
   'log_checkout_plan_product_projection_boundary_failure(context, owner_operation, &error);',
@@ -201,15 +387,34 @@ const mappingIndex = productMapper.indexOf(
   'boundary_error("read_checkout_product_projection", error)',
 );
 if (!(diagnosticsIndex >= 0 && diagnosticsIndex < mappingIndex)) {
-  failures.push('product projection diagnostics must run before public boundary mapping');
+  failures.push(
+    'product projection diagnostics must run before public boundary mapping',
+  );
 }
 
 for (const [content, value, label] of [
-  [marketplaceMapper, 'checkout_plan_marketplace_snapshot_boundary_error(', 'marketplace mapper remains context-aware'],
-  [marketplaceMapper, 'log_checkout_plan_marketplace_snapshot_boundary_failure(context, &error);', 'marketplace diagnostics remain mounted'],
-  [inventoryMapper, 'checkout_plan_inventory_boundary_error(', 'inventory mapper remains context-aware'],
-  [inventoryMapper, 'log_checkout_plan_inventory_boundary_failure(context, &error);', 'inventory diagnostics remain mounted'],
-]) requireText(content, value, label);
+  [
+    marketplaceMapper,
+    'checkout_plan_marketplace_snapshot_boundary_error(',
+    'marketplace mapper remains context-aware',
+  ],
+  [
+    marketplaceMapper,
+    'log_checkout_plan_marketplace_snapshot_boundary_failure(context, &error);',
+    'marketplace diagnostics remain mounted',
+  ],
+  [
+    inventoryMapper,
+    'checkout_plan_inventory_boundary_error(',
+    'inventory mapper remains context-aware',
+  ],
+  [
+    inventoryMapper,
+    'log_checkout_plan_inventory_boundary_failure(context, &error);',
+    'inventory diagnostics remain mounted',
+  ],
+])
+  requireText(content, value, label);
 
 for (const [value, label] of [
   ['CheckoutError::BoundaryFailure {', 'stable public boundary envelope'],
@@ -218,7 +423,8 @@ for (const [value, label] of [
   ['code: error.code', 'stable code'],
   ['message: error.message', 'stable message'],
   ['retryable: error.retryable', 'stable retryability'],
-]) requireText(genericMapper, value, label);
+])
+  requireText(genericMapper, value, label);
 
 for (const [value, label] of [
   [
@@ -237,14 +443,17 @@ for (const [value, label] of [
     'checkout_plan_product_projection_boundary_error(error)',
     'context-free product projection mapper',
   ],
-]) forbidText(inventoryValidationBlock, value, label);
+])
+  forbidText(inventoryValidationBlock, value, label);
 
 if (failures.length > 0) {
-  console.error('Checkout plan product projection context verification failed:');
+  console.error(
+    'Checkout plan product projection context verification failed:',
+  );
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Checkout plan product and variant projection reads retain product-owner context without changing marketplace, inventory, validation, or public envelope behavior',
+  '✔ Checkout plan product and variant projection reads retain product-owner context with shared exact SKU, aggregate stock and fulfillment guards; source only, not runtime evidence',
 );

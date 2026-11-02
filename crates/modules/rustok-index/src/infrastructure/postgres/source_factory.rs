@@ -18,6 +18,15 @@ const MAX_FACTORY_ID_BYTES: usize = 128;
 /// the immutable source registry is materialized. Implementations must only construct and register
 /// source adapters; they must not execute SQL or start background tasks.
 pub trait PostgresIndexSourceFactory: Send + Sync {
+    /// Optional selected-source listeners, constructed after the shared source/runtime catalogs.
+    /// This is the existing module listener lifecycle, not an additional event registry.
+    fn register_event_listeners(
+        &self,
+        _registry: &mut rustok_core::ModuleEventListenerRegistry,
+        _context: &rustok_core::ModuleEventListenerContext<'_>,
+    ) {
+    }
+
     fn register_source(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
@@ -73,6 +82,18 @@ impl PostgresIndexSourceFactoryCatalog {
 
     pub fn iter(&self) -> impl Iterator<Item = &PostgresIndexSourceFactoryDescriptor> {
         self.factories.values()
+    }
+
+    pub(crate) fn register_event_listeners(
+        &self,
+        registry: &mut rustok_core::ModuleEventListenerRegistry,
+        context: &rustok_core::ModuleEventListenerContext<'_>,
+    ) {
+        for descriptor in self.iter() {
+            descriptor
+                .factory
+                .register_event_listeners(registry, context);
+        }
     }
 
     fn register<F>(

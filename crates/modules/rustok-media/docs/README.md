@@ -106,3 +106,11 @@ retention must not combine an unrelated read provider with an embedded write fal
 The Product consumer uses receipt-bound retain-before-commit and a Product-owned durable
 release queue; see its [workflow and open runtime gates](../../rustok-product/docs/media-reference-retention.md).
 This does not advance Media transport readiness or certify a new remote deployment.
+
+## Public-image HTTP retry advice (2026-10-30; source only)
+
+`public_image_error` retains the Media port's exact `retryable` decision in the canonical
+[`rustok-web` error body](../../../libs/rustok-web/CRATE_API.md), independently of its existing
+privacy-preserving 404/internal-error status and static message policy. No status inference,
+new retry loop, alternate image lookup or exposure of owner diagnostics is introduced.
+This is a metadata-only source change, not new mounted/remote execution evidence.
