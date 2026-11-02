@@ -139,6 +139,64 @@ impl UserStatsService {
             return Ok(());
         };
 
+        if topic_delta < 0 || reply_delta < 0 || solution_delta < 0 {
+            // Negative adjustments must fail closed like the exact solution
+            // decrement above (and like category/topic counters): silently
+            // clamping at zero hid counter drift forever. Callers adjust
+            // one counter at a time, so a single guarded update is exact.
+            let statement = match txn.get_database_backend() {
+                DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "UPDATE forum_user_stats SET \
+                     topic_count = topic_count + $3, \
+                     reply_count = reply_count + $4, \
+                     solution_count = solution_count + $5, \
+                     updated_at = CURRENT_TIMESTAMP \
+                     WHERE tenant_id = $1 AND user_id = $2 \
+                       AND topic_count + $3 >= 0 \
+                       AND reply_count + $4 >= 0 \
+                       AND solution_count + $5 >= 0",
+                    vec![
+                        tenant_id.into(),
+                        user_id.into(),
+                        topic_delta.into(),
+                        reply_delta.into(),
+                        solution_delta.into(),
+                    ],
+                ),
+                DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE forum_user_stats SET \
+                     topic_count = topic_count + ?3, \
+                     reply_count = reply_count + ?4, \
+                     solution_count = solution_count + ?5, \
+                     updated_at = CURRENT_TIMESTAMP \
+                     WHERE tenant_id = ?1 AND user_id = ?2 \
+                       AND topic_count + ?3 >= 0 \
+                       AND reply_count + ?4 >= 0 \
+                       AND solution_count + ?5 >= 0",
+                    vec![
+                        tenant_id.into(),
+                        user_id.into(),
+                        topic_delta.into(),
+                        reply_delta.into(),
+                        solution_delta.into(),
+                    ],
+                ),
+                backend => {
+                    return Err(ForumError::Validation(format!(
+                        "Forum user statistic counter adjustment does not support database backend {backend:?}"
+                    )));
+                }
+            };
+            if txn.execute_raw(statement).await?.rows_affected() != 1 {
+                return Err(ForumError::Validation(
+                    "Forum user statistic counter is inconsistent".to_string(),
+                ));
+            }
+            return Ok(());
+        }
+
         let statement = match txn.get_database_backend() {
             DatabaseBackend::Postgres => Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,

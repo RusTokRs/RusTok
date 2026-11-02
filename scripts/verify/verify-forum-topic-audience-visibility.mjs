@@ -198,7 +198,7 @@ for (const marker of ["ForumTopicAudienceViewer", "ForumTopicAudienceVisibilityS
 }
 
 for (const marker of [
-  "use crate::services::{ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};",
+  "ForumTopicAudienceVisibilityService",
   "async fn load_topic_for_viewer(",
   "ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())",
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",

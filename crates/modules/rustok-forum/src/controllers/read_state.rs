@@ -9,7 +9,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadStateService,
+    ForumTopicReadOperation, ForumTopicReadState,
     ForumTopicReadTransport, ForumVisibilityScopedReadStateService, MarkForumTopicReadInput,
     MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, TopicUnreadCursorPage,
     TopicUnreadCursorQuery, topic_read_audience_port_context,
@@ -102,6 +102,7 @@ pub async fn get_topic_read_state(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
 ) -> HttpResult<Json<ForumTopicReadState>> {
     tracing::debug!(
@@ -128,8 +129,22 @@ pub async fn get_topic_read_state(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let state = ForumTopicReadStateService::new(runtime.db_clone())
-        .get_topic_read_state(tenant.id, topic_id, forum_security(&auth))
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::SelectedTopic,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let state = visibility_scoped_read_service(&runtime)
+        .get_topic_read_state_with_audience_context(
+            tenant.id,
+            topic_id,
+            forum_security(&auth),
+            context,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(state))
@@ -153,6 +168,7 @@ pub async fn mark_topic_read(
     State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<MarkForumTopicReadInput>,
 ) -> HttpResult<Json<ForumTopicReadState>> {
@@ -182,8 +198,23 @@ pub async fn mark_topic_read(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let state = ForumTopicReadStateService::new(runtime.db_clone())
-        .mark_topic_read(tenant.id, topic_id, forum_security(&auth), input)
+    let context = topic_read_audience_port_context(
+        ForumTopicReadTransport::Rest,
+        ForumTopicReadOperation::MarkRead,
+        tenant.id,
+        &auth,
+        Some(&request_context),
+        request_context.locale.as_str(),
+    )
+    .map_err(crate::controllers::map_forum_error)?;
+    let state = visibility_scoped_read_service(&runtime)
+        .mark_topic_read_with_audience_context(
+            tenant.id,
+            topic_id,
+            forum_security(&auth),
+            context,
+            input,
+        )
         .await
         .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(state))

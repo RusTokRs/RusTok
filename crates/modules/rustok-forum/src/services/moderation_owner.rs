@@ -20,6 +20,7 @@ use crate::services::moderation_audience_authorization::ForumModerationAudienceA
 use crate::services::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
+use crate::services::rbac::enforce_owned_scope;
 use crate::services::topic_solution_lock::lock_topic_solution_scopes_in_tx;
 use crate::services::user_stats::UserStatsService;
 use crate::services::{CategoryService, ReplyService, TopicService};
@@ -198,10 +199,26 @@ impl ModerationService {
         context: Option<PortContext>,
         pinned: bool,
     ) -> ForumResult<()> {
-        self.audience
-            .require_topic(tenant_id, topic_id, &security, context)
-            .await?;
         let txn = self.db.begin().await?;
+        // Audience is re-evaluated inside the write transaction under the
+        // category-tree lock: a policy change committed between a
+        // pre-transaction check and this write must not slip through.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        self.audience
+            .require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)
+            .await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        match topic.status {
+            TopicStatus::Archived => return Err(ForumError::TopicArchived),
+            TopicStatus::Pending => return Err(ForumError::TopicAwaitingModeration),
+            TopicStatus::Open | TopicStatus::Closed => {}
+        }
+        if topic.is_pinned == pinned {
+            // Idempotent no-op: do not emit a duplicate pinned event or
+            // projection invalidation for a state the topic already has.
+            txn.commit().await?;
+            return Ok(());
+        }
         TopicService::set_pinned_in_tx(&txn, tenant_id, topic_id, pinned).await?;
         self.event_bus
             .publish_in_tx(
@@ -235,10 +252,7 @@ impl ModerationService {
         context: Option<PortContext>,
         target: TopicStatus,
     ) -> ForumResult<()> {
-        self.audience
-            .require_topic(tenant_id, topic_id, &security, context)
-            .await?;
-        self.update_topic_status(tenant_id, topic_id, security, target)
+        self.update_topic_status(tenant_id, topic_id, security, context, target)
             .await
     }
 
@@ -247,12 +261,18 @@ impl ModerationService {
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
+        context: Option<PortContext>,
         target: TopicStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
         // Match create/delete lock order: category scope precedes topic row.
         // Archiving changes both category counts and all thread author stats.
         lock_category_tree_in_tx(&txn, tenant_id).await?;
+        // Audience is evaluated inside the write transaction (see
+        // `set_topic_pinned` for the rationale).
+        self.audience
+            .require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)
+            .await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         let current = topic.status;
         current.validate_transition(&target)?;
@@ -593,10 +613,7 @@ impl ModerationService {
         context: Option<PortContext>,
         target: ReplyStatus,
     ) -> ForumResult<()> {
-        self.audience
-            .require_reply(tenant_id, reply_id, topic_id, &security, context)
-            .await?;
-        self.update_reply_status(tenant_id, reply_id, topic_id, security, target)
+        self.update_reply_status(tenant_id, reply_id, topic_id, security, context, target)
             .await
     }
 
@@ -608,10 +625,23 @@ impl ModerationService {
         context: Option<PortContext>,
         locked: bool,
     ) -> ForumResult<()> {
-        self.audience
-            .require_topic(tenant_id, topic_id, &security, context)
-            .await?;
         let txn = self.db.begin().await?;
+        // Audience is evaluated inside the write transaction (see
+        // `set_topic_pinned` for the rationale).
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        self.audience
+            .require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)
+            .await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        match topic.status {
+            TopicStatus::Archived => return Err(ForumError::TopicArchived),
+            TopicStatus::Pending => return Err(ForumError::TopicAwaitingModeration),
+            TopicStatus::Open | TopicStatus::Closed => {}
+        }
+        if topic.is_locked == locked {
+            txn.commit().await?;
+            return Ok(());
+        }
         TopicService::set_locked_in_tx(&txn, tenant_id, topic_id, locked).await?;
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
@@ -635,7 +665,17 @@ impl ModerationService {
     ) -> ForumResult<()> {
         let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
         let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if !is_exact_topic_author(&security, topic.author_id) {
+        if is_exact_topic_author(&security, topic.author_id) {
+            // The author path is an owned update, not an identity-only
+            // bypass: a user whose forum role was revoked must not keep
+            // solution control over old topics.
+            enforce_owned_scope(
+                &security,
+                rustok_api::Resource::ForumTopics,
+                rustok_api::Action::Update,
+                topic.author_id,
+            )?;
+        } else {
             self.audience
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
@@ -728,7 +768,17 @@ impl ModerationService {
     ) -> ForumResult<()> {
         let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
         let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if !is_exact_topic_author(&security, topic.author_id) {
+        if is_exact_topic_author(&security, topic.author_id) {
+            // The author path is an owned update, not an identity-only
+            // bypass: a user whose forum role was revoked must not keep
+            // solution control over old topics.
+            enforce_owned_scope(
+                &security,
+                rustok_api::Resource::ForumTopics,
+                rustok_api::Action::Update,
+                topic.author_id,
+            )?;
+        } else {
             self.audience
                 .require_topic(tenant_id, topic_id, &security, context)
                 .await?;
@@ -783,12 +833,18 @@ impl ModerationService {
         reply_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
+        context: Option<PortContext>,
         target: ReplyStatus,
     ) -> ForumResult<()> {
         let txn = self.db.begin().await?;
         // Topic archive and reply moderation both adjust category counters.
         // Acquire the tenant category lock before the topic row in both paths.
         lock_category_tree_in_tx(&txn, tenant_id).await?;
+        // Audience is evaluated inside the write transaction (see
+        // `set_topic_pinned` for the rationale).
+        self.audience
+            .require_reply_in_tx(&txn, tenant_id, reply_id, topic_id, &security, context)
+            .await?;
         let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
         if topic.status == TopicStatus::Archived {
@@ -819,6 +875,19 @@ impl ModerationService {
         let new_status = target.to_string();
 
         ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, target).await?;
+
+        if became_public {
+            // First (or renewed) public appearance subscribes the author as a
+            // participant. The helper never overwrites an explicit row, so a
+            // cleared (`Normal`) or muted subscription survives re-approval.
+            crate::services::subscription::auto_subscribe::auto_subscribe_reply_participant_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                reply.author_id,
+            )
+            .await?;
+        }
 
         if stopped_being_public {
             let solution_removed = forum_solution::Entity::delete_many()

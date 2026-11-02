@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
-use rustok_core::SecurityContext;
+use rustok_core::{PermissionScope, SecurityContext};
 
 use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
 use crate::entities::{
@@ -259,6 +259,17 @@ impl ForumTopicReadStateService {
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
             .filter(forum_topic::Column::CreatedAt.lte(snapshot_at));
+        // Held topics are visible only to their author and moderators; a
+        // bulk mark-read must not create read state for topics the caller
+        // cannot see (the audience-scoped service enforces the same rule
+        // per topic).
+        if security.get_scope(Resource::ForumTopics, Action::Moderate) != PermissionScope::All {
+            select = select.filter(
+                Condition::any()
+                    .add(forum_topic::Column::Status.ne(TopicStatus::Pending))
+                    .add(forum_topic::Column::AuthorId.eq(user_id)),
+            );
+        }
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
         }
