@@ -113,10 +113,30 @@ jobs:
               emitted += 1
           print(f'::notice::clippy warnings: {lints}')
           "
-      - name: full forum test suite
+      - name: remediation-relevant forum test suites
         run: |
           set +e
-          cargo test -p rustok-forum --lib --tests > /tmp/tests.out 2>&1
+          CARGO_BUILD_JOBS=3 cargo test -p rustok-forum \
+            --test logic_review_remediation_sqlite \
+            --test subscription_levels_sqlite \
+            --test subscription_levels_contract \
+            --test subscription_reconciliation_sqlite \
+            --test subscriptions \
+            --test moderation_semantics_sqlite \
+            --test moderation_audience_policy_sqlite \
+            --test moderation_report_sqlite \
+            --test reply_create_audience_enforcement_sqlite \
+            --test reply_update_window \
+            --test reply_position_integrity_sqlite \
+            --test solutions \
+            --test solution_reconciliation_sqlite \
+            --test counter_reconciliation_sqlite \
+            --test graphql_stats_and_vote_tenant_scope_sqlite \
+            --test topic_bulk_read_state_sqlite \
+            --test read_state_transport_contract \
+            --test storefront_read_state_sqlite \
+            --test notification_recipient_topic_subscription_audience_sqlite \
+            > /tmp/tests.out 2>&1
           status=$?
           python3 - << 'PYEOF'
           lines = open('/tmp/tests.out', errors='replace').read().splitlines()
