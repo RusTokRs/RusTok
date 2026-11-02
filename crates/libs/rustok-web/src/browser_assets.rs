@@ -60,7 +60,7 @@ impl ReleaseQualifiedAsset {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReleaseAssetSet {
     pub release_id: String,
     pub registered_at: DateTime<Utc>,

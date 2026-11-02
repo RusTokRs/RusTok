@@ -130,6 +130,18 @@ impl HttpError {
         Self::new(StatusCode::NOT_FOUND, code, message)
     }
 
+    pub fn conflict(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, code, message)
+    }
+
+    pub fn service_unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, code, message)
+    }
+
+    pub fn gateway_timeout(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::GATEWAY_TIMEOUT, code, message)
+    }
+
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
     }
