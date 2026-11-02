@@ -199,7 +199,7 @@ for (const marker of [
   "clear_solution_with_audience_context",
   ".require_reply_in_tx(&txn, tenant_id, reply_id, topic_id, &security, context)",
   ".require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)",
-  "if is_exact_topic_author(&security, topic.author_id)",
+  "if is_exact_topic_author(&security, locked_topic.author_id)",
   "enforce_owned_scope(",
   "security.user_id == topic_author_id",
 ]) {

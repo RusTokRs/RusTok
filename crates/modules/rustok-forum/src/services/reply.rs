@@ -17,7 +17,9 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{ListRepliesFilter, ReplyCursor, ReplyListItem, ReplyPage, ReplyResponse};
+use crate::dto::{
+    ListRepliesFilter, MAX_FORUM_READ_LIMIT, ReplyCursor, ReplyListItem, ReplyPage, ReplyResponse,
+};
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::richtext::project_stored_discussion;
@@ -313,7 +315,9 @@ impl ReplyService {
         statuses: Option<&[ReplyStatus]>,
         security: &SecurityContext,
     ) -> ForumResult<ReplyPage<forum_reply::Model>> {
-        let per_page = filter.per_page.max(1);
+        // The 100-item cap must hold at the owner boundary, not only at DTO
+        // deserialization: Rust callers can construct the filter directly.
+        let per_page = filter.per_page.clamp(1, MAX_FORUM_READ_LIMIT);
         let mut query = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::TopicId.eq(topic_id))

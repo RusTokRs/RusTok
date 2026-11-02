@@ -663,9 +663,16 @@ impl ModerationService {
         security: SecurityContext,
         context: Option<PortContext>,
     ) -> ForumResult<()> {
-        let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
-        let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if is_exact_topic_author(&security, topic.author_id) {
+        let txn = self.db.begin().await?;
+        // Match the moderation lock order: the category tree precedes the
+        // topic row and the solution scopes. Audience is evaluated inside
+        // this transaction (see `set_topic_pinned`), so an audience change
+        // committed between a pre-transaction check and this write cannot
+        // slip through.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if is_exact_topic_author(&security, locked_topic.author_id) {
             // The author path is an owned update, not an identity-only
             // bypass: a user whose forum role was revoked must not keep
             // solution control over old topics.
@@ -673,26 +680,17 @@ impl ModerationService {
                 &security,
                 rustok_api::Resource::ForumTopics,
                 rustok_api::Action::Update,
-                topic.author_id,
+                locked_topic.author_id,
             )?;
         } else {
             self.audience
-                .require_topic(tenant_id, topic_id, &security, context)
+                .require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)
                 .await?;
         }
-        if topic.status == TopicStatus::Archived {
+        if locked_topic.status == TopicStatus::Archived {
             // Solutions on archived (including soft-deleted) threads are
             // invisible to every reader, so marking one would only move the
             // author's solution counter for unreachable content.
-            return Err(ForumError::TopicArchived);
-        }
-
-        let txn = self.db.begin().await?;
-        // An archive committed after the pre-transaction audience/read check
-        // must not admit a new solution or alter its author's live statistics.
-        let locked_topic =
-            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
-        if locked_topic.status == TopicStatus::Archived {
             return Err(ForumError::TopicArchived);
         }
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
@@ -766,9 +764,16 @@ impl ModerationService {
         security: SecurityContext,
         context: Option<PortContext>,
     ) -> ForumResult<()> {
-        let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
-        let topic = topic_service.find_topic(tenant_id, topic_id).await?;
-        if is_exact_topic_author(&security, topic.author_id) {
+        let txn = self.db.begin().await?;
+        // Match the moderation lock order: the category tree precedes the
+        // topic row and the solution scopes. Audience is evaluated inside
+        // this transaction (see `set_topic_pinned`), so an audience change
+        // committed between a pre-transaction check and this write cannot
+        // slip through.
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let locked_topic =
+            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        if is_exact_topic_author(&security, locked_topic.author_id) {
             // The author path is an owned update, not an identity-only
             // bypass: a user whose forum role was revoked must not keep
             // solution control over old topics.
@@ -776,20 +781,13 @@ impl ModerationService {
                 &security,
                 rustok_api::Resource::ForumTopics,
                 rustok_api::Action::Update,
-                topic.author_id,
+                locked_topic.author_id,
             )?;
         } else {
             self.audience
-                .require_topic(tenant_id, topic_id, &security, context)
+                .require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)
                 .await?;
         }
-        if topic.status == TopicStatus::Archived {
-            return Err(ForumError::TopicArchived);
-        }
-
-        let txn = self.db.begin().await?;
-        let locked_topic =
-            TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
         if locked_topic.status == TopicStatus::Archived {
             return Err(ForumError::TopicArchived);
         }

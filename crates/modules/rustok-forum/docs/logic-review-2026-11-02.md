@@ -579,3 +579,53 @@ toolchain in the review sandbox); Node static verifiers were run. Statuses:
   `verify-forum-runtime-baseline`, `verify-forum-owner-boundary`, `verify-forum-read-model` — passed.
 - Rust: **not compiled** (no toolchain in sandbox) — `cargo check -p rustok-forum`
   and the forum test suites remain to be run by CI/maintainer.
+
+## Remediation round 2 (2026-11-02)
+
+**Verifier debt closed (all previously red checks now green, without
+weakening the contracts):**
+- `verify-forum-topic-audience-visibility`: the visibility owner now takes
+  the topic row type from the policy owner (`ForumTopicModel` alias in
+  `topic_audience.rs`) instead of referencing `crate::entities` directly;
+  the verifier's policy-load marker follows the generic-connection
+  signature `load_policy_for_topic(connection, tenant_id, topic)`.
+- `verify-forum-reply-create-audience-enforcement`: the facade delegates
+  the canonical authorization service into the owner transaction
+  (stronger than the originally verified pre-check). The verifier now
+  requires that delegation, requires `require_in_tx` after the audience
+  scope lock and before the first reply write, and forbids raw owners
+  from evaluating or loading audience policy themselves.
+
+**Logic round 2:**
+- **L1 (vote aggregation):** `topic_vote_summaries` / `reply_vote_summaries`
+  now aggregate with `SUM(value) ... GROUP BY` in SQL and fetch the
+  current user's votes in a separate bounded query, instead of loading
+  every vote row into memory. SQL `SUM` widens to `i64`; the public
+  `i32` score saturates via `clamp_vote_score` instead of wrapping.
+- **L2 (page bound):** `fetch_reply_page` clamps `per_page` to
+  `1..=MAX_FORUM_READ_LIMIT` at the owner boundary, not only at DTO
+  deserialization.
+- **Solution mark/clear audience:** the moderator audience decision is
+  now evaluated inside the write transaction under the category-tree
+  lock (`require_topic_in_tx`), matching pin/lock/topic-status/
+  reply-status. The residual pre-transaction check noted in round 1 is
+  closed; the author path still requires the owned-update scope.
+- **L6 (settings all-or-nothing) — deliberately unchanged:** typed
+  configuration errors are the platform's endorsed stance (see the
+  `default_topic_sort` precedent: invalid saved values need explicit
+  operator correction, not silent remapping). Per-field salvage would
+  silently ignore admin typos. `parse_forum_settings` keeps failing
+  closed with the serde field path in the message.
+
+**Regression tests (round 2):**
+`tests/logic_review_remediation_sqlite.rs` covers: cleared/muted
+subscriptions surviving later approved replies, daily/weekly digest
+rejection, pending parents refusing children plus the nesting depth
+cap, approved-reply edits returning to pending in a moderated category,
+and pending topics rejecting votes. These tests require a Rust
+toolchain and run in CI with the rest of the forum suite.
+
+**Still open:** FORUM-33 execution scheduling (platform tracker),
+first-publication journal SQL duplication (L4) and creation-locale
+determinism (L5) — both correct today; they need a journal-contract
+change owned by the moderation/eventing track.

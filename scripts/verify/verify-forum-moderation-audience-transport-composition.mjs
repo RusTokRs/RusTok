@@ -264,15 +264,15 @@ rejectText(
 for (const marker of [
   "pub async fn mark_solution_with_audience_context(",
   "pub async fn clear_solution_with_audience_context(",
-  "if is_exact_topic_author(&security, topic.author_id)",
+  "if is_exact_topic_author(&security, locked_topic.author_id)",
   "enforce_owned_scope(",
-  ".require_topic(tenant_id, topic_id, &security, context)",
+  ".require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)",
   "let txn = self.db.begin().await?",
 ]) {
   requireText(owner, marker, `ModerationService owner is missing ${marker}`);
 }
 const ownerAuthorizationIndex = owner.indexOf(
-  ".require_topic(tenant_id, topic_id, &security, context)",
+  ".require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)",
 );
 const ownerWriteIndex = owner.indexOf("forum_solution::Entity::delete_many()");
 if (
