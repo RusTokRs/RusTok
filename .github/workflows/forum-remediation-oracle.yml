@@ -115,15 +115,17 @@ jobs:
           "
       - name: full forum test suite
         run: |
-          set -o pipefail
-          cargo test -p rustok-forum 2>&1 | tee /tmp/tests.out | python3 -c "
-          import sys
-          for raw in sys.stdin:
-              line = raw.rstrip()
-              if ('FAILED' in line or 'panicked at' in line or line.startswith('test result:')
-                      or line.startswith('failures:') or line.startswith('error[')
-                      or line.startswith('error:') or 'error: could not compile' in line):
-                  safe = line.replace('%', '%25')
-                  kind = 'error' if ('FAILED' in line or 'panicked at' in line) else 'notice'
-                  print(f'::{kind}::{safe}')
-          "
+          cargo test -p rustok-forum --lib --tests > /tmp/tests.out 2>&1
+          status=$?
+          python3 - << 'PYEOF'
+          lines = open('/tmp/tests.out', errors='replace').read().splitlines()
+          results = [l for l in lines if l.startswith('test result:')]
+          failed = [l for l in lines if 'FAILED' in l or 'panicked at' in l]
+          print(f'::notice::test binaries finished: {len(results)}; result lines: {results[:12]}')
+          for line in failed[:20]:
+              print('::error::' + line.replace('%', '%25')[:280])
+          if not results:
+              for line in lines[-25:]:
+                  print('::error::tail: ' + line.replace('%', '%25')[:280])
+          PYEOF
+          exit $status
