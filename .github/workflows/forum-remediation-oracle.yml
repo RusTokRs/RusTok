@@ -120,7 +120,9 @@ jobs:
           import sys
           for raw in sys.stdin:
               line = raw.rstrip()
-              if 'FAILED' in line or 'panicked at' in line or line.startswith('test result:') or line.startswith('failures:'):
+              if ('FAILED' in line or 'panicked at' in line or line.startswith('test result:')
+                      or line.startswith('failures:') or line.startswith('error[')
+                      or line.startswith('error:') or 'error: could not compile' in line):
                   safe = line.replace('%', '%25')
                   kind = 'error' if ('FAILED' in line or 'panicked at' in line) else 'notice'
                   print(f'::{kind}::{safe}')

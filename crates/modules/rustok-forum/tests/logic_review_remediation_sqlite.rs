@@ -370,26 +370,21 @@ async fn pending_parent_rejected_and_depth_capped() {
     let open_topic = make_topic(&topic_service, tenant_id, &author, open_id, "open").await;
     let mut parent_id = None;
     let mut created = 0_u32;
-    loop {
-        match reply_service
-            .create(
-                tenant_id,
-                author.clone(),
-                open_topic,
-                reply_input("nested", parent_id),
-            )
-            .await
-        {
-            Ok(reply) => {
-                parent_id = Some(reply.id);
-                created += 1;
-                assert!(
-                    created <= 32,
-                    "nesting must terminate at the depth cap, not run away"
-                );
-            }
-            Err(_) => break,
-        }
+    while let Ok(reply) = reply_service
+        .create(
+            tenant_id,
+            author.clone(),
+            open_topic,
+            reply_input("nested", parent_id),
+        )
+        .await
+    {
+        parent_id = Some(reply.id);
+        created += 1;
+        assert!(
+            created <= 32,
+            "nesting must terminate at the depth cap, not run away"
+        );
     }
     assert!(
         created >= 10,
