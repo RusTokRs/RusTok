@@ -4,7 +4,7 @@ use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{GqlProfileSummary, ProfileSummaryAudience};
 use rustok_telemetry::metrics;
@@ -542,8 +542,7 @@ fn is_post_readable_for_request(ctx: &Context<'_>, post: &crate::PostResponse) -
     let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
     let can_read_own = is_author
         && matches!(
-            security.get_scope(crate::services::rbac::Resource::BlogPosts,
-                crate::services::rbac::Action::Read),
+            security.get_scope(Resource::BlogPosts, Action::Read),
             rustok_core::PermissionScope::Own
         );
     post_is_readable(

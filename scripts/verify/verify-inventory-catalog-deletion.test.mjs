@@ -87,8 +87,8 @@ test("native deletion cannot accept an autocommit connection", () =>
     mutate(
       root,
       "bootstrap",
-      "txn: &sea_orm::DatabaseTransaction",
-      "txn: &sea_orm::DatabaseConnection",
+      /delete_records_for_variants_in_tx\s*\(\s*txn:\s*&sea_orm::DatabaseTransaction/,
+      "delete_records_for_variants_in_tx(\n        txn: &sea_orm::DatabaseConnection",
     );
     refused(root);
   }));

@@ -262,7 +262,7 @@ test("Cancelled and Shipped projections cannot replace original key and payload 
         root,
         "admin",
         new RegExp(
-          `(const OPERATION: &str = "${operation}_admin_fulfillment";[\\s\\S]*?)(let mut metadata = request.input.metadata.clone\\(\\);)`,
+          `(const OPERATION: &str = "${operation}_admin_fulfillment";[\\s\\S]*?)(let provider_request = operation_request\\()`,
         ),
         '$1if current.status == "cancelled" { return Ok(current); } $2',
       );

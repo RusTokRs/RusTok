@@ -1,4 +1,5 @@
 use super::*;
+use crate::dto::PublishedPostCursor;
 use std::sync::Arc;
 
 use rustok_core::MigrationSource;

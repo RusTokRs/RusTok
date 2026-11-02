@@ -1,6 +1,6 @@
-use sea_orm::{sea_query::NullOrdering, ColumnTrait, Condition, Order, QueryFilter, QueryOrder, Select};
+use sea_orm::{sea_query::NullOrdering, ColumnTrait, Condition, Order, QueryOrder, Select};
 
-use crate::domain::post::PublishedPostCursor;
+use crate::dto::PublishedPostCursor;
 use crate::entities::blog_post;
 use crate::error::{BlogError, BlogResult};
 

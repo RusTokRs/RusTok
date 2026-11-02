@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 export const sourcePaths = {
   port: 'crates/modules/rustok-product/src/catalog_command_port.rs',
   commands: 'crates/modules/rustok-product/src/services/catalog/commands.rs',
+  variantAxes:
+    'crates/modules/rustok-product/src/services/catalog/variant_axes.rs',
   projection:
     'crates/modules/rustok-product/src/services/catalog/projection.rs',
   tags: 'crates/modules/rustok-product/src/services/catalog/tags.rs',
@@ -55,7 +57,8 @@ export function verifyCatalogReceipts(sources) {
       adapter.includes(
         '"locale": &context.locale'
       ), `${operation}: request must bind actor and locale`);
-    const command = method(sources.commands, `    pub async fn ${operation}(`);
+    const allCommands = [sources.commands, sources.variantAxes].filter(Boolean).join('\n');
+    const command = method(allCommands, `    pub async fn ${operation}(`);
     require(command.length > 0, `${operation}: concrete command missing`);
     require(!/self\.get_(?:product(?:_with_locale_fallback)?|variant)\(/.test(
       command

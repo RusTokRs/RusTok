@@ -141,7 +141,17 @@ test("source delivery refuses observational journal publishers and adoption-side
     ],
   ])
     fixture((root) => {
-      fs.appendFileSync(path.join(root, name), `\n${injected}\n`);
+      const target = path.join(root, name);
+      const content = fs.readFileSync(target, "utf8");
+      const testIdx = content.indexOf("#[cfg(test)]");
+      if (testIdx >= 0) {
+        fs.writeFileSync(
+          target,
+          content.slice(0, testIdx) + `\n${injected}\n` + content.slice(testIdx),
+        );
+      } else {
+        fs.appendFileSync(target, `\n${injected}\n`);
+      }
       refused(root);
     });
 });

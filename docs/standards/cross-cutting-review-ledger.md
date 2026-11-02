@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 1 (Fresh Start from Scratch)
-- **Active Phase:** CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty
-- **Completed Phases:** None (0/17 completed)
+- **Active Phase:** CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity
+- **Completed Phases:** CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty (1/17 completed)
 - **Active Branch:** `main`
 
 ---
@@ -55,7 +55,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ## Phase Backlog — Cross-Cutting Capability Sequence (17 Phases Total)
 
-- [ ] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (0/6 completed)
+- [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (6/6 completed — 100% PASS)
 - [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/5 completed)
 - [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
 - [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
@@ -82,12 +82,35 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `FbaProviderDescriptor FbaConsumerDependency PortContext PortError rustok_fba HostRuntimeContext`
 
 #### Sub-Audit Checklist
-- [ ] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verify no executable `.rs` code is hidden in `contracts/` or `docs/`. Run `node scripts/verify/verify-module-source-layout.mjs` for canonical module source layout verification.
-- [ ] **CC-01.02 — Inter-Module Dependency Sovereignty:** Run `python scripts/architecture_dependency_guard.py` and enforce module import boundaries. Ensure zero direct dependencies on other modules' private entities or repositories.
-- [ ] **CC-01.03 — Port & Seam Purity:** Verify cross-module interactions communicate strictly through owner-defined port traits, transactional event contracts, and provider seams rather than raw internal table access.
-- [ ] **CC-01.04 — FBA Registry & Capability Profiles:** Verify `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`) and embedded-first in-process execution.
-- [ ] **CC-01.05 — Host Minimalism (`apps/server`):** Verify `apps/server` acts purely as composition root and host with zero leaked module business rules.
-- [ ] **CC-01.06 — CLI Package Decoupling:** Verify module maintenance commands reside in isolated `cli/` packages over `rustok-cli-core` without bloating domain crates with CLI dependencies.
+- [x] **CC-01.01 — Module Physical Shape & Hexagonal Separation:** Verify no executable `.rs` code is hidden in `contracts/` or `docs/`. Run `node scripts/verify/verify-module-source-layout.mjs` for canonical module source layout verification. Enforced 32 KB threshold for native services/controllers and 40 KB for UI adapters (refactored `rustok-blog` services and `rustok-blog-admin` native adapter).
+- [x] **CC-01.02 — Inter-Module Dependency Sovereignty:** Run `python scripts/architecture_dependency_guard.py` and enforce module import boundaries. Ensure zero direct dependencies on other modules' private entities or repositories. Replaced cross-module private entity access in `rustok-seo` and `rustok-seo-admin` with canonical `TenantService::update_tenant_module_settings` in `rustok-tenant`.
+- [x] **CC-01.03 — Port & Seam Purity:** Verify cross-module interactions communicate strictly through owner-defined port traits, transactional event contracts, and provider seams rather than raw internal table access. Added `with_retryable` builder method to `PortError` in `rustok-api`, verified error sanitization across public port boundaries.
+- [x] **CC-01.04 — FBA Registry & Capability Profiles:** Verify `rustok-fba` capability definitions (`BackendTopology`, `TransportProfile`, `CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`) and embedded-first in-process execution. Verified with unit tests in `rustok-fba` and port contracts in `rustok-api`.
+- [x] **CC-01.05 — Host Minimalism (`apps/server`):** Verify `apps/server` acts purely as composition root and host with zero leaked module business rules. Validated architectural dependency guard rules across the server composition boundary.
+- [x] **CC-01.06 — CLI Package Decoupling:** Verify module maintenance commands reside in isolated `cli/` packages over `rustok-cli-core` without bloating domain crates with CLI dependencies. Enforced boundary rules in `scripts/architecture_rules.toml`.
+
+#### Verification & Remediation Evidence
+- **Remediated Crates & Modules:**
+  - `crates/libs/rustok-api`: Added `PortError::with_retryable` builder method. Verified port error sanitization (`PUBLIC_INVARIANT_MESSAGE` / `PUBLIC_UNAVAILABLE_MESSAGE`).
+  - `crates/modules/rustok-tenant`: Added canonical `TenantService::update_tenant_module_settings` method with validation, event dispatch, and unit test `update_tenant_module_settings_validation_and_lifecycle`.
+  - `crates/modules/rustok-seo`: Refactored `bulk_legacy.rs` and `sitemap_background.rs` to route through `TenantService` instead of querying private `rustok_tenant::entities::tenant` directly.
+  - `crates/modules/rustok-seo/admin`: Routed module settings updates in `native_server_adapter.rs` through `TenantService::update_tenant_module_settings` instead of mutating `rustok_tenant::entities::tenant_module`.
+  - `crates/modules/rustok-blog`: Split `post/queries.rs` into `queries/ordering.rs` to respect the 32 KB threshold; fixed `Ord::max` and subquery sea-query methods in `tag.rs`; corrected `rustok_api::{Resource, Action}` in GraphQL layer.
+  - `crates/modules/rustok-blog/admin`: Extracted category management server functions into `native_server_adapter/categories.rs` to respect the 40 KB limit.
+  - `crates/modules/rustok-inventory` & `rustok-commerce`: Replaced removed SeaORM 2.0 `DatabaseConnection::Disconnected` with `DatabaseConnection::default()`; handled non-exhaustive `DbBackend` arms.
+- **Verification Gates Passed:**
+  - `cargo test -p rustok-fba --lib`: 5 passed; 0 failed.
+  - `cargo test -p rustok-api --lib`: 73 passed; 0 failed.
+  - `cargo test -p rustok-tenant --lib`: 11 passed; 0 failed.
+  - `cargo test -p rustok-inventory --lib`: 116 passed; 0 failed.
+  - `cargo test -p rustok-blog --lib`: 168 passed; 0 failed.
+  - `cargo check -p rustok-seo`: clean.
+  - `cargo check -p rustok-seo-admin --features ssr`: clean.
+  - `cargo check -p rustok-blog-admin --features ssr`: clean.
+  - `python scripts/architecture_dependency_guard.py`: PASSED.
+  - `node scripts/verify/verify-module-source-layout.mjs`: PASSED.
+  - `node scripts/verify/verify-blog-admin-boundary.mjs`: PASSED.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED.
 
 ---
 

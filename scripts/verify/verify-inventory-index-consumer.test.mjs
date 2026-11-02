@@ -67,8 +67,8 @@ test("the host must reuse canonical current access-token authentication", (t) =>
   mutate(
     root,
     files.provider,
-    /resolve_current_user_from_access_token\s*\(\s*&self\.auth/,
-    "reconstruct_saved_actor_context(&self.auth",
+    /resolve_current_user_from_access_token/g,
+    "reconstruct_saved_actor_context",
   );
   refuses(root, "canonical current service authentication");
 });

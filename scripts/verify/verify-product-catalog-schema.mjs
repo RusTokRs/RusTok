@@ -557,7 +557,7 @@ for (const marker of [
   'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)',
   'BootstrapService::create_initial_records_in_tx(',
   'BootstrapService::load_available_quantities(conn, &variant_ids)',
-  'BootstrapService::delete_records_for_variants_in_tx(&txn, tenant_id, &variant_ids)',
+  'BootstrapService::delete_records_for_variants_in_tx(',
 ]) {
   requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }

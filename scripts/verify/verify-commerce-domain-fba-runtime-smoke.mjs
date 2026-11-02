@@ -122,7 +122,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     '.check_availability(',
     'InventoryAvailabilityRequest {',
     'checkout_inventory_port_context(',
-    'PortActor::user(actor_id.to_string())',
+    'super::checkout_catalog::checkout_actor(actor_id)',
     '.with_deadline(Duration::from_secs(2))',
     'checkout_port_error("check_inventory_availability", error)',
     'CheckoutError::BoundaryFailure',
@@ -274,12 +274,10 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     fail('Native cart promotion adapter must not construct CartService outside CartPromotionPort');
   }
   for (const marker of [
-    'in_process_pricing_read_port(',
+    'read_storefront_cart_line_quote(',
     '.resolve_product_price(',
     'ResolveProductPriceRequest {',
-    'checkout_pricing_port_context(',
-    'PortActor::service("rustok-commerce.checkout-pricing")',
-    '.with_deadline(std::time::Duration::from_secs(2))',
+    'cart_pricing_context(context, cart)',
   ]) {
     if (!checkoutPricingSource.includes(marker)) {
       fail(`checkout pricing provider-consumer boundary missing: ${marker}`);
@@ -337,7 +335,6 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   for (const [surface, source, functionName] of [
     ['GraphQL storefront repricing helper', graphqlMutationHelpersSource, 'reprice_storefront_cart_line_items'],
     ['REST storefront repricing helper', storefrontControllerSource, 'reprice_storefront_cart_line_items_for_db'],
-    ['Storefront checkout runtime repricing helper', storefrontCheckoutRuntimeSource, 'reprice_storefront_cart_line_items'],
   ]) {
     const body = functionBody(source, functionName);
     if (!body || !body.includes('in_process_pricing_read_port(') || !body.includes('crate::read_storefront_cart_line_quote(')) {

@@ -224,32 +224,44 @@ fn channel_visibility_follows_authority_not_authentication() {
         &customer,
         BlogPostStatus::Published,
         &channel_slugs,
-        None
+        None,
+        false,
     ));
     assert!(post_is_readable(
         &customer,
         BlogPostStatus::Published,
         &channel_slugs,
-        Some("web")
+        Some("web"),
+        false,
     ));
     assert!(!post_is_readable(
         &customer,
         BlogPostStatus::Draft,
         &channel_slugs,
-        Some("web")
+        Some("web"),
+        false,
+    ));
+    assert!(post_is_readable(
+        &customer,
+        BlogPostStatus::Draft,
+        &channel_slugs,
+        Some("web"),
+        true,
     ));
 
     assert!(post_is_readable(
         &editor,
         BlogPostStatus::Draft,
         &channel_slugs,
-        None
+        None,
+        false,
     ));
     assert!(post_is_readable(
         &editor,
         BlogPostStatus::Published,
         &channel_slugs,
-        Some("other")
+        Some("other"),
+        false,
     ));
 }
 

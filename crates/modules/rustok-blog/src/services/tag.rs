@@ -238,7 +238,7 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::List)?;
         let locale =
             normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
-        let page = filter.page.max(1);
+        let page = Ord::max(filter.page, 1);
         let per_page = bounded_tag_page_size(filter.per_page);
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
@@ -250,7 +250,7 @@ impl TagService {
         let valid_tag_ids = Query::select()
             .column(rustok_taxonomy::entities::taxonomy_term::Column::Id)
             .from(TaxonomyTerm)
-            .filter(
+            .cond_where(
                 Condition::all()
                     .add(
                         rustok_taxonomy::entities::taxonomy_term::Column::ScopeType
@@ -263,7 +263,7 @@ impl TagService {
             .to_owned();
         let paginator = blog_tag_usage::Entity::find()
             .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-            .filter(blog_tag_usage::Column::TagId.is_in_subquery(valid_tag_ids))
+            .filter(blog_tag_usage::Column::TagId.in_subquery(valid_tag_ids))
             .order_by_desc(blog_tag_usage::Column::UseCount)
             .order_by_asc(blog_tag_usage::Column::CanonicalKey)
             .order_by_asc(blog_tag_usage::Column::TagId)

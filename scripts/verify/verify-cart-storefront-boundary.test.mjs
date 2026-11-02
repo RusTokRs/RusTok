@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { sourcePaths as pricedWritePaths } from "./verify-cart-priced-write-context.mjs";
 
 const scriptPath = path.resolve("scripts/verify/verify-cart-storefront-boundary.mjs");
 const repoRoot = path.resolve(".");
@@ -66,9 +67,13 @@ pub fn CartCheckoutHandoffCard() {}
   writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs"), "utf8"));
+  writeFixtureFile(root, "crates/modules/rustok-cart/storefront/src/transport/buyer_native.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/storefront/src/transport/buyer_native.rs"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
+  for (const file of pricedWritePaths) {
+    writeFixtureFile(root, file, readFileSync(path.join(repoRoot, file), "utf8"));
+  }
   writeFixtureFile(root, "crates/modules/rustok-cart/docs/storefront-native-error-safety.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/docs/storefront-native-error-safety.md"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md"), "utf8"));
   writeFixtureFile(root, "crates/modules/rustok-commerce/docs/implementation-plan.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-commerce/docs/implementation-plan.md"), "utf8"));
