@@ -117,42 +117,20 @@ jobs:
         run: |
           set +e
           export CARGO_BUILD_JOBS=2 CARGO_TERM_COLOR=never
-          cargo test -p rustok-forum --no-run --keep-going \
-            --test subscription_reconciliation_sqlite \
-            --test subscriptions \
-            --test moderation_audience_policy_sqlite \
-            --test moderation_report_sqlite \
-            --test reply_update_window \
-            --test reply_position_integrity_sqlite \
-            --test solution_reconciliation_sqlite \
-            --test counter_reconciliation_sqlite \
-            --test topic_bulk_read_state_sqlite \
-            --test read_state_transport_contract \
-            --test storefront_read_state_sqlite \
-            --test notification_recipient_topic_subscription_audience_sqlite \
-            --message-format=json 2>/dev/null | python3 -c "
-          import json, re, sys
-          broken = []
-          for raw in sys.stdin:
-              try:
-                  payload = json.loads(raw)
-              except Exception:
-                  continue
-              if payload.get('reason') != 'compiler-message':
-                  continue
-              msg = payload.get('message') or {}
-              if msg.get('level') != 'error':
-                  continue
-              rendered = (msg.get('rendered') or msg.get('message') or '')
-              first = rendered.splitlines()[0] if rendered else ''
-              print('::error::ERR: ' + first.replace('%', '%25')[:280])
-              mm = re.search('could not compile.*test .([^"]+).', rendered)
-              if mm and mm.group(1) not in broken:
-                  broken.append(mm.group(1))
-          for name in broken:
-              print(f'::error::BROKEN TARGET: {name}')
-          print(f'::notice::broken targets: {broken}')
-          "
+          for target in subscription_reconciliation_sqlite subscriptions \
+            moderation_audience_policy_sqlite moderation_report_sqlite \
+            reply_update_window reply_position_integrity_sqlite \
+            solution_reconciliation_sqlite counter_reconciliation_sqlite \
+            topic_bulk_read_state_sqlite read_state_transport_contract \
+            storefront_read_state_sqlite \
+            notification_recipient_topic_subscription_audience_sqlite; do
+            if cargo test -p rustok-forum --no-run --test "$target" > /tmp/probe.out 2>&1; then
+              echo "::notice::target ok: $target"
+            else
+              echo "::error::BROKEN TARGET: $target"
+              grep -m1 "error" /tmp/probe.out | head -1
+            fi
+          done
       - name: remediation-relevant forum test suites
         run: |
           set +e
