@@ -116,19 +116,25 @@ jobs:
       - name: remediation-relevant forum test suites
         run: |
           set +e
-          CARGO_BUILD_JOBS=3 cargo test -p rustok-forum \
+          export CARGO_BUILD_JOBS=2 CARGO_TERM_COLOR=never
+          cargo test -p rustok-forum \
             --test logic_review_remediation_sqlite \
             --test subscription_levels_sqlite \
             --test subscription_levels_contract \
+            --test moderation_semantics_sqlite \
+            --test reply_create_audience_enforcement_sqlite \
+            --test solutions \
+            > /tmp/tests.out 2>&1
+          echo "batch1 exit: $?" >> /tmp/tests.out
+          df -h / /tmp >> /tmp/tests.out 2>&1
+          free -m >> /tmp/tests.out 2>&1
+          cargo test -p rustok-forum \
             --test subscription_reconciliation_sqlite \
             --test subscriptions \
-            --test moderation_semantics_sqlite \
             --test moderation_audience_policy_sqlite \
             --test moderation_report_sqlite \
-            --test reply_create_audience_enforcement_sqlite \
             --test reply_update_window \
             --test reply_position_integrity_sqlite \
-            --test solutions \
             --test solution_reconciliation_sqlite \
             --test counter_reconciliation_sqlite \
             --test graphql_stats_and_vote_tenant_scope_sqlite \
@@ -136,7 +142,8 @@ jobs:
             --test read_state_transport_contract \
             --test storefront_read_state_sqlite \
             --test notification_recipient_topic_subscription_audience_sqlite \
-            > /tmp/tests.out 2>&1
+            >> /tmp/tests.out 2>&1
+          echo "batch2 exit: $?" >> /tmp/tests.out
           status=$?
           python3 - << 'PYEOF'
           lines = open('/tmp/tests.out', errors='replace').read().splitlines()
