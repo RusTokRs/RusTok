@@ -115,6 +115,7 @@ jobs:
           "
       - name: full forum test suite
         run: |
+          set +e
           cargo test -p rustok-forum --lib --tests > /tmp/tests.out 2>&1
           status=$?
           python3 - << 'PYEOF'
