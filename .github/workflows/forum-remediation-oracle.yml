@@ -144,9 +144,11 @@ jobs:
               if msg.get('level') != 'error':
                   continue
               rendered = (msg.get('rendered') or msg.get('message') or '')
-              m = re.search(r'could not compile .* \(test \\"([^\\"]+)\\"\)', rendered)
-              if m and m.group(1) not in broken:
-                  broken.append(m.group(1))
+              first = rendered.splitlines()[0] if rendered else ''
+              print('::error::ERR: ' + first.replace('%', '%25')[:280])
+              mm = re.search('could not compile.*test .([^"]+).', rendered)
+              if mm and mm.group(1) not in broken:
+                  broken.append(mm.group(1))
           for name in broken:
               print(f'::error::BROKEN TARGET: {name}')
           print(f'::notice::broken targets: {broken}')
