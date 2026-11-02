@@ -258,6 +258,7 @@ async fn require_current_snapshot(txn: &DatabaseTransaction) -> WriteResult<()> 
                  AND trx.AUTOCOMMIT = 'NO'"
         }
         DbBackend::Sqlite => return Ok(()),
+        _ => return Err(QuantityWriteError::Rejected(QuantityWriteBlocker::IsolationUnsupported)),
     };
     let row = txn
         .query_one_raw(Statement::from_string(backend, statement))

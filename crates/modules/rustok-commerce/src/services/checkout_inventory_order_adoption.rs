@@ -896,7 +896,7 @@ mod tests {
         });
         (
             CheckoutInventoryOrderAdoptionService::new(
-                DatabaseConnection::Disconnected,
+                DatabaseConnection::default(),
                 rustok_test_utils::mock_transactional_event_bus(),
                 port,
             ),

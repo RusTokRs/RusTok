@@ -58,16 +58,16 @@ async fn identity_adoption_public_boundary_rejects_bad_admission_before_persiste
     use rustok_api::{PortActor, PortContext};
     use std::time::Duration;
     let ports: [std::sync::Arc<dyn crate::InventoryReservationIdentityPort>; 4] = [
-        in_process_inventory_reservation_identity_port(sea_orm::DatabaseConnection::Disconnected),
+        in_process_inventory_reservation_identity_port(sea_orm::DatabaseConnection::default()),
         crate::ports::in_process_inventory_reservation_identity_port(
-            sea_orm::DatabaseConnection::Disconnected,
+            sea_orm::DatabaseConnection::default(),
         ),
         std::sync::Arc::new(crate::PersistentInventoryReservationIdentityPort::new(
-            sea_orm::DatabaseConnection::Disconnected,
+            sea_orm::DatabaseConnection::default(),
         )),
         std::sync::Arc::new(
             crate::ports::PersistentInventoryReservationIdentityPort::new(
-                sea_orm::DatabaseConnection::Disconnected,
+                sea_orm::DatabaseConnection::default(),
             ),
         ),
     ];
