@@ -291,6 +291,7 @@ sea-orm-migration.workspace = true
 
 [dev-dependencies]
 jsonwebtoken.workspace = true
+tower = { workspace = true, features = ["util"] }
 serial_test = "4.0"
 rustok-test-utils.workspace = true
 rustok-translation-admin = { path = "../../crates/modules/rustok-translation/admin", default-features = false, features = ["ssr"] }

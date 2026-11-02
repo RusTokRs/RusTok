@@ -7,14 +7,19 @@ import {
   CardHeader,
   CardTitle
 } from '@/shared/ui/shadcn/card';
-import { getCacheHealth, getCacheSettings, type GqlOpts } from '../api/cache';
+import {
+  getCacheHealth,
+  getCacheSettings,
+  type CacheSettingsSnapshot,
+  type GqlOpts
+} from '../api/cache';
 import { CacheSettingsForm } from '../components/cache-settings-form';
 
 export async function CacheAdminPage(opts: GqlOpts = {}) {
   const t = await getTranslations('cache');
   let health = null;
   let error: string | null = null;
-  let settings = null;
+  let settings: CacheSettingsSnapshot | null = null;
 
   try {
     const [h, s] = await Promise.all([
@@ -96,7 +101,13 @@ export async function CacheAdminPage(opts: GqlOpts = {}) {
         </Card>
       </div>
 
-      {settings && <CacheSettingsForm initialSettings={settings} opts={opts} />}
+      {settings && (
+        <CacheSettingsForm
+          initialSettings={settings.settings}
+          initialSchemaVersion={settings.schemaVersion}
+          opts={opts}
+        />
+      )}
     </div>
   );
 }

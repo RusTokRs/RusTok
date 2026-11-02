@@ -109,7 +109,7 @@ async fn test_product_created_event_updates_index_projection() {
     assert_eq!(projection.get(product_id).as_deref(), Some("indexed"));
     assert_eq!(projection.len(), 1);
 
-    running_dispatcher.stop();
+    running_dispatcher.stop().await.expect("dispatcher stop");
 }
 
 #[tokio::test]
@@ -139,7 +139,7 @@ async fn test_product_created_event_repeat_is_idempotent_for_index_projection() 
     assert_eq!(projection.get(product_id).as_deref(), Some("indexed"));
     assert_eq!(projection.len(), 1, "projection must stay deduplicated");
 
-    running_dispatcher.stop();
+    running_dispatcher.stop().await.expect("dispatcher stop");
 }
 
 async fn wait_until(condition: impl Fn() -> bool) {

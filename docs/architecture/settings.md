@@ -63,7 +63,7 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 | Surface | Current source/persistence | Current owner boundary | Status |
 | --- | --- | --- | --- |
 | Server deployment configuration | `apps/server/src/common/settings.rs`, YAML/environment, `ServerRuntimeContext` | Host composition | Live; typed in many areas, but not a tenant settings source |
-| Generic tenant platform settings | `platform_settings(tenant_id, category, settings, schema_version)` and `apps/server::SettingsService` | Server-owned generic service | Resolved: atomic DB transaction and transactional outbox `publish_in_tx`; monotonic `schema_version` increment |
+| Generic tenant platform settings | `platform_settings(tenant_id, category, settings, schema_version)` and `apps/server::SettingsService` | Server-owned generic service | Resolved: atomic DB transaction and transactional outbox `publish_in_tx`; monotonic `schema_version` increment; GraphQL reads return `schemaVersion` and updates require `expectedSchemaVersion` (stale writes map to `CONFLICT`) |
 | Event delivery / Iggy | Dedicated settings services and tables | Dedicated platform control-plane services | Live owner-specific direction; activation can require restart |
 | Search settings | `rustok-search::SearchSettingsService` and `search_settings` | Search owner | Live owner-specific reference direction |
 | Static/native module settings | `[settings]` in `rustok-module.toml`; value in `tenant_modules.settings` | Manifest schema resolved by host, normalization/persistence through `rustok-modules` | Partially live |

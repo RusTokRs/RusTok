@@ -247,6 +247,9 @@ pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
     let mut openapi = ApiDoc::openapi();
     #[cfg(not(feature = "mod-flex"))]
     prune_disabled_flex_surface(&mut openapi);
+    if !settings.features.oauth_enabled {
+        prune_disabled_oauth_surface(&mut openapi);
+    }
     #[cfg(feature = "mod-blog")]
     openapi.merge(rustok_blog::openapi::openapi_document());
     #[cfg(feature = "mod-forum")]
@@ -263,6 +266,14 @@ pub fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
         prune_unused_components(&mut openapi);
     }
     openapi
+}
+
+fn prune_disabled_oauth_surface(openapi: &mut OpenApiDoc) {
+    openapi
+        .paths
+        .paths
+        .retain(|path, _| !path.starts_with("/api/oauth/"));
+    prune_unused_components(openapi);
 }
 
 #[cfg(not(feature = "mod-flex"))]
@@ -505,6 +516,30 @@ mod tests {
     use super::{ApiDoc, build_openapi_document};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
+
+    #[test]
+    fn openapi_prunes_oauth_paths_when_the_feature_gate_is_closed() {
+        let mut settings = RustokSettings::default();
+        settings.features.oauth_enabled = false;
+        let document = build_openapi_document(&settings);
+        assert!(
+            document
+                .paths
+                .paths
+                .keys()
+                .all(|path| !path.starts_with("/api/oauth/"))
+        );
+
+        settings.features.oauth_enabled = true;
+        let document = build_openapi_document(&settings);
+        assert!(
+            document
+                .paths
+                .paths
+                .keys()
+                .any(|path| path == "/api/oauth/token")
+        );
+    }
 
     #[test]
     fn openapi_includes_all_documented_core_paths() {

@@ -60,6 +60,49 @@ Required scoped verification before accepting these changes:
 schema/admission and OAuth failure-injection tests. None is claimed
 passed without execution evidence.
 
+## Server P1 Security and Readiness Remediation (2026-11-01)
+
+This is bounded remediation of the five P1 findings from the `apps/server`
+logic review, not completion of the exhaustive FS-01 audit.
+
+### Confirmed changes under review
+
+- Invite acceptance now checks `features.invites_enabled` in the canonical
+  `AuthLifecycleService::accept_invite_once_runtime` service before token
+  decode. REST middleware, REST handlers, and GraphQL/native providers share
+  the same gate; disabled invites remain indistinguishable from invalid tokens.
+- Service-token permission snapshots now pass through the same tenant module
+  availability filter as direct-user snapshots before role inference. Flex
+  REST handlers call the owner-side `flex::rest::ensure_module_enabled` gate,
+  and Flex GraphQL `require_access` calls the shared GraphQL module gate.
+- Password reset, self-service password change, and admin password updates now
+  write `users.password_changed_at` and revoke live delegated OAuth refresh
+  tokens in the same transaction. Delegated access-token validation, refresh
+  validation, and authorization-code exchange reject credentials issued at or
+  before the epoch. A nullable additive migration owns the schema change.
+- CORS preflight now allows the session-request, idempotency, host-authority,
+  installer setup, and observability token headers already consumed by the
+  server. A real preflight test replaces the previous Debug-only assertion for
+  this contract.
+- Readiness only requires local background-worker handles in `full` and
+  `worker` host modes. API/SSR surface modes emit a non-critical worker-host
+  mode check instead of failing readiness for workers they do not run.
+
+### Verification status
+
+The sandbox has no Rust toolchain, PostgreSQL, Redis, or Docker. The diff
+invariant gate and `git diff --check` were run; Rust compilation, crate tests,
+migration smoke, and infrastructure-backed tests remain required before merge:
+`cargo fmt --all -- --check`,
+`cargo check -p rustok-server --lib`,
+`cargo test -p rustok-server --lib`,
+`cargo check -p flex --lib`,
+`cargo test -p flex --lib`,
+`cargo check -p rustok-migrations --lib`,
+`cargo test -p rustok-migrations --lib`, and
+`scripts/verify/verify-migration-smoke.sh`.
+No Rust or PostgreSQL verification is claimed passed without execution evidence.
+
 ## Module Platform Handoff
 
 The server is the host and transport composition layer for the module platform;
@@ -273,3 +316,360 @@ required evidence.
 - Evidence: `source audit confirms the auth resolver maps validated claims into the closed typed enum and stores it on CurrentUser; middleware and GraphQL HTTP/WebSocket only propagate that value; RBAC GraphQL, REST and native adapters require the typed request context; owner policy contains only kind plus tenant and has no grant/client/session fallback. Source guards cover the single-source typed contract and admission order. No command execution is claimed. Historical PR #2747 head 3cf4b3a44980ca257f7f53849e905673141db289 compiled only default rustok-rbac before issue #2740 stopped the workflow.`
 - Next action: `continue the core/rbac cursor: run targeted API/auth-resolver/RBAC Admin/server checks and principal-kind, tenant and invalidation source verifiers on one revision, then retain PostgreSQL concurrency and multi-replica Redis recovery evidence; leave the complete server composition audit for its Wave 2 cursor visit`
 - Resume command: `cargo fmt --all -- --check && cargo check -p rustok-api && cargo check -p rustok-api --features server && cargo check -p rustok-rbac --all-features && cargo check -p rustok-rbac-admin --features ssr && cargo check -p rustok-server --lib && cargo test -p rustok-api authenticated_facts_classify_fail_closed && cargo test -p rustok-server --lib token_claim_classifier_returns_explicit_principal_kinds && cargo test -p rustok-rbac --all-features && cargo test -p rustok-server --test rbac_artifact_permission_control_plane_guard && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-admin-tenant-scope.mjs && node scripts/verify/verify-rbac-invalidation-observability.mjs`
+
+## P2 remediation batch (2026-11-01)
+
+This batch continues the server review after the P1 fixes. It is implemented
+in the working tree but has not been compiled or exercised against PostgreSQL,
+Redis, or a running host in this environment.
+
+### OAuth replay and lineage scope
+
+- `oauth_tokens.authorization_code_id` is an additive nullable column owned by
+  `rustok-auth` (`m20261101_000002_add_oauth_token_authorization_code`). It links
+  delegated refresh-token lineages to the authorization code that issued them.
+  Service-client tokens and pre-migration rows keep NULL.
+- Authorization-code exchange now detects replay both before the CAS and on a
+  CAS miss. A replay revokes the delegated refresh lineage bound to the same
+  code, client, tenant, and subject. The CAS-miss revocation is committed before
+  `invalid_grant` is returned.
+- Refresh rotation CAS misses run the existing reuse detector. Refresh-family
+  root lookup and reuse revocation are scoped by client, tenant, and subject;
+  a missing family root fails closed instead of resetting the absolute cap.
+- Stateless OAuth access tokens are not extended with a family claim in this
+  batch. Their exposure after lineage revocation remains bounded by the
+  15-minute user access-token TTL; refresh reuse is denied immediately.
+
+### HTTP edge labels and upload deadlines
+
+- Metrics path labels come from the routed `MatchedPath` captured by a route
+  layer. Unmatched requests use fixed `:not_found` / `:unmatched` buckets
+  regardless of status; raw URL segments are no longer sanitized into an
+  unbounded label vocabulary.
+- Extended upload timeouts are limited to the Media owner streaming upload
+  route and the registry artifact publication route. Bounded JSON artifact
+  dispatch and client-controlled Content-Type alone no longer receive the
+  upload deadline.
+
+### Environment and log contracts
+
+- `common::settings::resolve_environment_name` is the canonical selector for
+  config loading and production gates. `RUSTOK_ENV`, `RUST_ENV`, and `APP_ENV`
+  must agree when present; conflicting aliases fail startup, and earlier
+  production checks fail closed.
+- Auth entry-point debug logs, disabled email-sender logs, superadmin bootstrap
+  logs, and comments schedule-audit ambiguity warnings no longer emit raw
+  email addresses, recipients, or claim tokens.
+
+### Verification still required
+
+- `cargo check -p rustok-server`
+- `cargo test -p rustok-server oauth_token_service`
+- `cargo test -p rustok-server http_stack`
+- `cargo test -p rustok-server common::settings`
+- `cargo test -p rustok-auth migrations`
+- `scripts/verify/verify-migration-smoke.sh` against PostgreSQL
+- `scripts/verify/verify-remediation-gate.py` with Cargo available
+
+## P3 runtime-boundary remediation batch (2026-11-01)
+
+This batch continues the bounded server review after P1/P2. It is implemented
+in the working tree but has not been compiled or exercised against PostgreSQL,
+Redis, or a running host in this environment.
+
+### Module event dispatcher lifecycle
+
+- `spawn_module_event_dispatcher` now starts the module-owned event dispatcher
+  only in background-worker profiles (`full` and `worker`). API, admin SSR,
+  storefront SSR, and registry-only profiles still compose module runtime
+  extensions and individually gated helper workers, but do not start the local
+  dispatcher receive loop.
+- Dispatcher startup is idempotent through a host-owned
+  `ModuleEventDispatcherHandle` stored in `ServerRuntimeContext`. The previous
+  detached logging task is replaced by a handle that shutdown can abort and
+  join. `shutdown_runtime_workers` drains it alongside the other module workers.
+- The core `RunningDispatcher` still has no cooperative stop signal; shutdown
+  aborts the receive loop and joins it with the existing bounded module-worker
+  timeout. In-flight detached handler tasks remain a core dispatcher limitation.
+
+### Platform settings write serialization
+
+- `SettingsService::update` now reads the existing row, preserves secrets,
+  validates, and writes inside one transaction. The update is a CAS against
+  `schema_version`; a lost race rolls back and retries with a fresh snapshot.
+- First-write races are retried when the unique `(tenant_id, category)` index
+  rejects a concurrent insert. After a bounded number of attempts the service
+  returns `SettingsError::WriteConflict` instead of silently overwriting.
+- GraphQL maps the conflict to a stable retryable client signal. The public
+  input/payload still does not expose `schema_version`; callers that need
+  end-to-end optimistic concurrency must add an expected-version field in a
+  separate API contract change.
+
+### GraphQL channel propagation
+
+- HTTP GraphQL requests now insert the middleware-resolved `ChannelContext`
+  into async-graphql request data, so owner resolvers that build `PortContext`
+  from `ctx.data::<ChannelContext>()` receive the same channel as REST.
+- GraphQL WebSocket upgrades carry the handshake-resolved channel into
+  `connection_init` data. The channel tenant must match the tenant resolved
+  from `connection_init.tenantSlug`; mismatches fail before authentication
+  lease creation. `RequestContext` channel fields are populated for both
+  transports instead of being hardcoded to `None` on WebSocket.
+
+### Redis rate-limit connection reuse
+
+- The Redis rate limiter now lazily creates one reconnecting
+  `ConnectionManager` per limiter and shares it across clones, namespaces,
+  limit checks, and health probes. The existing two-second Redis operation
+  timeout still bounds connection acquisition and commands.
+- This removes per-request connection churn while preserving the distributed
+  Lua INCR/EXPIRE/TTL semantics and the memory-backend fallback.
+
+### RBAC availability fail-closed presentation
+
+- When tenant module-availability resolution fails, the host provider no
+  longer returns `None` (which the RBAC owner interprets as “all permissions
+  are platform-core”). It returns a snapshot with known permission ownership
+  and an empty enabled-module set, so module-owned permissions are presented
+  as dormant and newly dormant grants are rejected.
+- Hosts without a module registry still return `None` through the existing
+  handle construction path; this change only affects resolution failures on
+  hosts that do have a registry.
+
+### Verification still required
+
+- `cargo check -p rustok-server`
+- `cargo test -p rustok-server module_event_dispatcher`
+- `cargo test -p rustok-server app_lifecycle`
+- `cargo test -p rustok-server settings_service`
+- `cargo test -p rustok-server graphql::settings`
+- `cargo test -p rustok-server controllers::graphql`
+- `cargo test -p rustok-server rate_limit`
+- `cargo test -p rustok-server rbac_module_availability`
+- PostgreSQL concurrent settings-update and unique-insert contention tests
+- Redis outage/reconnect and rate-limit contention tests
+- `scripts/verify/verify-remediation-gate.py` with Cargo available
+
+
+## P4 protocol-boundary remediation batch (2026-11-01)
+
+Scope: settings write-conflict taxonomy, RFC 7009 refresh-family revocation,
+and GraphQL WebSocket operation/auth lifetime bounds. This batch does not
+introduce a client-visible settings version contract and does not add a
+cooperative dispatcher drain; those remain separate follow-ups.
+
+### Implemented
+
+- `rustok-api` GraphQL error taxonomy now includes `ErrorCode::Conflict`
+  (`CONFLICT`) and `GraphQLError::conflict`. Platform settings
+  `WriteConflict` maps to that extension code instead of `BAD_USER_INPUT`,
+  so clients can distinguish retryable optimistic-concurrency conflicts from
+  invalid input. Regression tests assert the extension code in both the API
+  crate and the server settings mutation mapper.
+- Settings unique-violation detection uses SeaORM's portable
+  `DbErr::sql_err()` / `SqlErr::UniqueConstraintViolation` classifier instead
+  of matching only one runtime-error shape.
+- RFC 7009 revocation is transactional and family-scoped. The service reads
+  the token by hash inside the transaction, coalesces `family_id` to the row
+  id for pre-lineage rows, and revokes the whole lineage with one
+  `update_many` scoped by client, tenant, and user (or `user_id IS NULL` for
+  service tokens). Unknown hashes still succeed without revealing existence.
+  The controller uses the security-only OAuth client lookup so presentation
+  translation hydration cannot decide credential validity. SQLite regression
+  tests cover unknown-token success, whole-family idempotent revocation, and
+  cross-client/cross-tenant isolation.
+- GraphQL WebSocket hosts now admit operations before forwarding them to the
+  protocol engine: at most 32 active ids, ids must be non-empty and at most
+  128 bytes, duplicate ids close with 4409, overflow with 4429, and invalid
+  ids with 4400. Slots are released when the server emits `complete`.
+  `CurrentUser` carries the signed access-token expiry; the WS lease closes
+  at that expiry and revalidates authorization every 30 seconds while idle.
+  Pure tracker tests cover cap/duplicate/release/id validation.
+
+### Known limitations / pending implementation
+
+- OAuth access JWTs are registered credentials. RFC 7009 and security-family revocation
+  revoke access and refresh rows together, fencing already-issued access JWTs before TTL
+- A shorter service-token TTL policy and an OAuth code-reuse domain event
+  remain separate contract changes.
+- PostgreSQL/Redis fault-injection checks remain a deployment gate.
+
+### Verification status
+
+Written without a local Rust toolchain; not compiled or tested in this
+sandbox. Run before merge:
+
+```bash
+cargo check -p rustok-api
+cargo test -p rustok-api --lib
+cargo check -p rustok-server
+cargo test -p rustok-server --lib graphql::settings
+cargo test -p rustok-server --lib services::oauth_app
+cargo test -p rustok-server --lib controllers::graphql
+cargo test -p rustok-server --lib extractors::auth
+```
+
+
+## P5 dispatcher cooperative-drain batch (2026-11-01)
+
+Scope: close the remaining dispatcher shutdown gap from P3. The core
+`EventDispatcher` now owns a cooperative stop signal and a real in-flight
+task boundary; host shutdown uses it instead of aborting the receive loop
+as the primary path.
+
+### Implemented
+
+- `RunningDispatcher` carries a `watch` stop signal. `request_stop` stops
+  admission of new events; the receive loop then drains its `JoinSet` of
+  admitted dispatch tasks before exiting. `stop` is now an async
+  request-stop-plus-join operation, while `abort`/`abort_handle` remain the
+  emergency cancellation path.
+- Concurrent handler tasks are no longer detached from the dispatch task.
+  `dispatch_to_handlers` owns a handler `JoinSet`, waits for all matching
+  handlers, then releases backpressure and records dispatch latency. This
+  makes dispatcher drain observable at the handler boundary and prevents
+  finished-task retention in the receive-loop `JoinSet`.
+- Host shutdown calls `ModuleEventDispatcherHandle::request_stop`, joins
+  under the existing five-second module-worker deadline, and aborts through
+  an `AbortHandle` only if the drain times out.
+- Existing core/blog/commerce dispatcher callers were updated to the async
+  `stop` contract. Regression tests cover cooperative drain of an in-flight
+  blocking handler, host-handle cooperative join, and the existing abort
+  fallback.
+
+### Known limitations / pending implementation
+
+- Drain is bounded by the host deadline; a handler that ignores cancellation
+  and blocks past the deadline is still aborted with the dispatcher task.
+  Durable recovery remains the responsibility of the outbox/worker contracts.
+- Client-visible expected-version settings CAS and stale source-guard
+  stabilization remain separate follow-ups.
+
+### Verification status
+
+Written without a local Rust toolchain; not compiled or tested in this
+sandbox. Run before merge:
+
+```bash
+cargo check -p rustok-core
+cargo test -p rustok-core --lib events::handler
+cargo check -p rustok-server
+cargo test -p rustok-server --lib services::module_event_dispatcher
+cargo test -p rustok-blog --test comment_projection_postgres_test
+cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test
+cargo test -p rustok-commerce --test integration
+```
+
+## P6 — Client-visible optimistic concurrency for platform settings
+
+Internal compare-and-swap alone still lets two admins load the same settings page and silently
+overwrite each other. The generic settings write path now exposes the persisted revision to every
+current admin client:
+
+- `SettingsService` returns `SettingsSnapshot { settings, schema_version }` from `get_snapshot` /
+  `get_all_snapshots`. A missing row is revision `0`; the cache category still reports the
+  deployment-resolved document but carries the persisted row's revision.
+- `update_if_current(..., expected_schema_version)` checks the expected revision inside the same
+  transaction that reads, validates, preserves secrets, and writes the row. A mismatch rolls back
+  and returns `WriteConflict`; negative expectations are validation errors. The bounded internal
+  retry loop remains only for the internal/bootstrap `update` wrapper.
+- GraphQL `PlatformSettingsPayload` and `UpdatePlatformSettingsPayload` expose `schemaVersion`.
+  `UpdatePlatformSettingsInput` requires `expectedSchemaVersion`; stale writes map to the shared
+  `CONFLICT` error so clients can re-read and retry rather than assuming success.
+- `rustok_cache::CacheSettingsAdminPort` now reads/updates `CacheSettingsSnapshot` and requires an
+  expected revision. The host adapter delegates to `SettingsService`, and the cache admin Leptos
+  transport/UI keeps the loaded revision and advances it only after a successful save.
+- `apps/admin` email settings and the Next.js email/cache admin packages were updated in lockstep:
+  queries/mutations select `schemaVersion`, forms store the loaded revision, and saves send
+  `expectedSchemaVersion`. There is no client-side blind-write fallback.
+
+Regression coverage:
+
+- SQLite service test: revision `0` insert, sequential revision increments, stale expected revision
+  conflict, stored settings unchanged after conflict, and negative revision rejection.
+- Cache host adapter tests assert revision increments and that the invalid-mode update uses the
+  loaded revision.
+- Cache port recording test asserts a stale update is rejected before recording a write.
+
+Verification limits: no Rust toolchain or database runtime is available in this workspace, so
+`cargo check` / `cargo test` and the remediation gate remain pending. Static verification only:
+tree-sitter parse of changed Rust files (two pre-existing unrelated ERROR nodes), `git diff --check`,
+remediation diff invariants, the runtime-context/auth-admin-tenant-scope guards, and the updated
+server platform-settings tenant-scope guard (now asserting the snapshot/CAS GraphQL contract).
+
+## P7 — OAuth deployment gate and authorization-code retention
+
+The `features.oauth_enabled` setting previously deserialized but did not affect runtime composition:
+OAuth endpoints and discovery metadata were mounted even when the feature was disabled. The host now
+treats the flag as a real fail-closed composition gate:
+
+- `build_application_router` mounts `controllers::oauth` and `controllers::oauth_metadata` only when
+  `settings.features.oauth_enabled` is true.
+- OpenAPI prunes `/api/oauth/*` when the gate is closed, so the published contract matches the mounted
+  surface.
+- Router tests assert closed-gate 404s for token/revocation/discovery paths and an open-gate mounted
+  token endpoint. An OpenAPI test asserts pruning and restoration.
+
+Auth retention also now purges expired `oauth_authorization_codes`. A used code is the replay anchor
+for the delegated refresh lineage it issued, so codes are retained on the same 120-day outer window as
+OAuth token families rather than the shorter 30-day session/invite window. The retention worker reports
+the new per-table count, and a SQLite regression test proves old codes are removed, recent used codes
+survive, and a second purge is idempotent.
+
+Verification limits: no Rust toolchain or database runtime is available in this workspace, so
+`cargo check` / `cargo test` and the remediation gate remain pending. Static verification only:
+tree-sitter parse of changed Rust files (two pre-existing unrelated ERROR nodes), `git diff --check`,
+remediation diff invariants, and the existing runtime-context/auth-admin-tenant-scope/platform-settings
+guards.
+
+
+## P8 — OAuth access-token revocation fence
+
+OAuth access JWTs now carry a `jti` bound to a durable `oauth_tokens` access row
+(`token_kind = access`). The extractor requires an active, hash-bound, client/tenant/grant/
+subject-scoped row, so RFC 7009, app/consent revocation, credential change, code replay, and
+refresh reuse fence already-issued access JWTs before their signed TTL. Delegated rows capture
+`consent_granted_at`; consent revoke/re-grant cannot resurrect older credentials. Refresh-only
+queries filter `token_kind = refresh`, and admin active-token counts remain refresh-lineage counts.
+
+Regression coverage:
+
+- SQLite RFC 7009 test revokes an access registration and its refresh family by access hash.
+- Extractor tests reject unregistered and revoked OAuth access registrations.
+- Existing refresh rotation / code replay tests now include access rows and the new columns.
+
+Verification limits: no Rust toolchain or database runtime is available in this workspace, so
+`cargo check` / `cargo test` and the remediation gate remain pending. Static verification only.
+
+## PR integration and verification handoff (2026-11-02)
+
+The P1–P8 changes were prepared from base
+`0aaf455a45556f4e39a5ed66b8a1184369e5e93f`. Before opening the draft PR, `main` was
+refreshed to `a418bbbed64e53cdf841b87dada7ae5799770cd2` and merged into the task branch.
+The integration preserves the upstream runtime/readiness changes, ADR registry repairs,
+and admin contract tests. No audit-ledger advancement is part of the task delta.
+
+The upstream cache/email admin fixtures now exercise the versioned settings contract:
+they submit `expectedSchemaVersion`, retain the returned revision when normalizing invalid
+JSON, propagate conflicts, and reject a missing revision instead of inventing a CAS baseline.
+The settings source guard checks both transactional event publication and the CAS entrypoint.
+
+Executed local evidence:
+
+- `node --test apps/next-admin/packages/cache/src/cache-admin.test.mjs apps/next-admin/packages/email/src/email-admin.test.mjs` — 19 passed, 0 failed.
+- `npm run verify:docs` — passed.
+- `node scripts/verify/verify-adrs.mjs` — passed for 164 decisions.
+- Runtime-context, auth-admin tenant-scope/boundary, explicit RBAC principal-kind, and
+  platform-settings tenant-scope source guards — passed.
+- Task delta against refreshed `main`: `git diff --check` and remediation diff invariants — passed.
+
+Still blocked locally: cargo check/test/clippy/format, Rust crate contract tests, full Rust
+remediation/architecture gates, admin typechecks/builds, and PostgreSQL/Redis fault injection.
+The environment has no Cargo/Rust toolchain, PostgreSQL, Redis, Docker, or installed frontend
+dependencies. These are CI/maintainer gates, not claimed passing results. The PR remains a
+draft until the affected crate and integration checks have actually run.
+
+Deferred work remains the service-token TTL policy, the cross-crate OAuth code-reuse domain
+event, deduplication of `RbacService::record_claim_role_mismatch()`, and database/Redis
+failure-path evidence. The historical source-guard/ADR failures recorded in earlier batches
+were resolved by the refreshed `main`; the current runs above pass.

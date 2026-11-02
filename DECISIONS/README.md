@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-01](./2026-11-01-oauth-access-token-revocation-fence.md) | OAuth access-token revocation fence | Accepted | In progress | — |
 | [2026-10-28](./2026-10-28-forum-write-acknowledgements.md) | Forum owner-write acknowledgements do not re-read hidden content | Accepted | In progress | Extends [Forum anonymous discovery and category counts](./2026-10-15-forum-anonymous-discovery-and-category-counts.md) |
 | [2026-10-28](./2026-10-28-forum-first-publication-event-lifecycle.md) | Forum first-publication event lifecycle uses its immutable owner journal | Accepted | In progress | Extends [Forum pre-moderation](./2026-10-09-forum-topic-pre-moderation.md) |
 | [2026-10-28](./2026-10-28-forum-default-topic-order.md) | Forum topic list default ordering uses the tenant setting | Accepted | In progress | Extends [Forum list page-size defaults](./2026-10-09-forum-list-page-size-from-settings.md) |

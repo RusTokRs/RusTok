@@ -466,6 +466,7 @@ mod tests {
         user_models::Entity::insert(user_models::ActiveModel {
             failed_login_count: Set(0),
             locked_until: Set(None),
+            password_changed_at: Set(None),
             id: Set(user_id),
             tenant_id: Set(tenant_id),
             email: Set(email.to_string()),

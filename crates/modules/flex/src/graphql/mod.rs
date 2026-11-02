@@ -15,7 +15,7 @@ pub use query::FlexQuery;
 pub use runtime::{AttachedValuesGraphqlPort, FlexGraphqlRuntime};
 pub use types::*;
 
-fn require_access(
+async fn require_access(
     ctx: &Context<'_>,
     permission: Permission,
 ) -> Result<(TenantContext, AuthContext)> {
@@ -34,6 +34,8 @@ fn require_access(
             "Authenticated tenant does not match request tenant",
         ));
     }
+
+    rustok_api::graphql::require_module_enabled(ctx, "flex").await?;
 
     Ok((tenant.clone(), auth.clone()))
 }

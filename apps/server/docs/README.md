@@ -96,10 +96,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 The current generic `SettingsService` and `platform_settings` table are live
 migration-target surfaces, not a reference owner model. They mix tenant categories
 whose semantic consumers belong to Email, Auth, tenant locale policy, and platform
-runtime components; validation is partial, `schema_version` is not an effective
-migration contract, and the generic settings-change event is currently published
-after persistence rather than atomically. New owner settings must not extend this
-bag. Follow the accepted
+runtime components, and validation is still partial. Writes now commit settings and
+the generic settings-change event in one transaction through `publish_in_tx`, and
+`schema_version` is a real optimistic-concurrency revision: GraphQL reads expose
+`schemaVersion`, admin updates must send `expectedSchemaVersion`, and stale writes
+fail with `CONFLICT` instead of silently overwriting another admin. Revision
+concurrency does not turn this generic bag into an owner-specific migration
+contract. New owner settings must not extend this bag. Follow the accepted
 [Settings and Configuration Architecture](../../../docs/architecture/settings.md)
 for the owner cutover, secret handles, activation state, and transactional event
 requirements.
@@ -233,12 +236,18 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
-- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
+- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, caps active operation ids (32, 128-byte ids; duplicate 4409, overflow 4429, invalid id 4400), releases slots on server `complete`, revalidates the connection lease every 30 seconds and at the signed access-token expiry, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
 
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
   state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
+- `settings.rustok.features.oauth_enabled` is a real composition gate. When it is false the host does
+  not mount `/api/oauth/*` or the OAuth discovery metadata, and OpenAPI prunes the OAuth paths. The
+  default is fail-closed; deployments that expose an authorization server must opt in explicitly.
+- Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
+  token families, so a used code remains available as the replay anchor for the delegated lineage it
+  issued while still bounding storage.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
   goes through `rustok_web::json_response`.
@@ -253,6 +262,13 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
+  row whose id is the JWT `jti`, and the extractor requires that row to be active,
+  hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
+  revocation, credential change, code replay, and refresh reuse revoke the whole
+  family, so an already-issued access JWT is fenced before its signed TTL. Delegated
+  rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
+  cannot resurrect older tokens.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
@@ -647,6 +663,10 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - Refresh-token rotation verifies that the referenced user belongs to the
   same tenant as the selected refresh session, preventing a malformed
   cross-tenant reference from issuing a token with inconsistent authority.
+- Host shutdown requests a cooperative drain from the module event dispatcher
+  before joining it; already admitted dispatches and their handler tasks are
+  awaited, and the host five-second deadline aborts the dispatcher task only as
+  an emergency fallback.
 - Host shutdown now awaits the payment-provider, paid-order-label,
   marketplace-financial, notification intake/candidate/fanout, Forum search
   inbox, and Product media-release worker handles after broadcasting stop.

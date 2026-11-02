@@ -21,6 +21,9 @@ fn map_platform_settings_error(error: SettingsError) -> FieldError {
         SettingsError::InvalidCategory(_) => {
             <FieldError as GraphQLError>::bad_user_input("Invalid settings category")
         }
+        SettingsError::WriteConflict => <FieldError as GraphQLError>::conflict(
+            "Settings were changed concurrently; re-read the category and retry",
+        ),
         error => graphql_settings_internal_error("Platform settings are unavailable", error),
     }
 }
@@ -91,15 +94,19 @@ impl SettingsQuery {
             ));
         }
 
-        let value = SettingsService::get(runtime_ctx, tenant.id, &category)
+        let snapshot = SettingsService::get_snapshot(runtime_ctx, tenant.id, &category)
             .await
             .map_err(map_platform_settings_error)?;
 
-        let settings = serde_json::to_string(&value).map_err(|error| {
+        let settings = serde_json::to_string(&snapshot.settings).map_err(|error| {
             graphql_settings_internal_error("Platform settings are unavailable", error)
         })?;
 
-        Ok(PlatformSettingsPayload { category, settings })
+        Ok(PlatformSettingsPayload {
+            category,
+            settings,
+            schema_version: snapshot.schema_version,
+        })
     }
 
     /// Retrieve all platform setting categories for the current tenant.
@@ -121,7 +128,7 @@ impl SettingsQuery {
             ));
         }
 
-        let categories = SettingsService::get_all(runtime_ctx, tenant.id)
+        let categories = SettingsService::get_all_snapshots(runtime_ctx, tenant.id)
             .await
             .map_err(|error| {
                 graphql_settings_internal_error("Platform settings are unavailable", error)
@@ -129,11 +136,15 @@ impl SettingsQuery {
 
         categories
             .into_iter()
-            .map(|(category, value)| {
-                let settings = serde_json::to_string(&value).map_err(|error| {
+            .map(|(category, snapshot)| {
+                let settings = serde_json::to_string(&snapshot.settings).map_err(|error| {
                     graphql_settings_internal_error("Platform settings are unavailable", error)
                 })?;
-                Ok(PlatformSettingsPayload { category, settings })
+                Ok(PlatformSettingsPayload {
+                    category,
+                    settings,
+                    schema_version: snapshot.schema_version,
+                })
             })
             .collect()
     }

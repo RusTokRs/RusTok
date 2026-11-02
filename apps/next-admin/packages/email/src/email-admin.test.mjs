@@ -86,12 +86,14 @@ test('GraphQL queries and mutations expose required schema fields', () => {
   assert.match(api.PLATFORM_SETTINGS_QUERY, /platformSettings\(category: \$category\)/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /category/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /settings/);
+  assert.match(api.PLATFORM_SETTINGS_QUERY, /schemaVersion/);
 
   // Mutation fields
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /updatePlatformSettings\(input: \$input\)/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /success/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /category/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /settings/);
+  assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /schemaVersion/);
 });
 
 test('getEmailSettings parses valid JSON, merges with defaults, and propagates auth headers', async () => {
@@ -108,7 +110,8 @@ test('getEmailSettings parses valid JSON, merges with defaults, and propagates a
           smtpHost: 'mail.provider.org',
           smtpPort: 465,
           smtpUsername: 'sender@provider.org'
-        })
+        }),
+        schemaVersion: 7
       }
     };
   });
@@ -118,24 +121,26 @@ test('getEmailSettings parses valid JSON, merges with defaults, and propagates a
     tenantSlug: 'tenant-slug'
   });
 
-  assert.equal(res.enabled, true);
-  assert.equal(res.smtpHost, 'mail.provider.org');
-  assert.equal(res.smtpPort, 465);
-  assert.equal(res.smtpUsername, 'sender@provider.org');
-  assert.equal(res.from, 'noreply@example.com'); // Preserved from defaults
-  assert.equal(res.resetBaseUrl, 'https://example.com'); // Preserved from defaults
+  assert.equal(res.schemaVersion, 7);
+  assert.equal(res.settings.enabled, true);
+  assert.equal(res.settings.smtpHost, 'mail.provider.org');
+  assert.equal(res.settings.smtpPort, 465);
+  assert.equal(res.settings.smtpUsername, 'sender@provider.org');
+  assert.equal(res.settings.from, 'noreply@example.com'); // Preserved from defaults
+  assert.equal(res.settings.resetBaseUrl, 'https://example.com'); // Preserved from defaults
 });
 
 test('getEmailSettings falls back to DEFAULT_EMAIL_SETTINGS on unparseable JSON', async () => {
   const api = createApiModule(async () => ({
     platformSettings: {
       category: 'email',
-      settings: 'unparseable-data['
+      settings: 'unparseable-data[',
+      schemaVersion: 4
     }
   }));
 
   const res = await api.getEmailSettings();
-  assert.deepEqual(res, api.DEFAULT_EMAIL_SETTINGS);
+  assert.deepEqual(res, { settings: api.DEFAULT_EMAIL_SETTINGS, schemaVersion: 4 });
 });
 
 test('updateEmailSettings serializes payload and returns merged settings', async () => {
@@ -158,7 +163,8 @@ test('updateEmailSettings serializes payload and returns merged settings', async
           from: 'admin@rustok.io',
           smtpHost: 'smtp.rustok.io',
           smtpPort: 587
-        })
+        }),
+        schemaVersion: 9
       }
     };
   };
@@ -166,16 +172,19 @@ test('updateEmailSettings serializes payload and returns merged settings', async
   const api = createApiModule(mockGraphqlRequest);
   const updated = await api.updateEmailSettings(
     { enabled: true, from: 'admin@rustok.io', smtpHost: 'smtp.rustok.io' },
+    8,
     { token: 'secret-token', tenantSlug: 'tenant-prod' }
   );
 
-  assert.equal(updated.enabled, true);
-  assert.equal(updated.from, 'admin@rustok.io');
-  assert.equal(updated.smtpHost, 'smtp.rustok.io');
-  assert.equal(updated.smtpPort, 587);
+  assert.equal(updated.schemaVersion, 9);
+  assert.equal(updated.settings.enabled, true);
+  assert.equal(updated.settings.from, 'admin@rustok.io');
+  assert.equal(updated.settings.smtpHost, 'smtp.rustok.io');
+  assert.equal(updated.settings.smtpPort, 587);
 
   assert.match(calledQuery, /updatePlatformSettings/);
   assert.equal(calledVars.input.category, 'email');
+  assert.equal(calledVars.input.expectedSchemaVersion, 8);
   assert.deepEqual(
     JSON.parse(calledVars.input.settings),
     { enabled: true, from: 'admin@rustok.io', smtpHost: 'smtp.rustok.io' }
@@ -189,11 +198,33 @@ test('updateEmailSettings returns defaults if backend returns unparseable respon
     updatePlatformSettings: {
       success: true,
       category: 'email',
-      settings: 'corrupt-json'
+      settings: 'corrupt-json',
+      schemaVersion: 6
     }
   }));
 
-  const res = await api.updateEmailSettings({ enabled: true });
-  assert.deepEqual(res, api.DEFAULT_EMAIL_SETTINGS);
+  const res = await api.updateEmailSettings({ enabled: true }, 5);
+  assert.deepEqual(res, { settings: api.DEFAULT_EMAIL_SETTINGS, schemaVersion: 6 });
+});
+
+test('updateEmailSettings propagates a stale-revision conflict without replacing the snapshot', async () => {
+  const conflict = new Error('CONFLICT: Settings were changed concurrently; re-read the category and retry');
+  const api = createApiModule(async (_query, variables) => {
+    assert.equal(variables.input.expectedSchemaVersion, 7);
+    throw conflict;
+  });
+
+  await assert.rejects(
+    api.updateEmailSettings({ enabled: true }, 7),
+    (error) => error === conflict
+  );
+});
+
+test('email settings reads reject a missing revision instead of inventing a CAS baseline', async () => {
+  const api = createApiModule(async () => ({
+    platformSettings: { category: 'email', settings: '{}' }
+  }));
+
+  await assert.rejects(api.getEmailSettings(), TypeError);
 });
 

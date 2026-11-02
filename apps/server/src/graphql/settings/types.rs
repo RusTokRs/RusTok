@@ -7,6 +7,8 @@ pub struct PlatformSettingsPayload {
     pub category: String,
     /// Settings serialised as a JSON string so clients can parse it dynamically.
     pub settings: String,
+    /// Persisted CAS revision. Zero means the category has no persisted row yet.
+    pub schema_version: i32,
 }
 
 /// Input for updating a single category.
@@ -15,6 +17,9 @@ pub struct UpdatePlatformSettingsInput {
     pub category: String,
     /// Full replacement JSON string for the category settings.
     pub settings: String,
+    /// Revision returned by the corresponding settings read. The write is
+    /// rejected with `CONFLICT` when another writer has advanced the category.
+    pub expected_schema_version: i32,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -22,6 +27,7 @@ pub struct UpdatePlatformSettingsPayload {
     pub success: bool,
     pub category: String,
     pub settings: String,
+    pub schema_version: i32,
 }
 
 /// Global event delivery control plane. It is intentionally not tenant-scoped
