@@ -36,14 +36,16 @@ use crate::{
     artifact_settings::{self, ArtifactSettingsStoreError},
     execute_module_toggle,
 };
-use rustok_api::{PortError, StaticTenantModuleView, is_valid_module_slug};
+use rustok_api::{
+    PortError, StaticModuleSettingsReader, StaticTenantModuleView, is_valid_module_slug,
+};
 use rustok_core::ModuleRegistry;
 use rustok_outbox::idempotency::{self, Admission};
 
 /// Upper bound for one tenant's module override rows. The catalog itself is
 /// far smaller; more persisted rows than this indicate corrupted state and
 /// fail closed instead of loading unbounded input into policy resolution.
-const MAX_TENANT_MODULE_OVERRIDES: u32 = 1_000;
+pub(crate) const MAX_TENANT_MODULE_OVERRIDES: u32 = 1_000;
 
 /// Bounded retries for deriving one lifecycle policy transition. A retry is
 /// required only when another tenant lifecycle command advances the shared
@@ -69,7 +71,10 @@ pub struct ModuleLifecycleDbWriter<'a> {
     default_enabled_modules: Vec<String>,
     co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
     settings_schema_validators: ArtifactSchemaValidatorCache,
-    static_settings_schema: Option<(String, HashMap<String, crate::ModuleSettingSpec>)>,
+    static_settings_schema: Option<(
+        String,
+        Result<HashMap<String, crate::ModuleSettingSpec>, String>,
+    )>,
 }
 
 /// Owner-owned view of one explicit tenant module override. Effective
@@ -315,9 +320,19 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     /// Supplies the host-resolved active static schema for lifecycle preflight.
     /// The owner reads and validates retained settings after acquiring its claim.
     pub fn with_static_settings_schema(
-        mut self,
+        self,
         module_slug: String,
         schema: HashMap<String, crate::ModuleSettingSpec>,
+    ) -> Self {
+        self.with_static_settings_schema_result(module_slug, Ok(schema))
+    }
+
+    /// Preserve a schema resolution failure until the owner has checked
+    /// whether this exact lifecycle command has already completed.
+    pub fn with_static_settings_schema_result(
+        mut self,
+        module_slug: String,
+        schema: Result<HashMap<String, crate::ModuleSettingSpec>, String>,
     ) -> Self {
         self.static_settings_schema = Some((module_slug, schema));
         self
@@ -1016,31 +1031,57 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
             SupportedBackend::Postgres => {
-                "SELECT module_slug, enabled, settings FROM tenant_modules \
+                "SELECT module_slug, enabled, settings, COUNT(*) OVER (PARTITION BY module_slug) AS identity_rows FROM tenant_modules \
                  WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2"
             }
             SupportedBackend::Sqlite => {
-                "SELECT module_slug, enabled, settings FROM tenant_modules \
-                 WHERE tenant_id = ?1 ORDER BY module_slug ASC LIMIT ?2"
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                 SELECT t.module_slug AS matched_module, t.module_slug AS module_slug, t.enabled, t.settings, \
+                 COUNT(t.module_slug) OVER (PARTITION BY t.module_slug) AS identity_rows, identity.parent_count, \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
+                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?3) \
+                 ORDER BY t.module_slug ASC LIMIT ?2"
             }
         };
-        self.db
+        let mut values = vec![tenant_id.into(), i64::from(limit).into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(backend.uuid_value(tenant_id));
+        }
+        let snapshots = self
+            .db
             .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 sql,
-                vec![tenant_id.into(), i64::from(limit).into()],
+                values,
             ))
             .await
             .map_err(database_error)?
             .into_iter()
             .map(|row| {
-                Ok(TenantModuleOverrideSnapshot {
+                if matches!(backend, SupportedBackend::Sqlite)
+                    && !crate::backend::sqlite_tenant_module_identity(&row).map_err(|error| {
+                        ModuleLifecycleDbWriterError::Configuration(error.to_string())
+                    })?
+                {
+                    return Ok(None);
+                }
+                let identity_rows: i64 =
+                    row.try_get("", "identity_rows").map_err(database_error)?;
+                if identity_rows != 1 {
+                    return Err(ModuleLifecycleDbWriterError::Configuration(
+                        "tenant module state has conflicting UUID representations".to_string(),
+                    ));
+                }
+                Ok(Some(TenantModuleOverrideSnapshot {
                     module_slug: row.try_get("", "module_slug").map_err(database_error)?,
                     enabled: row.try_get("", "enabled").map_err(database_error)?,
                     settings: row.try_get("", "settings").map_err(database_error)?,
-                })
+                }))
             })
-            .collect()
+            .collect::<Result<Vec<_>, ModuleLifecycleDbWriterError>>()?;
+        Ok(snapshots.into_iter().flatten().collect())
     }
 
     /// Returns bounded browser-safe static lifecycle projections. The owner
@@ -1457,39 +1498,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         tenant_id: Uuid,
     ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
-        let sql = match backend {
-            SupportedBackend::Postgres => {
-                "SELECT module_slug, enabled FROM tenant_modules \
-                 WHERE tenant_id = $1 AND enabled IS NOT NULL LIMIT 1001"
-            }
-            SupportedBackend::Sqlite => {
-                "SELECT module_slug, enabled FROM tenant_modules \
-                 WHERE tenant_id = ?1 AND enabled IS NOT NULL LIMIT 1001"
-            }
-        };
-        let overrides = self
-            .db
-            .query_all_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                sql,
-                vec![tenant_id.into()],
-            ))
-            .await
-            .map_err(database_error)?
-            .into_iter()
-            .map(|row| {
-                Ok(TenantModuleOverride {
-                    module_slug: row.try_get("", "module_slug").map_err(database_error)?,
-                    enabled: row.try_get("", "enabled").map_err(database_error)?,
-                })
-            })
-            .collect::<Result<Vec<_>, ModuleLifecycleDbWriterError>>()?;
-        if overrides.len() > MAX_TENANT_MODULE_OVERRIDES as usize {
-            return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
-        }
-        Ok(overrides)
+        crate::policy_revision_consumer::load_tenant_overrides(&self.db, tenant_id).await
     }
 
     async fn settings(
@@ -1506,27 +1515,20 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 .await
                 .map_err(|error| map_artifact_settings_error(module_slug, error));
         }
-        let backend =
-            SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
-        let sql = match backend {
-            SupportedBackend::Postgres => {
-                "SELECT settings FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            SupportedBackend::Sqlite => {
-                "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-            }
-        };
-        self.db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                sql,
-                vec![tenant_id.into(), module_slug.into()],
-            ))
-            .await
-            .map_err(database_error)?
-            .map(|row| row.try_get("", "settings").map_err(database_error))
-            .transpose()
-            .map(|settings| settings.unwrap_or_else(|| serde_json::json!({})))
+        Ok(
+            crate::DatabaseStaticModuleSettingsReader::new(self.db.clone())
+                .settings(tenant_id, module_slug)
+                .await
+                .map_err(|error| {
+                    if error.kind == rustok_api::PortErrorKind::InvariantViolation {
+                        ModuleLifecycleDbWriterError::Configuration(error.to_string())
+                    } else {
+                        database_error(error)
+                    }
+                })?
+                .map(|snapshot| snapshot.settings)
+                .unwrap_or_else(|| serde_json::json!({})),
+        )
     }
 }
 
@@ -1870,6 +1872,287 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_policy_and_operator_reads_agree_for_uuid_storage_forms() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE tenant_modules (tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, \
+             enabled BOOLEAN NULL, settings TEXT NOT NULL, PRIMARY KEY (tenant_id, module_slug))",
+        )
+        .await
+        .unwrap();
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        let legacy_tenant_id = Uuid::new_v4();
+        for tenant_key in [
+            tenant_id.into(),
+            foreign_tenant_id.into(),
+            legacy_tenant_id.to_string().into(),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_key],
+            ))
+            .await
+            .unwrap();
+        }
+        for (tenant_key, slug, enabled, settings) in [
+            (tenant_id.into(), "forum", Some(false), r#"{"value":3}"#),
+            (tenant_id.into(), "other", Some(true), "{}"),
+            (foreign_tenant_id.into(), "forum", Some(true), "{}"),
+            (
+                legacy_tenant_id.to_string().into(),
+                "forum",
+                Some(false),
+                "{}",
+            ),
+        ] {
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, ?2, ?3, ?4)",
+                vec![tenant_key, slug.into(), enabled.into(), settings.into()],
+            ))
+            .await
+            .unwrap();
+        }
+        let registry = ModuleRegistry::new().register(SettingsTestModule);
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        let empty_ambiguous = Uuid::new_v4();
+        for key in [empty_ambiguous.into(), empty_ambiguous.to_string().into()] {
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![key],
+            ))
+            .await
+            .unwrap();
+        }
+        assert!(writer.overrides(empty_ambiguous).await.is_err());
+        assert!(
+            writer
+                .tenant_override_snapshots(empty_ambiguous, 1)
+                .await
+                .is_err()
+        );
+        let mut owner = writer.overrides(tenant_id).await.unwrap();
+        let transaction = db.begin().await.unwrap();
+        let mut locked =
+            crate::policy_revision_consumer::load_tenant_overrides(&transaction, tenant_id)
+                .await
+                .unwrap();
+        transaction.rollback().await.unwrap();
+        owner.sort_by(|a, b| a.module_slug.cmp(&b.module_slug));
+        locked.sort_by(|a, b| a.module_slug.cmp(&b.module_slug));
+        assert_eq!(owner, locked);
+        assert_eq!(owner.len(), 2);
+        assert_eq!(owner[0].module_slug, "forum");
+        assert!(!owner[0].enabled);
+        assert_eq!(writer.overrides(legacy_tenant_id).await.unwrap().len(), 1);
+        assert_eq!(
+            writer.settings(tenant_id, "forum").await.unwrap(),
+            serde_json::json!({"value":3})
+        );
+        assert_eq!(
+            writer
+                .tenant_override_snapshots(tenant_id, 10)
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        assert!(writer.overrides(tenant_id).await.is_err());
+        assert!(
+            writer
+                .tenant_override_snapshots(tenant_id, 1)
+                .await
+                .is_err()
+        );
+        assert!(writer.settings(tenant_id, "forum").await.is_err());
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "DELETE FROM tenants WHERE id = ?1",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, ?2, NULL, ?3)",
+            vec![tenant_id.to_string().into(), "orphan".into(), "{}".into()],
+        ))
+        .await
+        .unwrap();
+        let conflict = writer.overrides(tenant_id).await.unwrap_err();
+        assert!(matches!(
+            &conflict,
+            ModuleLifecycleDbWriterError::Configuration(_)
+        ));
+        assert!(!static_settings_receipt_error(&conflict).retryable);
+        assert!(matches!(
+            writer.settings(tenant_id, "forum").await,
+            Err(ModuleLifecycleDbWriterError::Configuration(_))
+        ));
+        // The identity check precedes LIMIT, so an orphan on a different
+        // module cannot hide just beyond the requested operator page.
+        assert!(
+            writer
+                .tenant_override_snapshots(tenant_id, 1)
+                .await
+                .is_err()
+        );
+        let txn = db.begin().await.unwrap();
+        assert!(
+            crate::policy_revision_consumer::load_tenant_overrides(&txn, tenant_id)
+                .await
+                .is_err()
+        );
+        txn.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn policy_read_rejects_more_than_the_bounded_number_of_dormant_rows() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "CREATE TABLE tenant_modules (tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, \
+             enabled BOOLEAN NULL, settings TEXT NOT NULL, PRIMARY KEY (tenant_id, module_slug))",
+        )
+        .await
+        .unwrap();
+        let tenant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM seq WHERE n < 1001) \
+             INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) \
+             SELECT ?1, printf('module_%04d', n), NULL, '{}' FROM seq",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .unwrap();
+        let registry = ModuleRegistry::new();
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        assert!(matches!(
+            writer.overrides(tenant_id).await,
+            Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery)
+        ));
+        let transaction = db.begin().await.unwrap();
+        assert!(matches!(
+            crate::policy_revision_consumer::load_tenant_overrides(&transaction, tenant_id).await,
+            Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery)
+        ));
+        transaction.rollback().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sqlite_settings_commands_replay_with_native_and_text_parent_keys() {
+        use sea_orm_migration::MigrationTrait;
+
+        let mut options = sea_orm::ConnectOptions::new("sqlite::memory:");
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = sea_orm::Database::connect(options).await.unwrap();
+        for sql in [
+            "PRAGMA foreign_keys = ON",
+            "CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants",
+            "CREATE TABLE tenant_modules (id BLOB PRIMARY KEY NOT NULL, tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, \
+             enabled BOOLEAN, settings TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             UNIQUE (tenant_id, module_slug), FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
+            "CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, revision INTEGER NOT NULL, \
+             active_idempotency_key BLOB, active_claimed_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (tenant_id, module_slug), FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
+        ] {
+            db.execute_unprepared(sql).await.unwrap();
+        }
+        let manager = sea_orm_migration::SchemaManager::new(&db);
+        crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
+            .up(&manager)
+            .await
+            .unwrap();
+        rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+            .await
+            .unwrap();
+        let native = Uuid::new_v4();
+        let text = Uuid::new_v4();
+        for parent in [native.into(), text.to_string().into()] {
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![parent],
+            ))
+            .await
+            .unwrap();
+        }
+        let registry = ModuleRegistry::new().register(SettingsTestModule);
+        let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
+        for tenant_id in [native, text] {
+            let command = ModuleLifecycleSettingsCommand {
+                tenant_id,
+                module_slug: "forum".into(),
+                settings: serde_json::json!({"value": 1}),
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: Some(tenant_id),
+                    trace_id: "test:settings".into(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+                expected_revision: 0,
+                expected_enabled: None,
+                expected_settings: None,
+            };
+            let saved = writer
+                .update_static_normalized_settings(command.clone())
+                .await
+                .unwrap();
+            let replay = writer
+                .update_static_normalized_settings(command.clone())
+                .await
+                .unwrap();
+            assert_eq!(saved, replay);
+            assert_eq!(saved.revision, 1);
+            assert_eq!(saved.settings, serde_json::json!({"value": 1}));
+            let mut next = command;
+            next.expected_revision = 1;
+            next.context.idempotency_key = Uuid::new_v4();
+            next.settings = serde_json::json!({"value": 2});
+            let updated = writer
+                .update_static_normalized_settings(next)
+                .await
+                .unwrap();
+            assert_eq!(updated.revision, 2);
+            assert_eq!(updated.settings, serde_json::json!({"value": 2}));
+            let snapshot = writer
+                .static_lifecycle_snapshot(tenant_id, "forum")
+                .await
+                .unwrap();
+            assert_eq!(snapshot.revision, 2);
+            assert!(snapshot.active_idempotency_key.is_none());
+        }
+    }
+
+    #[tokio::test]
     async fn unresolved_predecessor_blocks_settings_only_in_matching_scope() {
         use sea_orm_migration::MigrationTrait;
 
@@ -1882,6 +2165,9 @@ mod tests {
         rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
             .await
             .unwrap();
+        db.execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .unwrap();
         db.execute_unprepared(
             "CREATE TABLE module_static_tenant_lifecycle (\
              tenant_id TEXT NOT NULL, module_slug TEXT NOT NULL, revision INTEGER NOT NULL, \
@@ -1892,10 +2178,21 @@ mod tests {
         )
         .await
         .unwrap();
+        db.execute_unprepared(
+            "CREATE TRIGGER fixture_lifecycle_tenant AFTER INSERT ON module_static_tenant_lifecycle BEGIN \
+             INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
+        ).await.unwrap();
         let registry = ModuleRegistry::new().register(SettingsTestModule);
         let writer = ModuleLifecycleDbWriter::new(db.clone(), &registry, vec![]);
         let tenant = Uuid::new_v4();
         let other_tenant = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![other_tenant.to_string().into()],
+        ))
+        .await
+        .unwrap();
         let now = chrono::Utc::now();
         let mut checkpoint = crate::ModuleTransitionCheckpoint {
             operation_id: Uuid::new_v4(),

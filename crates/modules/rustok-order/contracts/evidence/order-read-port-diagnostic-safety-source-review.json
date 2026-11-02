@@ -8,7 +8,7 @@
     "scripts/verify/verify-order-read-port-diagnostic-safety.mjs"
   ],
   "review_findings": {
-    "read_operation_count": 6,
+    "read_operation_count": 7,
     "order_error_variant_count": 7,
     "complete_owner_error_logged": false,
     "database_error_payload_logged": false,
@@ -37,12 +37,12 @@
     "public_messages_preserved": true,
     "public_retryability_preserved": true,
     "tenant_validation_contract_preserved": true,
-    "order_read_flow_changed": false,
+    "order_read_flow_changed": true,
     "pagination_changed": false,
     "filter_forwarding_changed": false,
     "locale_fallback_changed": false,
-    "owner_service_calls_changed": false,
-    "commerce_orchestration_changed": false,
+    "owner_service_calls_changed": true,
+    "commerce_orchestration_changed": true,
     "order_status_promoted": false,
     "broad_cleanup_remains_open": true,
     "runtime_evidence_claimed": false
@@ -51,12 +51,21 @@
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "verifiers_run": false,
+    "format_run": true,
+    "verifiers_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "runtime_proven": false
   },
-  "validation_disclosure": "No tests, Node verifiers, Cargo commands, formatting, workflows, or CI were executed."
+  "validation_disclosure": "The original six-operation review ran no tests, Node verifiers, Cargo commands, formatting, workflows, or CI. The 2026-10-31 saved-binding continuation runs read-only source guards, syntax and formatting only; tests, Cargo, SQL, workflows and CI remain unrun.",
+  "saved_binding_continuation": {
+    "recorded_at": "2026-10-31",
+    "operation": "read_order_line_inventory_bindings",
+    "bounded_line_count_diagnostic_only": true,
+    "owner_error_payload_logged": false,
+    "original_six_operations_unchanged": true,
+    "source_evidence": "crates/modules/rustok-commerce/contracts/evidence/return-restock-identity-source.json",
+    "runtime_executed": false
+  }
 }

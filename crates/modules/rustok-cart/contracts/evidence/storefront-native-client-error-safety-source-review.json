@@ -1,23 +1,24 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-31",
+  "generated_at": "2026-10-30",
   "status": "storefront_native_client_error_safety_source_reviewed_unvalidated",
   "review": {
     "native_context_before_call": true,
-    "native_final_mapper_count": 3,
-    "graphql_mapper_count_preserved": 3,
+    "native_final_mapper_count": 5,
+    "graphql_mapper_count_preserved": 5,
     "selected_transport_path_preserved": true,
     "validation_variant_preserved": true,
     "technical_variants_fail_closed": true,
     "static_public_message": true,
-    "raw_error_private_to_tracing": true,
+    "raw_error_private_to_tracing": false,
     "request_values_logged": false,
-    "native_adapters_outside_diff": true,
-    "server_functions_outside_diff": true,
+    "native_adapters_outside_diff": false,
+    "server_functions_outside_diff": false,
     "request_response_dto_outside_diff": true,
     "ui_transport_error_type_preserved": true,
     "existing_transport_tests_preserved": true,
-    "broad_ecommerce_cleanup_remains_open": true
+    "broad_ecommerce_cleanup_remains_open": true,
+    "bounded_error_shape_only": true
   },
   "execution": {
     "tests_run": false,
@@ -26,5 +27,10 @@
     "verifiers_run": false,
     "workflow_checks_run": false,
     "ci_run": false
+  },
+  "buyer_continuation": {
+    "common_contract": "Single native server-function declarations; SSR-only handler sibling; authorized canonical browser client",
+    "restore_semantics": "Guarded read-only Cart GET, no repricing side effect; inactive references refuse adoption",
+    "runtime_proven": false
   }
 }

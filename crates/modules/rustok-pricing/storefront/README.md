@@ -45,8 +45,25 @@ public pricing discovery.
 ## Entry points
 
 - `PricingView`
-- `api::fetch_storefront_pricing`
+- `transport::fetch_storefront_pricing`
 
+See also `../README.md` and `../docs/README.md`.
+
+
+## Authoritative quote read continuation (2026-10-29)
+
+Effective prices use the bounded canonical Pricing batch port, retaining source-row /
+rule provenance, normalized context and resolution time on both selected transports.
+The public atlas uses real owner coverage (`storefrontPricingCatalog`), not fabricated
+SKU counts/currency defaults or a product-detail waterfall. Raw base/scoped rows are
+inspection data and do not replace an absent contextual quote. Selector URLs are
+encoded by the shared query primitive; a missing channel selector means the current
+host channel, not an implicit global preview.
+
+Source-only: no tests, Rust compilation, mounted or browser execution are certified.
+Durable Pricing write receipts/CAS and list-change event completeness remain pending
+in the [owner plan](../docs/implementation-plan.md). Product's real sparse-axis buyer
+selection, quantity refresh and cart-context handoff remain a separate next block.
 ## Documentation
 
 - [CRATE_API.md](CRATE_API.md)

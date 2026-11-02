@@ -45,3 +45,20 @@ Current native read coverage includes:
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).
+
+## Known Limitations / Pending Implementation
+
+The native reserve/release controls apply only to the Inventory-owned anonymous quantity pool,
+not Cart/Order/line identity reservations. Labels and English/Russian Fluent bundles now state
+that scope; an absent anonymous allocation must refuse rather than freeing another consumer's
+reservation. Backend effects preserve the original location and shared ledger coverage. See the
+[owner contract](../CRATE_API.md#anonymous-quantity-reservations-2026-11-01-source-only).
+
+These commands remain non-idempotent and are not checkout recovery. No operator identity-release
+workspace or new Next.js quantity mutation is introduced here; those require their own owner
+contract, not a quantity fallback. Regression definitions and native/SSR/hydrate/UI behavior are
+unexecuted/uncompiled. Reservation invalidation/acknowledged typed delivery is now source-wired
+by the Inventory owner. Native commands forward current authenticated context, never a stored
+actor; their deadline/key are admission/diagnostic metadata, not cancellation or replay proof.
+Canonical digest, real Search/Index/relay convergence and Product step 8 remain pending. See the
+[current owner API](../CRATE_API.md#reservation-invalidation-facts-2026-11-01-source-only).

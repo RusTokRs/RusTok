@@ -12,6 +12,8 @@ use rustok_api::{
 ///
 /// All reads stay inside the module control-plane crate. Consumer modules receive
 /// only the typed runtime port and therefore cannot bypass lifecycle ownership.
+/// SQLite recognizes both native UUID blobs and canonical UUID text. If both
+/// representations contain rows for the same tenant, the read fails closed.
 #[derive(Clone)]
 pub struct DatabaseStaticModuleSettingsReader {
     db: DatabaseConnection,
@@ -42,19 +44,30 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
         })?;
         let query = match backend {
             SupportedBackend::Sqlite => {
-                "SELECT enabled, CAST(settings AS TEXT) AS settings_json                  FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                 SELECT t.module_slug AS matched_module, t.enabled, CAST(t.settings AS TEXT) AS settings_json, \
+                 identity.parent_count, \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
+                 FROM identity LEFT JOIN tenant_modules t \
+                 ON t.tenant_id IN (?1, ?3) AND t.module_slug = ?2 LIMIT 2"
             }
             SupportedBackend::Postgres => {
-                "SELECT enabled, settings::text AS settings_json                  FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+                "SELECT enabled, settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 2"
             }
         };
 
-        let row = self
+        let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+        }
+        let mut rows = self
             .db
-            .query_one_raw(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 query,
-                vec![backend.uuid_value(tenant_id), module_slug.into()],
+                values,
             ))
             .await
             .map_err(|_| {
@@ -64,9 +77,25 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
                 )
             })?;
 
-        let Some(row) = row else {
+        if rows.len() > 1 {
+            return Err(PortError::invariant_violation(
+                "modules.static_settings_ambiguous",
+                "Static module settings have conflicting tenant identities",
+            ));
+        }
+        let Some(row) = rows.pop() else {
             return Ok(None);
         };
+        if matches!(backend, SupportedBackend::Sqlite)
+            && !crate::backend::sqlite_tenant_module_identity(&row).map_err(|_| {
+                PortError::invariant_violation(
+                    "modules.static_settings_ambiguous",
+                    "Static module settings have conflicting tenant identities",
+                )
+            })?
+        {
+            return Ok(None);
+        }
 
         let enabled: Option<bool> = row.try_get("", "enabled").map_err(|_| {
             PortError::invariant_violation(
@@ -113,20 +142,30 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
         })?;
         let query = match backend {
             SupportedBackend::Sqlite => {
-                "SELECT enabled, CAST(settings AS TEXT) AS settings_json \
-                 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                 SELECT t.module_slug AS matched_module, t.enabled, CAST(t.settings AS TEXT) AS settings_json, \
+                 identity.parent_count, \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
+                 FROM identity LEFT JOIN tenant_modules t \
+                 ON t.tenant_id IN (?1, ?3) AND t.module_slug = ?2 LIMIT 2"
             }
             SupportedBackend::Postgres => {
                 "SELECT enabled, settings::text AS settings_json \
-                 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1 FOR SHARE"
+                 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 2 FOR SHARE"
             }
         };
 
-        let row = txn
-            .query_one_raw(Statement::from_sql_and_values(
+        let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+        }
+        let mut rows = txn
+            .query_all_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 query,
-                vec![backend.uuid_value(tenant_id), module_slug.into()],
+                values,
             ))
             .await
             .map_err(|_| {
@@ -136,9 +175,25 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
                 )
             })?;
 
-        let Some(row) = row else {
+        if rows.len() > 1 {
+            return Err(PortError::invariant_violation(
+                "modules.static_settings_ambiguous",
+                "Static module settings have conflicting tenant identities",
+            ));
+        }
+        let Some(row) = rows.pop() else {
             return Ok(None);
         };
+        if matches!(backend, SupportedBackend::Sqlite)
+            && !crate::backend::sqlite_tenant_module_identity(&row).map_err(|_| {
+                PortError::invariant_violation(
+                    "modules.static_settings_ambiguous",
+                    "Static module settings have conflicting tenant identities",
+                )
+            })?
+        {
+            return Ok(None);
+        }
 
         let enabled: Option<bool> = row.try_get("", "enabled").map_err(|_| {
             PortError::invariant_violation(
@@ -178,6 +233,9 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("database");
+        db.execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .expect("tenant schema");
         db.execute_unprepared(
             "CREATE TABLE tenant_modules (
                 tenant_id TEXT NOT NULL,
@@ -189,6 +247,12 @@ mod tests {
         )
         .await
         .expect("schema");
+        db.execute_unprepared(
+            "CREATE TRIGGER fixture_tenant AFTER INSERT ON tenant_modules BEGIN \
+             INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
+        )
+        .await
+        .expect("tenant fixture trigger");
         db
     }
 
@@ -234,6 +298,97 @@ mod tests {
                 .expect("missing read")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn readers_accept_native_uuid_and_reject_conflicting_representations() {
+        use sea_orm::TransactionTrait;
+
+        let db = db().await;
+        let tenant_id = Uuid::new_v4();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, 'seo', 1, ?2)",
+            vec![tenant_id.into(), r#"{"value":"native"}"#.into()],
+        ))
+        .await
+        .expect("native UUID row");
+        let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+        assert_eq!(
+            reader
+                .settings(tenant_id, "seo")
+                .await
+                .unwrap()
+                .unwrap()
+                .settings["value"],
+            "native"
+        );
+        let txn = db.begin().await.unwrap();
+        assert_eq!(
+            reader
+                .settings_in_tx(&txn, tenant_id, "seo")
+                .await
+                .unwrap()
+                .unwrap()
+                .settings["value"],
+            "native"
+        );
+        txn.rollback().await.unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        assert_eq!(
+            reader.settings(tenant_id, "seo").await.unwrap_err().code,
+            "modules.static_settings_ambiguous"
+        );
+        assert_eq!(
+            reader
+                .settings(tenant_id, "missing")
+                .await
+                .unwrap_err()
+                .code,
+            "modules.static_settings_ambiguous"
+        );
+        let txn = db.begin().await.unwrap();
+        assert_eq!(
+            reader
+                .settings_in_tx(&txn, tenant_id, "seo")
+                .await
+                .unwrap_err()
+                .code,
+            "modules.static_settings_ambiguous"
+        );
+        txn.rollback().await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "DELETE FROM tenants WHERE id = ?1",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await
+        .unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, 'seo', 0, ?2)",
+            vec![tenant_id.to_string().into(), r#"{"value":"text"}"#.into()],
+        ))
+        .await
+        .expect("conflicting text UUID row");
+        let error = reader.settings(tenant_id, "seo").await.unwrap_err();
+        assert_eq!(error.kind, rustok_api::PortErrorKind::InvariantViolation);
+        assert_eq!(error.code, "modules.static_settings_ambiguous");
+        let txn = db.begin().await.unwrap();
+        let error = reader
+            .settings_in_tx(&txn, tenant_id, "seo")
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "modules.static_settings_ambiguous");
+        txn.rollback().await.unwrap();
     }
 
     #[tokio::test]

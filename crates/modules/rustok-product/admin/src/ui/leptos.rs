@@ -38,8 +38,7 @@ use crate::model::{
     CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeSchemaGroupDraft,
     ProductAttributeSchemaSummary, ProductAttributeSummary, ProductDetail, ProductEffectiveForm,
     ProductEffectiveFormAttribute, ProductImageDraft, ProductPricingDetail,
-    SetCategorySchemaModeDraft, SetVariantAxesDraft, UpdateProductImageDraft, VariantAxisDraft,
-    VariantDraft, VariantPriceDraft,
+    SetCategorySchemaModeDraft, UpdateProductImageDraft, VariantPriceDraft,
 };
 use crate::transport;
 
@@ -191,7 +190,7 @@ fn TypedProductAttributeField(
     }
 }
 
-/// Non-mounted single-screen reference composition.
+/// Non-mounted catalog-controls reference with routed saved-document delegation.
 ///
 /// The host mounts `ui::root::ProductAdmin` (routed pages), not this component.
 /// It stays in the tree because it is the canonical catalog-controls reference
@@ -200,12 +199,33 @@ fn TypedProductAttributeField(
 /// the routed pages and the shared sections; do not grow this composition.
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
+    let query = use_route_query_value(AdminQueryKey::ProductId.as_str());
+    let selected_id =
+        Signal::derive(
+            move || match product_admin_selected_product_query_state(query.get()) {
+                ProductAdminSelectedProductQueryState::Open { product_id } => Some(product_id),
+                ProductAdminSelectedProductQueryState::Clear => None,
+            },
+        );
+    // Selection, not Product GET, owns the stable recovery mount. Metadata refreshes keep
+    // this keyed editor alive; both reference entry paths use the routed write/recovery boundary.
+    view! {
+        <For each=move || selected_id.get().into_iter().collect::<Vec<_>>() key=|id| id.clone()
+            children=move |product_id| view! { <super::product_editor::ProductEditorPage is_new=false product_id=product_id /> }
+        />
+        <Show when=move || selected_id.get().is_none()>
+            <ProductCatalogReference />
+        </Show>
+    }
+}
+
+#[component]
+fn ProductCatalogReference() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let effective_locale = ui_locale.clone();
     let editor_copy = build_product_admin_editor_copy(effective_locale.as_deref());
     let attribute_form_copy = build_product_attribute_form_copy(effective_locale.as_deref());
-    let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
@@ -238,7 +258,6 @@ pub fn ProductAdmin() -> impl IntoView {
     let effective_locale_for_effective_form = effective_locale.clone();
     let effective_locale_for_attribute_values = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
-    let effective_locale_for_initial_open = effective_locale.clone();
 
     let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
@@ -412,63 +431,6 @@ pub fn ProductAdmin() -> impl IntoView {
     );
 
     let error_copy = build_product_admin_error_copy(ui_locale.as_deref());
-    let initial_error_copy = error_copy.clone();
-    Effect::new(move |_| {
-        match product_admin_selected_product_query_state(selected_product_query.get()) {
-            ProductAdminSelectedProductQueryState::Open { product_id } => {
-                let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
-                    return;
-                };
-                open_product_for_edit(
-                    bootstrap,
-                    token.get(),
-                    tenant.get(),
-                    effective_locale_for_initial_open.clone(),
-                    product_id,
-                    initial_error_copy.clone(),
-                    set_busy,
-                    set_error,
-                    set_editing_id,
-                    set_selected,
-                    set_title,
-                    set_handle,
-                    set_description,
-                    set_seller_id,
-                    set_vendor,
-                    set_product_type,
-                    set_shipping_profile_slug,
-                    set_primary_category_id,
-                    set_sku,
-                    set_barcode,
-                    set_currency_code,
-                    set_amount,
-                    set_compare_at_amount,
-                    set_inventory_quantity,
-                    set_publish_now,
-                );
-            }
-            ProductAdminSelectedProductQueryState::Clear => clear_product_form(
-                set_editing_id,
-                set_selected,
-                set_title,
-                set_handle,
-                set_description,
-                set_seller_id,
-                set_vendor,
-                set_product_type,
-                set_shipping_profile_slug,
-                set_primary_category_id,
-                set_sku,
-                set_barcode,
-                set_currency_code,
-                set_amount,
-                set_compare_at_amount,
-                set_inventory_quantity,
-                set_publish_now,
-            ),
-        }
-    });
-
     let reset_form = move || {
         clear_product_form(
             set_editing_id,
@@ -492,6 +454,10 @@ pub fn ProductAdmin() -> impl IntoView {
         attribute_editor_state.set(ProductAttributeEditorState::default());
         set_error.set(None);
     };
+
+    // Saved selection delegates to the keyed routed editor above. Initialize this local
+    // catalog/create draft once, never on Product GET or unrelated URL refresh.
+    reset_form();
 
     let reload_current_product = {
         let effective_locale_for_reload = effective_locale.clone();
@@ -1068,7 +1034,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let ui_locale = ui_locale.clone();
                                         let clear_detached_values = clear_detached_values.clone();
                                         let mut groups: Vec<(String, Vec<ProductEffectiveFormAttribute>)> = Vec::new();
-                                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
+                                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled && item.scope != "variant") {
                                             let group = attribute
                                                 .group_label
                                                 .clone()
@@ -1709,7 +1675,7 @@ fn SelectedProductSummary(
 }
 
 #[component]
-fn ProductVariantsPanel(
+pub(super) fn ProductVariantsPanel(
     locale: Option<String>,
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
@@ -1719,225 +1685,37 @@ fn ProductVariantsPanel(
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     on_variant_mutated: Callback<String>,
+    #[prop(optional)] blocked: Option<Signal<bool>>,
 ) -> impl IntoView {
+    let blocked = blocked.unwrap_or_else(|| Signal::derive(|| false));
     let copy = build_product_variants_panel_copy(locale.as_deref());
-    let (show_add, set_show_add) = signal(false);
-    let (sku, set_sku) = signal(String::new());
-    let (barcode, set_barcode) = signal(String::new());
-    let (selected_axis_values, set_selected_axis_values) = signal(Vec::<(String, String)>::new());
-    let (amount, set_amount) = signal(String::new());
-    let (inventory_quantity, set_inventory_quantity) = signal(0_i32);
-    let (inventory_policy, set_inventory_policy) = signal("DENY".to_string());
     let (editing_variant_id, set_editing_variant_id) = signal(Option::<String>::None);
     let (edit_sku, set_edit_sku) = signal(String::new());
     let (edit_price, set_edit_price) = signal(String::new());
     let (edit_stock, set_edit_stock) = signal(0_i32);
+    let edit_stock_valid = RwSignal::new(true);
 
     let Some(product) = product else {
         return view! { <div /> }.into_any();
     };
 
     let product_id = product.id.clone();
-    let variant_rows = build_variant_row_view_models(&product);
+    let variant_rows = build_variant_row_view_models(&product, locale.as_deref());
     let default_currency = product
         .variants
         .first()
         .and_then(|v| v.prices.first())
         .map(|p| p.currency_code.clone())
         .unwrap_or_else(|| "USD".to_string());
-    let default_currency_for_form = default_currency.clone();
-
-    let on_add_submit = {
-        let product_id_val = product_id.clone();
-        let default_currency_for_add = default_currency.clone();
-        let on_mutated = on_variant_mutated;
-        move |ev: SubmitEvent| {
-            ev.prevent_default();
-            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-                return;
-            };
-            let token_val = token.get_untracked();
-            let tenant_val = tenant.get_untracked();
-            let product_id_val = product_id_val.clone();
-
-            let price_val = amount.get_untracked().trim().to_string();
-            let price_val = if price_val.is_empty() {
-                "0.00".to_string()
-            } else {
-                price_val
-            };
-
-            let axis_values = selected_axis_values
-                .get_untracked()
-                .into_iter()
-                .map(
-                    |(attribute_id, option_id)| crate::model::VariantAxisValueDraft {
-                        attribute_id,
-                        option_id,
-                    },
-                )
-                .collect();
-
-            let draft = VariantDraft {
-                sku: text_or_none(sku.get_untracked()),
-                barcode: text_or_none(barcode.get_untracked()),
-                shipping_profile_slug: None,
-                axis_values,
-                prices: vec![VariantPriceDraft {
-                    currency_code: default_currency_for_add.clone(),
-                    amount: price_val,
-                    compare_at_amount: None,
-                }],
-                inventory_quantity: Some(inventory_quantity.get_untracked()),
-                inventory_policy: Some(inventory_policy.get_untracked()),
-            };
-
-            set_busy.set(true);
-            set_error.set(None);
-            spawn_local(async move {
-                match transport::create_product_variant(
-                    token_val,
-                    tenant_val,
-                    bootstrap.current_tenant.id,
-                    bootstrap.me.id,
-                    product_id_val.clone(),
-                    draft,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        set_sku.set(String::new());
-                        set_barcode.set(String::new());
-                        set_selected_axis_values.set(Vec::new());
-                        set_amount.set(String::new());
-                        set_inventory_quantity.set(0);
-                        set_show_add.set(false);
-                        on_mutated.run(product_id_val);
-                    }
-                    Err(err) => set_error.set(Some(err.to_string())),
-                }
-                set_busy.set(false);
-            });
-        }
-    };
-
     view! {
+        <fieldset disabled=move || busy.get() || blocked.get()>
         <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <h3 class="text-lg font-semibold text-card-foreground">{copy.title}</h3>
                     <p class="text-sm text-muted-foreground">{copy.subtitle}</p>
                 </div>
-                <button
-                    type="button"
-                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                    disabled=move || busy.get()
-                    on:click=move |_| set_show_add.update(|v| *v = !*v)
-                >
-                    {copy.add}
-                </button>
             </div>
-
-            <Show when=move || show_add.get()>
-                <form class="mt-4 rounded-2xl border border-border/70 bg-background/50 p-4 space-y-3" on:submit={
-                    let on_submit = on_add_submit.clone();
-                    move |ev| on_submit(ev)
-                }>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <input
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder="SKU"
-                            prop:value=move || sku.get()
-                            on:input=move |ev| set_sku.set(event_target_value(&ev))
-                        />
-                        <input
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder="Barcode"
-                            prop:value=move || barcode.get()
-                            on:input=move |ev| set_barcode.set(event_target_value(&ev))
-                        />
-                    </div>
-                    {if !product.variant_axes.is_empty() {
-                        view! {
-                            <div class="grid gap-3 md:grid-cols-2">
-                                {product.variant_axes.iter().map(|axis| {
-                                    let attr_id = axis.attribute_id.clone();
-                                    let attr_name = axis.name.clone();
-                                    let allowed = axis.allowed_values.clone();
-                                    view! {
-                                        <div>
-                                            <label class="block text-xs font-medium text-muted-foreground mb-1">{attr_name.clone()}</label>
-                                            <select
-                                                class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                                                on:change={
-                                                    let attr_id = attr_id.clone();
-                                                    move |ev| {
-                                                        let val = event_target_value(&ev);
-                                                        set_selected_axis_values.update(|entries| {
-                                                            entries.retain(|(aid, _)| aid != &attr_id);
-                                                            if !val.is_empty() {
-                                                                entries.push((attr_id.clone(), val));
-                                                            }
-                                                        });
-                                                    }
-                                                }
-                                            >
-                                                <option value="">{format!("Select {}", attr_name)}</option>
-                                                {allowed.into_iter().map(|opt| {
-                                                    view! {
-                                                        <option value=opt.option_id>{opt.value}</option>
-                                                    }
-                                                }).collect_view()}
-                                            </select>
-                                        </div>
-                                    }
-                                }).collect_view()}
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <div /> }.into_any()
-                    }}
-                    <div class="grid gap-3 md:grid-cols-3">
-                        <input
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder=format!("Price ({})", default_currency_for_form)
-                            prop:value=move || amount.get()
-                            on:input=move |ev| set_amount.set(event_target_value(&ev))
-                        />
-                        <input
-                            type="number"
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            placeholder="Stock quantity"
-                            prop:value=move || inventory_quantity.get().to_string()
-                            on:input=move |ev| set_inventory_quantity.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
-                        />
-                        <select
-                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                            prop:value=move || inventory_policy.get()
-                            on:change=move |ev| set_inventory_policy.set(event_target_value(&ev))
-                        >
-                            <option value="DENY">"Deny backorders"</option>
-                            <option value="CONTINUE">"Continue selling out of stock"</option>
-                        </select>
-                    </div>
-                    <div class="flex justify-end gap-2 pt-2">
-                        <button
-                            type="button"
-                            class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent"
-                            on:click=move |_| set_show_add.set(false)
-                        >
-                            "Cancel"
-                        </button>
-                        <button
-                            type="submit"
-                            class="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled=move || busy.get()
-                        >
-                            "Save variant"
-                        </button>
-                    </div>
-                </form>
-            </Show>
 
             {
                 let columns = crate::core::product_variant_grid_columns(locale.as_deref());
@@ -1970,15 +1748,12 @@ fn ProductVariantsPanel(
                 });
 
                 let cell_renderer = {
-                    let product_id_for_del = product_id.clone();
                     let product_id_for_edit = product_id.clone();
                     let default_curr = default_currency.clone();
-                    let on_mutated_del = on_variant_mutated;
                     let on_mutated_edit = on_variant_mutated;
 
                     Callback::new(move |(row, col_id): (VariantRowViewModel, String)| {
                         let variant_id = row.id.clone();
-                        let can_delete = row.can_delete;
                         let is_editing_this = {
                             let v_id = variant_id.clone();
                             Signal::derive(move || editing_variant_id.get().as_deref() == Some(&v_id))
@@ -2034,7 +1809,10 @@ fn ProductVariantsPanel(
                                                     type="number"
                                                     class="rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary w-16"
                                                     prop:value=move || edit_stock.get().to_string()
-                                                    on:input=move |ev| set_edit_stock.set(parse_product_admin_inventory_quantity_input(&event_target_value(&ev)))
+                                                    on:input=move |ev| match crate::core::initial_catalog::parse_inventory_quantity(&event_target_value(&ev)) {
+                                                        Ok(quantity) => { set_edit_stock.set(quantity); edit_stock_valid.set(true); },
+                                                        Err(_) => edit_stock_valid.set(false),
+                                                    }
                                                 />
                                             }.into_any()
                                         } else {
@@ -2057,6 +1835,7 @@ fn ProductVariantsPanel(
                                     set_edit_sku.set(s.clone());
                                     set_edit_price.set(p.split_whitespace().next().unwrap_or("").to_string());
                                     set_edit_stock.set(stock_for_edit);
+                                    edit_stock_valid.set(true);
                                     set_editing_variant_id.set(Some(v_id.clone()));
                                 };
 
@@ -2064,7 +1843,10 @@ fn ProductVariantsPanel(
                                 let p_id_save = product_id_for_edit.clone();
                                 let default_curr_save = default_curr.clone();
                                 let on_save_edit = move |_| {
+                                    if busy.get_untracked() || blocked.get_untracked() { return; }
+                                    if !edit_stock_valid.get_untracked() { set_error.set(Some("Inventory must be a non-negative 32-bit integer".into())); return; }
                                     let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                        set_error.set(Some("Product session data is unavailable. Reload it before changing an SKU.".into()));
                                         return;
                                     };
                                     let token_val = token.get_untracked();
@@ -2088,7 +1870,7 @@ fn ProductVariantsPanel(
                                     set_busy.set(true);
                                     set_error.set(None);
                                     spawn_local(async move {
-                                        match transport::update_product_variant(
+                                        match catalog_transport::update_product_variant(
                                             token_val,
                                             tenant_val,
                                             bootstrap.current_tenant.id,
@@ -2100,34 +1882,6 @@ fn ProductVariantsPanel(
                                                 set_editing_variant_id.set(None);
                                                 on_mutated_edit.run(prod_id);
                                             }
-                                            Err(err) => set_error.set(Some(err.to_string())),
-                                        }
-                                        set_busy.set(false);
-                                    });
-                                };
-
-                                let v_id_del = variant_id.clone();
-                                let p_id_del = product_id_for_del.clone();
-                                let on_delete = move |_| {
-                                    let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-                                        return;
-                                    };
-                                    let token_val = token.get_untracked();
-                                    let tenant_val = tenant.get_untracked();
-                                    let variant_id_val = v_id_del.clone();
-                                    let product_id_val = p_id_del.clone();
-
-                                    set_busy.set(true);
-                                    set_error.set(None);
-                                    spawn_local(async move {
-                                        match transport::delete_product_variant(
-                                            token_val,
-                                            tenant_val,
-                                            bootstrap.current_tenant.id,
-                                            bootstrap.me.id,
-                                            variant_id_val,
-                                        ).await {
-                                            Ok(_) => on_mutated_del.run(product_id_val),
                                             Err(err) => set_error.set(Some(err.to_string())),
                                         }
                                         set_busy.set(false);
@@ -2164,15 +1918,7 @@ fn ProductVariantsPanel(
                                                 >
                                                     "Edit"
                                                 </button>
-                                                <button
-                                                    type="button"
-                                                    class="inline-flex rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-40 disabled:hover:bg-transparent"
-                                                    disabled=move || !can_delete || busy.get()
-                                                    title=if can_delete { "" } else { "Cannot delete the only variant of a product" }
-                                                    on:click=on_delete.clone()
-                                                >
-                                                    "Delete"
-                                                </button>
+
                                             }.into_any()
                                         }}
                                     </div>
@@ -2201,6 +1947,7 @@ fn ProductVariantsPanel(
                 }
             }
         </section>
+        </fieldset>
     }.into_any()
 }
 
@@ -2613,7 +2360,7 @@ pub(crate) fn ProductAttributeValuesSection(
     locale: Option<String>,
     effective_form: LocalResource<Result<Option<ProductEffectiveForm>, String>>,
     editor_state: RwSignal<ProductAttributeEditorState>,
-    owner_busy: ReadSignal<bool>,
+    #[prop(into)] owner_busy: Signal<bool>,
     owner_refresh_nonce: ReadSignal<u64>,
     on_saved: Callback<()>,
 ) -> impl IntoView {
@@ -2782,7 +2529,7 @@ pub(crate) fn ProductAttributeValuesSection(
                     }
                     Some(form) => {
                         let mut groups: Vec<(String, Vec<crate::model::ProductEffectiveFormAttribute>)> = Vec::new();
-                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
+                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled && item.scope != "variant") {
                             let group = attribute
                                 .group_label
                                 .clone()
@@ -2912,556 +2659,6 @@ pub(crate) fn ProductAttributeValuesSection(
     }.into_any()
 }
 
-/// One editable variant axis row of the mounted editor.
-#[derive(Clone, Debug, PartialEq)]
-struct VariantAxisRow {
-    attribute_id: String,
-    code: String,
-    label: String,
-    allowed_option_ids: Vec<String>,
-    options: Vec<VariantAxisOption>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct VariantAxisOption {
-    id: String,
-    label: String,
-}
-
-/// Mounted editor section for the ADR variant-axis model.
-///
-/// The section seeds itself from the product's saved axes plus the effective
-/// category schema. Only attributes whose `variant_axis_policy` is not
-/// `forbidden` and that carry options are offered, because the owner rejects an
-/// axis configuration the schema does not admit. The operator orders the axes,
-/// chooses the allowed option subset per axis, and persists the whole
-/// configuration through the idempotent `set_variant_axes` command. Saving an
-/// empty configuration clears the axes, which the owner accepts.
-#[component]
-pub fn ProductVariantAxesSection(
-    product_id: String,
-    locale: Option<String>,
-    on_saved: Callback<()>,
-) -> impl IntoView {
-    let token = use_token();
-    let tenant = use_tenant();
-    let is_ru = locale.as_deref() == Some("ru");
-    let error_copy = build_product_admin_error_copy(locale.as_deref());
-    let save_error_copy = error_copy.clone();
-
-    let (busy, set_busy) = signal(false);
-    let (error, set_error) = signal(Option::<String>::None);
-    let (notice, set_notice) = signal(Option::<String>::None);
-    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (rows, set_rows) = signal(Vec::<VariantAxisRow>::new());
-    let (add_selection, set_add_selection) = signal(String::new());
-    let seeded = RwSignal::new(false);
-
-    let title = if is_ru {
-        "Оси вариантов"
-    } else {
-        "Variant axes"
-    }
-    .to_string();
-    let subtitle = if is_ru {
-        "Оси задают идентичность комбинаций. Доступны атрибуты схемы категории, для которых политика оси не запрещена."
-    } else {
-        "Axes define the combination identity. Only category-schema attributes whose axis policy is not forbidden are offered."
-    }
-    .to_string();
-    let save_label = if is_ru {
-        "Сохранить оси"
-    } else {
-        "Save axes"
-    }
-    .to_string();
-    let saving_label = if is_ru {
-        "Сохранение..."
-    } else {
-        "Saving..."
-    }
-    .to_string();
-    let saved_label = if is_ru {
-        "Оси вариантов сохранены"
-    } else {
-        "Variant axes saved"
-    }
-    .to_string();
-    let cleared_label = if is_ru {
-        "Оси очищены"
-    } else {
-        "Variant axes cleared"
-    }
-    .to_string();
-    let empty_label = if is_ru {
-        "Оси не заданы. Добавьте атрибут, чтобы включить комбинации вариантов."
-    } else {
-        "No axes configured. Add an attribute to enable variant combinations."
-    }
-    .to_string();
-    let no_candidates_label = if is_ru {
-        "В схеме категории нет атрибутов с опциями, допускающих использование в осях. Настройте схему категории."
-    } else {
-        "The category schema has no option-backed attribute that allows axis use. Configure the category schema."
-    }
-    .to_string();
-    let add_label = if is_ru {
-        "Добавить ось"
-    } else {
-        "Add axis"
-    }
-    .to_string();
-    let select_attribute_label = if is_ru { "Атрибут" } else { "Attribute" }.to_string();
-    let allowed_values_label = if is_ru {
-        "Допустимые значения"
-    } else {
-        "Allowed values"
-    }
-    .to_string();
-
-    let loaded_product_id = product_id.clone();
-    let loaded_locale = locale.clone();
-    let data_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let pid = loaded_product_id.clone();
-        let loc = loaded_locale.clone();
-        let _ = refresh_nonce.get();
-        async move {
-            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
-                .await
-                .map_err(|failure| failure.to_string())?;
-            let detail = catalog_transport::fetch_product(
-                tok.clone(),
-                ten.clone(),
-                bootstrap.current_tenant.id.clone(),
-                pid.clone(),
-                loc.clone(),
-            )
-            .await
-            .map_err(|failure| failure.to_string())?;
-            let form = catalog_transport::fetch_effective_product_form(
-                tok,
-                ten,
-                bootstrap.current_tenant.id,
-                Some(pid),
-                None,
-                loc.unwrap_or_default(),
-            )
-            .await
-            .map_err(|failure| failure.to_string())?;
-            Ok::<(Option<ProductDetail>, Option<ProductEffectiveForm>), String>((detail, form))
-        }
-    });
-
-    let seed_rows = move |detail: Option<ProductDetail>,
-                          form: Option<ProductEffectiveForm>|
-          -> Vec<VariantAxisRow> {
-        let options_by_attribute = form
-            .as_ref()
-            .map(|form| {
-                form.attributes
-                    .iter()
-                    .map(|attribute| {
-                        (
-                            attribute.attribute_id.clone(),
-                            attribute
-                                .options
-                                .iter()
-                                .map(|option| VariantAxisOption {
-                                    id: option.id.clone(),
-                                    label: option.label.clone(),
-                                })
-                                .collect::<Vec<_>>(),
-                        )
-                    })
-                    .collect::<std::collections::HashMap<_, _>>()
-            })
-            .unwrap_or_default();
-
-        let mut next_rows = detail
-            .as_ref()
-            .map(|detail| {
-                detail
-                    .variant_axes
-                    .iter()
-                    .map(|axis| {
-                        let saved_options = axis
-                            .allowed_values
-                            .iter()
-                            .map(|value| VariantAxisOption {
-                                id: value.option_id.clone(),
-                                label: if value.value.is_empty() {
-                                    value.option_id.clone()
-                                } else {
-                                    value.value.clone()
-                                },
-                            })
-                            .collect::<Vec<_>>();
-                        let options = options_by_attribute
-                            .get(&axis.attribute_id)
-                            .cloned()
-                            .unwrap_or(saved_options);
-                        VariantAxisRow {
-                            attribute_id: axis.attribute_id.clone(),
-                            code: axis.code.clone(),
-                            label: axis.name.clone(),
-                            allowed_option_ids: axis
-                                .allowed_values
-                                .iter()
-                                .map(|value| value.option_id.clone())
-                                .collect(),
-                            options,
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        if let Some(form) = form.as_ref().filter(|_| next_rows.is_empty()) {
-            next_rows = form
-                .attributes
-                .iter()
-                .filter(|attribute| {
-                    attribute.default_variant_axis
-                        && attribute.variant_axis_policy != "forbidden"
-                        && !attribute.options.is_empty()
-                })
-                .map(|attribute| VariantAxisRow {
-                    attribute_id: attribute.attribute_id.clone(),
-                    code: attribute.code.clone(),
-                    label: attribute.label.clone(),
-                    allowed_option_ids: attribute
-                        .options
-                        .iter()
-                        .map(|option| option.id.clone())
-                        .collect(),
-                    options: attribute
-                        .options
-                        .iter()
-                        .map(|option| VariantAxisOption {
-                            id: option.id.clone(),
-                            label: option.label.clone(),
-                        })
-                        .collect(),
-                })
-                .collect();
-        }
-
-        next_rows
-    };
-
-    Effect::new(move |_| {
-        if seeded.get() {
-            return;
-        }
-        let Some(Ok((detail, form))) = data_resource.get() else {
-            return;
-        };
-        set_rows.set(seed_rows(detail, form));
-        seeded.set(true);
-    });
-
-    let available_candidates = move || -> Vec<(String, String)> {
-        let used = rows
-            .get()
-            .into_iter()
-            .map(|row| row.attribute_id)
-            .collect::<Vec<_>>();
-        data_resource
-            .get()
-            .and_then(Result::ok)
-            .and_then(|(_, form)| form)
-            .map(|form| {
-                form.attributes
-                    .into_iter()
-                    .filter(|attribute| {
-                        attribute.variant_axis_policy != "forbidden"
-                            && !attribute.options.is_empty()
-                            && !used.contains(&attribute.attribute_id)
-                    })
-                    .map(|attribute| (attribute.attribute_id, attribute.label))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-
-    let move_axis = move |attribute_id: &str, delta: i32| {
-        set_rows.update(|rows| {
-            let Some(index) = rows.iter().position(|row| row.attribute_id == attribute_id) else {
-                return;
-            };
-            let target = index as i32 + delta;
-            if target < 0 || target as usize >= rows.len() {
-                return;
-            }
-            rows.swap(index, target as usize);
-        });
-    };
-
-    let remove_axis = move |attribute_id: &str| {
-        set_rows.update(|rows| rows.retain(|row| row.attribute_id != attribute_id));
-    };
-
-    let toggle_option = move |attribute_id: &str, option_id: &str| {
-        set_rows.update(|rows| {
-            let Some(row) = rows.iter_mut().find(|row| row.attribute_id == attribute_id) else {
-                return;
-            };
-            match row
-                .allowed_option_ids
-                .iter()
-                .position(|value| value == option_id)
-            {
-                Some(position) => {
-                    row.allowed_option_ids.remove(position);
-                }
-                None => row.allowed_option_ids.push(option_id.to_string()),
-            }
-        });
-    };
-
-    let add_axis = move |_| {
-        let attribute_id = add_selection.get_untracked();
-        if attribute_id.is_empty() {
-            return;
-        }
-        let attribute = data_resource
-            .get_untracked()
-            .and_then(Result::ok)
-            .and_then(|(_, form)| form)
-            .and_then(|form| {
-                form.attributes
-                    .into_iter()
-                    .find(|attribute| attribute.attribute_id == attribute_id)
-            });
-        let Some(attribute) = attribute else {
-            return;
-        };
-        let row = VariantAxisRow {
-            attribute_id: attribute.attribute_id,
-            code: attribute.code,
-            label: attribute.label,
-            allowed_option_ids: attribute
-                .options
-                .iter()
-                .map(|option| option.id.clone())
-                .collect(),
-            options: attribute
-                .options
-                .into_iter()
-                .map(|option| VariantAxisOption {
-                    id: option.id,
-                    label: option.label,
-                })
-                .collect(),
-        };
-        set_rows.update(move |rows| {
-            if rows
-                .iter()
-                .any(|existing| existing.attribute_id == row.attribute_id)
-            {
-                return;
-            }
-            rows.push(row);
-        });
-        set_add_selection.set(String::new());
-    };
-
-    let save_product_id = product_id.clone();
-    let on_save = move |_| {
-        let axes = rows
-            .get_untracked()
-            .into_iter()
-            .enumerate()
-            .map(|(index, row)| VariantAxisDraft {
-                attribute_id: row.attribute_id,
-                position: Some(index as i32),
-                allowed_option_ids: row.allowed_option_ids,
-            })
-            .collect::<Vec<_>>();
-        let cleared = axes.is_empty();
-
-        set_busy.set(true);
-        set_error.set(None);
-        set_notice.set(None);
-
-        let tok = token.get_untracked();
-        let ten = tenant.get_untracked();
-        let pid = save_product_id.clone();
-        let saved = saved_label.clone();
-        let cleared_label = cleared_label.clone();
-        let save_error = save_error_copy.clone();
-        spawn_local(async move {
-            let result = async {
-                let bootstrap =
-                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
-                catalog_transport::set_variant_axes(
-                    tok,
-                    ten,
-                    bootstrap.current_tenant.id,
-                    bootstrap.me.id,
-                    pid,
-                    SetVariantAxesDraft { axes },
-                )
-                .await
-            }
-            .await;
-
-            set_busy.set(false);
-            match result {
-                Ok(_) => {
-                    set_notice.set(Some(if cleared { cleared_label } else { saved }));
-                    seeded.set(false);
-                    set_refresh_nonce.update(|value| *value += 1);
-                    on_saved.run(());
-                }
-                Err(failure) => set_error.set(Some(save_error.save_product_failure(failure))),
-            }
-        });
-    };
-
-    let candidates_for_add = available_candidates;
-
-    view! {
-        <section class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-3">
-            <div class="flex flex-wrap items-start justify-between gap-2">
-                <div class="space-y-1">
-                    <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title.clone()}</h4>
-                    <p class="text-[11px] text-muted-foreground">{subtitle.clone()}</p>
-                </div>
-                <button
-                    type="button"
-                    class="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-[11px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                    disabled=move || busy.get()
-                    on:click=on_save
-                >
-                    {move || if busy.get() { saving_label.clone() } else { save_label.clone() }}
-                </button>
-            </div>
-
-            <Show when=move || error.get().is_some()>
-                <div class="rounded-lg border border-rose-200 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-600 dark:border-rose-900 dark:text-rose-400">
-                    {move || error.get().unwrap_or_default()}
-                </div>
-            </Show>
-            <Show when=move || notice.get().is_some()>
-                <div class="rounded-lg border border-emerald-200 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
-                    {move || notice.get().unwrap_or_default()}
-                </div>
-            </Show>
-
-            <Show when=move || rows.get().is_empty()>
-                <p class="text-[11px] text-muted-foreground">{empty_label.clone()}</p>
-            </Show>
-
-            {move || {
-                let row_count = rows.get().len();
-                rows.get()
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, row)| {
-                        let up_id = row.attribute_id.clone();
-                        let down_id = row.attribute_id.clone();
-                        let remove_id = row.attribute_id.clone();
-                        let toggle_attribute = row.attribute_id.clone();
-                        let selected = row.allowed_option_ids.clone();
-                        let options = row.options.clone();
-                        let can_move_up = index > 0;
-                        let can_move_down = index + 1 < row_count;
-                        view! {
-                            <div class="space-y-2 rounded-lg border border-border/80 bg-background p-3">
-                                <div class="flex flex-wrap items-center justify-between gap-2">
-                                    <div class="flex items-center gap-2 text-xs font-semibold text-foreground">
-                                        <span>"#" {index + 1}</span>
-                                        <span>{row.label.clone()}</span>
-                                        <span class="font-mono text-[10px] text-muted-foreground">{row.code.clone()}</span>
-                                    </div>
-                                    <div class="flex items-center gap-1">
-                                        <button
-                                            type="button"
-                                            class="h-6 w-6 rounded border border-border text-[11px] text-foreground transition hover:bg-accent disabled:opacity-40"
-                                            disabled=!can_move_up
-                                            title=if is_ru { "Выше" } else { "Move up" }
-                                            on:click=move |_| move_axis(&up_id, -1)
-                                        >"↑"</button>
-                                        <button
-                                            type="button"
-                                            class="h-6 w-6 rounded border border-border text-[11px] text-foreground transition hover:bg-accent disabled:opacity-40"
-                                            disabled=!can_move_down
-                                            title=if is_ru { "Ниже" } else { "Move down" }
-                                            on:click=move |_| move_axis(&down_id, 1)
-                                        >"↓"</button>
-                                        <button
-                                            type="button"
-                                            class="h-6 w-6 rounded border border-rose-200 text-[11px] text-rose-600 transition hover:bg-rose-500/10 dark:border-rose-900 dark:text-rose-400"
-                                            title=if is_ru { "Удалить ось" } else { "Remove axis" }
-                                            on:click=move |_| remove_axis(&remove_id)
-                                        >"✕"</button>
-                                    </div>
-                                </div>
-                                <div class="space-y-1">
-                                    <p class="text-[10px] uppercase tracking-wide text-muted-foreground">{allowed_values_label.clone()}</p>
-                                    <div class="flex flex-wrap gap-2">
-                                        {options
-                                            .into_iter()
-                                            .map(|option| {
-                                                let option_id = option.id.clone();
-                                                let toggle_attribute = toggle_attribute.clone();
-                                                let is_selected = selected.contains(&option.id);
-                                                view! {
-                                                    <label class="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-muted/20 px-2 py-1 text-[11px] text-foreground">
-                                                        <input
-                                                            type="checkbox"
-                                                            prop:checked=is_selected
-                                                            on:change=move |_| toggle_option(&toggle_attribute, &option_id)
-                                                        />
-                                                        <span>{option.label}</span>
-                                                    </label>
-                                                }
-                                            })
-                                            .collect_view()}
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    })
-                    .collect_view()
-            }}
-
-            <div class="flex flex-wrap items-end gap-2">
-                <label class="grid gap-1 text-[11px] text-foreground">
-                    <span class="font-medium">{select_attribute_label.clone()}</span>
-                    <select
-                        class="min-w-[220px] rounded-lg border border-border bg-background px-2 py-2 text-xs text-foreground outline-none transition focus:border-primary"
-                        prop:value=move || add_selection.get()
-                        on:change=move |ev| set_add_selection.set(event_target_value(&ev))
-                    >
-                        <option value="">{if is_ru { "— выберите атрибут —" } else { "— select attribute —" }}</option>
-                        {move || candidates_for_add()
-                            .into_iter()
-                            .map(|(attribute_id, label)| view! {
-                                <option value=attribute_id>{label}</option>
-                            })
-                            .collect_view()}
-                    </select>
-                </label>
-                <button
-                    type="button"
-                    class="h-9 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                    disabled=move || add_selection.get().is_empty()
-                    on:click=add_axis
-                >
-                    {add_label.clone()}
-                </button>
-                <Show when=move || candidates_for_add().is_empty() && rows.get().is_empty()>
-                    <span class="text-[11px] text-muted-foreground">{no_candidates_label.clone()}</span>
-                </Show>
-            </div>
-        </section>
-    }.into_any()
-}
-
 /// Applies the shared result handling of the mounted schema-authoring commands.
 ///
 /// Every authoring command resolves to `Result<bool, String>` at the facade
@@ -3549,6 +2746,8 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
     let (schema_binding_required, set_schema_binding_required) = signal(false);
     let (schema_binding_disabled, set_schema_binding_disabled) = signal(false);
     let (schema_binding_position, set_schema_binding_position) = signal("0".to_string());
+    let (schema_axis_policy, set_schema_axis_policy) = signal("keep".to_string());
+    let (schema_default_axis, set_schema_default_axis) = signal("keep".to_string());
 
     // Category-scoped groups and bindings
     let (category_target, set_category_target) = signal(String::new());
@@ -3560,6 +2759,8 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
     let (category_binding_kind, set_category_binding_kind) = signal("addition".to_string());
     let (category_binding_disabled, set_category_binding_disabled) = signal(false);
     let (category_binding_position, set_category_binding_position) = signal("0".to_string());
+    let (category_axis_policy, set_category_axis_policy) = signal("keep".to_string());
+    let (category_default_axis, set_category_default_axis) = signal("keep".to_string());
 
     let categories_resource = LocalResource::new(move || {
         let tok = token.get();
@@ -3686,6 +2887,33 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         );
     };
 
+    let preview_locale = locale_store.get_value().unwrap_or_else(|| "en".into());
+    let preview_form = LocalResource::new(move || {
+        let category_id = category_target.get();
+        let tok = token.get();
+        let ten = tenant.get();
+        let loc = preview_locale.clone();
+        let _ = refresh_nonce.get();
+        async move {
+            if category_id.is_empty() {
+                return Ok::<_, String>(None);
+            }
+            let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
+                .await
+                .map_err(|failure| failure.to_string())?;
+            catalog_transport::fetch_effective_product_form(
+                tok,
+                ten,
+                bootstrap.current_tenant.id,
+                None,
+                Some(category_id),
+                loc,
+            )
+            .await
+            .map_err(|failure| failure.to_string())
+        }
+    });
+
     let create_schema_group = move |_| {
         let schema_id = schema_target.get_untracked();
         let code = schema_group_code.get_untracked();
@@ -3760,7 +2988,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             return;
         }
         let group_code = schema_binding_group.get_untracked();
+        let (variant_axis_policy, default_variant_axis) = match crate::core::build_axis_policy_patch(
+            &schema_axis_policy.get_untracked(),
+            &schema_default_axis.get_untracked(),
+        ) {
+            Ok(patch) => patch,
+            Err(message) => {
+                set_error.set(Some(message));
+                return;
+            }
+        };
         let draft = BindSchemaAttributeDraft {
+            variant_axis_policy,
+            default_variant_axis,
             schema_id,
             attribute_id,
             group_code: if group_code.trim().is_empty() {
@@ -3876,7 +3116,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             return;
         }
         let group_code = category_binding_group.get_untracked();
+        let (variant_axis_policy, default_variant_axis) = match crate::core::build_axis_policy_patch(
+            &category_axis_policy.get_untracked(),
+            &category_default_axis.get_untracked(),
+        ) {
+            Ok(patch) => patch,
+            Err(message) => {
+                set_error.set(Some(message));
+                return;
+            }
+        };
         let draft = BindCategoryAttributeDraft {
+            variant_axis_policy,
+            default_variant_axis,
             category_id,
             attribute_id,
             group_code: if group_code.trim().is_empty() {
@@ -4131,6 +3383,11 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         </label>
                     </div>
                 </div>
+                <AxisPolicyFields
+                    eligible=Signal::derive(move || attributes().into_iter().find(|attribute| attribute.id == schema_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
+                    policy=schema_axis_policy set_policy=set_schema_axis_policy
+                    default_axis=schema_default_axis set_default_axis=set_schema_default_axis
+                />
                 <button
                     type="button"
                     class=button_class
@@ -4255,6 +3512,11 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         </label>
                     </div>
                 </div>
+                <AxisPolicyFields
+                    eligible=Signal::derive(move || attributes().into_iter().find(|attribute| attribute.id == category_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
+                    policy=category_axis_policy set_policy=set_category_axis_policy
+                    default_axis=category_default_axis set_default_axis=set_category_default_axis
+                />
                 <button
                     type="button"
                     class=button_class
@@ -4263,7 +3525,63 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                 >
                     {if is_ru { "Привязать атрибут к категории" } else { "Bind attribute to category" }}
                 </button>
+                <section class="space-y-2" aria-label="Effective variant axis policies">
+                    <h4>"Effective variant axis policies / source"</h4>
+                    {move || match preview_form.get() {
+                        Some(Ok(Some(form))) => view! {
+                            <dl class="space-y-2">
+                                {form.attributes.into_iter().map(|attribute| {
+                                    let description = crate::core::effective_axis_policy_label(&attribute);
+                                    view! { <div><dt>{attribute.label}</dt><dd class="text-xs text-muted-foreground">{description}</dd></div> }
+                                }).collect_view()}
+                            </dl>
+                        }.into_any(),
+                        Some(Err(message)) => view! { <p role="alert" class="text-destructive">{message}</p> }.into_any(),
+                        _ => view! { <p class="text-xs text-muted-foreground">"Select a category to inspect its effective rules."</p> }.into_any(),
+                    }}
+                </section>
+
             </div>
         </section>
     }.into_any()
+}
+
+#[component]
+fn AxisPolicyFields(
+    eligible: Signal<bool>,
+    policy: ReadSignal<String>,
+    set_policy: WriteSignal<String>,
+    default_axis: ReadSignal<String>,
+    set_default_axis: WriteSignal<String>,
+) -> impl IntoView {
+    view! {
+        <div class="grid gap-3 md:grid-cols-2">
+            <label class="grid gap-1.5 text-xs">
+                <span>"Variant axis policy"</span>
+                {move || {
+                    let allowed = eligible.get();
+                    let eligible_option = |value, label| { let option = leptos_ui::SelectOption::new(value, label); if allowed { option } else { option.disabled() } };
+                    view! { <leptos_ui::Select
+                        options=vec![
+                            leptos_ui::SelectOption::new("keep", "Keep existing (new binding: forbidden)"),
+                            leptos_ui::SelectOption::new("forbidden", "Forbidden"),
+                            eligible_option("allowed", "Allowed"), eligible_option("required", "Required"),
+                        ]
+                        value=policy set_value=set_policy
+                    /> }
+                }}
+            </label>
+            <label class="grid gap-1.5 text-xs">
+                <span>"Default axis hint"</span>
+                <leptos_ui::Select
+                    options=vec![
+                        leptos_ui::SelectOption::new("keep", "Keep existing (new binding: no)"),
+                        leptos_ui::SelectOption::new("false", "No"),
+                        leptos_ui::SelectOption::new("true", "Yes"),
+                    ]
+                    value=default_axis set_value=set_default_axis
+                />
+            </label>
+        </div>
+    }
 }

@@ -9,7 +9,7 @@
 - Own the pricing service, price-related migrations, and pricing runtime metadata.
 - Keep the decimal money contract working on the current runtime while preserving
   compatibility with legacy `prices.amount` and `compare_at_amount` storage.
-- Start Pricing 2.0 with a typed price-resolution foundation over
+- Maintain one canonical typed price-resolution contract over
   `currency_code + optional region_id + optional quantity`, and now allow
   explicit `price_list_id` overlays when the requested list is active for the
   current tenant/time window, plus a normalized `discount_percent` on resolved
@@ -94,3 +94,78 @@ presentation with fresh references; query failures retain owner retryability. Te
 logs no longer emit request payload. See the [current contract](docs/pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
 This is source-only, unintegrated work; five new Rust scenarios are unrun, and compilation,
 mounted execution, and broader Pricing/Translation/price-list auditing remain open.
+
+
+## Authoritative quote continuation (2026-10-29)
+
+The owner contract is extended, not replaced by a second pricing engine. Single and
+bounded batch quotes use Product-owned SKU identity projections, Channel/Region owner
+reads, canonical money validation and one Pricing snapshot/time. The batch preserves
+request order, actual Product membership, explicit unpriced SKUs and price-row/rule
+provenance. Equal-priority rows and unknown/partial rules refuse a quote instead of
+choosing a UUID or silently returning a base price. Percentage list sales are
+non-stacking offers and cannot increase an existing sale; sale percentages describe
+final rounded money.
+
+The Pricing atlas now exposes `list_storefront_product_pricing` /
+`storefrontPricingCatalog`: real SKU counts and base-price currency/sale coverage, not
+Next-local `1 / 0 / USD` placeholders or per-product GraphQL waterfalls. These are
+inspection rows, distinct from selling quotes. Both selected transports carry source,
+normalized context and resolution time; the Leptos GraphQL adapter no longer discards
+effective prices. Contextual unpriced results do not substitute raw catalog prices.
+Checkout adjustment metadata retains price-row/source/time/rule provenance.
+
+Native Pricing requires trusted request context; an extraction failure is not an
+absent channel. ID-only/slug-only channel requests are completed by Channel without
+mixing half of an explicit selector with half of a host default. Admin GraphQL reads
+also verify that the requested tenant is the authenticated current tenant.
+
+See [CRATE_API.md](CRATE_API.md), [the owner plan](docs/implementation-plan.md) and the
+[ADR continuation](../../../DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#pricing-resolution-continuation-2026-10-29).
+
+### Quote-consumer recheck (2026-10-30)
+
+Next read state and selectors are scoped before IO to tenant/auth/locale/executor.
+Only non-quote discovery survives a failed re-quote; a currency change clears the
+previous region and selected Products outside the first catalog page contribute their
+actual currency coverage. Pricing/Product SDKs reject inconsistent quote observations,
+and partial GraphQL failures are not successful not-found/unpriced reads. The shared
+Next Apollo client does not deduplicate header-distinct viewers' in-flight queries.
+
+The Next Pricing server route passes serializable data/query/reset-href props through
+a client wiring bridge, not an executor function through RSC. The route preserves
+region/quantity intent, rejects malformed quantity without defaults and keeps the
+canonical Rust `currency` URL key. Native admin active-list selectors now use the
+same canonical owner projection and channel completion as GraphQL. Rust storefront
+quote observation checks remain projection-only; Pricing still owns all price math.
+
+See the [recheck record](docs/implementation-plan.md#targeted-recheck-2026-10-30).
+Regression sources are added but unrun; the limitations below still apply.
+
+## Known Limitations / Pending Implementation
+
+- Product step-8 now delegates selected Channel ID/slug correlation to the Channel owner while
+  retaining Pricing's trusted-context rules. However, `PricingService::variant_identity_read_port`
+  still constructs local `CatalogService`: selecting a remote Product catalog reader does not
+  select a remote identity owner for Pricing. This capability must be traced/composed before
+  claiming selected-provider parity or retiring local Product identity state; see the
+  [downstream plan](../rustok-commerce/docs/implementation-plan.md#remaining-step-8-work-not-closed-by-this-slice).
+
+- This block is source implementation, not runtime certification. Tests are reserved
+  for the maintainer at the user's request; Rust/Cargo and PostgreSQL are unavailable
+  in the implementation environment. Static formatting/type checks do not prove SQL,
+  async traits/macros, isolation, deadline cancellation or mounted parity.
+- The four `PricingWritePort` operations check an idempotency key but do not persist
+  command receipts or expose expected-price state/CAS. Native mutation flows still
+  include direct Pricing owner-service calls. Do not apply Product's receipt/journal
+  guarantees to Pricing writes or advertise durable retries for them.
+- Price List rule/scope event/invalidation completeness must be implemented before
+  price caching. This quote block adds no cache or promotion provider fallback.
+- There is no installed-state price ambiguity inventory or safe repair command. No
+  historical migration was edited and no existing price/SKU identity was deleted.
+- Quotes are unreserved observations, not tax-inclusive/customer-eligible final
+  checkout commitments. Tax basis, customer groups, general stacking and explicit
+  global preview from a channel-bound host require owner contracts and real consumers.
+- Product storefront sparse-tuple/quantity selection and quote-to-cart handoff now have source
+  implementations in both clients, but mounted buyer execution and complete downstream owner
+  verification remain open. Existing no-context base rows are inspection data, not a checkout guarantee.

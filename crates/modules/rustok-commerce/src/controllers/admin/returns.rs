@@ -254,7 +254,7 @@ fn map_admin_return_decision_order_port_error(
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
         "commerce admin return-decision Order owner command failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_admin_return_decision_payment_port_error(
@@ -282,7 +282,7 @@ fn map_admin_return_decision_payment_port_error(
         boundary = ADMIN_ORDER_RETURN_BOUNDARY,
         "commerce admin return-decision Payment owner read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn admin_owner_port_policy(owner: &str, error: &PortError) -> AdminOrderReturnHttpPolicy {

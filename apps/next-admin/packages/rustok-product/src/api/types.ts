@@ -6,7 +6,9 @@
  * See the LICENSE file in the project root for full license terms.
  */
 
+/** Structural projection of the host executor; resolution/auth remain host-owned. */
 export interface GqlOpts {
+  locale?: string;
   token?: string | null;
   tenantSlug?: string | null;
   tenantId?: string | null;
@@ -14,9 +16,24 @@ export interface GqlOpts {
     query: string,
     variables: TVariables,
     token?: string | null,
-    tenantSlug?: string | null
+    tenantSlug?: string | null,
+    options?: { tenantId?: string | null; locale?: string; graphqlUrl?: string }
   ) => Promise<TData>;
 }
+
+export type CreateVariantInput = {
+  axisValues?: VariantAxisValueInput[];
+  sku?: string | null;
+  barcode?: string | null;
+  shippingProfileSlug?: string | null;
+  prices: Array<{
+    currencyCode: string;
+    amount: string;
+    compareAtAmount?: string | null;
+  }>;
+  inventoryQuantity?: number;
+  inventoryPolicy?: string;
+};
 
 export interface CatalogCategorySummary {
   id: string;
@@ -41,6 +58,7 @@ export interface ProductAttributeSummary {
   id: string;
   code: string;
   valueType: string;
+  scope: 'product' | 'variant' | 'both';
   isLocalized: boolean;
   isFilterable: boolean;
   isSearchable: boolean;
@@ -52,6 +70,7 @@ export interface ProductAttributeSummary {
 export interface CreateProductAttributePayload {
   code: string;
   valueType: string;
+  scope: 'product' | 'variant' | 'both';
   label: string;
   helpText?: string;
   isLocalized: boolean;
@@ -94,6 +113,8 @@ export interface SetCategorySchemaModePayload {
   cloneFromCategoryId?: string | null;
 }
 
+export type VariantAxisPolicy = 'forbidden' | 'allowed' | 'required';
+
 export interface BindCategoryAttributePayload {
   categoryId: string;
   attributeId: string;
@@ -102,6 +123,8 @@ export interface BindCategoryAttributePayload {
   isRequired?: boolean | null;
   isDisabled: boolean;
   position?: number | null;
+  variantAxisPolicy?: VariantAxisPolicy;
+  defaultVariantAxis?: boolean;
 }
 
 export interface BindSchemaAttributePayload {
@@ -111,6 +134,8 @@ export interface BindSchemaAttributePayload {
   isRequired: boolean;
   isDisabled: boolean;
   position: number;
+  variantAxisPolicy?: VariantAxisPolicy;
+  defaultVariantAxis?: boolean;
 }
 
 export interface CreateProductAttributeSchemaGroupPayload {
@@ -132,6 +157,7 @@ export interface ProductEffectiveFormAttribute {
   code: string;
   label: string;
   valueType: string;
+  scope: 'product' | 'variant' | 'both';
   isLocalized: boolean;
   options: ProductAttributeOptionSummary[];
   groupCode: string | null;
@@ -213,7 +239,19 @@ export interface VariantDiscountInput {
   channelSlug?: string | null;
 }
 
+export interface VariantAxisValueInput {
+  attributeId: string;
+  optionId: string;
+}
+
+export interface VariantAxisValue extends VariantAxisValueInput {
+  code: string;
+  label: string;
+}
+
 export interface ProductVariant {
+  axisValues: VariantAxisValue[];
+  combinationIdentity: string;
   id: string;
   sku: string | null;
   barcode: string | null;
@@ -256,6 +294,46 @@ export interface VariantAxisDraftInput {
 
 export interface SetVariantAxesInput {
   axes: VariantAxisDraftInput[];
+  expectedState?: string | null;
+  reassignments?: VariantAxisReassignmentInput[];
+}
+
+export interface VariantAxisReassignmentInput {
+  variantId: string;
+  /** Full tuple for the target axes, never a partial patch. */
+  axisValues: VariantAxisValueInput[];
+}
+
+export type VariantAxesConflictKind =
+  | 'missing_assignment'
+  | 'duplicate_assignment'
+  | 'unexpected_assignment'
+  | 'value_not_allowed'
+  | 'duplicate_combination'
+  | 'multiple_default_variants';
+
+export interface VariantAxesPreview {
+  productId: string;
+  productRevision: number;
+  stateToken: string;
+  variantCount: number;
+  canApply: boolean;
+  hasChanges: boolean;
+  conflicts: Array<{
+    kind: VariantAxesConflictKind;
+    attributeId: string | null;
+    optionId: string | null;
+    variantIds: string[];
+    hasMoreVariants: boolean;
+  }>;
+  hasMoreConflicts: boolean;
+  variants: Array<{
+    variantId: string;
+    sku: string | null;
+    currentValues: VariantAxisValueInput[];
+    proposedValues: VariantAxisValueInput[];
+    changes: boolean;
+  }>;
 }
 
 export interface ProductDetail {

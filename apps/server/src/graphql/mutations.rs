@@ -267,7 +267,6 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::UnexpectedInRegistry(_)
         | ManifestError::RequiredMismatch(_)
         | ManifestError::DependencyMismatch(_)
-        | ManifestError::MissingModulePackageManifest { .. }
         | ManifestError::ModulePackageSlugMismatch { .. }
         | ManifestError::InvalidModuleVersion { .. }
         | ManifestError::InvalidModuleDependency { .. }
@@ -290,7 +289,8 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::InvalidModuleHttpWiring { .. } => {
             <FieldError as GraphQLError>::bad_user_input(&err.to_string())
         }
-        ManifestError::Read { .. }
+        ManifestError::MissingModulePackageManifest { .. }
+        | ManifestError::Read { .. }
         | ManifestError::Parse { .. }
         | ManifestError::Write { .. }
         | ManifestError::ModulePackageRead { .. }
@@ -578,8 +578,14 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::Policy(_) => {
             <FieldError as GraphQLError>::internal_error("Internal server error")
         }
-        ToggleModuleError::Manifest(err) => {
-            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+        ToggleModuleError::Manifest(err) => map_manifest_error(err),
+        ToggleModuleError::SettingsSchemaUnavailable(error) => {
+            tracing::error!(%error, "module settings schema is unavailable");
+            FieldError::new("Module settings schema is unavailable; restore release metadata before retrying")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_SETTINGS_SCHEMA_UNAVAILABLE");
+                    ext.set("retryable_issue", true);
+                })
         }
         ToggleModuleError::SettingsMigrationRequired {
             module_slug,
@@ -610,6 +616,7 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             let message = match reason.as_str() {
                 "hook_settings_changed" => "Module settings changed after the failed hook; restore the reviewed settings or use compensation",
                 "hook_settings_evidence_unavailable" => "The original hook settings cannot be verified; use the guarded compensation path",
+                "release_transition_unresolved" => "A module release transition is unresolved; finish or recover it before retrying the hook",
                 _ => "Module operation is not retryable",
             };
             FieldError::new(message).extend_with(|_, ext| {
@@ -2338,6 +2345,26 @@ mod tests {
                 case_name: "manifest",
             },
             ToggleCase {
+                error: ToggleModuleError::Manifest(crate::modules::ManifestError::Read {
+                    path: "/private/modules.toml".into(),
+                    error: "private diagnostic".into(),
+                }),
+                expected_message: "Module manifest operation failed".to_string(),
+                expected_code: Some("INTERNAL_ERROR"),
+                case_name: "manifest-read",
+            },
+            ToggleCase {
+                error: ToggleModuleError::Manifest(
+                    crate::modules::ManifestError::MissingModulePackageManifest {
+                        slug: "custom".into(),
+                        path: "/private/rustok-module.toml".into(),
+                    },
+                ),
+                expected_message: "Module manifest operation failed".to_string(),
+                expected_code: Some("INTERNAL_ERROR"),
+                case_name: "missing-package-manifest",
+            },
+            ToggleCase {
                 error: ToggleModuleError::SettingsMigrationRequired {
                     module_slug: "blog".into(),
                     reason: "missing required setting 'author'".into(),
@@ -2389,6 +2416,19 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_settings_schema_is_actionable_without_exposing_paths() {
+        let error = map_toggle_module_error(ToggleModuleError::SettingsSchemaUnavailable(
+            "missing /private/rustok-module.toml".into(),
+        ));
+        assert!(error.message.contains("restore release metadata"));
+        assert!(!error.message.contains("/private"));
+        assert_eq!(
+            error_code(&error.extend()).as_deref(),
+            Some("MODULE_SETTINGS_SCHEMA_UNAVAILABLE")
+        );
+    }
+
+    #[test]
     fn platform_composition_build_error_redacts_owner_diagnostics() {
         let error = map_platform_composition_build_error(PlatformCompositionBuildError::Build(
             "cargo stderr: database password=secret".to_string(),
@@ -2419,6 +2459,10 @@ mod tests {
                 "hook_settings_evidence_unavailable".to_string(),
             ));
         assert!(missing.message.contains("cannot be verified"));
+        let transition = map_module_operation_recovery_error(
+            ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
+        );
+        assert!(transition.message.contains("transition is unresolved"));
 
         let post_hook =
             map_module_operation_recovery_error(ModuleOperationRecoveryError::PostHookFailed(
@@ -2542,8 +2586,11 @@ mod tests {
     fn toggle_internal_error_taxonomy_uses_generic_internal_message() {
         for case in toggle_internal_error_cases() {
             let mapped = map_toggle_module_error(case.error);
-            assert_eq!(
-                mapped.message, "Internal server error",
+            assert!(
+                matches!(
+                    mapped.message.as_str(),
+                    "Internal server error" | "Module manifest operation failed"
+                ),
                 "toggle internal taxonomy must not leak implementation details for case: {}",
                 case.case_name
             );

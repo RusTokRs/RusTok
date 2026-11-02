@@ -12,6 +12,7 @@ async fn lock_product_for_update_in_tx(
     tenant_id: Uuid,
     product_id: Uuid,
 ) -> CommerceResult<crate::entities::product::Model> {
+    super::policy::lock_schema_for_product_write(txn, tenant_id).await?;
     let query = crate::entities::product::Entity::find_by_id(product_id)
         .filter(crate::entities::product::Column::TenantId.eq(tenant_id));
     let product = match txn.get_database_backend() {

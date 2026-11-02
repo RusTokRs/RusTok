@@ -14,7 +14,9 @@ infrastructure for the platform event runtime.
 - `TransactionalEventBus` and atomic publish-with-transaction semantics;
 - object-safe `TransactionalEventWriter` injection for owner services that
   already own a `DatabaseTransaction`;
-- persistence into `sys_events` through transactional transport;
+- persistence into `sys_events` through transactional transport; unconditional root/typed
+  inserts require exactly one affected row, while the separate write-once path correlates
+  exact saved-envelope identity/payload on conflict;
 - `idempotency` admission, fenced lease reclaim, terminal replay, and typed
   failure persistence in `owner_operation_receipts`; owner services still own
   business validation, mutation, and side-effect evidence;

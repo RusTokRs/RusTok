@@ -37,7 +37,6 @@
         "create_storefront_cart",
         "add_storefront_line_item",
         "update_storefront_context",
-        "update_storefront_line_item_quantity",
         "update_storefront_line_item_pricing",
         "remove_storefront_line_item",
         "reprice_storefront_line_items"
@@ -53,11 +52,13 @@
         "create_storefront_cart",
         "add_storefront_line_item",
         "update_storefront_context",
-        "update_storefront_line_item_quantity",
         "update_storefront_line_item_pricing",
         "remove_storefront_line_item",
         "reprice_storefront_line_items"
-      ]
+      ],
+      "implementation_source": "crates/modules/rustok-cart/src/owner_ports.rs",
+      "implementation_service": "OwnerCartPort",
+      "context_policy_helper": "require_cart_policy"
     },
     {
       "name": "CartPromotionPort",
@@ -177,7 +178,11 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "original_material_context_guard",
+          "explicit_context_pricing_disposition",
+          "complete_target_price_coverage",
+          "active_only_atomic_context_price_adoption"
         ]
       },
       {
@@ -248,7 +253,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "locked_pricing_observation_preserved"
         ]
       },
       {
@@ -260,19 +266,11 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
-        ]
-      },
-      {
-        "operation": "update_storefront_line_item_quantity",
-        "profiles": [
-          "in_process",
-          "remote_adapter_placeholder"
-        ],
-        "assertions": [
-          "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "original_material_context_guard",
+          "explicit_context_pricing_disposition",
+          "complete_target_price_coverage",
+          "active_only_atomic_context_price_adoption"
         ]
       },
       {
@@ -284,7 +282,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "locked_pricing_observation_preserved"
         ]
       },
       {
@@ -296,7 +295,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "locked_pricing_observation_preserved"
         ]
       },
       {
@@ -308,7 +308,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "locked_pricing_observation_preserved"
         ]
       },
       {

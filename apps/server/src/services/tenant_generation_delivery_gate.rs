@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use rustok_cache::CacheService;
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::{Error, Result};
+use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 
 #[cfg(feature = "mod-pages")]
 use rustok_core::events::EventHandler;
@@ -84,6 +85,22 @@ impl EventTransport for TenantGenerationDeliveryGate {
             self.pages_handler.handle(&envelope).await?;
         }
         self.inner.publish(envelope).await
+    }
+
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> Result<()> {
+        if matches!(
+            envelope
+                .payload()
+                .map_err(|error| Error::Validation(error.to_string()))?,
+            ContractEventPayload::Root(_)
+        ) {
+            let root = envelope
+                .into_root_envelope()
+                .map_err(|error| Error::Validation(error.to_string()))?;
+            return self.publish(root).await;
+        }
+        // This wrapper's root-specific work does not reinterpret bounded-family facts.
+        self.inner.publish_contract(envelope).await
     }
 
     async fn acknowledge(&self, event_id: uuid::Uuid) -> Result<()> {

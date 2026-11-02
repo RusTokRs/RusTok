@@ -6,12 +6,10 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::ports::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartStorefrontAddLineItemRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
-    CartStorefrontRepriceRequest,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
 };
 use crate::{CartError, CartResponse, CartService};
 
@@ -24,7 +22,6 @@ const READ_STOREFRONT_CART_OPERATION: &str = "read_storefront_cart";
 const CREATE_STOREFRONT_CART_OPERATION: &str = "create_storefront_cart";
 const ADD_STOREFRONT_LINE_ITEM_OPERATION: &str = "add_storefront_line_item";
 const UPDATE_STOREFRONT_CONTEXT_OPERATION: &str = "update_storefront_context";
-const UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION: &str = "update_storefront_line_item_quantity";
 const UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION: &str = "update_storefront_line_item_pricing";
 const REMOVE_STOREFRONT_LINE_ITEM_OPERATION: &str = "remove_storefront_line_item";
 const REPRICE_STOREFRONT_LINE_ITEMS_OPERATION: &str = "reprice_storefront_line_items";
@@ -81,7 +78,7 @@ impl CartCheckoutPort for OwnerCartPort {
     async fn update_cart_checkout_context(
         &self,
         context: PortContext,
-        request: CartCheckoutContextUpdateRequest,
+        request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         let owner_operation = UPDATE_CART_CHECKOUT_CONTEXT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
@@ -100,7 +97,7 @@ impl CartCheckoutPort for OwnerCartPort {
             "updating cart checkout context"
         );
         self.service
-            .update_context(tenant_id, request.cart_id, request.input)
+            .update_context(tenant_id, request)
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
     }
@@ -275,11 +272,12 @@ impl CartStorefrontPort for OwnerCartPort {
             "adding storefront line item"
         );
         self.service
-            .add_line_item_with_pricing_adjustment(
+            .add_line_item_in_context(
                 tenant_id,
                 request.cart_id,
                 request.input,
                 request.pricing_adjustment,
+                Some(request.pricing_context),
             )
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
@@ -288,7 +286,7 @@ impl CartStorefrontPort for OwnerCartPort {
     async fn update_storefront_context(
         &self,
         context: PortContext,
-        request: CartStorefrontContextUpdateRequest,
+        request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         let owner_operation = UPDATE_STOREFRONT_CONTEXT_OPERATION;
         require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
@@ -299,6 +297,12 @@ impl CartStorefrontPort for OwnerCartPort {
                 "cart_id must not be a nil UUID",
             ));
         }
+        if !matches!(&request.pricing, crate::CartContextPricing::Reprice(_)) {
+            return Err(PortError::validation(
+                "cart.context_pricing_required",
+                "Buyer context changes require a complete target-context price plan",
+            ));
+        }
         tracing::debug!(
             boundary = "owner_cart_port",
             operation = owner_operation,
@@ -307,47 +311,7 @@ impl CartStorefrontPort for OwnerCartPort {
             "updating storefront context"
         );
         self.service
-            .update_context(tenant_id, request.cart_id, request.input)
-            .await
-            .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
-    }
-
-    async fn update_storefront_line_item_quantity(
-        &self,
-        context: PortContext,
-        request: CartStorefrontLineItemQuantityRequest,
-    ) -> Result<CartResponse, PortError> {
-        let owner_operation = UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION;
-        require_cart_policy(&context, owner_operation, PortCallPolicy::write())?;
-        let tenant_id = parse_cart_tenant_id(&context, owner_operation)?;
-        if request.cart_id.is_nil() {
-            return Err(PortError::validation(
-                "cart.cart_id_nil",
-                "cart_id must not be a nil UUID",
-            ));
-        }
-        if request.line_item_id.is_nil() {
-            return Err(PortError::validation(
-                "cart.line_item_id_nil",
-                "line_item_id must not be a nil UUID",
-            ));
-        }
-        tracing::debug!(
-            boundary = "owner_cart_port",
-            operation = owner_operation,
-            tenant_id = %tenant_id,
-            cart_id = %request.cart_id,
-            line_item_id = %request.line_item_id,
-            quantity = request.quantity,
-            "updating storefront line item quantity"
-        );
-        self.service
-            .update_line_item_quantity(
-                tenant_id,
-                request.cart_id,
-                request.line_item_id,
-                request.quantity,
-            )
+            .update_context(tenant_id, request)
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
     }
@@ -386,10 +350,13 @@ impl CartStorefrontPort for OwnerCartPort {
             .update_line_item_pricing(
                 tenant_id,
                 request.cart_id,
-                request.line_item_id,
-                request.quantity,
-                request.unit_price,
-                request.pricing_adjustment,
+                crate::CartLineItemPricingUpdate {
+                    line_item_id: request.line_item_id,
+                    quantity: request.quantity,
+                    unit_price: request.unit_price,
+                    pricing_adjustment: request.pricing_adjustment,
+                },
+                request.pricing_context,
             )
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
@@ -424,7 +391,12 @@ impl CartStorefrontPort for OwnerCartPort {
             "removing storefront line item"
         );
         self.service
-            .remove_line_item(tenant_id, request.cart_id, request.line_item_id)
+            .remove_line_item(
+                tenant_id,
+                request.cart_id,
+                request.line_item_id,
+                request.pricing_context,
+            )
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
     }
@@ -460,7 +432,12 @@ impl CartStorefrontPort for OwnerCartPort {
             "repricing storefront line items"
         );
         self.service
-            .reprice_line_items(tenant_id, request.cart_id, request.updates)
+            .reprice_line_items(
+                tenant_id,
+                request.cart_id,
+                request.updates,
+                request.pricing_context,
+            )
             .await
             .map_err(|error| cart_error_to_port_error(&context, owner_operation, error))
     }
@@ -573,6 +550,10 @@ fn cart_error_to_port_error(
             "cart.invalid_transition",
             "cart lifecycle transition conflicts with the current state",
         ),
+        CartError::PricingContextChanged => PortError::conflict(
+            "cart.pricing_context_changed",
+            "Cart pricing context changed; refresh the cart and quote",
+        ),
         CartError::Database(_) => PortError::unavailable(
             "cart.database_unavailable",
             "cart storage is temporarily unavailable",
@@ -598,6 +579,7 @@ fn cart_error_code(error: &CartError) -> &str {
         CartError::CartNotFound(_) => "cart.cart_not_found",
         CartError::CartLineItemNotFound(_) => "cart.line_item_not_found",
         CartError::InvalidTransition { .. } => "cart.invalid_transition",
+        CartError::PricingContextChanged => "cart.pricing_context_changed",
         CartError::Database(_) => "cart.database_unavailable",
         CartError::TaxBoundary { code, .. } | CartError::ShippingBoundary { code, .. } => {
             code.as_str()

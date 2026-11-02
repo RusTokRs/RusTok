@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { containsMarker } from "./lib/source-text.mjs";
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
@@ -12,10 +13,10 @@ const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8
 const failures = [];
 
 const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!containsMarker(source, value)) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+  if (containsMarker(source, value)) failures.push(`${label}: forbidden ${value}`);
 };
 const countText = (source, value) => source.split(value).length - 1;
 const requireCount = (source, value, expected, label) => {
@@ -125,7 +126,11 @@ for (const endpoint of [
 
 requireCount(adapter, ".map_err(|error| auth_context_error", 8, "auth extraction mapping");
 requireCount(adapter, ".map_err(|error| tenant_context_error", 8, "tenant extraction mapping");
-requireCount(adapter, "inventory_owner_error(", 8, "owner mapper definition and calls");
+// Bootstrap only maps trusted context; five Inventory writes and two Product reads have
+// distinct owner-error entrypoints. Generic mapper definitions are not call expressions.
+requireCount(adapter, "inventory_owner_error(", 5, "Inventory mutation mapper calls");
+requireCount(adapter, "product_owner_error(", 2, "Product read mapper calls");
+requireText(adapter, "fn product_owner_error<E>(", "Product read mapper remains bounded");
 requireCount(
   adapter,
   "inventory_admin_correlation_id(owner_operation)",
@@ -146,13 +151,19 @@ for (const preserved of [
   "Invalid product status",
   "Requested tenant_id does not match request tenant context",
   "TransactionalEventBus",
-  "AdminInventoryProductsFilter",
+  "rustok_product::AdminProductListQuery",
   "set_variant_quantity",
   "adjust_variant_quantity",
-  ".reserve(tenant.id, variant_id, quantity)",
+  ".reserve(",
   ".check_variant_availability(tenant.id, variant_id, requested_quantity)",
-  ".release_reservation_quantity(tenant.id, variant_id, quantity)",
+  ".release_reservation_quantity(",
 ]) requireText(adapter, preserved, `${paths.adapter}: preserved behavior`);
+
+for (const method of ["reserve", "release_reservation_quantity"]) {
+  if (!new RegExp(`\\.${method}\\(\\s*&reservation_write_context\\(`).test(adapter)) {
+    failures.push(`${paths.adapter}: ${method} must forward current reservation context`);
+  }
+}
 
 requireText(
   clientGuard,

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { reExportedNames } from './lib/rust-public-surface.mjs';
+import { reExportedNames, requirePortSurface } from './lib/rust-public-surface.mjs';
 
 export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
@@ -95,6 +95,14 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
   if (!body) fail(`${module}.${operation} source body not found`);
   const readOperation =
     isReadOnlyOperation(operation) || (port.read_operations ?? []).includes(operation);
+  const normalized = body.replace(/\s+/g, '');
+  const helperBody = port.context_policy_helper ? findFunctionBody(portSource, port.context_policy_helper) : null;
+  const helperExpression = helperBody?.replace(/\s+/g, '') ?? '';
+  const policy = readOperation ? 'read' : 'write';
+  const helperAdmission = Boolean(port.context_policy_helper && helperBody
+    && helperExpression.startsWith('context.require_policy(policy).map_err(')
+    && !helperBody.includes(';')
+    && normalized.includes(`${port.context_policy_helper}(&context,owner_operation,PortCallPolicy::${policy}())?`));
   if (!readOperation) {
     if (port.idempotency_required === true) {
       // Idempotent write: the shared policy helper is canonical and already
@@ -102,11 +110,12 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
       // call require_write_semantics directly as an equivalent explicit gate.
       if (
         !body.includes('require_write_semantics()?') &&
-        !body.includes('require_policy(PortCallPolicy::write())?')
+        !body.includes('require_policy(PortCallPolicy::write())?') &&
+        !helperAdmission
       ) {
         fail(`${module}.${operation} write operation must enforce write idempotency/deadline semantics`);
       }
-    } else if (!body.includes('require_policy(PortCallPolicy::write())?')) {
+    } else if (!body.includes('require_policy(PortCallPolicy::write())?') && !helperAdmission) {
       // Non-idempotent write: must still be admitted under a write policy.
       fail(`${module}.${operation} write operation must enforce PortCallPolicy::write()`);
     }
@@ -115,7 +124,7 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
   if (body.includes('require_write_semantics()?')) {
     fail(`${module}.${operation} read operation must not require write idempotency semantics`);
   }
-  if (!body.includes('require_policy(PortCallPolicy::read())?')) {
+  if (!body.includes('require_policy(PortCallPolicy::read())?') && !helperAdmission) {
     fail(`${module}.${operation} read operation must enforce PortCallPolicy::read()`);
   }
 };
@@ -277,9 +286,8 @@ export function verifyEcommerceFbaRegistries({
     if (!manifest.includes('context = "rustok_api::ports::PortContext"')) fail(`${module} manifest context drift`);
     if (!manifest.includes('error = "rustok_api::ports::PortError"')) fail(`${module} manifest error drift`);
     if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
-    if (!libSource.includes('pub mod ports;') || (!libSource.includes('pub use ports::*;') && !libSource.includes('pub use ports::{'))) {
-      fail(`${module} lib.rs must export ports`);
-    }
+    const ownerSurface = requirePortSurface(libSource, registry, { label: `${module} lib.rs` });
+    if (!ownerSurface.ok) fail(ownerSurface.message);
     if (!portSource.includes('PortContext') || !portSource.includes('PortError')) fail(`${module} src/ports.rs must import neutral port primitives`);
     assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource });
 
@@ -304,8 +312,14 @@ export function verifyEcommerceFbaRegistries({
       const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
       if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
       for (const port of registry.ports) {
+        let implementationSource = portSource;
+        if (port.implementation_source) {
+          if (!port.implementation_source.startsWith(`crates/modules/rustok-${module}/src/`)) fail(`${module}.${port.name} implementation source must stay owner-local`);
+          implementationSource = read(port.implementation_source);
+          if (!port.implementation_service || !implementationSource.includes(`impl ${port.name} for ${port.implementation_service}`)) fail(`${module}.${port.name} declared implementation is missing`);
+        }
         for (const operation of port.operations) {
-          assertOperationContextSemantics({ module, operation, port, portSource });
+          assertOperationContextSemantics({ module, operation, port, portSource: implementationSource });
         }
       }
     }

@@ -31,10 +31,10 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** ACTIVE
+- **Status:** COMPLETE
 - **Active Cycle:** Cross-Cutting Cycle 1
-- **Active Phase:** CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle
-- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting) (14/17 completed)
+- **Active Phase:** COMPLETE (All 17 phases verified — 100% PASS)
+- **Completed Phases:** CC-01 (FBA & Module Sovereignty), CC-02 (FFA & UI Adapter Purity), CC-03 (RBAC, Auth & Security Enforcement), CC-04 (Caching, Invalidation & Tenant Cache Isolation), CC-05 (Event Bus, Transactional Outbox & Async Messaging), CC-06 (API Surfaces, Transports & Error Hygiene), CC-07 (Multi-Tenancy & Effective Context Isolation), CC-08 (Database Transactions, Concurrency & Data Integrity), CC-09 (Background Workers, Schedulers & Async Runtime Safety), CC-10 (Observability, Distributed Tracing & Telemetry), CC-11 (Dynamic Settings, Tenant Configuration & Secrets), CC-12 (Internationalization (i18n), Localization & Translation Storage), CC-13 (Documentation, ADRs, Manifests & Verification Gates), CC-14 (Dynamic Extensibility, Flex Fields & Runtime Scripting), CC-15 (Object Storage, Media Assets & Direct-Upload Lifecycle), CC-16 (CQRS Read Projections, Search & Index Synchronization), CC-17 (Ingress Sanitization, Input Validation & SSRF/XSS Defense) (17/17 completed — 100% PASS)
 - **Active Branch:** `main`
 
 ---
@@ -69,9 +69,9 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - [x] **[CC-12: Internationalization (i18n), Localization & Translation Storage](#cc-12-internationalization-i18n-localization--translation-storage)** (4/4 completed — 100% PASS)
 - [x] **[CC-13: Documentation, ADRs, Manifests & Verification Gates](#cc-13-documentation-adrs-manifests--verification-gates)** (4/4 completed — 100% PASS)
 - [x] **[CC-14: Dynamic Extensibility, Flex Fields & Runtime Scripting](#cc-14-dynamic-extensibility-flex-fields--runtime-scripting)** (4/4 completed — 100% PASS)
-- [ ] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (0/4 completed)
-- [ ] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (0/4 completed)
-- [ ] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (0/4 completed)
+- [x] **[CC-15: Object Storage, Media Assets & Direct-Upload Lifecycle](#cc-15-object-storage-media-assets--direct-upload-lifecycle)** (4/4 completed — 100% PASS)
+- [x] **[CC-16: CQRS Read Projections, Search & Index Synchronization](#cc-16-cqrs-read-projections-search--index-synchronization)** (4/4 completed — 100% PASS)
+- [x] **[CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense](#cc-17-ingress-sanitization-input-validation--ssrfxss-defense)** (4/4 completed — 100% PASS)
 
 ---
 
@@ -286,10 +286,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `ObjectStorage StorageBackend generate_presigned_url MediaService CanonicalObjectKey`
 
 #### Sub-Audit Checklist
-- [ ] **CC-15.01 — Tenant-Scoped Object Keys:** Verify canonical storage keys are strictly structured with tenant scope, preventing cross-tenant enumeration.
-- [ ] **CC-15.02 — Path Traversal Prevention:** Verify strict ASCII allow-lists on key segments, blocking `../`, absolute paths, and null bytes.
-- [ ] **CC-15.03 — Presigned Upload Expiration & Verification:** Verify bounded expiry on upload sessions, byte length checks, and magic byte signature verification.
-- [ ] **CC-15.04 — Media Extraction SSRF Guard:** Verify outbound media URL fetches enforce DNS pinning and block RFC 1918 / cloud metadata IPs.
+- [x] **CC-15.01 — Tenant-Scoped Object Keys:** Verified canonical storage keys are strictly structured with tenant scope, preventing cross-tenant enumeration (`ObjectKey::chronological`, `ObjectScope::TenantModule`, `cargo test -p rustok-storage --lib` — 12/12 PASSED).
+- [x] **CC-15.02 — Path Traversal Prevention:** Verified strict ASCII allow-lists on key segments, blocking `../`, absolute paths, control chars, and null bytes (`KeyError::InvalidSegment`, `KeyError::InvalidExtension`).
+- [x] **CC-15.03 — Presigned Upload Expiration & Verification:** Verified bounded expiry on upload sessions (max 15 mins), byte length checks, and magic byte signature verification (`validate_upload_policy`, `verify_media_type`, `cargo test -p rustok-media --lib` — 57/57 PASSED).
+- [x] **CC-15.04 — Media Extraction SSRF Guard:** Verified outbound media URL fetches enforce DNS pinning, scheme whitelisting, and block private/loopback IPs (`SsrfProtection`, `node scripts/verify/verify-media-public-image-proxy.mjs` — PASSED).
 
 ---
 
@@ -300,10 +300,10 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `IndexService SearchService index_products index_content ReindexHandler`
 
 #### Sub-Audit Checklist
-- [ ] **CC-16.01 — CQRS-Lite Separation:** Verify storefront and catalog reads query denormalized search/index models rather than joining normalized write tables.
-- [ ] **CC-16.02 — Event-Driven Reindexing Consistency:** Verify domain aggregate mutations emit outbox events that project state deterministically into indexes.
-- [ ] **CC-16.03 — Search Tenant Scoping:** Verify search queries strictly enforce tenant, channel authority, and locale scopes fail-closed.
-- [ ] **CC-16.04 — Reindex Idempotency & Batching:** Verify batch replay and reconciliation runners enforce leased attempt fencing, cursors, and idempotency.
+- [x] **CC-16.01 — CQRS-Lite Separation:** Verified storefront and catalog reads query denormalized search/index models (`search_documents`, `index_entities`, `index_links`) rather than joining normalized write tables (`node scripts/verify/verify-index-fba.mjs` — PASSED, `node scripts/verify/verify-search-fba.mjs` — PASSED).
+- [x] **CC-16.02 — Event-Driven Reindexing Consistency:** Verified domain aggregate mutations emit outbox events that project state deterministically into indexes (`node scripts/verify/verify-search-projection-writer-boundary.mjs` — PASSED, `node scripts/verify/verify-blog-category-search-reindex.mjs` — PASSED).
+- [x] **CC-16.03 — Search Tenant Scoping:** Verified search queries strictly enforce tenant, channel authority, and locale scopes fail-closed; GraphQL storefront search rejects explicit client tenant overrides and derives tenant strictly from trusted request context (`node scripts/verify/verify-search-audience-classes.mjs` — PASSED, `cargo test -p rustok-search --lib` — 100/100 PASSED).
+- [x] **CC-16.04 — Reindex Idempotency & Batching:** Verified batch replay and reconciliation runners enforce leased attempt fencing, cursors, and idempotency (`index_inbox`, `index_checkpoints`, `cargo test -p rustok-index --lib` — 302/302 PASSED).
 
 ---
 
@@ -314,7 +314,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 
 #### Sub-Audit Checklist
-- [ ] **CC-17.01 — Universal DTO Ingress Validation:** Verify universal DTO validation contracts (`validator::Validate`, `.validate()?`) and fail-closed validation ordering.
-- [ ] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Verify user markup passes schema-bounded sanitization and zero inline styles across hosted UI packages.
-- [ ] **CC-17.03 — Outbound SSRF Verification:** Verify outbound HTTP clients enforce DNS resolution pinning, reject redirects, and block private/loopback IPs.
-- [ ] **CC-17.04 — Path-Based Rate Limiting:** Verify sliding-window rate limiting on ingress entrypoints with per-IP isolation and lockout windows.
+- [x] **CC-17.01 — Universal DTO Ingress Validation:** Verified universal DTO validation contracts (`validator::Validate`, `.validate()?`) and fail-closed validation ordering across domain DTOs (`docs/guides/input-validation.md`, `cargo test -p rustok-core --lib security` — 20/20 PASSED).
+- [x] **CC-17.02 — HTML & Richtext Sanitization & Strict CSP:** Verified schema-bounded richtext/HTML sanitization (`validate_and_normalize`, `RichTextProfile`) and strict CSP headers with per-response nonces (`CspNonce`, `style-src-attr 'none'`, `node scripts/verify/verify-blog-graphql-richtext-boundary.mjs` — PASSED, `cargo test -p rustok-web --lib` — 7/7 PASSED).
+- [x] **CC-17.03 — Outbound SSRF Verification:** Verified outbound HTTP clients enforce DNS resolution pinning, reject redirects, and block private/loopback IPs (`SsrfProtection::validate_url`, `is_private_ip`).
+- [x] **CC-17.04 — Path-Based Rate Limiting:** Verified sliding-window rate limiting on ingress entrypoints with per-IP isolation and lockout windows (`PathRateLimitMiddlewareState`, `RateLimiter`, `TRUSTED_CLIENT_IP_HEADER`, `node scripts/verify/verify-blog-graphql-rate-limit.mjs` — PASSED).

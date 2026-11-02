@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-31",
+  "status": "source_implemented_runtime_unvalidated",
+  "source_base_revision": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed_revision": "920c0e3f5c4bfb6698caedfbc683684f4c51fa0c",
+  "scope": "native Inventory return-restock tenant/Variant/allocation and exact-replay identity, with the selected OrderReadPort saved-binding batch; archived saved-location read-only replay versus fresh receiving-location storage admission",
+  "step8_complete": false,
+  "runtime_executed": false,
+  "owners": {
+    "order": "immutable Order-line SKU/quantity and return facts",
+    "commerce": "operator intent, selected-owner correlation, immutable plan and separate journal checkpoint",
+    "inventory": "tenant-proved allocation, checked stock addition and existing inventory_return_restocks receipt"
+  },
+  "contract": {
+    "mandatory_existing_order_read_capability": true,
+    "order_read_max_lines": 1024,
+    "restock_max_items": 1024,
+    "selected_capability_no_embedded_fallback": true,
+    "saved_sku_quantity_only_no_repricing": true,
+    "plan_correlated_before_resolution_effects": true,
+    "completed_return_matches_frozen_facts": true,
+    "tenant_proof_before_tenantless_items": true,
+    "sorted_item_and_level_locks": true,
+    "absent_tracked_allocation_refuses": true,
+    "ambiguous_allocation_or_level_refuses": true,
+    "terminal_disposition_refuses_without_repair": true,
+    "exact_replay_uses_correlated_saved_ledger": true,
+    "unique_receipt_fence_before_stock_addition": true,
+    "whole_batch_native_atomicity": true,
+    "complete_outcome_correlation_before_checkpoint": true,
+    "same_return_item_identity_recovery_only": true,
+    "false_owner_retry_advice_parks_reconciliation": true,
+    "bounded_journal_diagnostics_original_typed_error_preserved": true,
+    "historical_migrations_unchanged": true,
+    "no_new_receipt_ledger_or_schema": true,
+    "nullable_sku_field_presence_required_on_decode": true,
+    "explicit_no_goods_has_no_stock_quota_or_capability_dependency": true,
+    "saved_location_tenant_proved": true,
+    "archived_saved_location_exact_replay_allowed": true,
+    "archived_receiving_location_refuses": true,
+    "sorted_receiving_location_locks_before_levels_and_receipts": true
+  },
+  "source_regressions": {
+    "rust_definitions_added": 33,
+    "rust_definitions_removed": 0,
+    "mjs_definitions_added": 23,
+    "executed": false
+  },
+  "read_only_checks": {
+    "status": "passed_scoped_source_checks_only",
+    "source_guard": "scripts/verify/verify-commerce-return-restock-identity.mjs",
+    "runtime_or_regressions_executed": false,
+    "focused_guards": {
+      "passed": 15,
+      "total": 15,
+      "commands": [
+        {
+          "command": "node scripts/verify/verify-commerce-return-restock-identity.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-order-read-port.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-order-read-port-diagnostic-safety.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-storefront-post-order-read-cutover.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-return-completion-envelope-safety.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-graphql-return-decision-owner-port-cutover.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-rest-admin-return-decision-order-owner-port-cutover.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-post-order-return-refund-binding.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-admin-order-return-orchestration-error-context.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-commerce-checkout-inventory-adoption.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-inventory-reservation-owner-context.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-inventory-reservation-local-context.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+          "exit_code": 0
+        },
+        {
+          "command": "node scripts/verify/verify-rust-constructor-arity.mjs",
+          "exit_code": 0
+        }
+      ]
+    },
+    "rust_syntax_format": {
+      "files": 9,
+      "tree_sitter": "0.25.2 / tree-sitter-rust 0.24.0",
+      "formatter": "@scalar/rust-fmt 0.3.0",
+      "edition": "2024",
+      "format_and_second_pass_idempotence": true,
+      "crate_compilation": false
+    },
+    "mjs_syntax_format": {
+      "files": 6,
+      "node_syntax_check": true,
+      "prettier": "3.7.4",
+      "regression_module_executed": false
+    },
+    "json_parse": {
+      "files": 4,
+      "passed": true
+    },
+    "regression_inventory": {
+      "rust_added": 33,
+      "rust_removed": 0,
+      "mjs_definitions": 23,
+      "mjs_positive_controls": 1,
+      "mjs_source_mutation_cases": 21,
+      "mjs_evidence_mutation_cases": 1,
+      "source_mutation_anchors_found": 21,
+      "mutations_applied_or_executed": false
+    },
+    "caller_and_dto_shapes": {
+      "dto_constructions_inspected": 39,
+      "tree_sitter_native_calls": 16,
+      "native_calls_including_macro_token_trees": 22,
+      "native_command_arguments": 3,
+      "native_calls_retain_explicit_context": true,
+      "production_order_read_adapters": 1,
+      "test_order_read_doubles": 1,
+      "rust_type_resolution": false
+    },
+    "historical_migrations": {
+      "tracked_migration_files_compared_to_head": 666,
+      "modified": [],
+      "new_migration_files": [],
+      "selected_sha256": {
+        "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+        "crates/modules/rustok-commerce/src/migrations/m20260713_000012_adopt_checkout_inventory_into_order_lines.rs": "a4ba34d0bdc7f28a795c7fb4e38a0bd6062c59688afc60c9a77ed4ddb787e830",
+        "crates/modules/rustok-commerce/src/migrations/m20261007_000012_add_checkout_operation_admission.rs": "d578876e8eecc7966f633f12a4a59c6071eec5678373515fa8219e631d1f7561",
+        "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+        "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d"
+      },
+      "sql_executed": false
+    },
+    "local_documentation": {
+      "status": "passed",
+      "document_count": 15,
+      "local_targets_checked": 188,
+      "new_heading_links_checked": 18,
+      "failures": [],
+      "all_historical_anchors_checked": false
+    },
+    "whitespace_diff": "passed"
+  },
+  "unverified": {
+    "rust_tests": true,
+    "mjs_regressions": true,
+    "rust_compilation": true,
+    "sql_or_lock_execution": true,
+    "remote_convergence": true,
+    "shipment_cancel_reopen": true,
+    "complete_outbox_index_invalidation": true
+  },
+  "limitations": [
+    "Native Inventory atomicity does not include the separate Order completion or Commerce checkpoint.",
+    "Operator inspection remains the restock decision; this slice does not invent historical shipment/cancellation movement provenance or certify overlapping lifecycle arithmetic.",
+    "Missing or contradictory persisted identity requires reconciliation, not relocation, metadata repair, identity rotation or automatic compensation.",
+    "Historical ledger Variant proof requires its retained item and tenant-owned saved location; no historical backfill or guessed proof is introduced.",
+    "Native and REST/GraphQL entrypoints share the Commerce service; no new UI, public wire format, remote Inventory provider or module readiness claim is introduced.",
+    "SeaORM 2.0.2 executor source was inspected, but driver affected-row/no-insert outcomes, SQL/lock/rollback/concurrency, fixture/FK/archive assumptions and lease/recovery execution remain unverified.",
+    "Fresh archived receiving locations require owner reconciliation; this slice adds no reactivation workflow and never relocates stock or changes saved mutation identities."
+  ],
+  "source_guard_projection_refresh": {
+    "order_operation_inventory": 7,
+    "old_source_check_execution_flags_corrected": true,
+    "storefront_assertions_now_require_existing_selected_order_payment_ports": true,
+    "operator_routes_reuse_existing_selected_owner_composition": true,
+    "runtime_sources_changed_for_guard_refresh": false,
+    "runtime_or_tests_executed": false
+  },
+  "broader_gates": {
+    "remediation": {
+      "command": "python scripts/verify/verify-remediation-gate.py --files <return-slice paths>",
+      "exit_code": 1,
+      "diff_invariants": "passed",
+      "architecture_phase": "blocked_missing_cargo",
+      "bypass_flags_used": false
+    },
+    "architecture": {
+      "command": "python scripts/architecture_dependency_guard.py",
+      "exit_code": 1,
+      "reason": "cargo executable absent; no metadata or crate check succeeded"
+    },
+    "canonical_documentation": {
+      "command": "node scripts/verify/verify-docs.mjs",
+      "exit_code": 1,
+      "reported_error_count": 44,
+      "scope": "ADR registry/metadata, topology and missing links outside this return slice",
+      "same_errors_as_previous_source_handoff": true
+    },
+    "package_aggregates_executed": false,
+    "tests_workflows_or_ci_executed": false,
+    "rechecked_after_archived_location_correction": true
+  },
+  "initial_source_handoff": {
+    "rust_definitions_added": 32,
+    "mjs_definitions_added": 19,
+    "tests_executed": false,
+    "corrected_claim": "Archived saved locations are valid for exact replay only; fresh stock there violates the existing inactive-location storage invariant."
+  },
+  "archived_receiving_location_correction": {
+    "recorded_at": "2026-10-31",
+    "status": "source_corrected_runtime_unvalidated",
+    "storage_migration": "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs",
+    "storage_migration_rewritten": false,
+    "error_code": "inventory.return_restock_location_archived",
+    "owner_retryable": false,
+    "commerce_disposition": "reconciliation_required",
+    "positive_stock_at_archived_location_allowed": false,
+    "read_only_exact_archived_replay_allowed": true,
+    "receiving_location_locks_before_levels_and_receipts": true,
+    "replay_cache_reused_for_fresh_write_authority": false,
+    "implicit_reactivation_relocation_compensation_or_key_rotation": false,
+    "operator_reactivation_workflow_added": false,
+    "rust_regression_definitions_added": 1,
+    "mjs_mutation_definitions_added": 4,
+    "tests_sql_or_runtime_executed": false,
+    "source_validation": "15/15 read-only guards, 9 Rust syntax/format/idempotence, 6 MJS syntax/format, 21/21 mutation anchors inspected without applying mutations, 4 JSON and scoped documentation/diff checks passed.",
+    "rust_type_resolution_or_sql_lock_proof": false
+  },
+  "dependency_source_inspection": {
+    "sea_orm_version": "2.0.2",
+    "url": "https://github.com/SeaQL/sea-orm/blob/2.0.2/src/executor/insert.rs#L489-L498",
+    "source_sha256": "e271a0805881849a0c0df1764ec123499ce05bf8c55f535073c5656765d78a7b",
+    "observation": "exec_insert_without_returning delegates to db.execute and returns rows_affected directly; no source-level RecordNotInserted conversion occurs in this path.",
+    "sql_or_driver_behavior_executed": false
+  }
+}

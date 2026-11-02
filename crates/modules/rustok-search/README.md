@@ -293,10 +293,15 @@ file or symbol reappears.
 
 ## Known Limitations / Pending Implementation
 
-The items below are verified gaps. They are not hidden behind compatibility wrappers.
+The items below are implementation/evidence gaps. They are not hidden behind compatibility wrappers.
 Each one has a follow-up task in
 [`docs/implementation-plan.md`](./docs/implementation-plan.md).
 
+- Explicit sealed Inventory reservation refetch and PostgreSQL product-scope serialization are
+  source-wired, with two new definitions uncompiled/unrun. Actual concurrent refresh/rebuild/
+  delete, relay/Iggy/restart/lag convergence is unverified. The existing direct-table stock
+  projection is not an owner-read API, generic Index source/revision or backorder/channel
+  sellability proof. See the [API](CRATE_API.md#inventory-reservation-refetch-2026-11-01-source-only).
 - The Forum-only Search filters are owner-side. `storefrontSearch` accepts no Forum
   argument: author, tag, solved-state, locale, inclusive published-date and trusted
   current-channel narrowing are owned by the Forum read surface

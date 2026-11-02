@@ -20,6 +20,9 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum FulfillmentOrchestrationError {
+    #[error("fulfillment owner command refused the operation")]
+    Owner(rustok_api::PortError),
+
     #[error("Order not found: {0}")]
     OrderNotFound(Uuid),
 

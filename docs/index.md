@@ -7,6 +7,7 @@ canonical_for:
   - documentation-map
 language: markdown
 ---
+
 # RusTok: Documentation Map
 
 Product Relations and Product Bundles admin composition entrypoints and their
@@ -19,7 +20,33 @@ Documentation in `docs/` describes the platform as a whole.
 Local documents for applications and crates live in `apps/*/docs/`,
 `crates/{libs,modules,ui,utils,workers}/*/docs/` and `README.md` next to the code.
 
-Current bounded continuation: [Commerce storefront Product HTTP policy](../crates/modules/rustok-commerce/docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) — intentional Forbidden/Conflict 403/409 migration, bounded diagnostics and opaque owner-call correlations; source-only, no runtime/readiness promotion.
+Recent HTTP source continuation: [Commerce storefront Product HTTP policy](../crates/modules/rustok-commerce/docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) — intentional Forbidden/Conflict 403/409 migration, bounded diagnostics and opaque owner-call correlations; source-only, no runtime/readiness promotion.
+
+Current bounded continuation: [Inventory-owned reservation adoption](../crates/modules/rustok-commerce/docs/implementation-plan.md#inventory-owned-reservation-adoption-2026-10-31)
+following [atomic Cart context and Pricing adoption](../crates/modules/rustok-commerce/docs/implementation-plan.md#atomic-cart-context-adoption-2026-10-31)
+— same selected Inventory capability, UUID lineage and explicit separate-owner handoff recovery.
+Regression sources remain unrun; compilation/runtime and step-8 readiness are not certified.
+
+Product downstream SKU continuation: [Commerce owner-contract plan](../crates/modules/rustok-commerce/docs/implementation-plan.md#product-downstream-continuation-2026-10-30)
+and [source/runtime verification gates](./verification/README.md#product-downstream-sku-contracts),
+including [selected Product identity for Pricing](../crates/modules/rustok-pricing/docs/implementation-plan.md#product-downstream-owner-continuation-2026-10-30-source-only).
+Step 8 remains in progress; this is source implementation, not runtime/readiness certification.
+
+Inventory reservation continuation first fixes the [anonymous quantity owner prerequisite](../crates/modules/rustok-inventory/docs/implementation-plan.md#anonymous-quantity-reservation-release-2026-11-01-source-only):
+exact original allocation/location effects, no keyed fallback and explicit scoped-selector refusal.
+The prerequisite's 27 Rust/10 Node definitions remain unrun. The subsequent
+[reservation-fact continuation](../crates/modules/rustok-inventory/docs/implementation-plan.md#reservation-fact-delivery-continuation-2026-11-01-source-only)
+wires quantity-free current-context facts, acknowledged existing-bus typed delivery and explicit
+Search refetch in source, with 34 additional Rust/10 Node definitions uncompiled/unrun.
+Canonical Rust digests, actual SQL/relay/Iggy/restart/Search convergence, generic Index and
+Product step 8 remain pending; no runtime/readiness status is promoted.
+
+The Inventory → generic Index continuation first adds the
+[history-preserving catalog deletion prerequisite](../crates/modules/rustok-inventory/docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only)
+through both real Product callers. The separate
+[source packet](../crates/modules/rustok-inventory/contracts/evidence/catalog-deletion-source.json)
+records 31 Rust/10 Node definitions, all uncompiled/unrun; no Index source/revision/tombstone,
+full-client retirement workflow or Product step-8 readiness is promoted.
 
 ## How to Use the Map
 
@@ -124,6 +151,8 @@ from complete operation safety and retention through serving cutover.
 - [AI Capability Documentation](../crates/modules/rustok-ai/docs/README.md) — provider-neutral RAG ingestion and Athanor data plane
 - [Content Module Documentation](../crates/modules/rustok-content/docs/README.md)
 - [Cart Module Documentation](../crates/modules/rustok-cart/docs/README.md)
+- [Product axis reconfiguration and standalone SKU recovery](../crates/modules/rustok-product/docs/variant-axis-reconfiguration.md) — source-only bounded preview/full-tuple CAS/receipts and Next/Leptos immutable full-request recovery, with unexecuted runtime gates.
+- [Product sparse combination browser](../crates/modules/rustok-product/docs/variant-combinations.md) — bounded local filters/pages and explicit tuple picking in both admin clients; no automatic SKU/price/stock generation and no runtime sign-off.
 - [Product image Media retention workflow](../crates/modules/rustok-product/docs/media-reference-retention.md) — accepted owner ordering, durable release queue, bounded backfill and explicit unexecuted runtime gates.
 - [Media Module Documentation](../crates/modules/rustok-media/docs/README.md)
 - [Order Module Documentation](../crates/modules/rustok-order/docs/README.md)
@@ -342,3 +371,24 @@ from complete operation safety and retention through serving cutover.
 - [Security: RUSTSEC-2026-0045 Remediation Note](./security/aws-lc-rustsec-2026-0045.md)
 - [Security: RUSTSEC-2026-0098 / 0099 / 0104 Remediation Note](./security/rustls-webpki-rustsec-2026-0099-0104.md)
 - [Security: RUSTSEC-2023-0071 Remediation Note](./security/rsa-rustsec-2023-0071.md)
+
+Inventory quantity-writer continuation (2026-11-01, source only):
+[owner contract](../crates/modules/rustok-inventory/CRATE_API.md#canonical-quantity-writes-2026-11-01-source-continuation),
+[decision](../DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#quantity-writer-consolidation-2026-11-01),
+[source packet](../crates/modules/rustok-inventory/contracts/evidence/quantity-writes-source.json),
+[verification limits](verification/README.md#inventory-quantity-writer-prerequisite-2026-11-01-source-only).
+33 Rust/10 Node new definitions uncompiled/unrun; not Inventory Index/step-8/client-readiness evidence.
+
+Inventory source-history continuation: [owner plan](../crates/modules/rustok-inventory/docs/implementation-plan.md#inventory-source-history-continuation-2026-11-01-uncompiled)
+and [source evidence](../crates/modules/rustok-inventory/contracts/evidence/source-history-source.json)
+cover explicit paged current-state baseline, revisions and retained deletes through actual owner
+writers. 18 Rust/8 Node definitions remain uncompiled/unrun; canonical versioned delivery,
+selected Distribution/generic source/event/worker and Index/step-8 readiness remain pending.
+
+Inventory canonical source delivery (2026-11-02):
+[contract](../crates/modules/rustok-inventory/CRATE_API.md#inventory-source-canonical-delivery-2026-11-02-source-continuation),
+[plan](../crates/modules/rustok-inventory/docs/implementation-plan.md#source-canonical-delivery-continuation-2026-11-02-uncompiled),
+[evidence](../crates/modules/rustok-inventory/contracts/evidence/source-delivery-source.json).
+Canonical producers and required-module relay refusal are source-wired; 26 new Rust/10 Node
+definitions remain unrun. Selected current-authority source/durable replay/Index and full
+operator-client recovery remain pending; no runtime/live-baseline/Product step-8 promotion.

@@ -15,6 +15,7 @@ pub struct StorefrontCart {
     pub adjustment_total: String,
     pub shipping_total: String,
     pub total_amount: String,
+    pub channel_id: Option<String>,
     pub channel_slug: Option<String>,
     pub email: Option<String>,
     pub customer_id: Option<String>,

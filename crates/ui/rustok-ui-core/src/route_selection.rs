@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AdminQueryKey {
     ProductId,
+    AttributeId,
+    OptionId,
     CartId,
     OrderId,
     CustomerId,
@@ -40,6 +42,8 @@ impl AdminQueryKey {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ProductId => "product_id",
+            Self::AttributeId => "attribute_id",
+            Self::OptionId => "option_id",
             Self::CartId => "cart_id",
             Self::OrderId => "order_id",
             Self::CustomerId => "customer_id",
@@ -77,6 +81,8 @@ impl AdminQueryKey {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "product_id" => Some(Self::ProductId),
+            "attribute_id" => Some(Self::AttributeId),
+            "option_id" => Some(Self::OptionId),
             "cart_id" => Some(Self::CartId),
             "order_id" => Some(Self::OrderId),
             "customer_id" => Some(Self::CustomerId),
@@ -146,7 +152,15 @@ const CHANNEL_DEPENDENCIES: &[AdminQueryDependency] = &[
     },
 ];
 
-const PRODUCT_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::ProductId];
+const PRODUCT_ROUTE_KEYS: &[AdminQueryKey] = &[
+    AdminQueryKey::ProductId,
+    AdminQueryKey::AttributeId,
+    AdminQueryKey::OptionId,
+];
+const PRODUCT_DEPENDENCIES: &[AdminQueryDependency] = &[AdminQueryDependency {
+    parent: AdminQueryKey::AttributeId,
+    child: AdminQueryKey::OptionId,
+}];
 const PRICING_ROUTE_KEYS: &[AdminQueryKey] = &[
     AdminQueryKey::ProductId,
     AdminQueryKey::Currency,
@@ -207,7 +221,7 @@ const ROUTE_SCHEMAS: &[AdminRouteQuerySchema] = &[
     AdminRouteQuerySchema {
         route_segment: "product",
         allowed_keys: PRODUCT_ROUTE_KEYS,
-        dependencies: EMPTY_DEPENDENCIES,
+        dependencies: PRODUCT_DEPENDENCIES,
     },
     AdminRouteQuerySchema {
         route_segment: "pricing",
@@ -379,6 +393,45 @@ mod tests {
         assert!(!sanitized.contains_key("id"));
         assert!(!sanitized.contains_key(AdminQueryKey::OrderId.as_str()));
         assert!(!sanitized.contains_key(AdminQueryKey::Locale.as_str()));
+    }
+
+    #[test]
+    fn dictionary_selection_is_typed_and_never_a_generic_target_or_auto_selected_option() {
+        for key in [AdminQueryKey::AttributeId, AdminQueryKey::OptionId] {
+            assert_eq!(AdminQueryKey::parse(key.as_str()), Some(key));
+        }
+        let selected = sanitize_admin_route_query(
+            Some("product"),
+            Some("attributes"),
+            &query(&[
+                ("attribute_id", "attribute-uuid"),
+                ("option_id", "retained-option-uuid"),
+                ("target_id", "foreign-domain"),
+                ("attribute_recovery", "document-marker"),
+            ]),
+        );
+        assert_eq!(
+            selected.get("attribute_id").map(String::as_str),
+            Some("attribute-uuid")
+        );
+        assert_eq!(
+            selected.get("option_id").map(String::as_str),
+            Some("retained-option-uuid")
+        );
+        assert_eq!(
+            selected.get("attribute_recovery").map(String::as_str),
+            Some("document-marker")
+        );
+        assert!(!selected.contains_key("target_id"));
+        let orphan = sanitize_admin_route_query(
+            Some("product"),
+            Some("attributes"),
+            &query(&[("option_id", "orphan")]),
+        );
+        assert!(!orphan.contains_key("option_id"));
+        let foreign = sanitize_admin_route_query(Some("orders"), None, &selected);
+        assert!(!foreign.contains_key("attribute_id"));
+        assert!(!foreign.contains_key("option_id"));
     }
 
     #[test]

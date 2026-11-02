@@ -1,3 +1,10 @@
+pub(crate) mod attribute_lifecycle;
+pub(crate) mod combinations;
+pub(crate) mod initial_catalog;
+pub(crate) mod variant_axes;
+pub(crate) mod variant_create;
+pub(crate) mod write_journal;
+
 use rustok_api::locale_tags_match;
 use rustok_grid::{
     ColumnAlign, ColumnFilters, FilterOption, FilterValue, GridColumnDef, GridFilterType,
@@ -12,6 +19,63 @@ use crate::model::{
     ProductDetail, ProductDraft, ProductList, ProductListItem, ProductPricingDetail,
     ProductTranslation, ShippingProfile, ShippingProfileList,
 };
+
+/// Omitted fields preserve a stored binding; the database defaults apply only to new bindings.
+pub(crate) fn build_axis_policy_patch(
+    policy: &str,
+    default_axis: &str,
+) -> Result<(Option<String>, Option<bool>), String> {
+    let policy = match policy {
+        "keep" => None,
+        "forbidden" | "allowed" | "required" => Some(policy.to_string()),
+        _ => return Err("Invalid variant axis policy".into()),
+    };
+    let default_axis = match default_axis {
+        "keep" => None,
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => return Err("Invalid default axis hint".into()),
+    };
+    if policy.as_deref() == Some("forbidden") && default_axis == Some(true) {
+        return Err("A forbidden attribute cannot be a default variant axis".into());
+    }
+    Ok((policy, default_axis))
+}
+
+pub(crate) fn is_axis_attribute(value_type: &str, scope: &str) -> bool {
+    value_type == "select" && matches!(scope, "variant" | "both")
+}
+
+pub(crate) fn is_eligible_axis(attribute: &crate::model::ProductEffectiveFormAttribute) -> bool {
+    !attribute.is_disabled
+        && is_axis_attribute(&attribute.value_type, &attribute.scope)
+        && matches!(
+            attribute.variant_axis_policy.as_str(),
+            "allowed" | "required"
+        )
+}
+
+pub(crate) fn effective_axis_policy_label(
+    attribute: &crate::model::ProductEffectiveFormAttribute,
+) -> String {
+    format!(
+        "{}; {}; {}; {} / {}{}",
+        attribute.variant_axis_policy,
+        if attribute.default_variant_axis {
+            "default axis"
+        } else {
+            "not a default axis"
+        },
+        attribute.source.replace('_', " "),
+        attribute.value_type,
+        attribute.scope,
+        if attribute.is_disabled {
+            "; disabled"
+        } else {
+            ""
+        },
+    )
+}
 
 /// Local scalar admission for the independently saved Variant controls. This does
 /// not implement nullable patches: refuse an unsupported clear instead of showing
@@ -1431,6 +1495,8 @@ pub(crate) fn build_save_command(
         tenant_id: bootstrap.current_tenant.id.clone(),
         actor_id: bootstrap.me.id.clone(),
         draft: ProductDraft {
+            variant_axes: Vec::new(),
+            initial_variants: None,
             attribute_values: Default::default(),
             locale,
             title: form.title,
@@ -1960,24 +2026,27 @@ pub struct VariantRowViewModel {
     pub can_delete: bool,
 }
 
-pub fn build_variant_row_view_models(product: &ProductDetail) -> Vec<VariantRowViewModel> {
+pub fn build_variant_row_view_models(
+    product: &ProductDetail,
+    locale: Option<&str>,
+) -> Vec<VariantRowViewModel> {
     let multiple = product.variants.len() > 1;
     product
         .variants
         .iter()
         .map(|v| {
-            let options: Vec<&str> = v
-                .axis_values
-                .iter()
-                .filter_map(|av| av.label.as_deref().or(av.code.as_deref()))
-                .filter(|opt| !opt.trim().is_empty())
-                .collect();
+            let options = combinations::retained_labels(&product.variant_axes, &v.axis_values);
             let options_summary = if options.is_empty() {
-                v.combination_identity
-                    .clone()
-                    .unwrap_or_else(|| "—".to_string())
+                t(
+                    locale,
+                    if product.variant_axes.is_empty() {
+                        "product-combinations-default"
+                    } else {
+                        "product-combinations-unassigned"
+                    },
+                )
             } else {
-                options.join(" / ")
+                options.join(" · ")
             };
             let price = v
                 .prices
@@ -3949,10 +4018,51 @@ mod tests {
     }
 
     #[test]
+    fn saved_tuple_display_uses_canonical_labels_and_localized_default_or_missing_state() {
+        let mut product = product_detail();
+        product.variants[0].combination_identity = Some("not-a-display-label".into());
+        assert_eq!(
+            build_variant_row_view_models(&product, Some("en"))[0].options_summary,
+            "Default tuple (no axes)"
+        );
+        assert_eq!(
+            build_variant_row_view_models(&product, Some("ru"))[0].options_summary,
+            "Кортеж по умолчанию (без осей)"
+        );
+        product.variant_axes.push(crate::model::VariantAxisConfig {
+            id: "configuration-row".into(),
+            attribute_id: "color".into(),
+            code: "color".into(),
+            name: "Colour".into(),
+            position: 0,
+            allowed_values: vec![crate::model::AxisAllowedValue {
+                option_id: "blue".into(),
+                value: "Blue".into(),
+                position: 0,
+            }],
+        });
+        assert_eq!(
+            build_variant_row_view_models(&product, Some("en"))[0].options_summary,
+            "Missing axis assignments — review the SKU"
+        );
+        product.variants[0]
+            .axis_values
+            .push(crate::model::VariantAxisValue {
+                attribute_id: "color".into(),
+                option_id: "blue".into(),
+                code: Some("not-the-name".into()),
+                label: Some("not-the-current-label".into()),
+            });
+        assert_eq!(
+            build_variant_row_view_models(&product, Some("en"))[0].options_summary,
+            "Colour: Blue"
+        );
+    }
+    #[test]
     fn variant_row_view_models_track_multiple_variants_and_options() {
         let mut product = product_detail();
         assert_eq!(product.variants.len(), 1);
-        let rows = build_variant_row_view_models(&product);
+        let rows = build_variant_row_view_models(&product, None);
         assert_eq!(rows.len(), 1);
         assert!(!rows[0].can_delete);
         assert_eq!(rows[0].sku, "COAT-1");
@@ -3989,11 +4099,11 @@ mod tests {
             in_stock: true,
         });
 
-        let rows = build_variant_row_view_models(&product);
+        let rows = build_variant_row_view_models(&product, None);
         assert_eq!(rows.len(), 2);
         assert!(rows[0].can_delete);
         assert!(rows[1].can_delete);
-        assert_eq!(rows[1].options_summary, "Black / M");
+        assert_eq!(rows[1].options_summary, "color: Black · size: M");
         assert_eq!(rows[1].price, "120.00 USD");
         assert_eq!(rows[1].stock, "15");
     }

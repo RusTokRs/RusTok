@@ -14,7 +14,7 @@ use crate::{
 
 use super::{
     IndexReconciliationSchedulerCompositionError, PostgresIndexReplayRunner, PostgresMutationStore,
-    register_postgres_index_reconciliation_work,
+    register_postgres_index_reconciliation_work, register_postgres_index_replay_work,
 };
 
 /// Cloneable operator capability for bounded Index replay execution.
@@ -105,13 +105,15 @@ pub enum IndexReplayRuntimeCompositionError {
     DryRun(#[from] IndexReplayDryRunRuntimeCompositionError),
     #[error(transparent)]
     ReconciliationScheduler(#[from] IndexReconciliationSchedulerCompositionError),
+    #[error("generic replay module-work registration failed")]
+    ReplayScheduler(#[from] rustok_runtime::ModuleWorkError),
 }
 
 /// Materializes canonical PostgreSQL-backed replay and due-reconciliation host capabilities.
 ///
 /// An absent source registry returns `Ok(None)` and publishes neither a false replay capability
 /// nor an empty Index module-work registration. Complete immutable registries publish the dry-run
-/// capability, one module-owned reconciliation work registration, and one replay runtime containing
+/// capability, module-owned reconciliation/rebuild work registrations, and one replay runtime containing
 /// the durable Full runner plus the bounded Targeted executor backed by the existing PostgreSQL
 /// mutation sink. This function performs no database I/O and starts no task; the generic host
 /// module-work lifecycle owns polling and graceful shutdown after all registrations are collected.
@@ -133,6 +135,7 @@ pub fn materialize_postgres_index_replay_runtime(
 
     materialize_index_replay_dry_run_runtime(extensions)?;
     register_postgres_index_reconciliation_work(extensions)?;
+    register_postgres_index_replay_work(extensions)?;
     let schema_registry = schemas.shared();
     let targeted = IndexReplayTargetedExecutor::new(
         sources.clone(),

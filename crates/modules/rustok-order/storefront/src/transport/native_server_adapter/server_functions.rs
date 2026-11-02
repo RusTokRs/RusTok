@@ -98,7 +98,7 @@ async fn storefront_order_complete_checkout_native(
         let payment_provider_registry = runtime_ctx
             .shared_get::<PaymentProviderRegistry>()
             .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);
-        let product_catalog_read_port = runtime_ctx
+        let product_catalog_read_runtime = runtime_ctx
             .shared_get::<ProductCatalogReadRuntime>()
             .ok_or_else(|| {
                 tracing::error!(
@@ -107,9 +107,9 @@ async fn storefront_order_complete_checkout_native(
                     "native checkout runtime dependency is missing"
                 );
                 ServerFnError::new("Checkout service is temporarily unavailable")
-            })?
-            .read_port();
-        let runtime = StorefrontCheckoutRuntime::new(runtime_ctx.db_clone(), event_bus);
+            })?;
+        let runtime = StorefrontCheckoutRuntime::new(runtime_ctx.db_clone(), event_bus)
+            .with_product_catalog_read_runtime(product_catalog_read_runtime.clone());
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(|error| native_context_error("extract_request_context", error))?;
@@ -129,10 +129,10 @@ async fn storefront_order_complete_checkout_native(
         let correlation_id = Uuid::new_v4();
 
         let completion =
-            storefront_staged_checkout_runtime::complete_storefront_checkout_with_product_port(
+            storefront_staged_checkout_runtime::complete_storefront_checkout_with_product_runtime(
                 &runtime,
                 payment_provider_registry,
-                product_catalog_read_port,
+                product_catalog_read_runtime,
                 &tenant,
                 &request_context,
                 auth,

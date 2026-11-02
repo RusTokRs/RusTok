@@ -12,6 +12,7 @@ export type {
   PricingChannelOption,
   PricingEffectivePrice,
   PricingPrice,
+  PricingPriceSource,
   PricingPriceListOption,
   PricingProductDetail,
   PricingProductList,
@@ -20,16 +21,29 @@ export type {
   PricingResolutionContext,
   PricingVariant,
   StorefrontPricingData,
-  StorefrontPricingQuery
-} from './types';
+  StorefrontPricingQuery,
+} from "./types";
 
 export {
   fetchStorefrontPricing,
   STOREFRONT_PRODUCTS_QUERY,
-  STOREFRONT_PRODUCT_QUERY
-} from './api';
+  STOREFRONT_PRODUCT_QUERY,
+} from "./api";
 
-export { PricingContextBar } from './components/pricing-context-bar';
-export { PricingProductCard } from './components/pricing-product-card';
-export { PricingProductDetailView } from './components/pricing-product-detail';
-export { PricingView, type PricingViewProps } from './components/pricing-view';
+export {
+  assertPricingGraphqlSuccess,
+  assertPricingQuoteResponse,
+  parsePricingQuantity,
+  parsePricingUuid,
+  normalizePricingQuery,
+  pricingContextQuery,
+  parsePricingRouteQuery,
+  pricingReadKey,
+} from "./core";
+
+export { PricingContextBar } from "./components/pricing-context-bar";
+export { PricingProductCard } from "./components/pricing-product-card";
+export { PricingProductDetailView } from "./components/pricing-product-detail";
+export { PricingView, type PricingViewProps } from "./components/pricing-view";
+
+export { PricingRequestError } from "./components/pricing-request-error";

@@ -28,6 +28,12 @@ domain contract and must not dissolve into middleware or host-specific logic.
 
 ## Integration
 
+- SQLite exposes the read-only `tenant_identity_keys(id)` database projection
+  for transactionally matching a stored tenant key without exposing tenant
+  attributes. It preserves the exact storage class and does not grant authority
+  or replace `TenantReadPort`. The static module owner uses it to reject
+  ambiguous or orphaned module state in the same SQLite snapshot.
+
 - `apps/server` owns only the middleware resolution entry point, cache infrastructure and runtime bootstrap around the tenant resolver path;
 - tenant context is resolved by `uuid`, `slug` or `host` before entering business logic; the module-owned `TenantReadPort` covers read projection lookup by id/slug/domain for host resolver/provisioning consumers; `apps/server` resolver uses this port on the cache-miss path instead of raw entity lookup, and installer provisioning/verification uses slug projection before create-candidate decisions and verify step;
 - outbox relay/dispatch infrastructure remains a host/runtime concern, but `rustok-tenant` always inserts each owner lifecycle event through `TransactionalEventBus::publish_root_in_tx` before the state transaction commits;

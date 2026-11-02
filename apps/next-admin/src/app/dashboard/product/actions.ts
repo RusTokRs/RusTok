@@ -14,7 +14,11 @@ import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
 import {
   createProduct,
+  initialVariantInput,
   productWriteOutcome,
+  type ProductAxesWriteRequest,
+  type ProductVariantCreateRequest,
+  isVariantCreateInput,
   type ProductSavePayload,
   type ProductWriteOutcome,
   type ProductWriteScope,
@@ -27,6 +31,7 @@ import {
   deleteProductImage,
   reorderProductImages,
   setVariantAxes,
+  previewVariantAxes,
   getCategoryEffectiveForm,
   fetchProductRelations,
   addProductRelation,
@@ -46,7 +51,6 @@ import {
   removeBundleItem,
   type ProductVariant,
   type UpdateProductInput,
-  type CreateVariantInput,
   type UpdateVariantInput,
   type ProductRelationType,
   type AddProductRelationInput,
@@ -56,7 +60,7 @@ import {
   type UpdateBundleInput,
   type AddBundleItemInput,
   type ProductBundle,
-  type VariantAxisConfig,
+  type VariantAxesPreview,
   type SetVariantAxesInput
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
@@ -132,6 +136,8 @@ export async function saveProductAction(
           sellerId: payload.sellerId,
           productType: payload.productType,
           tags: payload.tags,
+          variantAxes: payload.variantAxes,
+          variants: payload.initialVariants?.map(initialVariantInput),
           sku: payload.initialVariant?.sku,
           barcode: payload.initialVariant?.barcode,
           compareAtAmount: payload.initialVariant?.compareAtAmount,
@@ -249,26 +255,30 @@ async function refreshProductAfterWrite(outcome: ProductWriteOutcome) {
 }
 
 export async function addVariantAction(
-  productId: string,
-  variant: Omit<ProductVariant, 'id'>
-): Promise<ProductVariant> {
-  const opts = await getAuthOpts();
-  const input: CreateVariantInput = {
-    sku: variant.sku,
-    barcode: variant.barcode,
-    shippingProfileSlug: null,
-    inventoryQuantity: variant.inventoryQuantity,
-    inventoryPolicy: variant.inventoryPolicy,
-    prices: variant.prices.map((p) => ({
-      currencyCode: p.currencyCode,
-      amount: p.amount,
-      compareAtAmount: p.compareAtAmount
-    }))
-  };
-
-  const created = await createVariant(opts, productId, input);
-  revalidatePath(`/dashboard/product/${productId}`);
-  return created;
+  request: ProductVariantCreateRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    if (
+      typeof request.locale !== 'string' ||
+      !request.locale ||
+      request.locale.length > 32 ||
+      !isVariantCreateInput(request.input)
+    )
+      throw new Error('The saved Product SKU request is invalid');
+    // Do not rebuild, normalize or replace any part of a frozen request on the server.
+    const created = await createVariant(
+      { ...opts, locale: request.locale },
+      request.id,
+      request.input,
+      idempotencyKey
+    );
+    return { id: request.id, revision: null, variantId: created.id };
+  });
+  // Revalidation failure is not permission to repeat creation with a different identity.
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function updateVariantAction(
@@ -277,6 +287,7 @@ export async function updateVariantAction(
 ): Promise<ProductVariant> {
   const opts = await getAuthOpts();
   const input: UpdateVariantInput = {
+    axisValues: variant.axisValues,
     sku: variant.sku,
     barcode: variant.barcode,
     shippingProfileSlug: variant.shippingProfileSlug,
@@ -300,14 +311,42 @@ export async function deleteVariantAction(id: string): Promise<boolean> {
   return deleteVariant(opts, id);
 }
 
-export async function setVariantAxesAction(
+export async function previewVariantAxesAction(
   productId: string,
-  input: SetVariantAxesInput
-): Promise<VariantAxisConfig[]> {
-  const opts = await getAuthOpts();
-  const axes = await setVariantAxes(opts, productId, input);
-  revalidatePath(`/dashboard/product/${productId}`);
-  return axes;
+  input: SetVariantAxesInput,
+  scope: ProductWriteScope,
+  locale: string
+): Promise<VariantAxesPreview> {
+  const opts = await getAuthOpts(scope);
+  if (typeof locale !== 'string' || !locale || locale.length > 32)
+    throw new Error('Product axes locale is unavailable');
+  return previewVariantAxes({ ...opts, locale }, productId, input);
+}
+
+export async function setVariantAxesAction(
+  request: ProductAxesWriteRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  const outcome = await productWriteOutcome(async () => {
+    const opts = await getProductWriteAuthOpts(request.scope, idempotencyKey);
+    if (
+      typeof request.locale !== 'string' ||
+      !request.locale ||
+      request.locale.length > 32
+    )
+      throw new Error('Product axes locale is unavailable');
+    await setVariantAxes(
+      { ...opts, locale: request.locale },
+      request.id,
+      request.input,
+      idempotencyKey
+    );
+    // Preserve the existing owner receipt response. It contains no Product predecessor;
+    // the client must explicitly open a fresh document, not guess/rebase a revision.
+    return { id: request.id, revision: null };
+  });
+  await refreshProductAfterWrite(outcome);
+  return outcome;
 }
 
 export async function addImageAction(

@@ -210,7 +210,8 @@ impl BootstrapService {
     }
 }
 
-fn catalog_base_scope() -> Condition {
+/// Canonical unscoped inspection/bootstrap predicate. Callers may add their own row budget.
+pub fn catalog_base_scope() -> Condition {
     Condition::all()
         .add(price::Column::PriceListId.is_null())
         .add(price::Column::ChannelId.is_null())

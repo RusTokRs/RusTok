@@ -174,12 +174,10 @@ async fn test_product_deletion_triggers_event() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 
+    let mut input = create_product_input("to-be-deleted", "To be deleted", "DELETE-SKU-001");
+    input.variants[0].inventory_quantity = 0; // Deletion is not implicit stock disposal.
     let product = service
-        .create_product(
-            tenant_id,
-            actor_id,
-            create_product_input("to-be-deleted", "To be deleted", "DELETE-SKU-001"),
-        )
+        .create_product(tenant_id, actor_id, input)
         .await
         .unwrap();
 

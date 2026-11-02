@@ -35,6 +35,9 @@ async fn setup_db() -> DatabaseConnection {
     ))
     .await
     .expect("disable sqlite foreign keys for the isolated crate schema");
+    db.execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+        .await
+        .expect("tenant identity fixture");
 
     let manager = SchemaManager::new(&db);
     for migration in rustok_modules::migrations::migrations() {
@@ -431,6 +434,13 @@ async fn test_release_admission_intent_journal_lifecycle_sqlite() {
 async fn resolve_post_hook_failure_accepts_typed_and_legacy_shapes_only() {
     let db = setup_db().await;
     let tenant_id = Uuid::new_v4();
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO tenants (id) VALUES (?1)",
+        vec![tenant_id.into()],
+    ))
+    .await
+    .unwrap();
     let request = || ModuleOperationRequest {
         tenant_id,
         module_slug: "orders".to_string(),
@@ -517,6 +527,13 @@ async fn resolve_post_hook_failure_accepts_typed_and_legacy_shapes_only() {
 async fn committed_result_snapshot_roundtrips_and_legacy_rows_have_none() {
     let db = setup_db().await;
     let tenant_id = Uuid::new_v4();
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO tenants (id) VALUES (?1)",
+        vec![tenant_id.into()],
+    ))
+    .await
+    .unwrap();
     let request = || ModuleOperationRequest {
         tenant_id,
         module_slug: "orders".to_string(),

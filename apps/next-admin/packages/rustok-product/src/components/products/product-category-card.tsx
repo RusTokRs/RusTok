@@ -79,6 +79,7 @@ export function ProductCategoryCard({
     > = {};
 
     for (const attr of effectiveForm.attributes) {
+      if (attr.isDisabled || attr.scope === 'variant') continue;
       const gCode = attr.groupCode || 'general';
       const gLabel = attr.groupLabel || 'General Specifications';
       if (!groups[gCode]) {
@@ -237,7 +238,7 @@ function renderAttributeControl(
           <Switch
             id={`attr-${attr.attributeId}`}
             checked={Boolean(val.boolean)}
-            onCheckedChange={(checked) =>
+            onCheckedChange={(checked: boolean) =>
               onChange({ kind: 'BOOLEAN', boolean: checked })
             }
             disabled={disabled}
@@ -320,13 +321,13 @@ function renderAttributeControl(
         />
       );
 
-    case 'option':
+    case 'select':
       return (
         <Select
           value={val.optionId || 'none'}
           onValueChange={(optId) =>
             onChange({
-              kind: 'OPTION',
+              kind: 'SELECT',
               optionId: optId === 'none' ? null : optId
             })
           }
@@ -351,7 +352,7 @@ function renderAttributeControl(
         </Select>
       );
 
-    case 'multi_option':
+    case 'multiselect':
       const currentSelected = val.optionIds || [];
       return (
         <div className='border-input bg-background flex min-h-[42px] flex-wrap gap-1.5 rounded-xl border p-2'>
@@ -366,7 +367,7 @@ function renderAttributeControl(
                   const updated = isChecked
                     ? currentSelected.filter((id) => id !== opt.id)
                     : [...currentSelected, opt.id];
-                  onChange({ kind: 'MULTI_OPTION', optionIds: updated });
+                  onChange({ kind: 'MULTISELECT', optionIds: updated });
                 }}
                 className={`rounded-lg border px-2.5 py-1 text-xs transition ${
                   isChecked
@@ -396,7 +397,7 @@ function renderAttributeControl(
         />
       );
 
-    case 'rich_text':
+    case 'richtext':
       return (
         <Textarea
           id={`attr-${attr.attributeId}`}

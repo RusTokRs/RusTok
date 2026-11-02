@@ -2,6 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_events::ContractEventEnvelope;
 use tokio::sync::broadcast;
 
 use super::{EventBus, EventBusStats, EventEnvelope, EventTransport, ReliabilityLevel};
@@ -51,6 +52,10 @@ impl Default for MemoryTransport {
 impl EventTransport for MemoryTransport {
     async fn publish(&self, envelope: EventEnvelope) -> crate::Result<()> {
         self.bus.publish_envelope(envelope)
+    }
+
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> crate::Result<()> {
+        self.bus.publish_contract_envelope(envelope).await
     }
 
     fn reliability_level(&self) -> ReliabilityLevel {

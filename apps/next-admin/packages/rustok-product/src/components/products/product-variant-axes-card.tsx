@@ -11,6 +11,18 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from '@rustok/next-fluent';
+import { isEligibleAxis } from '../../schema-policy';
+import {
+  axesConflictKey,
+  axesProposal,
+  reassignAxisValue,
+  reconfigurationAxis,
+  seedReconfigurationAxes,
+  refreshReconfigurationChoices,
+  tupleSummary,
+  validAxesPreview
+} from '../../axis-reconfiguration';
 import {
   Card,
   CardContent,
@@ -32,368 +44,287 @@ import { ArrowDown, ArrowUp, Plus, Save, Trash2 } from 'lucide-react';
 import type {
   ProductEffectiveForm,
   SetVariantAxesInput,
-  VariantAxisConfig
+  VariantAxisConfig,
+  VariantAxisReassignmentInput,
+  VariantAxesPreview
 } from '../../api/types';
 
-interface AxisOptionDraft {
-  id: string;
-  label: string;
-}
-
-interface AxisRowDraft {
-  attributeId: string;
-  code: string;
-  label: string;
-  allowedOptionIds: string[];
-  options: AxisOptionDraft[];
-}
-
 interface ProductVariantAxesCardProps {
+  productId: string;
+  locale: string;
   axes: VariantAxisConfig[];
   effectiveForm?: ProductEffectiveForm | null;
-  onSaveAxes?: (
-    input: SetVariantAxesInput
-  ) => Promise<VariantAxisConfig[] | void>;
+  onPreviewAxes?: (input: SetVariantAxesInput) => Promise<VariantAxesPreview>;
+  /** The parent uses the same durable editorial journal as document/status operations. */
+  onSaveAxes?: (input: SetVariantAxesInput) => Promise<void>;
   disabled?: boolean;
 }
 
 const SELECT_EMPTY = '__none__';
+const PAGE_SIZE = 12;
 
-function shortId(value: string): string {
-  return value.length > 8 ? value.slice(0, 8) : value;
-}
-
-function buildAxisRow(attributeId: string, form: ProductEffectiveForm | null) {
-  const attribute = form?.attributes.find(
-    (candidate) => candidate.attributeId === attributeId
-  );
-  if (!attribute) {
-    return null;
-  }
-
-  return {
-    attributeId: attribute.attributeId,
-    code: attribute.code,
-    label: attribute.label,
-    allowedOptionIds: attribute.options.map((option) => option.id),
-    options: attribute.options.map((option) => ({
-      id: option.id,
-      label: option.label
-    }))
-  } satisfies AxisRowDraft;
-}
-
-function seedAxisRows(
-  axes: VariantAxisConfig[],
-  form: ProductEffectiveForm | null
-): AxisRowDraft[] {
-  if (axes.length > 0) {
-    return axes.map((axis) => {
-      const schemaAttribute = form?.attributes.find(
-        (candidate) => candidate.attributeId === axis.attributeId
-      );
-      const options = schemaAttribute
-        ? schemaAttribute.options.map((option) => ({
-            id: option.id,
-            label: option.label
-          }))
-        : axis.allowedValues.map((value) => ({
-            id: value.optionId,
-            label: value.value || shortId(value.optionId)
-          }));
-
-      return {
-        attributeId: axis.attributeId,
-        code: axis.code,
-        label: axis.name,
-        allowedOptionIds: axis.allowedValues.map((value) => value.optionId),
-        options
-      };
-    });
-  }
-
-  if (!form) {
-    return [];
-  }
-
-  return form.attributes
-    .filter(
-      (attribute) =>
-        attribute.defaultVariantAxis &&
-        attribute.variantAxisPolicy !== 'forbidden' &&
-        attribute.options.length > 0
-    )
-    .map((attribute) => ({
-      attributeId: attribute.attributeId,
-      code: attribute.code,
-      label: attribute.label,
-      allowedOptionIds: attribute.options.map((option) => option.id),
-      options: attribute.options.map((option) => ({
-        id: option.id,
-        label: option.label
-      }))
-    }));
-}
-
-/**
- * Variant-axis editor for the ADR identity model.
- *
- * The card offers only category-schema attributes whose `variantAxisPolicy` is
- * not `forbidden` and that carry options, seeds itself from the saved axes (or
- * from the schema defaults for a product that has none yet), and persists the
- * ordered axes through the idempotent `setProductVariantAxes` command. Saving an
- * empty configuration clears the axes, which the owner accepts.
- */
 export function ProductVariantAxesCard({
+  productId,
+  locale,
   axes,
   effectiveForm = null,
+  onPreviewAxes,
   onSaveAxes,
   disabled = false
 }: ProductVariantAxesCardProps) {
-  const [rows, setRows] = React.useState<AxisRowDraft[]>(() =>
-    seedAxisRows(axes, effectiveForm)
+  const t = useTranslations('product');
+  const uid = React.useId();
+  const [rows, setRows] = React.useState(() =>
+    seedReconfigurationAxes(axes, effectiveForm)
   );
+  const [reassignments, setReassignments] = React.useState<
+    VariantAxisReassignmentInput[]
+  >([]);
   const [addSelection, setAddSelection] = React.useState(SELECT_EMPTY);
   const [isBusy, setIsBusy] = React.useState(false);
+  const [confirmed, setConfirmed] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
-
-  const availableCandidates = React.useMemo(() => {
-    const used = new Set(rows.map((row) => row.attributeId));
-    return (effectiveForm?.attributes ?? []).filter(
-      (attribute) =>
-        attribute.variantAxisPolicy !== 'forbidden' &&
-        attribute.options.length > 0 &&
-        !used.has(attribute.attributeId)
-    );
-  }, [rows, effectiveForm]);
-
-  const moveAxis = (index: number, delta: number) => {
-    setRows((current) => {
+  const [page, setPage] = React.useState(0);
+  const [review, setReview] = React.useState<{
+    signature: string;
+    input: SetVariantAxesInput;
+    preview: VariantAxesPreview;
+  } | null>(null);
+  React.useEffect(() => {
+    setRows((rows) => refreshReconfigurationChoices(rows, effectiveForm));
+    setConfirmed(false);
+    setReview((old) => old && { ...old, signature: '' });
+  }, [effectiveForm]);
+  const proposal = React.useMemo(
+    () => axesProposal(rows, reassignments),
+    [rows, reassignments]
+  );
+  const signature = JSON.stringify({ productId, locale, proposal });
+  const current = review?.signature === signature;
+  const locked = disabled || isBusy;
+  const candidates = (effectiveForm?.attributes ?? []).filter(
+    (attribute) =>
+      isEligibleAxis(attribute) &&
+      attribute.options.length > 0 &&
+      attribute.options.length <= 256 &&
+      !rows.some((row) => row.attributeId === attribute.attributeId)
+  );
+  const pageCount = Math.max(
+    1,
+    Math.ceil((review?.preview.variants.length ?? 0) / PAGE_SIZE)
+  );
+  const currentPage = Math.min(page, pageCount - 1);
+  const changed = () => {
+    setConfirmed(false);
+    setNotice(null);
+    setError(null);
+  };
+  const move = (index: number, delta: number) => {
+    changed();
+    setRows((rows) => {
+      const next = [...rows];
       const target = index + delta;
-      if (target < 0 || target >= current.length) {
-        return current;
-      }
-      const next = [...current];
-      const [moved] = next.splice(index, 1);
-      next.splice(target, 0, moved);
+      if (target < 0 || target >= next.length) return rows;
+      [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
   };
-
-  const removeAxis = (attributeId: string) => {
-    setRows((current) =>
-      current.filter((row) => row.attributeId !== attributeId)
-    );
-  };
-
-  const toggleOption = (attributeId: string, optionId: string) => {
-    setRows((current) =>
-      current.map((row) => {
-        if (row.attributeId !== attributeId) {
-          return row;
-        }
-        const selected = row.allowedOptionIds.includes(optionId);
-        return {
-          ...row,
-          allowedOptionIds: selected
-            ? row.allowedOptionIds.filter((value) => value !== optionId)
-            : [...row.allowedOptionIds, optionId]
-        };
-      })
-    );
-  };
-
-  const addAxis = () => {
-    if (addSelection === SELECT_EMPTY) {
-      return;
-    }
-    const row = buildAxisRow(addSelection, effectiveForm);
-    if (!row) {
-      return;
-    }
-    setRows((current) =>
-      current.some((existing) => existing.attributeId === row.attributeId)
-        ? current
-        : [...current, row]
-    );
-    setAddSelection(SELECT_EMPTY);
-  };
-
-  const handleSave = async () => {
-    if (!onSaveAxes) {
-      return;
-    }
-
+  const preview = async () => {
+    if (locked || !onPreviewAxes) return;
+    const input = structuredClone(proposal);
     setIsBusy(true);
     setError(null);
     setNotice(null);
-
-    const cleared = rows.length === 0;
-
+    setConfirmed(false);
     try {
-      const saved = await onSaveAxes({
-        axes: rows.map((row, index) => ({
-          attributeId: row.attributeId,
-          position: index,
-          allowedOptionIds: row.allowedOptionIds
-        }))
-      });
-
-      if (Array.isArray(saved)) {
-        setRows(seedAxisRows(saved, effectiveForm));
+      const result = await onPreviewAxes(input);
+      if (!result || !validAxesPreview(productId, result)) {
+        throw new Error(t('axes.failed'));
       }
-      setNotice(cleared ? 'Variant axes cleared.' : 'Variant axes saved.');
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : 'Variant axes could not be saved.'
-      );
+      setReview({ signature, input, preview: result });
+      setPage(0);
+    } catch {
+      setError(t('axes.failed'));
+      setReview((old) => old && { ...old, signature: '' });
     } finally {
       setIsBusy(false);
+    }
+  };
+  const apply = async () => {
+    if (
+      locked ||
+      !onSaveAxes ||
+      !review ||
+      !current ||
+      !review.preview.canApply ||
+      !confirmed
+    )
+      return;
+    setIsBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await onSaveAxes({
+        ...structuredClone(review.input),
+        expectedState: review.preview.stateToken
+      });
+      setNotice(t('axes.saved'));
+    } catch {
+      setError(t('axes.failed'));
+      setReview((old) => old && { ...old, signature: '' });
+    } finally {
+      setIsBusy(false);
+      setConfirmed(false);
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <div className='flex flex-wrap items-start justify-between gap-3'>
-          <div className='space-y-1'>
-            <CardTitle className='flex items-center gap-2 text-base'>
-              Variant axes
-              <Badge variant='secondary'>{rows.length}</Badge>
-            </CardTitle>
-            <CardDescription>
-              Axes define the combination identity. Only category-schema
-              attributes whose axis policy is not forbidden are offered.
-            </CardDescription>
-          </div>
-          <Button
-            type='button'
-            size='sm'
-            onClick={handleSave}
-            disabled={disabled || isBusy || !onSaveAxes}
-          >
-            <Save className='mr-2 h-4 w-4' />
-            {isBusy ? 'Saving...' : 'Save axes'}
-          </Button>
-        </div>
+        <CardTitle className='flex items-center gap-2 text-base'>
+          {t('axes.title')} <Badge variant='secondary'>{rows.length}</Badge>
+        </CardTitle>
+        <CardDescription>
+          {t('axes.description')} {t('axes.bounds')}
+        </CardDescription>
+        <p className='text-muted-foreground text-sm'>{t('axes.retained')}</p>
       </CardHeader>
-      <CardContent className='space-y-3'>
+      <CardContent className='space-y-4'>
+        {!onPreviewAxes || !onSaveAxes ? (
+          <p role='alert'>{t('axes.unavailable')}</p>
+        ) : null}
         {error ? (
-          <p className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-xs'>
+          <p role='alert' className='text-destructive text-sm'>
             {error}
           </p>
         ) : null}
         {notice ? (
-          <p className='rounded-md border border-emerald-300/50 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400'>
+          <p role='status' className='text-sm'>
             {notice}
           </p>
         ) : null}
-
-        {rows.length === 0 ? (
-          <p className='text-muted-foreground text-xs'>
-            No axes configured. Add an attribute to enable variant combinations.
-          </p>
-        ) : null}
-
-        <div className='space-y-3'>
+        <fieldset disabled={locked} className='space-y-3'>
+          {rows.length === 0 ? (
+            <p className='text-muted-foreground text-sm'>{t('axes.empty')}</p>
+          ) : null}
           {rows.map((row, index) => (
             <div
               key={row.attributeId}
-              className='border-border/70 bg-background space-y-2 rounded-lg border p-3'
+              className='space-y-2 rounded-lg border p-3'
             >
               <div className='flex flex-wrap items-center justify-between gap-2'>
-                <div className='flex items-center gap-2 text-sm font-medium'>
-                  <span className='text-muted-foreground'>#{index + 1}</span>
-                  <span>{row.label}</span>
-                  <span className='text-muted-foreground font-mono text-[11px]'>
+                <span className='text-sm font-medium'>
+                  {row.label}{' '}
+                  <span className='text-muted-foreground font-mono text-xs'>
                     {row.code}
                   </span>
-                </div>
-                <div className='flex items-center gap-1'>
+                </span>
+                <div className='flex gap-1'>
                   <Button
                     type='button'
-                    variant='outline'
+                    variant='ghost'
                     size='icon'
-                    className='h-7 w-7'
-                    disabled={index === 0 || disabled}
-                    onClick={() => moveAxis(index, -1)}
-                    aria-label='Move axis up'
+                    aria-label={t('axes.up')}
+                    disabled={index === 0}
+                    onClick={() => move(index, -1)}
                   >
-                    <ArrowUp className='h-3.5 w-3.5' />
+                    <ArrowUp className='h-4 w-4' />
                   </Button>
                   <Button
                     type='button'
-                    variant='outline'
+                    variant='ghost'
                     size='icon'
-                    className='h-7 w-7'
-                    disabled={index + 1 === rows.length || disabled}
-                    onClick={() => moveAxis(index, 1)}
-                    aria-label='Move axis down'
+                    aria-label={t('axes.down')}
+                    disabled={index === rows.length - 1}
+                    onClick={() => move(index, 1)}
                   >
-                    <ArrowDown className='h-3.5 w-3.5' />
+                    <ArrowDown className='h-4 w-4' />
                   </Button>
                   <Button
                     type='button'
-                    variant='outline'
+                    variant='ghost'
                     size='icon'
-                    className='text-destructive h-7 w-7'
-                    disabled={disabled}
-                    onClick={() => removeAxis(row.attributeId)}
-                    aria-label='Remove axis'
+                    aria-label={t('axes.remove')}
+                    onClick={() => {
+                      changed();
+                      setRows((rows) =>
+                        rows.filter(
+                          (item) => item.attributeId !== row.attributeId
+                        )
+                      );
+                    }}
                   >
-                    <Trash2 className='h-3.5 w-3.5' />
+                    <Trash2 className='h-4 w-4' />
                   </Button>
                 </div>
               </div>
-              <div className='space-y-1'>
-                <Label className='text-muted-foreground text-[11px] tracking-wide uppercase'>
-                  Allowed values
-                </Label>
-                <div className='flex flex-wrap gap-2'>
-                  {row.options.map((option) => {
-                    const checked = row.allowedOptionIds.includes(option.id);
-                    return (
-                      <label
-                        key={option.id}
-                        className='border-border/70 bg-muted/20 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs'
-                      >
-                        <input
-                          type='checkbox'
-                          checked={checked}
-                          disabled={disabled}
-                          onChange={() =>
-                            toggleOption(row.attributeId, option.id)
-                          }
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+              {row.dictionaryLimited ? (
+                <p role='status' className='text-muted-foreground text-xs'>
+                  {t('axes.dictionaryLimit')}
+                </p>
+              ) : null}
+              <p className='text-muted-foreground text-xs'>
+                {t('axes.allowed')}
+              </p>
+              <div className='flex flex-wrap gap-3'>
+                {row.options.map((option) => (
+                  <Label
+                    key={option.id}
+                    className='flex items-center gap-2 text-sm'
+                  >
+                    <input
+                      type='checkbox'
+                      checked={row.allowedOptionIds.includes(option.id)}
+                      disabled={
+                        !option.available &&
+                        !row.allowedOptionIds.includes(option.id)
+                      }
+                      onChange={(event) => {
+                        changed();
+                        const selected = event.target.checked;
+                        setRows((rows) =>
+                          rows.map((item) =>
+                            item.attributeId !== row.attributeId
+                              ? item
+                              : {
+                                  ...item,
+                                  allowedOptionIds: selected
+                                    ? [...item.allowedOptionIds, option.id]
+                                    : item.allowedOptionIds.filter(
+                                        (id) => id !== option.id
+                                      )
+                                }
+                          )
+                        );
+                      }}
+                    />
+                    {option.label}
+                    {!option.available
+                      ? ` (${t('axes.unavailableValue')})`
+                      : ''}
+                  </Label>
+                ))}
               </div>
             </div>
           ))}
-        </div>
-
-        <div className='flex flex-wrap items-end gap-2'>
-          <div className='grid gap-1'>
-            <Label className='text-muted-foreground text-[11px] tracking-wide uppercase'>
-              Attribute
-            </Label>
+          <div className='flex flex-wrap gap-2'>
             <Select
               value={addSelection}
               onValueChange={setAddSelection}
-              disabled={disabled || availableCandidates.length === 0}
+              disabled={locked || rows.length >= 32 || candidates.length === 0}
             >
-              <SelectTrigger className='min-w-[220px]'>
-                <SelectValue placeholder='Select attribute' />
+              <SelectTrigger
+                className='min-w-48 flex-1'
+                aria-label={t('axes.attribute')}
+              >
+                <SelectValue placeholder={t('axes.attribute')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={SELECT_EMPTY}>Select attribute</SelectItem>
-                {availableCandidates.map((attribute) => (
+                <SelectItem value={SELECT_EMPTY}>
+                  {t('axes.attribute')}
+                </SelectItem>
+                {candidates.map((attribute) => (
                   <SelectItem
                     key={attribute.attributeId}
                     value={attribute.attributeId}
@@ -403,28 +334,258 @@ export function ProductVariantAxesCard({
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              type='button'
+              variant='outline'
+              disabled={
+                locked || rows.length >= 32 || addSelection === SELECT_EMPTY
+              }
+              onClick={() => {
+                const row = reconfigurationAxis(addSelection, effectiveForm);
+                if (
+                  !row ||
+                  rows.some((item) => item.attributeId === row.attributeId)
+                )
+                  return;
+                changed();
+                setRows((rows) => [...rows, row]);
+                setAddSelection(SELECT_EMPTY);
+              }}
+            >
+              <Plus className='mr-2 h-4 w-4' />
+              {t('axes.add')}
+            </Button>
           </div>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            disabled={
-              disabled ||
-              addSelection === SELECT_EMPTY ||
-              availableCandidates.length === 0
-            }
-            onClick={addAxis}
-          >
-            <Plus className='mr-2 h-4 w-4' />
-            Add axis
-          </Button>
-          {availableCandidates.length === 0 && rows.length === 0 ? (
-            <span className='text-muted-foreground text-xs'>
-              The category schema has no option-backed attribute that allows
-              axis use. Configure the category schema.
-            </span>
+          {!candidates.length ? (
+            <p className='text-muted-foreground text-xs'>
+              {t('axes.noCandidates')}
+            </p>
           ) : null}
-        </div>
+        </fieldset>
+        <Button
+          type='button'
+          variant='outline'
+          disabled={locked || !onPreviewAxes}
+          onClick={preview}
+        >
+          {isBusy ? t('axes.previewing') : t('axes.preview')}
+        </Button>
+        {review ? (
+          <div className='space-y-3'>
+            <p role='status' className='text-sm'>
+              {!current
+                ? t('axes.stale')
+                : !review.preview.canApply
+                  ? t('axes.conflicts')
+                  : review.preview.hasChanges
+                    ? t('axes.ready')
+                    : t('axes.noChanges')}
+            </p>
+            <ul className='space-y-2 text-sm' aria-live='polite'>
+              {review.preview.conflicts.map((conflict, index) => (
+                <li
+                  key={index}
+                  className='border-destructive/40 rounded-md border p-2'
+                >
+                  {t(axesConflictKey(conflict.kind))}:{' '}
+                  <span className='font-mono'>
+                    {conflict.variantIds.join(', ')}
+                  </span>
+                  {conflict.attributeId ? (
+                    <span className='block font-mono text-xs'>
+                      {conflict.attributeId}
+                      {conflict.optionId ? ` / ${conflict.optionId}` : ''}
+                    </span>
+                  ) : null}
+                  {conflict.hasMoreVariants ? ` ${t('axes.moreVariants')}` : ''}
+                </li>
+              ))}
+            </ul>
+            {review.preview.hasMoreConflicts ? (
+              <p role='alert'>{t('axes.moreConflicts')}</p>
+            ) : null}
+            <h4 className='text-sm font-semibold'>
+              {t('axes.tuples')} ({review.preview.variantCount})
+            </h4>
+            <p className='text-muted-foreground text-xs'>
+              {t('axes.tuplesHelp')}
+            </p>
+            <fieldset disabled={locked} className='space-y-3'>
+              {review.preview.variants
+                .slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+                .map((variant) => {
+                  const override = reassignments.find(
+                    (row) => row.variantId === variant.variantId
+                  );
+                  const values = override?.axisValues ?? variant.proposedValues;
+                  return (
+                    <div
+                      key={variant.variantId}
+                      className='space-y-2 rounded-lg border p-3'
+                    >
+                      <p className='text-sm font-medium'>
+                        {variant.sku || variant.variantId}
+                      </p>
+                      <p className='text-muted-foreground font-mono text-xs'>
+                        {variant.variantId}
+                      </p>
+                      <p className='text-xs'>
+                        {t('axes.current')}:{' '}
+                        {tupleSummary(
+                          variant.currentValues,
+                          rows,
+                          effectiveForm
+                        ) || t('axes.default')}
+                      </p>
+                      <p className='text-xs'>
+                        {t('axes.proposed')}:{' '}
+                        {tupleSummary(values, rows, effectiveForm) ||
+                          (rows.length
+                            ? t('axes.unassigned')
+                            : t('axes.default'))}
+                      </p>
+                      {override?.axisValues.some(
+                        (value) =>
+                          !rows.some(
+                            (row) => row.attributeId === value.attributeId
+                          )
+                      ) ? (
+                        <p role='alert' className='text-destructive text-xs'>
+                          {t('axes.unexpected')}
+                        </p>
+                      ) : null}
+                      <div className='grid gap-3 sm:grid-cols-2'>
+                        {rows.map((axis) => {
+                          const selected =
+                            values.find(
+                              (value) => value.attributeId === axis.attributeId
+                            )?.optionId ?? '';
+                          const id = `${uid}-${variant.variantId}-${axis.attributeId}`;
+                          return (
+                            <div key={axis.attributeId} className='space-y-1'>
+                              <Label htmlFor={id}>{axis.label}</Label>
+                              <Select
+                                value={selected || SELECT_EMPTY}
+                                disabled={locked}
+                                onValueChange={(value) => {
+                                  changed();
+                                  setReassignments((old) =>
+                                    reassignAxisValue(
+                                      old,
+                                      variant,
+                                      axis.attributeId,
+                                      value === SELECT_EMPTY ? '' : value
+                                    )
+                                  );
+                                }}
+                              >
+                                <SelectTrigger id={id}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={SELECT_EMPTY}>
+                                    {t('axes.unassigned')}
+                                  </SelectItem>
+                                  {selected &&
+                                  !axis.allowedOptionIds.includes(selected) ? (
+                                    <SelectItem value={selected} disabled>
+                                      {selected} ({t('axes.unavailableValue')})
+                                    </SelectItem>
+                                  ) : null}
+                                  {axis.options
+                                    .filter((option) =>
+                                      axis.allowedOptionIds.includes(option.id)
+                                    )
+                                    .map((option) => (
+                                      <SelectItem
+                                        key={option.id}
+                                        value={option.id}
+                                        disabled={!option.available}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {override ? (
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant='outline'
+                          onClick={() => {
+                            changed();
+                            setReassignments((old) =>
+                              old.filter(
+                                (row) => row.variantId !== variant.variantId
+                              )
+                            );
+                          }}
+                        >
+                          {t('axes.reset')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              <div className='flex items-center justify-between gap-2'>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  {t('axes.previous')}
+                </Button>
+                <span className='text-xs'>
+                  {currentPage + 1} / {pageCount}
+                </span>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={currentPage + 1 >= pageCount}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  {t('axes.next')}
+                </Button>
+              </div>
+            </fieldset>
+            <Label className='flex items-start gap-2 text-sm'>
+              <input
+                type='checkbox'
+                checked={confirmed}
+                disabled={
+                  locked ||
+                  !current ||
+                  !review.preview.canApply ||
+                  !review.preview.hasChanges
+                }
+                onChange={(event) => setConfirmed(event.target.checked)}
+              />
+              {t('axes.confirm')}
+            </Label>
+            <Button
+              type='button'
+              disabled={
+                locked ||
+                !current ||
+                !review.preview.canApply ||
+                !review.preview.hasChanges ||
+                !confirmed ||
+                !onSaveAxes
+              }
+              onClick={apply}
+            >
+              <Save className='mr-2 h-4 w-4' />
+              {isBusy ? t('axes.applying') : t('axes.apply')}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "module": "inventory",
+  "packet": "reservation-events-source",
+  "recorded_date": "2026-11-01",
+  "status": "source_wired_verification_pending",
+  "base_branch": "arena/71cd6d1f-rustok",
+  "base_head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed": "0aaf455a45556f4e39a5ed66b8a1184369e5e93f",
+  "scope": "Inventory quantity-free reservation fact, current context forwarding, transactional publication, acknowledged local sealed delivery on both configured profiles, artifact subscriptions and explicit Search refetch; not generic Index completion",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#reservation-invalidation-facts-2026-11-01-source-only",
+  "owner_decision": "DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#reservation-invalidation-facts-2026-11-01",
+  "delivery_decision": "DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01",
+  "guard": "scripts/verify/verify-inventory-reservation-events.mjs",
+  "compiled": false,
+  "sql_executed": false,
+  "runtime_certified": false,
+  "notification_delivery_certified": false,
+  "typed_delivery_wired_in_source": true,
+  "generic_index_complete": false,
+  "step8_complete": false,
+  "event_schema_changed": true,
+  "root_event_schema_changed": false,
+  "migration_added_or_rewritten": false,
+  "durable_quantity_receipt_added": false,
+  "source_regressions": {
+    "rust_definition_count": 34,
+    "rust_executed": 0,
+    "rust_compiled": 0,
+    "node_definition_count": 10,
+    "node_executed": 0,
+    "rust_definitions": [
+      {
+        "source": "crates/libs/rustok-events/src/inventory_reservation.rs",
+        "count": 4
+      },
+      {
+        "source": "crates/libs/rustok-core/src/events/contract_delivery.rs",
+        "count": 6
+      },
+      {
+        "source": "crates/modules/rustok-commerce/tests/inventory_reservation_events.rs",
+        "count": 15
+      },
+      {
+        "source": "crates/modules/rustok-search/src/ingestion.rs",
+        "scope": "reservation_contract_tests",
+        "count": 2
+      },
+      {
+        "source": "apps/server/src/services/event_transport_factory.rs",
+        "scope": "contract_delivery_tests",
+        "count": 5
+      },
+      {
+        "source": "crates/modules/rustok-modules/src/event_delivery.rs",
+        "scope": "contract_projection_tests",
+        "count": 2
+      }
+    ],
+    "node_source": "scripts/verify/verify-inventory-reservation-events.test.mjs",
+    "maintainer_commands": [
+      "cargo test --locked -p rustok-events --lib inventory_reservation",
+      "cargo test --locked -p rustok-core --lib events::contract_delivery::tests",
+      "cargo test --locked -p rustok-commerce --test inventory_service_test reservation_events",
+      "cargo test --locked -p rustok-search --lib reservation_contract_tests",
+      "cargo test --locked -p rustok-modules --lib event_delivery::contract_projection_tests",
+      "cargo test --locked -p rustok-server --lib services::event_transport_factory::contract_delivery_tests",
+      "node scripts/verify/verify-inventory-reservation-events.test.mjs"
+    ],
+    "transport_doubles_are_not_real_broker_or_cursor_evidence": true,
+    "sqlite_faults_are_not_postgres_mysql_locking_evidence": true
+  },
+  "schema_digest": {
+    "canonical_command": "cargo run --locked -p rustok-events --example event_contract_digests -- --write",
+    "regenerated": false,
+    "artifact_modified": false,
+    "blocker": "cargo and rustc are not installed; the generated release artifact remains unchanged, not manually recomputed",
+    "release_gate": "Generate and review canonical registry/typed-payload/typed-envelope digests on the complete current tree; existing pending families also participate"
+  },
+  "checks": {
+    "source_guard": "passed_read_only_source_contract",
+    "related_source_guards": "passed_9_read_only_source_contracts_not_runtime",
+    "rust_format": "passed_scalar_27_files_idempotent_not_cargo_fmt_or_compilation",
+    "rust_syntax": "passed_tree_sitter_27_files_zero_errors_not_typechecking",
+    "node_syntax_and_prettier": "passed_node_syntax_5_files_and_prettier_8_scoped_files_no_companion_execution",
+    "architecture_dependency_guard": "blocked_cargo_metadata_unavailable",
+    "remediation_gate": "diff_invariants_passed_complete_gate_blocked_missing_cargo",
+    "historical_migration_bytes": "passed_72_saved_files_unchanged_no_new_paths_no_sql_execution",
+    "generated_digest_artifact": "unchanged_saved_bytes_canonical_rust_regeneration_not_executed",
+    "document_links": "passed_52_added_links_and_owner_decision_anchors",
+    "quantity_callers": "inspected_39_calls_in_6_files_current_context_reference_and_3_arguments_not_type_resolution",
+    "git_diff_check": "passed",
+    "tests": "not_executed_per_user_instruction"
+  },
+  "remaining_gates": [
+    "canonical Rust-generated event digests and intentional contract-release review",
+    "scoped Rust compilation and all unrun regression definitions",
+    "PostgreSQL/MySQL source mutation, exact-one, outbox rollback and locking behavior",
+    "PostgreSQL Search refresh/rebuild/delete concurrency, duplicate and reordered refetch",
+    "real outbox relay and configured Iggy delivery, publication/local-failure crash windows, restart and DLQ recovery",
+    "artifact exact/wildcard subscription delivery and original-envelope dedupe on actual backend",
+    "Inventory-owned generic Index source/revision and consumer contract without Product ledger impersonation",
+    "remote, mounted/client and deployment convergence; full Product step 8"
+  ],
+  "source_check_details": {
+    "read_only_commands": [
+      "node scripts/verify/verify-inventory-reservation-events.mjs",
+      "node scripts/verify/verify-inventory-quantity-release.mjs",
+      "node scripts/verify/verify-inventory-stock-events.mjs",
+      "node scripts/verify/verify-inventory-reservation-owner-context.mjs",
+      "node scripts/verify/verify-inventory-reservation-local-context.mjs",
+      "node scripts/verify/verify-inventory-admin-native-error-safety.mjs",
+      "node scripts/verify/verify-ecommerce-fba-registries.mjs",
+      "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+      "node scripts/verify/verify-event-contract-digest-admission.mjs",
+      "node scripts/verify/verify-checkout-operation-event-contract.mjs"
+    ],
+    "rust_format_tool": "@scalar/rust-fmt@0.3.0",
+    "rust_format_files": 27,
+    "rust_format_final_changes": 0,
+    "rust_parse_tool": "tree-sitter 0.25.2 / tree-sitter-rust 0.24.0",
+    "rust_parse_files": 27,
+    "rust_parse_errors": 0,
+    "historical_byte_comparison_files": 72,
+    "added_document_link_checks": 52,
+    "quantity_source_calls_inspected": 39,
+    "node_syntax_files": [
+      "scripts/verify/verify-inventory-reservation-events.mjs",
+      "scripts/verify/verify-inventory-reservation-events.test.mjs",
+      "scripts/verify/verify-inventory-quantity-release.mjs",
+      "scripts/verify/verify-inventory-stock-events.mjs",
+      "scripts/verify/verify-inventory-admin-native-error-safety.mjs"
+    ],
+    "prettier_files": [
+      "scripts/verify/verify-inventory-reservation-events.mjs",
+      "scripts/verify/verify-inventory-reservation-events.test.mjs",
+      "scripts/verify/verify-inventory-quantity-release.mjs",
+      "scripts/verify/verify-inventory-stock-events.mjs",
+      "package.json",
+      "crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json",
+      "crates/modules/rustok-inventory/contracts/inventory-fba-registry.json",
+      "crates/modules/rustok-inventory/contracts/evidence/inventory-contract-test-static-matrix.json"
+    ],
+    "full_remediation_gate_exit_code": 1,
+    "full_remediation_gate_blocker": "architecture_dependency_guard.py could not execute cargo metadata: FileNotFoundError: cargo; --skip-cargo skips clippy only, not architecture metadata",
+    "supplemental_task_delta_invariants": "canonical check_diff_invariants on saved-before/current source delta passed; not a full architecture gate",
+    "native_guard_reconciliation": "migrated quantity context signatures and pre-existing five Inventory-write/two Product-read mapper/current query DTO markers; whitespace normalization preserves static error-type prose checks",
+    "digest_workflow_guard_is_not_schema_digest_equality": true,
+    "regression_companion_executed_or_imported": false,
+    "compiler_type_or_sql_evidence": false,
+    "core_capacity_bounds": "typed startup rejects unsupported concurrency/queue bounds before registration/spawn; existing six unrun Core definitions also cover invalid configuration and registry reuse"
+  }
+}

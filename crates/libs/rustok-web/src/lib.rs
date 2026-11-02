@@ -53,10 +53,27 @@ impl CspNonce {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Canonical public HTTP error body. Retry advice is independent of HTTP status and outcome.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub struct ErrorBody {
     pub code: String,
     pub message: String,
+    /// Exact owner advice, when supplied. Absence means unknown, not true or false.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_retryable"
+    )]
+    #[schema(nullable = false)]
+    pub retryable: Option<bool>,
+}
+
+// Missing is accepted via serde(default); a present null or non-boolean is not an owner decision.
+fn deserialize_retryable<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bool::deserialize(deserializer).map(Some)
 }
 
 impl ErrorBody {
@@ -64,6 +81,7 @@ impl ErrorBody {
         Self {
             code: code.into(),
             message: message.into(),
+            retryable: None,
         }
     }
 }
@@ -74,6 +92,8 @@ pub struct HttpError {
     pub status: StatusCode,
     pub code: String,
     pub message: String,
+    /// Exact owner retry advice, if known. This does not certify a durable write outcome.
+    pub retryable: Option<bool>,
 }
 
 impl HttpError {
@@ -82,7 +102,16 @@ impl HttpError {
             status,
             code: code.into(),
             message: message.into(),
+            retryable: None,
         }
+    }
+
+    /// Attach an owner's decision without deriving it from status, code, or message.
+    ///
+    /// This is advice, not permission to replay a mutation or replace its idempotency key.
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        self.retryable = Some(retryable);
+        self
     }
 
     pub fn bad_request(code: impl Into<String>, message: impl Into<String>) -> Self {
@@ -106,7 +135,11 @@ impl HttpError {
     }
 
     pub fn body(&self) -> ErrorBody {
-        ErrorBody::new(self.code.clone(), self.message.clone())
+        ErrorBody {
+            code: self.code.clone(),
+            message: self.message.clone(),
+            retryable: self.retryable,
+        }
     }
 }
 
@@ -178,8 +211,9 @@ fn if_none_match_matches(value: &str, etag: &str) -> bool {
 
 /// Preserve the typed semantics of a module port failure at an HTTP boundary.
 ///
-/// Retryable infrastructure failures intentionally receive stable public messages instead of
-/// exposing storage or connector details carried by the internal port error.
+/// Infrastructure failures intentionally receive stable public messages instead of exposing
+/// storage or connector details. The exact owner retry decision is forwarded independently of
+/// kind-to-status mapping and never establishes a committed or rejected write outcome.
 pub fn port_error_to_http_error(error: PortError) -> HttpError {
     let status = match error.kind {
         PortErrorKind::Validation => StatusCode::BAD_REQUEST,
@@ -204,7 +238,7 @@ pub fn port_error_to_http_error(error: PortError) -> HttpError {
         | PortErrorKind::Forbidden => error.message,
     };
 
-    HttpError::new(status, error.code, message)
+    HttpError::new(status, error.code, message).with_retryable(error.retryable)
 }
 
 pub fn json_response<T>(value: T) -> axum::response::Response
@@ -224,12 +258,14 @@ pub use browser_assets::{
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserAssetRegistry, CspNonce, IMMUTABLE_ASSET_CACHE_CONTROL, MISSING_ASSET_CACHE_CONTROL,
-        ReleaseQualifiedAsset, embedded_asset_response, port_error_to_http_error,
+        BrowserAssetRegistry, CspNonce, ErrorBody, HttpError, IMMUTABLE_ASSET_CACHE_CONTROL,
+        MISSING_ASSET_CACHE_CONTROL, ReleaseQualifiedAsset, embedded_asset_response,
+        port_error_to_http_error,
     };
     use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
     use chrono::{Duration, Utc};
-    use rustok_api::PortError;
+    use rustok_api::{PortError, PortErrorKind};
+    use serde_json::json;
 
     #[test]
     fn generated_csp_nonce_is_attribute_and_header_safe() {
@@ -266,6 +302,135 @@ mod tests {
             unavailable.message,
             "The requested service is temporarily unavailable"
         );
+    }
+
+    #[test]
+    fn unknown_retry_advice_is_absent_and_never_derived_from_status() {
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::CONFLICT,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::GATEWAY_TIMEOUT,
+        ] {
+            let error = HttpError::new(status, "owner.failure", "Public refusal");
+            assert_eq!(error.retryable, None);
+            assert_eq!(error.body().retryable, None);
+            let wire = serde_json::to_value(error.body()).unwrap();
+            assert_eq!(
+                wire,
+                json!({ "code": "owner.failure", "message": "Public refusal" })
+            );
+            let decoded: ErrorBody = serde_json::from_value(wire).unwrap();
+            assert_eq!(decoded.retryable, None);
+        }
+    }
+
+    #[test]
+    fn explicit_true_and_false_survive_body_and_json_round_trip() {
+        for retryable in [false, true] {
+            for status in [StatusCode::CONFLICT, StatusCode::SERVICE_UNAVAILABLE] {
+                let error = HttpError::new(status, "owner.failure", "Public refusal")
+                    .with_retryable(retryable);
+                assert_eq!(error.retryable, Some(retryable));
+                let wire = serde_json::to_value(error.body()).unwrap();
+                assert_eq!(wire["retryable"], json!(retryable));
+                let decoded: ErrorBody = serde_json::from_value(wire).unwrap();
+                assert_eq!(decoded.retryable, Some(retryable));
+                assert_eq!(decoded.code, "owner.failure");
+                assert_eq!(decoded.message, "Public refusal");
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_present_retry_advice_is_not_an_absent_or_coerced_decision() {
+        for value in [
+            json!(null),
+            json!("false"),
+            json!("true"),
+            json!(0),
+            json!(1),
+            json!([]),
+            json!({}),
+        ] {
+            let wire =
+                json!({ "code": "owner.failure", "message": "Public refusal", "retryable": value });
+            assert!(serde_json::from_value::<ErrorBody>(wire).is_err());
+        }
+        let body = ErrorBody::new("owner.failure", "Public refusal");
+        assert_eq!(body.retryable, None);
+    }
+
+    #[test]
+    fn every_port_error_kind_preserves_both_owner_bits_and_existing_public_policy() {
+        let cases = [
+            (
+                PortErrorKind::Validation,
+                StatusCode::BAD_REQUEST,
+                "Safe domain refusal",
+            ),
+            (
+                PortErrorKind::NotFound,
+                StatusCode::NOT_FOUND,
+                "Safe domain refusal",
+            ),
+            (
+                PortErrorKind::Conflict,
+                StatusCode::CONFLICT,
+                "Safe domain refusal",
+            ),
+            (
+                PortErrorKind::Forbidden,
+                StatusCode::FORBIDDEN,
+                "Safe domain refusal",
+            ),
+            (
+                PortErrorKind::Unavailable,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "The requested service is temporarily unavailable",
+            ),
+            (
+                PortErrorKind::Timeout,
+                StatusCode::GATEWAY_TIMEOUT,
+                "The requested service timed out",
+            ),
+            (
+                PortErrorKind::InvariantViolation,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "The requested operation could not be completed",
+            ),
+        ];
+        for (kind, status, message) in cases {
+            for retryable in [false, true] {
+                let error = port_error_to_http_error(PortError::new(
+                    kind.clone(),
+                    "owner.failure",
+                    "Safe domain refusal",
+                    retryable,
+                ));
+                assert_eq!(error.status, status);
+                assert_eq!(error.code, "owner.failure");
+                assert_eq!(error.message, message);
+                assert_eq!(error.retryable, Some(retryable));
+                assert_eq!(error.body().retryable, Some(retryable));
+                assert_eq!(
+                    serde_json::to_value(error.body()).unwrap()["retryable"],
+                    json!(retryable)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn error_schema_declares_optional_non_nullable_boolean_retry_advice() {
+        let schema = serde_json::to_value(<ErrorBody as utoipa::PartialSchema>::schema()).unwrap();
+        assert_eq!(schema["properties"]["retryable"]["type"], "boolean");
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&json!("code")));
+        assert!(required.contains(&json!("message")));
+        assert!(!required.contains(&json!("retryable")));
     }
 
     #[test]

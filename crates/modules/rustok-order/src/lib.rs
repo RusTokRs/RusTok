@@ -30,6 +30,7 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod module;
+mod order_line_inventory;
 mod order_read;
 pub mod ports;
 mod post_order_command;
@@ -86,8 +87,10 @@ pub use error::{OrderError, OrderResult};
 pub use module::OrderModule;
 pub use order_read::{
     InProcessOrderReadPort, ListOrderChangeProjectionsRequest, ListOrderProjectionsRequest,
-    ListOrderReturnProjectionsRequest, OrderChangeProjectionPage, OrderProjectionPage,
-    OrderReadPort, OrderReturnProjectionPage, ReadOrderChangeProjectionRequest,
+    ListOrderReturnProjectionsRequest, MAX_ORDER_LINE_INVENTORY_BINDINGS,
+    OrderChangeProjectionPage, OrderLineInventoryBinding, OrderLineInventoryBindingsSnapshot,
+    OrderProjectionPage, OrderReadPort, OrderReturnProjectionPage,
+    ReadOrderChangeProjectionRequest, ReadOrderLineInventoryBindingsRequest,
     ReadOrderProjectionRequest, ReadOrderReturnProjectionRequest, in_process_order_read_port,
 };
 pub use ports::{

@@ -47,6 +47,22 @@ impl ProductCatalogSchemaService {
         input.validate()?;
         let attribute_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        super::policy::lock_schema_for_policy_write(&txn, tenant_id).await?;
+        super::attribute_validation::validate_rule_option_references_in(
+            &txn,
+            tenant_id,
+            attribute_id,
+            &input.validation,
+        )
+        .await?;
+        super::attribute_validation::validate_new_select_default_hint_in(
+            &txn,
+            tenant_id,
+            attribute_id,
+            input.value_type,
+            input.default_value.as_ref(),
+        )
+        .await?;
 
         txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
@@ -132,6 +148,7 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<ProductAttributeOptionRecord> {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        super::policy::lock_schema_for_policy_write(&txn, tenant_id).await?;
         let attribute =
             load_attribute_write_definition(&txn, tenant_id, input.attribute_id).await?;
         let value_type = AttributeValueType::from_storage(&attribute.value_type)
@@ -237,6 +254,7 @@ impl ProductCatalogSchemaService {
                 a.id,
                 a.code,
                 a.value_type,
+                a.scope,
                 a.is_localized,
                 a.is_filterable,
                 a.is_searchable,

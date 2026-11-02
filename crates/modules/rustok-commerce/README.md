@@ -4,6 +4,50 @@
 
 `rustok-commerce` is the `Ecommerce` umbrella/root module for RusToK's commerce family.
 
+## Known Limitations / Pending Implementation
+
+- The [Product/Inventory catalog deletion prerequisite](docs/implementation-plan.md#inventory-catalog-deletion-source-evidence)
+  now preserves all referenced Inventory history and refuses individual nonzero counters through
+  the existing native Product transaction. Finite HTTP/GraphQL policy and exact-effect rollback
+  sources are synchronized; 31 Rust/10 Node definitions are uncompiled/unrun and I026 is
+  unexecuted. This is not a general retirement workflow, a Leptos native CRUD cutover, an
+  Inventory Index source/tombstone or Product step-8 certification.
+
+- Inventory's anonymous quantity prerequisite now preserves exact original locations, excludes
+  keyed allocations and refuses Cart/Order/line selectors instead of discarding them. Commerce's
+  selected checkout still uses the durable identity port; do not route it through quantity recovery.
+  The prerequisite's 27 Rust/10 Node definitions remain unrun. Reservation quantity-free facts,
+  current context, acknowledged typed delivery and Search refetch are now separately source-wired
+  by their owners; an additional 34 Rust/10 Node definitions are uncompiled/unrun. Canonical
+  digest admission, actual SQL/relay/Iggy/restart/Search evidence, generic Index and step 8 remain
+  open. Commerce/host is not a substitute publisher. See the
+  [owner API](../rustok-inventory/CRATE_API.md#reservation-invalidation-facts-2026-11-01-source-only).
+
+Return-restock identity now uses the selected price-free Order binding batch and Inventory's
+existing native ledger, with source-only whole-batch/response/replay guards. Tests, Rust/SQL,
+mounted/remote execution and historical shipment/cancel movement proof are still unverified.
+Shipment/cancel/reopen now has a separate bounded source implementation: selected saved Order
+bindings, tenant/Variant/original-allocation proof and an additive Inventory-owned native movement
+proof. Missing historical provenance refuses; it is never reconstructed from cancelled status or
+zero/deleted reservations. Compilation, regressions, SQL/carriers and mounted/remote execution
+remain unverified. No full return lifecycle/outbox/Index or Product step-8 completion is claimed.
+See the [shipment source handoff](docs/implementation-plan.md#shipment-stock-provenance-source-evidence).
+
+Inventory adoption's new physical metadata projection, whole-batch rollback/contention and
+same-identity recovery are source-only, uncompiled and unexecuted. No mounted/remote parity or
+complete shipment/cancellation/return/outbox/Index convergence is certified. A metadata-capacity
+refusal requires explicit reconciliation without discarding saved payloads; it is not a transient
+retry policy. See the current continuation below; Product step 8 remains open.
+
+## Current bounded checkout continuation
+
+[Inventory-owned reservation adoption](docs/implementation-plan.md#inventory-owned-reservation-adoption-2026-10-31)
+replaces direct Commerce mutations of Inventory owner rows with the already-selected identity
+capability. It preserves Cart-/Order-line UUID lineage, allocation and exact replay, with separate
+journal/checkpoint recovery. Unverified nonretryable outcomes park for reconciliation rather than
+automatic compensation. Outer staged storefront DTOs are unchanged. This is uncompiled source with
+unrun regressions, not SQL/runtime certification or completion of Product step 8.
+
 ## Responsibilities
 
 - Provide `CommerceModule` metadata for the runtime registry.
@@ -105,16 +149,36 @@ profile to digital lines. See
   `FulfillmentAdminCommandPort`); manual order `ship`/`deliver` are refused while live fulfillments
   contradict them. See `DECISIONS/2026-10-21-order-shipment-status-projection.md`.
 
+The targeted shipment source recheck also closes key/payload shortcuts, mutable-provider replay,
+late-outcome preservation, nullable pending reopening and elapsed native budget gaps. The
+[current handoff](docs/implementation-plan.md#targeted-shipment-correction-2026-11-01-not-an-audit)
+records 58 focused Rust and 30 Node definitions, all uncompiled/unrun; it does not certify runtime.
+
 ### Known Limitations / Pending Implementation
 
-- This code was written without a Rust toolchain: it has not been compiled, formatted or tested.
+- Product step-8 source adds aggregate UUID-based checkout preflight, exact quote/context and
+  fulfillment checks, Inventory-owned scoped Cart add admission (not Product global counts),
+  saved Channel resolution and scoped new identity allocation. See the
+  [downstream plan](docs/implementation-plan.md#product-downstream-continuation-2026-10-30).
+  This does not close step 8: remote Product identity for Pricing, Cart quantity/tier runtime certification,
+  complete Order/Fulfillment/stock/event/outbox effects and selected mounted execution remain
+  to verify. Direct `CheckoutService` is availability-only, not staged reservation durability.
+
+- This code was written without a Rust toolchain: it has not been compiled, checked by native
+  rustfmt or tested. Selected Scalar syntax/format checks and source guards are not Rust/runtime evidence.
   Run `cargo test -p rustok-commerce` (crate-scoped) before relying on it.
 - Cancellation has no durable journal; it is a stateless re-runnable saga. The cancellation refund
   is created `pending` and is completed by the provider or operator.
 - `complete_return` restocks only on operator decision (`metadata.restock = "all"` or
   `[{return_item_id, quantity}]`) and only through `ReturnCompletionOrchestrationService`; return
   completion paths that bypass it never touch stock. Restock goes to the item and location of the
-  order line's reservation; lines without a reservation are skipped.
+  saved tenant/Variant allocation. Missing or ambiguous tracked reservations refuse; only an
+  explicit SKU-less Order binding skips stock. The complete plan is owner-correlated before
+  resolution effects and must survive completion unchanged; exact ledger replay compares saved
+  identities and quantity. Fresh archived-location writes require explicit reconciliation,
+  not a retryable storage loop; exact archived receipt replay remains read-only. Receiving
+  locations lock before levels. No automatic reactivation/relocation or operator reactivation
+  workflow is delivered. See the [source handoff](docs/implementation-plan.md#return-restock-identity-source-evidence).
 - Return records can still be created on unpaid orders (a refund needs a captured collection).
 - Shipment projection skips fulfillment changes made outside the admin command port (provider
   reconciliation) and never moves an order status backwards on reopen/reship.
@@ -143,14 +207,105 @@ profile to digital lines. See
 
 See also `docs/README.md`.
 
-
 ## Storefront Product HTTP policy (2026-10-19)
 
 Mounted Product list/detail share a static presentation policy. **Forbidden now returns
 403 and Conflict 409 instead of the prior generic 500**; missing/invisible Product
 remains 404. Mapper diagnostics are bounded and owner-call correlations are opaque.
+
 ## Docs
 
 - [CRATE_API](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 
+### Cart quantity adoption source continuation
+
+The shared Commerce workflow now performs quoted quantity changes for REST, GraphQL and native
+with selected Product/Pricing and explicit Inventory ports. Stock demand replaces the target
+quantity and includes siblings; price tiers remain per-line. Cart owns locked material-input
+adoption and target-only removal. The unquoted buyer quantity write is retired. This is not a
+monotonic Cart revision, stock/price reservation or durable receipt. The 2026-10-31 source
+continuation below closes Cart-local context/pricing atomicity, not cross-owner execution.
+Cart mutation outbox/receipt effects and downstream convergence remain pending; source regressions and runtime limitations are tracked in the [handoff](docs/implementation-plan.md#cart-quantity-adoption-2026-10-30).
+
+### Atomic Cart context source continuation (2026-10-31)
+
+A shared selected-Pricing preparer now produces complete target-context prices before the single
+Cart-owned context command. REST/GraphQL/native shipping and native payment preparation consume
+it; parent identity and per-line tiers survive deduplicated/chunked batches under one wait budget.
+Explicit country/null and shipping clear semantics no longer fall back to the first regional
+country or old selections. Checkout recovery preserves frozen context/prices and does not invoke
+the context writer. Public buyer/cart DTO shapes remain unchanged.
+
+Tests are not run; SQL/concurrency, mounted/native/browser/remote profiles and downstream/outbox
+convergence remain open. See the [owner contract](../rustok-cart/CRATE_API.md#atomic-context-and-pricing-adoption-2026-10-31-source-continuation)
+and [source handoff](docs/implementation-plan.md#atomic-cart-context-adoption-2026-10-31).
+
+## Native physical stock outbox continuation
+
+The [Inventory-owned invalidation contract](../rustok-inventory/CRATE_API.md#native-stock-outbox-2026-11-01-source-only)
+now couples native stock changes with the canonical outbox. C still composes owners rather
+than publishing substitute stock events. Preparation/exact replay/no movement emit none;
+physical shipment with equal available counters still invalidates. The
+[source handoff](docs/implementation-plan.md#native-stock-outbox-continuation-source-evidence)
+adds 16 Rust/10 Node cases, all unrun. There is no new schema/capability, distributed atomicity,
+relay/Index certification or Product step-8 completion.
+
+## Canonical quantity writer prerequisite (2026-11-01; source only)
+
+Native set/adjust and Product's real quantity-update hook now delegate to one Inventory-owned
+bounded plan: current tenant/actor/SKU, saved positive identities, complete 4096 levels, original
+location/current binding proof, checked signed arithmetic and exact effects. Quantity is global
+available stock; only the existing active owner-default level's stocked counter changes.
+Reservations/incoming/history/metadata/other locations are preserved. Missing state refuses;
+no-op stock plans are read-only. Existing v1 stock notifications are preflighted and canonically
+published on the same transaction; no negative snapshot is clamped or wire-broadened.
+
+See the [source packet](../rustok-inventory/contracts/evidence/quantity-writes-source.json) and [owner contract](../rustok-inventory/CRATE_API.md#canonical-quantity-writes-2026-11-01-source-continuation).
+
+### Known Limitations / Pending Implementation
+
+33 Rust/10 Node focused definitions remain uncompiled/unrun; direct source checks are not SQL,
+concurrency, client or runtime evidence. Native stock commands remain non-idempotent and current
+Inventory client redaction is unchanged. No baseline, revision/tombstone, generic Index, full
+Next/Leptos recovery parity or Product step-8 readiness is claimed.
+
+## Inventory source-history continuation (2026-11-01; source only)
+
+Native Product fresh bootstrap, quantity and exact guarded deletion now participate in the
+[Inventory-owned baseline/revision journal](../rustok-inventory/CRATE_API.md#inventory-source-history-2026-11-01-source-continuation).
+The bootstrap helper requires the actual caller transaction. A building baseline rejects actual
+stock/identity effects, while stock no-op remains read-only; new source provenance failures use
+conservative nonterminal storage/infrastructure envelopes, not terminal Product validation.
+Existing Product receipt/rollback/publication stays authoritative; no Product revision substitutes
+for an Inventory version and no Inventory-triggered Product refresh is added.
+
+### Known Limitations / Pending Implementation
+
+18 Rust/8 Node new source-history definitions are uncompiled/unrun. Baseline activation is an
+explicit creator-actor-bound native Inventory API, with no operator HTTP/GraphQL/Next/Leptos
+cutover, automatic reset or actor reconstruction. Versioned canonical publication/relay and
+the selected consumer source continuation below supersedes the missing source/event/worker
+code boundary; recovery/runtime gates remain open. No step-8 readiness is promoted.
+
+## Selected Inventory Index consumer (2026-11-02; source only)
+
+The [selected Distribution bridge](../rustok-distribution/docs/inventory-index.md) now authors
+`inventory-stock-primary` / `rustok-inventory/stock`, real sealed Changed/activation listeners,
+current authenticated native reads, durable generic persistence before Changed success and
+original-baseline-UUID replay enqueue before activation success. The canonical Index runtime
+registers bounded generic ModuleWork replay with exact job/checkpoint fences; no event actor,
+baseline creator, receipt, journal or saved claim grants source authority. Old redelivery keeps
+the currently loaded owner's immutable mutation UUID. Product/other remote consumers remain.
+[Current source evidence](../rustok-inventory/contracts/evidence/source-index-consumer-source.json)
+supersedes only the missing-consumer-code boundary of preceding source handoffs.
+
+### Known Limitations / Pending Implementation
+
+The runner still parks page failures terminally. Automatic failed-job backoff and authorized
+original-job recovery remain unwired; crash/lease expiry and successful bounded yield resume
+without UUID/checkpoint replacement. Lease attempts are not failure-only counters. Real credential/
+policy/secret rotation, schema/digest/backend/concurrency/broker/restart/deployment evidence and
+full native/HTTP/GraphQL/Next/Leptos operator recovery remain pending. No historical delivery is
+fabricated; no live baseline/cutover before preflight/recovery. Tests/build/SQL/migrations/runtime
+were not executed. Source/worker presence or initial enqueue is not Index or Product step-8 readiness.

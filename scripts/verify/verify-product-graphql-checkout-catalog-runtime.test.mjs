@@ -38,7 +38,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
-    `pub async fn complete_storefront_checkout_input() { ${wrapperScope} complete_storefront_checkout_input_with_product_port; ${wrapperCatalog} }`,
+    `pub async fn complete_storefront_checkout_input() { ${wrapperScope} complete_storefront_checkout_input_with_product_runtime; ${wrapperCatalog} }`,
   );
   write(
     root,

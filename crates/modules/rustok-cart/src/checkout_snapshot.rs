@@ -143,6 +143,14 @@ fn cart_checkout_service_error_facts(error: &CartError) -> CartCheckoutServiceEr
             uuid_non_nil_count: 0,
             opaque_payload_present: false,
         },
+        CartError::PricingContextChanged => CartCheckoutServiceErrorFacts {
+            error_variant: "pricing_context_changed",
+            text_field_count: 0,
+            text_total_length: 0,
+            uuid_field_count: 0,
+            uuid_non_nil_count: 0,
+            opaque_payload_present: false,
+        },
         CartError::Database(_) => CartCheckoutServiceErrorFacts {
             error_variant: "database",
             text_field_count: 0,
@@ -506,67 +514,17 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
             )
         })?;
 
+        // Active-only preparation owns context, totals and lifecycle in one transaction.
+        // Existing checking-out/completed state is read/recovered, never prepared again.
         let cart = self
             .service
-            .get_cart(tenant_id, request.cart_id)
+            .prepare_checkout(tenant_id, request)
             .await
             .map_err(|error| {
                 map_cart_checkout_service_error(
                     &context,
                     PREPARE_CHECKOUT_OPERATION,
-                    "get_cart",
-                    error,
-                )
-            })?;
-        let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
-            map_cart_checkout_local_port_error(
-                &context,
-                PREPARE_CHECKOUT_OPERATION,
-                "parse_cart_status",
-                PortError::validation(
-                    "cart.invalid_status",
-                    format!("invalid cart status `{}`", cart.status),
-                ),
-            )
-        })?;
-        match status {
-            CartStatus::Active => {
-                let _ = self
-                    .service
-                    .begin_checkout(tenant_id, request.cart_id)
-                    .await
-                    .map_err(|error| {
-                        map_cart_checkout_service_error(
-                            &context,
-                            PREPARE_CHECKOUT_OPERATION,
-                            "begin_checkout",
-                            error,
-                        )
-                    })?;
-            }
-            CartStatus::CheckingOut => {}
-            status => {
-                return Err(map_cart_checkout_local_port_error(
-                    &context,
-                    PREPARE_CHECKOUT_OPERATION,
-                    "require_checkout_status",
-                    PortError::conflict(
-                        "cart.checkout_status_conflict",
-                        format!("cart cannot enter checkout from `{}`", status.as_str()),
-                    ),
-                ));
-            }
-        }
-
-        let cart = self
-            .service
-            .update_context(tenant_id, request.cart_id, request.input)
-            .await
-            .map_err(|error| {
-                map_cart_checkout_service_error(
-                    &context,
-                    PREPARE_CHECKOUT_OPERATION,
-                    "update_context",
+                    "prepare_checkout",
                     error,
                 )
             })?;
@@ -737,6 +695,7 @@ fn map_cart_checkout_service_error(
         CartError::CartNotFound(_) => ("cart.not_found", false, false),
         CartError::CartLineItemNotFound(_) => ("cart.line_item_not_found", false, false),
         CartError::InvalidTransition { .. } => ("cart.checkout_status_conflict", false, false),
+        CartError::PricingContextChanged => ("cart.pricing_context_changed", false, false),
         CartError::Database(_) => ("cart.database_unavailable", true, true),
         CartError::TaxBoundary {
             kind,
@@ -1055,6 +1014,10 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         CartError::InvalidTransition { .. } => PortError::conflict(
             "cart.checkout_status_conflict",
             "cart status transition conflicts with checkout lifecycle",
+        ),
+        CartError::PricingContextChanged => PortError::conflict(
+            "cart.pricing_context_changed",
+            "Cart pricing context changed; refresh the cart and quote",
         ),
         CartError::Database(_) => {
             tracing::error!(

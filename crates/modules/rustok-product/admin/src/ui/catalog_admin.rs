@@ -18,6 +18,7 @@ use crate::catalog_transport;
 /// `verify-product-catalog-controls-plan-sync` and
 /// `verify-product-catalog-attribute-filters`; the same contract is exercised by
 /// the mounted pages through `crate::catalog_controls` and `ui::product_grid`.
+/// Its selected Product delegates to the keyed routed editor, including recovery without GET.
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();

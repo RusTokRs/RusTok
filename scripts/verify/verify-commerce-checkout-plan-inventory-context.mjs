@@ -9,7 +9,17 @@ const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
 const source = readFileSync(
-  new URL('crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs', root),
+  new URL(
+    'crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs',
+    root,
+  ),
+  'utf8',
+);
+const catalog = readFileSync(
+  new URL(
+    'crates/modules/rustok-commerce/src/services/checkout_catalog.rs',
+    root,
+  ),
   'utf8',
 );
 const failures = [];
@@ -73,12 +83,16 @@ for (const [value, label] of [
     'const CHECKOUT_PLAN_INVENTORY_BOUNDARY: &str = "commerce_checkout_plan_inventory";',
     'stable inventory boundary identity',
   ],
-  ['const INVENTORY_OWNER: &str = "rustok_inventory";', 'truthful inventory owner'],
+  [
+    'const INVENTORY_OWNER: &str = "rustok_inventory";',
+    'truthful inventory owner',
+  ],
   [
     'const INVENTORY_AVAILABILITY_OPERATION: &str = "check_availability";',
     'exact inventory owner operation',
   ],
-]) requireText(source, value, label);
+])
+  requireText(source, value, label);
 
 for (const [value, label] of [
   ['let inventory_context =', 'retained inventory context'],
@@ -91,46 +105,95 @@ for (const [value, label] of [
   ['.check_availability(', 'inventory owner call'],
   ['InventoryAvailabilityRequest {', 'inventory request'],
   ['variant_id,', 'variant identity'],
-  ['requested_quantity: line_item.quantity', 'requested quantity'],
+  ['requested_quantity: demand.quantity', 'combined SKU quantity'],
   ['channel_slug: public_channel_slug.clone()', 'normalized channel request'],
   [
     'checkout_plan_inventory_boundary_error(&inventory_context, error)',
     'context-aware inventory mapper',
   ],
-  ['"Variant {variant_id} does not have enough available inventory for the cart channel"', 'insufficient inventory validation'],
-  ['read_checkout_product_projection', 'product projection behavior remains mounted'],
-  ['ProductStatus::Active', 'product active validation'],
-  ['current_shipping_profile_slug != line_item.shipping_profile_slug', 'shipping profile snapshot validation'],
-]) requireText(inventoryBlock, value, label);
+  [
+    '"Variant {variant_id} does not have enough available inventory for the cart channel"',
+    'insufficient inventory validation',
+  ],
+  [
+    'checkout_plan_product_projection_boundary_error(',
+    'retained Product projection boundary',
+  ],
+  [
+    'super::checkout_catalog::validate_variant_line(',
+    'shared exact SKU/fulfillment admission',
+  ],
+  [
+    'super::checkout_catalog::validate_inventory_observation(',
+    'availability correlation',
+  ],
+])
+  requireText(inventoryBlock, value, label);
 
-const contextBindings = inventoryBlock.match(/let inventory_context\s*=/g) ?? [];
-const contextClones = inventoryBlock.match(/inventory_context\.clone\(\)/g) ?? [];
+for (const [value, label] of [
+  ['checked_add(line.quantity)', 'checked aggregate SKU demand'],
+  ['ProductStatus::Active', 'Product active validation'],
+  [
+    'line.shipping_profile_slug.as_deref() != Some(current.as_str())',
+    'effective profile snapshot validation',
+  ],
+])
+  requireText(catalog, value, label);
+
+const contextBindings =
+  inventoryBlock.match(/let inventory_context\s*=/g) ?? [];
+const contextClones =
+  inventoryBlock.match(/inventory_context\.clone\(\)/g) ?? [];
 const mapperInputs = inventoryBlock.match(/&inventory_context/g) ?? [];
-if (contextBindings.length !== 1 || contextClones.length !== 1 || mapperInputs.length !== 1) {
+if (
+  contextBindings.length !== 1 ||
+  contextClones.length !== 1 ||
+  mapperInputs.length !== 2
+) {
   failures.push(
-    `expected one retained inventory context, one clone, and one mapper input, found ${contextBindings.length}/${contextClones.length}/${mapperInputs.length}`,
+    `expected one retained inventory context, one clone, and two mapper inputs (owner failure and observation correlation), found ${contextBindings.length}/${contextClones.length}/${mapperInputs.length}`,
   );
 }
 
 for (const [value, label] of [
-  ['port_context(tenant_id, actor_id, cart, channel_slug, "inventory")', 'inventory correlation boundary selection'],
-]) requireText(inventoryContextBlock, value, label);
+  [
+    'port_context(tenant_id, actor_id, cart, channel_slug, "inventory")',
+    'inventory correlation boundary selection',
+  ],
+])
+  requireText(inventoryContextBlock, value, label);
 
 for (const [value, label] of [
   ['normalize_locale_tag', 'locale normalization'],
   ['PLATFORM_FALLBACK_LOCALE.to_string()', 'fallback locale'],
-  ['PortActor::user(actor_id.to_string())', 'checkout actor'],
+  [
+    'super::checkout_catalog::checkout_actor(actor_id)',
+    'guest-aware checkout delegation',
+  ],
   ['format!("checkout:{}:{boundary}", cart.id)', 'cart correlation identity'],
   ['.with_deadline(Duration::from_secs(2))', 'owner deadline'],
-  ['Some(channel_slug) => context.with_channel(channel_slug)', 'normalized channel context'],
-]) requireText(portContextBlock, value, label);
+  [
+    'Some(channel_slug) => context.with_channel(channel_slug)',
+    'normalized channel context',
+  ],
+])
+  requireText(portContextBlock, value, label);
 
 for (const [value, label] of [
   ['context: &PortContext', 'retained context input'],
   ['error: PortError', 'original port error input'],
-  ['log_checkout_plan_inventory_boundary_failure(context, &error);', 'diagnostics before mapping'],
-  ['boundary_error("check_inventory_availability", error)', 'unchanged public stage mapping'],
-  ['fn log_checkout_plan_inventory_boundary_failure(', 'structured diagnostic helper'],
+  [
+    'log_checkout_plan_inventory_boundary_failure(context, &error);',
+    'diagnostics before mapping',
+  ],
+  [
+    'boundary_error("check_inventory_availability", error)',
+    'unchanged public stage mapping',
+  ],
+  [
+    'fn log_checkout_plan_inventory_boundary_failure(',
+    'structured diagnostic helper',
+  ],
   ['error = ?error', 'original port error'],
   ['owner = INVENTORY_OWNER', 'truthful owner field'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
@@ -142,7 +205,10 @@ for (const [value, label] of [
   ['traceparent = ?context.traceparent', 'trace context'],
   ['idempotency_key = ?context.idempotency_key', 'idempotency context'],
   ['deadline_ms = ?context.deadline_ms', 'deadline context'],
-  ['operation = INVENTORY_AVAILABILITY_OPERATION', 'exact owner operation field'],
+  [
+    'operation = INVENTORY_AVAILABILITY_OPERATION',
+    'exact owner operation field',
+  ],
   ['stage = "check_inventory_availability"', 'commerce stage field'],
   ['code = %error.code', 'port code'],
   ['internal_message = %error.message', 'public-safe port message'],
@@ -157,7 +223,8 @@ for (const [value, label] of [
   ['tracing::warn!(', 'ordinary rejection severity'],
   ['"checkout plan inventory owner boundary failed"', 'technical event'],
   ['"checkout plan inventory owner boundary was rejected"', 'rejection event'],
-]) requireText(inventoryMapper, value, label);
+])
+  requireText(inventoryMapper, value, label);
 
 const diagnosticsIndex = inventoryMapper.indexOf(
   'log_checkout_plan_inventory_boundary_failure(context, &error);',
@@ -166,7 +233,9 @@ const mappingIndex = inventoryMapper.indexOf(
   'boundary_error("check_inventory_availability", error)',
 );
 if (!(diagnosticsIndex >= 0 && diagnosticsIndex < mappingIndex)) {
-  failures.push('inventory diagnostics must run before public boundary mapping');
+  failures.push(
+    'inventory diagnostics must run before public boundary mapping',
+  );
 }
 
 for (const [value, label] of [
@@ -176,12 +245,17 @@ for (const [value, label] of [
   ['code: error.code', 'stable code'],
   ['message: error.message', 'stable message'],
   ['retryable: error.retryable', 'stable retryability'],
-]) requireText(genericMapper, value, label);
+])
+  requireText(genericMapper, value, label);
 
 for (const [value, label] of [
   ['list_marketplace_line_snapshots(', 'marketplace snapshot remains mounted'],
-  ['boundary_error("read_marketplace_cart_snapshots", error)', 'marketplace mapper remains out of scope'],
-]) requireText(buildBlock, value, label);
+  [
+    'checkout_plan_marketplace_snapshot_boundary_error(',
+    'marketplace retained-context mapper remains mounted',
+  ],
+])
+  requireText(buildBlock, value, label);
 
 for (const [value, label] of [
   [
@@ -192,8 +266,12 @@ for (const [value, label] of [
     '.map_err(|error| boundary_error("check_inventory_availability", error))?',
     'context-dropping inventory mapper',
   ],
-  ['checkout_plan_inventory_boundary_error(error)', 'context-free inventory mapper'],
-]) forbidText(inventoryBlock, value, label);
+  [
+    'checkout_plan_inventory_boundary_error(error)',
+    'context-free inventory mapper',
+  ],
+])
+  forbidText(inventoryBlock, value, label);
 
 if (failures.length > 0) {
   console.error('Checkout plan inventory context verification failed:');

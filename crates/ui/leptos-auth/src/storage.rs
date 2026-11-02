@@ -151,6 +151,29 @@ pub fn get_token() -> Option<String> {
         .map(|session| session.token)
 }
 
+/// Bind a host-resolved public tenant to the existing canonical browser tenant key.
+/// This is request metadata, not authentication: never replace an existing foreign tenant or
+/// manufacture a session. Guest requests and silent refresh must use the page's resolved tenant.
+pub fn bind_request_tenant(tenant: &str) -> Result<(), AuthError> {
+    if tenant.trim().is_empty() || tenant != tenant.trim() || tenant.len() > 255 {
+        return Err(AuthError::Unauthorized);
+    }
+    match get_tenant() {
+        Some(current) if current == tenant => Ok(()),
+        Some(_) => Err(AuthError::Unauthorized),
+        None => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                LocalStorage::set(ADMIN_TENANT_KEY, tenant).map_err(|_| AuthError::Network)
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                Ok(())
+            } // SSR transport uses the validated request; no browser/session override.
+        }
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 pub fn get_tenant() -> Option<String> {
     memory::load_session()
@@ -186,5 +209,24 @@ mod tests {
         };
         assert_eq!(snapshot.session.as_ref().unwrap().tenant, "demo");
         assert_eq!(snapshot.user.as_ref().unwrap().role, "admin");
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn host_tenant_binding_never_replaces_a_foreign_canonical_session() {
+        let owner = leptos::prelude::Owner::new();
+        owner.with(|| {
+            provide_server_auth_snapshot(ServerAuthSnapshot {
+                session: Some(AuthSession {
+                    token: "secret".into(),
+                    expires_at: 42,
+                    tenant: "shop".into(),
+                }),
+                user: None,
+            });
+            assert!(bind_request_tenant("shop").is_ok());
+            assert!(bind_request_tenant("other-shop").is_err());
+            assert_eq!(get_tenant().as_deref(), Some("shop"));
+            assert!(bind_request_tenant(" ").is_err());
+        });
     }
 }

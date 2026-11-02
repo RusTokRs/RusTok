@@ -1,318 +1,55 @@
-use rustok_fulfillment::providers::{
-    FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
-};
-use rustok_fulfillment::{
-    FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
-};
+//! Compatibility composition for the selected Fulfillment-owned local-recovery capability.
+//! The owner, not Commerce, reads the retained journal, preserves its literal key and commits
+//! local progress/native stock plus the provider checkpoint on one transaction.
+use super::fulfillment_orchestration::FulfillmentOrchestrationResult;
+use super::journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
+use crate::dto::FulfillmentResponse;
+use rustok_api::PortContext;
+use rustok_fulfillment::{FulfillmentAdminCommandPort, ShipmentStockPort};
 use sea_orm::DatabaseConnection;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
+use std::sync::Arc;
 use uuid::Uuid;
-
-use crate::dto::{
-    CancelFulfillmentInput, FulfillmentResponse, ReshipFulfillmentInput, ShipFulfillmentInput,
-};
-
-#[cfg(test)]
-use crate::dto::FulfillmentItemQuantityInput;
-
-use super::fulfillment_orchestration::{
-    FulfillmentOrchestrationError, FulfillmentOrchestrationResult,
-};
 
 #[derive(Clone)]
 pub struct FulfillmentReconciliationService {
     db: DatabaseConnection,
+    bridge: JournaledFulfillmentOrchestrationService,
 }
-
 impl FulfillmentReconciliationService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            bridge: JournaledFulfillmentOrchestrationService::new(db.clone()),
+            db,
+        }
     }
-
-    /// Apply only the local owner transition for a provider operation whose
-    /// external result was already persisted in the durable journal.
+    pub fn with_order_read_port(mut self, reads: Arc<dyn rustok_order::OrderReadPort>) -> Self {
+        self.bridge = self.bridge.with_shipment_stock_port(
+            super::shipment_stock::inventory_shipment_stock_port(self.db.clone(), reads),
+        );
+        self
+    }
+    pub fn with_shipment_stock_port(mut self, port: Arc<dyn ShipmentStockPort>) -> Self {
+        self.bridge = self.bridge.with_shipment_stock_port(port);
+        self
+    }
+    pub fn with_fulfillment_admin_command_port(
+        mut self,
+        port: Arc<dyn FulfillmentAdminCommandPort>,
+    ) -> Self {
+        self.bridge = self.bridge.with_fulfillment_admin_command_port(port);
+        self
+    }
+    /// Never call the carrier; unsupported selected recovery fails rather than using native data.
     pub async fn retry_local_persistence(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         operation_id: Uuid,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
-        if tenant_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
-        }
-        if operation_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "operation_id must not be nil".to_string(),
-            ));
-        }
-        tracing::debug!(
-            boundary = "commerce_fulfillment_reconciliation",
-            %tenant_id,
-            %operation_id,
-            "retrying local fulfillment persistence"
-        );
-        let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
-        let operation = journal.get(tenant_id, operation_id).await?;
-        if operation.tenant_id != tenant_id {
-            return Err(FulfillmentOrchestrationError::Validation(format!(
-                "fulfillment provider operation {operation_id} does not belong to tenant {tenant_id}"
-            )));
-        }
-        if !matches!(
-            operation.status.as_str(),
-            PROVIDER_OPERATION_SUCCEEDED
-                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                | PROVIDER_OPERATION_COMMITTED
-        ) {
-            return Err(FulfillmentOrchestrationError::Validation(format!(
-                "fulfillment provider operation {operation_id} is `{}` and has no confirmed provider result to reconcile",
-                operation.status
-            )));
-        }
-
-        let service = super::shipment_stock::fulfillment_service(self.db.clone());
-        let current = service
-            .get_fulfillment(tenant_id, operation.fulfillment_id)
-            .await?;
-        if operation.status == PROVIDER_OPERATION_COMMITTED {
-            return Ok(current);
-        }
-        if metadata_operation_id(&current.metadata) == Some(operation_id) {
-            journal.mark_committed(tenant_id, operation_id).await?;
-            return Ok(current);
-        }
-
-        let request: FulfillmentProviderOperationRequest =
-            serde_json::from_value(operation.request_payload.clone()).map_err(|error| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "fulfillment provider operation {operation_id} contains invalid request_payload: {error}"
-                ))
-            })?;
-        if request.tenant_id != tenant_id
-            || request.fulfillment_id != operation.fulfillment_id
-            || request.idempotency_key.as_deref().map(str::trim)
-                != Some(operation.idempotency_key.as_str())
-        {
-            return Err(FulfillmentOrchestrationError::Validation(format!(
-                "fulfillment provider operation {operation_id} request identity does not match the journal"
-            )));
-        }
-        let provider_result: FulfillmentProviderOperationResult = operation
-            .provider_result
-            .clone()
-            .ok_or_else(|| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "fulfillment provider operation {operation_id} has an unknown external outcome; resolve it before retrying local persistence"
-                ))
-            })
-            .and_then(|value| {
-                serde_json::from_value(value).map_err(|error| {
-                    FulfillmentOrchestrationError::Validation(format!(
-                        "fulfillment provider operation {operation_id} contains invalid provider_result: {error}"
-                    ))
-                })
-            })?;
-
-        let orchestration = request
-            .metadata
-            .get("commerce_orchestration")
-            .and_then(Value::as_object)
-            .ok_or_else(|| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "fulfillment provider operation {operation_id} lacks commerce_orchestration metadata"
-                ))
-            })?;
-
-        let updated = match operation.operation.as_str() {
-            "ship" => {
-                let input =
-                    ShipFulfillmentInput {
-                        carrier: required_string(orchestration, "carrier", operation_id)?,
-                        tracking_number: provider_result.tracking_number.unwrap_or(
-                            required_string(orchestration, "tracking_number", operation_id)?,
-                        ),
-                        items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: request.metadata.clone(),
-                    };
-                service
-                    .ship_fulfillment_with_provider_result(
-                        tenant_id,
-                        operation.fulfillment_id,
-                        input,
-                        provider_result.metadata.clone(),
-                        operation_id,
-                    )
-                    .await?
-            }
-            "reship" => {
-                let input =
-                    ReshipFulfillmentInput {
-                        carrier: required_string(orchestration, "carrier", operation_id)?,
-                        tracking_number: provider_result.tracking_number.unwrap_or(
-                            required_string(orchestration, "tracking_number", operation_id)?,
-                        ),
-                        items: optional_field(orchestration, "items", operation_id)?,
-                        metadata: request.metadata.clone(),
-                    };
-                service
-                    .reship_fulfillment_with_provider_result(
-                        tenant_id,
-                        operation.fulfillment_id,
-                        input,
-                        provider_result.metadata.clone(),
-                        operation_id,
-                    )
-                    .await?
-            }
-            "cancel" => {
-                let input = CancelFulfillmentInput {
-                    reason: optional_field(orchestration, "reason", operation_id)?,
-                    metadata: request.metadata.clone(),
-                };
-                service
-                    .cancel_fulfillment_with_provider_result(
-                        tenant_id,
-                        operation.fulfillment_id,
-                        input,
-                        provider_result.metadata.clone(),
-                        operation_id,
-                    )
-                    .await?
-            }
-            "create_label" => {
-                let provider_result: FulfillmentProviderOperationResult = operation
-                        .provider_result
-                        .clone()
-                        .ok_or_else(|| {
-                            FulfillmentOrchestrationError::Validation(format!(
-                                "fulfillment provider operation {operation_id} has no persisted provider result for local create-label reconciliation"
-                            ))
-                        })
-                        .and_then(|value| {
-                            serde_json::from_value(value).map_err(|error| {
-                                FulfillmentOrchestrationError::Validation(format!(
-                                    "fulfillment provider operation {operation_id} contains invalid provider_result: {error}"
-                                ))
-                            })
-                        })?;
-                return service
-                    .commit_create_label_provider_result(
-                        tenant_id,
-                        operation.fulfillment_id,
-                        operation_id,
-                        &provider_result,
-                    )
-                    .await
-                    .map_err(Into::into);
-            }
-            other => {
-                return Err(FulfillmentOrchestrationError::Validation(format!(
-                    "unsupported fulfillment reconciliation operation `{other}`"
-                )));
-            }
-        };
-
-        let reconciled = journal.get(tenant_id, operation_id).await?;
-        if reconciled.status != PROVIDER_OPERATION_COMMITTED {
-            journal.mark_committed(tenant_id, operation_id).await?;
-        }
-        Ok(updated)
+        self.bridge
+            .retry_local_persistence(context, operation_id)
+            .await
     }
-}
-
-fn required_string(
-    object: &serde_json::Map<String, Value>,
-    field: &str,
-    operation_id: Uuid,
-) -> FulfillmentOrchestrationResult<String> {
-    object
-        .get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| {
-            FulfillmentOrchestrationError::Validation(format!(
-                "fulfillment provider operation {operation_id} lacks `{field}` in commerce_orchestration metadata"
-            ))
-        })
-}
-
-fn optional_field<T: DeserializeOwned>(
-    object: &serde_json::Map<String, Value>,
-    field: &str,
-    operation_id: Uuid,
-) -> FulfillmentOrchestrationResult<Option<T>> {
-    match object.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => serde_json::from_value(value.clone())
-            .map(Some)
-            .map_err(|error| {
-                FulfillmentOrchestrationError::Validation(format!(
-                    "fulfillment provider operation {operation_id} contains invalid `{field}` metadata: {error}"
-                ))
-            }),
-    }
-}
-
-fn metadata_operation_id(metadata: &Value) -> Option<Uuid> {
-    metadata
-        .get("provider_operation")
-        .and_then(|value| value.get("id"))
-        .and_then(Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reads_provider_operation_marker() {
-        let operation_id = Uuid::new_v4();
-        let metadata = serde_json::json!({
-            "provider_operation": { "id": operation_id }
-        });
-        assert_eq!(metadata_operation_id(&metadata), Some(operation_id));
-    }
-
-    #[test]
-    fn optional_items_metadata_round_trips() {
-        let operation_id = Uuid::new_v4();
-        let item = FulfillmentItemQuantityInput {
-            fulfillment_item_id: Uuid::new_v4(),
-            quantity: 2,
-        };
-        let object = serde_json::json!({"items": [item]});
-        let parsed: Option<Vec<FulfillmentItemQuantityInput>> =
-            optional_field(object.as_object().expect("object"), "items", operation_id)
-                .expect("items");
-        assert_eq!(parsed.expect("some items").len(), 1);
-    }
-
-    #[tokio::test]
-    async fn retry_local_persistence_rejects_nil_uuids() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .expect("memory db");
-        let service = FulfillmentReconciliationService::new(db);
-        let err = service
-            .retry_local_persistence(Uuid::nil(), Uuid::new_v4())
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("tenant_id"))
-        );
-
-        let err = service
-            .retry_local_persistence(Uuid::new_v4(), Uuid::nil())
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err, FulfillmentOrchestrationError::Validation(msg) if msg.contains("operation_id"))
-        );
-    }
-}
+mod tests;

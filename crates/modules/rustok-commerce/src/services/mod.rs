@@ -1,5 +1,6 @@
 mod admin_manual_fulfillment_orchestration;
 pub mod checkout;
+pub(crate) mod checkout_catalog;
 #[path = "checkout_compensation_error_safe.rs"]
 mod checkout_compensation;
 mod checkout_compensation_sweep;

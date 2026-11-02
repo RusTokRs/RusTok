@@ -39,7 +39,8 @@ export function rustPublicSymbols(source) {
   let depth = 0;
   for (const raw of productionSource(source).split("\n")) {
     const line = raw.trim();
-    depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+    depth +=
+      (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
 
     if (skipDepth !== null) {
       if (depth < skipDepth) skipDepth = null;
@@ -54,7 +55,9 @@ export function rustPublicSymbols(source) {
         owner = null;
         ownerDepth = null;
       } else {
-        const name = /([A-Za-z0-9_]+)\s*(?:\{)?$/.exec(impl[1].replace(/^<[^>]*>/, "").trim());
+        const name = /([A-Za-z0-9_]+)\s*(?:\{)?$/.exec(
+          impl[1].replace(/^<[^>]*>/, "").trim(),
+        );
         owner = name ? name[1] : null;
         ownerDepth = depth;
       }
@@ -64,13 +67,24 @@ export function rustPublicSymbols(source) {
       ownerDepth = null;
     }
 
-    if (line.startsWith("pub use ") || line.startsWith("pub(crate)") || line.startsWith("impl")) continue;
+    if (
+      line.startsWith("pub use ") ||
+      line.startsWith("pub(crate)") ||
+      line.startsWith("impl")
+    )
+      continue;
 
-    const item = /^pub (fn|const|struct|enum|type|trait|static) ([A-Za-z0-9_]+)/.exec(line);
+    const item =
+      /^pub (fn|const|struct|enum|type|trait|static) ([A-Za-z0-9_]+)/.exec(
+        line,
+      );
     if (item) {
       const isMethod = owner !== null && depth >= ownerDepth;
       if (item[1] === "fn" || item[1] === "const") {
-        symbols.push({ name: isMethod ? `${owner}::${item[2]}` : item[2], kind: "member" });
+        symbols.push({
+          name: isMethod ? `${owner}::${item[2]}` : item[2],
+          kind: "member",
+        });
       } else {
         symbols.push({ name: item[2], kind: "type" });
       }
@@ -90,8 +104,9 @@ export function tsPublicSymbols(source) {
   for (const raw of source.split("\n")) {
     const line = raw.trim();
     const item =
-      /^export (?:declare )?(?:function|const|let) ([A-Za-z0-9_]+)/.exec(line) ||
-      /^export (?:type|interface|enum) ([A-Za-z0-9_]+)/.exec(line);
+      /^export (?:declare )?(?:function|const|let) ([A-Za-z0-9_]+)/.exec(
+        line,
+      ) || /^export (?:type|interface|enum) ([A-Za-z0-9_]+)/.exec(line);
     if (item) symbols.push({ name: item[1], kind: "member" });
   }
   return symbols;
@@ -139,7 +154,10 @@ export function reExportedNames(source, moduleName) {
     for (const raw of target.slice(1, -1).split(",")) {
       const entry = raw.trim();
       if (!entry || entry.startsWith("#")) continue;
-      const name = entry.split(/\s+as\s+/).pop().trim();
+      const name = entry
+        .split(/\s+as\s+/)
+        .pop()
+        .trim();
       if (/^[A-Za-z0-9_]+$/.test(name)) names.add(name);
     }
   }
@@ -153,16 +171,26 @@ export function reExportedNames(source, moduleName) {
  * contains one particular spelling of the re-export". Returns `{ ok, message }` so a caller can report
  * it with its own failure idiom.
  */
-export function requirePortSurface(library, registry, { moduleName = "ports", label = "lib.rs" } = {}) {
-  if (!new RegExp(`pub mod ${moduleName}\\s*;`).test(library)) {
-    return { ok: false, message: `${label} must declare \`pub mod ${moduleName};\`` };
+export function requirePortSurface(
+  library,
+  registry,
+  { moduleName = "ports", label = "lib.rs" } = {},
+) {
+  if (!new RegExp(`pub\\s+mod\\s+${moduleName}\\s*(?:;|\\{)`).test(library)) {
+    return {
+      ok: false,
+      message: `${label} must declare a public \`${moduleName}\` module`,
+    };
   }
   const { glob, names } = reExportedNames(library, moduleName);
   const required = (registry?.ports ?? [])
     .map((port) => port?.name)
     .filter((name) => typeof name === "string" && name.length > 0);
   if (required.length === 0 && !glob && names.length === 0) {
-    return { ok: false, message: `${label} must re-export the owner ports from \`${moduleName}\`` };
+    return {
+      ok: false,
+      message: `${label} must re-export the owner ports from \`${moduleName}\``,
+    };
   }
   const exported = new Set(names);
   const missing = glob ? [] : required.filter((name) => !exported.has(name));

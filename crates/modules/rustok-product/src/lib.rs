@@ -35,10 +35,13 @@ mod shipping_profile;
 mod storefront_http_read_port;
 mod storefront_tag_read_port;
 mod translation_target;
+mod variant_identity_read_port;
 mod variant_translation_progress_target;
 mod variant_translation_target;
 
-pub use catalog_command_port::ProductCatalogCommandPort;
+pub use catalog_command_port::{
+    ProductCatalogCommandPort, product_catalog_command_error_is_terminal,
+};
 pub use catalog_schema_read_port::{
     ProductAttributeValuesRequest, ProductCatalogSchemaReadPort,
     ProductEffectiveFormAttributeProjection, ProductEffectiveFormProjection,
@@ -125,6 +128,11 @@ pub use storefront_tag_read_port::{
     ProductStorefrontTagHydrationRequest, ProductStorefrontTagReadPort,
 };
 pub use translation_target::ProductTranslationTargetProvider;
+pub use variant_identity_read_port::{
+    MAX_VARIANT_IDENTITY_BATCH, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot,
+    validate_product_variant_identity_list_response, validate_variant_identities_response,
+};
 pub use variant_translation_progress_target::ProductVariantTranslationTargetProvider;
 
 pub mod module;

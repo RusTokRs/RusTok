@@ -71,7 +71,7 @@ pub fn spawn_module_event_dispatcher(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
     extensions: Arc<ModuleRuntimeExtensions>,
-) {
+) -> Result<()> {
     tracing::debug!("Spawning module event dispatcher");
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
@@ -89,16 +89,20 @@ pub fn spawn_module_event_dispatcher(
             host_mode = ?ctx.settings().runtime.host_mode,
             "Module event dispatcher disabled for the current runtime profile"
         );
-        return;
+        return Ok(());
     }
     if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
         tracing::debug!("Module event dispatcher already started");
-        return;
+        return Ok(());
     }
 
     let bus = ctx
         .shared_get::<Arc<EventRuntime>>()
-        .expect("EventRuntime must be initialized before module event listeners")
+        .ok_or_else(|| {
+            Error::Message(
+                "EventRuntime must be initialized before module event listeners".to_owned(),
+            )
+        })?
         .listener_bus
         .clone();
     let db = ctx.db_clone();
@@ -108,13 +112,14 @@ pub fn spawn_module_event_dispatcher(
     ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
     if handler_count == 0 {
         tracing::info!("No module-owned event listeners registered in ModuleRegistry");
-        return;
+        return Ok(());
     }
 
-    let running = dispatcher.start();
+    let running = dispatcher.start_with_contract_delivery()?;
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
 
     tracing::info!(handler_count, "Module event dispatcher initialized");
+    Ok(())
 }
 
 fn enrich_runtime_extensions_after_event_start(
@@ -256,6 +261,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         )
     })?;
     let db = runtime_ctx.db_clone();
+    extensions.insert(
+        crate::services::worker_service_context::materialize_worker_service_context(
+            &runtime_ctx,
+            &auth_config,
+        )?,
+    );
 
     // Static/native tenant settings are owned by rustok-modules. Consumers receive
     // only the owner port through the neutral runtime extension registry.

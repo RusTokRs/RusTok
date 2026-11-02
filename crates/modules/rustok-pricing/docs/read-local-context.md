@@ -4,10 +4,12 @@ Status: **source-ready / unvalidated**
 
 ## Scope
 
-This slice closes the canonical local-diagnostic surface for all six `PricingReadPort`
+This slice closes the canonical local-diagnostic surface for all eight `PricingReadPort`
 operations:
 
 - `resolve_product_price`;
+- `resolve_product_prices`;
+- `list_storefront_product_pricing`;
 - `read_price_list_projection`;
 - `list_active_price_list_projections`;
 - `read_admin_product_pricing_projection`;
@@ -15,9 +17,10 @@ operations:
 - `preview_variant_discount`.
 
 `InProcessPricingReadPort` still delegates every call to the same owner implementation in
-`ports.rs`. Request and response DTOs, operation ordering, policy admission, price
-resolution, projection selection, returned values, error kind, code, retryability, public
-message mapping, and technical-versus-ordinary severity are unchanged.
+`ports.rs`. The 2026-10-29 continuation extends owner DTOs and resolution with batch
+quotes and a catalog projection. The wrapper remains diagnostic-only: it forwards
+context/requests without a second resolver and preserves owner kind/code/retryability.
+Static public presentation and technical-versus-ordinary severity remain unchanged.
 
 ## Canonical root path
 
@@ -46,7 +49,7 @@ are not recorded.
 Request identity is retained only as UUID presence and non-nil state. Product, variant,
 region, channel, price-list, and selected-price-list UUID values are not recorded.
 
-Quantity is represented only by presence, non-zero state, and negative state;
+The bounded SKU-set size is recorded as a count. Quantity is represented only by presence, non-zero state, and negative state;
 exact quantity values are not recorded. Currency, slug, locale, fallback-locale, handle, and
 public-channel-slug inputs remain represented by character length only.
 
@@ -106,3 +109,12 @@ local event. The canonical owner still emits its bounded payload facts. Wrapper 
 context, request shape, and mutation/persistence semantics are unchanged. Standalone source
 verification was run for this continuation; tests, compilation and mounted evidence remain open.
 Historical evidence is not upgraded.
+
+
+## Quote contract continuation (2026-10-29)
+
+The eight methods retain the canonical owner delegation. New batch/catalog diagnostic
+facts contain counts and field presence/shape, not SKU IDs, prices or exact quantity.
+The snapshot/source/context/time DTO extension is specified in [CRATE_API.md](../CRATE_API.md).
+Tests, Cargo, SQL isolation and mounted evidence are unrun; formatting and scoped
+non-test source/type checks are disclosed in the active implementation plan.

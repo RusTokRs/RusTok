@@ -1,3 +1,6 @@
+mod attribute_lifecycle;
+pub use attribute_lifecycle::*;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -150,7 +153,19 @@ pub struct ProductScopedPrice {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductPriceSource {
+    #[serde(rename = "priceId")]
+    pub price_id: String,
+    pub kind: String,
+    #[serde(rename = "ruleKind")]
+    pub rule_kind: Option<String>,
+    #[serde(rename = "adjustmentPercent")]
+    pub adjustment_percent: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductEffectivePrice {
+    pub source: ProductPriceSource,
     #[serde(rename = "currencyCode")]
     pub currency_code: String,
     pub amount: String,
@@ -180,7 +195,7 @@ pub struct ProductTranslation {
     pub meta_description: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VariantAxisConfig {
     pub id: String,
     #[serde(rename = "attributeId")]
@@ -192,7 +207,7 @@ pub struct VariantAxisConfig {
     pub allowed_values: Vec<AxisAllowedValue>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AxisAllowedValue {
     #[serde(rename = "optionId")]
     pub option_id: String,
@@ -253,7 +268,8 @@ pub struct ProductImage {
     pub position: i32,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct VariantAxisValueDraft {
     #[serde(rename = "attributeId")]
     pub attribute_id: String,
@@ -261,7 +277,8 @@ pub struct VariantAxisValueDraft {
     pub option_id: String,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct VariantAxisDraft {
     #[serde(rename = "attributeId")]
     pub attribute_id: String,
@@ -270,12 +287,87 @@ pub struct VariantAxisDraft {
     pub allowed_option_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetVariantAxesDraft {
     pub axes: Vec<VariantAxisDraft>,
+    #[serde(
+        rename = "expectedState",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub expected_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reassignments: Vec<VariantAxisReassignmentDraft>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct VariantAxisReassignmentDraft {
+    #[serde(rename = "variantId")]
+    pub variant_id: String,
+    #[serde(rename = "axisValues")]
+    pub axis_values: Vec<VariantAxisValueDraft>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VariantAxesPreview {
+    pub product_id: String,
+    pub product_revision: i32,
+    pub state_token: String,
+    pub variant_count: i32,
+    pub can_apply: bool,
+    pub has_changes: bool,
+    pub conflicts: Vec<VariantAxesConflict>,
+    pub has_more_conflicts: bool,
+    pub variants: Vec<VariantAxesPreviewVariant>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VariantAxesConflict {
+    pub kind: String,
+    pub attribute_id: Option<String>,
+    pub option_id: Option<String>,
+    pub variant_ids: Vec<String>,
+    pub has_more_variants: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VariantAxesPreviewVariant {
+    pub variant_id: String,
+    pub sku: Option<String>,
+    pub current_values: Vec<VariantAxisValueDraft>,
+    pub proposed_values: Vec<VariantAxisValueDraft>,
+    pub changes: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum VariantAxesApplyOutcome {
+    Confirmed {
+        axes: Vec<VariantAxisConfig>,
+    },
+    /// A recognized owner decision was durably finalized, not inferred from HTTP status/text.
+    Rejected {
+        code: String,
+    },
+    Unknown,
+}
+
+/// Owner acknowledgement of standalone creation, not a Product revision or a read inference.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum VariantCreateOutcome {
+    Confirmed { variant_id: String },
+    Rejected { code: String },
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct VariantDraft {
     pub sku: Option<String>,
     pub barcode: Option<String>,
@@ -331,7 +423,8 @@ impl VariantUpdateDraft {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct VariantPriceDraft {
     #[serde(rename = "currencyCode")]
     pub currency_code: String,
@@ -360,6 +453,10 @@ pub struct UpdateProductImageDraft {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ProductDraft {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variant_axes: Vec<VariantAxisDraft>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_variants: Option<Vec<VariantDraft>>,
     #[serde(default)]
     pub attribute_values: Vec<ProductAttributeValueBatchDraft>,
     pub locale: String,
@@ -426,6 +523,7 @@ pub struct ProductAttributeSummary {
     pub code: String,
     #[serde(rename = "valueType")]
     pub value_type: String,
+    pub scope: String,
     #[serde(rename = "isLocalized")]
     pub is_localized: bool,
     #[serde(rename = "isFilterable")]
@@ -499,6 +597,7 @@ pub struct ProductEffectiveFormAttribute {
     pub label: String,
     #[serde(rename = "valueType")]
     pub value_type: String,
+    pub scope: String,
     #[serde(rename = "isLocalized")]
     pub is_localized: bool,
     pub options: Vec<ProductAttributeOptionSummary>,
@@ -572,6 +671,7 @@ pub struct ProductAttributeDraft {
     pub code: String,
     #[serde(rename = "valueType")]
     pub value_type: String,
+    pub scope: String,
     pub label: String,
     #[serde(rename = "helpText")]
     pub help_text: Option<String>,
@@ -656,6 +756,10 @@ pub struct BindSchemaAttributeDraft {
     #[serde(rename = "isDisabled")]
     pub is_disabled: bool,
     pub position: i32,
+    #[serde(rename = "variantAxisPolicy", skip_serializing_if = "Option::is_none")]
+    pub variant_axis_policy: Option<String>,
+    #[serde(rename = "defaultVariantAxis", skip_serializing_if = "Option::is_none")]
+    pub default_variant_axis: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -673,6 +777,10 @@ pub struct BindCategoryAttributeDraft {
     #[serde(rename = "isDisabled")]
     pub is_disabled: bool,
     pub position: Option<i32>,
+    #[serde(rename = "variantAxisPolicy", skip_serializing_if = "Option::is_none")]
+    pub variant_axis_policy: Option<String>,
+    #[serde(rename = "defaultVariantAxis", skip_serializing_if = "Option::is_none")]
+    pub default_variant_axis: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

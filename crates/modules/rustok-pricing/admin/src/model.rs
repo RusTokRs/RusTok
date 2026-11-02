@@ -78,6 +78,10 @@ pub struct PricingProductListItem {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PricingProductDetail {
+    #[serde(rename = "resolutionContext")]
+    pub resolution_context: Option<PricingResolutionContext>,
+    #[serde(rename = "resolvedAt")]
+    pub resolved_at: Option<String>,
     pub id: String,
     pub status: String,
     #[serde(rename = "sellerId")]
@@ -229,7 +233,19 @@ pub struct PricingResolutionContext {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingPriceSource {
+    #[serde(rename = "priceId")]
+    pub price_id: String,
+    pub kind: String,
+    #[serde(rename = "ruleKind")]
+    pub rule_kind: Option<String>,
+    #[serde(rename = "adjustmentPercent")]
+    pub adjustment_percent: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PricingEffectivePrice {
+    pub source: PricingPriceSource,
     #[serde(rename = "currencyCode")]
     pub currency_code: String,
     pub amount: String,

@@ -5,7 +5,8 @@ use ::rustok_outbox::TransactionalEventBus;
 use ::rustok_pricing::PricingReadPort as OwnerPricingReadPort;
 pub(crate) use ::rustok_pricing::{
     ActivePriceListProjectionRequest, AdminProductPricingProjectionRequest, PriceResolutionContext,
-    ResolveProductPriceRequest, ResolvedPrice, StorefrontProductPricingProjectionRequest,
+    ResolveProductPricesRequest, StorefrontProductPricingListRequest,
+    StorefrontProductPricingProjectionRequest,
 };
 use ::sea_orm::DatabaseConnection;
 
@@ -67,52 +68,59 @@ pub(crate) struct PricingGraphqlMessage {
 
 impl QueryGraphqlMessage for PricingGraphqlMessage {
     fn into_query_boundary(self) -> BoundaryError {
-        let (message, code, retryable, error_kind, technical) = match &self.error.kind {
+        let (message, code, error_kind, technical) = match &self.error.kind {
             PortErrorKind::Validation => (
                 "Pricing query is invalid",
                 "PRICING_REQUEST_INVALID",
-                false,
                 "validation",
                 false,
             ),
             PortErrorKind::NotFound => (
                 "Pricing data was not found",
                 "PRICING_RESOURCE_NOT_FOUND",
-                false,
                 "not_found",
                 false,
             ),
             PortErrorKind::Conflict => (
                 "Pricing state conflicts with this query",
                 "PRICING_STATE_CONFLICT",
-                false,
                 "conflict",
                 false,
             ),
             PortErrorKind::Forbidden => (
                 "Pricing query is not permitted",
                 "PRICING_ACCESS_DENIED",
-                false,
                 "forbidden",
                 false,
             ),
             PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 "Pricing data is temporarily unavailable",
                 "PRICING_TEMPORARILY_UNAVAILABLE",
-                true,
                 "unavailable",
                 true,
             ),
             PortErrorKind::InvariantViolation => (
                 "Pricing query could not be completed safely",
                 "PRICING_OPERATION_FAILED",
-                false,
                 "invariant",
                 true,
             ),
         };
-        // Preserve owner retryability even for domain kinds; do not invent a terminal outcome.
-        let retryable = retryable || self.error.retryable;
+        // Dependency presentation must not turn an unsupported selected capability into a retry loop.
+        let retryable = self.error.retryable;
+        let (message, code) = if self.error.kind == PortErrorKind::Unavailable
+            && matches!(
+                self.error.code.as_str(),
+                "pricing.product_identity_capability_unavailable"
+                    | "pricing.product_write_capability_unavailable"
+            ) {
+            (
+                "The selected Product owner does not support this pricing operation",
+                "PRICING_CAPABILITY_UNAVAILABLE",
+            )
+        } else {
+            (message, code)
+        };
         let owner_message_present = !self.error.message.is_empty();
         let owner_message_length = self.error.message.chars().count();
         let diagnostic_error = PricingQueryDiagnosticError;
@@ -158,6 +166,13 @@ pub(crate) struct PricingQueryPortError {
     pub(crate) message: PricingGraphqlMessage,
 }
 
+impl PricingQueryPortError {
+    pub(crate) fn is_product_not_found(&self) -> bool {
+        self.kind == PricingQueryKind::NotFound
+            && self.message.error.code == "pricing.product_not_found"
+    }
+}
+
 impl From<PortError> for PricingQueryPortError {
     fn from(error: PortError) -> Self {
         let kind = PricingQueryKind::from(&error.kind);
@@ -170,11 +185,17 @@ impl From<PortError> for PricingQueryPortError {
 
 #[::async_trait::async_trait]
 pub(crate) trait PricingReadPort: Send + Sync {
-    async fn resolve_product_price(
+    async fn resolve_product_prices(
         &self,
         context: PortContext,
-        request: ResolveProductPriceRequest,
-    ) -> Result<::rustok_pricing::ResolvedProductPriceSnapshot, PricingQueryPortError>;
+        request: ResolveProductPricesRequest,
+    ) -> Result<::rustok_pricing::ResolvedProductPricesSnapshot, PricingQueryPortError>;
+
+    async fn list_storefront_product_pricing(
+        &self,
+        context: PortContext,
+        request: StorefrontProductPricingListRequest,
+    ) -> Result<::rustok_pricing::StorefrontPricingProductList, PricingQueryPortError>;
 
     async fn list_active_price_list_projections(
         &self,
@@ -195,9 +216,9 @@ pub(crate) trait PricingReadPort: Send + Sync {
     ) -> Result<Option<::rustok_pricing::StorefrontPricingProductDetail>, PricingQueryPortError>;
 }
 
-/// Compatibility facade for the unchanged Commerce pricing query source.
+/// Typed error-presentation adapter for the Commerce pricing query source.
 ///
-/// The two legacy not-found branches compare only a closed local kind copied from
+/// The projection not-found branches compare only a closed local kind copied from
 /// `PortErrorKind`; every other failure retains the complete typed owner error for
 /// the transport-owned GraphQL mapper.
 pub(crate) struct PricingQueryReadPort {
@@ -207,21 +228,33 @@ pub(crate) struct PricingQueryReadPort {
 pub(crate) fn in_process_pricing_read_port(
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    product_runtime: ::rustok_product::ProductCatalogReadRuntime,
 ) -> Arc<dyn PricingReadPort> {
     Arc::new(PricingQueryReadPort {
-        inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus),
+        inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus, product_runtime),
     })
 }
 
 #[::async_trait::async_trait]
 impl PricingReadPort for PricingQueryReadPort {
-    async fn resolve_product_price(
+    async fn resolve_product_prices(
         &self,
         context: PortContext,
-        request: ResolveProductPriceRequest,
-    ) -> Result<::rustok_pricing::ResolvedProductPriceSnapshot, PricingQueryPortError> {
+        request: ResolveProductPricesRequest,
+    ) -> Result<::rustok_pricing::ResolvedProductPricesSnapshot, PricingQueryPortError> {
         self.inner
-            .resolve_product_price(context, request)
+            .resolve_product_prices(context, request)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn list_storefront_product_pricing(
+        &self,
+        context: PortContext,
+        request: StorefrontProductPricingListRequest,
+    ) -> Result<::rustok_pricing::StorefrontPricingProductList, PricingQueryPortError> {
+        self.inner
+            .list_storefront_product_pricing(context, request)
             .await
             .map_err(Into::into)
     }
@@ -259,5 +292,52 @@ impl PricingReadPort for PricingQueryReadPort {
             .read_storefront_product_pricing_projection(context, request)
             .await
             .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_missing_product_can_be_presented_as_no_product() {
+        for (code, expected) in [
+            ("pricing.product_not_found", true),
+            ("pricing.price_list_not_found", false),
+            ("adapter.untrusted", false),
+        ] {
+            let error =
+                PricingQueryPortError::from(PortError::not_found(code, "private-owner-detail"));
+            assert_eq!(error.is_product_not_found(), expected);
+        }
+        let error = PricingQueryPortError::from(PortError::unavailable(
+            "pricing.product_not_found",
+            "private-owner-detail",
+        ));
+        assert!(!error.is_product_not_found());
+    }
+
+    #[test]
+    fn unsupported_selected_owner_does_not_become_a_transient_retry_hint() {
+        let error = PricingGraphqlMessage {
+            error: PortError::new(
+                PortErrorKind::Unavailable,
+                "pricing.product_identity_capability_unavailable",
+                "private-owner-detail",
+                false,
+            ),
+        };
+        match error.into_query_boundary() {
+            BoundaryError::Public {
+                code,
+                retryable,
+                message,
+            } => {
+                assert_eq!(code, "PRICING_CAPABILITY_UNAVAILABLE");
+                assert!(!retryable);
+                assert!(!message.contains("private-owner-detail"));
+            }
+            _ => panic!("capability refusal must use the static public envelope"),
+        }
     }
 }

@@ -150,18 +150,10 @@ const projectionIndex = cartBoundary.indexOf(
 const ownerFactsIndex = cartBoundary.indexOf('let owner_code = error.code.clone();');
 const tokenIndex = cartBoundary.indexOf('let diagnostic_error = CartOwnerDiagnosticError;');
 const eventIndex = cartBoundary.indexOf('tracing::error!(');
-const returnIndex = cartBoundary.indexOf('\n            error\n        })', eventIndex);
-if (
-  !(
-    projectionIndex >= 0 &&
-    projectionIndex < ownerFactsIndex &&
-    ownerFactsIndex < tokenIndex &&
-    tokenIndex < eventIndex &&
-    eventIndex < returnIndex
-  )
-) {
-  failures.push('cart owner error must be projected, redacted, diagnosed, and returned in order');
+if (!(projectionIndex >= 0 && projectionIndex < ownerFactsIndex && ownerFactsIndex < tokenIndex && tokenIndex < eventIndex)) {
+  failures.push('cart owner error must be projected, redacted and diagnosed in order');
 }
+requireText(cartBoundary, 'result.inspect_err(|error| {', 'owner error must be observed without reconstruction');
 if ((cartBoundary.match(/tracing::error!\(/g) ?? []).length !== 1) {
   failures.push('expected one cart owner diagnostic event');
 }
@@ -174,7 +166,6 @@ for (const operation of [
   'create_storefront_cart',
   'add_storefront_line_item',
   'update_storefront_context',
-  'update_storefront_line_item_quantity',
   'update_storefront_line_item_pricing',
   'remove_storefront_line_item',
   'reprice_storefront_line_items',
@@ -184,8 +175,8 @@ for (const operation of [
 }
 
 for (const [pattern, expected, label] of [
-  [/let error_context = context\.clone\(\);/g, 8, 'owner context clone count'],
-  [/retain_cart_owner_context\(/g, 8, 'context retention call count'],
+  [/let error_context = context\.clone\(\);/g, 7, 'owner context clone count'],
+  [/retain_cart_owner_context\(/g, 7, 'context retention call count'],
   [/owner = "rustok_cart"/g, 1, 'cart owner event count'],
   [/::rustok_cart::in_process_cart_storefront_port\(db\)/g, 1, 'canonical constructor count'],
 ]) {

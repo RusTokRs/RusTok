@@ -56,6 +56,22 @@ impl TransactionalEventBus {
         Ok(envelope_id)
     }
 
+    /// Persists one fresh sealed fact on the caller's existing owner transaction.
+    /// No broker IO, alternate queue, synthetic causation or write-once receipt is introduced.
+    pub async fn publish_contract_direct_in_tx<C, E>(
+        txn: &C,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: E,
+    ) -> Result<()>
+    where
+        C: ConnectionTrait,
+        E: EventContract,
+    {
+        let envelope = build_contract_envelope(tenant_id, actor_id, None, event)?;
+        OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await
+    }
+
     /// Publishes a sealed typed contract through an owner transaction that
     /// does not carry a separately composed transport handle.
     ///

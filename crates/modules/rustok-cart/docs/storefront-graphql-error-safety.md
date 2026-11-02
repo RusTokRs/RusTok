@@ -155,3 +155,11 @@ cargo check -p rustok-cart-storefront --features ssr
 Source readiness must remain separate from runtime or promotion claims until
 those commands and the required mounted failure evidence are retained on the
 same revision.
+
+## Buyer continuation (2026-10-30)
+
+This historical slice is extended to the current buyer transport: five Cart operations, including create/add. Canonical auth storage supplies actual transport tenant-length facts; final technical
+errors remain static and diagnostics bounded. Documents/DTOs and native composition did change
+for the buyer; earlier unchanged-path statements describe the original slice, not this continuation.
+Source guards and formatting do not certify compiled, browser, backend or mounted behavior. New
+regression sources are not executed. See the current module implementation plan.

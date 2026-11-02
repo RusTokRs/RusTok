@@ -170,7 +170,8 @@ fn prepared_snapshot(
         id: cart_id,
         tenant_id,
         channel_id: None,
-        channel_slug: Some("web".to_string()),
+        // Isolate Product failure; channel owner behavior has its own contract fixtures.
+        channel_slug: None,
         customer_id: None,
         email: None,
         region_id: None,

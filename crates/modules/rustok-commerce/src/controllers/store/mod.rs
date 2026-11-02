@@ -23,10 +23,7 @@ use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 
-use rustok_pricing::{
-    PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
-    in_process_pricing_read_port,
-};
+use rustok_pricing::{PriceResolutionContext, PricingReadPort, in_process_pricing_read_port};
 use rustok_product::entities::product_translation;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
@@ -407,6 +404,7 @@ pub(crate) fn checkout_actor_id(auth: Option<&rustok_api::AuthContext>) -> Uuid 
 pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     db: &DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
+    product_runtime: rustok_product::ProductCatalogReadRuntime,
     tenant_id: Uuid,
     request_context: &RequestContext,
     storefront_port: &dyn CartStorefrontPort,
@@ -416,31 +414,24 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
         return Ok(cart);
     }
 
-    let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus);
+    let pricing_context = rustok_cart::CartPricingContextGuard::capture(&cart)
+        .map_err(rustok_web::port_error_to_http_error)?;
+    let pricing_read_port = in_process_pricing_read_port(db.clone(), event_bus, product_runtime);
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
-        let Some(variant_id) = line_item.variant_id else {
+        if line_item.variant_id.is_none() {
             continue;
-        };
-        let pricing_context =
-            build_store_pricing_context(&cart, request_context, line_item.quantity);
-        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-            .resolve_product_price(
-                storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id),
-                ResolveProductPriceRequest {
-                    product_id: line_item.product_id,
-                    variant_id,
-                    region_id: pricing_context.region_id,
-                    channel_id: pricing_context.channel_id,
-                    channel_slug: pricing_context.channel_slug,
-                    price_list_id: pricing_context.price_list_id,
-                    quantity: pricing_context.quantity,
-                    currency_code: pricing_context.currency_code,
-                },
-            )
-            .await
-            .map_err(rustok_web::port_error_to_http_error)?
-            .into();
+        }
+        let resolved_price: rustok_pricing::ResolvedPrice = crate::read_storefront_cart_line_quote(
+            pricing_read_port.as_ref(),
+            storefront_pricing_port_context(tenant_id, request_context, cart.id, line_item.id),
+            &cart,
+            line_item.id,
+            line_item.quantity,
+        )
+        .await
+        .map_err(rustok_web::port_error_to_http_error)?
+        .into();
         updates.push(storefront_cart_pricing_update(
             line_item.id,
             line_item.quantity,
@@ -464,6 +455,7 @@ pub(crate) async fn reprice_storefront_cart_line_items_for_db(
                 CartStorefrontRepriceRequest {
                     cart_id: cart.id,
                     updates,
+                    pricing_context,
                 },
             )
             .await
@@ -481,8 +473,9 @@ pub(crate) fn storefront_pricing_port_context(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.storefront-pricing"),
         request_context.locale.as_str(),
-        format!("storefront-pricing:{cart_id}:{line_item_id}"),
+        request_context.correlation_id.clone(),
     )
+    .with_causation_id(format!("storefront-pricing:{cart_id}:{line_item_id}"))
     .with_deadline(std::time::Duration::from_secs(2));
     request_context
         .channel_slug
@@ -501,6 +494,7 @@ pub(crate) fn storefront_cart_pricing_update(
 
     rustok_cart::services::cart::CartLineItemPricingUpdate {
         line_item_id,
+        quantity,
         unit_price: base_unit_price,
         pricing_adjustment,
     }
@@ -603,9 +597,7 @@ pub(crate) fn requested_cart_context(
         selected_shipping_option_id: patch
             .selected_shipping_option_id
             .unwrap_or(cart.selected_shipping_option_id),
-        shipping_selections: patch
-            .shipping_selections
-            .unwrap_or_else(|| current_shipping_selections(cart)),
+        shipping_selections: patch.shipping_selections,
     }
 }
 
@@ -623,21 +615,6 @@ pub(crate) fn current_shipping_selections(
                 .or(cart.selected_shipping_option_id),
         })
         .collect()
-}
-
-pub(crate) fn build_store_pricing_context(
-    cart: &CartResponse,
-    request_context: &RequestContext,
-    quantity: i32,
-) -> PriceResolutionContext {
-    PriceResolutionContext {
-        currency_code: cart.currency_code.to_ascii_uppercase(),
-        region_id: cart.region_id,
-        price_list_id: None,
-        channel_id: cart.channel_id.or(request_context.channel_id),
-        channel_slug: storefront_public_channel_slug_for_cart(cart, request_context),
-        quantity: Some(quantity),
-    }
 }
 
 pub(crate) struct StoreLineItemResolution<'a> {
@@ -864,8 +841,34 @@ pub struct StoreCompleteCartInput {
 pub struct StoreAddCartLineItemInput {
     pub variant_id: Uuid,
     pub quantity: i32,
+    pub expected_context: Option<StoreCartPricingContext>,
+    pub expected_locale: Option<String>,
     #[serde(default = "default_metadata")]
     pub metadata: Value,
+}
+
+/// REST projection of the same observation/precondition accepted by the GraphQL/native buyer.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct StoreCartPricingContext {
+    pub currency_code: String,
+    pub region_id: Option<Uuid>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub quantity: i32,
+}
+
+impl From<StoreCartPricingContext> for PriceResolutionContext {
+    fn from(value: StoreCartPricingContext) -> Self {
+        Self {
+            currency_code: value.currency_code,
+            region_id: value.region_id,
+            price_list_id: value.price_list_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            quantity: Some(value.quantity),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -894,7 +897,7 @@ pub(crate) struct RequestedCartContext {
     pub(crate) country_code: Option<String>,
     pub(crate) locale: Option<String>,
     pub(crate) selected_shipping_option_id: Option<Uuid>,
-    pub(crate) shipping_selections: Vec<crate::dto::CartShippingSelectionInput>,
+    pub(crate) shipping_selections: Option<Vec<crate::dto::CartShippingSelectionInput>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]

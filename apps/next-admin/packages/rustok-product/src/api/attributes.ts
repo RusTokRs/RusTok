@@ -26,6 +26,7 @@ query ProductAdminAttributes($tenantId: UUID!, $locale: String!) {
       id
       code
       valueType
+      scope
       isLocalized
       isFilterable
       isSearchable
@@ -162,6 +163,7 @@ export async function createProductAttribute(
   const input = {
     code: payload.code.trim(),
     valueType: payload.valueType,
+    scope: payload.scope,
     label: payload.label.trim(),
     helpText: payload.helpText?.trim() || null,
     isLocalized: Boolean(payload.isLocalized),
@@ -295,6 +297,12 @@ export async function bindSchemaAttribute(
   const input = {
     schemaId: payload.schemaId,
     attributeId: payload.attributeId,
+    ...(payload.variantAxisPolicy !== undefined
+      ? { variantAxisPolicy: payload.variantAxisPolicy }
+      : {}),
+    ...(payload.defaultVariantAxis !== undefined
+      ? { defaultVariantAxis: payload.defaultVariantAxis }
+      : {}),
     groupCode: payload.groupCode || null,
     isRequired: Boolean(payload.isRequired),
     isDisabled: Boolean(payload.isDisabled),

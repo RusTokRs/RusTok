@@ -12,6 +12,18 @@ pub struct PricingPublicError {
     pub correlation_id: Uuid,
 }
 
+impl std::fmt::Display for PricingPublicError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} (code: {}; reference: {})",
+            self.message, self.code, self.correlation_id
+        )
+    }
+}
+
+impl std::error::Error for PricingPublicError {}
+
 fn public_error(kind: &PortErrorKind, owner_retryable: bool) -> PricingPublicError {
     let (code, message) = match kind {
         PortErrorKind::Validation => ("PRICING_REQUEST_INVALID", "Pricing request is invalid"),
@@ -39,9 +51,8 @@ fn public_error(kind: &PortErrorKind, owner_retryable: bool) -> PricingPublicErr
     PricingPublicError {
         message,
         code,
-        // Never turn an owner-declared retryable failure into a definitive rejection.
-        retryable: owner_retryable
-            || matches!(kind, PortErrorKind::Unavailable | PortErrorKind::Timeout),
+        // The owner, not presentation, decides whether retrying the same request can help.
+        retryable: owner_retryable,
         correlation_id: Uuid::new_v4(),
     }
 }
@@ -49,7 +60,18 @@ fn public_error(kind: &PortErrorKind, owner_retryable: bool) -> PricingPublicErr
 /// Pure port presentation; the boundary logs only bounded facts using this reference.
 /// Arbitrary port codes/messages are not trusted as public content.
 pub fn map_pricing_port_error(error: &PortError) -> PricingPublicError {
-    public_error(&error.kind, error.retryable)
+    let mut public = public_error(&error.kind, error.retryable);
+    if error.kind == PortErrorKind::Unavailable
+        && matches!(
+            error.code.as_str(),
+            "pricing.product_identity_capability_unavailable"
+                | "pricing.product_write_capability_unavailable"
+        )
+    {
+        public.code = "PRICING_CAPABILITY_UNAVAILABLE";
+        public.message = "The selected Product owner does not support this pricing operation";
+    }
+    public
 }
 
 /// Classify through the canonical Pricing owner policy and record bounded service facts.
@@ -396,5 +418,33 @@ mod tests {
                 assert!(!public.correlation_id.is_nil());
             }
         }
+    }
+    #[test]
+    fn unavailable_projection_retains_explicit_retryability() {
+        for retryable in [false, true] {
+            let error = PortError::new(
+                PortErrorKind::Unavailable,
+                "external.untrusted",
+                SECRET,
+                retryable,
+            );
+            let public = map_pricing_port_error(&error);
+            assert_eq!(public.retryable, retryable);
+            assert!(!public.to_string().contains(SECRET));
+        }
+    }
+
+    #[test]
+    fn selected_product_capability_refusal_is_actionable_and_not_a_retry_hint() {
+        let error = PortError::new(
+            PortErrorKind::Unavailable,
+            "pricing.product_identity_capability_unavailable",
+            SECRET,
+            false,
+        );
+        let public = map_pricing_port_error(&error);
+        assert_eq!(public.code, "PRICING_CAPABILITY_UNAVAILABLE");
+        assert!(!public.retryable);
+        assert!(!public.to_string().contains(SECRET));
     }
 }

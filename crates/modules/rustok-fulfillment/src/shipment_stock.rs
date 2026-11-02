@@ -1,129 +1,161 @@
-//! Stock-movement port for physical shipment.
-//!
-//! The fulfillment module owns *when* goods leave the warehouse (ship, cancel of a shipped
-//! fulfillment, reopen). It does not own stock. This module declares the consumer-defined port
-//! through which the fulfillment owner asks the stock owner to move stock **inside the
-//! fulfillment transaction**, so the shipment counters and the stock ledger commit or roll back
-//! together. The inventory-backed adapter is composed in `rustok-commerce`.
-//!
-//! The default port of [`FulfillmentService`](crate::FulfillmentService) is
-//! [`UnconfiguredShipmentStockPort`], which fails every movement: a deployment that forgets to
-//! wire stock must not silently ship without consuming it. Deployments without stock (digital
-//! only) and tests opt out explicitly with [`NoopShipmentStockPort`].
+//! Fulfillment-owned consumer contract. Peer preparation is outside the owner transaction;
+//! a prepared plan is per-call state, never authorization, a receipt or external-outcome proof.
 
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
+use rustok_api::{PortContext, PortError};
 use sea_orm::{DatabaseTransaction, DbErr};
+use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
-/// One stock movement for a fulfilled order line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShipmentStockRequest {
-    pub tenant_id: Uuid,
+pub const MAX_SHIPMENT_STOCK_ITEMS: usize = 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShipmentStockAction {
+    Ship,
+    Restore,
+    Reconsume,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShipmentStockItemScope {
+    pub fulfillment_item_id: Uuid,
     pub order_line_item_id: Uuid,
-    /// Strictly positive number of units.
+    pub quantity: i32,
+    pub shipped_quantity: i32,
+    pub delivered_quantity: i32,
+    pub movement_quantity: i32,
+}
+
+/// Stock-relevant saved owner facts; no prices, publication eligibility or caller metadata.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShipmentStockScope {
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub fulfillment_id: Uuid,
+    pub status: String,
+    pub updated_at: DateTime<FixedOffset>,
+    pub action: ShipmentStockAction,
+    pub items: Vec<ShipmentStockItemScope>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShipmentStockRequest {
+    pub fulfillment_item_id: Uuid,
+    pub order_line_item_id: Uuid,
     pub quantity: i32,
 }
 
 #[derive(Debug, Error)]
 pub enum ShipmentStockError {
-    /// The stock owner refused the movement (missing reservation, quantity above the
-    /// reservation, inconsistent ledger, ...). Rolls the fulfillment operation back.
-    #[error("{0}")]
-    Rejected(String),
-    /// No stock port is wired into this `FulfillmentService`.
     #[error("shipment stock port is not configured")]
     NotConfigured,
-    #[error(transparent)]
+    #[error("shipment stock operation was rejected")]
+    Rejected(String),
+    #[error("shipment stock owner refused the operation")]
+    Owner(PortError),
+    #[error("shipment stock storage is unavailable")]
     Database(#[from] DbErr),
 }
 
-/// Stock movements that must be atomic with fulfillment shipment state.
-///
-/// Every method runs on the caller's transaction and must not commit or roll it back.
+#[async_trait]
+pub trait PreparedShipmentStock: Send + Sync {
+    /// One complete deterministic batch. Native implementations use only this transaction,
+    /// not a peer connection, and must not commit it. Consumer rolls back on every error.
+    async fn apply(
+        &self,
+        txn: &DatabaseTransaction,
+        requests: &[ShipmentStockRequest],
+    ) -> Result<(), ShipmentStockError>;
+}
+
 #[async_trait]
 pub trait ShipmentStockPort: Send + Sync {
-    /// Units physically left the warehouse: consume them from the order line's reservation.
-    async fn consume_shipped(
+    /// Called before opening the Fulfillment write transaction or executing a fresh carrier
+    /// effect. Preserve the canonical actor/claims/scope/deadline and immutable recovery key.
+    async fn prepare(
         &self,
-        txn: &DatabaseTransaction,
-        request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError>;
-
-    /// A shipped fulfillment was cancelled: the undelivered units are back on the shelf.
-    async fn restore_unshipped(
-        &self,
-        txn: &DatabaseTransaction,
-        request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError>;
-
-    /// A cancelled shipped fulfillment was reopened: take the units off the shelf again.
-    /// Inverse of [`restore_unshipped`](Self::restore_unshipped).
-    async fn reconsume_restored(
-        &self,
-        txn: &DatabaseTransaction,
-        request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError>;
+        context: &PortContext,
+        scope: &ShipmentStockScope,
+    ) -> Result<Arc<dyn PreparedShipmentStock>, ShipmentStockError>;
 }
 
-/// Default port: refuses every movement so an unwired runtime fails loudly.
+/// Opaque owner-correlated token: callers cannot manufacture scopes, change context or use a
+/// plan for another fulfillment. Even an explicit no-stock plan must match the locked snapshot.
+pub struct PreparedFulfillmentStock {
+    pub(crate) context: PortContext,
+    pub(crate) scope: ShipmentStockScope,
+    pub(crate) plan: Option<Arc<dyn PreparedShipmentStock>>,
+    pub(crate) started: std::time::Instant,
+}
+
+impl PreparedFulfillmentStock {
+    /// Remaining original per-call budget; never refresh the lease while a carrier runs.
+    pub fn remaining_context(&self) -> Result<PortContext, PortError> {
+        remaining_stock_context(&self.context, self.started)
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnconfiguredShipmentStockPort;
-
 #[async_trait]
 impl ShipmentStockPort for UnconfiguredShipmentStockPort {
-    async fn consume_shipped(
+    async fn prepare(
         &self,
-        _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError> {
-        Err(ShipmentStockError::NotConfigured)
-    }
-
-    async fn restore_unshipped(
-        &self,
-        _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError> {
-        Err(ShipmentStockError::NotConfigured)
-    }
-
-    async fn reconsume_restored(
-        &self,
-        _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError> {
+        _context: &PortContext,
+        _scope: &ShipmentStockScope,
+    ) -> Result<Arc<dyn PreparedShipmentStock>, ShipmentStockError> {
         Err(ShipmentStockError::NotConfigured)
     }
 }
 
-/// Explicit opt-out for deployments and tests that do not track stock.
+/// Explicit deployment/test opt-out, not an unavailable selected dependency or nullable-SKU fact.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopShipmentStockPort;
-
 #[async_trait]
 impl ShipmentStockPort for NoopShipmentStockPort {
-    async fn consume_shipped(
+    async fn prepare(
+        &self,
+        _context: &PortContext,
+        _scope: &ShipmentStockScope,
+    ) -> Result<Arc<dyn PreparedShipmentStock>, ShipmentStockError> {
+        Ok(Arc::new(Self))
+    }
+}
+#[async_trait]
+impl PreparedShipmentStock for NoopShipmentStockPort {
+    async fn apply(
         &self,
         _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
+        _requests: &[ShipmentStockRequest],
     ) -> Result<(), ShipmentStockError> {
         Ok(())
     }
+}
 
-    async fn restore_unshipped(
-        &self,
-        _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError> {
-        Ok(())
-    }
-
-    async fn reconsume_restored(
-        &self,
-        _txn: &DatabaseTransaction,
-        _request: ShipmentStockRequest,
-    ) -> Result<(), ShipmentStockError> {
-        Ok(())
-    }
+/// A deadline is a remaining call budget, never reset after local reads or admission locks.
+pub(crate) fn remaining_stock_context(
+    context: &PortContext,
+    started: std::time::Instant,
+) -> Result<PortContext, PortError> {
+    let budget = context
+        .deadline_ms
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            PortError::timeout(
+                "fulfillment.shipment_stock_deadline_expired",
+                "shipment preparation requires a positive budget",
+            )
+        })?;
+    let remaining = std::time::Duration::from_millis(budget.min(30_000))
+        .checked_sub(started.elapsed())
+        .filter(|value| value.as_millis() > 0)
+        .ok_or_else(|| {
+            PortError::timeout(
+                "fulfillment.shipment_stock_deadline_expired",
+                "shipment preparation budget has expired",
+            )
+        })?;
+    Ok(context.clone().with_deadline(remaining))
 }

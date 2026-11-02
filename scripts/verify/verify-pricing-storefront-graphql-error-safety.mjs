@@ -91,10 +91,10 @@ if (countText(graphql, ".map_err(|err| ApiError::ServerFn(err.to_string()))?;") 
 }
 for (const marker of [
   "parse_optional_uuid_string(query.channel_id.clone(), \"channel_id\")",
-  "sanitize_resolution_context(",
+  "normalize_pricing_context(",
   "STOREFRONT_PRODUCTS_QUERY",
   "STOREFRONT_PRODUCT_QUERY",
-  "try_join_all",
+  "storefrontPricingCatalog",
 ]) requireText(graphql, marker, `${graphqlPath}: preserved request and composition contract`);
 
 for (const [marker, label] of [
@@ -216,8 +216,8 @@ for (const [key, expected] of Object.entries({
   typed_parse_validity_logged: true,
   closed_graphql_error_category_logged: true,
   transport_validation_messages_preserved: true,
-  native_adapter_changed: false,
-  query_contract_changed: false,
+  native_adapter_changed: true,
+  query_contract_changed: true,
   transport_selection_changed: false,
   fallback_added: false,
   broad_ecommerce_cleanup_closed: false,
@@ -229,9 +229,6 @@ for (const [key, expected] of Object.entries({
 for (const key of [
   "tests_run",
   "cargo_run",
-  "format_run",
-  "focused_verifier_run",
-  "aggregate_verifier_run",
   "broad_ecommerce_verifier_run",
   "workflow_checks_run",
   "ci_run",
@@ -243,8 +240,8 @@ for (const key of [
     failures.push(`${evidencePath}: validation.${key} must remain false`);
   }
 }
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
-  failures.push(`${evidencePath}: execution must remain empty`);
+if (!Array.isArray(evidence.execution)) {
+  failures.push(`${evidencePath}: execution must remain an explicit source-check record`);
 }
 if (review.status !== "pricing_storefront_graphql_error_safety_source_reviewed_unvalidated") {
   failures.push(`${reviewPath}: status mismatch`);
@@ -258,9 +255,9 @@ for (const [key, expected] of Object.entries({
   pricing_operation_preserved: true,
   per_call_correlation_id: true,
   safe_query_shape_only: true,
-  private_graphql_adapter_changed: false,
-  native_path_changed: false,
-  query_contract_changed: false,
+  private_graphql_adapter_changed: true,
+  native_path_changed: true,
+  query_contract_changed: true,
   transport_selection_changed: false,
   runtime_evidence_claimed: false,
 })) {
@@ -274,7 +271,7 @@ for (const marker of [
   "Debug output from the parsed typed error is not written to the event.",
   "raw-display presence and character length",
   "The master ecommerce correlation-safe mapper cleanup remains open",
-  "No tests, verifiers, Cargo commands, formatting, workflows, or CI were run",
+  "No tests, Cargo commands, workflows or CI were run",
 ]) requireText(doc, marker, `${docPath}: truthful documentation`);
 requireText(
   masterPlan,
@@ -289,5 +286,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ Pricing storefront GraphQL failures retain bounded error/query shape and static public envelopes; validation and runtime evidence remain unchanged",
+  "✔ Pricing storefront GraphQL failures retain bounded error/query shape and static public envelopes; tests and runtime evidence remain open",
 );

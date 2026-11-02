@@ -23,9 +23,9 @@ use crate::entities::{
 use crate::error::{CartError, CartResult};
 
 use super::cart::helpers::{
-    build_response, ensure_active, load_cart, load_cart_in_tx, load_tenant_default_locale,
-    normalize_shipping_profile_slug, recalculate_totals, reconcile_cart_shipping_state,
-    sanitize_line_item_metadata,
+    build_response, ensure_active, load_cart, load_cart_for_update_in_tx, load_cart_in_tx,
+    load_tenant_default_locale, normalize_shipping_profile_slug, recalculate_totals,
+    reconcile_cart_shipping_state, sanitize_line_item_metadata,
 };
 
 #[derive(Clone)]
@@ -90,7 +90,7 @@ impl CartMarketplaceSnapshotService {
         validate_decimal_unit_price(input.line_item.unit_price, &snapshot)?;
 
         let transaction = self.db.begin().await?;
-        let cart = load_cart_in_tx(&transaction, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&transaction, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "add_marketplace_line_item")?;
         validate_cart_currency(&cart.currency_code, &snapshot)?;
 
@@ -211,7 +211,7 @@ impl CartMarketplaceSnapshotService {
         }
 
         let transaction = self.db.begin().await?;
-        let cart = load_cart_in_tx(&transaction, tenant_id, cart_id).await?;
+        let cart = load_cart_for_update_in_tx(&transaction, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "bind_marketplace_snapshot")?;
         validate_cart_currency(&cart.currency_code, &input)?;
         let line = cart_line_item::Entity::find_by_id(cart_line_item_id)

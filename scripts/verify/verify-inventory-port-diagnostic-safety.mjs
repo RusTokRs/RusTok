@@ -8,7 +8,8 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
+const read = (relativePath) =>
+  readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
 const paths = {
@@ -18,9 +19,11 @@ const paths = {
     'crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source.json',
   review:
     'crates/modules/rustok-inventory/contracts/evidence/inventory-port-diagnostic-safety-source-review.json',
-  document: 'crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md',
+  document:
+    'crates/modules/rustok-inventory/docs/inventory-port-diagnostic-safety.md',
   broad: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs',
-  broadTest: 'scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs',
+  broadTest:
+    'scripts/verify/verify-ecommerce-public-port-error-safety-v2.test.mjs',
 };
 
 const ports = read(paths.ports);
@@ -80,14 +83,22 @@ for (const marker of [
   'inventory_error_to_port_error(&context, owner_operation, error)',
   'storage_unavailable_with_context(&context, owner_operation, error)',
   'storage_unavailable_with_context(context, owner_operation, error)',
-  'self.check_variant_availability_for_channel(',
-  'self.reserve(tenant_id, request.variant_id, request.quantity)',
-  'self.release_reservation_quantity(tenant_id, request.variant_id, request.quantity)',
   'self.db.begin().await.map_err(|error|',
   '.lock_exclusive()',
   'reservation_item::ActiveModel',
   'inventory_level::Entity::update_many()',
-]) requireText(ports, marker, `${paths.ports}: preserved port behavior`);
+])
+  requireText(ports, marker, `${paths.ports}: preserved port behavior`);
+
+// Receiver/call semantics matter; rustfmt line wrapping does not.
+for (const pattern of [
+  /self\s*\.check_variant_availability_for_channel\(/,
+  /self\s*\.reserve\(tenant_id, request\.variant_id, request\.quantity\)/,
+  /self\s*\.release_reservation_quantity\(tenant_id, request\.variant_id, request\.quantity\)/,
+]) {
+  if (!pattern.test(ports))
+    failures.push(`${paths.ports}: missing owner call ${pattern}`);
+}
 
 for (const marker of [
   'Database(#[from] sea_orm::DbErr)',
@@ -105,14 +116,25 @@ for (const marker of [
   'CannotDeletePublished',
   'Rich(#[source] Box<RichError>)',
   'Core(#[from] CoreError)',
-]) requireText(errorSource, marker, `${paths.error}: CommerceError shape`);
+])
+  requireText(errorSource, marker, `${paths.error}: CommerceError shape`);
 
 const contextFacts = functionBody(ports, 'inventory_port_context_facts');
 const errorFacts = functionBody(ports, 'inventory_owner_error_facts');
 const ownerLogger = functionBody(ports, 'log_inventory_port_failure');
-const tenantLogger = functionBody(ports, 'log_inventory_tenant_parse_rejection');
+const tenantLogger = functionBody(
+  ports,
+  'log_inventory_tenant_parse_rejection',
+);
 const tenantParser = functionBody(ports, 'parse_port_tenant_id');
 const storageMapper = functionBody(ports, 'storage_unavailable_with_context');
+const storageSignature =
+  ports.match(/fn storage_unavailable_with_context\s*\([^)]*\)/s)?.[0] ?? '';
+requireText(
+  storageSignature,
+  '_error: sea_orm::DbErr',
+  'bounded storage mapper signature',
+);
 const variantLookup = functionBody(ports, 'load_tenant_variant');
 const mapper = functionBody(ports, 'inventory_error_to_port_error');
 const diagnosticScope = [
@@ -150,7 +172,8 @@ for (const marker of [
   'numeric_nonzero_count: usize',
   'numeric_negative_count: usize',
   'opaque_payload_present: bool',
-]) requireText(ports, marker, `${paths.ports}: bounded fact shape`);
+])
+  requireText(ports, marker, `${paths.ports}: bounded fact shape`);
 
 for (const marker of [
   'CommerceError::Database(_) => InventoryOwnerErrorFacts::opaque("database")',
@@ -182,7 +205,12 @@ for (const marker of [
   'InventoryOwnerErrorFacts::empty("cannot_delete_published")',
   'CommerceError::Rich(_) => InventoryOwnerErrorFacts::opaque("rich")',
   'CommerceError::Core(_) => InventoryOwnerErrorFacts::opaque("core")',
-]) requireText(errorFacts, marker, `${paths.ports}: exhaustive bounded CommerceError facts`);
+])
+  requireText(
+    errorFacts,
+    marker,
+    `${paths.ports}: exhaustive bounded CommerceError facts`,
+  );
 
 for (const marker of [
   'tracing::error!(',
@@ -208,30 +236,37 @@ for (const marker of [
   'numeric_negative_count = error_facts.numeric_negative_count',
   'opaque_payload_present = error_facts.opaque_payload_present',
   'boundary = INVENTORY_PORT_BOUNDARY',
-]) requireText(ownerLogger, marker, `${paths.ports}: bounded owner logger`);
+])
+  requireText(ownerLogger, marker, `${paths.ports}: bounded owner logger`);
 
 for (const marker of [
   'Uuid::parse_str(context.tenant_id.trim()).map_err(|_|',
   'log_inventory_tenant_parse_rejection(context, owner_operation);',
   '"inventory.context_invalid"',
   '"inventory request context is invalid"',
-]) requireText(tenantParser, marker, `${paths.ports}: stable tenant parser`);
+])
+  requireText(tenantParser, marker, `${paths.ports}: stable tenant parser`);
 for (const marker of [
   'tracing::warn!(',
   'tenant_id_length = context_facts.tenant_id_length',
   'tenant_id_parse_failed = true',
   'code = "inventory.context_invalid"',
   'boundary = INVENTORY_PORT_BOUNDARY',
-]) requireText(tenantLogger, marker, `${paths.ports}: bounded tenant parser logger`);
+])
+  requireText(
+    tenantLogger,
+    marker,
+    `${paths.ports}: bounded tenant parser logger`,
+  );
 
 for (const marker of [
-  '_error: sea_orm::DbErr',
   'InventoryOwnerErrorFacts::opaque("database")',
   '"inventory.database_unavailable"',
   '&facts',
   'true',
   '"inventory storage is temporarily unavailable"',
-]) requireText(storageMapper, marker, `${paths.ports}: bounded storage mapper`);
+])
+  requireText(storageMapper, marker, `${paths.ports}: bounded storage mapper`);
 
 for (const marker of [
   'InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id)',
@@ -239,7 +274,8 @@ for (const marker of [
   '&facts',
   'false',
   '"inventory variant was not found"',
-]) requireText(variantLookup, marker, `${paths.ports}: bounded variant lookup`);
+])
+  requireText(variantLookup, marker, `${paths.ports}: bounded variant lookup`);
 
 for (const [variant, code, message, constructor, technical] of [
   [
@@ -309,15 +345,31 @@ for (const forbidden of [
   'slug = %',
   'requested =',
   'available =',
-]) forbidText(diagnosticScope, forbidden, `${paths.ports}: inventory payload diagnostics`);
+])
+  forbidText(
+    diagnosticScope,
+    forbidden,
+    `${paths.ports}: inventory payload diagnostics`,
+  );
 
+// The aggregate verifier groups markers by owner. Inspect its live Inventory group,
+// not obsolete flat triple literals that disappeared when those groups were introduced.
+const aggregateInventory =
+  broad.match(
+    /\[\s*inventory\s*,\s*\[([\s\S]*?)\]\s*,\s*'inventory'\s*,?\s*\]/,
+  )?.[1] ?? '';
 for (const marker of [
-  "[inventory, 'tenant_id_length = context_facts.tenant_id_length', 'inventory tenant shape logging']",
-  "[inventory, 'tenant_id_parse_failed = true', 'inventory tenant parse failure']",
-  "[inventory, 'error_variant = error_facts.error_variant', 'inventory static error variant']",
-  "[inventory, 'numeric_field_count = error_facts.numeric_field_count', 'inventory numeric error shape']",
-  "[inventory, 'boundary = INVENTORY_PORT_BOUNDARY', 'inventory port boundary']",
-]) requireText(broad, marker, `${paths.broad}: aggregate Inventory coverage`);
+  'tenant_id_length = context_facts.tenant_id_length',
+  'tenant_id_parse_failed = true',
+  'error_variant = error_facts.error_variant',
+  'numeric_field_count = error_facts.numeric_field_count',
+  'boundary = INVENTORY_PORT_BOUNDARY',
+])
+  requireText(
+    aggregateInventory,
+    `'${marker}'`,
+    `${paths.broad}: aggregate Inventory coverage`,
+  );
 
 for (const marker of [
   'function canonicalCustomer()',
@@ -326,7 +378,12 @@ for (const marker of [
   'function canonicalInventory()',
   'numeric_field_count = error_facts.numeric_field_count',
   'inventory payload diagnostics: forbidden',
-]) requireText(broadTest, marker, `${paths.broadTest}: aggregate fixture coverage`);
+])
+  requireText(
+    broadTest,
+    marker,
+    `${paths.broadTest}: aggregate fixture coverage`,
+  );
 
 for (const [key, expected] of Object.entries({
   commerce_error_variant_count: 15,
@@ -364,7 +421,9 @@ for (const [key, expected] of Object.entries({
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+    failures.push(
+      `${paths.evidence}: source_contract.${key} must be ${expected}`,
+    );
   }
 }
 
@@ -412,7 +471,9 @@ for (const [key, expected] of Object.entries({
   runtime_evidence_claimed: false,
 })) {
   if (review.review_findings?.[key] !== expected) {
-    failures.push(`${paths.review}: review_findings.${key} must be ${expected}`);
+    failures.push(
+      `${paths.review}: review_findings.${key} must be ${expected}`,
+    );
   }
 }
 
@@ -427,7 +488,8 @@ for (const marker of [
   'The database payload is treated as opaque and is not logged.',
   '`crates/modules/rustok-inventory/src/reservation_owner_context.rs`',
   'The broader ecommerce mapper cleanup also remains open.',
-]) requireText(document, marker, `${paths.document}: truthful source scope`);
+])
+  requireText(document, marker, `${paths.document}: truthful source scope`);
 
 if (failures.length > 0) {
   console.error('Inventory port diagnostic-safety verification failed:');

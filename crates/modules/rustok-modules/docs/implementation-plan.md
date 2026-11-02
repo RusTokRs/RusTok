@@ -15,7 +15,7 @@ The cross-component sequence and completion rules are defined by the
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
 - Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`, `m20261102_000090_journal_uuid_uniqueness`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
@@ -29,13 +29,39 @@ The cross-component sequence and completion rules are defined by the
 The static N/N+1 settings guard is not complete. The static distribution build
 and admitted release do not retain the predecessor and candidate settings
 schemas, and the in-memory guard is not tied to an owner-held rollout fence.
+The host now rejects unknown modules and missing or unavailable package
+manifests during settings-schema resolution, rather than treating them as empty
+schemas. Both server release Docker images omit those source package manifests,
+and the schema resolver also reloads `modules.toml` from the filesystem rather
+than resolving it from the active distribution. Fresh settings and enablement
+commands therefore remain unavailable when that evidence is missing. Settings receipt
+fingerprints contain the normalized value,
+not the original input or exact schema, so simply rejecting a now-missing
+schema before receipt admission can prevent a previously completed command
+from replaying. The owner cutover must retain release-bound schema evidence
+and preserve or explicitly reconcile existing receipt identities; neither an
+empty-schema fallback nor guessing historical normalization is safe.
 The owner rejects both ordinary and reviewed settings writes when an unresolved
 tenant or platform checkpoint with a predecessor is detected, without treating
 an artifact descriptor as static-release schema evidence. That check is not
 atomic and static distribution rollout state is not covered. The server now
 supplies the active schema for ordinary enables and enable-direction compensation;
 the owner validates under its lifecycle claim and commits the normalized value.
-Installer seed toggles still need schema composition. Dated claims below that describe this guard as delivered do not
+When that host schema lookup fails, the lifecycle owner checks the journal first:
+an exact completed command can replay, while a new enable fails before journal
+admission or claiming the aggregate. This ordering does not establish that a
+successfully loaded filesystem schema belongs to the serving release, nor does
+it resolve historical settings-receipt normalization. The server and writer
+still assemble composition and effective-policy context before the journal
+lookup, so failures in that earlier work can still prevent a lifecycle replay.
+The host co-requisite loader also substitutes an empty set when a package
+manifest is missing; release-owned policy evidence is needed before that
+effective-policy projection can be considered safe in those images.
+Installer seed toggles still need schema composition. They also reconstruct the
+current aggregate revision while reusing a deterministic idempotency key, so
+repeating an already committed seed toggle conflicts with the original recorded
+revision. Seed replay needs durable original command identity; deriving a new
+revision for the same key is unsafe. Dated claims below that describe this guard as delivered do not
 establish those guarantees. Completion requires immutable schema evidence in
 the build and release, a rollout-owned transactional fence shared by all static
 settings and lifecycle writers, installer schema composition, and
@@ -45,6 +71,43 @@ state commit; absent historical evidence blocks retry, and the original failure
 and retry completion resolve atomically. Artifact settings writers still lack a
 shared lifecycle fence. The reviewed enabled comparison also needs
 the complete effective policy rather than defaulted tenant intent.
+
+The server lifecycle tests using real SQLite migrations exposed a UUID storage
+mismatch: SeaORM/SQLx writes tenant IDs as blobs while parts of the module
+control plane bind hyphenated text. Lifecycle aggregate and `tenant_modules`
+foreign keys require the exact stored parent key. Journal admission, aggregate
+claims and override/settings writes now resolve that key in each SQLite mutation
+statement, reject ambiguous parents and orphaned rows, and support both stored
+representations. Aggregate claim comparisons also recognize native and text
+claim keys. Override updates constrain the previously read row and enablement
+intent, so a concurrent replacement or toggle cannot silently overwrite it.
+The shared static settings reader, lifecycle policy reader, transaction-bound
+policy consumer, and bounded operator override snapshots now recognize either
+SQLite UUID representation only when it matches the unique key published by
+the tenant-owned `tenant_identity_keys` SQLite projection. They
+reject duplicate parent identities, mixed representations, and orphaned rows
+instead of merging them. Static lifecycle snapshots now apply the same identity
+check, including orphaned aggregates outside the requested page. The watchdog
+checks claims in its transaction using both valid representations before it
+classifies an operation as abandoned, and releases an expired matching claim in
+that same snapshot. It also validates each candidate tenant's journal identity
+before changing statuses; a corrupted tenant aborts the batch and requires
+operator reconciliation. Recovery and legacy replay derive recorded override intent
+through the same identity-checked tenant-state reader. SQLite journal
+idempotency lookup now checks both native and canonical hyphenated text forms
+for tenant and request keys, validating the tenant-owned identity projection
+in the same statement. The journal inserts using the unique stored parent key
+and rejects conflicting or orphaned journal rows in the insertion statement.
+Existing rows with a valid text tenant key and native operation and idempotency
+keys can replay; text-encoded operation or idempotency keys and multiple matching
+rows fail closed and require reconciliation. The new normalized unique index
+prevents mixed-encoding journal duplicates after migration; existing collisions
+block migration and require operator reconciliation. This is not a complete
+UUID cutover: operation lookup by ID and other SQLite control-plane readers
+remain unresolved. Legacy text-encoded journal operation and idempotency keys
+still require explicit reconciliation. Host-level execution using the full
+production migration chain, concurrent processes, and crash/restart recovery
+remains unverified; fixture evidence below does not establish those guarantees.
 
 The owner boundary has a standalone dependency profile: `rustok-modules` does
 not directly import or depend on AI, product, commerce, MCP, Alloy, Leptos,
@@ -65,6 +128,27 @@ this rule. This paragraph records implementation state, not a new compile or
 test claim.
 
 ## Current verification evidence
+
+On 2026-11-02, `cargo test -p rustok-modules --lib -j 2` passed 417
+tests with 2 ignored. The scoped `policy_commit_guard_sqlite` integration
+target passed 7 SQLite tests; its separately selected ignored PostgreSQL test
+also passed against the configured database. These verify bounded policy and
+operator reads, mixed UUID rejection, and SQLite foreign-key isolation in the
+fixture, and cover native/text revision reads, native claim reaping, legacy
+journal rejection, native journal replay on both backends, and the normalized
+SQLite index's collision and rollback behavior. Owner-level fixtures with
+SQLite foreign keys also execute native-parent toggle, exact replay and disable,
+plus settings writes/replay with native and text parents. These use scoped
+fixture schemas, not the complete server migration chain. A PostgreSQL
+post-hook recovery test passed separately. The tenant owner's SQLite projection migration test passed,
+as did `verify:tenant:fba` and the architecture dependency guard. Applying the
+tenant migration before the new SQLite reads is required.
+The owner transition/retention integration target passed 7 tests after the
+journal fixture was aligned with the tenant identity contract. SQLite journal
+admission and replay were also exercised with real foreign keys, including a
+text parent, missing and duplicate parents, and an orphaned journal row. A
+focused reaper regression additionally verifies that a later invalid tenant
+rolls back the status change of an earlier valid operation in the same batch.
 
 On 2026-09-14, the canonical structured-copy API and consolidated pending schema
 were replaced together with durable frozen-page admission, shared source/target
@@ -3133,3 +3217,11 @@ are still open. The default server check passed before the coordinator API
 replacement; the fresh default server check and its request permission-ceiling
 test now pass. Updated secret/data fixtures pass in the full owner library.
 FFA remains not_started; FBA remains boundary_ready.
+
+## Sealed artifact subscription intake (2026-11-01; source only)
+
+The canonical subscription projector/transport now validates registered sealed frames, shares
+durable source projection, retains original identity and awaits queue insertion before forwarding.
+Root payload representation and queue ownership remain unchanged. Two scoped definitions are
+**uncompiled/unrun**. Remaining: compile, actual backend exact/wildcard admission/dedupe,
+worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).

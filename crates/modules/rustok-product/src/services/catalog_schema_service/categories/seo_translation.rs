@@ -1580,11 +1580,19 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
             "product.category_seo_translation_owner_validation",
             "Product rejected the Category SEO translation mutation",
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
     }
 }
 

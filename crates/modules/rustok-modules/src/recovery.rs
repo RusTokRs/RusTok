@@ -462,6 +462,26 @@ async fn retry_failed_post_hook_operation_claimed(
         .await);
     }
 
+    // Match the lifecycle toggle boundary: unresolved tenant and platform
+    // transitions must not run another hook against an unstable release.
+    // Transition creation is not yet serialized with this read.
+    let checkpoints = match crate::TransitionCheckpointStore::list_active_checkpoints_for_slug_and_tenant_or_platform(
+        db, &plan.module_slug, plan.tenant_id,
+    ).await {
+        Ok(checkpoints) => checkpoints,
+        Err(error) => return Err(mark_recovery_operation_failed(
+            db, operation.id, ModuleOperationRecoveryError::Persistence(format!("transition-read: {error}")),
+        ).await),
+    };
+    if !checkpoints.is_empty() {
+        return Err(mark_recovery_operation_failed(
+            db,
+            operation.id,
+            ModuleOperationRecoveryError::NotRetryable("release_transition_unresolved".to_string()),
+        )
+        .await);
+    }
+
     let current_override_enabled =
         match read_tenant_override_enabled(db, plan.tenant_id, &plan.module_slug).await {
             Ok(current_override_enabled) => current_override_enabled,
@@ -898,30 +918,10 @@ pub(crate) async fn read_tenant_override_enabled<C: ConnectionTrait>(
     tenant_id: uuid::Uuid,
     module_slug: &str,
 ) -> Result<Option<bool>, ModuleOperationStoreError> {
-    let backend = SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
-    let sql = match backend {
-        SupportedBackend::Postgres => {
-            "SELECT enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-        }
-        SupportedBackend::Sqlite => {
-            "SELECT enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-        }
-    };
-    let intent = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![backend.uuid_value(tenant_id), module_slug.into()],
-        ))
-        .await
-        .map_err(store_database_error)?
-        .map(|row| {
-            row.try_get::<Option<bool>>("", "enabled")
-                .map_err(store_database_error)
-        })
-        .transpose()?;
     // No row and a row without recorded intent both mean "no override".
-    Ok(intent.flatten())
+    Ok(TenantModuleStateStore::read(db, tenant_id, module_slug)
+        .await?
+        .and_then(|state| state.enabled))
 }
 
 pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
@@ -931,27 +931,9 @@ pub(crate) async fn apply_tenant_override_enabled<C: ConnectionTrait>(
     requested_override_enabled: Option<bool>,
 ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
     let Some(enabled) = requested_override_enabled else {
-        let backend =
-            SupportedBackend::new(db.get_database_backend()).map_err(store_database_error)?;
-        let sql = match backend {
-            // Clearing the override returns the tenant to the platform
-            // default; the row and its settings survive (tri-state intent).
-            SupportedBackend::Postgres => {
-                "UPDATE tenant_modules SET enabled = NULL, updated_at = NOW() \
-                 WHERE tenant_id = $1 AND module_slug = $2"
-            }
-            SupportedBackend::Sqlite => {
-                "UPDATE tenant_modules SET enabled = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
-                 WHERE tenant_id = ?1 AND module_slug = ?2"
-            }
-        };
-        db.execute_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![backend.uuid_value(tenant_id), module_slug.into()],
-        ))
-        .await
-        .map_err(store_database_error)?;
+        // Clearing intent keeps the row and its settings, under the same
+        // tenant and row-identity checks as other module state writes.
+        TenantModuleStateStore::clear(db, tenant_id, module_slug).await?;
         return Ok(None);
     };
 

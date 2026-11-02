@@ -1,4 +1,5 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::{
     CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CreateCheckoutOrderIdentityInput,
     CreateOrderInput, OrderError, OrderResponse, OrderService, OrderStatusKind,
@@ -61,6 +62,7 @@ impl CheckoutOrderCreationError {
             Self::OrderBoundary {
                 code, retryable, ..
             } => Some((code.as_str(), *retryable)),
+            Self::Adoption(error) => error.bounded_failure(),
             _ => None,
         }
     }
@@ -91,12 +93,20 @@ pub struct CheckoutOrderCreationExecutor {
 }
 
 impl CheckoutOrderCreationExecutor {
-    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: sea_orm::DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        inventory_port: Arc<dyn InventoryReservationIdentityPort>,
+    ) -> Self {
         Self {
             order_service: OrderService::new(db.clone(), event_bus.clone()),
             order_identity_port: in_process_checkout_order_identity_port(db.clone()),
             operation_journal: CheckoutOperationJournal::new(db.clone(), event_bus.clone()),
-            adoption_service: CheckoutInventoryOrderAdoptionService::new(db, event_bus),
+            adoption_service: CheckoutInventoryOrderAdoptionService::new(
+                db,
+                event_bus,
+                inventory_port,
+            ),
             port_deadline: Duration::from_secs(ORDER_IDENTITY_PORT_DEADLINE_SECONDS),
         }
     }
@@ -113,8 +123,9 @@ impl CheckoutOrderCreationExecutor {
     /// typed order-owner checkout identity, adopts already reserved inventory
     /// rows into its order lines, and checkpoints `order_created`.
     ///
-    /// Metadata identity remains only as a temporary owner-side legacy adoption
-    /// bridge. Commerce never queries order storage or metadata directly.
+    /// Order identity is an owner-defined typed relation. Commerce never queries Order tables;
+    /// it consumes operational Cart-line provenance from the frozen input and owner response.
+    /// These persisted lineage labels are not a separate business model or disposable history.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pending_and_adopt(
         &self,
@@ -161,6 +172,7 @@ impl CheckoutOrderCreationExecutor {
             ))
         })?;
 
+        let saved_inventory_channel = channel_slug.clone();
         attach_checkout_identity(&mut input.metadata, operation_id, snapshot_hash)?;
         validate_line_item_provenance(&input)?;
         let request_hash = order_request_hash(&input, channel_id, channel_slug.as_deref())?;
@@ -333,8 +345,22 @@ impl CheckoutOrderCreationExecutor {
             )));
         }
 
+        let mut inventory_context = PortContext::new(
+            tenant_id.to_string(),
+            if actor_id.is_nil() {
+                PortActor::system()
+            } else {
+                PortActor::user(actor_id.to_string())
+            },
+            locale,
+            format!("checkout:{operation_id}:inventory-adopt"),
+        )
+        .with_causation_id(operation_id.to_string())
+        .with_deadline(self.port_deadline)
+        .with_idempotency_key(format!("checkout:{operation_id}:inventory-adopt"));
+        inventory_context.channel = saved_inventory_channel;
         self.adoption_service
-            .adopt_and_checkpoint(tenant_id, operation_id, lease_owner, &order)
+            .adopt_and_checkpoint(inventory_context, operation_id, lease_owner, &order)
             .await?;
         Ok(order)
     }

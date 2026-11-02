@@ -1,0 +1,239 @@
+{
+  "packet": "inventory-source-delivery-source",
+  "status": "source_only_uncompiled_unrun",
+  "scope": "Canonical Inventory changed/activation publication and required acknowledged module delivery on existing memory/Iggy fan-out/OutboxRelay; not selected Distribution/Index source/worker cutover",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#inventory-source-canonical-delivery-2026-11-02-source-continuation",
+  "guard": "scripts/verify/verify-inventory-source-delivery.mjs",
+  "task_entry": {
+    "branch": "arena/71cd6d1f-rustok",
+    "head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+    "main_observed": "a418bbbed64e53cdf841b87dada7ae5799770cd2"
+  },
+  "entry_observation": {
+    "files": 13159,
+    "migration_rust_files": 669,
+    "dirty_paths": 727,
+    "cache_is_ephemeral": true
+  },
+  "bounds": {
+    "source_version_min": 1,
+    "source_version_max": "9223372036854775807",
+    "baseline_variants_per_page": 128,
+    "complete_levels_per_page": 4096,
+    "context_budget_ms": [1, 30000]
+  },
+  "source_wiring": {
+    "canonical_versioned_publication_wired": true,
+    "canonical_relay_dispatch_wired": true,
+    "required_module_delivery_fenced": true,
+    "current_product_bootstrap_and_delete_actor_forwarded": true
+  },
+  "publication": {
+    "changed_type": "inventory.source.changed",
+    "changed_identity": "exact retained source change UUID",
+    "activation_type": "inventory.source.baseline_activated",
+    "activation_identity": "globally unique original baseline UUID",
+    "schema_version": 1,
+    "counter_journal_fact_transaction": "actual caller DatabaseTransaction; no helper commit/second queue",
+    "building_seed_per_sku_events": false,
+    "activation_at_final_checkpoint_only": true,
+    "actor": "current verified caller/context; never baseline creator, journal or receipt metadata",
+    "historical_republication": false
+  },
+  "regressions": {
+    "rust_definitions": 26,
+    "node_definitions": 10,
+    "executed": false,
+    "rust": {
+      "crates/libs/rustok-events/src/inventory_source/tests.rs": [
+        "inventory_source_facts_are_registered_with_distinct_sealed_v1_routes",
+        "inventory_source_changed_revision_is_positive_and_fits_its_owner_storage",
+        "inventory_source_facts_refuse_missing_original_baseline_or_variant_identity",
+        "inventory_source_data_does_not_admit_quantity_product_or_authority_snapshots",
+        "inventory_source_envelope_uses_the_owner_identity_without_invented_product_causation",
+        "inventory_source_and_reservation_module_ack_policy_does_not_capture_remote_product_routes"
+      ],
+      "crates/modules/rustok-commerce/tests/inventory_source_history.rs": [
+        "source_delivery_baseline_pages_publish_only_one_atomic_final_activation_and_replay_none",
+        "source_delivery_empty_target_tenant_still_has_one_explicit_activation_without_fake_versions",
+        "source_delivery_quantity_uses_current_actor_and_original_journal_uuid_but_noop_emits_none",
+        "source_delivery_suppressed_changed_insert_rolls_back_quantity_and_guarded_delete",
+        "source_delivery_activation_publication_failure_keeps_original_building_checkpoint_and_page",
+        "source_delivery_fresh_product_and_guarded_product_delete_forward_distinct_current_actors",
+        "source_delivery_fresh_variant_and_guarded_variant_delete_keep_unified_axis_identity",
+        "source_delivery_reservation_facts_share_owner_transaction_and_use_current_service_scope",
+        "source_delivery_diagnostics_never_fabricate_missing_prior_activation_history",
+        "source_delivery_baseline_service_scope_does_not_impersonate_its_creator_uuid",
+        "source_delivery_fresh_bootstrap_cannot_commit_without_its_source_fact"
+      ],
+      "apps/server/src/services/event_transport_factory.rs": [
+        "active_unmatched_registry_refuses_required_inventory_families_before_primary_acceptance",
+        "source_family_cannot_be_acknowledged_by_a_running_reservation_only_listener",
+        "source_memory_profile_awaits_exact_registered_facts_and_refuses_after_shutdown",
+        "source_fanout_listener_error_retains_the_same_frame_for_at_least_once_retry"
+      ],
+      "crates/modules/rustok-outbox/tests/inventory_source_delivery.rs": [
+        "inventory_source_write_once_exact_replay_preserves_first_frame_and_mismatch_refuses",
+        "inventory_source_relay_dispatches_both_registered_facts_without_root_fallback",
+        "inventory_source_required_delivery_failure_retries_the_unchanged_canonical_frame",
+        "inventory_source_unhandled_delivery_exhaustion_is_failed_not_dispatched"
+      ],
+      "crates/modules/rustok-inventory/src/services/bootstrap.rs": [
+        "initial_inventory_requires_current_actor_before_any_bookkeeping_write"
+      ]
+    },
+    "strengthened_existing": {
+      "crates/modules/rustok-inventory/src/source_history/physical_tests.rs": [
+        "source_physical_multi_location_equal_availability_advances_once_and_preparation_does_not"
+      ],
+      "crates/modules/rustok-inventory/src/source_history/tests.rs": [
+        "source_page_limits_and_error_envelopes_do_not_leak_provider_payload"
+      ]
+    }
+  },
+  "preserved_hashes": {
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000025_create_shipment_stock_proofs.rs": "73cbb83b716736a04ce517b73f417f735d266fea88f25440fbf1660ed567f4c6",
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000026_index_catalog_deletion_history.rs": "e2a53e95afc6c03a540d4cc1f8f8af0dcdf498708008fcfc8b7dffc1408b0fcd",
+    "crates/modules/rustok-inventory/src/migrations/m20250130_000016_create_commerce_inventory.rs": "ac238912c4f4e512547ffc1f3e275281f0170d6f6dcc8f96ee4bfc81835be1a2",
+    "crates/modules/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs": "5d120ac7eff5798586d181c77b52ebcc8803540983233598e98928eba9f6b45a",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000017_enforce_reservation_identity.rs": "3393678e292949edf35ba2233ee58b3996b58005730269baad2018108cf572f7",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000018_enforce_inventory_state_invariants.rs": "589070c5ee20be7d9bca73778d60658d47d0d1dfd2691441d2487c69d069de84",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000019_reserve_checkout_order_inventory.rs": "5aeefc5d7a351ee22264cd25febc9e9d0969efa55be78c625043088bf0620989",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000020_remove_duplicate_checkout_reservation.rs": "7a64fcf4321dcd26a7b2b77999a6e171025dcf50af5ba9886e82a03695feb375",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d",
+    "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
+    "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+    "crates/modules/rustok-inventory/src/migrations/shared.rs": "80e89f26200fa065163621b62c73068cf73fdac7be4fc1ee2966a0c03a872d28",
+    "crates/libs/rustok-events/contracts/event-contract-digests.json": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121",
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000027_create_inventory_source_history.rs": "4898e0ff5db9691241f75494acba7f551f987ff89711f057167939f48e70a00e",
+    "crates/libs/rustok-events/src/types/mod.rs": "a53133c0dd6267922e87ebaaff8425c7d23452f10babbddb9c1e2d2907a6a9ed",
+    "crates/libs/rustok-events/src/types/domain_event.rs": "c919cd9200a729dadc0ccd579b592b51df6fb239149787ef1587dafae7805a04",
+    "crates/libs/rustok-events/src/types/envelope.rs": "0533c3dca9b6e6610d20872c2f66bf304d9a6071eed584b6c3ae08b1ba323eb9",
+    "crates/libs/rustok-events/src/types/validation.rs": "59d2e0967d42d4e86955e2e6fac7467bc7fceec87e5bcb632178331e6f42885c",
+    "crates/libs/rustok-events/src/schema.rs": "fe97948d6246015593455b1d0d2f3c06edbf9925b6736869a69ca8c1c01877f5",
+    "crates/libs/rustok-events/src/inventory_reservation.rs": "5cd7ee0dfaaf63889a246215bd0c9c5865a43f5fb1a92b81c198eff75c06b865"
+  },
+  "compiled": false,
+  "tests_executed": false,
+  "sql_executed": false,
+  "migrations_executed": false,
+  "digest_generated": false,
+  "runtime_verified": false,
+  "installation_baseline_initialized": false,
+  "distribution_selected": false,
+  "source_context_authority_bound": false,
+  "initial_replay_durable": false,
+  "index_persist_before_ack_verified": false,
+  "index_ready": false,
+  "step8_complete": false,
+  "source_checks": {
+    "status": "completed_source_checks_only",
+    "read_only_source_verifiers": 26,
+    "passed": 20,
+    "entry_equivalent_failures": [
+      {
+        "path": "scripts/verify/verify-product-error-boundary.mjs",
+        "exit_code": 1,
+        "current_output_sha256": "3696161f27ad90ae0059522c59a4382bdb923eb45a539775013329d266a01190",
+        "entry_exit_code": 1,
+        "entry_output_sha256": "1a8407752cc442543947b9ab1eaa557571ea56d4f596d6ba395ca30fd98390b4",
+        "byte_identical_to_entry": false,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": "Only absolute snapshot root substituted for repository root in Node exception stack; diagnostics retained verbatim"
+      },
+      {
+        "path": "scripts/verify/verify-inventory-availability-quantity-context.mjs",
+        "exit_code": 2,
+        "current_output_sha256": "d4a04fb411e4b5b128a2fb46f0fa919d1de9780c434ca5fd1a30ad6db8183d8b",
+        "entry_exit_code": 2,
+        "entry_output_sha256": "d4a04fb411e4b5b128a2fb46f0fa919d1de9780c434ca5fd1a30ad6db8183d8b",
+        "byte_identical_to_entry": true,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": null
+      },
+      {
+        "path": "scripts/verify/verify-inventory-port-diagnostic-safety.mjs",
+        "exit_code": 2,
+        "current_output_sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27",
+        "entry_exit_code": 2,
+        "entry_output_sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27",
+        "byte_identical_to_entry": true,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": null
+      },
+      {
+        "path": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+        "exit_code": 9,
+        "current_output_sha256": "2ec0ff1c437ef3012c3ccdd80677aa9b7f2019f13072ba1c58a8b18c5eee5ff8",
+        "entry_exit_code": 9,
+        "entry_output_sha256": "2ec0ff1c437ef3012c3ccdd80677aa9b7f2019f13072ba1c58a8b18c5eee5ff8",
+        "byte_identical_to_entry": true,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": null
+      },
+      {
+        "path": "scripts/verify/verify-product-catalog-receipts.mjs",
+        "exit_code": 1,
+        "current_output_sha256": "d0acf5822771e05bc9aafb87429cf69372e4e10ff1ad2a3ee62fd92daee66215",
+        "entry_exit_code": 1,
+        "entry_output_sha256": "d0acf5822771e05bc9aafb87429cf69372e4e10ff1ad2a3ee62fd92daee66215",
+        "byte_identical_to_entry": true,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": null
+      },
+      {
+        "path": "scripts/verify/verify-commerce-checkout-inventory-boundary-context.mjs",
+        "exit_code": 3,
+        "current_output_sha256": "e171df9f3a1a38ae12bf7ebfa0d0e1f5eeaa0ca590e24b429627a4aea7b4491c",
+        "entry_exit_code": 3,
+        "entry_output_sha256": "e171df9f3a1a38ae12bf7ebfa0d0e1f5eeaa0ca590e24b429627a4aea7b4491c",
+        "byte_identical_to_entry": true,
+        "equal_after_only_snapshot_root_path_normalization": true,
+        "normalization": null
+      }
+    ],
+    "comparison_scope": "Hash-proven dirty task entry, not clean main; one Node exception stack differs only in absolute snapshot root",
+    "entry_hash_verified_files": 13159,
+    "rust_formatter": {
+      "tool": "Scalar 0.3.0",
+      "edition": "2024",
+      "style_edition": "2024",
+      "files": 20,
+      "post_write_changes": 0
+    },
+    "syntax_only": {
+      "rust_tree_sitter_files": 20,
+      "mjs_node_check_files": 4,
+      "json_files": 3
+    },
+    "prettier": {
+      "version": "3.7.4",
+      "files": 26
+    },
+    "task_entry_delta_whitespace": "clean",
+    "new_local_link_targets_checked": 23,
+    "historical_preservation": {
+      "entry_migration_directory_rust_files": 669,
+      "unchanged_files": 669,
+      "new_migrations": [],
+      "historical_payloads_modified": false,
+      "dependency_lock_or_manifests_changed_from_entry": false,
+      "historical_migration_root_reservation_digest_pins": 21,
+      "event_digest_sha256": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121"
+    },
+    "compiler_gate": "blocked: cargo/rustc absent; architecture_dependency_guard cargo metadata failed to start; no Rust typing/compilation evidence",
+    "tests_executed": false,
+    "compiler_or_backend_proof": false
+  },
+  "operational_gates": [
+    "I027 precedes matching binaries; all historical migration payloads remain unchanged and no migration is executed here",
+    "Do not start a live baseline before current operator preflight/recovery and required real source handlers are selected; no automatic reset/abort/repair",
+    "Already-active baselines from earlier binaries may omit activation and past changed facts; no status/journal observation fabricates delivery history; explicit operator reconciliation/cutover remains pending",
+    "No production Inventory source listener exists yet: required unknown/inactive/unhandled delivery stays retryable/DLQ, never successful indexing or broker-only acknowledgement",
+    "Selected Distribution must bind current authoritative tenant/service claims/context; an event actor/baseline creator or invented service UUID is not authorization",
+    "Initial bounded source replay must be durably arranged before activation handler ACK; exact changed key/schema/source/minimum version and authoritative upsert/tombstone must persist before changed-event ACK",
+    "Canonical Rust digest generation/admission is pending alongside existing reservation/Checkout pending admissions; the committed artifact is not edited or hand-recomputed",
+    "Compilation, tests, SQL/backend/concurrency/claim/crash/restart/real Iggy cursor ACK and native/HTTP/GraphQL/Next/Leptos recovery remain maintainer/operator gates; no Index or step8 promotion"
+  ]
+}

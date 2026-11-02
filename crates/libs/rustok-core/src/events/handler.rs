@@ -7,8 +7,10 @@ use tracing::{Instrument, debug, error, info, warn};
 
 use super::bus::EventBus;
 use super::consumer::EventConsumerRuntime;
+use super::contract_delivery::{ContractListenerRegistration, ContractListenerSet};
 use super::types::{DomainEvent, EventEnvelope};
 use crate::Error;
+use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 
 pub type HandlerResult = Result<(), Error>;
 
@@ -19,6 +21,20 @@ pub trait EventHandler: Send + Sync + 'static {
     fn handles(&self, event: &DomainEvent) -> bool;
 
     async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult;
+
+    /// Explicit opt-in to bounded typed families; root dispatch remains unchanged.
+    fn handles_contract(&self, _payload: &ContractEventPayload) -> bool {
+        false
+    }
+
+    /// Acknowledged by the canonical relay only after this returns success.
+    /// Unsupported sealed delivery is a refusal, never a root-event conversion or noop.
+    async fn handle_contract(&self, _envelope: &ContractEventEnvelope) -> HandlerResult {
+        Err(Error::External(format!(
+            "handler `{}` does not accept sealed contracts",
+            self.name()
+        )))
+    }
 
     async fn on_error(&self, envelope: &EventEnvelope, error: &Error) {
         error!(
@@ -92,6 +108,27 @@ impl EventDispatcher {
     }
 
     pub fn start(self) -> RunningDispatcher {
+        self.start_inner(None)
+    }
+
+    /// Starts the same module dispatcher with explicit acknowledged sealed delivery.
+    /// Register all handlers before starting; delivery binds only the configured listener bus.
+    pub fn start_with_contract_delivery(self) -> crate::Result<RunningDispatcher> {
+        if self.config.max_queue_depth > Semaphore::MAX_PERMITS {
+            return Err(Error::Validation(
+                "module listener queue exceeds the supported semaphore bound".to_owned(),
+            ));
+        }
+        let registration = self
+            .bus
+            .bind_contract_listeners(self.handlers.clone(), self.config.max_concurrent)?;
+        Ok(self.start_inner(Some(registration)))
+    }
+
+    fn start_inner(self, registration: Option<ContractListenerRegistration>) -> RunningDispatcher {
+        let contract_listeners = registration
+            .as_ref()
+            .map(|registration| Arc::clone(&registration.state));
         let handlers = Arc::new(self.handlers);
         let config = self.config;
         let mut receiver = self.bus.subscribe();
@@ -102,6 +139,8 @@ impl EventDispatcher {
 
         let handle = tokio::spawn(
             async move {
+                // Retain the RAII registration for the task lifetime, including abort/unwind.
+                let _contract_registration = registration;
                 consumer_runtime.restarted("startup");
                 info!(handlers = handlers.len(), "Event dispatcher started");
                 let queue_capacity = config.max_queue_depth.max(1);
@@ -197,6 +236,7 @@ impl EventDispatcher {
         RunningDispatcher {
             handle,
             bus,
+            contract_listeners,
             stop_tx,
         }
     }
@@ -350,6 +390,7 @@ impl EventDispatcher {
 }
 
 pub struct RunningDispatcher {
+    contract_listeners: Option<Arc<ContractListenerSet>>,
     handle: JoinHandle<()>,
     bus: EventBus,
     stop_tx: watch::Sender<bool>,
@@ -360,14 +401,19 @@ impl RunningDispatcher {
         &self.bus
     }
 
-    /// Request a cooperative stop. The receive loop stops admitting new
-    /// events and drains already admitted dispatches before exiting.
+    /// Stop admitting root and sealed events before draining root dispatches.
     pub fn request_stop(&self) {
+        if let Some(listeners) = &self.contract_listeners {
+            listeners.close();
+        }
         self.stop_tx.send_replace(true);
     }
 
     /// Emergency abort. Prefer `request_stop` + `join` for graceful shutdown.
     pub fn abort(&self) {
+        if let Some(listeners) = &self.contract_listeners {
+            listeners.close();
+        }
         self.handle.abort();
     }
 

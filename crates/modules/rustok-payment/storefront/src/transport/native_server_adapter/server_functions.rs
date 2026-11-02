@@ -346,11 +346,15 @@ fn checkout_runtime(
             ServerFnError::new("Payment storefront runtime is temporarily unavailable")
         })?;
 
+    let runtime = rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+        runtime_ctx.db_clone(),
+        event_bus,
+    );
     Ok(
-        rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
-            runtime_ctx.db_clone(),
-            event_bus,
-        ),
+        match runtime_ctx.shared_get::<rustok_product::ProductCatalogReadRuntime>() {
+            Some(product) => runtime.with_product_catalog_read_runtime(product),
+            None => runtime,
+        },
     )
 }
 

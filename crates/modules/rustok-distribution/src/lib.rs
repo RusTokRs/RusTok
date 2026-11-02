@@ -8,6 +8,8 @@
 mod channel_index;
 mod generated_promotions;
 mod generation;
+#[cfg(feature = "mod-inventory")]
+pub mod inventory_index;
 #[cfg(feature = "mod-product")]
 pub mod product_index;
 
@@ -54,6 +56,8 @@ fn register_selected_index_bridges(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> rustok_core::Result<()> {
     channel_index::register(extensions)?;
+    #[cfg(feature = "mod-inventory")]
+    inventory_index::register(extensions)?;
     #[cfg(feature = "mod-product")]
     product_index::register(extensions)?;
     Ok(())

@@ -19,6 +19,24 @@ because its identity, admission, and retention contracts are different.
 
 ## Decision
 
+For SQLite, the tenant owner publishes the read-only `tenant_identity_keys`
+database projection containing only the stored tenant primary key. The static
+module owner may use that projection in the same statement as its own rows to
+detect ambiguous UUID representations and orphaned state; it must not query the
+tenant owner's private tables. The projection preserves the SQLite storage
+class and does not authorize or resolve a tenant. Missing projection or
+ambiguous identity must fail closed. This narrow persistence boundary is needed
+because independently resolved reads cannot establish a single SQLite snapshot.
+It does not settle the representation used by lifecycle writes or migrate old
+rows; those require a separate complete cutover.
+
+The SQLite lifecycle journal additionally enforces logical uniqueness of a
+tenant and idempotency UUID across native BLOB and canonical text encodings using an
+owner migration. The migration fails when existing identities collide; it
+does not choose a receipt or rewrite history. This index fences older writers
+after migration, but does not itself authorize a tenant, repair malformed data,
+or settle the UUID representation of the other lifecycle tables.
+
 `rustok-modules` owns a durable `module_static_tenant_lifecycle` aggregate for
 each `(tenant_id, module_slug)`. It stores a monotonic revision independently
 of `tenant_modules`, so the inherited/default state has revision `0` before a
@@ -45,6 +63,12 @@ canonical GraphQL and native/admin contracts echo that value in every mutation
 and return the resulting revision. Settings use the shared owner-operation
 receipt ledger for exact replay; hook transitions retain `module_operations`
 for their lifecycle recovery evidence.
+
+For static settings, replay identity may depend on the schema that normalized
+the original request. The settings architecture ADR requires immutable schema
+evidence and defines explicit reconciliation for historical receipts whose
+identity cannot be proven after that evidence is lost. Such a case must not be
+treated as permission to execute the command again or delete its receipt.
 
 ## Consequences
 

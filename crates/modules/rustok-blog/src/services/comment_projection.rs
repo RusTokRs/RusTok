@@ -4,13 +4,12 @@ use rustok_comments::CommentStatus;
 use rustok_core::Error;
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
     TransactionTrait,
     sea_query::{Expr, OnConflict},
 };
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::entities::{blog_comment_projection_delivery, blog_post};
@@ -126,8 +125,12 @@ pub struct BlogCommentProjectionHandler {
 }
 
 impl BlogCommentProjectionHandler {
-    pub fn new(db: DatabaseConnection) -> Self {
-        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    /// Creates the handler with a host-composed transactional event bus. The bus
+    /// is injected rather than constructed here so the projection shares the
+    /// host's outbox transport, middleware and instrumentation instead of
+    /// building a second, independent bus over the same database
+    /// (AGENTS.md §5: host composes owner-owned entrypoints).
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
 

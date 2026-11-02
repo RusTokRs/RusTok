@@ -67,3 +67,23 @@
 - `OrderError::DuplicateCommand`: duplicate command receipt with mismatched payload.
 - `OrderError::Database`: underlying storage failures.
 - `OrderError::Outbox`: transactional event bus failure.
+
+## Saved inventory bindings on OrderReadPort (2026-10-31; source continuation)
+
+The root-exported `OrderReadPort::read_order_line_inventory_bindings` is mandatory, with no
+default/fallback. `ReadOrderLineInventoryBindingsRequest` names one Order and 1..=1024
+distinct non-nil Order-line IDs. `OrderLineInventoryBindingsSnapshot` returns tenant, Order
+and exactly those `OrderLineInventoryBinding { order_line_item_id, variant_id, quantity }`
+records, where Variant/quantity are immutable saved facts and explicit None is SKU-less.
+The nullable Variant field must be present on decode; omission is an incomplete response.
+
+Read-policy/positive-deadline admission and tenant parsing precede owner IO. The native
+owner query joins the parent tenant and requested Order in the same bounded select; a
+missing or foreign line refuses the whole batch. No private Order entity leaks to Commerce,
+no complete priced Order is fetched, and no fresh Product/Pricing eligibility is used.
+The existing shared bounded `OrderError` mapper remains canonical. The concrete consumer is
+return-restock planning before resolution effects; original REST/GraphQL read operations,
+UI wire DTOs and selected runtime composition remain unchanged.
+
+These are source changes and unrun regression definitions, not compilation, SQL/mounted,
+remote-provider, recovery or readiness certification. See the [read contract](docs/order-read-port.md#saved-binding-return-restock-continuation-2026-10-31).

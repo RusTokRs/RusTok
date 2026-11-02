@@ -49,130 +49,38 @@ impl StorefrontLineItemFailureSource {
     }
 }
 
-struct StorefrontLineItemDiagnosticSource(StorefrontLineItemFailureSource);
+struct StorefrontLineItemDiagnosticSource;
 
 impl From<StorefrontLineItemFailureSource> for StorefrontLineItemDiagnosticSource {
     fn from(source: StorefrontLineItemFailureSource) -> Self {
-        Self(source)
+        // The typed outcome/source kind was projected before this conversion. Consume the
+        // cause without retaining private diagnostics in a transport Debug implementation.
+        match source {
+            StorefrontLineItemFailureSource::Database(error) => drop(error),
+            StorefrontLineItemFailureSource::Pricing(error) => drop(error),
+            StorefrontLineItemFailureSource::Inventory(error) => drop(error),
+            StorefrontLineItemFailureSource::Metadata(error) => drop(error),
+            StorefrontLineItemFailureSource::Local(_reason) => {}
+        }
+        Self
     }
 }
 
 impl std::fmt::Debug for StorefrontLineItemDiagnosticSource {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            StorefrontLineItemFailureSource::Database(error) => formatter
-                .debug_tuple("Database")
-                .field(&error.to_string())
-                .finish(),
-            StorefrontLineItemFailureSource::Pricing(error) => formatter
-                .debug_tuple("Pricing")
-                .field(&error.to_string())
-                .finish(),
-            StorefrontLineItemFailureSource::Inventory(error) => formatter
-                .debug_tuple("Inventory")
-                .field(&error.to_string())
-                .finish(),
-            StorefrontLineItemFailureSource::Metadata(error) => formatter
-                .debug_tuple("Metadata")
-                .field(&error.to_string())
-                .finish(),
-            StorefrontLineItemFailureSource::Local(reason) => {
-                formatter.debug_tuple("Local").field(reason).finish()
-            }
-        }
-    }
-}
-
-struct StorefrontLineItemFailure {
-    kind: StorefrontLineItemFailureKind,
-    source_owner: &'static str,
-    source_operation: &'static str,
-    product_id: Option<Uuid>,
-    source: StorefrontLineItemFailureSource,
-}
-
-impl StorefrontLineItemFailure {
-    fn database(operation: &'static str, error: sea_orm::DbErr) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
-            source_owner: "rustok_product.persistence",
-            source_operation: operation,
-            product_id: None,
-            source: StorefrontLineItemFailureSource::Database(error),
-        }
-    }
-
-    fn pricing(product_id: Uuid, error: PortError) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
-            source_owner: "rustok_pricing",
-            source_operation: "resolve_product_price",
-            product_id: Some(product_id),
-            source: StorefrontLineItemFailureSource::Pricing(error),
-        }
-    }
-
-    fn inventory(product_id: Uuid, error: CommerceError) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
-            source_owner: "rustok_inventory.public_channel",
-            source_operation: "check_variant_availability",
-            product_id: Some(product_id),
-            source: StorefrontLineItemFailureSource::Inventory(error),
-        }
-    }
-
-    fn product_unavailable(
-        product_id: Option<Uuid>,
-        operation: &'static str,
-        reason: &'static str,
-    ) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::ProductUnavailable,
-            source_owner: "rustok_product",
-            source_operation: operation,
-            product_id,
-            source: StorefrontLineItemFailureSource::Local(reason),
-        }
-    }
-
-    fn inventory_insufficient(product_id: Uuid) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::InventoryInsufficient,
-            source_owner: "rustok_inventory.public_channel",
-            source_operation: "check_variant_availability",
-            product_id: Some(product_id),
-            source: StorefrontLineItemFailureSource::Local("available inventory is below request"),
-        }
-    }
-
-    fn invalid_metadata(product_id: Uuid, error: serde_json::Error) -> Self {
-        Self {
-            kind: StorefrontLineItemFailureKind::InputInvalid,
-            source_owner: "rustok_commerce.graphql_input",
-            source_operation: "parse_line_item_metadata",
-            product_id: Some(product_id),
-            source: StorefrontLineItemFailureSource::Metadata(error),
-        }
-    }
-
-    fn with_product_id(mut self, product_id: Uuid) -> Self {
-        self.product_id = Some(product_id);
-        self
+        formatter.write_str("redacted")
     }
 }
 
 #[derive(Clone, Copy)]
 enum StorefrontLineItemConsumerOperation {
     Resolve,
-    ValidateQuantity,
 }
 
 impl StorefrontLineItemConsumerOperation {
     fn name(self) -> &'static str {
         match self {
             Self::Resolve => "resolve_storefront_line_item_input",
-            Self::ValidateQuantity => "validate_storefront_line_item_quantity",
         }
     }
 }
@@ -214,11 +122,6 @@ fn storefront_line_item_public_policy(
         (StorefrontLineItemConsumerOperation::Resolve, _) => (
             "Cart line item could not be resolved",
             "CART_LINE_ITEM_RESOLUTION_FAILED",
-            true,
-        ),
-        (StorefrontLineItemConsumerOperation::ValidateQuantity, _) => (
-            "Inventory availability could not be verified",
-            "CART_INVENTORY_UNAVAILABLE",
             true,
         ),
     }
@@ -515,37 +418,6 @@ async fn resolve_typed_storefront_line_item_input(
     })
 }
 
-async fn validate_typed_storefront_line_item_quantity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> std::result::Result<(), StorefrontLineItemFailure> {
-    let variant = product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(|error| {
-            StorefrontLineItemFailure::database("load_variant_for_quantity_validation", error)
-        })?
-        .ok_or_else(|| {
-            StorefrontLineItemFailure::product_unavailable(
-                None,
-                "load_variant_for_quantity_validation",
-                "variant was not found",
-            )
-        })?;
-    validate_typed_storefront_variant_inventory(
-        db,
-        tenant_id,
-        &variant,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-}
-
 async fn validate_typed_storefront_variant_inventory(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -615,31 +487,17 @@ pub(crate) async fn resolve_storefront_line_item_input(
     })
 }
 
-pub(crate) async fn validate_storefront_line_item_quantity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> Result<()> {
-    validate_typed_storefront_line_item_quantity(
-        db,
-        tenant_id,
-        variant_id,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
-    .map_err(|failure| {
-        storefront_line_item_graphql_error(
-            failure,
-            StorefrontLineItemConsumerOperation::ValidateQuantity,
-            tenant_id,
-            variant_id,
-            requested_quantity,
-            public_channel_slug,
-            None,
-            None,
-        )
-    })
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    #[test]
+    fn compatibility_line_item_source_never_formats_private_owner_detail() {
+        let source = StorefrontLineItemDiagnosticSource::from(
+            StorefrontLineItemFailureSource::Pricing(PortError::unavailable(
+                "pricing.private_code",
+                "private-provider-message-and-token",
+            )),
+        );
+        assert_eq!(format!("{:?}", source), "redacted");
+    }
 }

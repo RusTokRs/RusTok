@@ -14471,23 +14471,31 @@ name = "rustok-cart-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos",
+ "leptos-auth",
  "leptos-ui-routing",
  "leptos_axum",
  "rust_decimal",
  "rustok-api",
  "rustok-cart",
+ "rustok-commerce",
  "rustok-customer",
  "rustok-graphql",
+ "rustok-inventory",
  "rustok-outbox",
  "rustok-pricing",
+ "rustok-pricing-storefront",
+ "rustok-product",
+ "rustok-region",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tracing",
  "uuid",
+ "web-sys",
 ]
 
 [[package]]
@@ -15427,6 +15435,7 @@ dependencies = [
  "rustok-commerce",
  "rustok-graphql",
  "rustok-outbox",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
@@ -16883,6 +16892,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-payment",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
@@ -16908,6 +16918,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pricing-persistence",
  "rustok-product",
+ "rustok-region",
  "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
@@ -16977,7 +16988,7 @@ dependencies = [
 name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
- "futures",
+ "chrono",
  "leptos",
  "leptos-ui-routing",
  "leptos_axum",
@@ -16986,6 +16997,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-pricing",
+ "rustok-product",
  "rustok-ui-core",
  "rustok-ui-i18n",
  "rustok-ui-transport",
@@ -17037,6 +17049,7 @@ dependencies = [
  "chrono",
  "leptos",
  "leptos-auth",
+ "leptos-ui",
  "leptos-ui-routing",
  "leptos_axum",
  "leptos_router",
@@ -17056,6 +17069,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "uuid",
+ "web-sys",
 ]
 
 [[package]]
@@ -17171,22 +17185,30 @@ name = "rustok-product-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos",
+ "leptos-auth",
  "leptos-ui-routing",
  "leptos_axum",
  "rustok-api",
+ "rustok-cart-storefront",
+ "rustok-commerce",
  "rustok-commerce-foundation",
  "rustok-graphql",
  "rustok-grid",
  "rustok-outbox",
  "rustok-pricing",
+ "rustok-pricing-storefront",
  "rustok-product",
+ "rustok-ui",
  "rustok-ui-core",
  "rustok-ui-i18n",
+ "rustok-ui-leptos",
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
  "uuid",
+ "web-sys",
 ]
 
 [[package]]
@@ -18490,8 +18512,10 @@ dependencies = [
  "chrono",
  "rustok-api",
  "serde",
+ "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.21",
+ "utoipa",
  "uuid",
 ]
 

@@ -1,5 +1,5 @@
 use rustok_api::{AuthContext, PortContext, PortError, PortErrorKind, RequestContext};
-use rustok_cart::{CartStorefrontContextUpdateRequest, in_process_cart_storefront_port};
+use rustok_cart::in_process_cart_storefront_port;
 use rustok_fulfillment::{
     ListShippingOptionProjectionsRequest, ReadShippingOptionProjectionRequest,
     ShippingOptionReadPort,
@@ -105,7 +105,7 @@ fn map_shipping_port_error(
         "storefront cart shipping owner read failed with bounded diagnostics"
     );
 
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 pub(super) async fn enrich_storefront_cart(
@@ -277,6 +277,7 @@ async fn validate_selected_shipping_option(
 pub(super) async fn apply_cart_context_patch(
     db: &DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
+    product_runtime: rustok_product::ProductCatalogReadRuntime,
     shipping_option_read_port: &dyn ShippingOptionReadPort,
     tenant_id: Uuid,
     request_context: &RequestContext,
@@ -298,63 +299,64 @@ pub(super) async fn apply_cart_context_patch(
     )
     .await?;
 
+    let input = UpdateCartContextInput {
+        email: requested.email,
+        region_id: context.region.as_ref().map(|region| region.id),
+        // A region may contain several countries. Null remains clear, never its first country.
+        country_code: requested.country_code,
+        locale_code: Some(context.locale.clone()),
+        selected_shipping_option_id: requested.selected_shipping_option_id,
+        shipping_selections: requested.shipping_selections,
+    };
+    let target = cart.project_context(&input).map_err(|_| {
+        rustok_web::port_error_to_http_error(PortError::validation(
+            "commerce.cart_context_invalid",
+            "Cart context is invalid",
+        ))
+    })?;
+    let write_context = super::super::storefront_cart_port_context(
+        tenant_id,
+        request_context,
+        auth,
+        cart.id,
+        "update-context",
+        true,
+    );
     let public_channel_slug =
-        super::super::storefront_public_channel_slug_for_cart(cart, request_context);
+        crate::storefront_channel::resolve_cart_channel(db, &write_context, &target)
+            .await
+            .map_err(rustok_web::port_error_to_http_error)?;
     validate_selected_shipping_option(
         shipping_option_read_port,
         tenant_id,
         request_context,
         auth,
-        cart,
+        &target,
         SelectedShippingOptionValidation {
-            selected_shipping_option_id: requested.selected_shipping_option_id,
-            shipping_selections: Some(requested.shipping_selections.as_slice()),
-            currency_code: &cart.currency_code,
+            selected_shipping_option_id: input.selected_shipping_option_id,
+            shipping_selections: input.shipping_selections.as_deref(),
+            currency_code: &target.currency_code,
             public_channel_slug: public_channel_slug.as_deref(),
-            requested_locale: Some(request_context.locale.as_str()),
+            requested_locale: target.locale_code.as_deref(),
             tenant_default_locale: Some(tenant_default_locale),
         },
     )
     .await?;
-
+    let pricing =
+        rustok_pricing::in_process_pricing_read_port(db.clone(), event_bus, product_runtime);
+    let command = crate::prepare_storefront_cart_context(
+        pricing.as_ref(),
+        write_context.clone(),
+        cart,
+        input,
+    )
+    .await
+    .map_err(rustok_web::port_error_to_http_error)?;
     let storefront_port = in_process_cart_storefront_port(db.clone());
     let updated_cart = storefront_port
-        .update_storefront_context(
-            super::super::storefront_cart_port_context(
-                tenant_id,
-                request_context,
-                None,
-                cart.id,
-                "update-context",
-                true,
-            ),
-            CartStorefrontContextUpdateRequest {
-                cart_id: cart.id,
-                input: UpdateCartContextInput {
-                    email: requested.email,
-                    region_id: context.region.as_ref().map(|region| region.id),
-                    country_code: context
-                        .region
-                        .as_ref()
-                        .and_then(|region| region.countries.first().cloned())
-                        .or(requested.country_code),
-                    locale_code: Some(context.locale.clone()),
-                    selected_shipping_option_id: requested.selected_shipping_option_id,
-                    shipping_selections: Some(requested.shipping_selections.clone()),
-                },
-            },
-        )
+        .update_storefront_context(write_context, command)
         .await
         .map_err(rustok_web::port_error_to_http_error)?;
-    let updated_cart = super::super::reprice_storefront_cart_line_items_for_db(
-        db,
-        event_bus,
-        tenant_id,
-        request_context,
-        storefront_port.as_ref(),
-        updated_cart,
-    )
-    .await?;
     let updated_cart = enrich_storefront_cart(
         shipping_option_read_port,
         tenant_id,

@@ -501,7 +501,11 @@ default_locale = "en"
 
 Selection state lives in the URL, not in local component memory.
 
-- Use only typed `snake_case` query keys: `product_id`, `cart_id`, `order_id`, `tab`, `slug`
+- Use only typed `snake_case` query keys: `product_id`, `attribute_id`, `option_id`, `cart_id`, `order_id`, `tab`, `slug`
+- Product dictionary `option_id` depends on `attribute_id`; missing targets never auto-select the
+  parent/first option. Recovery markers are independent document evidence. An unresolved request
+  is replayed exactly, not replaced when a selection/read disappears. Explicit Fresh retains the
+  frozen nullable target and full-document navigation keeps the existing recovery boundary.
 - Do not read legacy `id` or camelCase aliases
 - Do not make auto-select-first the source of truth
 - Clean up stale detail/form state when a `?key=` becomes invalid or missing

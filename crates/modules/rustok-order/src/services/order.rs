@@ -203,6 +203,17 @@ impl OrderService {
         Self { db, event_bus }
     }
 
+    pub(crate) async fn read_order_line_inventory_bindings(
+        &self,
+        tenant_id: Uuid,
+        request: crate::ReadOrderLineInventoryBindingsRequest,
+    ) -> OrderResult<crate::OrderLineInventoryBindingsSnapshot> {
+        crate::order_line_inventory::read_order_line_inventory_bindings(
+            &self.db, tenant_id, request,
+        )
+        .await
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn create_order(
         &self,

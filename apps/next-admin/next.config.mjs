@@ -42,6 +42,7 @@ const baseConfig = {
     '@rustok/mcp-admin',
     '@rustok/product-admin',
     '@rustok/ui-grid',
+    '@rustok/ui-controls',
     '@rustok/rbac-admin',
     '@rustok/richtext',
     '@rustok/search-admin',

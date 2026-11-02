@@ -5,8 +5,9 @@ Status: owner port and host runtime published; all mounted complete/post-order r
 ## Scope
 
 `OrderReadPort` is the order-owned boundary for complete order, return, and
-order-change projection reads needed by mounted Commerce REST and GraphQL query
-consumers. It is separate from:
+order-change projections needed by mounted Commerce REST and GraphQL queries, plus
+the bounded saved Order-line inventory bindings used by return-restock orchestration.
+It is separate from:
 
 - `CheckoutCompletionPort`, which owns checkout create/place/replay;
 - `CheckoutOrderIdentityPort`, which owns checkout/order identity;
@@ -18,12 +19,13 @@ consumers. It is separate from:
 The owner boundary and host-selected runtime are published. Mounted admin REST,
 mounted GraphQL, and storefront HTTP complete-order and post-order query consumers
 use the port. Runtime evidence remains unvalidated. The superseded admin GET
-functions remain as explicitly unmounted compatibility source until compile and
-mounted-parity validation permits their removal.
+functions have already been removed from the admin return/change source; compilation
+and mounted-parity verification remain open. The original six-projection publication
+is retained as historical evidence, not the current operation inventory.
 
 ## Operations
 
-The owner publishes six read-only operations:
+The owner publishes seven read-only operations:
 
 - `read_order_projection` returns one complete `OrderResponse` by order id;
 - `list_order_projections` preserves page, per-page, status, customer filtering,
@@ -33,13 +35,18 @@ The owner publishes six read-only operations:
   descending creation ordering, return items, and owner pagination total;
 - `read_order_change_projection` returns one `OrderChangeResponse` by change id;
 - `list_order_change_projections` preserves page, per-page, order-id/status/type
-  filters, descending creation ordering, and owner pagination total.
+  filters, descending creation ordering, and owner pagination total;
+- `read_order_line_inventory_bindings` returns a nonempty, distinct batch of at most
+  1024 saved Order-line Variant/quantity bindings for one tenant-owned Order. Missing,
+  foreign or partial batches refuse; explicit `variant_id: None` alone means SKU-less.
+  The nullable field is required on deserialization: omission is not an implicit null.
 
 Complete order operations use `PortContext.locale` as requested locale and accept
 an optional tenant-default fallback locale. Return and order-change DTOs are not
 localized in the current owner model, so their typed requests do not invent locale
-fields. All operations preserve existing owner DTOs rather than defining partial
-Commerce projections.
+fields. The original six operations preserve their complete owner DTOs. The new saved-binding
+batch has an Order-owned price-free DTO, not a partial Commerce-owned Order model. It
+never reads current Catalog/Pricing, translates labels, or refreshes eligibility.
 
 ## In-process adapter
 
@@ -56,7 +63,8 @@ Every operation:
 2. parses tenant identity from `PortContext`;
 3. delegates to the existing owner service operation;
 4. maps every current `OrderError` variant to stable `PortError` policy;
-5. preserves complete owner projections, filters, ordering, and list totals.
+5. preserves the operation's owner projection: the original complete DTOs/filters/totals
+   or the bounded saved SKU/quantity batch.
 
 The adapter does not inspect owner error messages for control flow. Validation
 maps to `Validation`; missing order/return/change maps to `NotFound`; invalid
@@ -121,8 +129,9 @@ error policy.
 
 ## GraphQL post-order read cutover
 
-The Commerce safe-query compatibility facade calls all six typed operations.
-Return/order-change detail and list methods use the scoped host-selected runtime
+The Commerce safe-query compatibility facade calls the original six complete/post-order
+projection operations. The saved-binding batch is consumed by return-restock orchestration,
+not added as a public query. Return/order-change detail and list methods use the scoped host-selected runtime
 instead of constructing `OrderService`. Existing DTOs, filters, totals, and query
 method signatures are unchanged.
 
@@ -156,10 +165,10 @@ deadline/failure, restart, and remote-adapter evidence remain open.
 
 This source wave deliberately leaves these paths unchanged:
 
-- storefront return creation still constructs `OrderService` after typed ownership
-  validation;
-- storefront refund listing still constructs `PaymentService` after typed ownership
-  validation;
+- storefront return creation uses the existing selected `OrderPostOrderCommandPort`
+  after typed ownership validation;
+- storefront refund listing uses the existing selected `PaymentOrderReadPort` after
+  typed ownership validation;
 - admin order, return, and order-change mutations remain on their current owner or
   orchestration services;
 - admin order detail payment and fulfillment aggregation remain unchanged.
@@ -177,7 +186,8 @@ storage or owner-invariant details.
 
 ## Remaining source work
 
-1. execute compile and mounted transport parity for all six operations;
+1. compile all seven owner read operations, verify the original six mounted query
+   projections, and exercise the saved-binding consumer through return completion;
 2. retain deadline/failure, restart, and remote-adapter evidence before status
    promotion.
 
@@ -187,11 +197,13 @@ Source evidence is retained at:
 
 `crates/modules/rustok-order/contracts/evidence/order-read-port-source.json`
 
-Its status is `mounted_consumer_cutover_unvalidated`. Six owner read operations,
-host composition, and all mounted admin REST, GraphQL, and storefront complete and
-post-order query consumers are recorded as source complete. Compile evidence,
-mounted parity, deadline/failure execution, restart, remote-adapter evidence, and
-compatibility-handler removal remain false or open.
+Its status is `mounted_consumer_cutover_unvalidated`. The historical 2026-07-30
+publication recorded six owner projection reads. The current source inventory records
+those six plus the mandatory saved-binding batch, host composition, and the mounted
+admin REST, GraphQL, and storefront query cutovers. Compatibility-handler source removal
+is recorded; compilation, mounted parity, deadline/failure execution, restart and
+remote-adapter evidence remain false or open. Executed source-verifier/format flags
+are separate from runtime and regression evidence.
 
 ## Intended checks
 
@@ -207,5 +219,22 @@ cargo check -p rustok-commerce --lib
 cargo check -p rustok-server --features mod-commerce
 ```
 
-Tests, Cargo commands, formatting, verifiers, workflow checks, and CI were not run
-by the implementation agent.
+The original publication did not execute tests, Cargo, formatting, verifiers, workflow
+checks or CI. The 2026-10-31 continuation executed only the scoped source guards and
+syntax/format checks recorded in the [return source handoff](../../rustok-commerce/docs/implementation-plan.md#return-restock-identity-source-evidence).
+No tests, Cargo commands, SQL, mounted runtime, workflows or CI were executed.
+
+## Saved-binding return-restock continuation (2026-10-31)
+
+The existing `ReturnCompletionOrchestrationService` receives the host-selected read port;
+`prepare_restock_plan` invokes that same capability, once for a nonempty goods selection.
+The in-process implementation delegates through `OrderService` to a single bounded query
+joining Order lines to their tenant-owned Order. It selects only IDs, saved Variant and
+quantity and returns all requested lines or an error. It does not add a read provider,
+public HTTP/GraphQL operation, price lookup or embedded fallback.
+
+Commerce validates response tenant/Order/set/uniqueness/quantity before resolution effects,
+freezes the plan, and requires matching completed-return item facts before Inventory writes.
+See the [source handoff](../../rustok-commerce/docs/implementation-plan.md#return-restock-identity-source-evidence).
+The added operation and regressions remain uncompiled/unexecuted; source checks do not
+certify SQL, failure timing, mounted clients, remote parity or readiness.

@@ -67,7 +67,7 @@ if (!handlerBody) {
 } else {
   requireText(
     handlerBody,
-    "complete_storefront_checkout_input_with_product_port",
+    "complete_storefront_checkout_input_with_product_runtime",
     "Commerce HTTP checkout handler",
   );
   requireText(
@@ -85,7 +85,7 @@ if (!handlerBody) {
 
 const composedBody = findFunctionBody(
   staged,
-  "complete_storefront_checkout_input_with_product_port",
+  "complete_storefront_checkout_input_with_product_runtime",
 );
 if (!composedBody) {
   failures.push("Commerce composed staged checkout body is missing");

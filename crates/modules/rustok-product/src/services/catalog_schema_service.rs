@@ -9,15 +9,26 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::dto::VariantAxisPolicy;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+mod attribute_lifecycle;
 pub(crate) mod attribute_validation;
 mod attributes;
+pub use attribute_lifecycle::{
+    AttributeDefinition, AttributeDefinitionAction, AttributeDefinitionCopy,
+    AttributeDefinitionPatch, AttributeDefinitionRefusal, AttributeDefinitionResult,
+    AttributeLifecycleRequest, AttributeLifecycleWorkspace, AttributeOptionDefinition,
+    AttributeOptionDefinitionPatch, AttributeReference, AttributeReferenceImpact,
+    AttributeReferenceKind, MAX_ATTRIBUTE_LIFECYCLE_ROWS, MAX_ATTRIBUTE_REFERENCE_EXAMPLES,
+    UpdateAttributeDefinitionInput,
+};
 mod categories;
 mod effective_forms;
+pub(crate) mod policy;
 mod schemas;
 mod values;
 mod virtual_categories;
@@ -193,6 +204,7 @@ pub struct ProductAttributeListRecord {
     pub id: Uuid,
     pub code: String,
     pub value_type: AttributeValueType,
+    pub scope: String,
     pub is_localized: bool,
     pub is_filterable: bool,
     pub is_searchable: bool,
@@ -450,10 +462,20 @@ pub struct BindSchemaAttributeInput {
     pub visibility_overrides: Value,
     pub validation_overrides: Value,
     pub metadata: Value,
+    /// Omission preserves an existing binding; a new binding defaults to forbidden.
+    #[serde(default)]
+    pub variant_axis_policy: Option<VariantAxisPolicy>,
+    #[serde(default)]
+    pub default_variant_axis: Option<bool>,
 }
 
 impl BindSchemaAttributeInput {
     fn validate(&self) -> CommerceResult<()> {
+        if let (Some(policy), Some(default_axis)) =
+            (self.variant_axis_policy, self.default_variant_axis)
+        {
+            policy::validate_policy_hint(policy, default_axis)?;
+        }
         validate_uuid("schema_id", self.schema_id)?;
         validate_uuid("attribute_id", self.attribute_id)?;
         if let Some(group_code) = self.group_code.as_deref() {
@@ -481,6 +503,11 @@ pub struct BindCategoryAttributeInput {
     pub visibility_overrides: Value,
     pub validation_overrides: Value,
     pub metadata: Value,
+    /// Omission preserves an existing binding; a new binding defaults to forbidden.
+    #[serde(default)]
+    pub variant_axis_policy: Option<VariantAxisPolicy>,
+    #[serde(default)]
+    pub default_variant_axis: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -527,6 +554,11 @@ pub struct ProductAttributeValueRecord {
 
 impl BindCategoryAttributeInput {
     fn validate(&self) -> CommerceResult<()> {
+        if let (Some(policy), Some(default_axis)) =
+            (self.variant_axis_policy, self.default_variant_axis)
+        {
+            policy::validate_policy_hint(policy, default_axis)?;
+        }
         validate_uuid("category_id", self.category_id)?;
         validate_uuid("attribute_id", self.attribute_id)?;
         if let Some(group_code) = self.group_code.as_deref() {
@@ -710,6 +742,7 @@ struct ProductAttributeListRow {
     id: Uuid,
     code: String,
     value_type: String,
+    scope: String,
     is_localized: bool,
     is_filterable: bool,
     is_searchable: bool,
@@ -727,6 +760,7 @@ impl TryFrom<ProductAttributeListRow> for ProductAttributeListRecord {
             code: row.code,
             value_type: AttributeValueType::from_storage(&row.value_type)
                 .map_err(map_schema_resolution_error)?,
+            scope: row.scope,
             is_localized: row.is_localized,
             is_filterable: row.is_filterable,
             is_searchable: row.is_searchable,

@@ -375,7 +375,7 @@ impl FulfillmentProviderRegistry {
         })
     }
 
-    fn executable_provider(
+    pub(crate) fn executable_provider(
         &self,
         provider_id: &str,
         operation: &str,

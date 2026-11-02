@@ -13,19 +13,30 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = ["leptos-auth/hydrate", "leptos/hydrate", "rustok-cart-storefront/hydrate", "rustok-pricing-storefront/hydrate", "rustok-ui-leptos/hydrate"]
 ssr = [
+  "leptos-auth/ssr",
   "leptos/ssr",
+  "rustok-cart-storefront/ssr",
+  "rustok-pricing-storefront/ssr",
+  "rustok-ui-leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-commerce-foundation",
   "dep:rustok-product",
+  "dep:rustok-commerce",
   "dep:rustok-pricing",
   "dep:rustok-outbox",
+  "dep:tokio",
   "rustok-api/server",
 ]
 
 [dependencies]
+leptos-auth.workspace = true
 rustok-ui-core.workspace = true
+rustok-ui.workspace = true
+rustok-ui-leptos = { path = "../../../ui/rustok-ui/leptos", default-features = false }
+rustok-cart-storefront = { workspace = true, default-features = false }
+rustok-pricing-storefront = { workspace = true, default-features = false }
 rustok-grid.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
@@ -37,11 +48,15 @@ rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
 rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 tracing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
 
-[dev-dependencies]
 serde_json.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "History", "Location", "Window"] }

@@ -7,9 +7,11 @@ Status: **source-ready / unvalidated**
 This slice hardens the Pricing storefront GraphQL public and diagnostic error
 boundary for the final GraphQL branch of `fetch_storefront_pricing`.
 
-The GraphQL adapter query documents, variables, list/detail composition, result
-mapping, Pricing query validation, native server-function adapter, transport
-selection, and all-profile tracing dependency shape remain unchanged.
+The static public/diagnostic error policy remains in place. The 2026-10-29 owner
+quote continuation changes query documents and list/detail composition: the atlas
+uses `storefrontPricingCatalog`, detail retains effective price/source/context/time,
+and no per-product waterfall or discarded quote is used. Transport selection and
+all-profile tracing remain unchanged.
 
 ## Rechecked gap
 
@@ -79,16 +81,18 @@ The structured fields also do not contain tenant slug, selected handle, locale,
 currency code, region id, price-list id, channel id, channel slug, or quantity
 values.
 
-## Tracing dependency
+## Historical diagnostic baseline: tracing dependency
 
 The earlier Pricing storefront safety slice made `tracing` a normal workspace
 dependency because the GraphQL-selected default profile compiles the same policy.
 This diagnostic-only follow-up does not change `Cargo.toml`, SSR features, or native
 transport behavior.
 
-## Preserved behavior
+## Historical diagnostic-only baseline
 
-This work does not change:
+The original diagnostic-only snapshot preserved the following contracts. The
+2026-10-29 quote continuation deliberately evolves catalog/detail composition and
+source/context/time DTOs, as documented above and in the owner plan:
 
 - `StorefrontPricingQuery` fields or normalization;
 - currency, UUID, resolution-context, or quantity validation messages;
@@ -124,7 +128,7 @@ storefront/admin adapters, payment and fulfillment execution diagnostics, remain
 non-`PortError` public or diagnostic envelopes, and runtime or mounted-parity
 evidence.
 
-No tests, verifiers, Cargo commands, formatting, workflows, or CI were run per
+No tests, Cargo commands, workflows or CI were run per
 maintainer instruction.
 
 ## Suggested maintainer checks
@@ -138,3 +142,11 @@ cargo check -p rustok-pricing-storefront
 cargo check -p rustok-pricing-storefront --features hydrate
 cargo check -p rustok-pricing-storefront --features ssr
 ```
+
+
+## Quote continuation disclosure (2026-10-29)
+
+Native and GraphQL DTOs evolve together through the Pricing owner. The historical
+error-policy review remains source-only; it is not evidence that the new quote/catalog
+queries executed. Scoped static formatting/type/source checks are recorded separately
+in the owner plan. No tests, Cargo commands, workflows or CI were run.

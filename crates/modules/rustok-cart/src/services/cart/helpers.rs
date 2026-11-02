@@ -1268,16 +1268,34 @@ where
         .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
         .all(conn)
         .await?;
-    let mut desired = selection_map_from_records(&available_group_snapshots, existing);
+    let desired = resolve_shipping_selection_patch(
+        &available_group_snapshots,
+        selection_map_from_records(&available_group_snapshots, existing),
+        cart.selected_shipping_option_id,
+        input,
+    )?;
 
+    store_shipping_selections(conn, cart.id, desired).await?;
+    reconcile_cart_shipping_state(conn, cart.id).await
+}
+
+/// Canonical full-replacement shipping interpretation, shared by persisted and hypothetical
+/// context application. A wildcard seller selection must not overlap another resolved group.
+pub(super) fn resolve_shipping_selection_patch(
+    available_group_snapshots: &BTreeSet<DeliveryGroupSnapshot>,
+    mut desired: BTreeMap<DeliveryGroupKey, Option<Uuid>>,
+    current_selected_shipping_option_id: Option<Uuid>,
+    input: &UpdateCartContextInput,
+) -> CartResult<BTreeMap<DeliveryGroupKey, Option<Uuid>>> {
     if let Some(shipping_selections) = &input.shipping_selections {
         desired.clear();
+        let mut selected_keys = BTreeSet::new();
         for selection in shipping_selections {
             let normalized =
                 normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
             let normalized_seller_id = normalize_seller_id(selection.seller_id.as_deref());
             let matching_keys = matching_delivery_group_keys(
-                &available_group_snapshots,
+                available_group_snapshots,
                 normalized.as_str(),
                 normalized_seller_id.as_deref(),
                 None,
@@ -1289,19 +1307,22 @@ where
                 )));
             }
             for key in matching_keys {
+                if !selected_keys.insert(key.clone()) {
+                    return Err(CartError::Validation(
+                        "Shipping context selects an overlapping delivery group twice".into(),
+                    ));
+                }
                 desired.insert(key, selection.selected_shipping_option_id);
             }
         }
     } else if available_group_snapshots.len() <= 1 {
         if let Some(group) = available_group_snapshots.iter().next() {
-            let option_id = input
-                .selected_shipping_option_id
-                .or(cart.selected_shipping_option_id);
+            let option_id = input.selected_shipping_option_id;
             desired.insert(group.key.clone(), option_id);
         } else {
             desired.clear();
         }
-    } else if input.selected_shipping_option_id != cart.selected_shipping_option_id
+    } else if input.selected_shipping_option_id != current_selected_shipping_option_id
         && input.selected_shipping_option_id.is_some()
     {
         return Err(CartError::Validation(
@@ -1310,8 +1331,7 @@ where
         ));
     }
 
-    store_shipping_selections(conn, cart.id, desired).await?;
-    reconcile_cart_shipping_state(conn, cart.id).await
+    Ok(desired)
 }
 
 pub async fn store_shipping_selections<C>(

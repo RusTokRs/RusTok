@@ -27,7 +27,7 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 - `rustok-commerce` uses `rustok-region` as the umbrella/root policy input for locale and currency resolution;
 - `rustok-tax` reads the typed region tax policy snapshot, including
   `tax_provider_id`, through commerce/cart runtime;
-- `rustok-pricing` may reference `region_id` in prices but does not own region lifecycle;
+- `rustok-pricing` validates quote region ownership and currency through `RegionReadPort`; it does not own region lifecycle or compute region taxes;
 - platform tenant locale tables remain platform-owned and are only read by the umbrella policy layer.
 
 ## Entry points

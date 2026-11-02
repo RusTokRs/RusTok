@@ -165,7 +165,7 @@ fn map_admin_post_order_port_error(
         "commerce admin post-order owner command failed"
     );
 
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 #[utoipa::path(

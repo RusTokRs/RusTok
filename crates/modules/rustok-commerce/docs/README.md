@@ -142,3 +142,18 @@ remains 404. Mapper diagnostics are bounded and owner-call correlations are opaq
 See the [contract and migration note](./public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19).
 Source guards/format checks pass; four Rust scenarios are unrun and compilation,
 mounted execution, tracing capture and integration remain open.
+
+## Current shipment continuation
+
+The [shipment source handoff](implementation-plan.md#shipment-stock-provenance-source-evidence)
+records the selected O preparation, F-owned lifecycle/recovery and I-owned native provenance
+contract. This is ordinary Product step-8 development, not an activated audit or a readiness
+promotion. The same handoff records the targeted replay/provider/outcome/budget corrections and
+defensive canonical request-scope checks. Tests and runtime validation remain with the maintainer.
+
+## Native physical stock outbox
+
+The [source continuation](implementation-plan.md#native-stock-outbox-continuation-source-evidence)
+records Inventory-owned canonical invalidation on the physical transaction, with no C/host
+publisher. The added 16 Rust/10 Node cases are unrun. Search's source refetch path is traced;
+relay durability, generic Index, reservation notifications and full step 8 remain unverified.

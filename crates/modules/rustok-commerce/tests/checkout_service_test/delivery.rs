@@ -226,27 +226,31 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
     let cart = cart_service
         .update_context(
             tenant_id,
-            cart.id,
-            UpdateCartContextInput {
-                email: cart.email.clone(),
-                region_id: cart.region_id,
-                country_code: cart.country_code.clone(),
-                locale_code: cart.locale_code.clone(),
-                selected_shipping_option_id: None,
-                shipping_selections: Some(vec![
-                    CartShippingSelectionInput {
-                        shipping_profile_slug: "cold".to_string(),
-                        seller_id: None,
-                        seller_scope: None,
-                        selected_shipping_option_id: Some(cold_option.id),
-                    },
-                    CartShippingSelectionInput {
-                        shipping_profile_slug: "bulky".to_string(),
-                        seller_id: None,
-                        seller_scope: None,
-                        selected_shipping_option_id: Some(bulky_option.id),
-                    },
-                ]),
+            rustok_cart::CartContextUpdateRequest {
+                cart_id: cart.id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
+                pricing: rustok_cart::CartContextPricing::Preserve,
+                input: UpdateCartContextInput {
+                    email: cart.email.clone(),
+                    region_id: cart.region_id,
+                    country_code: cart.country_code.clone(),
+                    locale_code: cart.locale_code.clone(),
+                    selected_shipping_option_id: None,
+                    shipping_selections: Some(vec![
+                        CartShippingSelectionInput {
+                            shipping_profile_slug: "cold".to_string(),
+                            seller_id: None,
+                            seller_scope: None,
+                            selected_shipping_option_id: Some(cold_option.id),
+                        },
+                        CartShippingSelectionInput {
+                            shipping_profile_slug: "bulky".to_string(),
+                            seller_id: None,
+                            seller_scope: None,
+                            selected_shipping_option_id: Some(bulky_option.id),
+                        },
+                    ]),
+                },
             },
         )
         .await
@@ -949,4 +953,133 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
         }
         other => panic!("expected validation error, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn direct_checkout_recovers_locked_or_completed_state_before_considering_new_context() {
+    let (db, carts, checkout, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let actor_id = Uuid::new_v4();
+    for completed in [false, true] {
+        let cart = carts
+            .create_cart(
+                tenant_id,
+                CreateCartInput {
+                    customer_id: None,
+                    email: None,
+                    region_id: None,
+                    country_code: None,
+                    locale_code: None,
+                    selected_shipping_option_id: None,
+                    currency_code: "USD".into(),
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap();
+        let locked = carts.begin_checkout(tenant_id, cart.id).await.unwrap();
+        let frozen = if completed {
+            carts.complete_cart(tenant_id, cart.id).await.unwrap()
+        } else {
+            locked
+        };
+        let error = checkout
+            .complete_checkout(
+                tenant_id,
+                actor_id,
+                CompleteCheckoutInput {
+                    cart_id: cart.id,
+                    shipping_option_id: Some(Uuid::new_v4()),
+                    shipping_selections: Some(Vec::new()),
+                    region_id: Some(Uuid::new_v4()),
+                    country_code: Some("FR".into()),
+                    locale: Some("fr".into()),
+                    create_fulfillment: false,
+                    metadata: serde_json::json!({}),
+                },
+            )
+            .await
+            .unwrap_err();
+        if completed {
+            assert!(matches!(error, CheckoutError::CartNotReady(id) if id == cart.id));
+        } else {
+            assert!(matches!(error, CheckoutError::CheckoutInProgress(id) if id == cart.id));
+        }
+        let current = carts.get_cart(tenant_id, cart.id).await.unwrap();
+        assert_eq!(current.status, frozen.status);
+        assert_eq!(current.updated_at, frozen.updated_at);
+        assert_eq!(current.region_id, frozen.region_id);
+        assert_eq!(current.country_code, frozen.country_code);
+        assert_eq!(current.locale_code, frozen.locale_code);
+        assert_eq!(
+            current.selected_shipping_option_id,
+            frozen.selected_shipping_option_id
+        );
+    }
+    // A pure invalid projection remains a validation refusal, not an opaque stage failure.
+    let cart = carts
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "USD".into(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = carts
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(Uuid::new_v4()),
+                variant_id: Some(Uuid::new_v4()),
+                fulfillment_requirement: CartLineFulfillmentRequirement::Digital,
+                shipping_profile_slug: None,
+                sku: Some("context-validation".into()),
+                title: "Context validation".into(),
+                quantity: 1,
+                unit_price: Decimal::ONE,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let error = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: Some(vec![CartShippingSelectionInput {
+                    shipping_profile_slug: "unavailable".into(),
+                    seller_id: None,
+                    seller_scope: None,
+                    selected_shipping_option_id: None,
+                }]),
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: false,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, CheckoutError::Validation(_)));
+    let current = carts.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(current.status, "active");
+    assert_eq!(current.updated_at, cart.updated_at);
+    assert_eq!(
+        current.line_items[0].updated_at,
+        cart.line_items[0].updated_at
+    );
 }

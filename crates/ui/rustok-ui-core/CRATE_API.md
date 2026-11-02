@@ -12,6 +12,18 @@
 - **Data Navigation & Pagination State**: Encapsulates pagination offset/page calculations (`UiPaginationState`), bidirectional sorting state (`UiSortState`), breadcrumb hierarchy generation (`build_ui_breadcrumbs`), and module navigation group ordering (`build_ui_nav_groups`).
 - **Selection & Filtering Primitives**: Provides `UiSelectionState` for tabular selection operations (toggle, all, partial) and structured query filtering rules (`UiFilterRule`, `UiFilterOperator`).
 
+- **Zero UI Framework Dependencies**: Must contain no references or dependencies on Leptos, Dioxus, Next.js, or browser DOM types (`web-sys`).
+- **Framework Agnostic**: All types must be serializable or plain Rust structs testable via standard unit tests (`#[test]`).
+- **Canonical Presentation Logic**: Badge tones, pagination bounds, route query sanitization, and navigation structures must be centralized here to prevent frontend divergence.
+- **Strict Query Sanitization**: Route query sanitization must preserve known keys while removing invalid or legacy query parameters according to declared schemas.
+
+### Product dictionary selection
+
+`AdminQueryKey::AttributeId` (`attribute_id`) and `OptionId` (`option_id`) belong to the Product
+route schema alongside `ProductId`. An option key depends on the attribute key. Other known
+route schemas reject these foreign selection keys. There is no generic `target_id` alias for
+the dictionary and no default row selection. Recovery annotations remain independent document
+evidence; sanitizing a nested selection is not permission to rotate an unresolved caller key.
 ## Public Surface
 
 ### Primary Data Types & Enums

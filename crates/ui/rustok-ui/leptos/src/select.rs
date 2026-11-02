@@ -20,9 +20,9 @@ use rustok_ui::{SelectOption, Size, select_classes};
 #[component]
 pub fn Select(
     #[prop(default = Size::Md)] size: Size,
-    #[prop(default = false)] disabled: bool,
-    #[prop(default = false)] invalid: bool,
-    options: Vec<SelectOption>,
+    #[prop(into, default = false.into())] disabled: Signal<bool>,
+    #[prop(into, default = false.into())] invalid: Signal<bool>,
+    #[prop(into)] options: Signal<Vec<SelectOption>>,
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
@@ -32,15 +32,23 @@ pub fn Select(
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
     let name = (!name.is_empty()).then_some(name);
-    let custom = (!class.is_empty()).then_some(class.as_str());
-    let full_class = select_classes(size, invalid, custom);
+    let custom_class = StoredValue::new(class);
+    let custom = move || custom_class.get_value();
+    let full_class = move || {
+        let class = custom();
+        select_classes(
+            size,
+            invalid.get(),
+            (!class.is_empty()).then_some(class.as_str()),
+        )
+    };
 
     view! {
         <select
             id=id
             class=full_class
-            disabled=disabled
-            aria-invalid=invalid
+            disabled=move || disabled.get()
+            aria-invalid=move || invalid.get()
             name=name
             prop:value=move || value.map(|v| v.get()).unwrap_or_default()
             on:change=move |ev| {
@@ -54,7 +62,7 @@ pub fn Select(
                     {placeholder.clone()}
                 </option>
             })}
-            {options.into_iter().map(|opt| {
+            {move || options.get().into_iter().map(|opt| {
                 let opt_value = opt.value;
                 let opt_val_cmp = opt_value.clone();
                 view! {

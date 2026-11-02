@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, Set, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -47,7 +48,10 @@ impl FulfillmentProviderOperationJournal {
         &self,
         input: BeginProviderOperation,
     ) -> FulfillmentResult<provider_operation::Model> {
-        self.begin_on_connection(&self.db, input).await
+        let txn = self.db.begin().await?;
+        let operation = self.begin_on_connection(&txn, input).await?;
+        txn.commit().await?;
+        Ok(operation)
     }
 
     pub(crate) async fn begin_in_txn(
@@ -68,14 +72,38 @@ impl FulfillmentProviderOperationJournal {
     {
         let input = normalize_begin_input(input)?;
 
-        let fulfillment_exists =
-            crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
-                .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id))
-                .one(conn)
-                .await?
-                .is_some();
+        // Both callers own a transaction. Serialize key admission across mutable providers,
+        // not merely the historical (tenant, provider, key) unique-index namespace.
+        if conn.get_database_backend() == sea_orm::DbBackend::Sqlite {
+            conn.execute_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "UPDATE fulfillment_provider_operations SET updated_at = updated_at WHERE 0"
+                    .to_owned(),
+            ))
+            .await?;
+        }
+        let parent = crate::entities::fulfillment::Entity::find_by_id(input.fulfillment_id)
+            .filter(crate::entities::fulfillment::Column::TenantId.eq(input.tenant_id));
+        let parent = if conn.get_database_backend() == sea_orm::DbBackend::Sqlite {
+            parent
+        } else {
+            parent.lock_exclusive()
+        };
+        let fulfillment_exists = parent.one(conn).await?.is_some();
         if !fulfillment_exists {
             return Err(FulfillmentError::FulfillmentNotFound(input.fulfillment_id));
+        }
+
+        if let Some(existing) = find_fulfillment_key_on_connection(
+            conn,
+            input.tenant_id,
+            input.fulfillment_id,
+            &input.idempotency_key,
+        )
+        .await?
+        {
+            ensure_same_request(&existing, &input)?;
+            return Ok(existing);
         }
 
         if let Some(existing) = provider_operation::Entity::find()
@@ -149,12 +177,91 @@ impl FulfillmentProviderOperationJournal {
             .map_err(Into::into)
     }
 
+    pub(crate) async fn find_fulfillment_key(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        key: &str,
+    ) -> FulfillmentResult<Option<provider_operation::Model>> {
+        validate_operation_identity(tenant_id, fulfillment_id)?;
+        find_fulfillment_key_on_connection(&self.db, tenant_id, fulfillment_id, key).await
+    }
+
     pub async fn claim_execution(
         &self,
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> FulfillmentResult<Option<provider_operation::Model>> {
+        self.claim_execution_with_stock_scope(tenant_id, operation_id, None)
+            .await
+    }
+
+    pub(crate) async fn claim_execution_with_stock_scope(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+        scope: Option<&crate::ShipmentStockScope>,
+    ) -> FulfillmentResult<Option<provider_operation::Model>> {
         validate_operation_identity(tenant_id, operation_id)?;
+        // Serialize carrier admission on its Fulfillment, not only on a caller-selected key.
+        // Unknown/succeeded-but-uncommitted legacy operations must not be bypassed by a new key.
+        let current = self.get(tenant_id, operation_id).await?;
+        let txn = self.db.begin().await?;
+        if txn.get_database_backend() == sea_orm::DbBackend::Sqlite {
+            // Acquire the writer fence before any transaction-local read. Competing deferred
+            // read transactions must not race to upgrade after observing the same free claim.
+            txn.execute_raw(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "UPDATE fulfillment_provider_operations SET updated_at = updated_at WHERE 0"
+                    .to_owned(),
+            ))
+            .await?;
+        }
+        let parent_query = crate::entities::fulfillment::Entity::find_by_id(current.fulfillment_id)
+            .filter(crate::entities::fulfillment::Column::TenantId.eq(tenant_id));
+        let parent_query = if txn.get_database_backend() == sea_orm::DbBackend::Sqlite {
+            parent_query
+        } else {
+            parent_query.lock_exclusive()
+        };
+        let parent = parent_query
+            .one(&txn)
+            .await?
+            .ok_or(FulfillmentError::FulfillmentNotFound(
+                current.fulfillment_id,
+            ))?;
+        let identity = find_fulfillment_key_on_connection(
+            &txn,
+            tenant_id,
+            parent.id,
+            &current.idempotency_key,
+        )
+        .await?;
+        if identity.as_ref().is_none_or(|row| row.id != operation_id) {
+            return Err(provider_identity_ambiguous());
+        }
+        let unresolved = provider_operation::Entity::find()
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::FulfillmentId.eq(parent.id))
+            .filter(provider_operation::Column::Id.ne(operation_id))
+            .filter(unresolved_provider_effects())
+            .limit(1)
+            .one(&txn)
+            .await?;
+        if unresolved.is_some() {
+            txn.rollback().await?;
+            return Ok(None);
+        }
+        if let Some(scope) = scope {
+            if scope.tenant_id != tenant_id || scope.fulfillment_id != parent.id {
+                return Err(FulfillmentError::Validation(
+                    "prepared carrier scope is not owned by this operation".into(),
+                ));
+            }
+            crate::FulfillmentService::new(self.db.clone())
+                .correlate_shipment_stock_scope(&txn, scope)
+                .await?;
+        }
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -166,17 +273,67 @@ impl FulfillmentProviderOperationJournal {
             )
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(
-                provider_operation::Column::Status
-                    .is_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_ERROR]),
-            )
-            .exec(&self.db)
+            .filter(provider_operation::Column::ProviderResult.is_null())
+            .filter(provider_operation::Column::ProviderReference.is_null())
+            .filter(provider_operation::Column::ProviderCompletedAt.is_null())
+            .filter(provider_operation::Column::CommittedAt.is_null())
+            .filter(provider_operation::Column::Status.is_in([PROVIDER_OPERATION_PENDING]))
+            .exec(&txn)
             .await?;
 
         if update.rows_affected == 0 {
+            txn.rollback().await?;
             return Ok(None);
         }
-        self.get(tenant_id, operation_id).await.map(Some)
+        let claimed = provider_operation::Entity::find_by_id(operation_id)
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await?;
+        txn.commit().await?;
+        Ok(claimed)
+    }
+
+    /// Only the freshly claiming gateway may call this before it has invoked the provider.
+    /// ERROR is not used: legacy error rows do not establish a known-not-invoked outcome.
+    pub(crate) async fn release_uninvoked_claim(
+        &self,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<()> {
+        validate_operation_identity(tenant_id, operation_id)?;
+        let update = provider_operation::Entity::update_many()
+            .col_expr(
+                provider_operation::Column::Status,
+                Expr::value(PROVIDER_OPERATION_PENDING),
+            )
+            .col_expr(
+                provider_operation::Column::ErrorMessage,
+                Expr::value(Some(
+                    "known_not_invoked:deadline_exhausted_before_provider".to_string(),
+                )),
+            )
+            .col_expr(
+                provider_operation::Column::UpdatedAt,
+                Expr::current_timestamp(),
+            )
+            .filter(provider_operation::Column::TenantId.eq(tenant_id))
+            .filter(provider_operation::Column::Id.eq(operation_id))
+            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
+            .filter(provider_operation::Column::ProviderResult.is_null())
+            .filter(provider_operation::Column::ProviderReference.is_null())
+            .filter(provider_operation::Column::ProviderCompletedAt.is_null())
+            .filter(provider_operation::Column::CommittedAt.is_null())
+            .exec(&self.db)
+            .await?;
+        if update.rows_affected != 1 {
+            return Err(FulfillmentError::OwnerPort(
+                rustok_api::PortError::invariant_violation(
+                    "fulfillment.provider_claim_release_unverified",
+                    "known-not-invoked claim could not be released; reconcile original operation",
+                ),
+            ));
+        }
+        Ok(())
     }
 
     pub async fn mark_provider_succeeded(
@@ -189,8 +346,35 @@ impl FulfillmentProviderOperationJournal {
         validate_operation_identity(tenant_id, operation_id)?;
         validate_durable_provider_payload(&provider_result, "provider_result")?;
         let current = self.get(tenant_id, operation_id).await?;
-        let provider_reference =
-            validate_provider_result_for_operation(&current, provider_reference, &provider_result)?;
+        let provider_reference = preserve_provider_reference(
+            &current,
+            validate_provider_result_for_operation(&current, provider_reference, &provider_result)?,
+        )?;
+        if matches!(
+            current.status.as_str(),
+            PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_COMMITTED
+        ) {
+            require_matching_provider_outcome(&current, &provider_reference, &provider_result)?;
+            return Ok(current);
+        }
+        if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return self
+                .mark_execution_reconciliation_required(
+                    tenant_id,
+                    operation_id,
+                    provider_reference,
+                    Some(provider_result),
+                    "late provider success retained after quarantine; reconcile local persistence",
+                )
+                .await;
+        }
+        if current.status != PROVIDER_OPERATION_EXECUTING {
+            return Err(FulfillmentError::InvalidTransition {
+                from: current.status,
+                to: PROVIDER_OPERATION_SUCCEEDED.to_string(),
+            });
+        }
+        let reference_match = observed_reference(&current);
         let now = Utc::now();
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -217,9 +401,11 @@ impl FulfillmentProviderOperationJournal {
             .filter(provider_operation::Column::TenantId.eq(tenant_id))
             .filter(provider_operation::Column::Id.eq(operation_id))
             .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
+            .filter(provider_operation::Column::ProviderResult.is_null())
+            .filter(provider_operation::Column::CommittedAt.is_null())
+            .filter(reference_match)
             .exec(&self.db)
             .await;
-
         let update = match update {
             Ok(update) => update,
             Err(source) => {
@@ -229,18 +415,16 @@ impl FulfillmentProviderOperationJournal {
                         operation_id,
                         provider_reference,
                         Some(provider_result),
-                        format!(
-                            "provider succeeded, but the journal could not persist the success state: {source}"
-                        ),
+                        "provider succeeded, but persisting the success checkpoint failed",
                     )
                     .await;
                 return match fallback {
                     Ok(model) => Ok(model),
-                    Err(fallback_error) => {
+                    Err(_) => {
                         tracing::error!(
                             operation_id_non_nil = !operation_id.is_nil(),
-                            original_error = %source,
-                            fallback_error = %fallback_error,
+                            success_checkpoint_failed = true,
+                            fallback_checkpoint_failed = true,
                             "fulfillment provider success checkpoint failed"
                         );
                         Err(FulfillmentError::Database(source))
@@ -248,23 +432,25 @@ impl FulfillmentProviderOperationJournal {
                 };
             }
         };
-
         if update.rows_affected == 0 {
             let current = self.get(tenant_id, operation_id).await?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                // A stale-execution quarantine may win the CAS while the carrier succeeds.
+                // Preserve the actual result, but do not silently promote its recovery state.
+                return self.mark_execution_reconciliation_required(
+                    tenant_id, operation_id, provider_reference, Some(provider_result),
+                    "late provider success retained after quarantine; reconcile local persistence",
+                ).await;
+            }
             if matches!(
                 current.status.as_str(),
-                PROVIDER_OPERATION_SUCCEEDED
-                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-                    | PROVIDER_OPERATION_COMMITTED
+                PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_COMMITTED
             ) {
+                require_matching_provider_outcome(&current, &provider_reference, &provider_result)?;
                 return Ok(current);
             }
-            return Err(FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: PROVIDER_OPERATION_SUCCEEDED.to_string(),
-            });
+            return Err(provider_outcome_conflict());
         }
-
         self.get(tenant_id, operation_id).await
     }
 
@@ -314,63 +500,95 @@ impl FulfillmentProviderOperationJournal {
     ) -> FulfillmentResult<provider_operation::Model> {
         validate_operation_identity(tenant_id, operation_id)?;
         validate_optional_boundary_text("provider_reference", provider_reference.as_deref(), 191)?;
-        let mut provider_reference = normalize_optional(provider_reference);
-        if let Some(provider_result) = provider_result.as_ref() {
-            validate_durable_provider_payload(provider_result, "provider_result")?;
+        let provider_reference = normalize_optional(provider_reference);
+        let error_message = normalize_error(error_message.into());
+        // At most one retry for the ordinary Executing -> quarantine race. This only
+        // checkpoints evidence; it never invokes, requeues or authorizes a provider.
+        for _ in 0..2 {
             let current = self.get(tenant_id, operation_id).await?;
-            // The validated contract also recovers the reference from the provider payload when the
-            // caller supplied none (the adapter errored after the call, or persisting the success
-            // result failed); persisting the raw argument would strand the reconciliation row
-            // without the reference an operator needs.
-            provider_reference = validate_provider_result_for_operation(
-                &current,
-                provider_reference,
-                provider_result,
-            )?;
-        }
-        let update = provider_operation::Entity::update_many()
-            .col_expr(
-                provider_operation::Column::Status,
-                Expr::value(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
-            )
-            .col_expr(
-                provider_operation::Column::ProviderReference,
-                Expr::value(provider_reference),
-            )
-            .col_expr(
-                provider_operation::Column::ProviderResult,
-                Expr::value(provider_result),
-            )
-            .col_expr(
-                provider_operation::Column::ErrorMessage,
-                Expr::value(Some(normalize_error(error_message.into()))),
-            )
-            .col_expr(
-                provider_operation::Column::UpdatedAt,
-                Expr::current_timestamp(),
-            )
-            .col_expr(
-                provider_operation::Column::ProviderCompletedAt,
-                Expr::current_timestamp(),
-            )
-            .filter(provider_operation::Column::TenantId.eq(tenant_id))
-            .filter(provider_operation::Column::Id.eq(operation_id))
-            .filter(provider_operation::Column::Status.eq(PROVIDER_OPERATION_EXECUTING))
-            .exec(&self.db)
-            .await?;
-
-        if update.rows_affected == 0 {
-            let current = self.get(tenant_id, operation_id).await?;
-            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            let reported = if let Some(result) = provider_result.as_ref() {
+                validate_durable_provider_payload(result, "provider_result")?;
+                validate_provider_result_for_operation(
+                    &current,
+                    provider_reference.clone(),
+                    result,
+                )?
+            } else {
+                provider_reference.clone()
+            };
+            let reference = preserve_provider_reference(&current, reported)?;
+            if let (Some(saved), Some(reported)) = (&current.provider_result, &provider_result) {
+                if saved != reported {
+                    return Err(provider_outcome_conflict());
+                }
+            }
+            if !matches!(
+                current.status.as_str(),
+                PROVIDER_OPERATION_EXECUTING | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            ) {
+                return Err(provider_outcome_conflict());
+            }
+            let new_evidence = (current.provider_result.is_none() && provider_result.is_some())
+                || (current.provider_reference.is_none() && reference.is_some());
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED && !new_evidence {
                 return Ok(current);
             }
-            return Err(FulfillmentError::InvalidTransition {
-                from: current.status,
-                to: PROVIDER_OPERATION_RECONCILIATION_REQUIRED.to_string(),
-            });
+            let reference_match = observed_reference(&current);
+            let result_match = if current.provider_result.is_none() {
+                provider_operation::Column::ProviderResult.is_null()
+            } else {
+                provider_operation::Column::ProviderResult.is_not_null()
+            };
+            let reference_value: sea_orm::sea_query::SimpleExpr =
+                if current.provider_reference.is_some() {
+                    Expr::col(provider_operation::Column::ProviderReference).into()
+                } else {
+                    Expr::value(reference).into()
+                };
+            let result_value: sea_orm::sea_query::SimpleExpr =
+                if current.provider_result.is_some() || provider_result.is_none() {
+                    Expr::col(provider_operation::Column::ProviderResult).into()
+                } else {
+                    Expr::value(provider_result.clone()).into()
+                };
+            let completed: sea_orm::sea_query::SimpleExpr =
+                if current.provider_completed_at.is_some() {
+                    Expr::col(provider_operation::Column::ProviderCompletedAt).into()
+                } else {
+                    Expr::current_timestamp().into()
+                };
+            let update = provider_operation::Entity::update_many()
+                .col_expr(
+                    provider_operation::Column::Status,
+                    Expr::value(PROVIDER_OPERATION_RECONCILIATION_REQUIRED),
+                )
+                .col_expr(
+                    provider_operation::Column::ProviderReference,
+                    reference_value,
+                )
+                .col_expr(provider_operation::Column::ProviderResult, result_value)
+                .col_expr(
+                    provider_operation::Column::ErrorMessage,
+                    Expr::value(Some(error_message.clone())),
+                )
+                .col_expr(
+                    provider_operation::Column::UpdatedAt,
+                    Expr::current_timestamp(),
+                )
+                .col_expr(provider_operation::Column::ProviderCompletedAt, completed)
+                .filter(provider_operation::Column::TenantId.eq(tenant_id))
+                .filter(provider_operation::Column::Id.eq(operation_id))
+                .filter(provider_operation::Column::Status.eq(current.status))
+                .filter(provider_operation::Column::CommittedAt.is_null())
+                .filter(reference_match)
+                .filter(result_match)
+                .exec(&self.db)
+                .await?;
+            if update.rows_affected == 1 {
+                return self.get(tenant_id, operation_id).await;
+            }
         }
-
-        self.get(tenant_id, operation_id).await
+        Err(provider_outcome_conflict())
     }
 
     pub async fn mark_reconciliation_required(
@@ -454,11 +672,12 @@ impl FulfillmentProviderOperationJournal {
         ensure_transition(&current.status, PROVIDER_OPERATION_COMMITTED)?;
 
         let now = Utc::now();
-        let provider_completed_at = if current.provider_completed_at.is_none() {
-            Expr::value(Some(now))
-        } else {
-            Expr::col(provider_operation::Column::ProviderCompletedAt)
-        };
+        let provider_completed_at: sea_orm::sea_query::SimpleExpr =
+            if current.provider_completed_at.is_none() {
+                Expr::value(Some(now)).into()
+            } else {
+                Expr::col(provider_operation::Column::ProviderCompletedAt).into()
+            };
         let update = provider_operation::Entity::update_many()
             .col_expr(
                 provider_operation::Column::Status,
@@ -576,7 +795,76 @@ impl FulfillmentProviderOperationJournal {
     }
 }
 
-fn validate_provider_result_for_operation(
+fn provider_outcome_conflict() -> FulfillmentError {
+    FulfillmentError::OwnerPort(rustok_api::PortError::invariant_violation(
+        "fulfillment.provider_outcome_conflict",
+        "retained provider outcome conflicts with the checkpoint; reconcile the original operation without overwriting evidence",
+    ))
+}
+
+fn observed_reference(current: &provider_operation::Model) -> sea_orm::sea_query::SimpleExpr {
+    match &current.provider_reference {
+        Some(reference) => provider_operation::Column::ProviderReference.eq(reference.clone()),
+        None => provider_operation::Column::ProviderReference.is_null(),
+    }
+}
+
+fn preserve_provider_reference(
+    current: &provider_operation::Model,
+    reported: Option<String>,
+) -> FulfillmentResult<Option<String>> {
+    if let (Some(saved), Some(reported)) = (&current.provider_reference, &reported) {
+        if saved != reported {
+            return Err(provider_outcome_conflict());
+        }
+    }
+    Ok(reported.or_else(|| current.provider_reference.clone()))
+}
+
+fn require_matching_provider_outcome(
+    current: &provider_operation::Model,
+    reference: &Option<String>,
+    result: &Value,
+) -> FulfillmentResult<()> {
+    if current.provider_result.as_ref() != Some(result)
+        || &current.provider_reference != reference
+        || current.provider_completed_at.is_none()
+        || (current.status == PROVIDER_OPERATION_COMMITTED && current.committed_at.is_none())
+    {
+        return Err(provider_outcome_conflict());
+    }
+    Ok(())
+}
+
+/// Read-only owner lookup: a mutable shipping option must not create another provider attempt
+/// for an already bound caller intent. Never guess an oldest provider for historical collisions.
+async fn find_fulfillment_key_on_connection<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    key: &str,
+) -> FulfillmentResult<Option<provider_operation::Model>> {
+    let mut rows = provider_operation::Entity::find()
+        .filter(provider_operation::Column::TenantId.eq(tenant_id))
+        .filter(provider_operation::Column::FulfillmentId.eq(fulfillment_id))
+        .filter(provider_operation::Column::IdempotencyKey.eq(key))
+        .limit(2)
+        .all(conn)
+        .await?;
+    if rows.len() > 1 {
+        return Err(provider_identity_ambiguous());
+    }
+    Ok(rows.pop())
+}
+
+fn provider_identity_ambiguous() -> FulfillmentError {
+    FulfillmentError::OwnerPort(rustok_api::PortError::invariant_violation(
+        "fulfillment.provider_operation_identity_ambiguous",
+        "retained caller identity has conflicting provider bindings; reconcile original operations without choosing an oldest row or rotating keys",
+    ))
+}
+
+pub(crate) fn validate_provider_result_for_operation(
     current: &provider_operation::Model,
     provider_reference: Option<String>,
     provider_result: &Value,
@@ -673,7 +961,6 @@ fn normalize_begin_input(
     }
 
     input.provider_id = input.provider_id.trim().to_string();
-    input.idempotency_key = input.idempotency_key.trim().to_string();
     if input.tenant_id.is_nil() || input.fulfillment_id.is_nil() {
         return Err(FulfillmentError::Validation(
             "provider operation requires non-nil tenant_id and fulfillment_id".to_string(),
@@ -684,7 +971,7 @@ fn normalize_begin_input(
             "provider_id must contain 1 to 100 characters".to_string(),
         ));
     }
-    if input.idempotency_key.is_empty() || input.idempotency_key.len() > 191 {
+    if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 191 {
         return Err(FulfillmentError::Validation(
             "idempotency_key must contain 1 to 191 characters".to_string(),
         ));
@@ -703,6 +990,7 @@ fn ensure_same_request(
     input: &BeginProviderOperation,
 ) -> FulfillmentResult<()> {
     if existing.fulfillment_id != input.fulfillment_id
+        || existing.provider_id != input.provider_id
         || existing.operation != input.operation
         || existing.request_payload != input.request_payload
     {
@@ -714,11 +1002,39 @@ fn ensure_same_request(
     Ok(())
 }
 
+/// One owner predicate for carrier claims and local progress fences. A status alone cannot
+/// hide retained outcome markers; malformed Pending/Committed and unknown historical states
+/// require reconciliation, not a new identity. Valid committed work permits a later intent.
+pub(super) fn unresolved_provider_effects() -> Condition {
+    use provider_operation::Column;
+    Condition::any()
+        .add(Column::Status.is_not_in([PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_COMMITTED]))
+        .add(
+            Condition::all()
+                .add(Column::Status.eq(PROVIDER_OPERATION_PENDING))
+                .add(
+                    Condition::any()
+                        .add(Column::ProviderResult.is_not_null())
+                        .add(Column::ProviderReference.is_not_null())
+                        .add(Column::ProviderCompletedAt.is_not_null())
+                        .add(Column::CommittedAt.is_not_null()),
+                ),
+        )
+        .add(
+            Condition::all()
+                .add(Column::Status.eq(PROVIDER_OPERATION_COMMITTED))
+                .add(
+                    Condition::any()
+                        .add(Column::ProviderResult.is_null())
+                        .add(Column::ProviderCompletedAt.is_null())
+                        .add(Column::CommittedAt.is_null()),
+                ),
+        )
+}
+
 fn ensure_transition(from: &str, to: &str) -> FulfillmentResult<()> {
     let allowed = match to {
-        PROVIDER_OPERATION_EXECUTING => {
-            matches!(from, PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR)
-        }
+        PROVIDER_OPERATION_EXECUTING => from == PROVIDER_OPERATION_PENDING,
         PROVIDER_OPERATION_SUCCEEDED => from == PROVIDER_OPERATION_EXECUTING,
         PROVIDER_OPERATION_ERROR => {
             matches!(
@@ -778,7 +1094,7 @@ mod tests {
         assert!(
             ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_EXECUTING).is_ok()
         );
-        assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING).is_ok());
+        assert!(ensure_transition(PROVIDER_OPERATION_ERROR, PROVIDER_OPERATION_EXECUTING).is_err());
         assert!(ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_ERROR).is_ok());
         assert!(
             ensure_transition(PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_SUCCEEDED).is_ok()

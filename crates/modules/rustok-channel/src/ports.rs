@@ -60,6 +60,74 @@ pub trait ChannelReadPort: Send + Sync {
         request: ChannelReadRequest,
     ) -> Result<Option<ChannelReadProjection>, PortError>;
 
+    /// Resolve an explicitly saved ID/slug pair through the selected owner provider.
+    /// No selectors means global scope, not `Default` or `context.channel`. A supplied
+    /// selector must identify an active channel; omission never follows lookup failure.
+    async fn read_selected_channel(
+        &self,
+        context: PortContext,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+    ) -> Result<Option<ChannelReadProjection>, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context)?;
+        if tenant_id.is_nil() || channel_id.is_some_and(|id| id.is_nil()) {
+            return Err(PortError::validation(
+                "channel.selector_invalid",
+                "Channel selection requires non-nil identities",
+            ));
+        }
+        let channel_slug = channel_slug.map(|slug| slug.trim().to_ascii_lowercase());
+        if channel_slug.as_deref().is_some_and(str::is_empty) {
+            return Err(PortError::validation(
+                "channel.slug_empty",
+                "Channel selection requires a non-empty slug",
+            ));
+        }
+        let selector = channel_id
+            .map(ChannelReadSelector::Id)
+            .or_else(|| channel_slug.clone().map(ChannelReadSelector::Slug));
+        let Some(selector) = selector else {
+            return Ok(None);
+        };
+        let mut projection = self
+            .read_channel(
+                context,
+                ChannelReadRequest {
+                    selector,
+                    include_inactive: false,
+                },
+            )
+            .await?
+            .ok_or_else(|| {
+                PortError::not_found(
+                    "channel.not_found",
+                    "The selected channel is not available in this tenant",
+                )
+            })?;
+        ensure_tenant_scope(tenant_id, &projection.detail)?;
+        let channel = &mut projection.detail.channel;
+        let slug = channel.slug.trim().to_ascii_lowercase();
+        if channel.id.is_nil() || slug.is_empty() || !channel.is_active {
+            return Err(PortError::invariant_violation(
+                "channel.projection_invalid",
+                "The Channel owner returned an inconsistent active identity",
+            ));
+        }
+        if channel_id.is_some_and(|id| id != channel.id)
+            || channel_slug
+                .as_ref()
+                .is_some_and(|requested| requested != &slug)
+        {
+            return Err(PortError::validation(
+                "channel.selector_mismatch",
+                "Channel ID and slug must identify the same channel",
+            ));
+        }
+        channel.slug = slug;
+        Ok(Some(projection))
+    }
+
     async fn list_channels_for_tenant(
         &self,
         context: PortContext,
@@ -237,3 +305,7 @@ fn map_channel_error(error: crate::ChannelError) -> PortError {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ports_tests.rs"]
+mod tests;

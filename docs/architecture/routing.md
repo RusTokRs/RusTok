@@ -132,11 +132,15 @@ The canonical redirect boundary is:
 For module-owned admin UI, a single platform contract applies:
 
 - selection state is stored in query string and is considered a URL-owned source of truth;
-- only typed `snake_case` query keys are used: `product_id`, `cart_id`, `order_id`, `thread_id`,
+- only typed `snake_case` query keys are used: `product_id`, `attribute_id`, `option_id`, `cart_id`, `order_id`, `thread_id`,
   `media_id`, `channel_id`, `topic_id`, `provider_slug`, `tool_profile_slug`, `task_profile_slug`,
   and for SEO routes — `target_kind`, `target_id`, `locale`, `tab`;
 - generic `id`, camelCase keys and other legacy aliases are not read and are not canonicalized;
 - absence of a valid selection key means an empty state, not auto-select-first;
+- Product dictionary selection uses `attribute_id` plus optional `option_id`; the latter depends
+  on its parent. A retained missing UUID is unavailable, not a reason to select another row.
+  Recovery markers are document evidence, not generic resource aliases; removing selection
+  while retaining such a marker must not initialize a replacement attempt;
 - invalid nested keys are cleaned locally and must not break neighboring selection domains;
 - changing subpath/tab must prune keys that are invalid for the destination page.
 

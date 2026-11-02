@@ -47,7 +47,7 @@ async fn test_set_price_persists_decimal_and_legacy_cents() {
             tenant_id,
             actor_id,
             variant_id,
-            "USD",
+            "KWD",
             dec!(79.994),
             Some(dec!(99.996)),
         )
@@ -56,7 +56,7 @@ async fn test_set_price_persists_decimal_and_legacy_cents() {
 
     let price = entities::price::Entity::find()
         .filter(entities::price::Column::VariantId.eq(variant_id))
-        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::CurrencyCode.eq("KWD"))
         .filter(entities::price::Column::PriceListId.is_null())
         .filter(entities::price::Column::ChannelId.is_null())
         .filter(entities::price::Column::MinQuantity.is_null())
@@ -115,12 +115,16 @@ async fn test_set_price_clears_compare_at_and_legacy_compare_at_on_existing_row(
 }
 
 #[tokio::test]
-async fn test_set_price_publishes_price_updated_event_with_rounded_cents() {
+async fn test_set_price_event_uses_currency_minor_units() {
     let (_db, service, catalog, transport) = setup_with_transport().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let (product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 
+    service
+        .set_price(tenant_id, actor_id, variant_id, "KWD", dec!(99.999), None)
+        .await
+        .unwrap();
     transport.clear();
 
     service
@@ -128,7 +132,7 @@ async fn test_set_price_publishes_price_updated_event_with_rounded_cents() {
             tenant_id,
             actor_id,
             variant_id,
-            "USD",
+            "KWD",
             dec!(79.994),
             Some(dec!(99.996)),
         )
@@ -149,9 +153,9 @@ async fn test_set_price_publishes_price_updated_event_with_rounded_cents() {
         } => {
             assert_eq!(*event_variant_id, variant_id);
             assert_eq!(*event_product_id, product_id);
-            assert_eq!(currency, "USD");
-            assert_eq!(*old_amount, Some(9999));
-            assert_eq!(*new_amount, 7999);
+            assert_eq!(currency, "KWD");
+            assert_eq!(*old_amount, Some(99999));
+            assert_eq!(*new_amount, 79994);
         }
         other => panic!("Expected PriceUpdated event, got {other:?}"),
     }
@@ -196,7 +200,7 @@ async fn test_set_price_tier_persists_quantity_window_and_resolves() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -455,6 +459,7 @@ async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() 
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, channel_id, "web-store").await;
 
     service
         .set_prices(
@@ -462,7 +467,7 @@ async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() 
             actor_id,
             variant_id,
             vec![rustok_commerce_foundation::dto::PriceInput {
-                currency_code: "USD".to_string(),
+                currency_code: "KWD".to_string(),
                 channel_id: Some(channel_id),
                 channel_slug: Some("WEB-STORE".to_string()),
                 amount: dec!(79.994),
@@ -474,7 +479,7 @@ async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() 
 
     let price = entities::price::Entity::find()
         .filter(entities::price::Column::VariantId.eq(variant_id))
-        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::CurrencyCode.eq("KWD"))
         .filter(entities::price::Column::ChannelId.eq(channel_id))
         .filter(entities::price::Column::PriceListId.is_null())
         .filter(entities::price::Column::MinQuantity.is_null())
@@ -627,15 +632,15 @@ async fn test_set_prices_publishes_price_updated_events_with_old_and_new_cents()
                     currency_code: "USD".to_string(),
                     channel_id: None,
                     channel_slug: None,
-                    amount: dec!(89.994),
-                    compare_at_amount: Some(dec!(99.996)),
+                    amount: dec!(89.99),
+                    compare_at_amount: Some(dec!(99.99)),
                 },
                 rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "EUR".to_string(),
                     channel_id: None,
                     channel_slug: None,
-                    amount: dec!(79.994),
-                    compare_at_amount: Some(dec!(99.996)),
+                    amount: dec!(79.99),
+                    compare_at_amount: Some(dec!(99.99)),
                 },
             ],
         )

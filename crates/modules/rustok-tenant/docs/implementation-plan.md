@@ -24,6 +24,9 @@ The current source contract includes:
 - mandatory transactional outbox publication for every remaining tenant owner
   mutation, including installer/bootstrap creation;
 - typed tenant reads for resolver, installer, storefront and commerce consumers;
+- a read-only SQLite `tenant_identity_keys` projection for the static module
+  owner's atomic identity checks, preserving native and text storage classes;
+  its migration and read-only behavior have a focused SQLite test;
 - explicit `--tenant-id` before OAuth CLI credential writes;
 - the host-composed `SharedModuleEffectivePolicyReader` for Tenant Admin module
   badges, so its native surface uses the same active-composition,

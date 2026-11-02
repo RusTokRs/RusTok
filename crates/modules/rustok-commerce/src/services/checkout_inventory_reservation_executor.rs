@@ -57,6 +57,7 @@ pub type CheckoutInventoryExecutionResult<T> = Result<T, CheckoutInventoryExecut
 
 #[derive(Clone)]
 pub struct CheckoutInventoryReservationExecutor {
+    db: sea_orm::DatabaseConnection,
     reservation_journal: CheckoutInventoryReservationJournal,
     operation_journal: CheckoutOperationJournal,
     reservation_port: Arc<dyn InventoryReservationIdentityPort>,
@@ -71,6 +72,7 @@ impl CheckoutInventoryReservationExecutor {
         reservation_port: Arc<dyn InventoryReservationIdentityPort>,
     ) -> Self {
         Self {
+            db: db.clone(),
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             operation_journal: CheckoutOperationJournal::new(db, event_bus),
             reservation_port,
@@ -119,6 +121,9 @@ impl CheckoutInventoryReservationExecutor {
         let mut lines = snapshot.cart.line_items.iter().collect::<Vec<_>>();
         lines.sort_by_key(|line| line.id);
         let mut reservations = Vec::new();
+        // Request-local canonical Channel observation. A fully journaled replay needs no new
+        // selection; unresolved/failed owner reads never fall back to a page/global channel.
+        let mut resolved_channel: Option<Option<String>> = None;
 
         for line in lines {
             let Some(variant_id) = line.variant_id else {
@@ -149,7 +154,7 @@ impl CheckoutInventoryReservationExecutor {
                 }
             }
 
-            let port_context = inventory_port_context(InventoryPortContextInput {
+            let mut port_context = inventory_port_context(InventoryPortContextInput {
                 tenant_id,
                 actor: actor.clone(),
                 snapshot,
@@ -159,6 +164,30 @@ impl CheckoutInventoryReservationExecutor {
                 deadline: self.port_deadline,
                 action: "reserve",
             });
+            if resolved_channel.is_none() {
+                match crate::storefront_channel::resolve_cart_channel(
+                    &self.db,
+                    &port_context,
+                    &snapshot.cart,
+                )
+                .await
+                {
+                    Ok(channel) => resolved_channel = Some(channel),
+                    Err(boundary) => {
+                        return Err(self
+                            .record_boundary_failure(
+                                &port_context,
+                                "read_checkout_channel",
+                                tenant_id,
+                                line.id,
+                                planned.reservation_id,
+                                boundary,
+                            )
+                            .await);
+                    }
+                }
+            }
+            port_context.channel = resolved_channel.as_ref().cloned().flatten();
             let provider_result = self
                 .reservation_port
                 .reserve_inventory_by_identity(
@@ -200,6 +229,7 @@ impl CheckoutInventoryReservationExecutor {
                 || provider_result.external_id != planned.external_id
                 || provider_result.variant_id != variant_id
                 || provider_result.reserved_quantity != line.quantity
+                || provider_result.location_id.is_nil()
             {
                 let boundary = PortError::invariant_violation(
                     "inventory.reservation_response_mismatch",

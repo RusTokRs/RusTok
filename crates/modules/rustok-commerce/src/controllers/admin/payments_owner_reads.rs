@@ -314,7 +314,7 @@ fn map_payment_read_error(
         boundary = ADMIN_PAYMENT_READ_BOUNDARY,
         "commerce admin payment owner read failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_payment_command_error(
@@ -341,7 +341,7 @@ fn map_payment_command_error(
         boundary = ADMIN_PAYMENT_COMMAND_BOUNDARY,
         "commerce admin payment owner command failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_refund_command_error(
@@ -372,7 +372,7 @@ fn map_refund_command_error(
         boundary = ADMIN_REFUND_COMMAND_BOUNDARY,
         "commerce admin refund owner command failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 #[utoipa::path(

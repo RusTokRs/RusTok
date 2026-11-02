@@ -3,6 +3,7 @@ use std::{error::Error, io, sync::Arc, time::Duration};
 use rustok_blog::services::BlogCommentProjectionHandler;
 use rustok_core::events::{EventEnvelope, EventHandler};
 use rustok_events::DomainEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
     TransactionTrait,
@@ -150,7 +151,9 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
     let replay_db = test_db
         .isolated_connection("rustok_blog_duplicate_race_replay")
         .await?;
-    BlogCommentProjectionHandler::new(replay_db)
+    let event_bus =
+        TransactionalEventBus::new(Arc::new(OutboxTransport::new(replay_db.clone())));
+    BlogCommentProjectionHandler::new(replay_db, event_bus)
         .handle(&envelope)
         .await?;
 
@@ -170,7 +173,9 @@ fn spawn_projection(
     envelope: EventEnvelope,
 ) -> tokio::task::JoinHandle<rustok_core::Result<()>> {
     tokio::spawn(async move {
-        let handler = BlogCommentProjectionHandler::new(db);
+        let event_bus =
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let handler = BlogCommentProjectionHandler::new(db, event_bus);
         start.wait().await;
         handler.handle(&envelope).await
     })

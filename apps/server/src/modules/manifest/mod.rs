@@ -22,6 +22,7 @@ use rustok_build::{
 use rustok_core::ModuleRegistry;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use validation::apply_required_module_package_manifest;
 
 pub struct ManifestManager;
 
@@ -490,15 +491,20 @@ impl ManifestManager {
         module_slug: &str,
     ) -> Result<HashMap<String, rustok_modules::ModuleSettingSpec>, ManifestError> {
         let manifest = Self::load()?;
-        let resolved_specs = resolve_module_specs(&manifest)?;
+        Self::module_settings_schema_from_manifest(&manifest, module_slug)
+    }
 
-        let schema = if let Some(spec) = resolved_specs.get(module_slug) {
-            spec.settings_schema.clone()
-        } else if let Some(spec) = builtin_module_catalog().remove(module_slug) {
-            apply_module_package_manifest(module_slug, &spec)?.settings_schema
-        } else {
-            HashMap::new()
-        };
+    fn module_settings_schema_from_manifest(
+        manifest: &ModulesManifest,
+        module_slug: &str,
+    ) -> Result<HashMap<String, rustok_modules::ModuleSettingSpec>, ManifestError> {
+        let spec = manifest
+            .modules
+            .get(module_slug)
+            .cloned()
+            .or_else(|| builtin_module_catalog().remove(module_slug))
+            .ok_or_else(|| ManifestError::UnknownModule(module_slug.to_string()))?;
+        let schema = apply_required_module_package_manifest(module_slug, &spec)?.settings_schema;
 
         Ok(to_module_settings_schema(&schema))
     }

@@ -1,7 +1,10 @@
-#![allow(dead_code)]
-
 pub mod admin_catalog_graphql;
 pub mod admin_catalog_native;
+pub(crate) mod attribute_lifecycle;
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+mod attribute_lifecycle_graphql;
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+mod attribute_lifecycle_native;
 pub mod graphql_adapter;
 pub mod graphql_error_safety;
 pub mod graphql_fallback_mutation_error_safety;
@@ -10,9 +13,21 @@ pub mod native_server_adapter;
 pub mod product_lifecycle_graphql;
 pub mod retry;
 
+pub(crate) mod variant_axes;
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+mod variant_axes_graphql;
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+mod variant_axes_native;
+pub(crate) mod variant_create;
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+mod variant_create_graphql;
+#[cfg(any(feature = "ssr", feature = "hydrate"))]
+mod variant_create_native;
+pub(crate) mod write_journal;
+
 pub(crate) use retry::{
-    add_product_image, create_product_variant, delete_product_image, delete_product_variant,
-    reorder_product_images, set_variant_axes, update_product_image, update_product_variant,
+    add_product_image, delete_product_image, delete_product_variant, reorder_product_images,
+    update_product_image, update_product_variant,
 };
 
 use crate::model::{
@@ -706,4 +721,32 @@ pub(crate) async fn delete_product(
     id: String,
 ) -> Result<bool, ApiError> {
     retry::delete_product(token, tenant_slug, tenant_id, user_id, id).await
+}
+
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+async fn authenticated_write_scope_matches(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    scope: &crate::core::write_journal::ProductWriteScope,
+) -> bool {
+    authenticated_actor_scope_matches(token, tenant_slug, &scope.tenant_id, &scope.actor_id).await
+}
+
+#[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+async fn authenticated_actor_scope_matches(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: &str,
+    actor_id: &str,
+) -> bool {
+    match graphql_adapter::fetch_bootstrap(token, tenant_slug).await {
+        Ok(bootstrap) => bootstrap.current_tenant.id == tenant_id && bootstrap.me.id == actor_id,
+        Err(_) => {
+            tracing::warn!(
+                operation = "product_write_scope",
+                "Product authenticated context could not be verified"
+            );
+            false
+        }
+    }
 }

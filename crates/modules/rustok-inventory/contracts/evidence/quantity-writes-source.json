@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "module": "inventory",
+  "packet": "inventory-quantity-writes-source",
+  "date": "2026-11-01",
+  "status": "source_only_uncompiled_unrun",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#canonical-quantity-writes-2026-11-01-source-continuation",
+  "owner_decision": "DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#quantity-writer-consolidation-2026-11-01",
+  "guard": "scripts/verify/verify-inventory-quantity-writes.mjs",
+  "task_entry": {
+    "branch": "arena/71cd6d1f-rustok",
+    "head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+    "main_observed": "0aaf455a45556f4e39a5ed66b8a1184369e5e93f",
+    "dirty_status_entries": 712,
+    "file_hashes": 13140,
+    "migration_directory_files": 668,
+    "cache_note": "/home/user/.cache/inventory-quantity-writes/baseline.json is an immutable local dirty-entry comparison, not clean-main or persisted release evidence"
+  },
+  "bounds": {
+    "levels": 4096,
+    "sentinel": 4097,
+    "items_for_single_variant_probe": 2,
+    "current_snapshot": "PostgreSQL/MySQL READ COMMITTED; SQLite transaction conflicts remain backend gates"
+  },
+  "semantics": [
+    "Global available quantity, not first level stocked overwrite",
+    "Positive current tenant/actor/Variant, structural immutable Product-parent tenant proof and exactly one saved item; no implicit item/level/location repair",
+    "Read-only default selector preserves code default then oldest active with deterministic UUID ties",
+    "Original tenant locations lock before current complete bindings and checked signed arithmetic",
+    "No-op stock plan changes no timestamps, counter, envelope or version; no outbox storage dependency",
+    "Exact conditional target stocked update only; preserve reserved/incoming, metadata and every other location",
+    "Preflight unchanged v1 stock event compatibility; canonical root publisher shares the caller transaction",
+    "Product existing transaction, peer writes, receipt and publication rollback stay authoritative",
+    "Checked wide Product/public-channel projection math; visibility remains a projection, not Index absence proof"
+  ],
+  "regressions": {
+    "rust_definitions": 33,
+    "node_definitions": 10,
+    "executed": false,
+    "rust": {
+      "crates/modules/rustok-inventory/src/services/quantity/tests.rs": [
+        "quantity_scope_requires_each_current_positive_identity_before_database_work",
+        "quantity_adjustment_extremes_use_checked_addition_without_negating_i32_min",
+        "quantity_target_is_global_available_and_preserves_other_location_and_reserved_units",
+        "quantity_sum_is_wide_checked_and_never_saturates_signed_locations",
+        "quantity_requires_nonempty_complete_bounded_positive_unique_level_bindings",
+        "quantity_refuses_each_negative_saved_counter_without_using_net_availability_as_proof",
+        "quantity_backorder_never_creates_negative_physical_stock_or_clamps_default_allocation",
+        "quantity_real_change_refuses_unrepresentable_v1_notification_but_signed_noop_is_valid",
+        "quantity_error_native_policy_keeps_provider_text_private_and_unknown_publication_nonterminal",
+        "quantity_product_response_and_visible_projection_sum_without_order_dependent_saturation"
+      ],
+      "crates/modules/rustok-commerce/tests/inventory_quantity_writes.rs": [
+        "native_and_product_quantity_use_the_same_global_reserved_multi_location_plan",
+        "quantity_noops_preserve_signed_archived_state_and_do_not_need_outbox_storage",
+        "quantity_missing_item_or_level_never_succeeds_or_recreates_identity_even_for_zero",
+        "quantity_current_tenant_proof_precedes_tenantless_item_and_original_location_reads",
+        "quantity_default_fallback_uses_oldest_active_location_with_uuid_ties_not_first_level",
+        "quantity_missing_active_target_level_never_rehomes_or_creates_a_level",
+        "quantity_checked_storage_and_delta_extremes_refuse_before_any_event_or_effect",
+        "quantity_complete_level_overflow_refuses_without_picking_a_partial_default",
+        "quantity_exact_one_target_effect_failure_rolls_back_product_peer_writes",
+        "quantity_stock_notification_failure_rolls_back_native_and_product_changes",
+        "quantity_adjust_low_stock_publication_failure_rolls_back_first_stock_event_and_counters",
+        "quantity_later_product_publication_failure_rolls_back_stock_price_and_variant_together",
+        "quantity_bootstrap_hook_never_commits_independently_of_caller_rollback",
+        "quantity_product_receipt_replay_preserves_original_result_without_a_new_stock_event",
+        "quantity_product_terminal_refusal_replays_after_independent_stock_reconciliation",
+        "quantity_negative_legacy_event_snapshot_is_explicit_and_rolls_back_product_peer_writes"
+      ],
+      "crates/modules/rustok-product/src/error.rs": [
+        "quantity_refusals_have_closed_owner_codes_public_copy_and_separate_terminal_classes",
+        "quantity_wrong_code_kind_or_provider_text_cannot_reconstruct_a_refusal",
+        "quantity_publication_and_storage_errors_never_become_terminal_client_validation"
+      ],
+      "crates/modules/rustok-commerce/src/controllers/products.rs": [
+        "quantity_http_domain_and_port_use_fixed_copy_and_exact_owner_kind",
+        "quantity_http_mismatched_kind_preserves_unknown_storage_outcome"
+      ],
+      "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs": [
+        "quantity_graphql_has_fixed_copy_current_correlation_and_finite_public_code",
+        "quantity_graphql_retry_hint_does_not_certify_original_command_outcome"
+      ]
+    },
+    "node": "scripts/verify/verify-inventory-quantity-writes.test.mjs",
+    "migrated_existing": [
+      "InventoryService reserved-target arithmetic unit regression",
+      "Bootstrap concrete-transaction input-guard regression",
+      "Two Commerce quantity VariantNotFound matches",
+      "Existing inventory admin boundary source guard fixture/delegation assertions"
+    ]
+  },
+  "preserved_hashes": {
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000025_create_shipment_stock_proofs.rs": "73cbb83b716736a04ce517b73f417f735d266fea88f25440fbf1660ed567f4c6",
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000026_index_catalog_deletion_history.rs": "e2a53e95afc6c03a540d4cc1f8f8af0dcdf498708008fcfc8b7dffc1408b0fcd",
+    "crates/modules/rustok-inventory/src/migrations/m20250130_000016_create_commerce_inventory.rs": "ac238912c4f4e512547ffc1f3e275281f0170d6f6dcc8f96ee4bfc81835be1a2",
+    "crates/modules/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs": "5d120ac7eff5798586d181c77b52ebcc8803540983233598e98928eba9f6b45a",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000017_enforce_reservation_identity.rs": "3393678e292949edf35ba2233ee58b3996b58005730269baad2018108cf572f7",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000018_enforce_inventory_state_invariants.rs": "589070c5ee20be7d9bca73778d60658d47d0d1dfd2691441d2487c69d069de84",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000019_reserve_checkout_order_inventory.rs": "5aeefc5d7a351ee22264cd25febc9e9d0969efa55be78c625043088bf0620989",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000020_remove_duplicate_checkout_reservation.rs": "7a64fcf4321dcd26a7b2b77999a6e171025dcf50af5ba9886e82a03695feb375",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d",
+    "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
+    "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+    "crates/modules/rustok-inventory/src/migrations/shared.rs": "80e89f26200fa065163621b62c73068cf73fdac7be4fc1ee2966a0c03a872d28",
+    "crates/libs/rustok-events/contracts/event-contract-digests.json": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121"
+  },
+  "compiled": false,
+  "tests_executed": false,
+  "sql_executed": false,
+  "runtime_verified": false,
+  "baseline_initialized": false,
+  "inventory_revisions_added": false,
+  "generic_index_complete": false,
+  "step8_complete": false,
+  "static_checks": {
+    "status": "read_only_source_19_pass_4_dirty_baseline_equivalent_toolchain_blocked",
+    "source_guard_runs": 23,
+    "source_guard_passed": 19,
+    "unexpected_source_guard_failures": 0,
+    "commands": [
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-quantity-writes.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "46d96b2e2a267f7221d4eeb2c0ddcb21fa5a5d34a60724e95054cc0b429bd577"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-catalog-deletion.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "27ccefd4eb317bca916a26527ddd6baafb60989488972c8b6f8e8576f4d296ec"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-product-lifecycle-collaboration.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "c669e2d1378affa7f4d5216a6fe86d72de6d84a4b2ce3c28da92a1c2e8e2365d"
+      },
+      {
+        "command": ["node", "scripts/verify/verify-product-catalog-schema.mjs"],
+        "exit_code": 0,
+        "output_sha256": "18ca27d2eb73004e9eb6e349d047ac1c611f5092ea810be8a147f377c364347b"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-commerce-admin-product-route-error-context.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "b7b99a4382a44d2e3ca3a95557c3b6949639d0f23f8ea5ec593973e9a7b4bea8"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-ecommerce-fba-registries.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "8bb9e1cdca1410d7adbd0dfecafa86f0ff6c773d383320acd71a61cb337eaedf"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "4e3608963b6f5a47fea9cf7d3a4ba6d3c50e8642bd4d9d41e08c96b5fa809e03"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-reservation-events.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "ec91f5dd90024e34c6fe0a6ffa6ed124ffb4f3fec5b55e7ccbf6a4db4563c0ab"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-quantity-release.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "b86c4fe6e62aac9d96ead05147a69c23d106db00415493b160b8e6791835e245"
+      },
+      {
+        "command": ["node", "scripts/verify/verify-inventory-stock-events.mjs"],
+        "exit_code": 0,
+        "output_sha256": "266931937bd44f2fd8cb19b334d4f70472162ffd2e6a252f1cdb703c0afa7880"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-reservation-owner-context.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "f39545daf758adff9f8ad18934a1decc12ff58ae0c72370e6c1abb58e6a26ada"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-reservation-local-context.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "a6d1f8a64e31e550b17b8de81bb0c116d18d43fe4119a1ad8ee88e30537a0770"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-admin-native-error-safety.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "0526604aaa71638c64c0a6f372bad26a4f5fa97159b7cbc7094d65432d3159e3"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-admin-client-transport-error-safety.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "11c2c3aa3d5aacc0462eb3de18688f45f61114d36d95a447a82f9da16a2f72df"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-availability-quantity-context.mjs"
+        ],
+        "exit_code": 2,
+        "output_sha256": "d4a04fb411e4b5b128a2fb46f0fa919d1de9780c434ca5fd1a30ad6db8183d8b"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-availability-quantity-local-context.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "96c7159aaa653c25136a2b03d09d8c0e8ed73bf6b8ca0e79e50bb8034cf8116f"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-port-diagnostic-safety.mjs"
+        ],
+        "exit_code": 2,
+        "output_sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27"
+      },
+      {
+        "command": ["node", "scripts/verify/verify-product-atomic-save.mjs"],
+        "exit_code": 0,
+        "output_sha256": "b17a5119cf4f39acef6166216fc932818ceddce59d16726aefef8fac40248735"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "a3d959a97b89a2682549167e5c23a58ab4e26496f3d6e3f8ce4a4134e0f87ac9"
+      },
+      {
+        "command": ["node", "scripts/verify/verify-product-admin-boundary.mjs"],
+        "exit_code": 0,
+        "output_sha256": "a299f7ea53e7c3db534d60a159159c49ded8a5b34e69cc563ab502cbb071bf91"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-inventory-admin-boundary.mjs"
+        ],
+        "exit_code": 0,
+        "output_sha256": "45ad85a269fdc83d93803d66857e4627f35cefb06f2730af1432de99358a031c"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs"
+        ],
+        "exit_code": 9,
+        "output_sha256": "2ec0ff1c437ef3012c3ccdd80677aa9b7f2019f13072ba1c58a8b18c5eee5ff8"
+      },
+      {
+        "command": [
+          "node",
+          "scripts/verify/verify-product-catalog-receipts.mjs"
+        ],
+        "exit_code": 1,
+        "output_sha256": "d0acf5822771e05bc9aafb87429cf69372e4e10ff1ad2a3ee62fd92daee66215"
+      }
+    ],
+    "dirty_baseline_comparison": [
+      {
+        "name": "inventory-availability-quantity-context",
+        "baseline_exit": 2,
+        "current_exit": 2,
+        "byte_identical_output": true,
+        "sha256": "d4a04fb411e4b5b128a2fb46f0fa919d1de9780c434ca5fd1a30ad6db8183d8b"
+      },
+      {
+        "name": "inventory-port-diagnostic-safety",
+        "baseline_exit": 2,
+        "current_exit": 2,
+        "byte_identical_output": true,
+        "sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27"
+      },
+      {
+        "name": "ecommerce-public-port-error-safety-v2",
+        "baseline_exit": 9,
+        "current_exit": 9,
+        "byte_identical_output": true,
+        "sha256": "2ec0ff1c437ef3012c3ccdd80677aa9b7f2019f13072ba1c58a8b18c5eee5ff8"
+      },
+      {
+        "name": "product-catalog-receipts",
+        "baseline_exit": 1,
+        "current_exit": 1,
+        "byte_identical_output": true,
+        "sha256": "d0acf5822771e05bc9aafb87429cf69372e4e10ff1ad2a3ee62fd92daee66215"
+      }
+    ],
+    "baseline_reconstruction": "All 13140 task-entry files reconstructed from 1898 saved copies plus 11242 hash-proved unchanged symlinks; no unavailable inputs. Four failed guard outputs and exits are byte-identical. All 13140 hashes revalidated after final source edits.",
+    "rust_syntax_files": 32,
+    "rust_parser_errors": 0,
+    "rust_format": "Scalar Rust formatter 0.3.0; 32 scoped Rust files, 0 remaining changes; not a compiler",
+    "node_syntax_files": 4,
+    "node_companion_callbacks_executed": false,
+    "json_files_parsed": 4,
+    "prettier_files_checked": 8,
+    "documentation": {
+      "markdown_files": 11,
+      "new_markdown_links": 19,
+      "new_script_references": 5,
+      "link_failures": [],
+      "new_trailing_whitespace_paths": [],
+      "script_reference_counting": "New distinct per-document paths, not repeated command occurrences"
+    },
+    "remediation_gate": {
+      "exit_code": 1,
+      "task_entry_diff_invariants_passed": true,
+      "architecture_metadata": "blocked: cargo executable absent",
+      "clippy_executed": false
+    },
+    "all_task_entry_migration_files_unchanged": 668,
+    "canonical_event_digest_unchanged": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121",
+    "compiled": false,
+    "tests_executed": false,
+    "sql_executed": false,
+    "runtime_verified": false,
+    "rust_syntax_tool": "tree-sitter 0.25.2 / tree-sitter-rust 0.24.0; syntax only, not typing"
+  },
+  "open_gates": [
+    "Cargo/rustc unavailable; no type/build/clippy proof",
+    "All 33 Rust and 10 Node quantity definitions are unrun; existing migrated regressions are also unrun",
+    "Real PostgreSQL/MySQL lock/isolation/phantom and SQLite contention/rollback evidence",
+    "MySQL active-transaction instrumentation/SELECT access and actual isolation versus mismatching session-default/one-shot overrides; no MySQL runtime executed",
+    "Native quantity commands remain non-idempotent; a retry hint cannot authorize replay",
+    "Inventory admin still uses its existing generic client redaction; no actionable recovery/Next/Leptos parity cutover or readiness promotion",
+    "Read projection materialization/absence semantics are not an authoritative Inventory Index contract",
+    "Explicit installation baseline, Inventory-owned revisions, retained tombstones and every-writer atomic publication",
+    "Selected Distribution bridge, persist-before-ACK worker, Index readiness, Product step 8"
+  ],
+  "mysql_isolation_admission": {
+    "proof": "Active explicit current-connection transaction from performance_schema.events_transactions_current joined to threads; never session default",
+    "requirements": [
+      "Current transaction instrumentation enabled",
+      "Metadata SELECT access",
+      "Actual active isolation READ COMMITTED"
+    ],
+    "unavailable_or_inactive_metadata": "Refuse; query/decode errors propagate; no isolation change or session fallback",
+    "upstream_source_review": [
+      "https://github.com/mysql/mysql-server/blob/mysql-8.4.0/sql/sys_vars.cc#L4935-L4982",
+      "https://github.com/mysql/mysql-server/blob/mysql-8.4.0/sql/transaction.cc#L198-L213",
+      "https://github.com/mysql/mysql-server/blob/mysql-8.4.0/storage/perfschema/table_events_transactions.cc#L53-L81"
+    ],
+    "runtime_verified": false
+  },
+  "historical_registry_hashes": {
+    "crates/modules/rustok-inventory/src/migrations/mod.rs": "37812596b8449b646a6ca11fbbbfff594bbaf721c231cd2d50a13e43bd0ce2dc"
+  },
+  "registry_hash_policy": "The quantity handoff recorded this registry hash historically. Registry source admits governed additive migrations; immutable migration payloads/shared helper/event digest remain pinned, while source-history guard checks the current registration."
+}

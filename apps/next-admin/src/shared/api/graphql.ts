@@ -35,6 +35,8 @@ type ApolloExecutionResult<T> = {
 };
 
 export interface GraphqlRequestOptions {
+  /** Explicit frozen request locale; omitted callers retain host UI locale discovery. */
+  locale?: string;
   graphqlUrl?: string;
   tenantId?: string | null;
 }
@@ -48,6 +50,7 @@ export type AdminGraphqlExecutor = <V, T>(
 ) => Promise<T>;
 
 export interface GqlOpts {
+  locale?: string;
   graphql?: AdminGraphqlExecutor;
   token?: string | null;
   tenantSlug?: string | null;
@@ -179,7 +182,7 @@ export async function graphqlRequest<V, T>(
   }
 
   // Forward the admin UI locale so the server returns localised error messages.
-  const locale = getClientLocale();
+  const locale = options?.locale ?? getClientLocale();
   if (locale) {
     headers['Accept-Language'] = locale;
   }

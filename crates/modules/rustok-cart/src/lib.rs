@@ -21,7 +21,10 @@ pub mod migrations;
 pub mod module;
 mod owner_ports;
 pub mod ports;
+mod pricing_context_guard;
 mod promotion_guard;
+
+pub use pricing_context_guard::{CartPricingContextGuard, CartPricingScope, MAX_PRICED_CART_LINES};
 pub mod services;
 
 pub use atomic_checkout_guard::{
@@ -69,17 +72,16 @@ pub use marketplace_snapshot::{
 };
 pub use module::CartModule;
 pub use ports::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest,
-    CartPromotionScopeRequest, CartStorefrontAddLineItemRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
-    CartStorefrontRepriceRequest,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest, CartPromotionKindRequest, CartPromotionPort, CartPromotionRequest,
+    CartPromotionScopeRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
 };
 pub use promotion_guard::guarded_cart_promotion_port as in_process_cart_promotion_port;
 pub use services::cart::{
-    CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
+    CartContextPricing, CartContextPricingPlan, CartLineItemPricingUpdate,
+    CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
 pub use services::{CartMarketplaceSnapshotService, CartService};
 

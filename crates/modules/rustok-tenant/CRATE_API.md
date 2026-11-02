@@ -13,6 +13,10 @@
 
 ## Domain Collaborations
 - **Database & Migrations**: Runs schema migrations for `tenants` and `tenant_locales` with dependency descriptor on locale storage expansion.
+- **SQLite identity projection**: The read-only `tenant_identity_keys(id)` view
+  exposes only the stored key and preserves its storage class for atomic
+  cross-owner identity checks. It does not authorize tenant access or replace
+  the tenant read port. Consumers must fail closed if it is unavailable.
 - **Outbox & Events**: Publishes `tenant.created`, `tenant.updated`, `tenant.module.toggled`, `tenant.locale.enabled`, and `tenant.locale.disabled` atomically via `rustok-outbox` (`TransactionalEventBus::publish_root_in_tx`).
 - **RBAC**: Registers typed permissions (`tenants:*`, `modules:*`) via `rustok-api::Permission`.
 

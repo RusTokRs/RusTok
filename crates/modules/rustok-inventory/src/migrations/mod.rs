@@ -10,6 +10,9 @@ mod m20260713_000021_bound_reservation_metadata_and_inactive_locations;
 mod m20260713_000022_repair_oversized_reservation_metadata;
 mod m20260912_000023_add_stock_location_translation_change_journal;
 mod m20261021_000024_create_inventory_return_restocks;
+mod m20261101_000025_create_shipment_stock_proofs;
+mod m20261101_000026_index_catalog_deletion_history;
+mod m20261101_000027_create_inventory_source_history;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -26,11 +29,26 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000022_repair_oversized_reservation_metadata::Migration),
         Box::new(m20260912_000023_add_stock_location_translation_change_journal::Migration),
         Box::new(m20261021_000024_create_inventory_return_restocks::Migration),
+        Box::new(m20261101_000025_create_shipment_stock_proofs::Migration),
+        Box::new(m20261101_000026_index_catalog_deletion_history::Migration),
+        Box::new(m20261101_000027_create_inventory_source_history::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261101_000027_create_inventory_source_history",
+            vec!["m20261101_000026_index_catalog_deletion_history"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261101_000026_index_catalog_deletion_history",
+            vec![
+                "m20250130_000016_create_commerce_inventory",
+                "m20261021_000024_create_inventory_return_restocks",
+                "m20261101_000025_create_shipment_stock_proofs",
+            ],
+        ),
         MigrationDependencyDescriptor::new(
             "m20250130_000016_create_commerce_inventory",
             vec!["m20250130_000014_create_commerce_variants"],

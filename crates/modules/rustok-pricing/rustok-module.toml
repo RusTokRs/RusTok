@@ -10,6 +10,7 @@ recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]
 product = { version_req = ">=0.1.0" }
+region = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "PricingModule"

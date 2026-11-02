@@ -19,7 +19,7 @@ export type ProductCatalogSearchOptions = {
 };
 
 export type ProductCatalogSearchOptionsRequest = {
-  graphql: import('./products').ProductGraphqlExecutor;
+  graphql: import("./products").ProductGraphqlExecutor;
   locale: string;
   token?: string | null;
   tenantSlug?: string | null;
@@ -34,7 +34,15 @@ export type StorefrontProductPrice = {
   discountPercent?: string | null;
 };
 
+export type StorefrontPriceSource = {
+  priceId: string;
+  kind: "base" | "price_list_override" | "price_list_rule";
+  ruleKind: "percentage_discount" | null;
+  adjustmentPercent: string | null;
+};
+
 export type StorefrontEffectivePrice = {
+  source: StorefrontPriceSource;
   currencyCode: string;
   amount: string;
   compareAtAmount?: string | null;
@@ -45,11 +53,31 @@ export type StorefrontEffectivePrice = {
   channelSlug?: string | null;
 };
 
+/** Projection of Product's canonical attribute/option axis ontology. */
+export type StorefrontVariantAxis = {
+  id: string;
+  attributeId: string;
+  code: string;
+  name: string;
+  position: number;
+  allowedValues: { optionId: string; value: string; position: number }[];
+};
+
+export type StorefrontVariantAxisValue = {
+  attributeId: string;
+  optionId: string;
+  code?: string | null;
+  label?: string | null;
+};
+
 export type StorefrontProductVariant = {
   id: string;
   title: string;
   sku: string | null;
   inventoryQuantity?: number | null;
+  inventoryPolicy: string;
+  combinationIdentity: string | null;
+  axisValues: StorefrontVariantAxisValue[];
   inStock: boolean;
   prices: StorefrontProductPrice[];
   effectivePrice?: StorefrontEffectivePrice | null;
@@ -138,6 +166,7 @@ export type StorefrontProductDetail = {
   publishedAt?: string | null;
   images: StorefrontProductImage[];
   translations: StorefrontProductTranslation[];
+  variantAxes: StorefrontVariantAxis[];
   variants: StorefrontProductVariant[];
   /** Specifications the owner resolved for the storefront; empty when nothing is published. */
   attributes?: StorefrontProductAttribute[];
@@ -178,7 +207,23 @@ export type ProductCatalogFacet = {
 };
 
 /** Pricing supplies only price fields, never inventory, axes, or catalog identity. */
-export type StorefrontProductPricing = Pick<
-  StorefrontProductVariant,
-  'id' | 'prices' | 'effectivePrice'
->;
+export type StorefrontProductPricing = {
+  id: string;
+  effectivePrice: StorefrontEffectivePrice | null;
+};
+
+export type StorefrontPricingContext = {
+  currencyCode: string;
+  regionId: string | null;
+  priceListId: string | null;
+  channelId: string | null;
+  channelSlug: string | null;
+  quantity: number;
+};
+
+export type StorefrontProductPricingDetail = {
+  id: string;
+  resolutionContext: StorefrontPricingContext | null;
+  resolvedAt: string | null;
+  variants: StorefrontProductPricing[];
+};

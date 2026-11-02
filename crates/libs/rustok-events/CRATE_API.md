@@ -1,9 +1,11 @@
 # rustok-events / CRATE_API
 
 ## Public Modules
+
 - Does not expose implementation modules; the crate re-exports canonical event contracts.
 
 ## Primary Public Types and Signatures
+
 - `pub use crate::{DomainEvent, EventEnvelope, RootDomainEvent, RootEventEnvelope}`
 - `pub use crate::EventEnvelopeError`
 - `pub use crate::{EventSchema, FieldSchema, EventValidationError, ValidateEvent}`
@@ -14,6 +16,9 @@
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS}`
 - `pub use crate::{ReactionsEvent, REACTIONS_EVENT_SCHEMAS}`
+- `pub use crate::{InventoryReservationEvent, INVENTORY_RESERVATION_EVENT_SCHEMAS}`
+- `pub use crate::{InventorySourceEvent, INVENTORY_SOURCE_EVENT_SCHEMAS}`
+- `ContractEventPayload::requires_module_delivery()` exposes the sealed module-ACK policy
 - `pub use crate::{SocialGraphRelationEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS}`
 - `pub use crate::{TranslationWorkflowEvent, TRANSLATION_WORKFLOW_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::new_with_envelope_id(...)` creates a registered typed envelope with one exact non-nil caller-owned durable identity
@@ -34,6 +39,7 @@
   prints or deliberately updates the committed release artifact.
 
 ## Events
+
 - Publishes: N/A (event contracts only).
 - Consumes: N/A.
 - Established root events use `DomainEvent`/`EventEnvelope`.
@@ -74,9 +80,11 @@
   remain owner-private.
 
 ## Dependencies on Other RusToK Crates
+
 - `rustok-telemetry`
 
 ## Common AI Mistakes
+
 - Changes payload/event-type without updating schema registry, committed digest artifact, contract tests, relay, and transport evidence.
 - Continues to import event contracts from `rustok-core` instead of `rustok-events`.
 - Implements arbitrary external `EventContract` types; the trait is intentionally sealed.
@@ -114,6 +122,7 @@
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
+
 - Event input is defined by the public event enums and envelope constructors.
 - `ContractEventEnvelope::new` creates an uncaused typed envelope.
 - `ContractEventEnvelope::new_with_envelope_id` is reserved for a transactional
@@ -130,6 +139,7 @@
   registry and every root/typed transport wire schema.
 
 ### Domain Invariants
+
 - Every root and typed-family event validates before durable publication and again after
   durable/streaming deserialization.
 - Envelope event type/schema version must match the typed payload and a registered schema.
@@ -180,6 +190,7 @@
   actor identity.
 
 ### Events / Outbox Side Effects
+
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.
 - Exact write-once owner operations may publish with
   `publish_contract_once_direct_in_tx_with_envelope_id` using the already
@@ -200,5 +211,38 @@
   requires an accepted ADR and a durable remote-consumer delivery contract first.
 
 ### Errors / Failure Codes
+
 - `EventValidationError`, `EventEnvelopeError`, and `EventContractEnvelopeError` define stable validation classes.
 - Unregistered event type, schema mismatch, payload metadata mismatch, invalid decoded payload, and root-family conversion failure must not be hidden as arbitrary transport errors.
+
+## Inventory reservation invalidation (2026-11-01; source only)
+
+`InventoryReservationEvent::Changed { product_id, variant_id }` is a sealed, registered v1
+`inventory.reservation.changed` fact. Both UUIDs must be non-nil; unknown payload fields refuse.
+There are no quantity, delta, snapshot, actor, tenant, business metadata or Product-revision
+fields. Scope/current actor stay in the canonical envelope. The new wrapper variant is appended
+without changing root payloads or reordering existing sealed variants.
+
+Inventory publishes only admitted fresh reserve/release movement, on its counter/receipt
+transaction; replay/zero/adoption publish none. Consumers refetch current owner state rather
+than applying arithmetic from the payload. Core provides explicit acknowledged local dispatch;
+remote Iggy cursor/ACK remains a separate durable boundary. Four family regression definitions
+are uncompiled/unrun. Canonical digest generation is pending, not manually reconstructed;
+see [admission](docs/event-contract-digest-admission.md#pending-inventory-reservation-admission-2026-11-01).
+
+## Inventory source facts and delivery policy (2026-11-02; source only)
+
+`InventorySourceEvent` / `INVENTORY_SOURCE_EVENT_SCHEMAS` add sealed v1
+`inventory.source.changed` (non-nil baseline/Variant, positive owner version ≤ i64::MAX) and
+`inventory.source.baseline_activated` (non-nil baseline). No stock, deletion, Product revision or
+authority snapshots are copied. Owner loading decides upsert/tombstone; missing keys are not
+absence. Envelope identity is retained change UUID / globally unique original baseline UUID.
+Building seeds emit no per-SKU ready notifications.
+
+`ContractEventPayload::requires_module_delivery()` is compiled policy, not caller metadata:
+Inventory source/reservation facts require acknowledged module handling in memory/Iggy fan-out.
+Other remote-consumer families keep their primary/cursor contract. **No production Inventory
+source listener/selected Index consumer is installed yet**; unknown required delivery refuses.
+Event actor and saved baseline creator are not credentials for native owner source reads.
+Six new family definitions remain uncompiled/unrun. Existing root/reservation wires and release
+artifact are unchanged; [digest admission remains pending](docs/event-contract-digest-admission.md#pending-inventory-source-admission-2026-11-02).

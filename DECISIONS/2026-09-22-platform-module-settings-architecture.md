@@ -117,6 +117,18 @@ change, or a documented owner policy that is itself represented in the schema.
 A module with no settings persists `not_applicable`; it does not create an empty
 synthetic settings authority.
 
+An absent package manifest or unknown module does not establish that a schema is
+empty. A fresh settings or enablement command must use the exact active-release
+schema evidence and fail closed when that evidence cannot be obtained. Exact
+replay is admitted before fresh-command schema and revision checks using durable
+request identity and the original normalization evidence; replay must not depend
+on guessing defaults from a newer schema. Existing receipts that record only a
+normalized request hash require the exact historical schema to reproduce that
+identity. When it cannot be recovered, the operation must remain explicitly
+unreconciled without re-execution or receipt deletion until its identity can be
+verified. Migration to new receipt identities must preserve existing keys and
+provide an explicit reconciliation path for those historical cases.
+
 ### Lifecycle semantics
 
 | Operation | Required behavior |

@@ -162,7 +162,7 @@ pub use source_event_id::{
 pub use source_refresh_event::{
     IndexSourceRefreshEventDelivery, IndexSourceRefreshEventError,
     IndexSourceRefreshEventProcessError, IndexSourceRefreshEventProcessOutcome,
-    IndexSourceRefreshEventWorker,
+    IndexSourceRefreshEventWorker, persist_index_source_refresh,
 };
 pub use source_registry::{
     IndexSource, IndexSourceCatalog, IndexSourceCursor, IndexSourceDescriptor, IndexSourceError,

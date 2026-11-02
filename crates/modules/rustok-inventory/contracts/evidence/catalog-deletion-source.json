@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "module": "inventory",
+  "packet": "catalog_deletion_source",
+  "recorded_date": "2026-11-01",
+  "status": "source_implementation_uncompiled_unrun",
+  "base_branch": "arena/71cd6d1f-rustok",
+  "base_head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed": "0aaf455a45556f4e39a5ed66b8a1184369e5e93f",
+  "scope": "Bounded history-preserving native Inventory catalog deletion prerequisite; not a generic Index source/revision cutover or audit.",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#catalog-deletion-safety-2026-11-01-source-only",
+  "owner_decision": "DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#catalog-deletion-retention-2026-11-01",
+  "guard": "scripts/verify/verify-inventory-catalog-deletion.mjs",
+  "compiled": false,
+  "tests_executed": false,
+  "sql_executed": false,
+  "migrations_executed": false,
+  "runtime_certified": false,
+  "generic_index_complete": false,
+  "step8_complete": false,
+  "event_schema_changed": false,
+  "reservation_uuid_only_fact_changed": false,
+  "inventory_source_revision_added": false,
+  "migration_added": "crates/modules/rustok-inventory/src/migrations/m20261101_000026_index_catalog_deletion_history.rs",
+  "migration_effect": "Three additive nonunique history-reference lookup indexes; no row, receipt identity, FK or quantity rewrite. Existing reservation item-reference index is retained.",
+  "bounds": {
+    "variants_per_native_command": 256,
+    "levels_per_whole_batch": 4096,
+    "overflow_probe": "limit plus one; never admitted as a truncated target set"
+  },
+  "source_regressions": {
+    "executed": false,
+    "compiled": false,
+    "rust_definitions": 31,
+    "node_definitions": 10,
+    "rust": [
+      {
+        "path": "crates/modules/rustok-inventory/src/services/bootstrap/deletion/tests.rs",
+        "definitions": [
+          "current_tenant_and_distinct_nonnil_identities_precede_storage",
+          "variant_request_bound_is_inclusive_and_locks_use_variant_order",
+          "every_individual_counter_must_be_zero_not_net_availability",
+          "offsetting_locations_never_prove_empty_inventory",
+          "duplicate_level_identity_or_item_location_binding_refuses",
+          "missing_foreign_or_nil_level_bindings_refuse",
+          "whole_batch_level_bound_is_inclusive_and_never_truncates",
+          "empty_child_set_only_validates_levels_not_missing_inventory_identity",
+          "closed_blocker_copy_contains_no_dynamic_identity_or_retry_advice"
+        ]
+      },
+      {
+        "path": "crates/modules/rustok-commerce/tests/inventory_catalog_deletion.rs",
+        "definitions": [
+          "nonempty_individual_counters_and_net_zero_stock_refuse",
+          "reservation_history_survives_zero_soft_deleted_and_terminal_rows",
+          "shipment_history_protects_both_references_and_contradictory_tenant_labels",
+          "returned_stock_receipt_is_not_purge_permission_after_stock_reaches_zero",
+          "native_tenant_proof_precedes_any_other_owner_cleanup",
+          "missing_item_is_not_zero_stock_or_absence_proof",
+          "foreign_original_location_refuses_instead_of_reselecting_default",
+          "empty_archived_original_locations_are_not_reopened_or_deleted",
+          "complete_product_child_graph_is_required_and_later_sku_refusal_preserves_it",
+          "standalone_variant_deletion_uses_the_same_history_guard",
+          "empty_standalone_variant_delete_preserves_sibling_and_last_sku_rule",
+          "exact_one_failure_rolls_back_prior_levels_prices_and_catalog_cleanup",
+          "missing_history_storage_is_not_assumed_empty",
+          "unrelated_or_explicit_sku_less_proof_does_not_block_empty_sku",
+          "stock_refusal_is_receipt_replayed_even_after_independent_stock_reconciliation"
+        ]
+      },
+      {
+        "path": "crates/modules/rustok-product/src/error.rs",
+        "definitions": [
+          "inventory_deletion_refusals_have_closed_kind_code_and_public_copy",
+          "inventory_deletion_code_kind_mismatch_and_unknown_codes_are_not_trusted",
+          "inventory_deletion_storage_failure_remains_unavailable_not_a_domain_refusal"
+        ]
+      },
+      {
+        "path": "crates/modules/rustok-commerce/src/controllers/products.rs",
+        "definitions": [
+          "deletion_domain_and_port_http_policies_agree_without_provider_text",
+          "mismatched_deletion_code_keeps_the_actual_dependency_http_class"
+        ]
+      },
+      {
+        "path": "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
+        "definitions": [
+          "graphql_deletion_refusals_use_fixed_copy_and_current_correlation",
+          "contradictory_provider_retry_hint_is_not_a_finalized_outcome"
+        ]
+      }
+    ],
+    "node": "scripts/verify/verify-inventory-catalog-deletion.test.mjs"
+  },
+  "historical_inventory_migrations": {
+    "crates/modules/rustok-inventory/src/migrations/m20250130_000016_create_commerce_inventory.rs": "ac238912c4f4e512547ffc1f3e275281f0170d6f6dcc8f96ee4bfc81835be1a2",
+    "crates/modules/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs": "5d120ac7eff5798586d181c77b52ebcc8803540983233598e98928eba9f6b45a",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000017_enforce_reservation_identity.rs": "3393678e292949edf35ba2233ee58b3996b58005730269baad2018108cf572f7",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000018_enforce_inventory_state_invariants.rs": "589070c5ee20be7d9bca73778d60658d47d0d1dfd2691441d2487c69d069de84",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000019_reserve_checkout_order_inventory.rs": "5aeefc5d7a351ee22264cd25febc9e9d0969efa55be78c625043088bf0620989",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000020_remove_duplicate_checkout_reservation.rs": "7a64fcf4321dcd26a7b2b77999a6e171025dcf50af5ba9886e82a03695feb375",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d",
+    "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
+    "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000025_create_shipment_stock_proofs.rs": "73cbb83b716736a04ce517b73f417f735d266fea88f25440fbf1660ed567f4c6"
+  },
+  "checks": {
+    "status": "source_only_with_preexisting_and_toolchain_blockers",
+    "description": "Read-only source/syntax/format/integrity checks, not tests, builds, SQL, migrations, client execution or readiness certification.",
+    "source_guards_attempted": 17,
+    "source_guards_passed": 15,
+    "passed_source_guards": [
+      "scripts/verify/verify-inventory-catalog-deletion.mjs",
+      "scripts/verify/verify-product-lifecycle-collaboration.mjs",
+      "scripts/verify/verify-product-catalog-schema.mjs",
+      "scripts/verify/verify-commerce-admin-product-route-error-context.mjs",
+      "scripts/verify/verify-ecommerce-fba-registries.mjs",
+      "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+      "scripts/verify/verify-inventory-reservation-events.mjs",
+      "scripts/verify/verify-inventory-quantity-release.mjs",
+      "scripts/verify/verify-inventory-stock-events.mjs",
+      "scripts/verify/verify-inventory-reservation-owner-context.mjs",
+      "scripts/verify/verify-inventory-reservation-local-context.mjs",
+      "scripts/verify/verify-inventory-admin-native-error-safety.mjs",
+      "scripts/verify/verify-product-atomic-save.mjs",
+      "scripts/verify/verify-product-admin-primary-mutation-error-safety.mjs",
+      "scripts/verify/verify-product-admin-boundary.mjs"
+    ],
+    "preexisting_guard_failures": [
+      {
+        "guard": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+        "exit_code": 9,
+        "unchanged_from_task_entry_dirty_baseline": true,
+        "findings": [
+          "Scoped ecommerce public port error safety verification failed:",
+          "\u2717 product bounded diagnostics: missing PortError::invariant_violation(",
+          "\u2717 product bounded diagnostics: missing product.invariant_violation",
+          "\u2717 product bounded diagnostics: missing \"product operation could not be completed safely\"",
+          "\u2717 tax stable validation envelope: missing /PortError::validation\\(\\s*\"tax\\.validation\",\\s*\"tax calculation request is invalid\",?\\s*\\)/",
+          "\u2717 storefront cart bounded diagnostics: missing tenant_non_nil = !tenant_id.is_nil()",
+          "\u2717 storefront order payload diagnostics: forbidden deadline_ms = ?context.deadline_ms",
+          "\u2717 storefront line-item bounded diagnostics: missing tenant_id_length = context.tenant_id.chars().count()",
+          "\u2717 pricing: missing \"variant does not belong to the requested product\"",
+          "\u2717 pricing: missing let owner_operation = \"resolve_product_price\""
+        ]
+      },
+      {
+        "guard": "scripts/verify/verify-product-catalog-receipts.mjs",
+        "exit_code": 1,
+        "unchanged_from_task_entry_dirty_baseline": true,
+        "findings": [
+          "set_variant_axes: concrete command missing",
+          "set_variant_axes: transaction commit missing"
+        ]
+      }
+    ],
+    "baseline_comparison_scope": "Task-entry dirty working tree (698 status entries), not a claim that these failures exist on clean main. Read-only checks were compared on hash-proven original inputs; no regression companion ran.",
+    "rust_syntax": {
+      "tool": "tree-sitter 0.25.2 / tree-sitter-rust 0.24.0",
+      "files": 35,
+      "errors": 0,
+      "type_or_macro_check": false
+    },
+    "rust_format": {
+      "tool": "@scalar/rust-fmt 0.3.0 WASM, edition/styleEdition 2024, skip_children=true",
+      "files": 35,
+      "idempotent": true,
+      "compiler_evidence": false
+    },
+    "node_syntax": {
+      "command": "node --check",
+      "files": 4,
+      "companion_parsed_not_imported_or_run": true
+    },
+    "prettier": {
+      "version": "3.7.4",
+      "files": 6,
+      "scope": "new guard/companion and four changed JSON files; existing guard layout retained"
+    },
+    "historical_migration_bytes": {
+      "baseline_directory_rust_files": 667,
+      "unchanged_files": 666,
+      "missing_files": 0,
+      "only_changed_existing_file": "crates/modules/rustok-inventory/src/migrations/mod.rs",
+      "existing_file_change": "additive I026 registration and dependencies only; source diff inspected against task entry",
+      "baseline_non_mod_rs_files_unchanged": 607,
+      "inventory_payload_hashes_pinned_by_guard": 11
+    },
+    "event_contract_digest": {
+      "path": "crates/libs/rustok-events/contracts/event-contract-digests.json",
+      "bytes_unchanged": true,
+      "sha256": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121",
+      "regenerated": false
+    },
+    "scoped_documentation": {
+      "documents": 15,
+      "local_links_and_packet_paths": 31,
+      "source_script_references": 11,
+      "failures": 0,
+      "global_documentation_governance_certified": false
+    },
+    "whitespace": {
+      "scoped_git_diff_check": true,
+      "direct_new_and_modified_file_trailing_whitespace_check": true
+    },
+    "remediation_gate": {
+      "command": "python scripts/verify/verify-remediation-gate.py --files <58 task-delta paths>",
+      "exit_code": 1,
+      "diff_invariants_passed": true,
+      "architecture_gate_passed": false,
+      "blocker": "cargo metadata cannot start: Cargo is unavailable; architecture and clippy were not certified. No bypass flags used."
+    },
+    "catalog_schema_guard_sync": "Pinned the existing transaction-aware Self::load_effective_form_for_category_in(&txn, ...) call; categories.rs bytes unchanged from task entry. Tenant-aware Inventory deletion call markers updated in both existing lifecycle/schema guards.",
+    "execution_promoted": false
+  },
+  "remaining_gates": [
+    "Crate-scoped Rust compilation and architecture dependency metadata (Cargo/rustc unavailable).",
+    "Maintainer-run Inventory library, Product library, Commerce library/catalog_service_test and product_event_index_integration_test regressions; Node companion definitions.",
+    "Apply/rollback the additive lookup migration on real PostgreSQL/SQLite and inspect query plans/reference indexes; MySQL source paths are not certified.",
+    "PostgreSQL READ COMMITTED contention with native quantity/identity/shipment/return/bootstrap writers; explicit unsupported isolation refusal; SQLite snapshot conflict/rollback; MySQL current reads.",
+    "Owner receipt rollback/finalized failure replay and HTTP/GraphQL public metadata in real transports; no retry hint alone proves no effect.",
+    "Existing Leptos CRUD gateway remains generic and non-durable for retained lifecycle keys; no new destructive SKU UI or full retention/disposal workflow is delivered.",
+    "Inventory-owned revision/baseline/retained tombstone/publication/source/selected bridge/worker contract covering all writers. Native bootstrap quantity and set/adjust arithmetic remain identified writer gaps.",
+    "No claim that historical database cascades enforce this multi-row business guard against arbitrary SQL; no historical-data reconciliation or cross-owner distributed atomicity."
+  ]
+}

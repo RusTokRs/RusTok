@@ -35,42 +35,55 @@ pub async fn load_product_variant_axes<C: ConnectionTrait>(
     tenant_id: Uuid,
     product_id: Uuid,
     locale: &str,
+    fallback_locale: Option<&str>,
+    bounded: bool,
 ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
+    let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+    let axis_limit = if bounded { format!(" LIMIT {}", MAX_VARIANT_AXES + 1) } else { String::new() };
+    let value_limit = if bounded { format!(" LIMIT {}", MAX_VARIANT_AXES * MAX_VARIANT_AXIS_VALUES + 1) } else { String::new() };
     let axes = AxisRow::find_by_statement(Statement::from_sql_and_values(
         db.get_database_backend(),
-        r#"
-        SELECT ax.id, ax.product_id, ax.attribute_id, ax.position, a.code, pat.label AS name
+        format!(r#"
+        SELECT ax.id, ax.product_id, ax.attribute_id, ax.position, a.code, COALESCE(pat.label, fallback_pat.label) AS name
         FROM product_variant_axes ax
         JOIN product_attributes a ON a.id = ax.attribute_id AND a.tenant_id = ax.tenant_id
         LEFT JOIN product_attribute_translations pat ON pat.attribute_id = a.id AND pat.locale = $3
+        LEFT JOIN product_attribute_translations fallback_pat ON fallback_pat.attribute_id = a.id AND fallback_pat.locale = $4
         WHERE ax.tenant_id = $1 AND ax.product_id = $2
-        ORDER BY ax.position ASC
-        "#,
-        vec![tenant_id.into(), product_id.into(), locale.into()],
+        ORDER BY ax.position ASC, ax.id ASC{axis_limit}
+        "#),
+        vec![tenant_id.into(), product_id.into(), locale.into(), fallback_locale.into()],
     ))
     .all(db)
     .await?;
 
+    if bounded && axes.len() > MAX_VARIANT_AXES {
+        return Err(CommerceError::Validation("storefront axis selection exceeds its read bound".into()));
+    }
     if axes.is_empty() {
         return Ok(Vec::new());
     }
 
     let values = AxisValueRow::find_by_statement(Statement::from_sql_and_values(
         db.get_database_backend(),
-        r#"
-        SELECT av.axis_id, av.option_id, av.position, pao.code, paot.label
+        format!(r#"
+        SELECT av.axis_id, av.option_id, av.position, pao.code, COALESCE(paot.label, fallback_paot.label) AS label
         FROM product_variant_axis_values av
         JOIN product_variant_axes ax ON ax.id = av.axis_id AND ax.tenant_id = av.tenant_id
         JOIN product_attribute_options pao ON pao.id = av.option_id AND pao.tenant_id = av.tenant_id
         LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $3
+        LEFT JOIN product_attribute_option_translations fallback_paot ON fallback_paot.option_id = pao.id AND fallback_paot.locale = $4
         WHERE av.tenant_id = $1 AND ax.product_id = $2
-        ORDER BY av.position ASC
-        "#,
-        vec![tenant_id.into(), product_id.into(), locale.into()],
+        ORDER BY av.position ASC, av.option_id ASC{value_limit}
+        "#),
+        vec![tenant_id.into(), product_id.into(), locale.into(), fallback_locale.into()],
     ))
     .all(db)
     .await?;
 
+    if bounded && values.len() > MAX_VARIANT_AXES * MAX_VARIANT_AXIS_VALUES {
+        return Err(CommerceError::Validation("storefront axis values exceed their read bound".into()));
+    }
     let mut values_by_axis: HashMap<Uuid, Vec<AxisAllowedValueResponse>> = HashMap::new();
     for val in values {
         let label = val.label.unwrap_or(val.code);
@@ -84,6 +97,9 @@ pub async fn load_product_variant_axes<C: ConnectionTrait>(
             });
     }
 
+    if bounded && values_by_axis.values().any(|values| values.len() > MAX_VARIANT_AXIS_VALUES) {
+        return Err(CommerceError::Validation("storefront axis values exceed their per-axis read bound".into()));
+    }
     Ok(axes
         .into_iter()
         .map(|ax| {
@@ -107,6 +123,7 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     tenant_id: Uuid,
     variant_ids: &[Uuid],
     locale: &str,
+    bounded: bool,
 ) -> CommerceResult<HashMap<Uuid, Vec<VariantAxisValueResponse>>> {
     if variant_ids.is_empty() {
         return Ok(HashMap::new());
@@ -118,6 +135,8 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
         .map(|(i, _)| format!("${}", i + 3))
         .collect::<Vec<_>>()
         .join(",");
+    let assignment_bound = MAX_STOREFRONT_PRODUCT_VARIANTS as usize * MAX_VARIANT_AXES;
+    let assignment_limit = if bounded { format!(" LIMIT {}", assignment_bound + 1) } else { String::new() };
     let query = format!(
         r#"
         SELECT pvav.variant_id, pvav.attribute_id, pvao.option_id, a.code as attribute_code, paot.label
@@ -134,7 +153,7 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
         JOIN product_attribute_options pao ON pao.id = pvao.option_id AND pao.tenant_id = pvao.tenant_id
         LEFT JOIN product_attribute_option_translations paot ON paot.option_id = pao.id AND paot.locale = $2
         WHERE pvav.tenant_id = $1 AND pvav.detached_at IS NULL AND pvav.variant_id IN ({placeholders})
-        ORDER BY pvav.variant_id ASC, pvav.attribute_id ASC
+        ORDER BY pvav.variant_id ASC, pvav.attribute_id ASC, pvao.option_id ASC{assignment_limit}
         "#
     );
 
@@ -151,6 +170,9 @@ pub async fn load_variant_axis_values<C: ConnectionTrait>(
     .all(db)
     .await?;
 
+    if bounded && rows.len() > assignment_bound {
+        return Err(CommerceError::Validation("storefront SKU assignments exceed their read bound".into()));
+    }
     let mut result: HashMap<Uuid, Vec<VariantAxisValueResponse>> = HashMap::new();
     for row in rows {
         result
@@ -391,7 +413,7 @@ impl CatalogService {
         product_id: Uuid,
         locale: &str,
     ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
-        load_product_variant_axes(&self.db, tenant_id, product_id, locale).await
+        load_product_variant_axes(&self.db, tenant_id, product_id, locale, None, false).await
     }
 
     #[instrument(skip(self))]
@@ -402,7 +424,7 @@ impl CatalogService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> CommerceResult<ProductResponse> {
-        self.get_product_in(&self.db, tenant_id, product_id, locale, fallback_locale)
+        self.get_product_in(&self.db, tenant_id, product_id, locale, fallback_locale, None)
             .await
     }
 
@@ -414,6 +436,7 @@ impl CatalogService {
         product_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
+        variant_limit: Option<u64>,
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Fetching product");
 
@@ -437,15 +460,29 @@ impl CatalogService {
                         .await?,
                 )
             },
-            load_product_variant_axes(conn, tenant_id, product_id, locale),
+            load_product_variant_axes(conn, tenant_id, product_id, locale, fallback_locale, variant_limit.is_some()),
             async {
                 Ok::<_, CommerceError>(
-                    entities::product_variant::Entity::find()
-                        .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-                        .filter(entities::product_variant::Column::ProductId.eq(product_id))
-                        .order_by_asc(entities::product_variant::Column::Position)
-                        .all(conn)
-                        .await?,
+                    {
+                        let mut query = entities::product_variant::Entity::find()
+                            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+                            .filter(entities::product_variant::Column::ProductId.eq(product_id))
+                            .order_by_asc(entities::product_variant::Column::Position)
+                            .order_by_asc(entities::product_variant::Column::Id);
+                        if let Some(limit) = variant_limit {
+                            let probe = limit.checked_add(1).ok_or_else(|| CommerceError::Validation(
+                                "public SKU read bound is invalid".to_string(),
+                            ))?;
+                            query = query.limit(probe);
+                        }
+                        let rows = query.all(conn).await?;
+                        if variant_limit.is_some_and(|limit| rows.len() as u64 > limit) {
+                            return Err(CommerceError::Validation(format!(
+                                "storefront selection supports at most {MAX_STOREFRONT_PRODUCT_VARIANTS} real SKUs; reconfigure the product before publishing",
+                            )));
+                        }
+                        rows
+                    },
                 )
             },
             async {
@@ -514,7 +551,7 @@ impl CatalogService {
                     .await
                     .map_err(CommerceError::from)
             },
-            load_variant_axis_values(conn, tenant_id, &variant_ids, locale),
+            load_variant_axis_values(conn, tenant_id, &variant_ids, locale, variant_limit.is_some()),
         )?;
 
         let mut prices_by_variant: HashMap<
@@ -729,7 +766,7 @@ impl CatalogService {
                     .await
                     .map_err(CommerceError::from)
             },
-            load_variant_axis_values(conn, tenant_id, &variant_ids, PLATFORM_FALLBACK_LOCALE),
+            load_variant_axis_values(conn, tenant_id, &variant_ids, PLATFORM_FALLBACK_LOCALE, false),
         )?;
 
         let price_responses: Vec<PriceResponse> = prices

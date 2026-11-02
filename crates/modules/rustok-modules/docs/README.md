@@ -61,6 +61,25 @@ module owns field semantics and runtime consumption. `tenant_modules` and
 `module_static_tenant_lifecycle` are private owner persistence; consumers must
 use owner read/policy ports rather than query those rows directly.
 
+SQLite reads use the tenant owner's `tenant_identity_keys` projection in the
+same statement as the module rows. The tenant migration must be applied before
+these reads; an unavailable projection fails the read rather than falling back
+to an unverified tenant identity. Static lifecycle and override mutations
+resolve the parent's stored key in the mutation statement and reject conflicting
+or orphaned identities. The watchdog resolves either valid representation inside
+its claim transaction. Operation lookup by ID and the remaining cutover and
+host-level verification are documented in the implementation plan.
+
+The SQLite journal migration adds normalized uniqueness for tenant and
+idempotency UUIDs across BLOB and canonical text representations. Existing collisions
+prevent migration and require operator reconciliation; neither receipt is
+silently selected or discarded.
+Journal admission, idempotency lookup, and the tenant-scoped failure list
+validate the owner identity projection within each statement. Admission stores
+the parent's exact SQLite key, so a valid text parent remains compatible with
+the foreign key. Operation-ID and idempotency-key legacy encodings still need
+explicit reconciliation.
+
 Current writes normalize against the active host-resolved manifest schema, and
 disable retains settings. The server supplies the active schema to the owner
 for ordinary enables and enable-direction compensation; the owner validates
@@ -69,15 +88,15 @@ with the intent and revision. Dormant settings can be repaired while disabled
 via `update_static_normalized_settings`. The standalone installer does not yet
 compose the static schema for seed toggles. Static rows do not yet
 persist the exact schema digest plus `not_applicable`/`ready`/`migration_required`
-columns. The server manifest adapter currently returns an empty schema when
-the module is absent from both its resolved manifest and builtin catalog; this
-does not prove the active release declares no settings and must be removed by
-the owner schema-evidence cutover. Both static settings write paths now reject a detected unresolved
+columns. The server manifest adapter can return an empty schema for an unknown
+module or when its package manifest is absent; this does not prove the active
+release declares no settings and must be removed by the owner schema-evidence
+cutover. Both static settings write paths now reject a detected unresolved
 tenant or platform transition with a predecessor, rather than substituting the
 candidate schema for missing predecessor evidence. This conservative read is
 not atomic with transition creation and does not cover static distribution
-rollout state, so N/N+1 write safety is not yet established. Lifecycle toggles
-and compensation also reject detected unresolved tenant or platform transitions
+rollout state, so N/N+1 write safety is not yet established. Lifecycle toggles,
+compensation, and post-hook retry also reject detected unresolved tenant or platform transitions
 after replay and claim; the read is not an atomic transition fence.
 The reviewed settings CAS currently compares recorded intent and platform
 default, not the complete effective policy with dependencies, quarantine,
@@ -92,6 +111,13 @@ writers do not yet share the lifecycle aggregate claim, so production
 concurrency and runtime-release fencing remain unverified.
 Older recovery journal entries without a source-operation identity cannot be
 replayed as newly source-bound commands; they require explicit operator review.
+The ignored `postgres_post_hook_recovery_preserves_original_settings` owner
+test uses temporary PostgreSQL tables to exercise the actual migration,
+lifecycle commit, changed-settings rejection, tenant-context and idempotency
+checks, unresolved-transition rejection, atomic recovery rollback on a forced
+failure, and successful replay.
+It does not establish production database concurrency, RLS, or fleet-fence
+behavior.
 
 The canonical current/target contract and gap table are in
 [Settings and Configuration Architecture](../../../../docs/architecture/settings.md),

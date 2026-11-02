@@ -73,3 +73,11 @@ cart-handoff-submit = Complete Checkout
 cart-handoff-submitting = Processing...
 cart-handoff-success = Order placed successfully! Order reference:
 
+
+cart-buyer-restoring = Restoring the cart before enabling purchases.
+cart-buyer-restoreFailed = The saved cart could not be verified. Inspect it, or explicitly reset its local reference.
+cart-buyer-contextMismatch = Cart currency, region, channel or locale differs from the quote. Use the cart context and request a new quote. A global cart may not be quotable on a channel-bound storefront.
+cart-buyer-unconfirmed = The operation is unconfirmed and will not be retried automatically. Inspect the cart before adding again. Resetting its reference does not cancel an operation.
+cart-buyer-added = The server repriced and added the selected SKU.
+
+cart-buyer-authRefused = The browser session does not match this storefront. Open it with the correct tenant session before changing the cart.

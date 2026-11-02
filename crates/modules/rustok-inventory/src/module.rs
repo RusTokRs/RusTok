@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::MigrationDependencyDescriptor;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, ModuleRuntimeExtensions};
 use sea_orm_migration::MigrationTrait;
 
 use crate::migrations;
@@ -9,6 +9,10 @@ use crate::migrations;
 /// Inventory adjustments, availability checks, and stock-level persistence.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct InventoryModule;
+
+/// Present only when the actual Inventory module participates in the selected registry.
+#[derive(Clone, Copy, Debug)]
+pub struct InventoryRuntimeSelected;
 
 impl InventoryModule {
     pub fn new() -> Self {
@@ -44,6 +48,14 @@ impl RusToKModule for InventoryModule {
 
     fn dependencies(&self) -> &[&'static str] {
         &["product"]
+    }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        extensions.insert(InventoryRuntimeSelected);
+        Ok(())
     }
 
     fn permissions(&self) -> Vec<Permission> {

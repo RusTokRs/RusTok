@@ -1,6 +1,5 @@
 use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-    normalize_locale_tag,
+    PLATFORM_FALLBACK_LOCALE, PortContext, PortError, PortErrorKind, normalize_locale_tag,
 };
 use rustok_cart::{
     CartMarketplaceLineSnapshot, CartResponse, ListMarketplaceCartLineSnapshotsRequest,
@@ -13,8 +12,7 @@ use rustok_fulfillment::{
 };
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_product::{
-    ProductCatalogReadPort, ProductFulfillmentRequirement, ProductProjectionRequest,
-    VariantProductProjectionRequest, entities::product::ProductStatus,
+    ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
@@ -33,9 +31,7 @@ use crate::dto::{
 use crate::storefront_channel::{
     is_metadata_visible_for_public_channel, normalize_public_channel_slug,
 };
-use crate::storefront_shipping::{
-    effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
-};
+use crate::storefront_shipping::is_shipping_option_compatible_with_profiles;
 
 use super::{
     CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem,
@@ -138,6 +134,7 @@ impl CheckoutPlanBuilder {
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+        super::checkout_catalog::variant_demands(cart)?;
 
         let marketplace_snapshot_context = marketplace_snapshot_context(
             tenant_id,
@@ -164,7 +161,8 @@ impl CheckoutPlanBuilder {
             .map(|line| (line.order_line_index, line.snapshot.seller_id.to_string()))
             .collect::<HashMap<_, _>>();
 
-        self.validate_cart_inventory(tenant_id, actor_id, cart)
+        let public_channel_slug = self
+            .validate_cart_inventory(tenant_id, actor_id, cart)
             .await?;
         let context = self
             .context_service
@@ -185,6 +183,7 @@ impl CheckoutPlanBuilder {
             cart,
             context.locale.as_str(),
             Some(context.default_locale.as_str()),
+            public_channel_slug.as_deref(),
         )
         .await?;
 
@@ -274,15 +273,18 @@ impl CheckoutPlanBuilder {
         tenant_id: Uuid,
         actor_id: Uuid,
         cart: &CartResponse,
-    ) -> CheckoutResult<()> {
-        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
-        for line_item in &cart.line_items {
-            let Some(variant_id) = line_item.variant_id else {
-                continue;
-            };
+    ) -> CheckoutResult<Option<String>> {
+        let demands = super::checkout_catalog::variant_demands(cart)?;
+        let channel_context = port_context(tenant_id, actor_id, cart, None, "channel");
+        let public_channel_slug =
+            crate::storefront_channel::resolve_cart_channel(&self.db, &channel_context, cart)
+                .await
+                .map_err(|error| boundary_error("read_checkout_channel", error))?;
+        for demand in demands {
+            let variant_id = demand.variant_id;
             let product_context =
                 product_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
-            let product = match line_item.product_id {
+            let product = match demand.product_id {
                 Some(product_id) => self
                     .product_catalog_read_port
                     .read_product_projection(
@@ -320,67 +322,13 @@ impl CheckoutPlanBuilder {
                         )
                     })?,
             };
-            let variant = product
-                .variants
-                .iter()
-                .find(|variant| variant.id == variant_id)
-                .ok_or_else(|| {
-                    CheckoutError::Validation(format!(
-                        "Variant {variant_id} is no longer available for checkout"
-                    ))
-                })?;
-            if product.status != ProductStatus::Active
-                || product.published_at.is_none()
-                || !is_metadata_visible_for_public_channel(
-                    &product.metadata,
+            for line_item in demand.line_items {
+                super::checkout_catalog::validate_variant_line(
+                    tenant_id,
+                    line_item,
+                    &product,
                     public_channel_slug.as_deref(),
-                )
-            {
-                return Err(CheckoutError::Validation(format!(
-                    "Product {} is not available for the cart channel",
-                    product.id
-                )));
-            }
-            let current_requirement = product.fulfillment_requirement;
-            let cart_requirement = match line_item.fulfillment_requirement {
-                rustok_cart::CartLineFulfillmentRequirement::Digital => {
-                    ProductFulfillmentRequirement::Digital
-                }
-                rustok_cart::CartLineFulfillmentRequirement::Physical => {
-                    ProductFulfillmentRequirement::Physical
-                }
-            };
-            if current_requirement != cart_requirement {
-                return Err(CheckoutError::Validation(format!(
-                    "Line item {} fulfillment requirement is stale relative to the catalog",
-                    line_item.id
-                )));
-            }
-
-            match current_requirement {
-                ProductFulfillmentRequirement::Digital => {
-                    if line_item.shipping_profile_slug.is_some() {
-                        return Err(CheckoutError::Validation(format!(
-                            "Digital line item {} must not have a shipping profile",
-                            line_item.id
-                        )));
-                    }
-                }
-                ProductFulfillmentRequirement::Physical => {
-                    let current_shipping_profile_slug = effective_shipping_profile_slug(
-                        product.shipping_profile_slug.as_deref(),
-                        &product.metadata,
-                        variant.shipping_profile_slug.as_deref(),
-                    );
-                    if line_item.shipping_profile_slug.as_deref()
-                        != Some(current_shipping_profile_slug.as_str())
-                    {
-                        return Err(CheckoutError::Validation(format!(
-                            "Line item {} uses stale shipping profile snapshot",
-                            line_item.id
-                        )));
-                    }
-                }
+                )?;
             }
             let inventory_context =
                 inventory_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
@@ -390,7 +338,7 @@ impl CheckoutPlanBuilder {
                     inventory_context.clone(),
                     InventoryAvailabilityRequest {
                         variant_id,
-                        requested_quantity: line_item.quantity,
+                        requested_quantity: demand.quantity,
                         channel_slug: public_channel_slug.clone(),
                     },
                 )
@@ -398,13 +346,19 @@ impl CheckoutPlanBuilder {
                 .map_err(|error| {
                     checkout_plan_inventory_boundary_error(&inventory_context, error)
                 })?;
+            super::checkout_catalog::validate_inventory_observation(
+                &availability,
+                variant_id,
+                demand.quantity,
+            )
+            .map_err(|error| checkout_plan_inventory_boundary_error(&inventory_context, error))?;
             if !availability.available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {variant_id} does not have enough available inventory for the cart channel"
                 )));
             }
         }
-        Ok(())
+        Ok(public_channel_slug)
     }
 
     async fn validate_delivery_groups(
@@ -414,8 +368,8 @@ impl CheckoutPlanBuilder {
         cart: &CartResponse,
         requested_locale: &str,
         tenant_default_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
     ) -> CheckoutResult<()> {
-        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
         for delivery_group in &cart.delivery_groups {
             let selected_shipping_option_id =
                 delivery_group.selected_shipping_option_id.ok_or_else(|| {
@@ -428,7 +382,7 @@ impl CheckoutPlanBuilder {
                 tenant_id,
                 actor_id,
                 cart,
-                public_channel_slug.as_deref(),
+                public_channel_slug,
                 "shipping-option",
             );
             let option = self
@@ -452,10 +406,7 @@ impl CheckoutPlanBuilder {
                     option.id, option.currency_code, cart.currency_code
                 )));
             }
-            if !is_metadata_visible_for_public_channel(
-                &option.metadata,
-                public_channel_slug.as_deref(),
-            ) {
+            if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
                 return Err(CheckoutError::Validation(format!(
                     "Shipping option {} is not available for the cart channel",
                     option.id
@@ -717,7 +668,7 @@ fn port_context(
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
+        super::checkout_catalog::checkout_actor(actor_id),
         locale,
         format!("checkout:{}:{boundary}", cart.id),
     )
@@ -991,3 +942,7 @@ where
         source: Box::new(source),
     }
 }
+
+#[cfg(test)]
+#[path = "checkout_preflight_tests.rs"]
+mod tests;

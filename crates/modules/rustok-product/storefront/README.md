@@ -78,3 +78,22 @@ locale/correlation payload is removed from affected context diagnostics. See the
 [current contract](../docs/product-public-error-diagnostic-safety.md#native-storefront-context-admission-continuation-2026-10-18).
 This is source-only, unintegrated work: five new negative guard scenarios are unrun;
 compilation, host middleware composition and mounted behavior remain maintainer gates.
+
+
+## Pricing quote foundation (2026-10-29)
+
+Native effective-price reads use Pricing's bounded batch port, matching GraphQL
+source/context/time projections. The preview correlates by Product-owned SKU UUID,
+not independent first-item ordering, and an explicit unpriced context never substitutes
+a raw catalog/base-price row. Missing Pricing and unpriced results are distinct in the
+Next Product projection/presentation. This does not complete the buyer flow: real
+sparse tuples, strict route/context refusal, live quantity refresh and cart-context
+handoff remain in the [Product plan](../docs/implementation-plan.md). No tests, Rust
+compilation, database or mounted verification are certified by these source changes.
+
+## Sparse Product buyer (2026-10-30)
+
+The buyer source now selects real axis tuples, binds SKU/quantity to fresh authoritative quotes,
+and hands exact ordinary context to Commerce/Cart. The historical pending description above is
+superseded at the source level, not by runtime certification. See the [current Product plan](../docs/implementation-plan.md#buyer-source-implementation-and-handoff-2026-10-30)
+for contracts, bounds, recovery semantics, build instructions and unexecuted release gates.

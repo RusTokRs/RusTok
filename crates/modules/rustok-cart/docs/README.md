@@ -77,3 +77,24 @@ synthetic shipping selection. The target contract is defined in
 - [README crate](../README.md)
 - [Development Plan for `rustok-cart`](./implementation-plan.md)
 - [Commerce Split Plan](../../rustok-commerce/docs/implementation-plan.md)
+
+## Priced quantity adoption (2026-10-30; source only)
+
+The [owner contract](../CRATE_API.md#priced-mutation-adoption-2026-10-30-source-continuation)
+and [plan](implementation-plan.md#priced-quantity-adoption-2026-10-30) distinguish Cart's optimistic
+material-input fence from a monotonic revision/receipt and from cross-owner price/stock holds.
+The public storefront provider preserves original observations for add, quoted quantity changes,
+batch repricing and target removal. The old unquoted storefront quantity operation and duplicate
+raw storefront provider are retired after migrating their actual callers. New checks/regressions
+are source-only/unrun; historical transport evidence above is not evidence for this continuation.
+
+
+## Atomic context and Pricing adoption (2026-10-31)
+
+The [owner API](../CRATE_API.md#atomic-context-and-pricing-adoption-2026-10-31-source-continuation)
+and [source handoff](implementation-plan.md#atomic-context-pricing-adoption-2026-10-31) define the
+single neutral context command and explicit Preserve/Reprice semantics. Selected price batches
+precede Cart locking; complete price/context/adjustment/marketplace/shipping/tax/totals adoption is
+Cart-local transactional. Existing tax/shipping reads remain inside that transaction. Read-only
+inspection and frozen checkout recovery do not refresh context or prices. Runtime, database
+contention, remote providers and all new regression sources remain unverified/unrun.

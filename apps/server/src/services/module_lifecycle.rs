@@ -116,6 +116,8 @@ pub enum ToggleModuleError {
     Manifest(#[from] ManifestError),
     #[error("Settings migration required for module '{module_slug}': {reason}")]
     SettingsMigrationRequired { module_slug: String, reason: String },
+    #[error("Module settings schema is unavailable: {0}")]
+    SettingsSchemaUnavailable(String),
 }
 
 #[derive(Debug, Error)]
@@ -167,9 +169,10 @@ impl ModuleLifecycleService {
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites);
         if enabled {
-            writer = writer.with_static_settings_schema(
+            writer = writer.with_static_settings_schema_result(
                 module_slug.to_string(),
-                ManifestManager::module_settings_schema(module_slug)?,
+                ManifestManager::module_settings_schema(module_slug)
+                    .map_err(|error| error.to_string()),
             );
         }
         let result = writer
@@ -288,8 +291,8 @@ impl ModuleLifecycleService {
             .map_err(map_lifecycle_writer_recovery_error)?;
         if !plan.requested_enabled {
             let schema = ManifestManager::module_settings_schema(&plan.module_slug)
-                .map_err(|error| ModuleOperationRecoveryError::Policy(error.to_string()))?;
-            writer = writer.with_static_settings_schema(plan.module_slug, schema);
+                .map_err(|error| error.to_string());
+            writer = writer.with_static_settings_schema_result(plan.module_slug, schema);
         }
         let result = writer
             .compensate_failed_operation(ModuleLifecycleRecoveryCommand {
@@ -421,6 +424,9 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
             module_slug,
             reason,
         },
+        ModuleLifecycleExecutionError::SettingsSchemaUnavailable(error) => {
+            ToggleModuleError::SettingsSchemaUnavailable(error)
+        }
         ModuleLifecycleExecutionError::PostHook(error) => ToggleModuleError::PostHookFailed(error),
         ModuleLifecycleExecutionError::InvalidCommandIdentity => {
             ToggleModuleError::InvalidCommandIdentity
@@ -902,6 +908,16 @@ mod tests {
             .expect("write module manifest");
     }
 
+    fn write_settings_fixture(root: &std::path::Path, slug: &str, setting: &str) {
+        let package_dir = root.join("crates/modules").join(format!("rustok-{slug}"));
+        write_module_manifest(
+            &package_dir,
+            &format!(
+                "[module]\nslug = \"{slug}\"\nname = \"Test\"\nversion = \"0.1.0\"\nownership = \"first_party\"\ntrust_level = \"verified\"\n\n[settings]\n{setting}\n"
+            ),
+        );
+    }
+
     fn build_test_registry() -> ModuleRegistry {
         ModuleRegistry::new()
             .register(IndexModule)
@@ -936,6 +952,11 @@ mod tests {
                 .await
                 .expect("insert tenant");
         let temp = tempdir().expect("tempdir");
+        write_settings_fixture(
+            temp.path(),
+            "content",
+            "posts_per_page = { type = \"integer\", min = 1, max = 100 }",
+        );
         let manifest_path = temp.path().join("modules.toml");
         let mut modules = HashMap::new();
         modules.insert(
@@ -982,6 +1003,11 @@ mod tests {
             .await
             .expect("insert tenant");
         let temp = tempdir().expect("tempdir");
+        write_settings_fixture(
+            temp.path(),
+            "content",
+            "posts_per_page = { type = \"integer\", min = 1, max = 100 }",
+        );
         let manifest_path = temp.path().join("modules.toml");
         let mut modules = HashMap::new();
         modules.insert(
@@ -1084,6 +1110,11 @@ mod tests {
             .await
             .expect("insert tenant");
         let temp = tempdir().expect("tempdir");
+        write_settings_fixture(
+            temp.path(),
+            "tenant",
+            "workspace_name = { type = \"string\" }",
+        );
         let manifest_path = temp.path().join("modules.toml");
         let mut modules = HashMap::new();
         modules.insert(
@@ -1104,7 +1135,7 @@ mod tests {
             &registry,
             tenant.id,
             "tenant",
-            serde_json::json!({ "workspaceName": "Acme" }),
+            serde_json::json!({ "workspace_name": "Acme" }),
             test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
@@ -1122,7 +1153,7 @@ mod tests {
             .await
             .expect("load stored core settings")
             .expect("tenant_modules row");
-        assert_eq!(stored.settings["workspaceName"], serde_json::json!("Acme"));
+        assert_eq!(stored.settings["workspace_name"], serde_json::json!("Acme"));
         // A settings save records no enablement intent (tri-state): the
         // Core module stays available through the platform default, not
         // through a frozen flag.

@@ -34,7 +34,12 @@ mod search;
 pub mod services;
 pub mod state_machine;
 mod storefront_channel;
+pub use storefront_channel::admit_storefront_buyer_request;
+pub mod storefront_cart_runtime;
 mod storefront_checkout_pricing;
+pub use storefront_checkout_pricing::{
+    prepare_storefront_cart_context, read_storefront_cart_line_quote,
+};
 #[path = "storefront_checkout_runtime_mounted.rs"]
 pub mod storefront_checkout_runtime;
 mod storefront_shipping;

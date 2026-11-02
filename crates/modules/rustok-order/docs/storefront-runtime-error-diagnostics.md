@@ -20,7 +20,7 @@ Context extraction failures record only:
 
 In all diagnostic branches, complete context and runtime errors are not logged.
 
-When `complete_storefront_checkout_with_product_port` returns `StorefrontStagedCheckoutRuntimeError`, the native adapter records:
+When `complete_storefront_checkout_with_product_runtime` returns `StorefrontStagedCheckoutRuntimeError`, the native adapter records:
 
 - the concrete runtime error type;
 - Order storefront owner and exact owner operation;

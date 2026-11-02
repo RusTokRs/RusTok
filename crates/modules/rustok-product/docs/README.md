@@ -206,6 +206,9 @@ Cargo checks remain a targeted/live evidence step before promoting product FBA t
 - [README crate](../README.md)
 - [README admin UI](../admin/README.md)
 - [Product write boundary](write-boundary.md)
+- [Attribute/option definition lifecycle](write-boundary.md#attribute-and-option-definition-lifecycle) — selected-owner receipt command, stable UUIDs, bounded refusals and Next/Leptos exact-request recovery; regression sources and runtime gates are unexecuted.
+- [Axis preview, atomic application and standalone SKU recovery](variant-axis-reconfiguration.md) — source implementation of Next/Leptos immutable full-request recovery with explicit unexecuted release gates.
+- [Bounded sparse combination browsing and explicit tuple picking](variant-combinations.md) — local projections over canonical configuration/membership; no new writer, price or stock generation, with unexecuted release gates.
 - [Product unpublish and archive lifecycle events](product-unpublish-archive-events.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
 

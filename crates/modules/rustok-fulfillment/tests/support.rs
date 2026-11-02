@@ -9,6 +9,12 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
         return;
     }
 
+    rustok_outbox::migration::create_owner_operation_receipts_table(
+        &sea_orm_migration::SchemaManager::new(db),
+    )
+    .await
+    .expect("canonical command receipt schema should exist");
+
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
 
@@ -42,6 +48,14 @@ pub async fn ensure_fulfillment_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(provider_operation::Entity),
     )
     .await;
+    rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261101_000121_enforce_provider_effect_admission")
+        .expect("provider admission migration is registered")
+        .up(&sea_orm_migration::SchemaManager::new(db))
+        .await
+        .expect("provider effect admission guard");
+
     create_entity_table(
         db,
         &builder,
@@ -150,4 +164,16 @@ async fn create_entity_table(
     db.execute_raw(builder.build(&statement))
         .await
         .expect("failed to create fulfillment test table");
+}
+
+/// Explicit test intent/actor. Production entrypoints must use the caller's canonical context.
+pub fn shipment_context(tenant_id: uuid::Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::user(uuid::Uuid::new_v4().to_string()),
+        "en",
+        uuid::Uuid::new_v4().to_string(),
+    )
+    .with_idempotency_key(uuid::Uuid::new_v4().to_string())
+    .with_deadline(std::time::Duration::from_secs(30))
 }

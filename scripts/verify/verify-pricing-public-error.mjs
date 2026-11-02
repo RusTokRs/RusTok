@@ -110,7 +110,7 @@ need(mutationMapper.includes('async_graphql::Error::new(public.message)'), 'Grap
 need(mutationMapper.includes('extensions.set("correlation_id", public.correlation_id.to_string())'), 'GraphQL public reference missing');
 need(shim.includes('let retryable = retryable || self.error.retryable;'), 'query facade must preserve owner retryability');
 const implementations = ports.slice(ports.indexOf('impl PricingReadPort for'), ports.indexOf('struct PricingPortContextFacts'));
-need((implementations.match(/log_pricing_port_entry\(&context, owner_operation\)/g) ?? []).length === 10, 'ten owner operation entry logs must be bounded');
+need((implementations.match(/log_pricing_port_entry\(/g) ?? []).length === 12, 'twelve read/write owner operation entries must use the bounded logger');
 need(!implementations.includes('tracing::debug!('), 'operation-local payload debug log');
 for (const name of ['legacy_domain_outcomes_keep_owner_classification_and_codes', 'nested_core_errors_preserve_all_eleven_classifications', 'rich_kind_is_authority_not_status_or_untrusted_metadata', 'arbitrary_port_payload_is_private_and_owner_retryability_is_not_lost']) need(publicSource.includes(`fn ${name}(`), `unrun scenario missing: ${name}`);
 need(ports.includes('fn canonical_port_uses_nested_owner_policy_without_payload_or_retry_loss('), 'unrun canonical-port scenario missing');

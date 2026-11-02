@@ -316,6 +316,12 @@ fn validate_schedule_for_create(
     if scheduled <= now {
         return Err(BlogError::validation("scheduled_at must be in the future"));
     }
+    let max_scheduled = now + chrono::Duration::days(MAX_SCHEDULED_PUBLISH_AHEAD_DAYS);
+    if scheduled > max_scheduled {
+        return Err(BlogError::validation(format!(
+            "scheduled_at cannot be more than {MAX_SCHEDULED_PUBLISH_AHEAD_DAYS} days ahead"
+        )));
+    }
     Ok(Some(scheduled.fixed_offset()))
 }
 
@@ -342,6 +348,12 @@ fn validate_schedule_for_update(
             }
             if *scheduled <= now {
                 return Err(BlogError::validation("scheduled_at must be in the future"));
+            }
+            let max_scheduled = now + chrono::Duration::days(MAX_SCHEDULED_PUBLISH_AHEAD_DAYS);
+            if *scheduled > max_scheduled {
+                return Err(BlogError::validation(format!(
+                    "scheduled_at cannot be more than {MAX_SCHEDULED_PUBLISH_AHEAD_DAYS} days ahead"
+                )));
             }
             Ok(Patch::Set(scheduled.fixed_offset()))
         }
@@ -506,6 +518,9 @@ const MAX_POST_ARCHIVE_REASON_CHARS: usize = 1000;
 /// Upper bound for one `publish_scheduled_posts` iteration. The scheduler is a host
 /// boundary; a bounded batch keeps a large backlog from being processed in one pass.
 pub(crate) const MAX_SCHEDULED_PUBLISH_BATCH: u32 = 200;
+/// Upper bound on how far ahead a post can be scheduled: prevents indefinitely
+/// far future dates from clogging the scheduled-publish scan.
+pub(crate) const MAX_SCHEDULED_PUBLISH_AHEAD_DAYS: i64 = 730;
 
 /// Upper bound of one canonical article document (per locale).
 ///

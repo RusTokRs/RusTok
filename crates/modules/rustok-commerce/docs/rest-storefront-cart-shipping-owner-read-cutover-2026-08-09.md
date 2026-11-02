@@ -28,9 +28,11 @@ projection work:
 - `POST /store/carts/{id}/line-items/{line_id}`;
 - `DELETE /store/carts/{id}/line-items/{line_id}`.
 
-Cart context update preserves the previous operation order: resolve requested StoreContext, validate
-selected shipping options, update Cart owner context, reprice line items, then enrich shipping
-projections.
+The 2026-10-31 continuation replaces the former context-write-then-reprice order: resolve requested
+StoreContext, project the owner-normalized target, validate selected shipping in saved Cart Channel
+scope, prepare complete selected Pricing batches, issue one Cart context/price command, then enrich
+shipping projections. Country/null and scalar/group clear remain explicit. See the
+[current source handoff](implementation-plan.md#atomic-cart-context-adoption-2026-10-31).
 
 The selected-option compatibility policy is unchanged:
 

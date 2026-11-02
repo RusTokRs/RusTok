@@ -319,6 +319,52 @@ fn transactional_event_bus_from_runtime(
 }
 
 #[cfg(feature = "ssr")]
+fn product_read_runtime(
+    app_ctx: &HostRuntimeContext,
+) -> Result<rustok_product::ProductCatalogReadRuntime, ServerFnError> {
+    if let Some(runtime) = app_ctx.shared_get::<rustok_product::ProductCatalogReadRuntime>() {
+        return Ok(runtime);
+    }
+    // Only a host with no selection uses the explicit embedded baseline.
+    Ok(rustok_product::ProductCatalogReadRuntime::in_process(
+        app_ctx.db_clone(),
+        transactional_event_bus_from_runtime(app_ctx)?,
+    ))
+}
+
+#[cfg(feature = "ssr")]
+fn pricing_admin_read_context(
+    tenant: &rustok_api::TenantContext,
+    auth: &rustok_api::AuthContext,
+    request: &rustok_api::RequestContext,
+    locale: &str,
+) -> Result<rustok_api::PortContext, ServerFnError> {
+    if tenant.id.is_nil()
+        || auth.user_id.is_nil()
+        || auth.tenant_id != tenant.id
+        || request.tenant_id != tenant.id
+        || request
+            .user_id
+            .is_some_and(|user_id| user_id != auth.user_id)
+    {
+        return Err(ServerFnError::new("Pricing request context is unavailable"));
+    }
+    let mut context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        locale,
+        request.correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    context.channel = request.channel_slug.clone();
+    context.claims = auth.scopes.clone();
+    context
+        .claims
+        .extend(auth.permissions.iter().map(ToString::to_string));
+    Ok(context)
+}
+
+#[cfg(feature = "ssr")]
 async fn update_variant_price_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
@@ -349,7 +395,8 @@ async fn update_variant_price_native_with_context(
     let service = PricingService::new(
         app_ctx.db_clone(),
         transactional_event_bus_from_runtime(app_ctx)?,
-    );
+    )
+    .with_product_catalog_read_runtime(product_read_runtime(app_ctx)?);
     if let Some(price_list_id) = price_list_id {
         service
             .set_price_list_tier_with_channel(
@@ -393,11 +440,12 @@ async fn preview_variant_discount_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request_context: &rustok_api::RequestContext,
     variant_id: String,
     payload: PricingDiscountDraft,
 ) -> Result<PricingAdjustmentPreview, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_pricing::PricingService;
+    use rustok_pricing::{PreviewVariantDiscountRequest, in_process_pricing_read_port};
 
     ensure_permission(
         &auth.permissions,
@@ -411,38 +459,20 @@ async fn preview_variant_discount_native_with_context(
     let price_list_id = parse_optional_uuid(&payload.price_list_id, "price_list_id")?;
     let channel_id = parse_optional_uuid(&payload.channel_id, "channel_id")?;
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
-    let service = PricingService::new(
-        app_ctx.db_clone(),
-        transactional_event_bus_from_runtime(app_ctx)?,
-    );
-
-    let preview = if let Some(price_list_id) = price_list_id {
-        service
-            .preview_price_list_percentage_discount_with_channel(
-                tenant.id,
-                variant_id,
-                price_list_id,
-                currency_code.as_str(),
-                discount_percent,
-                channel_id,
-                channel_slug,
-            )
-            .await
-    } else {
-        service
-            .preview_percentage_discount_with_channel(
-                variant_id,
-                currency_code.as_str(),
-                discount_percent,
-                channel_id,
-                channel_slug,
-            )
-            .await
-    };
-
-    preview
-        .map(map_adjustment_preview)
-        .map_err(ServerFnError::new)
+    let mut context =
+        pricing_admin_read_context(tenant, auth, request_context, &request_context.locale)?;
+    // Explicit selectors never inherit the host's other half.
+    if channel_id.is_some() || channel_slug.is_some() {
+        context.channel = channel_slug.clone();
+    }
+    in_process_pricing_read_port(app_ctx.db_clone(), transactional_event_bus_from_runtime(app_ctx)?, product_read_runtime(app_ctx)?)
+        .preview_variant_discount(context, PreviewVariantDiscountRequest {
+            variant_id, price_list_id, currency_code, discount_percent, channel_id, channel_slug,
+        }).await.map(map_adjustment_preview).map_err(|error| {
+            tracing::warn!(boundary = "pricing_admin_native_preview", kind = ?error.kind, retryable = error.retryable,
+                code_length = error.code.len(), "pricing preview was refused");
+            ServerFnError::new(rustok_pricing::map_pricing_port_error(&error))
+        })
 }
 
 #[cfg(feature = "ssr")]
@@ -471,7 +501,8 @@ async fn apply_variant_discount_native_with_context(
     let service = PricingService::new(
         app_ctx.db_clone(),
         transactional_event_bus_from_runtime(app_ctx)?,
-    );
+    )
+    .with_product_catalog_read_runtime(product_read_runtime(app_ctx)?);
 
     let preview = if let Some(price_list_id) = price_list_id {
         service
@@ -548,64 +579,89 @@ async fn list_active_price_lists_native_with_context(
     app_ctx: &HostRuntimeContext,
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
+    request_context: &rustok_api::RequestContext,
     channel_id: Option<String>,
     channel_slug: Option<String>,
 ) -> Result<Vec<PricingPriceListOption>, ServerFnError> {
     use rustok_api::Permission;
-    use rustok_pricing::PricingService;
+    use rustok_pricing::{ActivePriceListProjectionRequest, in_process_pricing_read_port};
 
     ensure_permission(
         &auth.permissions,
         &[Permission::PRODUCTS_LIST, Permission::PRODUCTS_READ],
         "products:list or products:read required",
     )?;
+    if auth.tenant_id != tenant.id || request_context.tenant_id != tenant.id {
+        return Err(ServerFnError::new("Pricing request tenant is inconsistent"));
+    }
 
-    let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-        .await
-        .ok();
     let requested_locale = resolve_requested_locale(
         None,
-        request_context
-            .as_ref()
-            .map(|context| context.locale.as_str()),
+        Some(request_context.locale.as_str()),
         tenant.default_locale.as_str(),
     );
     let channel_id = parse_optional_uuid_string(channel_id, "channel_id")
-        .map_err(|error| ServerFnError::new(error.to_string()))?
-        .or_else(|| {
-            request_context
-                .as_ref()
-                .and_then(|ctx| ctx.channel_id.map(|item| item.to_string()))
-        });
-    let channel_slug = sanitize_channel_slug(channel_slug).or_else(|| {
-        request_context
-            .as_ref()
-            .and_then(|ctx| sanitize_channel_slug(ctx.channel_slug.clone()))
-    });
-    let parsed_channel_id = channel_id
-        .as_deref()
-        .and_then(|value| Uuid::parse_str(value).ok());
-    let service = PricingService::new(
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+    let explicit_scope = channel_id.is_some() || channel_slug.is_some();
+    let selected_channel_id = if explicit_scope {
+        channel_id
+            .as_deref()
+            .map(Uuid::parse_str)
+            .transpose()
+            .map_err(|_| ServerFnError::new("Invalid channel_id"))?
+    } else {
+        request_context.channel_id
+    };
+    let selected_channel_slug = if explicit_scope {
+        channel_slug.map(|slug| slug.trim().to_ascii_lowercase())
+    } else {
+        request_context.channel_slug.clone()
+    };
+    let mut port_context = rustok_api::PortContext::new(
+        tenant.id.to_string(),
+        rustok_api::PortActor::user(auth.user_id.to_string()),
+        requested_locale,
+        request_context.correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    port_context.claims = auth.scopes.clone();
+    port_context
+        .claims
+        .extend(auth.permissions.iter().map(ToString::to_string));
+    // Explicit ID-only/slug-only requests must not borrow the host's other selector half.
+    port_context.channel = selected_channel_slug.clone();
+    let port = in_process_pricing_read_port(
         app_ctx.db_clone(),
         transactional_event_bus_from_runtime(app_ctx)?,
+        product_read_runtime(app_ctx)?,
     );
-
-    service
-        .list_active_price_lists_for_channel(
-            tenant.id,
-            parsed_channel_id,
-            channel_slug.as_deref(),
-            Some(requested_locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+    let items = port
+        .list_active_price_list_projections(
+            port_context,
+            ActivePriceListProjectionRequest {
+                channel_id: selected_channel_id,
+                channel_slug: selected_channel_slug,
+                fallback_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
-        .map_err(ServerFnError::new)
-        .map(|items| {
-            items
-                .into_iter()
-                .map(map_native_price_list_option)
-                .collect()
+        .map_err(|error| {
+            ServerFnError::new(rustok_pricing::map_pricing_port_error(&error).to_string())
+        })?;
+    Ok(items
+        .into_iter()
+        .map(|item| PricingPriceListOption {
+            id: item.price_list_id.to_string(),
+            name: item.title,
+            list_type: item.list_type,
+            channel_id: item.channel_id.map(|id| id.to_string()),
+            channel_slug: item.channel_slug,
+            rule_kind: item.rule_kind,
+            adjustment_percent: item
+                .adjustment_percent
+                .map(|value| value.normalize().to_string()),
         })
+        .collect())
 }
 
 #[cfg(feature = "ssr")]
@@ -633,7 +689,8 @@ async fn update_price_list_rule_native_with_context(
     let service = PricingService::new(
         app_ctx.db_clone(),
         transactional_event_bus_from_runtime(app_ctx)?,
-    );
+    )
+    .with_product_catalog_read_runtime(product_read_runtime(app_ctx)?);
     service
         .set_price_list_percentage_rule(tenant.id, auth.user_id, price_list_id, adjustment_percent)
         .await
@@ -750,7 +807,8 @@ async fn update_price_list_scope_native_with_context(
     let service = PricingService::new(
         app_ctx.db_clone(),
         transactional_event_bus_from_runtime(app_ctx)?,
-    );
+    )
+    .with_product_catalog_read_runtime(product_read_runtime(app_ctx)?);
 
     service
         .set_price_list_scope(
@@ -798,6 +856,18 @@ fn map_native_list(value: rustok_pricing::AdminPricingProductList) -> PricingPro
 #[cfg(feature = "ssr")]
 fn map_native_effective_price(value: rustok_pricing::ResolvedPrice) -> PricingEffectivePrice {
     PricingEffectivePrice {
+        source: crate::model::PricingPriceSource {
+            price_id: value.source.price_id().to_string(),
+            kind: value.source.kind().to_string(),
+            rule_kind: value
+                .source
+                .rule()
+                .map(|rule| rule.kind.as_str().to_string()),
+            adjustment_percent: value
+                .source
+                .rule()
+                .map(|rule| rule.adjustment_percent.normalize().to_string()),
+        },
         currency_code: value.currency_code,
         amount: value.amount.normalize().to_string(),
         compare_at_amount: value
@@ -819,6 +889,8 @@ fn map_native_effective_price(value: rustok_pricing::ResolvedPrice) -> PricingEf
 #[cfg(feature = "ssr")]
 fn map_native_detail(value: rustok_pricing::AdminPricingProductDetail) -> PricingProductDetail {
     PricingProductDetail {
+        resolution_context: None,
+        resolved_at: None,
         id: value.id.to_string(),
         status: value.status.to_string(),
         seller_id: value.seller_id,
@@ -882,7 +954,6 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
-        use rustok_pricing::PricingService;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
 
@@ -894,7 +965,7 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
             .map_err(ServerFnError::new)?;
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
-            .ok();
+            .map_err(|_| ServerFnError::new("Pricing request context is unavailable"))?;
 
         ensure_permission(
             &auth.permissions,
@@ -902,33 +973,20 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
             "products:list or products:read required",
         )?;
 
-        let service = PricingService::new(
-            app_ctx.db_clone(),
-            transactional_event_bus_from_runtime(&app_ctx)?,
-        );
         let channel_service = ChannelService::new(app_ctx.db_clone());
-        let channel_slug = request_context
-            .as_ref()
-            .and_then(|ctx| sanitize_channel_slug(ctx.channel_slug.clone()));
         let (available_channels, _) = channel_service
             .list_channels(tenant.id, 1, 250)
             .await
             .map_err(ServerFnError::new)?;
-        let active_price_lists = service
-            .list_active_price_lists_for_channel(
-                tenant.id,
-                request_context.as_ref().and_then(|ctx| ctx.channel_id),
-                channel_slug.as_deref(),
-                request_context
-                    .as_ref()
-                    .map(|context| context.locale.as_str()),
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(ServerFnError::new)?
-            .into_iter()
-            .map(map_native_price_list_option)
-            .collect();
+        let active_price_lists = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            &request_context,
+            None,
+            None,
+        )
+        .await?;
 
         Ok(PricingAdminBootstrap {
             current_tenant: map_current_tenant(&tenant),
@@ -965,10 +1023,15 @@ async fn pricing_admin_active_price_lists_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(|_| ServerFnError::new("Pricing request context is unavailable"))?;
+
         list_active_price_lists_native_with_context(
             &app_ctx,
             &auth,
             &tenant,
+            &request_context,
             channel_id,
             channel_slug,
         )
@@ -1004,6 +1067,10 @@ async fn pricing_admin_products_native(
             .await
             .map_err(ServerFnError::new)?;
 
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(|_| ServerFnError::new("Pricing request context is unavailable"))?;
+
         ensure_permission(
             &auth.permissions,
             &[Permission::PRODUCTS_LIST],
@@ -1015,7 +1082,8 @@ async fn pricing_admin_products_native(
         let service = PricingService::new(
             app_ctx.db_clone(),
             transactional_event_bus_from_runtime(&app_ctx)?,
-        );
+        )
+        .with_product_catalog_read_runtime(product_read_runtime(&app_ctx)?);
         let status = status
             .as_deref()
             .map(str::trim)
@@ -1029,8 +1097,7 @@ async fn pricing_admin_products_native(
             });
         let data = service
             .list_admin_product_pricing_with_locale_fallback(
-                tenant.id,
-                requested_locale.as_str(),
+                pricing_admin_read_context(&tenant, &auth, &request_context, &requested_locale)?,
                 Some(tenant.default_locale.as_str()),
                 search.as_deref(),
                 status,
@@ -1068,7 +1135,10 @@ async fn pricing_admin_product_native(
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_pricing::{PriceResolutionContext, PricingService};
+        use rustok_pricing::{
+            PriceResolutionContext, PricingService, ResolveProductPricesRequest,
+            in_process_pricing_read_port,
+        };
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -1077,9 +1147,11 @@ async fn pricing_admin_product_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
+        let request_context = Some(
+            leptos_axum::extract::<rustok_api::RequestContext>()
+                .await
+                .map_err(|_| ServerFnError::new("Pricing request context is unavailable"))?,
+        );
 
         ensure_permission(
             &auth.permissions,
@@ -1098,17 +1170,22 @@ async fn pricing_admin_product_native(
             quantity,
         )
         .map_err(|error| ServerFnError::new(error.to_string()))?;
+        let explicit_scope = explicit_channel_id.is_some() || channel_slug.is_some();
         if let Some(context) = resolution_context.as_mut() {
-            context.channel_id = explicit_channel_id.or_else(|| {
+            context.channel_id = if explicit_scope {
+                explicit_channel_id
+            } else {
                 request_context
                     .as_ref()
-                    .and_then(|ctx| ctx.channel_id.map(|item| item.to_string()))
-            });
-            context.channel_slug = sanitize_channel_slug(channel_slug).or_else(|| {
+                    .and_then(|ctx| ctx.channel_id.map(|id| id.to_string()))
+            };
+            context.channel_slug = if explicit_scope {
+                channel_slug.map(|slug| slug.trim().to_ascii_lowercase())
+            } else {
                 request_context
                     .as_ref()
-                    .and_then(|ctx| sanitize_channel_slug(ctx.channel_slug.clone()))
-            });
+                    .and_then(|ctx| ctx.channel_slug.clone())
+            };
         }
         let native_resolution_context = resolution_context.as_ref().map(|context| {
             let region_id = context
@@ -1132,16 +1209,29 @@ async fn pricing_admin_product_native(
                 quantity: Some(context.quantity),
             }
         });
+        let product_runtime = product_read_runtime(&app_ctx)?;
         let service = PricingService::new(
             app_ctx.db_clone(),
             transactional_event_bus_from_runtime(&app_ctx)?,
+        )
+        .with_product_catalog_read_runtime(product_runtime.clone());
+        let pricing_read_port = in_process_pricing_read_port(
+            app_ctx.db_clone(),
+            transactional_event_bus_from_runtime(&app_ctx)?,
+            product_runtime,
         );
         let product_id = parse_product_id(&product_id)?;
         let mut detail = match service
             .get_admin_product_pricing_with_locale_fallback(
-                tenant.id,
+                pricing_admin_read_context(
+                    &tenant,
+                    &auth,
+                    request_context.as_ref().ok_or_else(|| {
+                        ServerFnError::new("Pricing request context is unavailable")
+                    })?,
+                    &requested_locale,
+                )?,
                 product_id,
-                requested_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
                 native_resolution_context
                     .as_ref()
@@ -1150,21 +1240,64 @@ async fn pricing_admin_product_native(
             .await
         {
             Ok(detail) => Some(map_native_detail(detail)),
-            Err(rustok_commerce_foundation::error::CommerceError::ProductNotFound(_)) => None,
+            Err(err)
+                if err.kind == rustok_api::PortErrorKind::NotFound
+                    && err.code == "pricing.product_not_found" =>
+            {
+                None
+            }
             Err(err) => return Err(ServerFnError::new(err)),
         };
 
         if let (Some(detail_ref), Some(context)) =
             (detail.as_mut(), native_resolution_context.as_ref())
         {
+            let trusted = request_context
+                .as_ref()
+                .ok_or_else(|| ServerFnError::new("Pricing request context is unavailable"))?;
+            let mut port_context = rustok_api::PortContext::new(
+                tenant.id.to_string(),
+                rustok_api::PortActor::user(auth.user_id.to_string()),
+                requested_locale.clone(),
+                trusted.correlation_id.clone(),
+            )
+            .with_deadline(std::time::Duration::from_secs(2));
+            port_context.claims = auth.scopes.clone();
+            port_context
+                .claims
+                .extend(auth.permissions.iter().map(ToString::to_string));
+            port_context.channel = context.channel_slug.clone();
+            let snapshot = pricing_read_port
+                .resolve_product_prices(
+                    port_context,
+                    ResolveProductPricesRequest {
+                        product_id: Some(product_id),
+                        variant_ids: detail_ref
+                            .variants
+                            .iter()
+                            .map(|variant| Uuid::parse_str(&variant.id))
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|_| ServerFnError::new("SKU identity is invalid"))?,
+                        pricing: context.clone(),
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    ServerFnError::new(rustok_pricing::map_pricing_port_error(&error).to_string())
+                })?;
+            let mut quotes = snapshot
+                .items
+                .into_iter()
+                .map(|item| (item.variant_id.to_string(), item.price))
+                .collect::<std::collections::BTreeMap<_, _>>();
             for variant in &mut detail_ref.variants {
-                let variant_id = Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?;
-                let effective_price = service
-                    .resolve_variant_price(tenant.id, variant_id, context.clone())
-                    .await
-                    .map_err(ServerFnError::new)?;
-                variant.effective_price = effective_price.map(map_native_effective_price);
+                variant.effective_price = quotes
+                    .remove(&variant.id)
+                    .ok_or_else(|| ServerFnError::new("SKU quote is incomplete"))?
+                    .map(map_native_effective_price);
             }
+            detail_ref.resolution_context = Some(map_resolution_context(snapshot.context));
+            detail_ref.resolved_at = Some(snapshot.resolved_at.to_rfc3339());
         }
 
         Ok(detail)
@@ -1238,8 +1371,18 @@ async fn pricing_admin_preview_variant_discount_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        preview_variant_discount_native_with_context(&app_ctx, &auth, &tenant, variant_id, payload)
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
+            .map_err(|_| ServerFnError::new("Pricing request context is unavailable"))?;
+        preview_variant_discount_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            &request_context,
+            variant_id,
+            payload,
+        )
+        .await
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -1348,6 +1491,16 @@ async fn pricing_admin_update_price_list_scope_native(
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
+    fn pricing_projection_test_context(tenant_id: Uuid, locale: &str) -> rustok_api::PortContext {
+        rustok_api::PortContext::new(
+            tenant_id.to_string(),
+            rustok_api::PortActor::service("pricing-native-test"),
+            locale,
+            "pricing-native-test",
+        )
+        .with_deadline(std::time::Duration::from_secs(2))
+    }
+
     use super::*;
     use rustok_api::{AuthContext, Permission, TenantContext};
     use rustok_product::CatalogService;
@@ -1728,9 +1881,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 None,
             )
@@ -1811,9 +1963,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -1899,9 +2050,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 None,
             )
@@ -2205,9 +2355,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 None,
             )
@@ -2314,9 +2463,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -2384,6 +2532,15 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &rustok_api::RequestContext {
+                tenant_id,
+                user_id: Some(auth.user_id),
+                channel_id: None,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: "en".to_owned(),
+                correlation_id: "pricing-preview-test".to_owned(),
+            },
             variant_id.to_string(),
             PricingDiscountDraft {
                 currency_code: "usd".to_string(),
@@ -2469,9 +2626,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 None,
             )
@@ -2581,9 +2737,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 None,
             )
@@ -2731,6 +2886,15 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &rustok_api::RequestContext {
+                tenant_id,
+                user_id: Some(auth.user_id),
+                channel_id: None,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: "en".to_owned(),
+                correlation_id: "pricing-preview-test".to_owned(),
+            },
             variant_id.to_string(),
             PricingDiscountDraft {
                 currency_code: "USD".to_string(),
@@ -2782,6 +2946,15 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &rustok_api::RequestContext {
+                tenant_id,
+                user_id: Some(auth.user_id),
+                channel_id: None,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: "en".to_owned(),
+                correlation_id: "pricing-preview-test".to_owned(),
+            },
             variant_id.to_string(),
             PricingDiscountDraft {
                 currency_code: "USD".to_string(),
@@ -2832,6 +3005,15 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &rustok_api::RequestContext {
+                tenant_id,
+                user_id: Some(auth.user_id),
+                channel_id: None,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: "en".to_owned(),
+                correlation_id: "pricing-preview-test".to_owned(),
+            },
             variant_id.to_string(),
             PricingDiscountDraft {
                 currency_code: "USD".to_string(),
@@ -2898,6 +3080,15 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &rustok_api::RequestContext {
+                tenant_id,
+                user_id: Some(auth.user_id),
+                channel_id: None,
+                channel_slug: None,
+                channel_resolution_source: None,
+                locale: "en".to_owned(),
+                correlation_id: "pricing-preview-test".to_owned(),
+            },
             variant_id.to_string(),
             PricingDiscountDraft {
                 currency_code: "USD".to_string(),
@@ -2986,9 +3177,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -3260,9 +3450,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -3607,9 +3796,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -3712,9 +3900,8 @@ mod tests {
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
-                tenant_id,
+                pricing_projection_test_context(tenant_id, "en"),
                 product_id,
-                "en",
                 Some("en"),
                 Some(price_list_id),
             )
@@ -3767,6 +3954,15 @@ mod tests {
             scopes: vec![],
             grant_type: "direct".to_string(),
         };
+        let request_context = rustok_api::RequestContext {
+            tenant_id,
+            user_id: Some(actor_id),
+            channel_id: Some(other_channel_id),
+            channel_slug: Some("mobile-app".to_string()),
+            channel_resolution_source: None,
+            locale: "en".to_string(),
+            correlation_id: "pricing-admin-selector-regression".to_string(),
+        };
         let app_ctx = test_app_context(db);
 
         update_price_list_scope_native_with_context(
@@ -3786,6 +3982,7 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &request_context,
             Some(channel_id.to_string()),
             Some("web-store".to_string()),
         )
@@ -3801,6 +3998,7 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &request_context,
             Some(other_channel_id.to_string()),
             Some("mobile-app".to_string()),
         )
@@ -3810,6 +4008,70 @@ mod tests {
             !mismatched_lists
                 .iter()
                 .any(|item| item.id == price_list_id.to_string())
+        );
+
+        // A different host channel cannot supply the missing half of an explicit selector.
+        for (selected_id, selected_slug) in [
+            (Some(channel_id.to_string()), None),
+            (None, Some("web-store".to_string())),
+        ] {
+            let lists = list_active_price_lists_native_with_context(
+                &app_ctx,
+                &auth,
+                &tenant,
+                &request_context,
+                selected_id,
+                selected_slug,
+            )
+            .await
+            .expect("the owner should complete an explicit selector independently of the host");
+            assert!(
+                lists
+                    .iter()
+                    .any(|item| item.id == price_list_id.to_string())
+            );
+        }
+        let contradictory = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            &request_context,
+            Some(channel_id.to_string()),
+            Some("mobile-app".to_string()),
+        )
+        .await;
+        assert!(
+            contradictory.is_err(),
+            "contradictory selectors must refuse, not broaden"
+        );
+        let current = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            &request_context,
+            None,
+            None,
+        )
+        .await
+        .expect("omitted selectors use the trusted current channel");
+        assert!(
+            !current
+                .iter()
+                .any(|item| item.id == price_list_id.to_string())
+        );
+        let mut foreign_request = request_context.clone();
+        foreign_request.tenant_id = Uuid::new_v4();
+        assert!(
+            list_active_price_lists_native_with_context(
+                &app_ctx,
+                &auth,
+                &tenant,
+                &foreign_request,
+                None,
+                None,
+            )
+            .await
+            .is_err()
         );
 
         update_price_list_scope_native_with_context(
@@ -3829,6 +4091,7 @@ mod tests {
             &app_ctx,
             &auth,
             &tenant,
+            &request_context,
             Some(other_channel_id.to_string()),
             Some("mobile-app".to_string()),
         )
@@ -3883,5 +4146,19 @@ mod tests {
         .expect_err("permission should be required");
 
         assert!(error.to_string().contains("products:update required"));
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_resolution_context(
+    value: rustok_pricing::PriceResolutionContext,
+) -> crate::model::PricingResolutionContext {
+    crate::model::PricingResolutionContext {
+        currency_code: value.currency_code,
+        region_id: value.region_id.map(|id| id.to_string()),
+        price_list_id: value.price_list_id.map(|id| id.to_string()),
+        channel_id: value.channel_id.map(|id| id.to_string()),
+        channel_slug: value.channel_slug,
+        quantity: value.quantity.unwrap_or(1),
     }
 }

@@ -295,6 +295,7 @@ fn fulfillment_owner_error_facts(error: &crate::FulfillmentError) -> Fulfillment
             0,
             false,
         ),
+        crate::FulfillmentError::OwnerPort(_) => ("owner_port", 0, 0, 0, 0, true),
         crate::FulfillmentError::Database(_) => ("database", 0, 0, 0, 0, true),
     };
     FulfillmentOwnerErrorFacts {
@@ -412,6 +413,20 @@ fn fulfillment_error_to_port_error(
             false,
             false,
         ),
+        crate::FulfillmentError::OwnerPort(stock) => {
+            let cause = crate::error::owner_port_error(stock);
+            let technical = matches!(
+                &cause.kind,
+                PortErrorKind::Unavailable | PortErrorKind::Timeout
+            );
+            (
+                cause.kind,
+                "fulfillment.shipment_stock_refused",
+                "shipment stock requires owner reconciliation",
+                cause.retryable,
+                technical,
+            )
+        }
         crate::FulfillmentError::Database(_) => (
             PortErrorKind::Unavailable,
             "fulfillment.database_unavailable",
@@ -485,6 +500,9 @@ fn fulfillment_error_to_port_error(
         );
     }
 
+    if let crate::FulfillmentError::OwnerPort(stock) = &error {
+        return crate::error::owner_port_error(stock);
+    }
     PortError::new(kind, code, message, retryable)
 }
 

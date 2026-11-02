@@ -474,7 +474,7 @@ fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> HttpEr
 }
 
 fn map_inbox_error(error: crate::MarketplacePaidEventInboxError) -> HttpError {
-    if error.retryable() {
+    (if error.retryable() {
         HttpError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "marketplace_financial_recovery_unavailable",
@@ -486,7 +486,8 @@ fn map_inbox_error(error: crate::MarketplacePaidEventInboxError) -> HttpError {
             "marketplace_financial_reconciliation_required",
             "Marketplace financial recovery requires operator review",
         )
-    }
+    })
+    .with_retryable(error.retryable())
 }
 
 impl From<crate::MarketplaceFinancialOperationOperatorView>

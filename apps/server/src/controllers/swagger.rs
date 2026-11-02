@@ -111,6 +111,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
     ),
     components(
         schemas(
+            rustok_web::ErrorBody,
             crate::controllers::auth::CookieSessionResponse,
             crate::controllers::auth::LoginParams,
             crate::controllers::auth::RegisterParams,

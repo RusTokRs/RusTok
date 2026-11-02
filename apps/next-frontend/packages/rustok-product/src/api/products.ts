@@ -8,6 +8,11 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import {
+  assertPricingGraphqlSuccess,
+  assertPricingQuoteResponse,
+  normalizePricingQuery,
+} from "@rustok/pricing-frontend";
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 import type {
   ProductCatalogFacet,
@@ -15,7 +20,7 @@ import type {
   StorefrontCatalogFilter,
   StorefrontProductDetail,
   StorefrontProductListResponse,
-  StorefrontProductPricing,
+  StorefrontProductPricingDetail,
 } from "./types";
 
 export type ProductGraphqlExecutor = typeof storefrontGraphql;
@@ -77,10 +82,17 @@ const STOREFRONT_PRODUCT_QUERY = `
         handle
         description
       }
+      variantAxes {
+        id attributeId code name position
+        allowedValues { optionId value position }
+      }
       variants {
         id
         title
         sku
+        combinationIdentity
+        axisValues { attributeId optionId code label }
+        inventoryPolicy
         inventoryQuantity
         inStock
         prices {
@@ -124,18 +136,13 @@ const STOREFRONT_PRICING_PRODUCT_QUERY = `
       channelSlug: $channelSlug,
       quantity: $quantity
     ) {
+      id
+      resolutionContext { currencyCode regionId priceListId channelId channelSlug quantity }
+      resolvedAt
       variants {
         id
-        title
-        sku
-        prices {
-          currencyCode
-          amount
-          compareAtAmount
-          discountPercent
-          onSale
-        }
         effectivePrice {
+          source { priceId kind ruleKind adjustmentPercent }
           currencyCode
           amount
           compareAtAmount
@@ -263,9 +270,12 @@ export async function fetchCatalogSearchOptions(
     return { categoryOptions: [], attributeOptions: [] };
   }
 
-  const response = await graphql<{
-    storefrontCatalogSearchOptions: ProductCatalogSearchOptions;
-  }, { locale: string }>({
+  const response = await graphql<
+    {
+      storefrontCatalogSearchOptions: ProductCatalogSearchOptions;
+    },
+    { locale: string }
+  >({
     query: STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY,
     variables: { locale: normLocale },
     tenant: tenantSlug ?? undefined,
@@ -291,12 +301,15 @@ export async function fetchStorefrontProducts(
   filter?: StorefrontCatalogFilter,
   tenantSlug?: string | null,
 ): Promise<StorefrontProductListResponse> {
-  const response = await graphql<{
-    storefrontProductCatalog: StorefrontProductListResponse;
-  }, {
-    locale?: string;
-    filter?: CatalogFilterVariables;
-  }>({
+  const response = await graphql<
+    {
+      storefrontProductCatalog: StorefrontProductListResponse;
+    },
+    {
+      locale?: string;
+      filter?: CatalogFilterVariables;
+    }
+  >({
     query: STOREFRONT_PRODUCTS_QUERY,
     variables: {
       locale: locale.trim() || undefined,
@@ -305,19 +318,9 @@ export async function fetchStorefrontProducts(
     tenant: tenantSlug ?? undefined,
   });
 
-  if (response.errors?.length) {
-    throw new Error(response.errors[0]?.message ?? "Product catalog query failed");
-  }
-
-  return (
-    response.data?.storefrontProductCatalog ?? {
-      total: 0,
-      page: 1,
-      perPage: 12,
-      hasNext: false,
-      items: [],
-    }
-  );
+  if (response.errors?.length || !response.data?.storefrontProductCatalog)
+    throw new Error("Product catalog response is unavailable");
+  return response.data.storefrontProductCatalog;
 }
 
 /**
@@ -338,13 +341,16 @@ export async function fetchStorefrontCatalogFacets(
     .filter((code) => code.length > 0);
   if (codes.length === 0) return [];
 
-  const response = await graphql<{
-    storefrontProductCatalogFacets: ProductCatalogFacet[];
-  }, {
-    locale?: string;
-    filter?: CatalogFilterVariables;
-    facetCodes: string[];
-  }>({
+  const response = await graphql<
+    {
+      storefrontProductCatalogFacets: ProductCatalogFacet[];
+    },
+    {
+      locale?: string;
+      filter?: CatalogFilterVariables;
+      facetCodes: string[];
+    }
+  >({
     query: STOREFRONT_CATALOG_FACETS_QUERY,
     variables: {
       locale: locale.trim() || undefined,
@@ -370,12 +376,15 @@ export async function fetchStorefrontProduct(
   const cleanHandle = handle.trim();
   if (!cleanHandle) return null;
 
-  const response = await graphql<{
-    storefrontProduct: StorefrontProductDetail | null;
-  }, {
-    locale?: string;
-    handle: string;
-  }>({
+  const response = await graphql<
+    {
+      storefrontProduct: StorefrontProductDetail | null;
+    },
+    {
+      locale?: string;
+      handle: string;
+    }
+  >({
     query: STOREFRONT_PRODUCT_QUERY,
     variables: {
       handle: cleanHandle,
@@ -384,11 +393,14 @@ export async function fetchStorefrontProduct(
     tenant: tenantSlug ?? undefined,
   });
 
-  if (response.errors?.length) {
-    throw new Error(response.errors[0]?.message ?? "Product query failed");
-  }
-
-  return response.data?.storefrontProduct ?? null;
+  // A failed/partial catalog read is not an authoritative "not found" or a usable tuple matrix.
+  if (
+    response.errors?.length ||
+    !response.data ||
+    response.data.storefrontProduct === undefined
+  )
+    throw new Error("Product catalog response is unavailable");
+  return response.data.storefrontProduct;
 }
 
 export type StorefrontPricingOptions = {
@@ -406,7 +418,8 @@ export async function fetchStorefrontProductPricing(
   locale?: string,
   currencyOrOptions?: string | StorefrontPricingOptions,
   tenantSlug?: string | null,
-): Promise<{ variants: StorefrontProductPricing[] } | null> {
+  token?: string | null,
+): Promise<StorefrontProductPricingDetail | null> {
   const cleanHandle = handle.trim();
   if (!cleanHandle) return null;
 
@@ -415,10 +428,15 @@ export async function fetchStorefrontProductPricing(
       ? { currencyCode: currencyOrOptions }
       : (currencyOrOptions ?? {});
 
-  try {
-    const response = await graphql<{
-      storefrontPricingProduct: { variants: StorefrontProductPricing[] } | null;
-    }, {
+  const request = normalizePricingQuery({ ...options, locale });
+  if (!request.currencyCode)
+    throw new Error("A buyer quote requires a currency");
+
+  const response = await graphql<
+    {
+      storefrontPricingProduct: StorefrontProductPricingDetail | null;
+    },
+    {
       locale?: string;
       handle: string;
       currencyCode?: string;
@@ -427,26 +445,29 @@ export async function fetchStorefrontProductPricing(
       channelId?: string;
       channelSlug?: string;
       quantity?: number;
-    }>({
-      query: STOREFRONT_PRICING_PRODUCT_QUERY,
-      variables: {
-        handle: cleanHandle,
-        locale: locale?.trim() || undefined,
-        currencyCode: options.currencyCode?.trim().toUpperCase() || undefined,
-        regionId: options.regionId?.trim() || undefined,
-        priceListId: options.priceListId?.trim() || undefined,
-        channelId: options.channelId?.trim() || undefined,
-        channelSlug: options.channelSlug?.trim() || undefined,
-        quantity:
-          options.quantity != null && Number.isFinite(options.quantity)
-            ? options.quantity
-            : undefined,
-      },
-      tenant: tenantSlug ?? undefined,
-    });
+    }
+  >({
+    query: STOREFRONT_PRICING_PRODUCT_QUERY,
+    variables: {
+      handle: cleanHandle,
+      locale: request.locale ?? undefined,
+      currencyCode: request.currencyCode,
+      regionId: request.regionId ?? undefined,
+      priceListId: request.priceListId ?? undefined,
+      channelId: request.channelId ?? undefined,
+      channelSlug: request.channelSlug ?? undefined,
+      quantity: request.quantity ?? undefined,
+    },
+    tenant: tenantSlug ?? undefined,
+    token: token ?? undefined,
+  });
 
-    return response.data?.storefrontPricingProduct ?? null;
-  } catch {
-    return null;
-  }
+  assertPricingGraphqlSuccess(response);
+  const pricing = response.data?.storefrontPricingProduct;
+  if (!response.data || pricing === undefined)
+    throw new Error("Pricing response is unavailable");
+  if (!pricing) return pricing;
+  // A requested quote with missing/mismatched metadata is unavailable, never raw-price inspection.
+  assertPricingQuoteResponse(pricing, request);
+  return pricing;
 }

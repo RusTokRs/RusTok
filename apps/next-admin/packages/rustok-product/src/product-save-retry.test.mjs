@@ -7,9 +7,11 @@ import { memoryJournal } from './write-test-support.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { parsePriceAmount } from './money.ts';
+import { variantDraftCore } from './variant-draft-test-support.mjs';
 import { PRODUCT_RECOVERY_UNAVAILABLE } from './write-journal.ts';
 import { ProductWriteAttempt, UNKNOWN_PRODUCT_WRITE } from './write-attempt.ts';
 
@@ -82,6 +84,12 @@ function saveHandler(send) {
     productType: 'simple',
     shippingProfileSlug: '',
     selectedCategoryId: 'category',
+    effectiveForm: {
+      categoryId: 'category',
+      attributes: [],
+      detachedAttributeIds: []
+    },
+    initialAxes: [],
     tags: [],
     status: 'ACTIVE',
     documentRevision: 7,
@@ -89,14 +97,17 @@ function saveHandler(send) {
     attributeValues: {
       material: { attributeId: 'material', kind: 'TEXT', text: 'cotton' }
     },
-    newVariantDraft: {
-      sku: 'sku',
-      barcode: '',
-      priceAmount: '1.25',
-      currencyCode: 'USD',
-      inventoryQuantity: 0,
-      inventoryPolicy: 'deny'
-    },
+    initialVariants: [
+      {
+        axisValues: [],
+        sku: 'sku',
+        barcode: '',
+        priceAmount: '1.25',
+        currencyCode: 'USD',
+        inventoryQuantity: 0,
+        inventoryPolicy: 'deny'
+      }
+    ],
     setErrorMessage: (message) => {
       if (message) state.errors.push(message);
     },
@@ -112,7 +123,11 @@ function saveHandler(send) {
       state.dirtyCleared++;
     },
     parsePriceAmount,
+    normalizeInitialCatalog: variantDraftCore.normalizeInitialCatalog,
     onSaveProduct: send,
+    onSetVariantAxes: undefined,
+    axesText: (key) => key,
+    axesRefusalKey: () => 'failed',
     onChangeStatus: undefined,
     onDeleteProduct: undefined,
     router: { push: (path) => state.paths.push(path) },
@@ -202,6 +217,11 @@ test('actual save handler admits only one create during a double click', async (
 test('only bounded nonretryable request refusals release an attempt', async () => {
   for (const code of [
     'PRODUCT_VALIDATION',
+    'PRODUCT_VARIANT_AXES_PREVIEW_REQUIRED',
+    'PRODUCT_VARIANT_AXES_STALE',
+    'PRODUCT_VARIANT_AXES_CONFLICT',
+    'PRODUCT_VARIANT_AXES_LIMIT_EXCEEDED',
+    'PRODUCT_NOT_FOUND',
     'PRODUCT_REVISION_CONFLICT',
     'DUPLICATE_HANDLE'
   ]) {
@@ -248,6 +268,7 @@ function serverAction(name, overrides = {}) {
   const calls = [];
   const context = {
     productWriteOutcome,
+    initialVariantInput: variantDraftCore.initialVariantInput,
     Error,
     getProductWriteAuthOpts: async (expected) => {
       assert.deepEqual(expected, scope);
@@ -363,7 +384,7 @@ test('invalid initial money or GraphQL Int is rejected locally before a pending 
     const { run, state, context } = saveHandler(() =>
       assert.fail('invalid scalar must not reach the action')
     );
-    Object.assign(context.newVariantDraft, patch);
+    Object.assign(context.initialVariants[0], patch);
     await run();
     assert.equal(context.writeAttempt.current.pendingOperation, null);
     assert.equal(state.dirtyCleared, 0);
@@ -470,7 +491,7 @@ test('recovered save bypasses current empty fields, category loading and invalid
   context.writeAttempt.current.restore();
   context.translations = {};
   context.isLoadingForm = true;
-  context.newVariantDraft.priceAmount = 'invalid';
+  context.initialVariants[0].priceAmount = 'invalid';
   await run();
   assert.deepEqual(calls, [retained]);
   assert.equal(state.settled.phase, 'settled');
@@ -523,3 +544,51 @@ for (const operation of ['status', 'delete']) {
     assert.equal(state.settled.phase, 'settled');
   });
 }
+
+test('axes recovery needs no current Product/form and preserves the frozen request and locale', async () => {
+  const product = randomUUID(),
+    attribute = randomUUID(),
+    option = randomUUID();
+  const scope = { tenantId: randomUUID(), actorId: randomUUID() };
+  const storage = { text: null, locked: false };
+  const request = {
+    id: product,
+    scope,
+    locale: 'ru',
+    input: {
+      axes: [
+        { attributeId: attribute, position: 0, allowedOptionIds: [option] }
+      ],
+      expectedState: 'a'.repeat(64),
+      reassignments: []
+    }
+  };
+  const writer = new ProductWriteAttempt(
+    memoryJournal(product, storage, scope)
+  );
+  let retained;
+  await writer.execute('axes', request, async (input, key) => {
+    retained = { input, key };
+    return { status: 'unknown', message: UNKNOWN_PRODUCT_WRITE };
+  });
+  const { run, context, state } = saveHandler(async () =>
+    assert.fail('must not save a current document')
+  );
+  context.writeAttempt.current = new ProductWriteAttempt(
+    memoryJournal(product, storage, scope)
+  );
+  context.writeAttempt.current.restore();
+  context.initialProduct = null;
+  context.translations = {};
+  context.activeLocale = 'en';
+  context.isLoadingForm = true;
+  const calls = [];
+  context.onSetVariantAxes = async (input, key) => {
+    calls.push({ input, key });
+    return { status: 'confirmed', value: { id: product, revision: null } };
+  };
+  await run();
+  assert.deepEqual(calls, [retained]);
+  assert.equal(state.settled.phase, 'settled');
+  assert.equal(state.dirtyCleared, 0);
+});

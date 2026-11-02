@@ -339,7 +339,12 @@ function assertSearchUiCatalogTransportContract() {
   const storefrontUi = readRepo(storefrontUiPath);
   const storefrontGraphql = readRepo(storefrontGraphqlPath);
   const nextAdmin = readRepo(nextAdminPath);
-  const nextStorefront = readRepo(nextStorefrontPath);
+  const nextStorefront = [
+    readRepo(nextStorefrontPath),
+    existsSync(repoPath("apps/next-frontend/packages/search/src/api.ts"))
+      ? readRepo("apps/next-frontend/packages/search/src/api.ts")
+      : "",
+  ].join("\n");
   const nextProduct = readRepo(nextProductPath);
   const nextStorefrontProduct = [
     readRepo(nextStorefrontProductPath),

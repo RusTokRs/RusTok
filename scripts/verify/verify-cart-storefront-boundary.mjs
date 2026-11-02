@@ -31,12 +31,14 @@ function assertExists(relativePath, description) {
 }
 
 function assertContains(text, pattern, description) {
-  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  const found =
+    typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
   if (!found) fail(description);
 }
 
 function assertNotContains(text, pattern, description) {
-  const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
+  const found =
+    typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
   if (found) fail(description);
 }
 
@@ -46,10 +48,14 @@ const files = {
   ui: "crates/modules/rustok-cart/storefront/src/ui/leptos.rs",
   transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
   legacyApi: "crates/modules/rustok-cart/storefront/src/api.rs",
-  graphqlAdapter: "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
-  graphqlSafety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
-  graphqlEvidence: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
-  nativeServerAdapter: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
+  graphqlAdapter:
+    "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+  graphqlSafety:
+    "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  graphqlEvidence:
+    "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+  nativeServerAdapter:
+    "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
   model: "crates/modules/rustok-cart/storefront/src/model.rs",
   implementationPlan: "crates/modules/rustok-cart/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -58,10 +64,15 @@ const files = {
 
 for (const [name, filePath] of Object.entries(files)) {
   if (name === "legacyApi") continue;
-  assertExists(filePath, `${filePath}: expected cart storefront FFA boundary file`);
+  assertExists(
+    filePath,
+    `${filePath}: expected cart storefront FFA boundary file`,
+  );
 }
 if (existsSync(repoPath(files.legacyApi))) {
-  fail(`${files.legacyApi}: cart storefront legacy api.rs must stay removed; transport adapters own raw operations`);
+  fail(
+    `${files.legacyApi}: cart storefront legacy api.rs must stay removed; transport adapters own raw operations`,
+  );
 }
 
 const lib = readRepo(files.lib);
@@ -72,53 +83,170 @@ const graphqlAdapter = readRepo(files.graphqlAdapter);
 const graphqlSafety = readRepo(files.graphqlSafety);
 const graphqlEvidence = JSON.parse(readRepo(files.graphqlEvidence));
 const nativeServerAdapter = readRepo(files.nativeServerAdapter);
+const nativeHandlers = readRepo(
+  "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+);
+const nativeMapping = readRepo(
+  "crates/modules/rustok-cart/storefront/src/transport/native_server_mapping.rs",
+);
 const model = readRepo(files.model);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
 
-assertNotContains(lib, "mod api;", `${files.lib}: crate root must not wire legacy api adapter`);
-assertContains(lib, "pub mod core;", `${files.lib}: crate root must expose core module`);
-assertContains(lib, "pub mod model;", `${files.lib}: crate root must expose cart-owned storefront DTOs`);
-assertContains(lib, "pub mod transport;", `${files.lib}: crate root must expose cart-owned transport facade`);
-assertContains(lib, "mod transport;", `${files.lib}: crate root must wire transport facade`);
-assertContains(lib, "mod ui;", `${files.lib}: crate root must wire UI adapters`);
+assertNotContains(
+  lib,
+  "mod api;",
+  `${files.lib}: crate root must not wire legacy api adapter`,
+);
+assertContains(
+  lib,
+  "pub mod core;",
+  `${files.lib}: crate root must expose core module`,
+);
+assertContains(
+  lib,
+  "pub mod model;",
+  `${files.lib}: crate root must expose cart-owned storefront DTOs`,
+);
+assertContains(
+  lib,
+  "pub mod transport;",
+  `${files.lib}: crate root must expose cart-owned transport facade`,
+);
+assertContains(
+  lib,
+  "mod transport;",
+  `${files.lib}: crate root must wire transport facade`,
+);
+assertContains(
+  lib,
+  "mod ui;",
+  `${files.lib}: crate root must wire UI adapters`,
+);
 
-for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
-  assertNotContains(core, marker, `${files.coreDir}: core must stay Leptos/server-function free (${marker})`);
+for (const marker of [
+  "leptos::",
+  "leptos_",
+  "#[component]",
+  "#[server",
+  "LocalResource",
+  "WriteSignal",
+  "web_sys::",
+]) {
+  assertNotContains(
+    core,
+    marker,
+    `${files.coreDir}: core must stay Leptos/server-function free (${marker})`,
+  );
 }
-for (const marker of ["CartFetchRequest", "CartLineItemDecrementRequest", "CartLineItemMutationRequest", "parse_cart_id", "parse_line_item_id"]) {
-  assertContains(core, marker, `${files.coreDir}: expected core-owned cart helper ${marker}`);
+for (const marker of [
+  "CartFetchRequest",
+  "CartLineItemDecrementRequest",
+  "CartLineItemMutationRequest",
+  "parse_cart_id",
+  "parse_line_item_id",
+]) {
+  assertContains(
+    core,
+    marker,
+    `${files.coreDir}: expected core-owned cart helper ${marker}`,
+  );
 }
 
-assertContains(ui, "use crate::core", `${files.ui}: Leptos adapter must consume core layer`);
-assertContains(ui, "use crate::transport", `${files.ui}: Leptos adapter must consume transport facade`);
-for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "CartService"]) {
-  assertNotContains(ui, marker, `${files.ui}: UI adapter must not call raw transport or services (${marker})`);
+assertContains(
+  ui,
+  "use crate::core",
+  `${files.ui}: Leptos adapter must consume core layer`,
+);
+assertContains(
+  ui,
+  "use crate::transport",
+  `${files.ui}: Leptos adapter must consume transport facade`,
+);
+for (const marker of [
+  "crate::api",
+  /(^|[^A-Za-z0-9_])api::/,
+  "#[server",
+  "CartService",
+]) {
+  assertNotContains(
+    ui,
+    marker,
+    `${files.ui}: UI adapter must not call raw transport or services (${marker})`,
+  );
 }
 
-for (const marker of ["fetch_cart", "decrement_line_item", "remove_line_item"]) {
-  assertContains(transport, marker, `${files.transport}: transport facade must expose ${marker}`);
+for (const marker of [
+  "fetch_cart",
+  "decrement_line_item",
+  "remove_line_item",
+]) {
+  assertContains(
+    transport,
+    marker,
+    `${files.transport}: transport facade must expose ${marker}`,
+  );
 }
-assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport must wire GraphQL adapter`);
-assertContains(transport, "mod graphql_error_safety;", `${files.transport}: transport must wire GraphQL error safety`);
-assertContains(transport, "mod native_server_adapter;", `${files.transport}: transport must wire native server adapter`);
-assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not import legacy api module`);
+assertContains(
+  transport,
+  "mod graphql_adapter;",
+  `${files.transport}: transport must wire GraphQL adapter`,
+);
+assertContains(
+  transport,
+  "mod graphql_error_safety;",
+  `${files.transport}: transport must wire GraphQL error safety`,
+);
+assertContains(
+  transport,
+  "mod native_server_adapter;",
+  `${files.transport}: transport must wire native server adapter`,
+);
+assertNotContains(
+  transport,
+  "crate::api",
+  `${files.transport}: transport facade must not import legacy api module`,
+);
 for (const marker of [
   "GraphqlCallContext::fetch_cart(&request)",
   "GraphqlCallContext::decrement_line_item(&request)",
   "GraphqlCallContext::remove_line_item(&request)",
   ".map_err(|error| context.map_error(error))",
 ]) {
-  assertContains(transport, marker, `${files.transport}: expected correlation-safe GraphQL consumer marker ${marker}`);
+  assertContains(
+    transport,
+    marker,
+    `${files.transport}: expected correlation-safe GraphQL consumer marker ${marker}`,
+  );
 }
-assertNotContains(transport, "move || graphql_adapter::", `${files.transport}: raw GraphQL closures must not bypass error safety`);
+assertNotContains(
+  transport,
+  "move || graphql_adapter::",
+  `${files.transport}: raw GraphQL closures must not bypass error safety`,
+);
 
-for (const marker of ["request_graphql_cart", "update_storefront_cart_line_item_quantity", "remove_storefront_cart_line_item"]) {
-  assertContains(graphqlAdapter, marker, `${files.graphqlAdapter}: GraphQL adapter must keep cart operation ${marker}`);
+for (const marker of [
+  "request_graphql_cart",
+  "update_storefront_cart_line_item_quantity",
+  "remove_storefront_cart_line_item",
+]) {
+  assertContains(
+    graphqlAdapter,
+    marker,
+    `${files.graphqlAdapter}: GraphQL adapter must keep cart operation ${marker}`,
+  );
 }
-assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: GraphQL adapter must keep GraphQL fallback request contract`);
-assertContains(graphqlAdapter, "availableShippingOptions { id name currencyCode amount providerId active }", `${files.graphqlAdapter}: cart owner read query must expose full shipping option summaries`);
+assertContains(
+  graphqlAdapter,
+  "GraphqlRequest",
+  `${files.graphqlAdapter}: GraphQL adapter must keep GraphQL fallback request contract`,
+);
+assertContains(
+  graphqlAdapter,
+  "availableShippingOptions { id name currencyCode amount providerId active }",
+  `${files.graphqlAdapter}: cart owner read query must expose full shipping option summaries`,
+);
 for (const marker of [
   "GraphqlHttpError::from_str",
   "Cart storefront is temporarily unavailable",
@@ -127,29 +255,107 @@ for (const marker of [
   "correlation_id = %self.correlation_id",
   "ApiError::Graphql(public_message.to_string())",
 ]) {
-  assertContains(graphqlSafety, marker, `${files.graphqlSafety}: expected GraphQL error-safety marker ${marker}`);
+  assertContains(
+    graphqlSafety,
+    marker,
+    `${files.graphqlSafety}: expected GraphQL error-safety marker ${marker}`,
+  );
 }
-if (graphqlEvidence.status !== "cart_storefront_graphql_error_safety_source_unvalidated") {
-  fail(`${files.graphqlEvidence}: GraphQL error-safety evidence must remain source-unvalidated`);
+if (
+  graphqlEvidence.status !==
+  "cart_storefront_graphql_error_safety_source_unvalidated"
+) {
+  fail(
+    `${files.graphqlEvidence}: GraphQL error-safety evidence must remain source-unvalidated`,
+  );
 }
 
-assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
-assertContains(nativeServerAdapter, "HostRuntimeContext", `${files.nativeServerAdapter}: native server adapter must use host runtime context`);
-assertContains(nativeServerAdapter, "db_clone()", `${files.nativeServerAdapter}: native server adapter must use host runtime DB clone`);
-assertContains(nativeServerAdapter, "shared_get::<rustok_outbox::TransactionalEventBus>", `${files.nativeServerAdapter}: native server adapter must resolve shared transactional event bus`);
-assertNotContains(nativeServerAdapter, "sellerScope } adjustments", `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`);
-assertNotContains(nativeServerAdapter, "sellerScope lineItemIds", `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`);
-assertContains(nativeServerAdapter, "StorefrontCartShippingOption", `${files.nativeServerAdapter}: cart native adapter must map full shipping option DTOs`);
-assertContains(nativeServerAdapter, "reprice_storefront_cart_line_items", `${files.nativeServerAdapter}: cart owner read path must preserve storefront repricing before cart DTO mapping`);
-assertNotContains(model, "seller_scope", `${files.model}: cart storefront model DTOs must not expose legacy seller_scope`);
-assertContains(model, "pub struct StorefrontCartShippingOption", `${files.model}: cart storefront DTOs must own shipping option summaries`);
-assertContains(model, "pub available_shipping_options: Vec<StorefrontCartShippingOption>", `${files.model}: cart delivery groups must expose full shipping option summaries`);
+assertContains(
+  nativeServerAdapter,
+  "#[server",
+  `${files.nativeServerAdapter}: native server adapter must keep server functions`,
+);
+assertContains(
+  nativeHandlers,
+  "HostRuntimeContext",
+  `${files.nativeServerAdapter}: native server adapter must use host runtime context`,
+);
+assertContains(
+  nativeHandlers,
+  "db_clone()",
+  `${files.nativeServerAdapter}: native server adapter must use host runtime DB clone`,
+);
+assertContains(
+  nativeHandlers,
+  "shared_get::<rustok_outbox::TransactionalEventBus>",
+  `${files.nativeServerAdapter}: native server adapter must resolve shared transactional event bus`,
+);
+assertNotContains(
+  nativeServerAdapter,
+  "sellerScope } adjustments",
+  `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`,
+);
+assertNotContains(
+  nativeServerAdapter,
+  "sellerScope lineItemIds",
+  `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`,
+);
+assertContains(
+  nativeMapping,
+  "StorefrontCartShippingOption",
+  `${files.nativeServerAdapter}: cart native adapter must map full shipping option DTOs`,
+);
+assertContains(
+  nativeHandlers,
+  "read_storefront_cart(",
+  `${files.nativeServerAdapter}: restore must use the guarded read-only owner port`,
+);
+assertContains(
+  nativeServerAdapter,
+  "client = leptos_auth::AuthorizedBrowserClient",
+  `${files.nativeServerAdapter}: common native contract must forward canonical auth metadata`,
+);
+assertNotContains(
+  model,
+  "seller_scope",
+  `${files.model}: cart storefront model DTOs must not expose legacy seller_scope`,
+);
+assertContains(
+  model,
+  "pub struct StorefrontCartShippingOption",
+  `${files.model}: cart storefront DTOs must own shipping option summaries`,
+);
+assertContains(
+  model,
+  "pub available_shipping_options: Vec<StorefrontCartShippingOption>",
+  `${files.model}: cart delivery groups must expose full shipping option summaries`,
+);
 
-assertContains(implementationPlan, "verify-cart-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention cart storefront guardrail`);
-assertContains(registry, "verify-cart-storefront-boundary.mjs", `${files.registry}: central readiness board must mention cart storefront guardrail`);
-assertContains(packageJson, "verify:cart:storefront-boundary", `${files.packageJson}: package scripts must expose cart storefront boundary verification`);
-assertContains(packageJson, "test:verify:cart:storefront-boundary", `${files.packageJson}: package scripts must expose cart storefront fixture tests`);
-assertContains(packageJson, "npm run test:verify:cart:storefront-boundary", `${files.packageJson}: aggregate FFA fixture tests must include cart storefront fixtures`);
+assertContains(
+  implementationPlan,
+  "verify-cart-storefront-boundary.mjs",
+  `${files.implementationPlan}: local plan must mention cart storefront guardrail`,
+);
+assertContains(
+  registry,
+  "verify-cart-storefront-boundary.mjs",
+  `${files.registry}: central readiness board must mention cart storefront guardrail`,
+);
+assertContains(
+  packageJson,
+  "verify:cart:storefront-boundary",
+  `${files.packageJson}: package scripts must expose cart storefront boundary verification`,
+);
+assertContains(
+  packageJson,
+  "test:verify:cart:storefront-boundary",
+  `${files.packageJson}: package scripts must expose cart storefront fixture tests`,
+);
+assertContains(
+  packageJson,
+  "npm run test:verify:cart:storefront-boundary",
+  `${files.packageJson}: aggregate FFA fixture tests must include cart storefront fixtures`,
+);
 
 if (failures.length > 0) {
   console.error("cart storefront boundary verification failed:");
