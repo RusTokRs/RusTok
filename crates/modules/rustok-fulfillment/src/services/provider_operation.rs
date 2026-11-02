@@ -517,10 +517,10 @@ impl FulfillmentProviderOperationJournal {
                 provider_reference.clone()
             };
             let reference = preserve_provider_reference(&current, reported)?;
-            if let (Some(saved), Some(reported)) = (&current.provider_result, &provider_result) {
-                if saved != reported {
-                    return Err(provider_outcome_conflict());
-                }
+            if let (Some(saved), Some(reported)) = (&current.provider_result, &provider_result)
+                && saved != reported
+            {
+                return Err(provider_outcome_conflict());
             }
             if !matches!(
                 current.status.as_str(),
@@ -541,21 +541,21 @@ impl FulfillmentProviderOperationJournal {
             };
             let reference_value: sea_orm::sea_query::SimpleExpr =
                 if current.provider_reference.is_some() {
-                    Expr::col(provider_operation::Column::ProviderReference).into()
+                    Expr::col(provider_operation::Column::ProviderReference)
                 } else {
-                    Expr::value(reference).into()
+                    Expr::value(reference)
                 };
             let result_value: sea_orm::sea_query::SimpleExpr =
                 if current.provider_result.is_some() || provider_result.is_none() {
-                    Expr::col(provider_operation::Column::ProviderResult).into()
+                    Expr::col(provider_operation::Column::ProviderResult)
                 } else {
-                    Expr::value(provider_result.clone()).into()
+                    Expr::value(provider_result.clone())
                 };
             let completed: sea_orm::sea_query::SimpleExpr =
                 if current.provider_completed_at.is_some() {
-                    Expr::col(provider_operation::Column::ProviderCompletedAt).into()
+                    Expr::col(provider_operation::Column::ProviderCompletedAt)
                 } else {
-                    Expr::current_timestamp().into()
+                    Expr::current_timestamp()
                 };
             let update = provider_operation::Entity::update_many()
                 .col_expr(
@@ -674,9 +674,9 @@ impl FulfillmentProviderOperationJournal {
         let now = Utc::now();
         let provider_completed_at: sea_orm::sea_query::SimpleExpr =
             if current.provider_completed_at.is_none() {
-                Expr::value(Some(now)).into()
+                Expr::value(Some(now))
             } else {
-                Expr::col(provider_operation::Column::ProviderCompletedAt).into()
+                Expr::col(provider_operation::Column::ProviderCompletedAt)
             };
         let update = provider_operation::Entity::update_many()
             .col_expr(
@@ -813,10 +813,10 @@ fn preserve_provider_reference(
     current: &provider_operation::Model,
     reported: Option<String>,
 ) -> FulfillmentResult<Option<String>> {
-    if let (Some(saved), Some(reported)) = (&current.provider_reference, &reported) {
-        if saved != reported {
-            return Err(provider_outcome_conflict());
-        }
+    if let (Some(saved), Some(reported)) = (&current.provider_reference, &reported)
+        && saved != reported
+    {
+        return Err(provider_outcome_conflict());
     }
     Ok(reported.or_else(|| current.provider_reference.clone()))
 }

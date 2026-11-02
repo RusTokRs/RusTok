@@ -11,8 +11,6 @@ use uuid::Uuid;
 
 use crate::reservation_events::{ReservationEventPlan, quantity_tenant};
 use rustok_api::PortContext;
-use rustok_core::events::ValidateEvent;
-use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use rustok_commerce_foundation::dto::AdjustInventoryInput;
@@ -133,6 +131,10 @@ impl InventoryService {
             event_bus,
             low_stock_threshold: 5,
         }
+    }
+
+    pub fn event_bus(&self) -> &TransactionalEventBus {
+        &self.event_bus
     }
 
     pub fn with_threshold(mut self, threshold: i32) -> Self {

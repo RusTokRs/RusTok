@@ -226,7 +226,7 @@ pub(super) fn validate_row(
     currency: &str,
     selected_list: Option<&price_list::Model>,
 ) -> Result<(), ResolutionError> {
-    let stored_currency = super::normalize_currency_code(&price.currency_code)
+    let stored_currency = rustok_core::money::normalize_currency_code(&price.currency_code)
         .map_err(|_| invalid_data("Stored price currency is invalid"))?;
     if stored_currency != price.currency_code || price.currency_code != currency {
         return Err(invalid_data(

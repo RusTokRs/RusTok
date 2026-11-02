@@ -392,10 +392,9 @@ fn validate_allocation(
             .metadata
             .get(key)
             .filter(|value| !value.is_null())
+            && value.as_str().and_then(|value| Uuid::parse_str(value).ok()) != Some(expected)
         {
-            if value.as_str().and_then(|value| Uuid::parse_str(value).ok()) != Some(expected) {
-                return Err(identity_conflict());
-            }
+            return Err(identity_conflict());
         }
     }
     Ok(())

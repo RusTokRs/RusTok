@@ -1428,7 +1428,7 @@ impl FulfillmentService {
         receipt: rustok_outbox::idempotency::Lease,
     ) -> FulfillmentResult<FulfillmentResponse> {
         let started = std::time::Instant::now();
-        let tenant_id = stock_tenant(&context)?;
+        let tenant_id = stock::stock_tenant(&context)?;
         self.deliver_fulfillment_internal(
             tenant_id,
             fulfillment_id,
@@ -1819,7 +1819,7 @@ impl FulfillmentService {
         operation_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
         let started = std::time::Instant::now();
-        let tenant_id = stock_tenant(&context)?;
+        let tenant_id = stock::stock_tenant(&context)?;
         self.validate_provider_stock_context(&context, fulfillment_id, operation_id, "reship")
             .await?;
 
@@ -2681,10 +2681,10 @@ async fn validate_journal_owned_provider_metadata(
             to: PROVIDER_OPERATION_COMMITTED.to_string(),
         });
     }
-    if journaled.status != PROVIDER_OPERATION_COMMITTED {
-        if let Some(input) = local_input {
-            stock::validate_journal_local_input(&journaled, input, owner_status)?;
-        }
+    if journaled.status != PROVIDER_OPERATION_COMMITTED
+        && let Some(input) = local_input
+    {
+        stock::validate_journal_local_input(&journaled, input, owner_status)?;
     }
     let Some(journaled_result) = journaled.provider_result else {
         return Err(FulfillmentError::ProviderResultInvalid(

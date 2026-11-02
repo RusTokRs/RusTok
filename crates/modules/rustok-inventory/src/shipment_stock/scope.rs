@@ -34,10 +34,10 @@ pub(super) fn validate_batch(batch: &ShipmentStockBatch) -> Result<(), PortError
                 "shipment stock identities or progress are invalid",
             ));
         }
-        if let Some(previous) = variants.insert(line.order_line_item_id, line.variant_id) {
-            if previous != line.variant_id {
-                return Err(history_unverified());
-            }
+        if let Some(previous) = variants.insert(line.order_line_item_id, line.variant_id)
+            && previous != line.variant_id
+        {
+            return Err(history_unverified());
         }
     }
     Ok(())
@@ -322,10 +322,9 @@ fn validate_allocation(
             .metadata
             .get(key)
             .filter(|value| !value.is_null())
+            && value.as_str().and_then(|value| Uuid::parse_str(value).ok()) != Some(expected)
         {
-            if value.as_str().and_then(|value| Uuid::parse_str(value).ok()) != Some(expected) {
-                return Err(history_unverified());
-            }
+            return Err(history_unverified());
         }
     }
     Ok(())

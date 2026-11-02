@@ -309,16 +309,16 @@ fn plan(snapshot: &AxisSnapshot, input: &SetVariantAxesInput) -> CommerceResult<
         .collect::<BTreeMap<_, _>>();
     let mut source = BTreeMap::<Uuid, Vec<VariantAxisValueInput>>::new();
     for row in &snapshot.assignments {
-        if !row.detached {
-            if let Some(option_id) = row.option_id {
-                source
-                    .entry(row.variant_id)
-                    .or_default()
-                    .push(VariantAxisValueInput {
-                        attribute_id: row.attribute_id,
-                        option_id,
-                    });
-            }
+        if !row.detached
+            && let Some(option_id) = row.option_id
+        {
+            source
+                .entry(row.variant_id)
+                .or_default()
+                .push(VariantAxisValueInput {
+                    attribute_id: row.attribute_id,
+                    option_id,
+                });
         }
     }
     let membership = snapshot
@@ -417,13 +417,13 @@ fn plan(snapshot: &AxisSnapshot, input: &SetVariantAxesInput) -> CommerceResult<
             }
         }
         let identity = variant_combination_identity(&proposed_values);
-        if valid && !target_axes.is_empty() {
-            if let Some(identity) = &identity {
-                identities
-                    .entry(identity.clone())
-                    .or_default()
-                    .push(variant.id);
-            }
+        if valid && !target_axes.is_empty()
+            && let Some(identity) = &identity
+        {
+            identities
+                .entry(identity.clone())
+                .or_default()
+                .push(variant.id);
         }
         let mut existing_by_attribute = BTreeMap::<Uuid, Vec<&VariantAxisValueInput>>::new();
         for value in &existing {
@@ -778,7 +778,7 @@ async fn persist_configuration(
                 .iter()
                 .filter(|value| value.axis_id == axis_id)
                 .map(|value| value.position),
-            proposed_positions.into_iter(),
+            proposed_positions,
             retained_values.len(),
         )?;
         for (value, position) in retained_values.into_iter().zip(staged) {

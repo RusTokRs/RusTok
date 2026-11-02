@@ -205,7 +205,7 @@ async fn advance_in(
     // a stale snapshot; an ignored gate effect cannot activate/copy the page.
     if txn.get_database_backend() == DbBackend::Sqlite {
         let same_count: sea_orm::sea_query::SimpleExpr =
-            Expr::col(baseline::Column::RecordCount).into();
+            Expr::col(baseline::Column::RecordCount);
         let locked = baseline::Entity::update_many()
             .col_expr(baseline::Column::RecordCount, same_count)
             .filter(baseline::Column::TenantId.eq(tenant))

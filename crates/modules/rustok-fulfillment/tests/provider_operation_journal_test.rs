@@ -11,6 +11,7 @@ use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, EntityTrait, Set, St
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+mod shipment_support;
 mod support;
 
 async fn ensure_provider_journal_guards(db: &sea_orm::DatabaseConnection) {
@@ -1263,7 +1264,7 @@ async fn non_provider_delivery_cannot_commit_provider_operation_from_metadata_pa
 
     service
         .reopen_fulfillment(
-            support::shipment_context(tenant_id),
+            shipment_support::shipment_context(tenant_id),
             fulfillment_id,
             ReopenFulfillmentInput {
                 items: None,

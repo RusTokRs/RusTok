@@ -1671,7 +1671,7 @@ impl PricingService {
         crate::ports::read_with_deadline(&budget_context, async {
             context.require_policy(rustok_api::PortCallPolicy::read())?;
             crate::ports::parse_port_tenant_id(&context, "list_admin_product_pricing")?;
-            let page = page.max(1);
+            let page = Ord::max(page, 1);
             let per_page = per_page.clamp(1, 100);
             let catalog = self.product_catalog_read_runtime.read_port();
             let products = catalog
@@ -1681,7 +1681,7 @@ impl PricingService {
                         locale: Some(context.locale.clone()),
                         fallback_locale: fallback_locale.map(str::to_owned),
                         search: search.map(str::to_owned),
-                        status,
+                        status: status.map(map_foundation_product_status),
                         vendor: None,
                         page,
                         per_page,
@@ -2228,26 +2228,6 @@ fn channel_scope_matches(
     }
 
     true
-}
-
-fn channel_specificity(
-    scoped_channel_id: Option<Uuid>,
-    scoped_channel_slug: Option<&str>,
-    requested_channel_id: Option<Uuid>,
-    requested_channel_slug: Option<&str>,
-) -> i32 {
-    let scoped_channel_slug = normalize_channel_slug(scoped_channel_slug);
-    let requested_channel_slug = normalize_channel_slug(requested_channel_slug);
-
-    if scoped_channel_id.is_some() && scoped_channel_id == requested_channel_id {
-        0
-    } else if scoped_channel_slug.is_some()
-        && scoped_channel_slug.as_deref() == requested_channel_slug.as_deref()
-    {
-        1
-    } else {
-        2
-    }
 }
 
 async fn resolve_requested_price_list_id(
@@ -2825,6 +2805,16 @@ fn map_product_status(status: rustok_product::entities::product::ProductStatus) 
         rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
         rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,
         rustok_product::entities::product::ProductStatus::Archived => ProductStatus::Archived,
+    }
+}
+
+fn map_foundation_product_status(
+    status: ProductStatus,
+) -> rustok_product::entities::product::ProductStatus {
+    match status {
+        ProductStatus::Draft => rustok_product::entities::product::ProductStatus::Draft,
+        ProductStatus::Active => rustok_product::entities::product::ProductStatus::Active,
+        ProductStatus::Archived => rustok_product::entities::product::ProductStatus::Archived,
     }
 }
 

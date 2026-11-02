@@ -69,7 +69,7 @@ pub struct ShippingOptionTranslationInput {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct ListFulfillmentsInput {
     pub page: u64,
     pub per_page: u64,

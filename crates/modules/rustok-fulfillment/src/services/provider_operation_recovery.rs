@@ -250,15 +250,15 @@ impl FulfillmentProviderOperationRecovery {
         })?;
 
         let result_value: sea_orm::sea_query::SimpleExpr = if existing.provider_result.is_some() {
-            Expr::col(provider_operation::Column::ProviderResult).into()
+            Expr::col(provider_operation::Column::ProviderResult)
         } else {
-            Expr::value(canonical_result).into()
+            Expr::value(canonical_result)
         };
         let completed: sea_orm::sea_query::SimpleExpr = if existing.provider_completed_at.is_some()
         {
-            Expr::col(provider_operation::Column::ProviderCompletedAt).into()
+            Expr::col(provider_operation::Column::ProviderCompletedAt)
         } else {
-            Expr::current_timestamp().into()
+            Expr::current_timestamp()
         };
         let result = provider_operation::Entity::update_many()
             .col_expr(

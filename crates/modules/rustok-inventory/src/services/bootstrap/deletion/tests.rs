@@ -140,7 +140,7 @@ fn missing_foreign_or_nil_level_bindings_refuse() {
         ),
     ] {
         assert_rejected(
-            validate_levels(&[candidate.clone()], &items, &locations),
+            validate_levels(std::slice::from_ref(&candidate), &items, &locations),
             CatalogDeletionBlocker::StateUnverified,
         );
     }
