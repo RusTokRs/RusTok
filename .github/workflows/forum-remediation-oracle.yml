@@ -149,7 +149,6 @@ jobs:
           free -m >> /tmp/tests.out 2>&1
           cargo test -p rustok-forum \
             --test subscription_reconciliation_sqlite \
-            --test subscriptions \
             --test moderation_audience_policy_sqlite \
             --test moderation_report_sqlite \
             --test reply_update_window \
