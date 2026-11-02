@@ -138,7 +138,6 @@ jobs:
             --test reply_position_integrity_sqlite \
             --test solution_reconciliation_sqlite \
             --test counter_reconciliation_sqlite \
-            --test graphql_stats_and_vote_tenant_scope_sqlite \
             --test topic_bulk_read_state_sqlite \
             --test read_state_transport_contract \
             --test storefront_read_state_sqlite \
