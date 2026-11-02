@@ -36,9 +36,12 @@ const files = commerceDomainModules.flatMap((module) => {
   'crates/modules/rustok-commerce/src/storefront_checkout_pricing.rs',
   'crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs',
   'crates/modules/rustok-commerce/src/controllers/store/mod.rs',
+  'crates/modules/rustok-commerce/src/storefront_cart_runtime.rs',
   'crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs',
   'crates/modules/rustok-cart/src/services/cart.rs',
+  'crates/modules/rustok-cart/src/services/cart/pricing.rs',
   'crates/modules/rustok-cart/src/services/cart/helpers.rs',
+  'crates/modules/rustok-cart/src/owner_ports.rs',
   'crates/modules/rustok-cart/src/error.rs',
 ]);
 

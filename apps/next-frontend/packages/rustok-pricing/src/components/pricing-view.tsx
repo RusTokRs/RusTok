@@ -105,14 +105,9 @@ export function PricingView({
   const error = visiblePricingValue(failure, scope, readKey);
 
   const pricingMessages = useTranslations("Pricing");
-  const isRu = locale === "ru";
-  const badge = isRu ? "Ценообразование" : "Pricing";
-  const title = isRu
-    ? "Публичный атлас цен RusToK"
-    : "Public pricing atlas from the pricing module";
-  const subtitle = isRu
-    ? "Этот раздел витрины отображает видимость цен, валютное покрытие и распродажи напрямую через модуль pricing."
-    : "This storefront route reads pricing visibility, currency coverage and sale markers through the pricing-owned package.";
+  const badge = pricingMessages("badge");
+  const title = pricingMessages("title");
+  const subtitle = pricingMessages("subtitle");
 
   const handleContextChange = (updated: Partial<PricingResolutionContext>) => {
     setSelection((prev) => {
@@ -168,9 +163,7 @@ export function PricingView({
             key: readKey,
             value:
               err?.message ??
-              (isRu
-                ? "Не удалось загрузить данные ценообразования"
-                : "Failed to load pricing data"),
+              pricingMessages("failedToLoad"),
           });
         }
       })
@@ -190,7 +183,7 @@ export function PricingView({
     locale,
     token,
     tenantSlug,
-    isRu,
+    pricingMessages,
     readKey,
     discoveryKey,
     scope,
@@ -252,16 +245,14 @@ export function PricingView({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-card-foreground">
-                  {isRu
-                    ? "Детализация выбранного товара"
-                    : "Selected Product Detail"}
+                  {pricingMessages("selectedProductDetail")}
                 </h2>
                 <button
                   type="button"
                   onClick={() => handleProductSelection(null)}
                   className="text-xs font-medium text-primary hover:underline"
                 >
-                  {isRu ? "✕ Сбросить выбор" : "✕ Clear selection"}
+                  {pricingMessages("clearSelection")}
                 </button>
               </div>
               <PricingProductDetailView
@@ -274,18 +265,16 @@ export function PricingView({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-card-foreground">
-                {isRu ? "Каталог товаров с ценами" : "Product Pricing Catalog"}
+                {pricingMessages("productPricingCatalog")}
               </h2>
               <span className="text-xs text-muted-foreground">
-                {isRu
-                  ? `Всего товаров: ${data.products.total}`
-                  : `Total products: ${data.products.total}`}
+                {pricingMessages("totalProducts", { total: data.products.total })}
               </span>
             </div>
 
             {data.products.items.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
-                {isRu ? "Товары не найдены" : "No products found"}
+                {pricingMessages("noProductsFound")}
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

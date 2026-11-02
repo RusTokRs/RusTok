@@ -353,6 +353,15 @@ Product-pricingUnpriced = Для выбранных условий цена не
 Pricing-currentChannel = Текущий канал
 Pricing-resetContext = Сбросить условия цены
 Pricing-invalidRequest = Условия расчёта цены в ссылке некорректны. Сбросьте их перед запросом цен.
+Pricing-badge = Ценообразование
+Pricing-title = Публичный атлас цен RusToK
+Pricing-subtitle = Этот раздел витрины отображает видимость цен, валютное покрытие и распродажи напрямую через модуль pricing.
+Pricing-selectedProductDetail = Детализация выбранного товара
+Pricing-clearSelection = ✕ Сбросить выбор
+Pricing-productPricingCatalog = Каталог товаров с ценами
+Pricing-totalProducts = Всего товаров: {  }
+Pricing-noProductsFound = Товары не найдены
+Pricing-failedToLoad = Не удалось загрузить данные ценообразования
 
 Product-buyerProjectionError = Каталог содержит несогласованный или слишком большой набор SKU. Обратитесь в магазин для исправления товара.
 Product-buyerRequestError = Ссылка выбора или запрос некорректны. Сбросьте выбор перед продолжением.

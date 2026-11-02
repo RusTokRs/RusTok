@@ -36,7 +36,7 @@ function change(root, name, before, after) {
   const file = path.join(root, name);
   const source = fs.readFileSync(file, "utf8");
   assert.ok(source.includes(before), `mutation marker exists: ${before}`);
-  fs.writeFileSync(file, source.replace(before, after));
+  fs.writeFileSync(file, source.replaceAll(before, after));
 }
 
 function refused(root) {

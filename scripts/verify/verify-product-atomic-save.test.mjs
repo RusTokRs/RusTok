@@ -146,8 +146,8 @@ for (const [name, key, before, after, diagnostic] of [
   [
     'invalid inventory sends the old parsed number',
     'routedEditor',
-    'if !inventory_quantity_valid.get_untracked() {',
-    'if false {',
+    'let save_variant = move |_| {\n        if is_busy.get_untracked() || product_write_blocked() || !is_editing {\n            return;\n        }\n        if !inventory_quantity_valid.get_untracked() {',
+    'let save_variant = move |_| {\n        if is_busy.get_untracked() || product_write_blocked() || !is_editing {\n            return;\n        }\n        if false {',
     /invalid inventory input/
   ],
   [

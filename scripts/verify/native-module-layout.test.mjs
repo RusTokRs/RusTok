@@ -87,7 +87,10 @@ function writeNextSurface(ctx, side, packageName, routeSegment) {
 
 test("a minimal native module omits unused responsibility directories", () => {
   fixture((ctx) => {
-    assert.equal(resolveNativeModule(ctx.root, "sample"), ctx.path(""));
+    assert.equal(
+      resolveNativeModule(ctx.root, "sample").replaceAll("\\", "/"),
+      ctx.path("").replaceAll("\\", "/")
+    );
     assert.deepEqual(lint(ctx), []);
   });
 });
@@ -363,12 +366,20 @@ test("Rust comments and string literals cannot fake dependencies or module imple
   });
 });
 
-test("symlinks are rejected instead of followed through native source trees", () => {
+test("symlinks are rejected instead of followed through native source trees", (t) => {
   fixture((ctx) => {
     ctx.write("src/domain/mod.rs", "pub struct Domain;\n");
     const target = join(ctx.root, "outside.rs");
     ctx.writeRoot("outside.rs", "pub struct Outside;\n");
-    symlinkSync(target, join(ctx.root, ctx.path("src/domain/outside.rs")));
+    try {
+      symlinkSync(target, join(ctx.root, ctx.path("src/domain/outside.rs")));
+    } catch (err) {
+      if (err.code === "EPERM") {
+        t.skip("symlinks require elevated privileges on Windows");
+        return;
+      }
+      throw err;
+    }
     assert.match(lint(ctx).join("\n"), /symlinks are forbidden/);
   });
 });
@@ -502,11 +513,19 @@ test("service code cannot depend on migration tooling", () => {
 });
 
 
-test("native module paths cannot traverse a symlinked ancestor directory", () => {
+test("native module paths cannot traverse a symlinked ancestor directory", (t) => {
   fixture((ctx) => {
     const modules = join(ctx.root, "crates/modules");
     rmSync(modules, { recursive: true, force: true });
-    symlinkSync(join(ctx.root, "outside-modules"), modules);
+    try {
+      symlinkSync(join(ctx.root, "outside-modules"), modules);
+    } catch (err) {
+      if (err.code === "EPERM") {
+        t.skip("symlinks require elevated privileges on Windows");
+        return;
+      }
+      throw err;
+    }
     assert.match(lint(ctx).join("\n"), /native module path cannot traverse symlinks/);
   });
 });

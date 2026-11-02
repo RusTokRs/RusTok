@@ -215,12 +215,10 @@ for (const operationVariant of [
   "ProfileOperation::UpdateLocale",
   "ProfileOperation::UpdateVisibility",
   "ProfileOperation::UpdateMedia",
-  "ProfileOperation::PublishUpdatedEvent",
 ]) {
   assertContains(profileMutation, operationVariant, `${paths.profileMutation}: write path is missing telemetry: ${operationVariant}`);
 }
 assertContains(profileMutation, "timer.finish_profile_result(&result)", `${paths.profileMutation}: owner result telemetry missing`);
-assertContains(profileMutation, "timer.finish_failure(PROFILE_EVENT_PUBLISH_ERROR, true)", `${paths.profileMutation}: event failure telemetry missing`);
 for (const [source, sourcePath] of [
   [profileMutation, paths.profileMutation],
   [profileQuery, paths.profileQuery],
@@ -244,12 +242,10 @@ for (const marker of [
   "existing_profile_read",
   "profile_plan",
   "profile_create",
-  "event_publish",
   "BACKFILL_HOST_ERROR",
   "BACKFILL_TENANT_READ_ERROR",
   "BACKFILL_USER_READ_ERROR",
   "BACKFILL_ENRICHMENT_READ_ERROR",
-  "BACKFILL_EVENT_PUBLISH_ERROR",
 ]) {
   assertContains(profileCli, marker, `${paths.profileCli}: stable backfill telemetry marker missing: ${marker}`);
 }

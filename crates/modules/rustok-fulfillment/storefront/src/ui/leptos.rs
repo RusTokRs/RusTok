@@ -29,9 +29,19 @@ pub fn FulfillmentView() -> impl IntoView {
 
 #[component]
 pub fn FulfillmentShippingHandoffNotice(message: String) -> impl IntoView {
+    let display_message = if message.trim().is_empty() {
+        let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+        crate::i18n::t(
+            locale.as_deref(),
+            "fulfillment.shipping.handoff",
+            "Shipping options and fulfillment details stay in fulfillment-owned UI.",
+        )
+    } else {
+        message
+    };
     view! {
         <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-            {message}
+            {display_message}
         </div>
     }
 }

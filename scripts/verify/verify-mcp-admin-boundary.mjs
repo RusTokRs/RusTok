@@ -301,7 +301,7 @@ for (const marker of [
 assertContains(mcpPlan, "McpManagementPort", `${mcpPlanPath}: plan must record the MCP management owner contract`);
 assertContains(mcpPlan, "HostRuntimeContext", `${mcpPlanPath}: plan must record the native host-runtime boundary`);
 assertContains(mcpPlan, "## FFA/FBA status", `${mcpPlanPath}: plan must include FFA/FBA status`);
-assertContains(centralRegistry, "| `rustok-mcp` | admin + Next admin |", `${centralRegistryPath}: readiness board must include MCP admin UI row`);
+assertContains(centralRegistry, /\|\s*`rustok-mcp`\s*\|\s*admin \+ Next admin\s*\|/, `${centralRegistryPath}: readiness board must include MCP admin UI row`);
 
 if (failures.length > 0) {
   console.error("MCP admin boundary verification failed:");

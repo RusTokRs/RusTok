@@ -350,6 +350,15 @@ Product-pricingUnpriced = No price is configured for this context.
 Pricing-currentChannel = Current channel
 Pricing-resetContext = Reset price context
 Pricing-invalidRequest = The price context in this link is invalid. Reset it before requesting prices.
+Pricing-badge = Pricing
+Pricing-title = Public pricing atlas from the pricing module
+Pricing-subtitle = This storefront route reads pricing visibility, currency coverage and sale markers through the pricing-owned package.
+Pricing-selectedProductDetail = Selected Product Detail
+Pricing-clearSelection = ✕ Clear selection
+Pricing-productPricingCatalog = Product Pricing Catalog
+Pricing-totalProducts = Total products: {  }
+Pricing-noProductsFound = No products found
+Pricing-failedToLoad = Failed to load pricing data
 
 Product-buyerProjectionError = This catalog selection is inconsistent or exceeds the supported size. Ask the store to repair the product.
 Product-buyerRequestError = This selection link or request is invalid. Reset it before continuing.

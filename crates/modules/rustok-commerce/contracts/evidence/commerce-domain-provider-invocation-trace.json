@@ -35,6 +35,8 @@
       "ports": ["PricingReadPort", "PricingWritePort"],
       "operations": [
         "resolve_product_price",
+        "resolve_product_prices",
+        "list_storefront_product_pricing",
         "read_price_list_projection",
         "list_active_price_list_projections",
         "read_admin_product_pricing_projection",
@@ -71,11 +73,17 @@
       "provider_registry": "crates/modules/rustok-inventory/contracts/inventory-fba-registry.json",
       "runtime_contract_smoke": "crates/modules/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json",
       "contract_version": "inventory.reservation.v1",
-      "ports": ["InventoryReservationPort"],
+      "ports": [
+        "InventoryReservationPort",
+        "InventoryReservationIdentityPort"
+      ],
       "operations": [
         "check_availability",
         "reserve_inventory",
-        "release_inventory_reservation"
+        "release_inventory_reservation",
+        "reserve_inventory_by_identity",
+        "release_inventory_by_identity",
+        "adopt_inventory_by_identity"
       ],
       "fallback_profiles": [
         "embedded_native",

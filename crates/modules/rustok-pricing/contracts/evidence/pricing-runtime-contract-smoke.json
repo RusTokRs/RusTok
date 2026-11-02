@@ -62,16 +62,16 @@
       "operation": "read_admin_product_pricing_projection",
       "source_order": [
         "context.require_policy(PortCallPolicy::read())?",
-        ".get_admin_product_pricing_with_locale_fallback(",
-        "pricing_error_to_port_error"
+        "validate_non_nil_uuid(request.product_id, \"product_id\")?",
+        ".get_admin_product_pricing_with_locale_fallback("
       ]
     },
     {
       "operation": "read_storefront_product_pricing_projection",
       "source_order": [
         "context.require_policy(PortCallPolicy::read())?",
-        ".get_published_product_pricing_by_handle_with_locale_fallback(",
-        "pricing_error_to_port_error"
+        "canonical_channel_scope(",
+        ".get_published_product_pricing_by_handle_with_locale_fallback("
       ]
     },
     {
