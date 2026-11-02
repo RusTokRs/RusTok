@@ -10,14 +10,17 @@
 
 import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
 import type {
+  CreateVariantInput,
   ProductDetail,
   ProductImage,
   ProductVariant,
+  VariantAxisValueInput,
   ProductVariantPrice,
   ProductAttributeValueItem,
   ProductAttributeValuePatch,
   VariantAxisConfig,
-  SetVariantAxesInput
+  SetVariantAxesInput,
+  VariantAxesPreview
 } from './types';
 
 export const PRODUCT_DETAIL_QUERY = `
@@ -60,6 +63,8 @@ query ProductAdminProductDetail($tenantId: UUID!, $id: UUID!, $locale: String) {
       sku
       barcode
       title
+      combinationIdentity
+      axisValues { attributeId optionId code label }
       inventoryQuantity
       inventoryPolicy
       inStock
@@ -121,11 +126,16 @@ mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input:
       metaTitle
       metaDescription
     }
+    variantAxes {
+      id attributeId code name position allowedValues { optionId value position }
+    }
     variants {
       id
       sku
       barcode
       title
+      combinationIdentity
+      axisValues { attributeId optionId code label }
       inventoryQuantity
       inventoryPolicy
       inStock
@@ -158,6 +168,8 @@ mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, 
     sku
     barcode
     title
+    combinationIdentity
+    axisValues { attributeId optionId code label }
     inventoryQuantity
     inventoryPolicy
     inStock
@@ -177,6 +189,8 @@ mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input:
     sku
     barcode
     title
+    combinationIdentity
+    axisValues { attributeId optionId code label }
     inventoryQuantity
     inventoryPolicy
     inStock
@@ -264,21 +278,11 @@ export type UpdateProductInput = {
   revision?: number | null;
 };
 
-export type CreateVariantInput = {
-  sku?: string | null;
-  barcode?: string | null;
-  shippingProfileSlug?: string | null;
-  prices: Array<{
-    currencyCode: string;
-    amount: string;
-    compareAtAmount?: string | null;
-  }>;
-  inventoryQuantity?: number;
-  inventoryPolicy?: string;
-};
+export type { CreateVariantInput } from './types';
 
 /** Omit a nullable field to keep it; null clears it; a value replaces it. */
 export type UpdateVariantInput = {
+  axisValues?: VariantAxisValueInput[];
   sku?: string | null;
   barcode?: string | null;
   shippingProfileSlug?: string | null;
@@ -306,6 +310,41 @@ export type UpdateProductImageInput = {
   locale?: string | null;
 };
 
+export const PREVIEW_VARIANT_AXES_QUERY = `
+query ProductAdminPreviewVariantAxes($tenantId: UUID!, $productId: UUID!, $input: SetVariantAxesInput!) {
+  previewProductVariantAxes(tenantId: $tenantId, productId: $productId, input: $input) {
+    productId productRevision stateToken variantCount canApply hasChanges hasMoreConflicts
+    conflicts { kind attributeId optionId variantIds hasMoreVariants }
+    variants {
+      variantId sku changes
+      currentValues { attributeId optionId }
+      proposedValues { attributeId optionId }
+    }
+  }
+}`;
+
+export async function previewVariantAxes(
+  opts: GqlOpts,
+  productId: string,
+  input: SetVariantAxesInput
+): Promise<VariantAxesPreview> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    throw new Error('Sign in again to manage products.');
+  }
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    { tenantId: string; productId: string; input: SetVariantAxesInput },
+    { previewProductVariantAxes: VariantAxesPreview }
+  >(
+    PREVIEW_VARIANT_AXES_QUERY,
+    { tenantId: opts.tenantId, productId, input },
+    opts.token,
+    opts.tenantSlug,
+    { tenantId: opts.tenantId, locale: opts.locale }
+  );
+  return data.previewProductVariantAxes;
+}
+
 export const SET_VARIANT_AXES_MUTATION = `
 mutation ProductAdminSetVariantAxes($idempotencyKey: String!, $productId: UUID!, $input: SetVariantAxesInput!) {
   setProductVariantAxes(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) {
@@ -325,19 +364,19 @@ mutation ProductAdminSetVariantAxes($idempotencyKey: String!, $productId: UUID!,
 /**
  * Persists the ADR variant-axis configuration for one product.
  *
- * The owner command is idempotent: every call carries a freshly generated
- * caller key, and an explicit retry of the same logical change reuses it.
+ * The caller journal supplies one frozen preview/token/tuple payload and key.
+ * This transport never rotates the key on an ambiguous response.
  */
 export async function setVariantAxes(
   opts: GqlOpts,
   productId: string,
-  input: SetVariantAxesInput
+  input: SetVariantAxesInput,
+  idempotencyKey: string
 ): Promise<VariantAxisConfig[]> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage products.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; productId: string; input: SetVariantAxesInput },
@@ -346,7 +385,8 @@ export async function setVariantAxes(
     SET_VARIANT_AXES_MUTATION,
     { idempotencyKey, productId, input },
     opts.token,
-    opts.tenantSlug
+    opts.tenantSlug,
+    { tenantId: opts.tenantId, locale: opts.locale }
   );
 
   return data.setProductVariantAxes;
@@ -448,13 +488,13 @@ export async function deleteProductDetail(
 export async function createVariant(
   opts: GqlOpts,
   productId: string,
-  input: CreateVariantInput
+  input: CreateVariantInput,
+  idempotencyKey: string
 ): Promise<ProductVariant> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage variants.');
   }
 
-  const idempotencyKey = crypto.randomUUID();
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     { idempotencyKey: string; productId: string; input: CreateVariantInput },
@@ -463,7 +503,8 @@ export async function createVariant(
     CREATE_VARIANT_MUTATION,
     { idempotencyKey, productId, input },
     opts.token,
-    opts.tenantSlug
+    opts.tenantSlug,
+    { locale: opts.locale }
   );
 
   return data.createProductVariant;

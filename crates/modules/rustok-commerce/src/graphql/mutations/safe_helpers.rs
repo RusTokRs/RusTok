@@ -265,32 +265,22 @@ fn cart_port_source_owner(error: &PortError) -> &'static str {
 }
 
 pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
-    let (message, code, retryable) = match &error.kind {
-        PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID", false),
-        PortErrorKind::NotFound => (
-            "Cart resource was not found",
-            "CART_RESOURCE_NOT_FOUND",
-            false,
-        ),
+    let retryable = error.retryable;
+    let (message, code) = match &error.kind {
+        PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID"),
+        PortErrorKind::NotFound => ("Cart resource was not found", "CART_RESOURCE_NOT_FOUND"),
         PortErrorKind::Conflict => (
             "Cart operation conflicts with the current state",
             "CART_STATE_CONFLICT",
-            false,
         ),
-        PortErrorKind::Forbidden => (
-            "Cart operation is not permitted",
-            "CART_ACCESS_DENIED",
-            false,
-        ),
+        PortErrorKind::Forbidden => ("Cart operation is not permitted", "CART_ACCESS_DENIED"),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "Cart is temporarily unavailable",
             "CART_TEMPORARILY_UNAVAILABLE",
-            true,
         ),
         PortErrorKind::InvariantViolation => (
             "Cart operation could not be completed safely",
             "CART_OPERATION_FAILED",
-            false,
         ),
     };
 
@@ -505,19 +495,26 @@ pub(crate) async fn reprice_storefront_cart_line_items(
     })
 }
 
-pub(crate) async fn validate_storefront_line_item_quantity(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> Result<()> {
-    super::typed_line_item_helpers::validate_storefront_line_item_quantity(
-        db,
-        tenant_id,
-        variant_id,
-        requested_quantity,
-        public_channel_slug,
-    )
-    .await
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pricing_capability_refusal_keeps_owner_retryability_in_cart_envelope() {
+        for retryable in [false, true] {
+            let public = cart_port_error(PortError::new(
+                PortErrorKind::Unavailable,
+                "pricing.product_identity_capability_unavailable",
+                "private-provider-details",
+                retryable,
+            ));
+            assert_eq!(public.message, "Cart is temporarily unavailable");
+            let extensions = public.extensions.as_ref().unwrap();
+            assert_eq!(
+                extensions.get("retryable"),
+                Some(&async_graphql::Value::Boolean(retryable))
+            );
+            assert!(!format!("{public:?}").contains("private-provider-details"));
+        }
+    }
 }

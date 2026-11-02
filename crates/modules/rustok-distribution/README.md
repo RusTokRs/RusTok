@@ -38,3 +38,21 @@ distribution build.
 ## Documentation
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
+
+## Selected Inventory Index bridge
+
+When the actual Inventory module is selected, Distribution contributes its native
+`inventory-stock-primary` / `rustok-inventory/stock` schema/source and real sealed event listener
+through existing catalogs. Auth supplies current authenticated service read contexts; Inventory
+owns source history; Index owns all derived persistence/job/checkpoint effects. Neither host nor
+Distribution queries Inventory tables. See the [actual contract/configuration](docs/inventory-index.md).
+
+## Known Limitations / Pending Implementation
+
+This is uncompiled/unrun source integration. Current page failures park terminally; automatic
+failed-job backoff/original-job operator recovery is unwired. Real service credentials/current
+policy, backend/concurrency/broker/restart/deployment and full cross-client recovery remain open
+in the existing [Inventory](../rustok-inventory/docs/implementation-plan.md) and
+[Index](../rustok-index/docs/implementation-plan.md) plans. Source selection and durable initial
+enqueue are not runtime verification, readiness or Product step-8 completion. No stock transport/
+UI surface or missing historical publication is fabricated by this bridge.

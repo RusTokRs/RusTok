@@ -26,3 +26,11 @@
 - **Framework Agnostic**: All types must be serializable or plain Rust structs testable via standard unit tests (`#[test]`).
 - **Canonical Presentation Logic**: Badge tones, pagination bounds, route query sanitization, and navigation structures must be centralized here to prevent frontend divergence.
 - **Strict Query Sanitization**: Route query sanitization must preserve known keys while removing invalid or legacy query parameters according to declared schemas.
+
+### Product dictionary selection
+
+`AdminQueryKey::AttributeId` (`attribute_id`) and `OptionId` (`option_id`) belong to the Product
+route schema alongside `ProductId`. An option key depends on the attribute key. Other known
+route schemas reject these foreign selection keys. There is no generic `target_id` alias for
+the dictionary and no default row selection. Recovery annotations remain independent document
+evidence; sanitizing a nested selection is not permission to rotate an unresolved caller key.

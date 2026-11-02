@@ -4,11 +4,13 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
 use rustok_ui_core::UiRouteContext;
 
-use super::leptos::{ProductAttributeValuesSection, ProductVariantAxesSection};
+use super::leptos::{ProductAttributeValuesSection, ProductVariantsPanel};
+use super::variant_axes::ProductVariantAxesSection;
+use super::variant_create::ProductVariantCreateSection;
 use crate::catalog_transport;
 use crate::core::{
-    ProductAttributeEditorState, ProductKind, build_product_image_view_models,
-    build_variant_row_view_models, slugify, validate_editor_variant_draft,
+    ProductAttributeEditorState, ProductKind, build_product_image_view_models, slugify,
+    validate_editor_variant_draft,
 };
 use crate::model::{
     CatalogCategorySummary, ProductDetail, ProductDraft, ProductEffectiveForm, ProductImageDraft,
@@ -21,7 +23,11 @@ pub fn ProductEditorPage(
     #[prop(optional)] initial_type: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale = route_context.locale.clone();
+    // Legacy unprefixed routes use the platform locale default, never an empty transport tag.
+    let locale = route_context
+        .locale
+        .clone()
+        .or_else(|| Some(rustok_api::PLATFORM_FALLBACK_LOCALE.to_owned()));
     let is_ru = locale.as_deref() == Some("ru");
     let base_route = route_context.admin_module_route_base("product");
     let token = use_token();
@@ -29,6 +35,17 @@ pub fn ProductEditorPage(
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (is_busy, set_is_busy) = signal(false);
+    let (axes_locked, set_axes_locked) = signal(!is_new);
+    let axes_record = RwSignal::new(None::<crate::core::variant_axes::AxisJournalRecord>);
+    let axes_storage_error = RwSignal::new(false);
+    let (variant_locked, set_variant_locked) = signal(!is_new);
+    let variant_record = RwSignal::new(None::<crate::core::variant_create::VariantCreateRecord>);
+    let variant_storage_error = RwSignal::new(false);
+    let axis_lock_copy = StoredValue::new(crate::i18n::t(
+        locale.as_deref(),
+        "product-variantCreate-editorLocked",
+        "product-variantCreate-editorLocked",
+    ));
     let (error_msg, set_error_msg) = signal(Option::<String>::None);
     let (success_msg, set_success_msg) = signal(Option::<String>::None);
 
@@ -59,7 +76,7 @@ pub fn ProductEditorPage(
 
     // Pricing
     let (currency_code, set_currency_code) = signal("USD".to_string());
-    let (amount, set_amount) = signal("0.00".to_string());
+    let (amount, set_amount) = signal(String::new());
     let (compare_at_amount, set_compare_at_amount) = signal(String::new());
 
     // Simple Product Specific
@@ -92,7 +109,58 @@ pub fn ProductEditorPage(
 
     // Product state in edit mode
     let (loaded_product, set_loaded_product) = signal(Option::<ProductDetail>::None);
+    let product_write_blocked = move || {
+        let axes = axes_record.get_untracked();
+        let variant = variant_record.get_untracked();
+        let axes_unresolved = !is_new
+            && axes.as_ref().is_none_or(|record| {
+                !matches!(
+                    record.state,
+                    crate::core::variant_axes::AxisJournalPhase::Ready
+                )
+            });
+        let variant_unresolved = !is_new
+            && variant.as_ref().is_none_or(|record| {
+                !matches!(
+                    record.state,
+                    crate::core::variant_create::VariantCreatePhase::Ready
+                )
+            });
+        let axes_unavailable = !is_new
+            && axes
+                .as_ref()
+                .is_none_or(|record| crate::transport::write_journal::verify(record).is_err());
+        let variant_unavailable = !is_new
+            && variant
+                .as_ref()
+                .is_none_or(|record| crate::transport::write_journal::verify(record).is_err());
+        if axes_locked.get_untracked()
+            || variant_locked.get_untracked()
+            || axes_unresolved
+            || variant_unresolved
+            || axes_unavailable
+            || variant_unavailable
+            || (!is_new && loaded_product.get_untracked().is_none())
+        {
+            // A known pending/terminal request is a write fence, not corrupt storage.
+            if axes_unavailable {
+                axes_storage_error.set(true);
+                set_axes_locked.set(true);
+            }
+            if variant_unavailable {
+                variant_storage_error.set(true);
+                set_variant_locked.set(true);
+            }
+            set_error_msg.set(Some(axis_lock_copy.get_value()));
+            true
+        } else {
+            false
+        }
+    };
+
     let attribute_editor_state = RwSignal::new(ProductAttributeEditorState::default());
+    let initial_axes = RwSignal::new(Vec::<crate::model::VariantAxisDraft>::new());
+    let initial_variants = RwSignal::new(Vec::<crate::model::VariantDraft>::new());
 
     // Categories list resource
     let cat_locale = locale.clone();
@@ -140,7 +208,11 @@ pub fn ProductEditorPage(
         let ten = tenant.get();
         let loc = form_locale.clone().unwrap_or_default();
         let cat_id = primary_category_id.get();
-        let pid = form_pid.clone();
+        let pid = form_pid.clone().filter(|_| {
+            loaded_product.get().is_some_and(|product| {
+                product.primary_category_id.as_deref() == Some(cat_id.as_str())
+            })
+        });
         async move {
             if cat_id.is_empty() {
                 return Ok(None);
@@ -260,6 +332,9 @@ pub fn ProductEditorPage(
         let base_tenant = tenant;
         let base_locale = locale.clone();
         move || {
+            if is_busy.get_untracked() || product_write_blocked() {
+                return;
+            }
             let url = new_image_url.get_untracked().trim().to_string();
             if url.is_empty() {
                 return;
@@ -334,6 +409,9 @@ pub fn ProductEditorPage(
         let base_token = token;
         let base_tenant = tenant;
         move |image_id: String| {
+            if is_busy.get_untracked() || product_write_blocked() {
+                return;
+            }
             let Some(pid) = edit_id.clone() else {
                 return;
             };
@@ -381,6 +459,111 @@ pub fn ProductEditorPage(
         }
     };
 
+    let variant_bootstrap = LocalResource::new(move || {
+        let tok = token.get();
+        let ten = tenant.get();
+        async move { catalog_transport::fetch_bootstrap(tok, ten).await }
+    });
+    let variant_reload_locale = locale.clone();
+    let refresh_variant_projection = Callback::new(move |product_id: String| {
+        let tok = token.get_untracked();
+        let ten = tenant.get_untracked();
+        let loc = variant_reload_locale.clone();
+        spawn_local(async move {
+            let result = async {
+                let bootstrap =
+                    catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await?;
+                catalog_transport::fetch_product(
+                    tok.clone(),
+                    ten.clone(),
+                    bootstrap.current_tenant.id,
+                    product_id,
+                    loc,
+                )
+                .await
+            }
+            .await;
+            if loaded_product.try_get_untracked().is_none()
+                || token.try_get_untracked() != Some(tok)
+                || tenant.try_get_untracked() != Some(ten)
+            {
+                return;
+            }
+            match result {
+                Ok(Some(detail)) => set_loaded_product.update(|current| {
+                    if let Some(current) = current.as_mut().filter(|current| current.id == detail.id) {
+                        // Never rebase document fields/revision or the separately targeted Variant
+                        // controls from an independent SKU/axis acknowledgement.
+                        current.variants = detail.variants; current.variant_axes = detail.variant_axes;
+                    }
+                }),
+                Ok(None) => set_error_msg.set(Some("The changed Product is no longer available".into())),
+                Err(error) => set_error_msg.set(Some(format!("Variant operation was acknowledged, but its projection could not be refreshed: {error}"))),
+            }
+        });
+    });
+
+    let initial_axes_seeded = RwSignal::new(false);
+    Effect::new(move |_| {
+        if !is_new || initial_axes_seeded.get() {
+            return;
+        }
+        let Some(Ok(Some(form))) = effective_form_resource.get() else {
+            return;
+        };
+        initial_axes_seeded.set(true);
+        if !initial_axes.get_untracked().is_empty() || !initial_variants.get_untracked().is_empty()
+        {
+            return;
+        }
+        match crate::core::initial_catalog::suggested_axes(&form) {
+            Ok(axes) => initial_axes.set(axes),
+            Err(message) => set_error_msg.set(Some(message)),
+        }
+    });
+
+    let combination_locale = StoredValue::new(locale.clone());
+    let add_initial_variant = Callback::new(move |axis_values| {
+        if is_busy.get_untracked() || product_write_blocked() {
+            return;
+        }
+        if !inventory_quantity_valid.get_untracked() {
+            set_error_msg.set(Some(
+                "Inventory must be a non-negative 32-bit integer".into(),
+            ));
+            return;
+        }
+        let variant = crate::core::initial_catalog::variant_from_editor_fields(
+            sku.get_untracked(),
+            barcode.get_untracked(),
+            inventory_quantity.get_untracked(),
+            inventory_policy.get_untracked(),
+            crate::model::VariantPriceDraft {
+                currency_code: currency_code.get_untracked(),
+                amount: amount.get_untracked(),
+                compare_at_amount: Some(compare_at_amount.get_untracked()),
+            },
+            axis_values,
+        );
+        let form = effective_form_resource
+            .get_untracked()
+            .and_then(Result::ok)
+            .flatten();
+        let mut next = initial_variants.get_untracked();
+        match crate::core::initial_catalog::append_variant(
+            &initial_axes.get_untracked(),
+            &mut next,
+            variant,
+            form.as_ref(),
+        ) {
+            Ok(()) => {
+                initial_variants.set(next);
+                set_error_msg.set(None);
+            }
+            Err(message) => set_error_msg.set(Some(message)),
+        }
+    });
+
     // Save product (Create or Update)
     let is_editing = !is_new && product_id.is_some();
     let current_edit_id = product_id.clone();
@@ -390,10 +573,16 @@ pub fn ProductEditorPage(
     let save_locale = locale.clone();
 
     let save_product = move |target_status: Option<&'static str>| {
-        if is_busy.get_untracked() {
+        if is_busy.get_untracked() || product_write_blocked() {
             return;
         }
-        if !is_editing && !inventory_quantity_valid.get_untracked() {
+        if !is_editing
+            && crate::core::initial_catalog::uses_scalar_initial_variant(
+                &initial_axes.get_untracked(),
+                &initial_variants.get_untracked(),
+            )
+            && !inventory_quantity_valid.get_untracked()
+        {
             set_error_msg.set(Some(
                 "Inventory must be a non-negative 32-bit integer.".to_string(),
             ));
@@ -420,6 +609,22 @@ pub fn ProductEditorPage(
         let current_status_val = target_status
             .map(|s| s.to_string())
             .unwrap_or_else(|| status.get_untracked());
+
+        if !primary_category_id.get_untracked().is_empty() {
+            match effective_form_resource.get_untracked() {
+                Some(Ok(Some(_))) => {}
+                Some(Err(_)) => {
+                    set_error_msg.set(Some("The category form is unavailable. Retry loading it before saving the Product.".into()));
+                    return;
+                }
+                _ => {
+                    set_error_msg.set(Some(
+                        "Wait for the selected category form before saving the Product.".into(),
+                    ));
+                    return;
+                }
+            }
+        }
 
         let attribute_types = effective_form_resource
             .get_untracked()
@@ -460,7 +665,9 @@ pub fn ProductEditorPage(
         let target_status = current_status_val.clone();
 
         let value_locale = loc.unwrap_or_else(|| "en".to_string());
-        let draft = ProductDraft {
+        let mut draft = ProductDraft {
+            variant_axes: Vec::new(),
+            initial_variants: None,
             attribute_values: if attribute_patches.is_empty() {
                 Vec::new()
             } else {
@@ -496,6 +703,33 @@ pub fn ProductEditorPage(
                 .get_untracked()
                 .map(|product| product.revision),
         };
+
+        if !is_editing {
+            let form = match effective_form_resource.get_untracked() {
+                Some(Ok(form)) => form,
+                Some(Err(message)) => {
+                    set_is_busy.set(false);
+                    set_error_msg.set(Some(message));
+                    return;
+                }
+                None if draft.primary_category_id.is_none() => None,
+                _ => {
+                    set_is_busy.set(false);
+                    set_error_msg.set(Some("Load the selected category form before saving".into()));
+                    return;
+                }
+            };
+            if let Err(message) = crate::core::initial_catalog::apply_selection(
+                &mut draft,
+                initial_axes.get_untracked(),
+                initial_variants.get_untracked(),
+                form.as_ref(),
+            ) {
+                set_is_busy.set(false);
+                set_error_msg.set(Some(message));
+                return;
+            }
+        }
 
         spawn_local(async move {
             let Ok(bootstrap) = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone()).await
@@ -561,7 +795,7 @@ pub fn ProductEditorPage(
     // control and the exact target before bootstrap/network IO; do not refetch and
     // overwrite a dirty Product/EAV draft after this acknowledgement.
     let save_variant = move |_| {
-        if is_busy.get_untracked() || !is_editing {
+        if is_busy.get_untracked() || product_write_blocked() || !is_editing {
             return;
         }
         if !inventory_quantity_valid.get_untracked() {
@@ -721,7 +955,7 @@ pub fn ProductEditorPage(
                     <button
                         type="button"
                         class="h-9 px-3.5 rounded-xl border border-border bg-background text-xs font-medium text-foreground hover:bg-accent transition disabled:opacity-50"
-                        disabled=move || is_busy.get()
+                        disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || (is_editing && loaded_product.get().is_none())
                         on:click=move |_| save_product_cb_draft(Some("DRAFT"))
                     >
                         {if is_ru { "Сохранить документ как черновик" } else { "Save document as Draft" }}
@@ -729,7 +963,7 @@ pub fn ProductEditorPage(
                     <button
                         type="button"
                         class="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition shadow-sm disabled:opacity-50"
-                        disabled=move || is_busy.get()
+                        disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || (is_editing && loaded_product.get().is_none())
                         on:click=move |_| save_product_cb_active(if is_editing { None } else { Some("ACTIVE") })
                     >
                         {if is_editing {
@@ -801,7 +1035,32 @@ pub fn ProductEditorPage(
             </div>
 
             // Main Two-Column Layout
-            <fieldset class="contents" disabled=move || is_busy.get()>
+                    {current_edit_id.clone().filter(|_| is_editing).map(|pid| {
+                        let refresh_product_id = pid.clone();
+                        view! {
+                            <ProductVariantAxesSection product_id=pid locale=locale.clone() record=axes_record storage_error=axes_storage_error
+                                blocked=Signal::derive(move || variant_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
+                                parent_busy=Signal::derive(move || is_busy.get())
+                                before_begin=Callback::new(move |_| !product_write_blocked())
+                                on_lock_change=Callback::new(move |locked| set_axes_locked.set(locked))
+                                on_saved=Callback::new(move |_| refresh_variant_projection.run(refresh_product_id.clone()))
+                            />
+                        }
+                    })}
+
+            {current_edit_id.clone().filter(|_| is_editing).map(|pid| view! {
+                <ProductVariantCreateSection product_id=pid locale=locale.clone()
+                    product=Signal::derive(move || loaded_product.get()) record=variant_record storage_error=variant_storage_error
+                    blocked=Signal::derive(move || axes_locked.get() || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get())
+                    parent_busy=Signal::derive(move || is_busy.get())
+                    before_begin=Callback::new(move |_| !product_write_blocked())
+                    on_lock_change=Callback::new(move |locked| set_variant_locked.set(locked))
+                    on_saved=refresh_variant_projection
+                />
+            })}
+
+            // Recovery is deliberately outside the locked document fieldset.
+            <fieldset class="contents" disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || (is_editing && loaded_product.get().is_none())>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 // Left Column (2 cols)
                 <div class="lg:col-span-2 flex flex-col gap-6">
@@ -868,11 +1127,11 @@ pub fn ProductEditorPage(
                         <div class="flex items-center justify-between border-b border-border pb-2.5">
                             <h2 class="text-sm font-semibold text-foreground flex items-center gap-2">
                                 <span>
-                                    {match active_kind.get() {
-                                        ProductKind::Simple => if is_ru { "Параметры простого товара" } else { "Simple Product Specifications" },
-                                        ProductKind::Variable => if is_ru { "Варианты и матрица опций" } else { "Variants & Options Matrix" },
-                                        ProductKind::Bundle => if is_ru { "Состав комплекта" } else { "Bundle Composition" },
-                                        ProductKind::Digital => if is_ru { "Настройки цифровой выдачи" } else { "Digital Fulfillment" },
+                                    {move || match active_kind.get() {
+                                        ProductKind::Simple => (if is_ru { "Параметры простого товара" } else { "Simple Product Specifications" }).to_owned(),
+                                        ProductKind::Variable => crate::i18n::t(combination_locale.get_value().as_deref(), "product-combinations-configuration", "product-combinations-configuration"),
+                                        ProductKind::Bundle => (if is_ru { "Состав комплекта" } else { "Bundle Composition" }).to_owned(),
+                                        ProductKind::Digital => (if is_ru { "Настройки цифровой выдачи" } else { "Digital Fulfillment" }).to_owned(),
                                     }}
                                 </span>
                             </h2>
@@ -885,8 +1144,6 @@ pub fn ProductEditorPage(
                         </div>
 
                         {
-                            let axes_current_edit_id = current_edit_id.clone();
-                            let axes_parent_locale = locale.clone();
                             move || match active_kind.get() {
                             ProductKind::Simple => view! {
                                 <p class="text-xs text-muted-foreground">
@@ -896,59 +1153,7 @@ pub fn ProductEditorPage(
                             }.into_any(),
 
                             ProductKind::Variable => view! {
-                                <div class="space-y-4">
-                                    {axes_current_edit_id.clone().map(|pid| {
-                                        let axes_locale = axes_parent_locale.clone();
-                                        let refresh_after_axes = set_refresh_nonce;
-                                        view! {
-                                            <ProductVariantAxesSection
-                                                product_id=pid
-                                                locale=axes_locale
-                                                on_saved=Callback::new(move |_| refresh_after_axes.update(|n| *n += 1))
-                                            />
-                                        }
-                                    })}
-
-                                    <div class="rounded-xl border border-border/80 overflow-hidden">
-                                        <div class="bg-muted/40 px-3 py-2 text-xs font-semibold text-foreground flex items-center justify-between">
-                                            <span>{if is_ru { "Таблица вариантов" } else { "Generated Variants Table" }}</span>
-                                            <span class="text-[11px] text-muted-foreground font-normal">
-                                                {move || loaded_product.get().as_ref().map(|p| p.variants.len()).unwrap_or(1)} " variants"
-                                            </span>
-                                        </div>
-                                        <div class="p-3 text-xs text-muted-foreground">
-                                            {if let Some(ref prod) = loaded_product.get() {
-                                                let variant_rows = build_variant_row_view_models(prod);
-                                                view! {
-                                                    <div class="flex flex-col gap-2">
-                                                        {variant_rows.into_iter().map(|row| view! {
-                                                            <div class="flex items-center justify-between p-2 rounded-lg border border-border/50 bg-background">
-                                                                <div class="flex flex-col">
-                                                                    <span class="font-medium text-foreground text-xs">{row.options_summary}</span>
-                                                                    <span class="font-mono text-[10px] text-muted-foreground">{row.sku}</span>
-                                                                </div>
-                                                                <div class="flex items-center gap-3">
-                                                                    <span class="font-mono text-xs text-foreground font-semibold">{row.price}</span>
-                                                                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">{format!("Stock: {}", row.stock)}</span>
-                                                                </div>
-                                                            </div>
-                                                        }).collect_view()}
-                                                    </div>
-                                                }.into_any()
-                                            } else {
-                                                view! {
-                                                    <p class="italic text-center py-4">
-                                                        {if is_ru {
-                                                            "После сохранения товара вы сможете сгенерировать полную сетку вариантов"
-                                                        } else {
-                                                            "Variant matrix will be generated after initial product creation"
-                                                        }}
-                                                    </p>
-                                                }.into_any()
-                                            }}
-                                        </div>
-                                    </div>
-                                </div>
+                                <p class="text-xs text-muted-foreground">{crate::i18n::t(combination_locale.get_value().as_deref(), "product-combinations-guidance", "product-combinations-guidance")}</p>
                             }.into_any(),
 
                             ProductKind::Bundle => view! {
@@ -1074,6 +1279,30 @@ pub fn ProductEditorPage(
                         }}
                     </div>
 
+                    {is_new.then(|| view! {
+                        <super::initial_variants::InitialVariantsSection
+                            locale=combination_locale.get_value()
+                            form=Signal::derive(move || effective_form_resource.get().and_then(Result::ok).flatten())
+                            busy=is_busy axes=initial_axes variants=initial_variants on_add=add_initial_variant
+                        />
+                    })}
+
+                    {is_editing.then(|| view! { <Show when=move || loaded_product.get().and_then(|product| product.primary_category_id).unwrap_or_default() != primary_category_id.get()>
+                        <p class="text-xs text-muted-foreground">"The category has unsaved changes. Save or discard them before editing persisted axes."</p>
+                    </Show> })}
+
+                    {is_editing.then(|| {
+                        let variant_locale = locale.clone();
+                        view! { {move || view! {
+                            <ProductVariantsPanel locale=variant_locale.clone() product=loaded_product.get()
+                                token=token tenant=tenant bootstrap=variant_bootstrap
+                                busy=is_busy set_busy=set_is_busy set_error=set_error_msg
+                                blocked=Signal::derive(move || axes_locked.get() || variant_locked.get())
+                                on_variant_mutated=refresh_variant_projection
+                            />
+                        }} }
+                    })}
+
                     // Pricing Card
                     <div class="bg-card rounded-2xl border border-border p-5 shadow-sm space-y-4">
                         <h2 class="text-sm font-semibold text-foreground border-b border-border pb-2.5">
@@ -1088,7 +1317,7 @@ pub fn ProductEditorPage(
                                 </p>
                                 <button type="button"
                                     class="h-9 px-3 rounded-xl border border-border text-foreground disabled:opacity-50"
-                                    disabled=move || is_busy.get() || variant_target_id.get().is_none()
+                                    disabled=move || is_busy.get() || axes_locked.get() || variant_locked.get() || variant_target_id.get().is_none()
                                     on:click=save_variant>
                                     {if is_ru { "Сохранить только этот вариант" } else { "Save only this variant" }}
                                 </button>
@@ -1411,7 +1640,7 @@ pub fn ProductEditorPage(
                                 locale=locale.clone()
                                 effective_form=effective_form_resource
                                 editor_state=attribute_editor_state
-                                owner_busy=is_busy
+                                owner_busy=Signal::derive(move || is_busy.get() || axes_locked.get() || variant_locked.get())
                                 owner_refresh_nonce=refresh_nonce
                                 on_saved=Callback::new(move |_| set_refresh_nonce.update(|n| *n += 1))
                             />

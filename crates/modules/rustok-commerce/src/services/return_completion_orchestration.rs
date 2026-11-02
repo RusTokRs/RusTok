@@ -30,7 +30,9 @@ use super::return_completion_operation::{
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationStage,
 };
-use super::return_restock::{RestockDecision, apply_restock_decision, parse_restock_decision};
+use super::return_restock::{
+    PreparedReturnRestock, apply_restock_plan, parse_restock_decision, prepare_restock_plan,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompleteReturnResolutionInput {
@@ -224,11 +226,32 @@ impl ReturnCompletionOrchestrationService {
         // failure here would only mean a hash collision with different metadata.
         let restock = parse_restock_decision(&input.metadata)?;
         let mut current_return = self.read_return(tenant_id, actor_id, return_id).await?;
+        // Correlate the entire saved Order/return selection before refund/change/completion
+        // effects. Freeze these identities, never reprice or choose another allocation on retry.
+        let restock_plan = prepare_restock_plan(
+            self.order_read_port.as_ref(),
+            self.read_context(
+                tenant_id,
+                actor_id,
+                "read_order_line_inventory_bindings",
+                return_id,
+            ),
+            tenant_id,
+            &current_return,
+            &restock,
+        )
+        .await?;
         if current_return.status == "completed" {
             // Owner completion may have landed before a crash; the restock decision still has
             // to be applied (inventory's ledger makes that idempotent).
-            self.restock_returned_goods(tenant_id, &current_return, &restock)
-                .await?;
+            self.restock_returned_goods(
+                tenant_id,
+                actor_id,
+                operation.id,
+                &current_return,
+                &restock_plan,
+            )
+            .await?;
             return Ok(current_return);
         }
 
@@ -347,7 +370,7 @@ impl ReturnCompletionOrchestrationService {
 
         // After owner completion, before the journal reaches `return_completed`: a retry of a
         // failed restock re-enters here with the return already completed.
-        self.restock_returned_goods(tenant_id, &completed, &restock)
+        self.restock_returned_goods(tenant_id, actor_id, operation.id, &completed, &restock_plan)
             .await?;
 
         if stage != ReturnCompletionOperationStage::ReturnCompleted {
@@ -373,12 +396,25 @@ impl ReturnCompletionOrchestrationService {
     async fn restock_returned_goods(
         &self,
         tenant_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
         completed: &OrderReturnResponse,
-        decision: &RestockDecision,
+        plan: &PreparedReturnRestock,
     ) -> PostOrderOrchestrationResult<()> {
-        apply_restock_decision(&self.db, tenant_id, completed, decision)
-            .await
-            .map(|_| ())
+        apply_restock_plan(
+            &self.db,
+            self.write_context(
+                tenant_id,
+                actor_id,
+                "restock_returned_items",
+                completed.id,
+                format!("return-completion:{operation_id}:restock"),
+            ),
+            completed,
+            plan,
+        )
+        .await
+        .map(|_| ())
     }
 
     async fn validate_explicit_resolution_links(
@@ -696,13 +732,25 @@ impl ReturnCompletionOrchestrationService {
         actor_id: Uuid,
         return_id: Uuid,
     ) -> PostOrderOrchestrationResult<OrderReturnResponse> {
-        self.order_read_port
+        let response = self
+            .order_read_port
             .read_order_return_projection(
                 self.read_context(tenant_id, actor_id, "read_order_return", return_id),
                 ReadOrderReturnProjectionRequest { return_id },
             )
             .await
-            .map_err(|error| self.owner_port_error("rustok_order", error))
+            .map_err(|error| self.owner_port_error("rustok_order", error))?;
+        if response.tenant_id != tenant_id || response.id != return_id || response.order_id.is_nil()
+        {
+            return Err(self.owner_port_error(
+                "rustok_order",
+                PortError::invariant_violation(
+                    "order.return_projection_identity_conflict",
+                    "return owner response does not match the saved request identities",
+                ),
+            ));
+        }
+        Ok(response)
     }
 
     async fn read_order_change(
@@ -877,7 +925,7 @@ impl ReturnCompletionOrchestrationService {
         lease_owner: &str,
         error: &PostOrderOrchestrationError,
     ) -> PostOrderOrchestrationResult<()> {
-        let message = error.to_string();
+        let message = bounded_failure_note(error);
         match failure_disposition(error) {
             FailureDisposition::Retryable => journal
                 .mark_retryable(
@@ -914,7 +962,7 @@ impl ReturnCompletionOrchestrationService {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FailureDisposition {
     Retryable,
     Reconciliation,
@@ -934,9 +982,59 @@ fn failure_disposition(error: &PostOrderOrchestrationError) -> FailureDispositio
 fn port_failure_disposition(error: &PortError) -> FailureDisposition {
     match error.kind {
         PortErrorKind::InvariantViolation => FailureDisposition::Reconciliation,
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => FailureDisposition::Retryable,
         _ if error.retryable => FailureDisposition::Retryable,
-        _ => FailureDisposition::Failed,
+        // A false bit is not proof that an owner/resolution effect did not commit.
+        // Park the same operation; never rotate identities or infer compensation authority.
+        _ => FailureDisposition::Reconciliation,
+    }
+}
+
+fn bounded_failure_note(error: &PostOrderOrchestrationError) -> String {
+    match error {
+        PostOrderOrchestrationError::OwnerPort { owner, error } => {
+            let owner = match *owner {
+                "rustok_order" => "order",
+                "rustok_inventory" => "inventory",
+                "rustok_payment" => "payment",
+                "rustok_commerce" => "commerce",
+                _ => "other",
+            };
+            // The journal is a bounded diagnostic projection, not another receipt. Preserve
+            // the original typed error for the caller; never serialize its arbitrary payload.
+            let code = match error.code.as_str() {
+                "inventory.return_restock_identity_conflict"
+                | "inventory.return_restock_allocation_unverified"
+                | "inventory.return_restock_level_unverified"
+                | "inventory.return_restock_location_archived"
+                | "inventory.return_restock_item_missing"
+                | "inventory.return_restock_quantity_overflow"
+                | "inventory.return_restock_request_invalid"
+                | "inventory.return_restock_batch_invalid"
+                | "inventory.return_restock_outcome_conflict"
+                | "inventory.return_restock_timeout"
+                | "inventory.database_unavailable"
+                | "inventory.variant_not_found"
+                | "order.return_restock_binding_conflict"
+                | "order.return_restock_item_limit"
+                | "order.return_projection_identity_conflict"
+                | "order.return_restock_binding_timeout"
+                | "port.deadline_required"
+                | "port.idempotency_key_required" => error.code.as_str(),
+                _ => "owner_failure",
+            };
+            format!(
+                "Return completion owner failure (owner={owner}, code={code}, kind={:?}, retryable={})",
+                error.kind, error.retryable
+            )
+        }
+        PostOrderOrchestrationError::Validation(_) => "Return completion validation failed".into(),
+        PostOrderOrchestrationError::Order(_) => "Return completion Order boundary failed".into(),
+        PostOrderOrchestrationError::Payment(_) => {
+            "Return completion Payment boundary failed".into()
+        }
+        PostOrderOrchestrationError::PaymentOrchestration(_) => {
+            "Return completion payment orchestration failed".into()
+        }
     }
 }
 
@@ -1315,5 +1413,72 @@ mod tests {
         assert!(
             matches!(err, PostOrderOrchestrationError::Validation(msg) if msg.contains("payment_collection_id"))
         );
+    }
+    #[test]
+    fn non_retryable_owner_advice_parks_the_same_return_operation_without_no_effect_inference() {
+        for kind in [
+            PortErrorKind::Unavailable,
+            PortErrorKind::Timeout,
+            PortErrorKind::NotFound,
+            PortErrorKind::Conflict,
+        ] {
+            let cause = PortError::new(kind, "owner.refused", "refused", false);
+            assert_eq!(
+                port_failure_disposition(&cause),
+                FailureDisposition::Reconciliation
+            );
+        }
+        assert_eq!(
+            port_failure_disposition(&PortError::unavailable("owner.unavailable", "unavailable")),
+            FailureDisposition::Retryable
+        );
+        let mut invariant = PortError::invariant_violation("owner.inconsistent", "inconsistent");
+        invariant.retryable = true;
+        assert_eq!(
+            port_failure_disposition(&invariant),
+            FailureDisposition::Reconciliation
+        );
+    }
+
+    #[test]
+    fn return_completion_journal_note_does_not_serialize_owner_error_or_untrusted_code() {
+        let cause = PortError::new(
+            PortErrorKind::Unavailable,
+            "sentinel-private-owner-code",
+            "sentinel-private-provider-message",
+            false,
+        );
+        let original = cause.clone();
+        let error = PostOrderOrchestrationError::OwnerPort {
+            owner: "sentinel-private-owner-name",
+            error: cause,
+        };
+        let note = bounded_failure_note(&error);
+        assert!(!note.contains("sentinel-private"));
+        assert!(note.contains("owner=other"));
+        assert!(note.contains("retryable=false"));
+        match error {
+            PostOrderOrchestrationError::OwnerPort { error, .. } => assert_eq!(error, original),
+            other => panic!("unexpected error: {other:?}"),
+        }
+        let archived = PortError::invariant_violation(
+            "inventory.return_restock_location_archived",
+            "saved return location needs reconciliation",
+        );
+        assert_eq!(
+            port_failure_disposition(&archived),
+            FailureDisposition::Reconciliation
+        );
+        let error = PostOrderOrchestrationError::OwnerPort {
+            owner: "rustok_inventory",
+            error: archived.clone(),
+        };
+        let note = bounded_failure_note(&error);
+        assert!(note.contains("inventory.return_restock_location_archived"));
+        assert!(note.contains("retryable=false"));
+        match error {
+            PostOrderOrchestrationError::OwnerPort { error, .. } => assert_eq!(error, archived),
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

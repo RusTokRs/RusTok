@@ -99,8 +99,18 @@ pub(crate) fn product_core_http_policy(
     error: &rustok_core::error::Error,
     internal_code: &'static str,
 ) -> AdminProductHttpPolicy {
+    product_port_http_policy(
+        &rustok_product::error::core_port_error(error),
+        internal_code,
+    )
+}
+
+fn product_port_http_policy(
+    error: &PortError,
+    internal_code: &'static str,
+) -> AdminProductHttpPolicy {
     use rustok_api::PortErrorKind;
-    match rustok_product::error::core_port_error(error).kind {
+    let (status, code, message, kind) = match error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             StatusCode::SERVICE_UNAVAILABLE,
             "commerce_product_dependency_unavailable",
@@ -137,6 +147,17 @@ pub(crate) fn product_core_http_policy(
             "Product operation could not be completed safely",
             "unexpected_owner_error",
         ),
+    };
+    if let Some((message, code, _)) =
+        rustok_product::error::inventory_deletion_public_failure(error)
+    {
+        (status, code, message, "inventory_deletion_refusal")
+    } else if let Some((message, code, _)) =
+        rustok_product::error::inventory_quantity_public_failure(error)
+    {
+        (status, code, message, "inventory_quantity_refusal")
+    } else {
+        (status, code, message, kind)
     }
 }
 
@@ -180,10 +201,18 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
             "Product operation conflicts with the current state",
             "state_conflict",
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => product_port_http_policy(
+            &rustok_product::error::inventory_deletion_port_error(blocker),
+            "commerce_admin_product_failed",
+        ),
+        CommerceError::InventoryQuantityBlocked(blocker) => product_port_http_policy(
+            &rustok_product::error::inventory_quantity_port_error(blocker),
+            "commerce_admin_product_failed",
+        ),
         CommerceError::Core(error) => {
             product_core_http_policy(error, "commerce_admin_product_failed")
         }
-        CommerceError::Conflict(_) => (
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => (
             StatusCode::CONFLICT,
             "commerce_admin_product_conflict",
             "Product request conflicts with the current state",
@@ -204,6 +233,10 @@ pub(crate) fn map_admin_product_error(
 ) -> HttpError {
     adopt_product_error_identity(&mut context, &error);
     let (status, code, message, error_kind) = product_error_policy(&error);
+    let deletion_refusal = matches!(
+        &error,
+        CommerceError::InventoryDeletionBlocked(_) | CommerceError::InventoryQuantityBlocked(_)
+    );
     let context = AdminProductDiagnosticContext::from(&context);
     let error = AdminProductDiagnosticError;
     tracing::error!(
@@ -219,7 +252,12 @@ pub(crate) fn map_admin_product_error(
         boundary = ADMIN_PRODUCT_BOUNDARY,
         "commerce admin product operation failed"
     );
-    HttpError::new(status, code, message)
+    let response = HttpError::new(status, code, message);
+    if deletion_refusal {
+        response.with_retryable(false)
+    } else {
+        response
+    }
 }
 
 pub(crate) fn admin_product_command_idempotency_key(headers: &HeaderMap) -> HttpResult<String> {
@@ -408,6 +446,16 @@ pub(crate) fn map_admin_product_port_error(
             "invariant_violation",
         ),
     };
+    let (status, code, message, error_kind, retryable) =
+        if rustok_product::error::inventory_deletion_public_failure(&error).is_some()
+            || rustok_product::error::inventory_quantity_public_failure(&error).is_some()
+        {
+            let (status, code, message, kind) =
+                product_port_http_policy(&error, "commerce_admin_product_failed");
+            (status, code, message, kind, false)
+        } else {
+            (status, code, message, error_kind, error.retryable)
+        };
     let diagnostic = AdminProductDiagnosticContext::from(&context);
     let owner_code_length = error.code.chars().count();
     tracing::error!(
@@ -427,7 +475,7 @@ pub(crate) fn map_admin_product_port_error(
         "commerce admin product owner command failed with bounded diagnostics"
     );
 
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(retryable)
 }
 
 /// Shared admin product list handler.
@@ -1139,5 +1187,87 @@ mod core_product_policy_tests {
             assert_eq!(status, expected);
             assert!(!message.contains("private-marker"));
         }
+    }
+}
+
+#[cfg(test)]
+mod deletion_errors {
+    use super::*;
+    use rustok_inventory::CatalogDeletionBlocker;
+
+    #[test]
+    fn deletion_domain_and_port_http_policies_agree_without_provider_text() {
+        for reason in CatalogDeletionBlocker::ALL {
+            let domain = product_error_policy(&CommerceError::InventoryDeletionBlocked(reason));
+            let mut port = rustok_product::error::inventory_deletion_port_error(&reason);
+            port.message = "private-provider-details".into();
+            port.retryable = true;
+            let wire = product_port_http_policy(&port, "commerce_admin_product_failed");
+            assert_eq!(domain, wire);
+            assert_eq!(wire.2, reason.message());
+            assert!(!wire.2.contains("private-provider-details"));
+            let expected = match port.kind {
+                PortErrorKind::Validation => StatusCode::BAD_REQUEST,
+                PortErrorKind::Conflict => StatusCode::CONFLICT,
+                PortErrorKind::InvariantViolation => StatusCode::INTERNAL_SERVER_ERROR,
+                other => panic!("unexpected deletion class: {other:?}"),
+            };
+            assert_eq!(wire.0, expected);
+        }
+    }
+
+    #[test]
+    fn mismatched_deletion_code_keeps_the_actual_dependency_http_class() {
+        let mut error = rustok_product::error::inventory_deletion_port_error(
+            &CatalogDeletionBlocker::HistoryPresent,
+        );
+        error.kind = PortErrorKind::Unavailable;
+        error.message = "private-provider-details".into();
+        let public = product_port_http_policy(&error, "commerce_admin_product_failed");
+        assert_eq!(public.0, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(public.1, "commerce_product_dependency_unavailable");
+        assert!(!public.2.contains("private-provider-details"));
+    }
+}
+
+#[cfg(test)]
+mod quantity_errors {
+    use super::*;
+    use rustok_inventory::QuantityWriteBlocker;
+
+    #[test]
+    fn quantity_http_domain_and_port_use_fixed_copy_and_exact_owner_kind() {
+        for reason in QuantityWriteBlocker::ALL {
+            let domain = product_error_policy(&CommerceError::InventoryQuantityBlocked(reason));
+            let mut port = rustok_product::error::inventory_quantity_port_error(&reason);
+            port.message = "private-provider-details".into();
+            port.retryable = true;
+            let wire = product_port_http_policy(&port, "commerce_admin_product_failed");
+            assert_eq!(domain, wire);
+            assert_eq!(wire.2, reason.message());
+            let expected = match port.kind {
+                PortErrorKind::Validation => StatusCode::BAD_REQUEST,
+                PortErrorKind::Conflict => StatusCode::CONFLICT,
+                PortErrorKind::InvariantViolation => StatusCode::INTERNAL_SERVER_ERROR,
+                other => panic!("unexpected quantity class: {other:?}"),
+            };
+            assert_eq!(wire.0, expected);
+            assert!(!wire.2.contains("private-provider-details"));
+        }
+    }
+
+    #[test]
+    fn quantity_http_mismatched_kind_preserves_unknown_storage_outcome() {
+        let mut port = rustok_product::error::inventory_quantity_port_error(
+            &QuantityWriteBlocker::InsufficientStock,
+        );
+        port.kind = PortErrorKind::Unavailable;
+        port.message = "private-provider-details".into();
+        let wire = product_port_http_policy(&port, "commerce_admin_product_failed");
+        assert_eq!(wire.0, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(!wire.2.contains("private-provider-details"));
+        assert!(!rustok_product::product_catalog_command_error_is_terminal(
+            &port
+        ));
     }
 }

@@ -1,3 +1,4 @@
+pub use rustok_pricing_storefront::PricingResolutionContext;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -50,9 +51,7 @@ pub struct ProductCatalogFacet {
 pub struct StorefrontProductsData {
     pub products: ProductList,
     pub selected_product: Option<ProductDetail>,
-    pub selected_pricing: Option<ProductPricingDetail>,
     pub selected_handle: Option<String>,
-    pub resolution_context: Option<ProductPricingContext>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -127,6 +126,8 @@ pub struct ProductDetail {
     #[serde(default)]
     pub images: Vec<ProductImage>,
     pub translations: Vec<ProductTranslation>,
+    #[serde(rename = "variantAxes")]
+    pub variant_axes: Vec<ProductVariantAxis>,
     pub variants: Vec<ProductVariant>,
     /// Storefront-safe specifications resolved by the Product owner: localized labels and values,
     /// no service attributes, no option ids. Empty when the cataloguer filled nothing for the
@@ -156,22 +157,12 @@ pub struct ProductAttributeValue {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ProductPricingContext {
-    #[serde(rename = "currencyCode")]
-    pub currency_code: String,
-    #[serde(rename = "regionId")]
-    pub region_id: Option<String>,
-    #[serde(rename = "priceListId")]
-    pub price_list_id: Option<String>,
-    #[serde(rename = "channelId", default)]
-    pub channel_id: Option<String>,
-    #[serde(rename = "channelSlug", default)]
-    pub channel_slug: Option<String>,
-    pub quantity: i32,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductPricingDetail {
+    pub id: String,
+    #[serde(rename = "resolutionContext")]
+    pub resolution_context: Option<PricingResolutionContext>,
+    #[serde(rename = "resolvedAt")]
+    pub resolved_at: Option<String>,
     pub variants: Vec<ProductPricingVariant>,
 }
 
@@ -180,26 +171,24 @@ pub struct ProductPricingVariant {
     pub id: String,
     pub title: String,
     pub sku: Option<String>,
-    pub prices: Vec<ProductScopedPrice>,
     #[serde(rename = "effectivePrice")]
     pub effective_price: Option<ProductEffectivePrice>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ProductScopedPrice {
-    #[serde(rename = "currencyCode")]
-    pub currency_code: String,
-    pub amount: String,
-    #[serde(rename = "compareAtAmount")]
-    pub compare_at_amount: Option<String>,
-    #[serde(rename = "discountPercent", default)]
-    pub discount_percent: Option<String>,
-    #[serde(rename = "onSale")]
-    pub on_sale: bool,
+pub struct ProductPriceSource {
+    #[serde(rename = "priceId")]
+    pub price_id: String,
+    pub kind: String,
+    #[serde(rename = "ruleKind")]
+    pub rule_kind: Option<String>,
+    #[serde(rename = "adjustmentPercent")]
+    pub adjustment_percent: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductEffectivePrice {
+    pub source: ProductPriceSource,
     #[serde(rename = "currencyCode")]
     pub currency_code: String,
     pub amount: String,
@@ -232,6 +221,12 @@ pub struct ProductVariant {
     pub sku: Option<String>,
     #[serde(rename = "inventoryQuantity")]
     pub inventory_quantity: i32,
+    #[serde(rename = "inventoryPolicy")]
+    pub inventory_policy: String,
+    #[serde(rename = "combinationIdentity")]
+    pub combination_identity: Option<String>,
+    #[serde(rename = "axisValues")]
+    pub axis_values: Vec<ProductVariantAxisValue>,
     #[serde(rename = "inStock")]
     pub in_stock: bool,
     pub prices: Vec<ProductPrice>,
@@ -246,4 +241,32 @@ pub struct ProductPrice {
     pub compare_at_amount: Option<String>,
     #[serde(rename = "onSale")]
     pub on_sale: bool,
+}
+
+/// Projections of Product's existing attribute/option axis ontology, never a second option model.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductVariantAxis {
+    pub id: String,
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    pub name: String,
+    pub position: i32,
+    #[serde(rename = "allowedValues")]
+    pub allowed_values: Vec<ProductVariantAxisOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductVariantAxisOption {
+    #[serde(rename = "optionId")]
+    pub option_id: String,
+    pub value: String,
+    pub position: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductVariantAxisValue {
+    #[serde(rename = "attributeId")]
+    pub attribute_id: String,
+    #[serde(rename = "optionId")]
+    pub option_id: String,
 }

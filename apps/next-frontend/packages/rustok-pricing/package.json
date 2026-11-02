@@ -6,7 +6,7 @@
   "types": "./src/index.tsx",
   "dependencies": {
     "next": "16.3.8",
-    "@rustok/next-fluent": "github:RusTokRs/next-fluent",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
     "react": "^19.2.7"
   },
   "license": "BUSL-1.1"

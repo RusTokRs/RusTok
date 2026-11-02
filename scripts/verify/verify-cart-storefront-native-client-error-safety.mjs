@@ -8,7 +8,8 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? path.resolve(configuredRoot)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
+const read = (relativePath) =>
+  readFileSync(path.join(root, relativePath), "utf8");
 const failures = [];
 
 const requireText = (source, value, label) => {
@@ -19,11 +20,14 @@ const forbidText = (source, value, label) => {
 };
 const requireCount = (source, value, expected, label) => {
   const count = source.split(value).length - 1;
-  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
+  if (count !== expected)
+    failures.push(`${label}: expected ${expected}, found ${count}`);
 };
 
 function functionBody(source, functionName) {
-  const match = new RegExp(`pub\\s+async\\s+fn\\s+${functionName}\\s*\\(`).exec(source);
+  const match = new RegExp(`pub\\s+async\\s+fn\\s+${functionName}\\s*\\(`).exec(
+    source,
+  );
   if (!match) {
     failures.push(`missing function ${functionName}`);
     return "";
@@ -43,10 +47,14 @@ function functionBody(source, functionName) {
 
 const files = {
   transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
-  safety: "crates/modules/rustok-cart/storefront/src/transport/native_client_error_safety.rs",
-  native: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
-  nativeSsr: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
-  graphqlSafety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  safety:
+    "crates/modules/rustok-cart/storefront/src/transport/native_client_error_safety.rs",
+  native:
+    "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter.rs",
+  nativeSsr:
+    "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+  graphqlSafety:
+    "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
   evidence:
     "crates/modules/rustok-cart/contracts/evidence/storefront-native-client-error-safety-source.json",
   review:
@@ -54,7 +62,8 @@ const files = {
   doc: "crates/modules/rustok-cart/docs/storefront-native-client-error-safety.md",
   plan: "crates/modules/rustok-cart/docs/implementation-plan.md",
   nativeGuard: "scripts/verify/verify-cart-storefront-native-error-safety.mjs",
-  graphqlGuard: "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
+  graphqlGuard:
+    "scripts/verify/verify-cart-storefront-graphql-error-safety.mjs",
 };
 
 const transport = read(files.transport);
@@ -75,28 +84,43 @@ for (const marker of [
   "pub type TransportResult<T> = UiTransportResult<T>;",
   "UiTransportPath::NativeServer",
   "UiTransportPath::Graphql",
-]) requireText(transport, marker, `${files.transport}: preserved transport contract`);
-forbidText(transport, "fallback_attempted = true", `${files.transport}: fallback policy`);
+])
+  requireText(
+    transport,
+    marker,
+    `${files.transport}: preserved transport contract`,
+  );
+forbidText(
+  transport,
+  "fallback_attempted = true",
+  `${files.transport}: fallback policy`,
+);
 requireCount(
   transport,
   "native_client_error_safety::NativeClientErrorContext::",
-  3,
+  5,
   `${files.transport}: native contexts`,
 );
 requireCount(
   transport,
   "graphql_error_safety::GraphqlCallContext::",
-  3,
+  5,
   `${files.transport}: GraphQL contexts`,
 );
 requireCount(
   transport,
   ".map_err(|error| context.map_error(error))",
-  6,
+  10,
   `${files.transport}: native plus GraphQL final mappings`,
 );
 
-for (const [operation, nativeContext, nativeCall, graphqlContext, graphqlCall] of [
+for (const [
+  operation,
+  nativeContext,
+  nativeCall,
+  graphqlContext,
+  graphqlCall,
+] of [
   [
     "fetch_cart",
     "NativeClientErrorContext::fetch_cart",
@@ -120,15 +144,35 @@ for (const [operation, nativeContext, nativeCall, graphqlContext, graphqlCall] o
   ],
 ]) {
   const body = functionBody(transport, operation);
-  for (const marker of [nativeContext, nativeCall, graphqlContext, graphqlCall]) {
+  for (const marker of [
+    nativeContext,
+    nativeCall,
+    graphqlContext,
+    graphqlCall,
+  ]) {
     requireText(body, marker, `${files.transport}: ${operation}`);
   }
   if (body.indexOf(nativeContext) > body.indexOf(nativeCall)) {
-    failures.push(`${files.transport}: ${operation} native context must precede call`);
+    failures.push(
+      `${files.transport}: ${operation} native context must precede call`,
+    );
   }
   if (body.indexOf(graphqlContext) > body.indexOf(graphqlCall)) {
-    failures.push(`${files.transport}: ${operation} GraphQL context must precede call`);
+    failures.push(
+      `${files.transport}: ${operation} GraphQL context must precede call`,
+    );
   }
+}
+
+for (const operation of ["create_cart", "add_variant"]) {
+  const block = functionBody(transport, operation);
+  for (const marker of [
+    `NativeClientErrorContext::${operation}(&native)`,
+    `GraphqlCallContext::${operation}(&request)`,
+    `buyer_native::${operation}(native)`,
+    `graphql_adapter::${operation}(request)`,
+  ])
+    requireText(block, marker, `buyer ${operation} final safety mapping`);
 }
 
 for (const marker of [
@@ -140,7 +184,9 @@ for (const marker of [
   '"decrement_line_item"',
   '"remove_line_item"',
   "ApiError::Validation(message) => ApiError::Validation(message)",
-  "raw_error = ?error",
+  "error_kind,",
+  "raw_error_length,",
+  "Uuid::new_v4()",
   "owner_operation = self.operation",
   "correlation_id = %self.correlation_id",
   "selected_cart_id_present = self.selected_cart_id_length.is_some()",
@@ -150,7 +196,8 @@ for (const marker of [
   'code = "cart.storefront_native_client_transport_failed"',
   "boundary = CART_STOREFRONT_NATIVE_CLIENT_BOUNDARY",
   "ApiError::ServerFn(CART_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE.to_string())",
-]) requireText(safety, marker, `${files.safety}: safe final mapping`);
+])
+  requireText(safety, marker, `${files.safety}: safe final mapping`);
 
 for (const forbidden of [
   "selected_cart_id = %",
@@ -163,19 +210,34 @@ for (const forbidden of [
   "line_item_id = ?",
   "request = ?",
   "error.to_string()",
-]) forbidText(safety, forbidden, `${files.safety}: raw request or error text`);
+  "raw_error = ?error",
+  "raw_error = %error",
+])
+  forbidText(safety, forbidden, `${files.safety}: raw request or error text`);
 
-for (const adapter of [native, nativeSsr]) {
-  for (const marker of [
-    "pub enum ApiError",
-    "Graphql(String)",
-    "ServerFn(String)",
-    "Validation(String)",
-    "pub async fn fetch_cart(",
-    "pub async fn decrement_line_item(",
-    "pub async fn remove_line_item(",
-  ]) requireText(adapter, marker, "native adapter contract");
-}
+for (const marker of [
+  "pub enum ApiError",
+  "Graphql(String)",
+  "ServerFn(String)",
+  "Validation(String)",
+  "pub async fn fetch_cart(",
+  "pub async fn decrement_line_item(",
+  "pub async fn remove_line_item(",
+  "client = leptos_auth::AuthorizedBrowserClient",
+])
+  requireText(native, marker, "common native adapter contract");
+for (const operation of [
+  "storefront_cart_native",
+  "storefront_cart_decrement_line_item",
+  "storefront_cart_remove_line_item",
+])
+  requireText(
+    nativeSsr,
+    `pub(super) async fn ${operation}(`,
+    "SSR handler visibility",
+  );
+forbidText(nativeSsr, "#[server", "one endpoint declaration per operation");
+forbidText(nativeSsr, "pub enum ApiError", "one common error contract");
 requireText(
   nativeSsr,
   "CART_STOREFRONT_NATIVE_BOUNDARY",
@@ -197,7 +259,9 @@ requireText(
   `${files.graphqlGuard}: GraphQL guard identity`,
 );
 
-if (evidence.status !== "storefront_native_client_error_safety_source_unvalidated") {
+if (
+  evidence.status !== "storefront_native_client_error_safety_source_unvalidated"
+) {
   failures.push(`${files.evidence}: unexpected status ${evidence.status}`);
 }
 if (
@@ -207,18 +271,18 @@ if (
   failures.push(`${files.review}: unexpected status ${review.status}`);
 }
 for (const [key, expected] of Object.entries({
-  operation_count: 3,
+  operation_count: 5,
   transport_selection_changed: false,
   graphql_transport_changed: false,
-  native_adapters_changed: false,
-  server_functions_changed: false,
+  native_adapters_changed: true,
+  server_functions_changed: true,
   request_response_dto_changed: false,
   ui_transport_error_contract_preserved: true,
   validation_message_preserved: true,
   technical_native_error_public: false,
   static_technical_public_message: true,
   context_created_before_native_call: true,
-  original_error_logged_privately: true,
+  original_error_logged_privately: false,
   per_call_correlation_logging: true,
   safe_request_shape_only: true,
   cart_id_values_logged: false,
@@ -228,14 +292,14 @@ for (const [key, expected] of Object.entries({
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`${files.evidence}: source_contract.${key} must be ${expected}`);
+    failures.push(
+      `${files.evidence}: source_contract.${key} must be ${expected}`,
+    );
   }
 }
 for (const key of [
   "tests_run",
   "cargo_run",
-  "format_run",
-  "verifiers_run",
   "workflow_checks_run",
   "ci_run",
   "hydrate_compile_proven",
@@ -247,7 +311,11 @@ for (const key of [
     failures.push(`${files.evidence}: validation.${key} must remain false`);
   }
 }
-requireText(doc, "Status: **source-ready / unvalidated**", `${files.doc}: status`);
+requireText(
+  doc,
+  "Status: **source-ready / unvalidated**",
+  `${files.doc}: status`,
+);
 requireText(
   doc,
   "Cart storefront request could not be completed",
@@ -260,12 +328,14 @@ requireText(
 );
 requireText(
   plan,
-  "No verification command was executed in this source wave.",
+  "Buyer continuation: source-only checks; no tests or compilation.",
   `${files.plan}: execution disclosure`,
 );
 
 if (failures.length > 0) {
-  console.error("Cart storefront native client error-safety verification failed:");
+  console.error(
+    "Cart storefront native client error-safety verification failed:",
+  );
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }

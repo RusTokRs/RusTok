@@ -7,10 +7,10 @@ use uuid::Uuid;
 use crate::ports::{product_owner_error_facts, product_port_context_facts};
 
 use crate::services::{
-    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
-    ProductAttributeFilter, ProductAttributeListRecord, ProductAttributeOptionListRecord,
-    ProductAttributeSchemaListRecord, ProductAttributeValueRecord, ProductCatalogSchemaService,
-    ProductResolvedAttributeFilter,
+    AttributeLifecycleRequest, AttributeLifecycleWorkspace, AttributeValueType,
+    CatalogCategoryListRecord, EffectiveAttributeSource, ProductAttributeFilter,
+    ProductAttributeListRecord, ProductAttributeOptionListRecord, ProductAttributeSchemaListRecord,
+    ProductAttributeValueRecord, ProductCatalogSchemaService, ProductResolvedAttributeFilter,
 };
 
 const LIST_ATTRIBUTES_OPERATION: &str = "list_catalog_attributes";
@@ -46,6 +46,7 @@ pub struct ProductEffectiveFormAttributeProjection {
     pub code: String,
     pub label: String,
     pub value_type: AttributeValueType,
+    pub scope: String,
     pub is_localized: bool,
     pub options: Vec<ProductAttributeOptionListRecord>,
     pub group_code: Option<String>,
@@ -77,6 +78,13 @@ pub struct ProductStorefrontAttributeFilterResolutionRequest {
 /// Product/Variant attribute-value projections, and Storefront attribute-filter resolution.
 #[async_trait]
 pub trait ProductCatalogSchemaReadPort: Send + Sync {
+    /// Bounded administration projection, including retained archived definitions on request.
+    async fn read_attribute_lifecycle(
+        &self,
+        context: PortContext,
+        request: AttributeLifecycleRequest,
+    ) -> Result<AttributeLifecycleWorkspace, PortError>;
+
     async fn list_attributes(
         &self,
         context: PortContext,
@@ -147,6 +155,34 @@ pub trait ProductCatalogSchemaReadPort: Send + Sync {
 
 #[async_trait]
 impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
+    async fn read_attribute_lifecycle(
+        &self,
+        context: PortContext,
+        request: AttributeLifecycleRequest,
+    ) -> Result<AttributeLifecycleWorkspace, PortError> {
+        let operation = "read_attribute_lifecycle";
+        require_schema_read_context(&context, operation)?;
+        if !context
+            .claims
+            .iter()
+            .any(|claim| claim == "products:read" || claim == "products:manage")
+        {
+            return Err(PortError::forbidden(
+                "product.schema_read_forbidden",
+                "products:read permission is required",
+            ));
+        }
+        let tenant_id = parse_tenant_id(&context, operation)?;
+        ProductCatalogSchemaService::read_attribute_lifecycle(
+            self,
+            tenant_id,
+            &context.locale,
+            request,
+        )
+        .await
+        .map_err(|error| schema_error_to_port_error(&context, operation, error))
+    }
+
     async fn list_attributes(
         &self,
         context: PortContext,
@@ -277,6 +313,7 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
                 code: definition.code.clone(),
                 label: definition.label.clone(),
                 value_type: definition.value_type,
+                scope: definition.scope.clone(),
                 is_localized: definition.is_localized,
                 options: options_by_attribute
                     .remove(&binding.attribute_id)
@@ -432,7 +469,9 @@ fn schema_error_to_port_error(
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::VariantNotFound(_) => "product.variant_not_found",
         CommerceError::Core(error) => crate::error::core_error_code(error),
-        CommerceError::Conflict(_) => "product.conflict",
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            "product.conflict"
+        }
         _ => "product.invariant_violation",
     };
     let context_facts = product_port_context_facts(context);
@@ -464,11 +503,19 @@ fn schema_error_to_port_error(
         CommerceError::VariantNotFound(_) => {
             PortError::not_found("product.variant_not_found", "product variant was not found")
         }
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
         _ => PortError::invariant_violation(
             "product.invariant_violation",
             "product operation could not be completed safely",

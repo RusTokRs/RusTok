@@ -8,8 +8,13 @@ async fn test_list_admin_product_pricing_uses_locale_fallback_and_preserves_sell
 
     let list = service
         .list_admin_product_pricing_with_locale_fallback(
-            tenant_id,
-            "ru",
+            rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::service("pricing-listing-test"),
+                "ru",
+                "pricing-listing-test",
+            )
+            .with_deadline(std::time::Duration::from_secs(2)),
             Some("en"),
             Some("Seller Product"),
             None,
@@ -97,6 +102,7 @@ async fn test_list_active_price_lists_filters_by_channel_scope() {
     let (db, service, _catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let global_id = create_price_list(&db, tenant_id, "active", None, None).await;
     let scoped_id = create_price_list_with_channel(
         &db,

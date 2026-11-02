@@ -40,3 +40,15 @@
 - Validation failures propagate without masking or unhandled panics.
 - Transport errors map to user-visible feedback without crashing UI view components.
 
+
+## Quantity/removal adoption (2026-10-30; source only)
+
+Native decrement/remove use the guarded Cart provider and preserve the original read through
+Cart's locked adoption. Quoted quantity changes share Commerce's Product/Pricing/Inventory
+workflow with REST/GraphQL; native price/discount mapping and raw CartService mutation are not
+alternate paths. A target-only removal observation cannot authorize price writes and does not
+strand oversized/invalid-price historical carts. Actual caller scope/claims are retained; guest
+access is validated by the owner before projection sanitization. The endpoint/input/cart DTO
+contract is unchanged. Owner failures use the shared static inspect-before-retry envelope.
+Source regressions are unrun; receipts/exact replay, context-patch atomicity, native/browser/
+remote/SQL/concurrency and authorization-revocation evidence remain open in the [owner plan](../docs/implementation-plan.md#priced-quantity-adoption-2026-10-30).

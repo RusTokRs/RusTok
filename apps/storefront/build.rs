@@ -107,6 +107,22 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=Cargo.toml");
 
+    if std::env::var_os("CARGO_FEATURE_PRODUCT_BUYER_ASSETS").is_some() {
+        let root = workspace_root();
+        let js = root.join("target/site/assets/product-buyer/rustok_storefront.js");
+        let wasm = root.join("target/site/assets/product-buyer/rustok_storefront_bg.wasm");
+        for file in [&js, &wasm] {
+            println!("cargo::rerun-if-changed={}", file.display());
+        }
+        let js_bytes = fs::read(&js).map_err(|error| format!("Build the Product buyer client first with node apps/storefront/scripts/build-product-buyer-client.mjs: {error}"))?;
+        let wasm_bytes = fs::read(&wasm)?;
+        if js_bytes.len() < 32 || !wasm_bytes.starts_with(b"\0asm") || wasm_bytes.len() < 8 {
+            return Err(
+                "Product buyer assets are not real JS/WASM; no placeholder build is permitted"
+                    .into(),
+            );
+        }
+    }
     generate_storefront_module_codegen()?;
 
     Ok(())

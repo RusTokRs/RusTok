@@ -606,6 +606,8 @@ mod tests {
 
     fn product_detail() -> PricingProductDetail {
         PricingProductDetail {
+            resolution_context: None,
+            resolved_at: None,
             id: "product-1".to_string(),
             status: "ACTIVE".to_string(),
             seller_id: None,
@@ -715,6 +717,12 @@ mod tests {
             variant(
                 Vec::new(),
                 Some(PricingEffectivePrice {
+                    source: crate::model::PricingPriceSource {
+                        price_id: "00000000-0000-0000-0000-000000000001".into(),
+                        kind: "base".into(),
+                        rule_kind: None,
+                        adjustment_percent: None,
+                    },
                     currency_code: "EUR".to_string(),
                     amount: "9.00".to_string(),
                     compare_at_amount: None,

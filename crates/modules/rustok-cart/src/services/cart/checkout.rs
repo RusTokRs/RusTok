@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set,
     TransactionTrait, sea_query::Expr,
 };
 use std::collections::BTreeMap;
@@ -56,8 +56,8 @@ impl CartService {
         .await
     }
 
-    /// Atomically applies checkout context and totals without an external
-    /// pricing plan. Kept for compatibility with non-storefront callers.
+    /// Atomically applies checkout context/totals without a unit-price plan. A nonempty
+    /// Cart must retain its original unit-price basis; this is not a fallback for Pricing.
     pub async fn prepare_checkout(
         &self,
         tenant_id: Uuid,
@@ -119,8 +119,14 @@ impl CartService {
         let cart = load_cart_in_tx(&txn, tenant_id, request.cart_id).await?;
         let line_items = entities::cart_line_item::Entity::find()
             .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
+            .limit((crate::MAX_PRICED_CART_LINES + 1) as u64)
             .all(&txn)
             .await?;
+        if line_items.len() > crate::MAX_PRICED_CART_LINES {
+            return Err(CartError::Validation(
+                "Checkout preparation exceeds 1024 observed lines".into(),
+            ));
+        }
         if line_items.is_empty() {
             txn.rollback().await?;
             return Err(CartError::Validation(format!(
@@ -129,6 +135,7 @@ impl CartService {
             )));
         }
 
+        let preserve_price_basis = pricing_plan.is_none();
         if let Some(pricing_plan) = pricing_plan {
             apply_checkout_pricing_plan(&txn, &cart, &line_items, &request, pricing_plan).await?;
         }
@@ -167,14 +174,21 @@ impl CartService {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
         };
-        let context_input = UpdateCartContextInput {
+        let context_input = super::context::normalize_context_input(UpdateCartContextInput {
             email,
             region_id: cart.region_id.or(request.input.region_id),
             country_code,
             locale_code,
             selected_shipping_option_id,
             shipping_selections: request.input.shipping_selections.clone(),
-        };
+        })?;
+        if preserve_price_basis {
+            super::context::ensure_preserved_price_basis(
+                &cart,
+                &context_input,
+                !line_items.is_empty(),
+            )?;
+        }
 
         let mut active: entities::cart::ActiveModel = cart.clone().into();
         active.email = Set(context_input.email.clone());

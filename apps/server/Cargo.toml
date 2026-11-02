@@ -64,6 +64,7 @@ blog-comment-assets = [
     "richtext-assets",
     "rustok-storefront/blog-comment-assets",
 ]
+product-buyer-assets = ["embed-storefront", "mod-commerce", "rustok-storefront/product-buyer-assets"]
 pages-inline-edit = ["embed-storefront", "mod-pages", "rustok-storefront/pages-inline-edit"]
 pages-inline-edit-assets = ["pages-inline-edit", "rustok-pages/inline-edit-assets"]
 # Domain module feature flags — compile the module into the binary;

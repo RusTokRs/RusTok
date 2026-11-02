@@ -124,3 +124,25 @@ surfaces.
 - Evidence: `source regressions in admin_events.rs and rustok-outbox-admin native adapter; scripts/verify/verify-outbox-dlq-tenant-rbac.mjs is included by npm run verify:outbox:fba; same-SHA Actions are required before merge`
 - Next action: `design and execute a durable consumer completion/recovery contract with server event delivery, rustok-core dispatcher, and Search projection owners; then run relay and restart E2E evidence`
 - Resume command: `node scripts/verify/verify-outbox-dlq-tenant-rbac.mjs && npm run verify:outbox:fba && cargo test -p rustok-outbox && cargo test -p rustok-server admin_events`
+
+## Unconditional publication row admission (2026-11-01; source only)
+
+Unconditional root and sealed-contract publication now require exactly one affected insert
+row. A suppressed/zero-row insert returns persistence failure instead of acknowledging a
+mutation without its required event. The existing separate write-once `ON CONFLICT` path
+still reads/correlates an exact durable envelope; zero insertion alone never proves replay.
+This strengthens the canonical transport, not an Inventory-specific pipeline or schema.
+
+Two additional pure Outbox definitions and the native I/C suppressed/missing-outbox rollback
+fixtures are source only and unrun. See [Inventory source evidence](../../rustok-inventory/contracts/evidence/native-stock-outbox-source.json).
+No Rust/SQL/relay or consumer durability certification follows. The transport-to-consumer
+completion gap above remains open; local state/outbox atomicity is not delivery atomicity.
+
+## Reservation sealed-fact continuation (2026-11-01; source only)
+
+A fresh canonical transaction-only helper now lets Inventory append its sealed reservation fact
+on its counter/receipt transaction. Existing relay dispatch/retry/DLQ owns delivery; no migration
+or alternate queue. Server targets await explicit local sealed handlers; Iggy-first/local-ack
+retry preserves the original identity and is at-least-once. Compilation, actual SQL rollback,
+configured relay/Iggy receive/cursor ACK, crash/restart and DLQ evidence remain open. See the
+[API](../CRATE_API.md#fresh-sealed-facts-and-local-acknowledgement-2026-11-01-source-only).

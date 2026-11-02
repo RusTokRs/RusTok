@@ -59,7 +59,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const commerceRegistry = json('crates/modules/rustok-commerce/contracts/commerce-fba-registry.json');
   const commerceFbaSource = read('crates/modules/rustok-commerce/src/fba.rs');
   const checkoutSource = read('crates/modules/rustok-commerce/src/services/checkout.rs');
-  const cartServiceSource = read('crates/modules/rustok-cart/src/services/cart.rs');
+  const cartServiceSource = read('crates/modules/rustok-cart/src/services/cart.rs')
+    + read('crates/modules/rustok-cart/src/services/cart/pricing.rs');
+  const cartWorkflowSource = read('crates/modules/rustok-commerce/src/storefront_cart_runtime.rs');
   const cartHelpersSource = read('crates/modules/rustok-cart/src/services/cart/helpers.rs');
   const cartErrorSource = read('crates/modules/rustok-cart/src/error.rs');
   const cartStorefrontRestSource = read('crates/modules/rustok-commerce/src/controllers/store/carts.rs');
@@ -76,7 +78,6 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const graphqlMutationHelpersSource = read('crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs');
   const pricingQuerySource = read('crates/modules/rustok-commerce/src/graphql/query.rs');
   const storefrontControllerSource = read('crates/modules/rustok-commerce/src/controllers/store/mod.rs');
-  const storefrontLineItemResolutionSource = read('crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs');
   const storefrontCheckoutRuntimeSource = read('crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
@@ -220,10 +221,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   for (const marker of [
     '.create_storefront_cart(',
-    '.add_storefront_line_item(',
+    '.add_line_item(',
+    '.update_line_item_quantity(',
     '.update_storefront_context(',
-    '.update_storefront_line_item_quantity(',
-    '.update_storefront_line_item_pricing(',
     '.remove_storefront_line_item(',
   ]) {
     if (!cartStorefrontMutationSource.includes(marker)) {
@@ -291,10 +291,10 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const effectivePriceBody = functionBody(pricingQuerySource, 'attach_effective_prices');
   if (!effectivePriceBody) fail('GraphQL effective-price attachment implementation body missing');
   for (const marker of [
-    '.resolve_product_price(',
-    'ResolveProductPriceRequest {',
-    'pricing_query_port_context(',
-    'PortErrorKind::NotFound',
+    '.resolve_product_prices(',
+    'ResolveProductPricesRequest {',
+    '.items',
+    'snapshot.context',
   ]) {
     if (!effectivePriceBody.includes(marker)) {
       fail(`GraphQL effective-price attachment missing PricingReadPort marker: ${marker}`);
@@ -330,50 +330,34 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   if (activePriceListsBody.includes('PricingService::new(') || activePriceListsBody.includes('.list_active_price_lists_for_channel(')) {
     fail('GraphQL active-price-list query must not bypass PricingReadPort');
   }
-  for (const [surface, source, functionName, providerSource, providerFunctionName] of [
+  const sharedQuoteBody = functionBody(checkoutPricingSource, 'read_storefront_cart_line_quote');
+  if (!sharedQuoteBody || !sharedQuoteBody.includes('.resolve_product_price(') || !sharedQuoteBody.includes('cart_quote_matches(')) {
+    fail('Cart shared quote adapter must delegate and correlate the exact Pricing owner response');
+  }
+  for (const [surface, source, functionName] of [
     ['GraphQL storefront repricing helper', graphqlMutationHelpersSource, 'reprice_storefront_cart_line_items'],
-    [
-      'GraphQL storefront add-line-item helper',
-      graphqlMutationHelpersSource,
-      'resolve_storefront_line_item_input',
-      cartStorefrontMutationSource,
-      'add_storefront_cart_line_item',
-    ],
-    [
-      'GraphQL storefront update-line-item mutation',
-      cartStorefrontMutationSource,
-      'update_storefront_cart_line_item',
-    ],
     ['REST storefront repricing helper', storefrontControllerSource, 'reprice_storefront_cart_line_items_for_db'],
-    [
-      'REST storefront add-line-item helper',
-      storefrontLineItemResolutionSource,
-      'resolve_store_line_item_input',
-      cartStorefrontRestSource,
-      'add_cart_line_item',
-    ],
     ['Storefront checkout runtime repricing helper', storefrontCheckoutRuntimeSource, 'reprice_storefront_cart_line_items'],
   ]) {
     const body = functionBody(source, functionName);
-    if (!body) fail(`${surface} implementation body missing`);
-    const providerBody = providerFunctionName
-      ? functionBody(providerSource, providerFunctionName)
-      : body;
-    if (!providerBody) fail(`${surface} provider implementation body missing`);
-    if (!providerBody.includes('in_process_pricing_read_port(')) {
-      fail(`${surface} missing PricingReadPort provider factory`);
+    if (!body || !body.includes('in_process_pricing_read_port(') || !body.includes('crate::read_storefront_cart_line_quote(')) {
+      fail(`${surface} must construct selected Pricing and delegate to the shared admitted quote adapter`);
     }
-    for (const marker of [
-      '.resolve_product_price(',
-      'ResolveProductPriceRequest {',
-    ]) {
-      if (!body.includes(marker)) {
-        fail(`${surface} missing PricingReadPort consumer marker: ${marker}`);
-      }
-    }
-    if (body.includes('PricingService::new(') || body.includes('.resolve_variant_price(')) {
-      fail(`${surface} must not bypass PricingReadPort`);
-    }
+    if (body.includes('PricingService::new(') || body.includes('.resolve_variant_price(')) fail(`${surface} bypasses PricingReadPort`);
+  }
+  for (const [source, name, operation] of [
+    [cartStorefrontMutationSource, 'add_storefront_cart_line_item', '.add_line_item('],
+    [cartStorefrontMutationSource, 'update_storefront_cart_line_item', '.update_line_item_quantity('],
+    [cartStorefrontRestSource, 'add_cart_line_item', '.add_line_item('],
+    [cartStorefrontRestSource, 'update_cart_line_item', '.update_line_item_quantity('],
+  ]) {
+    const body = functionBody(source, name);
+    if (!body || !body.includes('StorefrontCartRuntime::new(') || !body.includes(operation)) fail(`${name} must use the actual shared workflow`);
+    if (body.includes('PricingService::new(')) fail(`${name} must not select an embedded Pricing fallback`);
+  }
+  const quantityBody = functionBody(cartWorkflowSource, 'update_line_item_quantity');
+  for (const marker of ['read_storefront_cart_line_quote(', 'require_cart_inventory(', 'CartStorefrontLineItemPricingRequest', 'pricing_context']) {
+    if (!quantityBody?.includes(marker)) fail(`shared quantity workflow missing ${marker}`);
   }
 
   for (const module of modules) {
@@ -470,7 +454,8 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     for (const testCase of smoke.cases) {
       const registryCase = registryCases.find((entry) => entry.operation === testCase.operation);
       if (!registryCase) fail(`${module}.${testCase.operation} missing registry case`);
-      const body = functionBody(ports, testCase.operation);
+      const implementation = testCase.source ? read(testCase.source) : ports;
+      const body = functionBody(implementation, testCase.operation);
       if (!body) fail(`${module}.${testCase.operation} implementation body missing`);
       let previous = -1;
       for (const marker of testCase.source_order) {

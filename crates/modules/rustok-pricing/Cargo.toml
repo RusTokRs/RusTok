@@ -23,6 +23,7 @@ rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-product.workspace = true
+rustok-region.workspace = true
 rustok-pricing-persistence.workspace = true
 rustok-translation-targets.workspace = true
 serde.workspace = true
@@ -32,6 +33,4 @@ sea-orm-migration.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true

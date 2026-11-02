@@ -15,7 +15,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { forbidRawContextLogging, requireFactFields } from "./lib/bounded-diagnostics.mjs";
+import {
+  forbidRawContextLogging,
+  requireFactFields,
+} from "./lib/bounded-diagnostics.mjs";
 import {
   CART_CONTEXT_FACT_FIELDS,
   CART_PORT_ERROR_LOG_FIELDS,
@@ -44,14 +47,33 @@ const forbidText = (content, value, label) => {
 const { source, admission, portImpl, portErrorLog } = cart;
 
 for (const [value, label] of [
-  ["use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};", "typed admission imports"],
+  [
+    "use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};",
+    "typed admission imports",
+  ],
   ['const CART_CHECKOUT_OWNER: &str = "rustok_cart";', "truthful cart owner"],
-  ['const CART_CHECKOUT_BOUNDARY: &str = "cart_checkout_port";', "stable cart checkout boundary"],
-  ['const PREPARE_CHECKOUT_OPERATION: &str = "prepare_checkout";', "prepare operation"],
-  ['const READ_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_checkout_snapshot";', "read snapshot operation"],
-  ['const COMPLETE_CHECKOUT_OPERATION: &str = "complete_checkout";', "complete operation"],
-  ['const RELEASE_CHECKOUT_OPERATION: &str = "release_checkout";', "release operation"],
-]) requireText(cart.constants, value, label);
+  [
+    'const CART_CHECKOUT_BOUNDARY: &str = "cart_checkout_port";',
+    "stable cart checkout boundary",
+  ],
+  [
+    'const PREPARE_CHECKOUT_OPERATION: &str = "prepare_checkout";',
+    "prepare operation",
+  ],
+  [
+    'const READ_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_checkout_snapshot";',
+    "read snapshot operation",
+  ],
+  [
+    'const COMPLETE_CHECKOUT_OPERATION: &str = "complete_checkout";',
+    "complete operation",
+  ],
+  [
+    'const RELEASE_CHECKOUT_OPERATION: &str = "release_checkout";',
+    "release operation",
+  ],
+])
+  requireText(cart.constants, value, label);
 
 // The helper intercepts the policy error without consuming it: `inspect_err` keeps the original
 // `PortError` available both to the diagnostics and to the caller's return value.
@@ -76,24 +98,38 @@ for (const [value, label] of [
     "log_cart_checkout_port_error(context, owner_operation, admission_phase, error);",
     "single bounded diagnostic implementation",
   ],
-]) requireText(admission, value, label);
+])
+  requireText(admission, value, label);
 
 // Policy rejection must be reported before the write-semantics phase is consulted, so the phase
 // label always names the first check that failed.
-const readPolicyIndex = admission.indexOf("require_policy(PortCallPolicy::write())");
+const readPolicyIndex = admission.indexOf(
+  "require_policy(PortCallPolicy::write())",
+);
 const writeSemanticsIndex = admission.indexOf("require_write_semantics()");
 if (!(readPolicyIndex >= 0 && readPolicyIndex < writeSemanticsIndex)) {
-  failures.push("write admission: policy must be checked before write semantics");
+  failures.push(
+    "write admission: policy must be checked before write semantics",
+  );
 }
 for (const [phase, expected, label] of [
   ['"policy"', 2, "policy"],
   ['"write_semantics"', 1, "write semantics"],
 ]) {
   const count = admission.match(new RegExp(phase, "g"))?.length ?? 0;
-  if (count !== expected) failures.push(`${label} phase count: expected ${expected}, found ${count}`);
+  if (count !== expected)
+    failures.push(`${label} phase count: expected ${expected}, found ${count}`);
 }
 for (const value of ["map_err(|error| {", "map_err(|_| {"]) {
   forbidText(admission, value, "consuming admission interception");
+}
+
+for (const forbidden of [".begin_checkout(", ".update_context("]) {
+  forbidText(
+    cart.prepare,
+    forbidden,
+    "snapshot preparation must not split lifecycle/context across commits",
+  );
 }
 
 for (const [block, values, label] of [
@@ -102,9 +138,7 @@ for (const [block, values, label] of [
     [
       "require_cart_checkout_write_admission(&context, PREPARE_CHECKOUT_OPERATION)?;",
       "let tenant_id = parse_tenant_id(&context, PREPARE_CHECKOUT_OPERATION)?;",
-      ".get_cart(tenant_id, request.cart_id)",
-      ".begin_checkout(tenant_id, request.cart_id)",
-      ".update_context(tenant_id, request.cart_id, request.input)",
+      ".prepare_checkout(tenant_id, request)",
       "snapshot_from_cart(cart)",
     ],
     "prepare checkout behavior",
@@ -143,7 +177,9 @@ for (const [block, values, label] of [
 ]) {
   for (const value of values) requireText(block, value, label);
   const admissionIndex = block.indexOf("require_cart_checkout_");
-  const tenantIndex = block.indexOf("let tenant_id = parse_tenant_id(&context,");
+  const tenantIndex = block.indexOf(
+    "let tenant_id = parse_tenant_id(&context,",
+  );
   if (!(admissionIndex >= 0 && admissionIndex < tenantIndex)) {
     failures.push(`${label}: admission must precede tenant parsing`);
   }
@@ -167,39 +203,73 @@ for (const [value, label] of [
   ["owner = CART_CHECKOUT_OWNER", "truthful owner field"],
   ["owner_operation,", "exact operation field"],
   ["phase,", "phase field"],
-  ['"cart checkout owner boundary failed with bounded diagnostics"', "technical event"],
-  ['"cart checkout owner boundary was rejected with bounded diagnostics"', "ordinary event"],
-]) requireText(portErrorLog, value, label);
+  [
+    '"cart checkout owner boundary failed with bounded diagnostics"',
+    "technical event",
+  ],
+  [
+    '"cart checkout owner boundary was rejected with bounded diagnostics"',
+    "ordinary event",
+  ],
+])
+  requireText(portErrorLog, value, label);
 
 for (const [value, label] of [
   "let context_facts = cart_checkout_context_facts(context);",
   "let error_facts = cart_checkout_port_error_facts(error);",
-]) requireText(portErrorLog, value, label);
+])
+  requireText(portErrorLog, value, label);
 
-requireFactFields(failures, portErrorLog, CART_CONTEXT_FACT_FIELDS, "admission context facts");
-requireFactFields(failures, portErrorLog, CART_PORT_ERROR_LOG_FIELDS, "admission error facts");
+requireFactFields(
+  failures,
+  portErrorLog,
+  CART_CONTEXT_FACT_FIELDS,
+  "admission context facts",
+);
+requireFactFields(
+  failures,
+  portErrorLog,
+  CART_PORT_ERROR_LOG_FIELDS,
+  "admission error facts",
+);
 forbidRawContextLogging(failures, portErrorLog, "admission diagnostics");
 forbidRawContextLogging(failures, admission, "admission helpers");
 
 const technicalIndex = portErrorLog.indexOf("tracing::error!(");
 const ordinaryIndex = portErrorLog.indexOf("tracing::warn!(");
 if (!(technicalIndex >= 0 && ordinaryIndex > technicalIndex)) {
-  failures.push("admission diagnostics: technical severity must precede the ordinary branch");
+  failures.push(
+    "admission diagnostics: technical severity must precede the ordinary branch",
+  );
 }
 
 for (const value of [
   "context.require_policy(PortCallPolicy::read())?;",
   "context.require_policy(PortCallPolicy::write())?;",
   "context.require_write_semantics()?;",
-]) forbidText(portImpl, value, "context-dropping direct admission");
+])
+  forbidText(portImpl, value, "context-dropping direct admission");
 
 for (const [pattern, expected, label] of [
-  [/require_cart_checkout_read_admission\(/g, 2, "read helper definition/use count"],
-  [/require_cart_checkout_write_admission\(/g, 4, "write helper definition/use count"],
-  [/log_cart_checkout_admission_rejection\(/g, 4, "diagnostic helper definition/use count"],
+  [
+    /require_cart_checkout_read_admission\(/g,
+    2,
+    "read helper definition/use count",
+  ],
+  [
+    /require_cart_checkout_write_admission\(/g,
+    4,
+    "write helper definition/use count",
+  ],
+  [
+    /log_cart_checkout_admission_rejection\(/g,
+    4,
+    "diagnostic helper definition/use count",
+  ],
 ]) {
   const count = source.match(pattern)?.length ?? 0;
-  if (count !== expected) failures.push(`${label}: expected ${expected}, found ${count}`);
+  if (count !== expected)
+    failures.push(`${label}: expected ${expected}, found ${count}`);
 }
 
 for (const [value, label] of [
@@ -210,12 +280,16 @@ for (const [value, label] of [
   ["fn canonicalize_json(", "canonical JSON"],
   ["fn merge_checkout_order_metadata(", "checkout order metadata merge"],
   ["fn cart_error_to_port_error(", "stable public cart mapping"],
-  ["fn canonical_json_is_independent_of_object_key_order()", "canonical hash test source"],
+  [
+    "fn canonical_json_is_independent_of_object_key_order()",
+    "canonical hash test source",
+  ],
   [
     "fn snapshot_normalization_removes_volatile_projection_fields()",
     "snapshot normalization test source",
   ],
-]) requireText(source, value, label);
+])
+  requireText(source, value, label);
 
 if (failures.length > 0) {
   console.error("Cart checkout admission context verification failed:");

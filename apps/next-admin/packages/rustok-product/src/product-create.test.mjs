@@ -161,3 +161,40 @@ test('create forwards the browser caller key unchanged on every invocation', asy
   }
   assert.deepEqual(keys, ['retained-browser-key', 'retained-browser-key']);
 });
+
+test('atomic initial axes and sparse variants are forwarded without a temporary default SKU', async () => {
+  const axes = [
+    { attributeId: 'color', position: 0, allowedOptionIds: ['red', 'blue'] },
+    { attributeId: 'size', position: 1, allowedOptionIds: ['small', 'large'] }
+  ];
+  const variants = [
+    {
+      sku: 'red-small',
+      axisValues: [
+        { attributeId: 'color', optionId: 'red' },
+        { attributeId: 'size', optionId: 'small' }
+      ],
+      prices: [],
+      inventoryQuantity: 3,
+      inventoryPolicy: 'deny'
+    },
+    {
+      sku: 'blue-large',
+      axisValues: [
+        { attributeId: 'color', optionId: 'blue' },
+        { attributeId: 'size', optionId: 'large' }
+      ],
+      prices: [],
+      inventoryQuantity: 5,
+      inventoryPolicy: 'continue'
+    }
+  ];
+  const input = await capture({
+    title: 'Sparse product',
+    variantAxes: axes,
+    variants
+  });
+  assert.deepEqual(input.variantAxes, axes);
+  assert.deepEqual(input.variants, variants);
+  assert.equal(input.variants.length, 2);
+});

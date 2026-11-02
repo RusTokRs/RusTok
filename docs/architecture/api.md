@@ -166,6 +166,124 @@ New module services, ports, HTTP handlers, GraphQL roots, `#[server]` adapters a
 adapters must use explicit owner and Axum runtime contracts as their target
 contract. The active server and generated module composition are Axum-only.
 
+## HTTP error retry advice
+
+The shared Axum error-envelope owner is [`rustok-web`](../../crates/libs/rustok-web/CRATE_API.md),
+not a module-local Pricing/Commerce envelope. Its flat `ErrorBody` retains `code` and `message`
+and adds optional `retryable`. The same DTO derives the OpenAPI schema.
+
+```json
+{
+  "code": "pricing.product_identity_capability_unavailable",
+  "message": "The requested service is temporarily unavailable",
+  "retryable": false
+}
+```
+
+- A present boolean is exact owner advice. Both false and true survive status/body/JSON mapping;
+  the shared port mapper forwards `PortError.retryable`, and known custom adapters forward their
+  existing owner/final-runtime decision. Status/code/public-copy/redaction policies do not change.
+- Missing is valid unknown advice, not false or true. Ordinary HTTP constructors with no owner
+  decision omit the member. A present null, string, number, array or object is malformed; the
+  canonical DTO rejects it and its schema is optional but non-nullable. No status or public
+  message phrase substitutes for a missing bit, or overrides an explicit false on 503/504.
+- `apps/server::Error::Http` delegates the same response. The existing Next Admin registry REST
+  helper uses the host's shared HTTP decoder: owner/absent/invalid evidence stays distinguishable,
+  malformed advice stays unknown, and unsupported raw/nested bodies never become public text.
+  Its metadata reader admits 16 KiB within two seconds, releases/cancels its reader, and does not
+  await failed or stalled upstream cancellation; runtime timing/cancellation remains unverified.
+- Advice is **not durable outcome**. It does not establish commit/rejection, release retained
+  attempts, permit fallback/automatic write replay, replace a frozen request/idempotency key,
+  bypass current authorization, or supersede owner receipts/journals/recovery.
+- This is an additive optional public-wire member, not an internal compatibility mode or a second
+  error model. Current buyer Product/Pricing/Cart UI calls remain GraphQL/native; no REST buyer
+  client is invented. GraphQL extensions and native envelopes are unchanged by this HTTP slice.
+
+The [Commerce source handoff](../../crates/modules/rustok-commerce/docs/implementation-plan.md#canonical-http-retry-advice-2026-10-30)
+records actual forwarding/schema/client coverage, source-only checks and unexecuted runtime gates.
+Domain error representations in `rustok-core` do not replace the Axum envelope owner.
+
+## Cart priced mutation adoption
+
+Cart owns [`CartPricingContextGuard`](../../crates/modules/rustok-cart/CRATE_API.md#priced-mutation-adoption-2026-10-30-source-continuation)
+for the original observation used by an external price/stock read. It is an internal owner
+precondition, not a browser-authority token, monotonic Cart revision or durable receipt.
+
+- Priced add/change/reprice bind tenant/Cart, saved currency/region/channel/locale/country,
+  customer/capability evidence and exact line identity/quantity/money/fulfillment inputs. They
+  compare under the existing Cart row lock before writes. An authorization wrapper may bind
+  already-authorized guest evidence but must not refresh material inputs after the quote.
+- Priced observations are bounded to 1024 lines; insertion at capacity refuses. Explicit removal
+  uses a purpose-bound target-only observation, so larger/invalid-price historical carts can be
+  reduced. It cannot authorize price adoption. A decrement-to-removal retains its original
+  target quantity; context or target drift refuses instead of deleting a newer line.
+- Bulk updates carry quoted quantity and reject duplicate/unknown/stale rows before any write.
+  The unquoted storefront quantity operation is retired; absent original SKU identity is not
+  permission to scale a stored price or substitute a Product/variant.
+- Commerce shares one REST/GraphQL/native quantity workflow: selected Product/publication/
+  fulfillment and Pricing checks precede Inventory's aggregate **replacement** demand check.
+  Price tiers remain per target line, not aggregate SKU stock demand. Owner errors preserve exact
+  retry advice; no hint authorizes automatic replay or a new command identity.
+- Native request/cart DTO shapes and endpoints remain unchanged. Native uses guarded ports and
+  the existing admitted request context/claims; sanitized guest projections are not secrets.
+  Owner failures use one static inspect-before-retry envelope, not raw diagnostic messages.
+
+This source continuation does not provide price/stock holds, cross-owner atomicity, exact replay,
+monotonic revisions, live policy-revocation fencing or Cart mutation/outbox receipts. The
+2026-10-31 continuation below closes Cart-local context/price atomicity. Its regressions are unrun; the
+[Cart plan](../../crates/modules/rustok-cart/docs/implementation-plan.md#priced-quantity-adoption-2026-10-30)
+and [Commerce handoff](../../crates/modules/rustok-commerce/docs/implementation-plan.md#cart-quantity-adoption-2026-10-30)
+record scoped source checks and remaining compilation/runtime/concurrency/downstream gates.
+
+## Cart context and Pricing adoption (2026-10-31)
+
+The [Cart owner command](../../crates/modules/rustok-cart/CRATE_API.md#atomic-context-and-pricing-adoption-2026-10-31-source-continuation)
+is one `CartContextUpdateRequest` with full replacement input, original material observation and
+explicit `CartContextPricing`. Browser DTOs do not accept money/plans. Commerce prepares selected
+Pricing before Cart writes using owner-normalized hypothetical target, expected parent plus
+per-line tier groups, deduplicated/chunked batches, exact response correlation and one inherited
+price-operation deadline. A batch refusal is not permission to use single reads, old prices or
+another provider.
+
+Cart checks original observation and exact complete target coverage under its lock, then commits
+context, prices/adjustments, marketplace projection and existing shipping/tax/totals in one owner
+transaction. Preserve is explicit checkout/materialization semantics: nonempty Cart cannot change
+currency/region/channel pair/locale unit-price basis without an authoritative plan. Country is
+correlated and recalculates tax/shipping; the current Pricing API has no country selector. Missing
+shipping vector does not override scalar null, group null/empty clears explicitly and resolved
+overlap refuses. Requested country/null cannot become the region's first country.
+
+Context mutation is active-only. Already checking-out/completed checkout recovers before considering
+new context or prices; snapshot prepare delegates atomic owner preparation. Hypothetical projection
+and equality checks are neither live acknowledgements nor mutation authorization. A failed read
+following commit remains an unknown outcome, not permission to replay or rotate mutation keys.
+No schema/history rewrite, cross-owner hold, monotonic revision, durable Cart receipt/outbox or
+runtime certification is supplied. See the [source handoff](../../crates/modules/rustok-commerce/docs/implementation-plan.md#atomic-cart-context-adoption-2026-10-31).
+
+## Inventory reservation adoption into Order (2026-10-31)
+
+The existing Inventory identity port owns bounded adoption of an existing allocation into Order
+lines. Commerce supplies the same selected capability used for reserve, validates complete response
+correlation, then updates its own journal/checkpoint in separate transactions. Cart-line provenance
+and stable Variant/Order-line UUIDs, quantities, external identities and saved locations are retained;
+no fresh Pricing/Product eligibility refresh or allocation fallback is permitted.
+
+An unverified owner handoff is not classified as no-effect from its retry hint. Retryable failures
+retain same-identity recovery; nonretryable uncertainty uses the existing lease-fenced
+`reconciliation_required` journal/park/admission-event path without automatic compensation. Final
+staged storefront projection keeps advice through nested recovery/journal errors without emitting
+private payloads. Existing staged REST/GraphQL/native envelopes and buyer DTOs remain unchanged.
+Local replay read failures are not proof of no prior owner effect; recovery preserves their bounded
+classification and original typed cause before compensation lookup. Buyer errors retain existing
+public codes/messages; bounded owner codes remain journal/diagnostic facts. Positive deadline
+admission precedes provider polling. Full preserved metadata must fit the physical 32 KiB backend
+limit before any binding write; deterministic size refusal is nonretryable, never automatic truncation.
+
+Known previous adoption and explicit lossy-compaction provenance are preserved, not backfilled;
+unknown contradictions refuse. No schema/migration/receipt/provider or reservation event publisher
+is added. See the [owning source record and remaining gates](../../crates/modules/rustok-commerce/docs/implementation-plan.md#inventory-adoption-source-evidence).
+This is source work, not Rust, SQL/contention, mounted/remote execution or step-8 certification.
+
 ## Security and Context Contract
 
 Each API path must operate through a single host/runtime context:

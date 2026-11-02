@@ -1,36 +1,39 @@
 use rust_decimal::Decimal;
+use sea_orm::sea_query::{Expr, ExprTrait};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    Statement, TransactionTrait,
+    AccessMode, ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, QueryOrder,
+    QuerySelect, Set, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{locale_tags_match, normalize_locale_tag};
+use rustok_api::{PortContext, PortError, PortErrorKind, locale_tags_match, normalize_locale_tag};
 use rustok_channel::entities::channel;
 use rustok_core::events::ValidateEvent;
 use rustok_core::{generate_id, money};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_product::{
-    CatalogService,
-    dto::{ProductResponse, ProductTranslationResponse},
-};
+use rustok_product::dto::{ProductResponse, ProductTranslationResponse};
 
 use rustok_commerce_foundation::dto::PriceInput;
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
 mod entities {
-    pub use rustok_commerce_foundation::entities::{product, product_variant};
+    pub use rustok_commerce_foundation::entities::product_variant;
     pub use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
-    pub use rustok_product::entities::product_translation;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+mod resolution;
+pub(crate) use resolution::ResolutionError;
+
+pub const MAX_PRICE_RESOLUTION_ROWS: usize = 4096;
+const MAX_PUBLIC_PRICE_CATALOG_ROWS: usize = 16_384;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PriceResolutionContext {
     pub currency_code: String,
     pub region_id: Option<Uuid>,
@@ -40,8 +43,83 @@ pub struct PriceResolutionContext {
     pub quantity: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl PriceResolutionContext {
+    /// Syntactic/money normalization only. Identity and channel completion stay in owner ports.
+    #[allow(clippy::result_large_err)]
+    pub fn normalized(mut self) -> CommerceResult<Self> {
+        self.currency_code = normalize_resolution_currency(&self.currency_code)?;
+        self.quantity = Some(normalize_resolution_quantity(self.quantity)?);
+        for (field, id) in [
+            ("region_id", self.region_id),
+            ("price_list_id", self.price_list_id),
+            ("channel_id", self.channel_id),
+        ] {
+            if id.is_some_and(|id| id.is_nil()) {
+                return Err(CommerceError::Validation(format!(
+                    "{field} must not be a nil UUID"
+                )));
+            }
+        }
+        if self
+            .channel_slug
+            .as_deref()
+            .is_some_and(|slug| slug.trim().is_empty())
+        {
+            return Err(CommerceError::Validation(
+                "channel_slug must not be empty".into(),
+            ));
+        }
+        self.channel_slug = normalize_channel_slug(self.channel_slug.as_deref());
+        Ok(self)
+    }
+}
+
+/// Provenance is an observation, not a price reservation or an optimistic write token.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PriceResolutionSource {
+    Base {
+        price_id: Uuid,
+    },
+    PriceListOverride {
+        price_id: Uuid,
+        price_list_id: Uuid,
+    },
+    PriceListRule {
+        price_id: Uuid,
+        price_list_id: Uuid,
+        rule: PriceListRule,
+    },
+}
+
+impl PriceResolutionSource {
+    pub fn price_id(&self) -> Uuid {
+        match self {
+            Self::Base { price_id }
+            | Self::PriceListOverride { price_id, .. }
+            | Self::PriceListRule { price_id, .. } => *price_id,
+        }
+    }
+
+    pub fn rule(&self) -> Option<&PriceListRule> {
+        match self {
+            Self::PriceListRule { rule, .. } => Some(rule),
+            Self::Base { .. } | Self::PriceListOverride { .. } => None,
+        }
+    }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Base { .. } => "base",
+            Self::PriceListOverride { .. } => "price_list_override",
+            Self::PriceListRule { .. } => "price_list_rule",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolvedPrice {
+    pub source: PriceResolutionSource,
     pub currency_code: String,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,
@@ -90,7 +168,15 @@ pub enum PriceListRuleKind {
     PercentageDiscount,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl PriceListRuleKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PercentageDiscount => "percentage_discount",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PriceListRule {
     pub kind: PriceListRuleKind,
     pub adjustment_percent: Decimal,
@@ -229,14 +315,37 @@ pub struct StorefrontPricingPrice {
     pub on_sale: bool,
 }
 
+pub(crate) struct PriceResolutionBatch {
+    pub context: PriceResolutionContext,
+    pub resolved_at: chrono::DateTime<chrono::Utc>,
+    pub prices: Vec<(Uuid, Option<ResolvedPrice>)>,
+}
+
 pub struct PricingService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
 }
 
 impl PricingService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        // This constructor is an explicit embedded baseline. Mounted reads install their
+        // already selected Product runtime before use; failures never select this baseline.
+        let product_catalog_read_runtime =
+            rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
+        Self {
+            db,
+            event_bus,
+            product_catalog_read_runtime,
+        }
+    }
+
+    pub fn with_product_catalog_read_runtime(
+        mut self,
+        runtime: rustok_product::ProductCatalogReadRuntime,
+    ) -> Self {
+        self.product_catalog_read_runtime = runtime;
+        self
     }
 
     #[instrument(skip(self))]
@@ -260,7 +369,7 @@ impl PricingService {
         let price_list = active.update(&txn).await?;
 
         txn.commit().await?;
-        Ok(price_list_rule_from_model(&price_list))
+        resolution::stored_rule(&price_list).map_err(ResolutionError::into_commerce)
     }
 
     #[instrument(skip(self))]
@@ -439,6 +548,7 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        self.require_embedded_variant_service_state()?;
         let currency_code = normalize_resolution_currency(currency_code)?;
         validate_discount_percent(discount_percent)?;
         let price = self
@@ -510,6 +620,7 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let preview = self
             .preview_percentage_discount_with_channel(
                 variant_id,
@@ -573,6 +684,7 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let preview = self
             .preview_price_list_percentage_discount_with_channel(
                 tenant_id,
@@ -705,6 +817,7 @@ impl PricingService {
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
     ) -> CommerceResult<AdminPricingPrice> {
+        self.require_embedded_variant_service_state()?;
         let (effective_channel_id, effective_channel_slug) = match price_list_id {
             Some(price_list_id) => {
                 let price_list =
@@ -842,6 +955,7 @@ impl PricingService {
         min_quantity: Option<i32>,
         max_quantity: Option<i32>,
     ) -> CommerceResult<()> {
+        self.require_embedded_variant_service_state()?;
         let currency_code = normalize_resolution_currency(currency_code)?;
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
@@ -999,6 +1113,7 @@ impl PricingService {
         variant_id: Uuid,
         prices: Vec<PriceInput>,
     ) -> CommerceResult<()> {
+        self.require_embedded_variant_service_state()?;
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
@@ -1132,6 +1247,7 @@ impl PricingService {
     /// no second check to lean on. `resolve_variant_price` states the same rule
     /// inline; both now share this loader.
     async fn ensure_variant_tenant(&self, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()> {
+        self.require_embedded_variant_service_state()?;
         if tenant_id.is_nil() || variant_id.is_nil() {
             return Err(CommerceError::Validation(
                 "tenant_id and variant_id must not be nil UUIDs".to_string(),
@@ -1181,74 +1297,233 @@ impl PricingService {
         Ok(prices)
     }
 
-    #[instrument(skip(self, context), fields(tenant_id = %tenant_id, variant_id = %variant_id))]
+    /// Owner SDK convenience entry. A real caller context is required; it must not be
+    /// reconstructed with a fabricated locale, actor or channel inside Pricing.
+    #[instrument(skip(self, context, pricing, variant_id))]
     pub async fn resolve_variant_price(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         variant_id: Uuid,
-        context: PriceResolutionContext,
-    ) -> CommerceResult<Option<ResolvedPrice>> {
-        let quantity = normalize_resolution_quantity(context.quantity)?;
-        let currency_code = normalize_resolution_currency(&context.currency_code)?;
-        let channel_slug = normalize_channel_slug(context.channel_slug.as_deref());
-        let active_price_list_id = resolve_requested_price_list_id(
-            &self.db,
-            tenant_id,
-            context.price_list_id,
-            context.channel_id,
-            channel_slug.as_deref(),
+        pricing: PriceResolutionContext,
+    ) -> Result<Option<ResolvedPrice>, PortError> {
+        let mut batch = crate::PricingReadPort::resolve_product_prices(
+            self,
+            context,
+            crate::ResolveProductPricesRequest {
+                product_id: None,
+                variant_ids: vec![variant_id],
+                pricing,
+            },
         )
         .await?;
-        let active_price_list_rule =
-            resolve_price_list_rule(&self.db, tenant_id, active_price_list_id).await?;
+        let line = batch.items.pop().ok_or_else(|| {
+            PortError::invariant_violation(
+                "pricing.resolution_incomplete",
+                "SKU quote could not be completed safely",
+            )
+        })?;
+        Ok(line.price)
+    }
 
-        self.ensure_variant_tenant(tenant_id, variant_id).await?;
+    /// Current SKU mutation/preview helpers lock local Product variant rows. They cannot
+    /// safely execute against a differently selected Product owner until that write protocol exists.
+    pub(crate) fn require_embedded_variant_state(&self) -> Result<(), PortError> {
+        if self.product_catalog_read_runtime.profile()
+            != rustok_product::ProductCatalogReadProfile::EmbeddedNative
+        {
+            return Err(PortError::new(
+                rustok_api::PortErrorKind::Unavailable,
+                "pricing.product_write_capability_unavailable",
+                "SKU price authoring is unavailable for the selected external Product owner",
+                false,
+            ));
+        }
+        Ok(())
+    }
 
-        // INVARIANT: `price` rows carry no tenant column; the tenant boundary of
-        // this query is the `product_variant` row validated tenant-scoped above,
-        // and every price write goes through that variant.
-        let prices = entities::price::Entity::find()
-            .filter(entities::price::Column::VariantId.eq(variant_id))
-            .filter(entities::price::Column::CurrencyCode.eq(&currency_code))
-            .all(&self.db)
-            .await?;
+    fn require_embedded_variant_service_state(&self) -> CommerceResult<()> {
+        self.require_embedded_variant_state().map_err(|_| CommerceError::Validation(
+            "SKU price authoring requires the embedded Product write protocol; no local fallback is allowed".to_owned()))
+    }
 
-        select_best_price(
-            prices,
-            context.region_id,
-            active_price_list_id,
-            context.channel_id,
-            channel_slug.as_deref(),
-            quantity,
-        )
-        .map(|price| {
-            if price.price_list_id.is_none()
-                && let (Some(price_list_id), Some(rule)) =
-                    (active_price_list_id, active_price_list_rule.as_ref())
-            {
-                return apply_price_list_rule_to_resolved_price(
-                    currency_code,
-                    price,
-                    price_list_id,
-                    rule,
-                );
-            }
-
-            Ok(ResolvedPrice {
-                currency_code,
-                amount: price.amount,
-                compare_at_amount: price.compare_at_amount,
-                discount_percent: calculate_discount_percent(price.amount, price.compare_at_amount),
-                on_sale: is_sale_price(price.amount, price.compare_at_amount),
-                region_id: price.region_id,
-                min_quantity: price.min_quantity,
-                max_quantity: price.max_quantity,
-                price_list_id: price.price_list_id,
-                channel_id: price.channel_id,
-                channel_slug: price.channel_slug,
+    pub(crate) fn variant_identity_read_port(
+        &self,
+    ) -> Result<std::sync::Arc<dyn rustok_product::ProductVariantIdentityReadPort>, PortError> {
+        self.product_catalog_read_runtime
+            .variant_identity_read_port()
+            .ok_or_else(|| {
+                PortError::new(
+                    PortErrorKind::Unavailable,
+                    "pricing.product_identity_capability_unavailable",
+                    "The selected Product owner has not supplied SKU identity verification",
+                    false,
+                )
             })
+    }
+
+    pub(crate) async fn read_product_variant_identities(
+        &self,
+        context: &PortContext,
+        request: &rustok_product::ProductVariantIdentitiesRequest,
+    ) -> Result<Vec<rustok_product::ProductVariantIdentitySnapshot>, PortError> {
+        let identities = self
+            .variant_identity_read_port()?
+            .read_variant_identities(context.clone(), request.clone())
+            .await
+            .map_err(pricing_identity_port_error)?;
+
+        rustok_product::validate_variant_identities_response(context, request, &identities)
+            .map_err(|error| {
+                PortError::new(
+                    error.kind,
+                    "pricing.variant_identity_invalid",
+                    "The selected Product owner returned inconsistent SKU ownership",
+                    error.retryable,
+                )
+            })?;
+
+        Ok(identities)
+    }
+
+    pub(crate) fn channel_read_port(&self) -> std::sync::Arc<dyn rustok_channel::ChannelReadPort> {
+        rustok_channel::in_process_channel_read_port(self.db.clone())
+    }
+
+    pub(crate) fn region_read_port(&self) -> std::sync::Arc<dyn rustok_region::RegionReadPort> {
+        rustok_region::in_process_region_read_port(self.db.clone())
+    }
+
+    /// Only called after the Product owner has verified every requested identity. Price rows
+    /// have no tenant column: the verified SKU set is the tenant boundary of this query.
+    pub(crate) async fn resolve_price_snapshot(
+        &self,
+        tenant_id: Uuid,
+        variant_ids: Vec<Uuid>,
+        context: PriceResolutionContext,
+    ) -> Result<PriceResolutionBatch, ResolutionError> {
+        let context = context.normalized()?;
+        let txn = match self.db.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => {
+                self.db
+                    .begin_with_config(
+                        Some(IsolationLevel::RepeatableRead),
+                        Some(AccessMode::ReadOnly),
+                    )
+                    .await?
+            }
+            DatabaseBackend::Sqlite => self.db.begin().await?,
+            _ => {
+                return Err(CommerceError::Validation(
+                    "Pricing snapshot backend is unsupported".into(),
+                )
+                .into());
+            }
+        };
+        let resolved_at = chrono::Utc::now();
+        let selected_list = if let Some(id) = context.price_list_id {
+            let list = entities::price_list::Entity::find_by_id(id)
+                .filter(entities::price_list::Column::TenantId.eq(tenant_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| CommerceError::Validation("price_list_id was not found".into()))?;
+            validate_active_price_list_at(&list, resolved_at)?;
+            if !channel_scope_matches(
+                list.channel_id,
+                list.channel_slug.as_deref(),
+                context.channel_id,
+                context.channel_slug.as_deref(),
+            ) {
+                return Err(CommerceError::Validation(
+                    "price_list_id is not available for the requested channel".into(),
+                )
+                .into());
+            }
+            Some(list)
+        } else {
+            None
+        };
+        let rule = selected_list
+            .as_ref()
+            .map(resolution::stored_rule)
+            .transpose()?
+            .flatten();
+        let mut query = entities::price::Entity::find()
+            .filter(entities::price::Column::VariantId.is_in(variant_ids.clone()))
+            .filter(entities::price::Column::CurrencyCode.eq(&context.currency_code));
+        query = match context.price_list_id {
+            Some(id) => query.filter(
+                Condition::any()
+                    .add(entities::price::Column::PriceListId.is_null())
+                    .add(entities::price::Column::PriceListId.eq(id)),
+            ),
+            None => query.filter(entities::price::Column::PriceListId.is_null()),
+        };
+        query = match context.region_id {
+            Some(id) => query.filter(
+                Condition::any()
+                    .add(entities::price::Column::RegionId.is_null())
+                    .add(entities::price::Column::RegionId.eq(id)),
+            ),
+            None => query.filter(entities::price::Column::RegionId.is_null()),
+        };
+        // Keep slug matching in the canonical Rust policy: SQL LOWER/TRIM do not
+        // share its ASCII-case / Unicode-whitespace semantics for retained rows.
+        query = match context.channel_id {
+            Some(id) => query.filter(
+                Condition::any()
+                    .add(entities::price::Column::ChannelId.is_null())
+                    .add(entities::price::Column::ChannelId.eq(id)),
+            ),
+            None => query.filter(entities::price::Column::ChannelId.is_null()),
+        };
+        let quantity = context.quantity.unwrap_or(1);
+        let active_window = Condition::all()
+            .add(
+                Condition::any()
+                    .add(entities::price::Column::MinQuantity.is_null())
+                    .add(entities::price::Column::MinQuantity.lte(quantity)),
+            )
+            .add(
+                Condition::any()
+                    .add(entities::price::Column::MaxQuantity.is_null())
+                    .add(entities::price::Column::MaxQuantity.gte(quantity)),
+            );
+        // Invalid windows must still reach owner validation, not disappear into unpriced/base.
+        let invalid_window = Condition::any()
+            .add(entities::price::Column::MinQuantity.lte(0))
+            .add(entities::price::Column::MaxQuantity.lte(0))
+            .add(
+                Expr::col(entities::price::Column::MinQuantity)
+                    .gt(Expr::col(entities::price::Column::MaxQuantity)),
+            );
+        query = query.filter(Condition::any().add(active_window).add(invalid_window));
+        let rows = query
+            .limit((MAX_PRICE_RESOLUTION_ROWS + 1) as u64)
+            .all(&txn)
+            .await?;
+        if rows.len() > MAX_PRICE_RESOLUTION_ROWS {
+            return Err(ResolutionError::RowBudget);
+        }
+        let mut by_variant = HashMap::<Uuid, Vec<entities::price::Model>>::new();
+        for row in rows {
+            by_variant.entry(row.variant_id).or_default().push(row);
+        }
+        let mut prices = Vec::with_capacity(variant_ids.len());
+        for variant_id in variant_ids {
+            let resolved = resolution::resolve(
+                by_variant.remove(&variant_id).unwrap_or_default(),
+                &context,
+                selected_list.as_ref(),
+                rule.as_ref(),
+            )?;
+            prices.push((variant_id, resolved));
+        }
+        txn.commit().await?;
+        Ok(PriceResolutionBatch {
+            context,
+            resolved_at,
+            prices,
         })
-        .transpose()
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
@@ -1318,7 +1593,7 @@ impl PricingService {
                 price_list
                     .ends_at
                     .as_ref()
-                    .is_none_or(|ends_at| *ends_at >= now)
+                    .is_none_or(|ends_at| *ends_at > now)
             })
             .filter(|price_list| {
                 channel_scope_matches(
@@ -1381,136 +1656,182 @@ impl PricingService {
             .unwrap_or_default()
     }
 
-    #[instrument(skip(self), fields(tenant_id = %tenant_id))]
+    #[instrument(skip(self, context))]
     #[allow(clippy::too_many_arguments)]
     pub async fn list_admin_product_pricing_with_locale_fallback(
         &self,
-        tenant_id: Uuid,
-        locale: &str,
+        context: PortContext,
         fallback_locale: Option<&str>,
         search: Option<&str>,
         status: Option<ProductStatus>,
         page: u64,
         per_page: u64,
-    ) -> CommerceResult<AdminPricingProductList> {
-        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
-        let fallback_locale = fallback_locale.unwrap_or(locale);
-        let page = page.max(1);
-        let per_page = per_page.clamp(1, 100);
-        let offset = (page.saturating_sub(1)) * per_page;
-
-        let mut query = entities::product::Entity::find()
-            .filter(entities::product::Column::TenantId.eq(tenant_id));
-
-        if let Some(status) = status {
-            query = query.filter(entities::product::Column::Status.eq(status));
-        }
-
-        if let Some(search) = search.map(str::trim).filter(|value| !value.is_empty()) {
-            let matched_ids = entities::product_translation::Entity::find()
-                .filter(entities::product_translation::Column::Title.contains(search))
-                .all(&self.db)
-                .await?
-                .into_iter()
-                .map(|translation| translation.product_id)
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            if matched_ids.is_empty() {
-                return Ok(AdminPricingProductList {
-                    items: Vec::new(),
-                    total: 0,
-                    page,
-                    per_page,
-                    has_next: false,
-                });
-            }
-
-            query = query.filter(entities::product::Column::Id.is_in(matched_ids));
-        }
-
-        let total = query.clone().count(&self.db).await?;
-        let products = query
-            .order_by_desc(entities::product::Column::CreatedAt)
-            .offset(offset)
-            .limit(per_page)
-            .all(&self.db)
-            .await?;
-
-        let mut items = Vec::with_capacity(products.len());
-        for product in products {
-            let product = catalog
-                .get_product_with_locale_fallback(
-                    tenant_id,
-                    product.id,
-                    locale,
-                    Some(fallback_locale),
+    ) -> Result<AdminPricingProductList, PortError> {
+        let budget_context = context.clone();
+        crate::ports::read_with_deadline(&budget_context, async {
+            context.require_policy(rustok_api::PortCallPolicy::read())?;
+            crate::ports::parse_port_tenant_id(&context, "list_admin_product_pricing")?;
+            let page = page.max(1);
+            let per_page = per_page.clamp(1, 100);
+            let catalog = self.product_catalog_read_runtime.read_port();
+            let products = catalog
+                .list_legacy_admin_products(
+                    context.clone(),
+                    rustok_product::LegacyAdminProductsRequest {
+                        locale: Some(context.locale.clone()),
+                        fallback_locale: fallback_locale.map(str::to_owned),
+                        search: search.map(str::to_owned),
+                        status,
+                        vendor: None,
+                        page,
+                        per_page,
+                    },
                 )
                 .await
-                .map_err(map_product_catalog_error)?;
-            items.push(map_admin_list_item(product, locale, fallback_locale));
-        }
-
-        Ok(AdminPricingProductList {
-            items,
-            total,
-            page,
-            per_page,
-            has_next: page.saturating_mul(per_page) < total,
+                .map_err(pricing_catalog_port_error)?;
+            let ids = products
+                .items
+                .iter()
+                .map(|item| item.id)
+                .collect::<BTreeSet<_>>();
+            if products.page != page
+                || products.per_page != per_page
+                || products.items.len() > per_page as usize
+                || ids.len() != products.items.len()
+                || ids.iter().any(Uuid::is_nil)
+            {
+                return Err(PortError::invariant_violation(
+                    "pricing.catalog_page_invalid",
+                    "The selected Product owner returned an inconsistent pricing inspection page",
+                ));
+            }
+            let mut items = Vec::with_capacity(products.items.len());
+            for item in products.items {
+                let product = catalog
+                    .read_product_projection(
+                        context.clone(),
+                        rustok_product::ProductProjectionRequest {
+                            product_id: item.id,
+                            locale: Some(context.locale.clone()),
+                            fallback_locale: fallback_locale.map(str::to_owned),
+                        },
+                    )
+                    .await
+                    .map_err(pricing_catalog_port_error)?;
+                validate_pricing_product_projection(&context, Some(item.id), &product)?;
+                items.push(map_admin_list_item(
+                    product,
+                    &context.locale,
+                    fallback_locale.unwrap_or(&context.locale),
+                ));
+            }
+            Ok(AdminPricingProductList {
+                items,
+                total: products.total,
+                page: products.page,
+                per_page: products.per_page,
+                has_next: products.has_next,
+            })
         })
+        .await
     }
 
-    #[instrument(skip(self), fields(tenant_id = %tenant_id, product_id = %product_id))]
+    #[instrument(skip(self, context), fields(product_id = %product_id))]
     pub async fn get_admin_product_pricing_with_locale_fallback(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         product_id: Uuid,
-        locale: &str,
         fallback_locale: Option<&str>,
         selected_price_list_id: Option<Uuid>,
-    ) -> CommerceResult<AdminPricingProductDetail> {
-        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
-        let product = catalog
-            .get_product_with_locale_fallback(
-                tenant_id,
-                product_id,
-                locale,
-                Some(fallback_locale.unwrap_or(locale)),
-            )
-            .await
-            .map_err(map_product_catalog_error)?;
-        let variant_ids = product
-            .variants
-            .iter()
-            .map(|variant| variant.id)
-            .collect::<Vec<_>>();
-        let mut prices_by_variant = HashMap::<Uuid, Vec<entities::price::Model>>::new();
-        if !variant_ids.is_empty() {
-            let mut query = entities::price::Entity::find()
-                .filter(entities::price::Column::VariantId.is_in(variant_ids));
-            if let Some(selected_price_list_id) = selected_price_list_id {
-                query = query.filter(
-                    sea_orm::Condition::any()
-                        .add(entities::price::Column::PriceListId.is_null())
-                        .add(entities::price::Column::PriceListId.eq(selected_price_list_id)),
-                );
-            } else {
-                query = query.filter(entities::price::Column::PriceListId.is_null());
+    ) -> Result<AdminPricingProductDetail, PortError> {
+        let budget_context = context.clone();
+        crate::ports::read_with_deadline(&budget_context, async {
+            let operation = "read_admin_product_pricing_projection";
+            context.require_policy(rustok_api::PortCallPolicy::read())?;
+            let tenant_id = crate::ports::parse_port_tenant_id(&context, operation)?;
+            if product_id.is_nil() || selected_price_list_id.is_some_and(|id| id.is_nil()) {
+                return Err(PortError::validation(
+                    "pricing.catalog_identity_invalid",
+                    "Use non-nil Product and Price List identities",
+                ));
+            }
+            let product = self
+                .product_catalog_read_runtime
+                .read_port()
+                .read_product_projection(
+                    context.clone(),
+                    rustok_product::ProductProjectionRequest {
+                        product_id,
+                        locale: Some(context.locale.clone()),
+                        fallback_locale: fallback_locale.map(str::to_owned),
+                    },
+                )
+                .await
+                .map_err(pricing_catalog_port_error)?;
+            validate_pricing_product_projection(&context, Some(product_id), &product)?;
+            if let Some(price_list_id) = selected_price_list_id {
+                let list = entities::price_list::Entity::find_by_id(price_list_id)
+                    .filter(entities::price_list::Column::TenantId.eq(tenant_id))
+                    .one(&self.db)
+                    .await
+                    .map_err(|error| {
+                        crate::ports::pricing_error_to_port_error(&context, operation, error.into())
+                    })?;
+                if list.is_none() {
+                    return Err(PortError::not_found(
+                        "pricing.price_list_not_found",
+                        "The selected Price List is not available to this tenant",
+                    ));
+                }
+            }
+            let variant_ids = product
+                .variants
+                .iter()
+                .map(|variant| variant.id)
+                .collect::<Vec<_>>();
+            let mut prices_by_variant = HashMap::<Uuid, Vec<entities::price::Model>>::new();
+            if !variant_ids.is_empty() {
+                let mut query = entities::price::Entity::find()
+                    .filter(entities::price::Column::VariantId.is_in(variant_ids));
+                if let Some(selected_price_list_id) = selected_price_list_id {
+                    query = query.filter(
+                        sea_orm::Condition::any()
+                            .add(entities::price::Column::PriceListId.is_null())
+                            .add(entities::price::Column::PriceListId.eq(selected_price_list_id)),
+                    );
+                } else {
+                    query = query.filter(entities::price::Column::PriceListId.is_null());
+                }
+
+                let prices = query
+                    .limit((MAX_PUBLIC_PRICE_CATALOG_ROWS + 1) as u64)
+                    .all(&self.db)
+                    .await
+                    .map_err(|error| {
+                        crate::ports::pricing_error_to_port_error(&context, operation, error.into())
+                    })?;
+                if prices.len() > MAX_PUBLIC_PRICE_CATALOG_ROWS {
+                    return Err(PortError::new(
+                        rustok_api::PortErrorKind::Conflict,
+                        "pricing.catalog_price_row_limit",
+                        "Pricing inspection exceeds its row budget; narrow the selected Price List",
+                        false,
+                    ));
+                }
+                for price in prices {
+                    prices_by_variant
+                        .entry(price.variant_id)
+                        .or_default()
+                        .push(price);
+                }
+            }
+            for prices in prices_by_variant.values_mut() {
+                prices.sort_by(price_specificity_cmp);
             }
 
-            for price in query.all(&self.db).await? {
-                prices_by_variant
-                    .entry(price.variant_id)
-                    .or_default()
-                    .push(price);
-            }
-        }
-        for prices in prices_by_variant.values_mut() {
-            prices.sort_by(price_specificity_cmp);
-        }
-
-        Ok(map_admin_detail(product, prices_by_variant))
+            Ok(map_admin_detail(product, prices_by_variant))
+        })
+        .await
     }
 
     #[instrument(skip(self))]
@@ -1578,45 +1899,74 @@ impl PricingService {
             })
     }
 
-    #[instrument(skip(self))]
-    pub async fn list_published_product_pricing_with_locale_fallback(
+    /// Published catalog inspection counts are not executable price quotes. Both the page
+    /// and its SKU identities come from Product; only unscoped base-price rows are counted.
+    /// The existing thin merchandising-summary port (historically named `legacy`) intentionally
+    /// avoids loading Product's catalog-price snapshots; it is not a pricing fallback.
+    pub(crate) async fn list_storefront_product_pricing(
         &self,
-        tenant_id: Uuid,
-        locale: &str,
-        fallback_locale: Option<&str>,
-        public_channel_slug: Option<&str>,
-        page: u64,
-        per_page: u64,
-    ) -> CommerceResult<StorefrontPricingProductList> {
-        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
-        let products = catalog
-            .list_published_products_with_locale_fallback(
-                tenant_id,
-                locale,
-                fallback_locale,
-                public_channel_slug,
-                page,
-                per_page,
+        context: PortContext,
+        request: crate::StorefrontProductPricingListRequest,
+    ) -> Result<StorefrontPricingProductList, PortError> {
+        let identity_port = self.variant_identity_read_port()?;
+        let products = self
+            .product_catalog_read_runtime
+            .read_port()
+            .list_legacy_storefront_products(
+                context.clone(),
+                rustok_product::LegacyStorefrontProductsRequest {
+                    vendor: None,
+                    product_type: None,
+                    search: None,
+                    locale: Some(context.locale.clone()),
+                    fallback_locale: request.fallback_locale,
+                    public_channel_slug: request.channel_slug,
+                    page: request.page,
+                    per_page: request.per_page,
+                },
             )
             .await
-            .map_err(map_product_catalog_error)?;
-        let product_ids = products
+            .map_err(pricing_catalog_port_error)?;
+        let selected_product_ids = products
             .items
             .iter()
             .map(|product| product.id)
-            .collect::<Vec<_>>();
-        let variants = if product_ids.is_empty() {
-            Vec::new()
-        } else {
-            entities::product_variant::Entity::find()
-                .filter(entities::product_variant::Column::ProductId.is_in(product_ids.clone()))
-                .all(&self.db)
-                .await?
+            .collect::<BTreeSet<_>>();
+        if products.items.len() > request.per_page as usize
+            || selected_product_ids.len() != products.items.len()
+            || selected_product_ids.iter().any(Uuid::is_nil)
+            || products.page != request.page
+            || products.per_page != request.per_page
+        {
+            return Err(PortError::invariant_violation(
+                "pricing.catalog_page_invalid",
+                "The selected Product owner returned an inconsistent pricing inspection page",
+            ));
+        }
+        let identity_request = rustok_product::ProductVariantIdentityListRequest {
+            product_ids: products.items.iter().map(|product| product.id).collect(),
         };
+        let variants = identity_port
+            .list_product_variant_identities(context.clone(), identity_request.clone())
+            .await
+            .map_err(pricing_identity_port_error)?;
+        rustok_product::validate_product_variant_identity_list_response(
+            &context,
+            &identity_request,
+            &variants,
+        )
+        .map_err(|error| {
+            PortError::new(
+                error.kind,
+                "pricing.variant_identity_invalid",
+                "The selected Product owner returned inconsistent page SKU ownership",
+                error.retryable,
+            )
+        })?;
         let mut variant_counts_by_product = HashMap::<Uuid, u64>::new();
         let mut variant_to_product = HashMap::<Uuid, Uuid>::new();
         for variant in variants {
-            variant_to_product.insert(variant.id, variant.product_id);
+            variant_to_product.insert(variant.variant_id, variant.product_id);
             *variant_counts_by_product
                 .entry(variant.product_id)
                 .or_insert(0) += 1;
@@ -1627,15 +1977,45 @@ impl PricingService {
         } else {
             entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.is_in(variant_ids))
+                .filter(rustok_pricing_persistence::catalog_base_scope())
+                .limit((MAX_PUBLIC_PRICE_CATALOG_ROWS + 1) as u64)
                 .all(&self.db)
-                .await?
+                .await
+                .map_err(|error| {
+                    crate::ports::pricing_error_to_port_error(
+                        &context,
+                        "list_storefront_product_pricing",
+                        CommerceError::Database(error),
+                    )
+                })?
         };
+        if prices.len() > MAX_PUBLIC_PRICE_CATALOG_ROWS {
+            return Err(PortError::new(
+                rustok_api::PortErrorKind::Conflict,
+                "pricing.catalog_price_row_limit",
+                "Pricing inspection page exceeds its row budget; reduce page size",
+                false,
+            ));
+        }
         let mut currencies_by_product = HashMap::<Uuid, BTreeSet<String>>::new();
         let mut sale_variants_by_product = HashMap::<Uuid, BTreeSet<Uuid>>::new();
         for price in prices {
-            let Some(product_id) = variant_to_product.get(&price.variant_id).copied() else {
-                continue;
-            };
+            resolution::validate_row(&price, &price.currency_code, None).map_err(|error| {
+                crate::ports::resolution_error_to_port_error(
+                    &context,
+                    "list_storefront_product_pricing",
+                    error,
+                )
+            })?;
+            let product_id = variant_to_product
+                .get(&price.variant_id)
+                .copied()
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "pricing.catalog_identity_incomplete",
+                        "Pricing catalog identity projection is incomplete",
+                    )
+                })?;
             currencies_by_product
                 .entry(product_id)
                 .or_default()
@@ -1684,39 +2064,123 @@ impl PricingService {
         })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, context))]
     pub async fn get_published_product_pricing_by_handle_with_locale_fallback(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         handle: &str,
-        locale: &str,
         fallback_locale: Option<&str>,
         public_channel_slug: Option<&str>,
-    ) -> CommerceResult<Option<StorefrontPricingProductDetail>> {
-        let catalog = CatalogService::new(self.db.clone(), self.event_bus.clone());
-        let product = catalog
-            .get_published_product_by_handle_with_locale_fallback(
-                tenant_id,
-                handle,
-                locale,
-                fallback_locale,
-                public_channel_slug,
-            )
-            .await
-            .map_err(map_product_catalog_error)?;
-
-        Ok(product.map(map_product_detail))
+    ) -> Result<Option<StorefrontPricingProductDetail>, PortError> {
+        let budget_context = context.clone();
+        crate::ports::read_with_deadline(&budget_context, async {
+            context.require_policy(rustok_api::PortCallPolicy::read())?;
+            crate::ports::parse_port_tenant_id(
+                &context,
+                "read_storefront_product_pricing_projection",
+            )?;
+            let product = self
+                .product_catalog_read_runtime
+                .read_port()
+                .read_storefront_product_projection(
+                    context.clone(),
+                    rustok_product::StorefrontProductProjectionRequest {
+                        subject: rustok_product::StorefrontProductProjectionSubject::Handle {
+                            handle: handle.to_owned(),
+                        },
+                        locale: Some(context.locale.clone()),
+                        fallback_locale: fallback_locale.map(str::to_owned),
+                        public_channel_slug: public_channel_slug.map(str::to_owned),
+                    },
+                )
+                .await
+                .map_err(pricing_catalog_port_error)?;
+            if let Some(product) = product.as_ref() {
+                validate_pricing_product_projection(&context, None, product)?;
+                if !product
+                    .translations
+                    .iter()
+                    .any(|translation| translation.handle == handle)
+                {
+                    return Err(PortError::invariant_violation(
+                        "pricing.catalog_identity_invalid",
+                        "The selected Product owner returned a different storefront link",
+                    ));
+                }
+            }
+            Ok(product.map(map_product_detail))
+        })
+        .await
     }
+}
+
+fn pricing_identity_port_error(error: PortError) -> PortError {
+    let code = if error.code == "product.variant_product_mismatch" {
+        "pricing.variant_product_mismatch"
+    } else if error.kind == PortErrorKind::NotFound {
+        "pricing.variant_not_found"
+    } else {
+        "pricing.variant_identity_unavailable"
+    };
+    PortError::new(
+        error.kind,
+        code,
+        "SKU ownership could not be verified for this pricing request",
+        error.retryable,
+    )
+}
+
+fn pricing_catalog_port_error(error: PortError) -> PortError {
+    let code = match error.kind {
+        rustok_api::PortErrorKind::NotFound => "pricing.product_not_found",
+        rustok_api::PortErrorKind::Validation => "pricing.catalog_request_invalid",
+        _ => "pricing.catalog_unavailable",
+    };
+    PortError::new(
+        error.kind,
+        code,
+        "The selected Product projection could not be established",
+        error.retryable,
+    )
+}
+
+fn validate_pricing_product_projection(
+    context: &PortContext,
+    expected_product_id: Option<Uuid>,
+    product: &ProductResponse,
+) -> Result<(), PortError> {
+    let tenant_id = crate::ports::parse_port_tenant_id(context, "pricing_product_projection")?;
+    let variants = product
+        .variants
+        .iter()
+        .map(|variant| variant.id)
+        .collect::<BTreeSet<_>>();
+    if product.tenant_id != tenant_id
+        || product.id.is_nil()
+        || expected_product_id.is_some_and(|id| id != product.id)
+        || product.variants.len() > rustok_product::MAX_VARIANT_IDENTITY_BATCH
+        || variants.len() != product.variants.len()
+        || variants.iter().any(Uuid::is_nil)
+        || product
+            .variants
+            .iter()
+            .any(|variant| variant.product_id != product.id)
+    {
+        return Err(PortError::invariant_violation(
+            "pricing.catalog_identity_invalid",
+            "The selected Product owner returned an inconsistent Product/SKU projection",
+        ));
+    }
+    Ok(())
 }
 
 #[allow(clippy::result_large_err)]
 fn normalize_resolution_currency(currency_code: &str) -> CommerceResult<String> {
-    let normalized = currency_code.trim().to_ascii_uppercase();
-    if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
-        return Err(CommerceError::Validation(
-            "currency_code must be a 3-letter code".to_string(),
-        ));
-    }
+    let normalized = money::normalize_currency_code(currency_code)
+        .map_err(|_| CommerceError::Validation("currency_code must be a 3-letter code".into()))?;
+    money::currency_exponent(&normalized).map_err(|_| {
+        CommerceError::Validation("currency_code has no supported decimal minor unit".into())
+    })?;
     Ok(normalized)
 }
 
@@ -1961,30 +2425,54 @@ async fn resolve_active_price_list_tx(
 
 #[allow(clippy::result_large_err)]
 fn validate_active_price_list(price_list: &entities::price_list::Model) -> CommerceResult<()> {
+    validate_active_price_list_at(price_list, chrono::Utc::now())
+        .map_err(ResolutionError::into_commerce)
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_active_price_list_at(
+    price_list: &entities::price_list::Model,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), ResolutionError> {
+    if price_list.channel_id.is_some_and(|id| id.is_nil())
+        || price_list
+            .channel_slug
+            .as_deref()
+            .is_some_and(|slug| slug.trim().is_empty())
+        || !matches!(price_list.r#type.as_str(), "sale" | "override")
+        || price_list
+            .starts_at
+            .zip(price_list.ends_at)
+            .is_some_and(|(start, end)| start >= end)
+    {
+        return Err(resolution::invalid_data(
+            "Stored price-list scope, type or window is invalid",
+        ));
+    }
     if !price_list.status.eq_ignore_ascii_case("active") {
         return Err(CommerceError::Validation(
             "price_list_id must reference an active price list".to_string(),
-        ));
+        )
+        .into());
     }
 
-    let now = chrono::Utc::now();
     if price_list
         .starts_at
         .as_ref()
         .is_some_and(|starts_at| *starts_at > now)
     {
-        return Err(CommerceError::Validation(
-            "price_list_id is not active yet".to_string(),
-        ));
+        return Err(
+            CommerceError::Validation("price_list_id is not active yet".to_string()).into(),
+        );
     }
     if price_list
         .ends_at
         .as_ref()
-        .is_some_and(|ends_at| *ends_at < now)
+        .is_some_and(|ends_at| *ends_at <= now)
     {
-        return Err(CommerceError::Validation(
-            "price_list_id is already expired".to_string(),
-        ));
+        return Err(
+            CommerceError::Validation("price_list_id is already expired".to_string()).into(),
+        );
     }
 
     Ok(())
@@ -2013,184 +2501,6 @@ fn validate_or_inherit_price_list_scope(
     }
 
     Ok((channel_id, channel_slug))
-}
-
-fn price_matches_context(
-    price: &entities::price::Model,
-    region_id: Option<Uuid>,
-    requested_price_list_id: Option<Uuid>,
-    channel_id: Option<Uuid>,
-    channel_slug: Option<&str>,
-    quantity: i32,
-) -> bool {
-    match requested_price_list_id {
-        Some(requested_price_list_id) => {
-            if price.price_list_id.is_some() && price.price_list_id != Some(requested_price_list_id)
-            {
-                return false;
-            }
-        }
-        None => {
-            if price.price_list_id.is_some() {
-                return false;
-            }
-        }
-    }
-
-    if let Some(requested_region_id) = region_id {
-        if price.region_id.is_some() && price.region_id != Some(requested_region_id) {
-            return false;
-        }
-    } else if price.region_id.is_some() {
-        return false;
-    }
-
-    if !channel_scope_matches(
-        price.channel_id,
-        price.channel_slug.as_deref(),
-        channel_id,
-        channel_slug,
-    ) {
-        return false;
-    }
-
-    if let Some(min_quantity) = price.min_quantity
-        && quantity < min_quantity
-    {
-        return false;
-    }
-
-    if let Some(max_quantity) = price.max_quantity
-        && quantity > max_quantity
-    {
-        return false;
-    }
-
-    true
-}
-
-fn select_best_price(
-    prices: Vec<entities::price::Model>,
-    region_id: Option<Uuid>,
-    requested_price_list_id: Option<Uuid>,
-    channel_id: Option<Uuid>,
-    channel_slug: Option<&str>,
-    quantity: i32,
-) -> Option<entities::price::Model> {
-    let mut candidates = prices
-        .into_iter()
-        .filter(|price| {
-            price_matches_context(
-                price,
-                region_id,
-                requested_price_list_id,
-                channel_id,
-                channel_slug,
-                quantity,
-            )
-        })
-        .collect::<Vec<_>>();
-
-    candidates.sort_by_key(|price| {
-        let price_list_specificity = match (requested_price_list_id, price.price_list_id) {
-            (Some(requested), Some(candidate)) if requested == candidate => 0,
-            (Some(_), None) => 1,
-            _ => 2,
-        };
-        let region_specificity = match (region_id, price.region_id) {
-            (Some(requested), Some(candidate)) if requested == candidate => 0,
-            (_, None) => 1,
-            _ => 2,
-        };
-        let channel_specificity = channel_specificity(
-            price.channel_id,
-            price.channel_slug.as_deref(),
-            channel_id,
-            channel_slug,
-        );
-        let min_quantity_specificity = std::cmp::Reverse(price.min_quantity.unwrap_or(0));
-        let max_quantity_specificity = price.max_quantity.unwrap_or(i32::MAX);
-        (
-            price_list_specificity,
-            channel_specificity,
-            region_specificity,
-            min_quantity_specificity,
-            max_quantity_specificity,
-            price.id,
-        )
-    });
-
-    candidates.into_iter().next()
-}
-
-fn price_list_rule_from_model(price_list: &entities::price_list::Model) -> Option<PriceListRule> {
-    match (
-        price_list.rule_kind.as_deref(),
-        price_list.adjustment_percent,
-    ) {
-        (Some("percentage_discount"), Some(adjustment_percent)) => Some(PriceListRule {
-            kind: PriceListRuleKind::PercentageDiscount,
-            adjustment_percent,
-        }),
-        _ => None,
-    }
-}
-
-async fn resolve_price_list_rule(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    price_list_id: Option<Uuid>,
-) -> CommerceResult<Option<PriceListRule>> {
-    let Some(price_list_id) = price_list_id else {
-        return Ok(None);
-    };
-
-    let price_list = entities::price_list::Entity::find_by_id(price_list_id)
-        .filter(entities::price_list::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| CommerceError::Validation("price_list_id was not found".to_string()))?;
-
-    Ok(price_list_rule_from_model(&price_list))
-}
-
-fn apply_price_list_rule_to_resolved_price(
-    currency_code: String,
-    price: entities::price::Model,
-    price_list_id: Uuid,
-    rule: &PriceListRule,
-) -> CommerceResult<ResolvedPrice> {
-    match rule.kind {
-        PriceListRuleKind::PercentageDiscount => {
-            let base_amount = price.compare_at_amount.unwrap_or(price.amount);
-            // ECOM-MONEY-04: the discounted amount must be rounded at the currency's precision;
-            // always rounding to two decimals loses the third decimal of KWD/BHD amounts and
-            // leaves fractions on zero-decimal currencies such as JPY.
-            let amount = money::round_to_currency(
-                base_amount * ((Decimal::from(100) - rule.adjustment_percent) / Decimal::from(100)),
-                &currency_code,
-            )
-            .map_err(|error| {
-                CommerceError::Validation(format!(
-                    "price-list discount for {currency_code} cannot be rounded: {error}"
-                ))
-            })?;
-
-            Ok(ResolvedPrice {
-                currency_code,
-                amount,
-                compare_at_amount: Some(base_amount),
-                discount_percent: Some(rule.adjustment_percent),
-                on_sale: true,
-                region_id: price.region_id,
-                min_quantity: price.min_quantity,
-                max_quantity: price.max_quantity,
-                price_list_id: Some(price_list_id),
-                channel_id: price.channel_id,
-                channel_slug: price.channel_slug,
-            })
-        }
-    }
 }
 
 fn map_product_detail(product: ProductResponse) -> StorefrontPricingProductDetail {
@@ -2515,38 +2825,6 @@ fn map_product_status(status: rustok_product::entities::product::ProductStatus) 
         rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
         rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,
         rustok_product::entities::product::ProductStatus::Archived => ProductStatus::Archived,
-    }
-}
-
-fn map_product_catalog_error(error: rustok_product::CommerceError) -> CommerceError {
-    match error {
-        rustok_product::CommerceError::Database(error) => CommerceError::Database(error),
-        rustok_product::CommerceError::ProductNotFound(id) => CommerceError::ProductNotFound(id),
-        rustok_product::CommerceError::DuplicateHandle { handle, locale } => {
-            CommerceError::DuplicateHandle { handle, locale }
-        }
-        rustok_product::CommerceError::DuplicateSku(sku) => CommerceError::DuplicateSku(sku),
-        rustok_product::CommerceError::Validation(message) => CommerceError::Validation(message),
-        rustok_product::CommerceError::NoVariants => CommerceError::NoVariants,
-        rustok_product::CommerceError::CannotDeletePublished => {
-            CommerceError::CannotDeletePublished
-        }
-        rustok_product::CommerceError::VariantNotFound(id) => CommerceError::VariantNotFound(id),
-        rustok_product::CommerceError::CannotDeleteOnlyVariant => {
-            CommerceError::Validation("cannot delete only variant of product".to_string())
-        }
-        rustok_product::CommerceError::ImageNotFound(id) => {
-            CommerceError::Validation(format!("product image not found: {id}"))
-        }
-        rustok_product::CommerceError::Conflict(_) => {
-            let error = rustok_core::error::RichError::new(
-                rustok_core::error::ErrorKind::Conflict,
-                "Product request conflicts with the current state",
-            )
-            .with_error_code("PRODUCT_CONFLICT");
-            CommerceError::from(error)
-        }
-        rustok_product::CommerceError::Core(error) => CommerceError::Core(error),
     }
 }
 

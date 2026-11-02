@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 use crate::core::{CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest};
 
@@ -60,12 +60,38 @@ impl NativeClientErrorContext {
         }
     }
 
+    pub(super) fn create_cart(request: &crate::core::CartCreateRequest) -> Self {
+        Self {
+            operation: "create_cart",
+            correlation_id: native_client_correlation_id("create_cart"),
+            selected_cart_id_length: None,
+            locale_length: request.locale.as_deref().map(|value| value.chars().count()),
+            cart_id_length: None,
+            line_item_id_length: None,
+        }
+    }
+    pub(super) fn add_variant(request: &crate::core::CartAddVariantRequest) -> Self {
+        Self {
+            operation: "add_variant",
+            correlation_id: native_client_correlation_id("add_variant"),
+            selected_cart_id_length: None,
+            locale_length: request.locale.as_deref().map(|value| value.chars().count()),
+            cart_id_length: Some(request.cart_id.chars().count()),
+            line_item_id_length: None,
+        }
+    }
+
     pub(super) fn map_error(&self, error: ApiError) -> ApiError {
         match error {
             ApiError::Validation(message) => ApiError::Validation(message),
             error => {
+                let (error_kind, raw_error_length) = match &error {
+                    ApiError::Graphql(message) => ("graphql", message.chars().count()),
+                    ApiError::ServerFn(message) => ("server_fn", message.chars().count()),
+                    ApiError::Validation(message) => ("validation", message.chars().count()),
+                };
                 tracing::error!(
-                    raw_error = ?error,
+                    error_kind, raw_error_length,
                     owner = CART_STOREFRONT_NATIVE_CLIENT_OWNER,
                     owner_operation = self.operation,
                     correlation_id = %self.correlation_id,
@@ -89,9 +115,8 @@ impl NativeClientErrorContext {
 }
 
 fn native_client_correlation_id(operation: &'static str) -> String {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("cart-storefront-native-client:{operation}:{timestamp}")
+    format!(
+        "cart-storefront-native-client:{operation}:{}",
+        Uuid::new_v4()
+    )
 }

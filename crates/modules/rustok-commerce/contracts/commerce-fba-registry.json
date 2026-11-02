@@ -30,7 +30,8 @@
       "contract_version": "inventory.reservation.v1",
       "registry": "crates/modules/rustok-inventory/contracts/inventory-fba-registry.json",
       "ports": [
-        "InventoryReservationPort"
+        "InventoryReservationPort",
+        "InventoryReservationIdentityPort"
       ],
       "profiles": [
         "checkout_inventory_reservation"

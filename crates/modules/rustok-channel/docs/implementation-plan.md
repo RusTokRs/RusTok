@@ -1,5 +1,22 @@
 # Implementation plan for `rustok-channel`
 
+## Selected commerce channel reads (2026-10-30; source work)
+
+`ChannelReadPort::read_selected_channel` is implemented as a shared composition of the
+provider's `read_channel`: explicit ID/slug selectors are completed and correlated against
+one active tenant-owned non-nil Channel. Blank/nil, inconsistent, foreign, missing/inactive
+and unavailable results refuse. No selectors returns `None` for global scope, without page,
+host or default substitution. This is a saved-commerce selector read, not a replacement for
+the request-routing `ChannelResolver` precedence below.
+
+Pricing retains explicit trusted-context admission and delegates pair correlation to this
+owner method. Commerce caps waiting for its saved-Cart read at two seconds and uses the
+canonical slug for preflight/shipping and new reservation allocation. No new provider,
+persistence or routing resolver is introduced; saved Cart/journal fields are not rewritten.
+Regression source in `ports_tests.rs` covers completion, global scope, pair/provider mismatch,
+tenancy/activity and failure admission. Source is parsed/formatted only; tests, Rust compilation,
+database, cancellation and mounted/remote execution are unrun. This does not promote readiness.
+
 ## Current state
 
 `rustok-channel` owns request-channel resolution, typed policies, and the

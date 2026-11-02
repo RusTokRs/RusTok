@@ -160,6 +160,11 @@ around the owner contracts.
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 
+- Sealed artifact subscription intake is now source-wired through the existing durable queue
+  with original-envelope dedupe and unchanged root representation. Two new definitions are
+  uncompiled/unrun; actual backend exact/wildcard delivery, worker/restart and transport recovery
+  remain open. See the [intake API](CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).
+
 - Artifact-data object migration and the physical namespace cutover still need
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest

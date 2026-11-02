@@ -8,9 +8,9 @@
     "documentation": "crates/modules/rustok-pricing/docs/read-local-context.md"
   },
   "source_contract": {
-    "read_operation_count": 6,
+    "read_operation_count": 8,
     "owner_delegation_changed": false,
-    "request_response_contract_changed": false,
+    "request_response_contract_changed": true,
     "error_kind_code_retryability_changed": false,
     "public_message_mapping_changed": false,
     "technical_error_severity_changed": false,
@@ -30,13 +30,26 @@
   },
   "validation": {
     "tests_run": false,
-    "verifiers_run": false,
+    "verifiers_run": true,
     "cargo_run": false,
-    "format_run": false,
+    "format_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "mounted_runtime_proven": false
   },
-  "execution": []
+  "execution": [
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-read-local-context.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "source_format",
+      "tool": "@scalar/rust-fmt 0.3.0 WASM; edition/styleEdition 2024",
+      "scope": "39 scoped Rust files",
+      "rust_compilation": false
+    }
+  ],
+  "continuation_date": "2026-10-29"
 }

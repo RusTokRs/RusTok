@@ -1,72 +1,41 @@
-# Product storefront catalog native error safety
+# Product storefront native read safety
 
 Status: **source-ready / unvalidated**
 
-## Scope
+## Current boundary (2026-10-30)
 
-This slice hardens the Product-owned native catalog-list server-function adapter in:
+Catalog list, detail, catalog schema/search options, facets and buyer quote server functions use
+one required `product_buyer_scope`. It resolves the host, tenant, trusted request context, optional
+auth and transactional event bus fallibly, then applies Commerce storefront admission before owner
+IO. Anonymous/no-channel contexts remain valid; rejected contexts never become optional defaults.
 
-- `crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs`.
+The host-selected `ProductCatalogReadRuntime` supplies catalog and optional schema capabilities.
+Missing schema support refuses rather than returning empty filter options or constructing a second
+local schema resolver. The in-process runtime remains the owner's explicit composition default.
 
-It covers missing `HostRuntimeContext`, missing host-composed `TransactionalEventBus`, optional request-context diagnostics, and tenant-context extraction. Product catalog query validation and service failures continue to use the existing Product public-error mapper.
+A two-second Tokio endpoint budget covers admission and the subsequent owner calls. Port contexts
+receive the remaining budget. A timeout drops the read future; this does **not** establish database
+cancellation, remote-provider execution or a reservation. Cart mutation deadlines and receipts are
+not certified by this Product read budget.
 
-## Delivered source contract
+## Public and diagnostic policy
 
-The native adapter now resolves `HostRuntimeContext` fallibly and returns static public messages for:
+Technical and extractor failures return the owner public envelope with a fresh opaque reference.
+The server logs bounded error categories, stable codes, presence/length/count facts and correlation
+only. Raw context, tenant, auth token, locale, channel and backend error payloads are not copied to
+these diagnostic events or public technical messages. Input/service classification continues
+through the existing Product public mapper; service validation is not removed to satisfy a guard.
 
-- missing host runtime context;
-- missing `TransactionalEventBus` runtime composition;
-- tenant-context extraction failure.
+The native catalog keeps the typed Product list query, first page/per-page bounds and optional
+currency summary. Detail and quote reads preserve actual sparse SKU UUIDs. The Leptos support
+resource propagates schema/facet errors instead of disguising them as empty controls.
 
-Internal context failures remain only in SSR diagnostics with the available:
+## Verification boundary
 
-- Product storefront owner and exact operation;
-- correlation id, channel id, channel slug, and locale when optional `RequestContext` is available;
-- stable internal code and native boundary;
-- original context extraction error.
+`node scripts/verify/verify-product-storefront-catalog-native-error-safety.mjs` checks these source
+contracts, not mounted behavior. The existing Product storefront boundary guard composes it with
+the GraphQL safety guard. Regression fixtures have been updated but **not executed**.
 
-`RequestContext` remains optional. Extraction failure is logged and still falls back to `None`, preserving locale and channel fallback behavior.
-
-## Preserved behavior
-
-This slice does not change:
-
-- the `product/storefront/catalog-list` endpoint;
-- `CatalogListInput`, `FetchRequest`, `ProductList`, or `StorefrontProductsData`;
-- selected-handle fallback;
-- `StorefrontProductListQuery::try_from_transport_with_attribute_filters`;
-- pagination at page `1`, per-page `12`;
-- locale fallback to the tenant default locale;
-- request-context channel-slug fallback;
-- Product `map_product_public_error` handling for input and catalog service failures;
-- Product dependency topology or lifecycle collaboration contracts.
-
-## Static evidence
-
-`scripts/verify/verify-product-storefront-catalog-native-error-safety.mjs` guards:
-
-- existing SSR tracing composition;
-- exact endpoint, operation, query, pagination, locale, and channel markers;
-- static runtime and tenant-context public envelopes;
-- optional request-context preservation and diagnostics;
-- correlation, channel, locale, owner, code, and boundary logging;
-- fallible host-context lookup and removal of panic/raw runtime/context public mappings;
-- unchanged Product public-error mapper calls;
-- source-only validation flags.
-
-## Remaining gaps
-
-The Product dependency contract remains unresolved. This slice does not change Product/Inventory/Pricing topology, lifecycle transactions, host composition, or module enablement semantics.
-
-The broader ecommerce mapper-cleanup task also remains open for remaining transports, compensation/execution adapters, and non-`PortError` public envelopes. Compile, mounted parity, remote transport, and runtime evidence remain open.
-
-## Suggested maintainer checks
-
-These commands were intentionally not run by the implementation agent:
-
-```bash
-node scripts/verify/verify-product-storefront-catalog-native-error-safety.mjs
-node scripts/verify/verify-product-storefront-boundary.mjs
-node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
-cargo check -p rustok-product-storefront --all-features
-```
+Scoped source checks and Scalar syntax/formatting do not prove Rust compilation, shared-context
+inheritance at runtime, timeouts/cancellation, SSR/WASM hydration, auth/cookie continuity, remote
+capabilities or browser accessibility. Those remain maintainer gates; no FFA/FBA status is promoted.

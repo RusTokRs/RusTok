@@ -40,6 +40,8 @@ export type AppMessageKey =
   | 'Account.trackOrder'
   | 'Blog-comments-empty'
   | 'Blog.comments.empty'
+  | 'Blog-comments-readOnly'
+  | 'Blog.comments.readOnly'
   | 'Blog-comments-timeout'
   | 'Blog.comments.timeout'
   | 'Blog-comments-timeoutCached'
@@ -544,6 +546,12 @@ export type AppMessageKey =
   | 'Order.total'
   | 'Order-tracking'
   | 'Order.tracking'
+  | 'Pricing-currentChannel'
+  | 'Pricing.currentChannel'
+  | 'Pricing-invalidRequest'
+  | 'Pricing.invalidRequest'
+  | 'Pricing-resetContext'
+  | 'Pricing.resetContext'
   | 'Product-addedToCart'
   | 'Product.addedToCart'
   | 'Product-addToCart'
@@ -552,10 +560,68 @@ export type AppMessageKey =
   | 'Product.backToCatalog'
   | 'Product-bundleIncludes'
   | 'Product.bundleIncludes'
+  | 'Product-buyerAdding'
+  | 'Product.buyerAdding'
+  | 'Product-buyerAuthRefused'
+  | 'Product.buyerAuthRefused'
+  | 'Product-buyerCartContext'
+  | 'Product.buyerCartContext'
+  | 'Product-buyerCartLocale'
+  | 'Product.buyerCartLocale'
+  | 'Product-buyerCartRestore'
+  | 'Product.buyerCartRestore'
+  | 'Product-buyerCartUnconfirmed'
+  | 'Product.buyerCartUnconfirmed'
+  | 'Product-buyerChooseAxes'
+  | 'Product.buyerChooseAxes'
+  | 'Product-buyerChooseCurrency'
+  | 'Product.buyerChooseCurrency'
+  | 'Product-buyerCurrency'
+  | 'Product.buyerCurrency'
+  | 'Product-buyerInspectCart'
+  | 'Product.buyerInspectCart'
+  | 'Product-buyerInvalidQuantity'
+  | 'Product.buyerInvalidQuantity'
+  | 'Product-buyerLinkError'
+  | 'Product.buyerLinkError'
+  | 'Product-buyerLoading'
+  | 'Product.buyerLoading'
+  | 'Product-buyerMissingTuple'
+  | 'Product.buyerMissingTuple'
+  | 'Product-buyerNotSelected'
+  | 'Product.buyerNotSelected'
+  | 'Product-buyerObservation'
+  | 'Product.buyerObservation'
+  | 'Product-buyerOrdinaryQuote'
+  | 'Product.buyerOrdinaryQuote'
+  | 'Product-buyerPreview'
+  | 'Product.buyerPreview'
+  | 'Product-buyerProjectionError'
+  | 'Product.buyerProjectionError'
+  | 'Product-buyerReady'
+  | 'Product.buyerReady'
+  | 'Product-buyerRequestError'
+  | 'Product.buyerRequestError'
+  | 'Product-buyerReset'
+  | 'Product.buyerReset'
+  | 'Product-buyerResetCartReference'
+  | 'Product.buyerResetCartReference'
+  | 'Product-buyerRetry'
+  | 'Product.buyerRetry'
+  | 'Product-buyerSelectionLink'
+  | 'Product.buyerSelectionLink'
+  | 'Product-buyerStock'
+  | 'Product.buyerStock'
+  | 'Product-buyerUseCartContext'
+  | 'Product.buyerUseCartContext'
   | 'Product-description'
   | 'Product.description'
   | 'Product-details'
   | 'Product.details'
+  | 'Product-pricingUnavailable'
+  | 'Product.pricingUnavailable'
+  | 'Product-pricingUnpriced'
+  | 'Product.pricingUnpriced'
   | 'Product-quantity'
   | 'Product.quantity'
   | 'Product-selectVariant'
@@ -682,6 +748,8 @@ export interface AppMessageArgs {
   'Account.trackOrder'?: Record<string, never>;
   'Blog-comments-empty'?: Record<string, never>;
   'Blog.comments.empty'?: Record<string, never>;
+  'Blog-comments-readOnly'?: Record<string, never>;
+  'Blog.comments.readOnly'?: Record<string, never>;
   'Blog-comments-timeout'?: Record<string, never>;
   'Blog.comments.timeout'?: Record<string, never>;
   'Blog-comments-timeoutCached'?: Record<string, never>;
@@ -1186,6 +1254,12 @@ export interface AppMessageArgs {
   'Order.total'?: Record<string, never>;
   'Order-tracking'?: Record<string, never>;
   'Order.tracking'?: Record<string, never>;
+  'Pricing-currentChannel'?: Record<string, never>;
+  'Pricing.currentChannel'?: Record<string, never>;
+  'Pricing-invalidRequest'?: Record<string, never>;
+  'Pricing.invalidRequest'?: Record<string, never>;
+  'Pricing-resetContext'?: Record<string, never>;
+  'Pricing.resetContext'?: Record<string, never>;
   'Product-addedToCart'?: Record<string, never>;
   'Product.addedToCart'?: Record<string, never>;
   'Product-addToCart'?: Record<string, never>;
@@ -1194,10 +1268,68 @@ export interface AppMessageArgs {
   'Product.backToCatalog'?: Record<string, never>;
   'Product-bundleIncludes'?: Record<string, never>;
   'Product.bundleIncludes'?: Record<string, never>;
+  'Product-buyerAdding'?: Record<string, never>;
+  'Product.buyerAdding'?: Record<string, never>;
+  'Product-buyerAuthRefused'?: Record<string, never>;
+  'Product.buyerAuthRefused'?: Record<string, never>;
+  'Product-buyerCartContext'?: Record<string, never>;
+  'Product.buyerCartContext'?: Record<string, never>;
+  'Product-buyerCartLocale'?: Record<string, never>;
+  'Product.buyerCartLocale'?: Record<string, never>;
+  'Product-buyerCartRestore'?: Record<string, never>;
+  'Product.buyerCartRestore'?: Record<string, never>;
+  'Product-buyerCartUnconfirmed'?: Record<string, never>;
+  'Product.buyerCartUnconfirmed'?: Record<string, never>;
+  'Product-buyerChooseAxes'?: Record<string, never>;
+  'Product.buyerChooseAxes'?: Record<string, never>;
+  'Product-buyerChooseCurrency'?: Record<string, never>;
+  'Product.buyerChooseCurrency'?: Record<string, never>;
+  'Product-buyerCurrency'?: Record<string, never>;
+  'Product.buyerCurrency'?: Record<string, never>;
+  'Product-buyerInspectCart'?: Record<string, never>;
+  'Product.buyerInspectCart'?: Record<string, never>;
+  'Product-buyerInvalidQuantity'?: Record<string, never>;
+  'Product.buyerInvalidQuantity'?: Record<string, never>;
+  'Product-buyerLinkError'?: Record<string, never>;
+  'Product.buyerLinkError'?: Record<string, never>;
+  'Product-buyerLoading'?: Record<string, never>;
+  'Product.buyerLoading'?: Record<string, never>;
+  'Product-buyerMissingTuple'?: Record<string, never>;
+  'Product.buyerMissingTuple'?: Record<string, never>;
+  'Product-buyerNotSelected'?: Record<string, never>;
+  'Product.buyerNotSelected'?: Record<string, never>;
+  'Product-buyerObservation'?: Record<string, never>;
+  'Product.buyerObservation'?: Record<string, never>;
+  'Product-buyerOrdinaryQuote'?: Record<string, never>;
+  'Product.buyerOrdinaryQuote'?: Record<string, never>;
+  'Product-buyerPreview'?: Record<string, never>;
+  'Product.buyerPreview'?: Record<string, never>;
+  'Product-buyerProjectionError'?: Record<string, never>;
+  'Product.buyerProjectionError'?: Record<string, never>;
+  'Product-buyerReady'?: Record<string, never>;
+  'Product.buyerReady'?: Record<string, never>;
+  'Product-buyerRequestError'?: Record<string, never>;
+  'Product.buyerRequestError'?: Record<string, never>;
+  'Product-buyerReset'?: Record<string, never>;
+  'Product.buyerReset'?: Record<string, never>;
+  'Product-buyerResetCartReference'?: Record<string, never>;
+  'Product.buyerResetCartReference'?: Record<string, never>;
+  'Product-buyerRetry'?: Record<string, never>;
+  'Product.buyerRetry'?: Record<string, never>;
+  'Product-buyerSelectionLink'?: Record<string, never>;
+  'Product.buyerSelectionLink'?: Record<string, never>;
+  'Product-buyerStock'?: Record<string, never>;
+  'Product.buyerStock'?: Record<string, never>;
+  'Product-buyerUseCartContext'?: Record<string, never>;
+  'Product.buyerUseCartContext'?: Record<string, never>;
   'Product-description'?: Record<string, never>;
   'Product.description'?: Record<string, never>;
   'Product-details'?: Record<string, never>;
   'Product.details'?: Record<string, never>;
+  'Product-pricingUnavailable'?: Record<string, never>;
+  'Product.pricingUnavailable'?: Record<string, never>;
+  'Product-pricingUnpriced'?: Record<string, never>;
+  'Product.pricingUnpriced'?: Record<string, never>;
   'Product-quantity'?: Record<string, never>;
   'Product.quantity'?: Record<string, never>;
   'Product-selectVariant'?: Record<string, never>;
@@ -1325,6 +1457,8 @@ export interface AppMessages {
   'Account.trackOrder': Record<string, never>;
   'Blog-comments-empty': Record<string, never>;
   'Blog.comments.empty': Record<string, never>;
+  'Blog-comments-readOnly': Record<string, never>;
+  'Blog.comments.readOnly': Record<string, never>;
   'Blog-comments-timeout': Record<string, never>;
   'Blog.comments.timeout': Record<string, never>;
   'Blog-comments-timeoutCached': Record<string, never>;
@@ -1829,6 +1963,12 @@ export interface AppMessages {
   'Order.total': Record<string, never>;
   'Order-tracking': Record<string, never>;
   'Order.tracking': Record<string, never>;
+  'Pricing-currentChannel': Record<string, never>;
+  'Pricing.currentChannel': Record<string, never>;
+  'Pricing-invalidRequest': Record<string, never>;
+  'Pricing.invalidRequest': Record<string, never>;
+  'Pricing-resetContext': Record<string, never>;
+  'Pricing.resetContext': Record<string, never>;
   'Product-addedToCart': Record<string, never>;
   'Product.addedToCart': Record<string, never>;
   'Product-addToCart': Record<string, never>;
@@ -1837,10 +1977,68 @@ export interface AppMessages {
   'Product.backToCatalog': Record<string, never>;
   'Product-bundleIncludes': Record<string, never>;
   'Product.bundleIncludes': Record<string, never>;
+  'Product-buyerAdding': Record<string, never>;
+  'Product.buyerAdding': Record<string, never>;
+  'Product-buyerAuthRefused': Record<string, never>;
+  'Product.buyerAuthRefused': Record<string, never>;
+  'Product-buyerCartContext': Record<string, never>;
+  'Product.buyerCartContext': Record<string, never>;
+  'Product-buyerCartLocale': Record<string, never>;
+  'Product.buyerCartLocale': Record<string, never>;
+  'Product-buyerCartRestore': Record<string, never>;
+  'Product.buyerCartRestore': Record<string, never>;
+  'Product-buyerCartUnconfirmed': Record<string, never>;
+  'Product.buyerCartUnconfirmed': Record<string, never>;
+  'Product-buyerChooseAxes': Record<string, never>;
+  'Product.buyerChooseAxes': Record<string, never>;
+  'Product-buyerChooseCurrency': Record<string, never>;
+  'Product.buyerChooseCurrency': Record<string, never>;
+  'Product-buyerCurrency': Record<string, never>;
+  'Product.buyerCurrency': Record<string, never>;
+  'Product-buyerInspectCart': Record<string, never>;
+  'Product.buyerInspectCart': Record<string, never>;
+  'Product-buyerInvalidQuantity': Record<string, never>;
+  'Product.buyerInvalidQuantity': Record<string, never>;
+  'Product-buyerLinkError': Record<string, never>;
+  'Product.buyerLinkError': Record<string, never>;
+  'Product-buyerLoading': Record<string, never>;
+  'Product.buyerLoading': Record<string, never>;
+  'Product-buyerMissingTuple': Record<string, never>;
+  'Product.buyerMissingTuple': Record<string, never>;
+  'Product-buyerNotSelected': Record<string, never>;
+  'Product.buyerNotSelected': Record<string, never>;
+  'Product-buyerObservation': Record<string, never>;
+  'Product.buyerObservation': Record<string, never>;
+  'Product-buyerOrdinaryQuote': Record<string, never>;
+  'Product.buyerOrdinaryQuote': Record<string, never>;
+  'Product-buyerPreview': Record<string, never>;
+  'Product.buyerPreview': Record<string, never>;
+  'Product-buyerProjectionError': Record<string, never>;
+  'Product.buyerProjectionError': Record<string, never>;
+  'Product-buyerReady': Record<string, never>;
+  'Product.buyerReady': Record<string, never>;
+  'Product-buyerRequestError': Record<string, never>;
+  'Product.buyerRequestError': Record<string, never>;
+  'Product-buyerReset': Record<string, never>;
+  'Product.buyerReset': Record<string, never>;
+  'Product-buyerResetCartReference': Record<string, never>;
+  'Product.buyerResetCartReference': Record<string, never>;
+  'Product-buyerRetry': Record<string, never>;
+  'Product.buyerRetry': Record<string, never>;
+  'Product-buyerSelectionLink': Record<string, never>;
+  'Product.buyerSelectionLink': Record<string, never>;
+  'Product-buyerStock': Record<string, never>;
+  'Product.buyerStock': Record<string, never>;
+  'Product-buyerUseCartContext': Record<string, never>;
+  'Product.buyerUseCartContext': Record<string, never>;
   'Product-description': Record<string, never>;
   'Product.description': Record<string, never>;
   'Product-details': Record<string, never>;
   'Product.details': Record<string, never>;
+  'Product-pricingUnavailable': Record<string, never>;
+  'Product.pricingUnavailable': Record<string, never>;
+  'Product-pricingUnpriced': Record<string, never>;
+  'Product.pricingUnpriced': Record<string, never>;
   'Product-quantity': Record<string, never>;
   'Product.quantity': Record<string, never>;
   'Product-selectVariant': Record<string, never>;

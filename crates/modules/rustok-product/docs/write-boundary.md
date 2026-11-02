@@ -24,6 +24,31 @@ adapters must not call the corresponding plain `ProductRelationsPort`/`BundlePor
 | Product relations | `ProductRelationService::create_relation_idempotent`, `update_relation_idempotent`, `delete_relation_idempotent`, and `reorder_relations_idempotent` with `ProductRelationCommandContext` | create, update, delete, reorder | Tenant-scoped durable receipt and same-transaction response completion for every command. Plain relation-port mutations are not external ingress. |
 | Product bundles | `BundleService::create_bundle_idempotent`, `update_bundle_idempotent`, `delete_bundle_idempotent`, `add_bundle_item_idempotent`, and `remove_bundle_item_idempotent` with `BundleCommandContext` | create, update, delete, add item, remove item | Tenant-scoped durable receipt and same-transaction response completion for every command. Plain Bundle-port mutations are not external ingress. |
 
+### Read-only axis planning
+
+`ProductCatalogCommandPort::preview_variant_axes` is a read-policy capability of the same
+selected provider, not a fifteenth mutation. Apply remains the existing receipt-bound axes
+command with a proposal-specific predecessor token and optional full target tuples. Old
+completed receipts retain their Vec result and replay before new-application validation. See
+[axis reconfiguration and recovery](./variant-axis-reconfiguration.md).
+
+### Attribute and option definition lifecycle
+
+The same schema ports provide `read_attribute_lifecycle` and receipt-bound
+`update_attribute_definition`; there is no second command protocol/table or local-service bypass.
+The write command chooses attribute/option update/archive/restore explicitly, checks a frozen
+locale and projection fingerprint, and records the actual typed result in the existing ledger.
+Archive inspects current canonical references under the exclusive tenant schema fence; no
+assignment/link is detached or deleted. Refusals are replayable decisions, unlike auth/admission/
+provider/storage/uncertain-commit failures. Restore retains row IDs without cascading to children.
+
+Both admin clients persist their complete dictionary request/key/original locale in their existing
+caller-journal mechanism, independently of reads. The dedicated attribute scope cannot decode a
+Product/SKU attempt; unknown requests cannot rotate or retarget. Exact-copy replacement, deferred
+stable-code default metadata, all limits and remaining runtime gates are specified in
+[ADR §10c](../../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md#10c-attribute-and-option-definition-lifecycle).
+Owner/native/Next/ignored PostgreSQL regression sources are written but not executed.
+
 ## Lifecycle receipts and pre-commit results
 
 `ProductCatalogCommandPort` now admits all fourteen catalog operations through the shared
@@ -46,8 +71,9 @@ operation UUID; internal calls without a receipt retain generated IDs.
 This is source hardening, **not runtime certification**. The registered catalog-receipt source guard
 and mutation tests are not substitutes for the added Rust service tests, actual database failure
 injection, PostgreSQL concurrency/lease-reclaim tests, or mounted client retry evidence. Next
-save/status/delete callers now retain browser-journal attempts across reload/navigation; child
-mutations still need stable logical-attempt identity. Catalog create/update now compose typed
+save/status/delete and existing-axis callers now retain browser-journal attempts across
+reload/navigation. Leptos axes have a separate immutable session journal in source; other child
+mutations still need durable snapshot identity. Catalog create/update now compose typed
 value batches in one transaction; database and mounted-client execution remain unverified.
 ## Product image Media retention
 

@@ -209,3 +209,15 @@ collapsing operational, persisted-evidence, policy, or validation failures into
 one generic result; in particular, an invalid `ModuleCommandContext` surfaces
 as its own typed validation failure with the offending field named, never as
 an idempotency or storage error.
+
+## Sealed artifact subscription intake (2026-11-01; source only)
+
+`SeaOrmArtifactEventSubscriptionProjector::project_contract` validates the registered sealed
+envelope and routes exact/wildcard subscriptions through the existing durable queue and shared
+source projection. It retains the original event UUID/type/version/tenant and complete canonical
+sealed payload; unchanged root representation still goes through the established root path.
+`ArtifactEventProjectionTransport::publish_contract` awaits durable projection before forwarding
+an unchanged frame. Failures propagate to the existing Outbox retry path; duplicate intake uses
+original-source identity, not a newly fabricated event. This is not a raw-table relay or another
+bus. Two new regression definitions are uncompiled/unrun; real backend subscription/worker/
+restart evidence remains open. See the [Inventory packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).

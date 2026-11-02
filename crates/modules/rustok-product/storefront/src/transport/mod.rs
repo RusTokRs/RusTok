@@ -29,6 +29,14 @@ pub async fn fetch_products(
     request: FetchRequest,
     controls: CatalogListInput,
 ) -> TransportResult<StorefrontProductsData> {
+    crate::core::validate_fetch_request(&request).map_err(|_| match selected_transport_path() {
+        UiTransportPath::NativeServer => {
+            ProductTransportError::native("product", "Invalid storefront price context")
+        }
+        UiTransportPath::Graphql => {
+            ProductTransportError::graphql("product", "Invalid storefront price context")
+        }
+    })?;
     let native_request = request.clone();
     let native_controls = controls.clone();
     execute_selected_transport(
@@ -91,6 +99,34 @@ pub async fn fetch_catalog_search_options(
             let context =
                 graphql_error_safety::GraphqlCallContext::fetch_catalog_search_options(&locale);
             graphql_adapter::fetch_catalog_search_options(locale)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+    )
+    .await
+}
+
+pub(crate) async fn fetch_buyer_quote(
+    request: crate::core::buyer::BuyerQuoteRequest,
+) -> TransportResult<crate::model::ProductPricingDetail> {
+    crate::core::buyer::validate_quote_request(&request).map_err(
+        |_| match selected_transport_path() {
+            UiTransportPath::NativeServer => {
+                ProductTransportError::native("product", "Invalid buyer quote request")
+            }
+            UiTransportPath::Graphql => {
+                ProductTransportError::graphql("product", "Invalid buyer quote request")
+            }
+        },
+    )?;
+    let native = request.clone();
+    execute_selected_transport(
+        "product",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_buyer_quote(native),
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::fetch_buyer_quote(&request);
+            graphql_adapter::fetch_buyer_quote(request)
                 .await
                 .map_err(|error| context.map_error(error))
         },

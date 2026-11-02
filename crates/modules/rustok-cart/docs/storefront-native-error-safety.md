@@ -51,114 +51,37 @@ The complete `CustomerError` payload is not recorded. The public envelope remain
 `CustomerByUserNotFound` continues to map to `Ok(None)` before the diagnostic mapper, so the
 existing anonymous/no-customer behavior is unchanged.
 
-## Cart owner diagnostic boundary
+## Guarded owner and shared quantity boundary (2026-10-30)
 
-Cart owner failures are recorded by concrete error type together with the owner operation,
-Cart storefront consumer, optional correlation id, stable public code, retryability, and
-bounded context facts. Request tenant and resolved tenant UUIDs are represented only by
-non-nil facts. Cart and line-item UUIDs are represented only by presence and non-nil facts.
-Channel id, channel slug, and locale are represented only by presence, non-nil, and length
-facts; their complete values are not logged.
+Native read/decrement/remove now use the same guarded Cart provider as GraphQL/REST. Customer
+ownership is still checked from the authenticated customer; the owner validates guest capability
+before sanitizing metadata. The public projection is not re-authorized as a guest secret.
 
-The complete `CartError` payload is not recorded. Existing owner classification remains
-unchanged:
+Decrement reads once, derives its target from that observation, and invokes the shared Commerce
+quantity workflow with selected Product/Pricing and the explicit Inventory owner. A decrement to
+removal retains the original Cart pricing observation, so a raced quantity change cannot delete
+a newer line. Explicit remove also carries the original observation. No raw CartService mutation,
+stored-price scaling, Product-stock fallback or duplicate native price/discount math remains.
 
-- database failures and unavailable, timeout, or invariant tax-boundary failures use
-  `tracing::error!`;
-- validation, not-found, conflict, forbidden, and other domain rejections use
-  `tracing::warn!`;
-- all existing public message, public code, and retryability mappings are preserved;
-- `ServerFnError::new(public_message)` remains the final public envelope.
+Owner failures use the common `buyer_native::port_error`: diagnostics retain kind, exact retry
+advice and code length, never complete owner payload/code/message. Technical unavailable/timeout/
+invariant failures log at error; ordinary refusals log at warn. The public message is always:
 
-## Pricing diagnostic boundary
+`Cart operation could not be confirmed. Inspect the cart before trying again.`
 
-Pricing failures are recorded by concrete error type together with the Pricing owner
-operation, Cart storefront consumer, optional correlation id, bounded request and identity
-facts, owner code, owner kind, owner retryability, and native boundary. Request tenant,
-resolved tenant, cart, and line-item UUIDs are represented only by non-nil facts. Channel id,
-channel slug, and locale are represented only by presence, non-nil, and length facts; their
-complete values are not logged.
+The native endpoint names, input shapes, selected-transport policy and public cart DTO are
+unchanged. The previous local Cart/Pricing error mappers were removed after migrating all their
+live callers; their per-kind public text is no longer the native error contract. The shared
+actual request context retains tenant/actor agreement, correlation, locale and claims.
 
-The complete `PortError` payload is not recorded. Existing pricing behavior remains
-unchanged:
+## Verification and limits
 
-- unavailable, timeout, and invariant-violation kinds use `tracing::error!`;
-- all other owner kinds use `tracing::warn!`;
-- `owner_code`, `owner_kind`, and `owner_retryable` remain in both diagnostic paths;
-- the domain-sanitized owner message continues through `ServerFnError::new(error.message)`.
+- `node scripts/verify/verify-cart-storefront-native-error-safety.mjs`
+- `node scripts/verify/verify-cart-priced-write-context.mjs`
 
-## Missing-variant diagnostic boundary
-
-Missing-variant failures record only non-nil identifier facts for tenant, cart, and line item.
-The complete UUID values are not logged. Existing behavior remains unchanged:
-
-- the diagnostic continues to use `tracing::error!`;
-- owner `rustok_cart`, operation `decrement_line_item`, Cart storefront consumer, stable code,
-  and native boundary are preserved;
-- `ServerFnError::new("Cart line item could not be updated safely")` remains the static public
-  envelope;
-- the mapper remains called once from the decrement flow when a line item that must be repriced
-  has no variant identity.
-
-## Existing mounted safety contract
-
-The mounted adapter continues to provide bounded diagnostics and stable public envelopes for:
-
-- tenant and optional-auth context extraction;
-- missing host `TransactionalEventBus` composition;
-- cart and line-item parsing failures;
-- Customer lookup failures;
-- Cart owner storage, validation, transition, tax-boundary, repricing, decrement, and removal
-  failures;
-- Pricing owner failures;
-- missing line-item variant identity.
-
-The mounted Cart SSR mapper cleanup is source-complete. This statement is limited to the
-source contract in this adapter and does not claim compilation, execution, transport parity,
-or retained runtime evidence.
-
-## Preserved behavior
-
-- The three endpoint names and request/response DTOs are unchanged.
-- Empty cart selection still returns an empty storefront-cart workspace.
-- Missing carts on the read endpoint still return `cart: null`.
-- All five cart and line-item parsing operations, codes, warning severity, and public messages
-  are unchanged.
-- Customer lookup, ownership, authentication checks, and not-found handling are unchanged.
-- Cart owner variant classification, public messages, public codes, retryability, and
-  technical/rejection severity split are unchanged.
-- Pricing owner classification, owner metadata, sanitized public message forwarding, and
-  technical/rejection severity split are unchanged.
-- Repricing still occurs before the cart DTO is returned.
-- Decrement still removes a line item at quantity one and otherwise reprices the next
-  quantity.
-- The missing-variant call path and static error envelope are unchanged.
-- Explicit native/GraphQL transport selection is unchanged.
-
-## Static evidence
-
-`scripts/verify/verify-cart-storefront-native-error-safety.mjs` requires bounded framework,
-Cart input, customer, Cart owner, pricing, and missing-variant diagnostics; rejects every
-complete error payload and the raw missing-variant UUID fields; preserves all five parser
-operations and their codes, customer not-found handling, every Cart owner public mapping,
-Pricing owner metadata, all severity paths, the single missing-variant decrement call site,
-all three endpoints, and shared DTO mapping; and leaves execution claims open.
-
-The source evidence remains in
-`crates/modules/rustok-cart/contracts/evidence/storefront-native-error-safety-source.json`.
-
-## Evidence boundary
-
-This slice is source-only. It does not claim compilation, server-function registration,
-transport parity, runtime logging, or error-envelope execution evidence. Ecommerce FFA/FBA
-and the broad ecommerce correlation-safe mapper cleanup are not promoted by this change.
-
-Suggested checks:
-
-```bash
-node scripts/verify/verify-cart-storefront-native-error-safety.mjs
-node scripts/verify/verify-cart-storefront-boundary.mjs
-cargo check -p rustok-cart-storefront --all-features
-```
-
-These commands were intentionally not run by the implementation agent.
+These are source-only guards, not transport/test execution. New Rust and MJS regression sources
+remain unrun. The guard is not authorization, a monotonic Cart revision, stock/price hold,
+receipt, exactly-once execution or a new retry policy. Existing per-dispatch native keys do not
+provide durable replay. Remote providers, SQL/locking, mounted/native/browser behavior, session
+revocation fencing, context-patch-plus-repricing atomicity and downstream event effects remain
+unverified/open in the [owner plan](implementation-plan.md).

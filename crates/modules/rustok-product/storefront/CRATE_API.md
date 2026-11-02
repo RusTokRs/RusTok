@@ -40,3 +40,12 @@
 ### Errors / Failure Codes
 - `ProductTransportError`: typed transport error retaining failure evidence across native and GraphQL paths.
 - DOM error evidence attributes (`data-product-transport-*`) for headless observability.
+
+
+## Pricing quote projection continuation
+
+`ProductEffectivePrice` carries `ProductPriceSource`; `ProductPricingDetail` carries
+optional owner `resolutionContext` / `resolvedAt` when a quote was requested. Both
+selected transports retain the Pricing-owned batch result. Contextual absence is not
+permission to select another currency/base price. Real sparse SKU selection and live
+buyer context/quantity refresh remain explicitly unfinished in the Product plan.

@@ -161,7 +161,32 @@ impl StoreContextService {
             .await
             .map_err(map_region_port_error)?;
 
-        Ok(projection.map(|projection| projection.region))
+        let region = projection.map(|projection| projection.region);
+        if input.region_id.is_some() && region.is_none() {
+            return Err(StoreContextError::Validation(
+                "The requested region is unavailable".into(),
+            ));
+        }
+        if let Some(region) = &region {
+            if input.region_id.is_some_and(|id| region.id != id) {
+                return Err(StoreContextError::Validation(
+                    "Region owner returned another region".into(),
+                ));
+            }
+            if let Some(country) = input.country_code.as_deref() {
+                let country = country.trim().to_ascii_uppercase();
+                if !region
+                    .countries
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(&country))
+                {
+                    return Err(StoreContextError::Validation(
+                        "Country is not part of the requested region".into(),
+                    ));
+                }
+            }
+        }
+        Ok(region)
     }
 
     async fn load_tenant_locale_context(

@@ -44,6 +44,18 @@ pub enum StagedCheckoutError {
     },
 }
 
+impl StagedCheckoutError {
+    pub(crate) fn inventory_adoption_failure(
+        &self,
+    ) -> Option<&super::CheckoutInventoryOrderAdoptionError> {
+        match self {
+            Self::Pipeline(error) => error.inventory_adoption_failure(),
+            Self::PipelineAndJournal { pipeline, .. } => pipeline.inventory_adoption_failure(),
+            _ => None,
+        }
+    }
+}
+
 pub type StagedCheckoutResult<T> = Result<T, StagedCheckoutError>;
 
 pub struct StagedCheckoutService {
@@ -287,6 +299,17 @@ impl StagedCheckoutService {
                     )
                     .await
             }
+            FailureDisposition::ReconciliationRequired => {
+                self.journal
+                    .mark_reconciliation_required(
+                        tenant_id,
+                        operation_id,
+                        lease_owner,
+                        checkout_error_code(&checkout),
+                        checkout.to_string(),
+                    )
+                    .await
+            }
             FailureDisposition::CompensationRequired => {
                 self.journal
                     .mark_compensation_required(
@@ -327,6 +350,17 @@ impl StagedCheckoutService {
                     )
                     .await
             }
+            FailureDisposition::ReconciliationRequired => {
+                self.journal
+                    .mark_reconciliation_required(
+                        tenant_id,
+                        operation_id,
+                        lease_owner,
+                        pipeline_error_code(&pipeline),
+                        pipeline_failure_message(&pipeline),
+                    )
+                    .await
+            }
             FailureDisposition::CompensationRequired => {
                 self.journal
                     .mark_compensation_required(
@@ -353,6 +387,7 @@ impl StagedCheckoutService {
 enum FailureDisposition {
     Retryable,
     CompensationRequired,
+    ReconciliationRequired,
 }
 
 fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
@@ -370,6 +405,18 @@ fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
 }
 
 fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDisposition {
+    if let Some((_, retryable)) = error
+        .inventory_adoption_failure()
+        .and_then(super::CheckoutInventoryOrderAdoptionError::bounded_failure)
+    {
+        // Advice is not an outcome: false never authorizes cancelling an Order or releasing
+        // reservations that may already have been adopted. Keep exact identities for recovery.
+        return if retryable {
+            FailureDisposition::Retryable
+        } else {
+            FailureDisposition::ReconciliationRequired
+        };
+    }
     match error {
         CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
             retryable: true,
@@ -484,6 +531,16 @@ fn pipeline_failure_stage(error: &CheckoutStagePipelineError) -> &'static str {
 /// the journal can never store third-party error text. The stable code travels
 /// in its own column and remains the machine-readable signal.
 fn pipeline_failure_message(error: &CheckoutStagePipelineError) -> String {
+    if let Some((code, retryable)) = error
+        .inventory_adoption_failure()
+        .and_then(super::CheckoutInventoryOrderAdoptionError::bounded_failure)
+    {
+        // Even a pre-call local failure may follow a previous committed owner attempt. Its
+        // raw source can contain storage/private provenance text; persist only bounded facts.
+        return format!(
+            "Inventory adoption requires same-identity recovery (code={code}, retryable={retryable})"
+        );
+    }
     match error {
         CheckoutStagePipelineError::OrderStage(error) if error.bounded_failure().is_some() => {
             error.to_string()
@@ -622,6 +679,92 @@ mod tests {
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
         ));
+    }
+
+    #[test]
+    fn inventory_adoption_advice_never_becomes_permission_for_automatic_compensation() {
+        use super::super::{CheckoutInventoryOrderAdoptionError, CheckoutOrderCreationError};
+        for retryable in [false, true] {
+            let error = CheckoutStagePipelineError::OrderStage(Box::new(
+                CheckoutOrderStageError::Creation(CheckoutOrderCreationError::Adoption(
+                    CheckoutInventoryOrderAdoptionError::Boundary {
+                        code: "inventory.adoption_unverified".to_string(),
+                        message: "Inventory adoption requires same-identity recovery",
+                        retryable,
+                    },
+                )),
+            ));
+            assert_eq!(pipeline_error_code(&error), "inventory.adoption_unverified");
+            assert!(pipeline_failure_message(&error).contains("same-identity recovery"));
+            if retryable {
+                assert!(matches!(
+                    pipeline_failure_disposition(&error),
+                    FailureDisposition::Retryable
+                ));
+            } else {
+                assert!(matches!(
+                    pipeline_failure_disposition(&error),
+                    FailureDisposition::ReconciliationRequired
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn inventory_adoption_post_commit_failure_remains_in_explicit_recovery() {
+        use super::super::{CheckoutInventoryOrderAdoptionError, CheckoutOrderCreationError};
+        let error = CheckoutStagePipelineError::OrderStage(Box::new(
+            CheckoutOrderStageError::Creation(CheckoutOrderCreationError::Adoption(
+                CheckoutInventoryOrderAdoptionError::AfterOwnerCommit {
+                    code: "checkout.inventory_adoption_handoff_unverified",
+                    retryable: false,
+                    cause: Box::new(CheckoutInventoryOrderAdoptionError::Conflict(
+                        "private-journal-cause".to_string(),
+                    )),
+                },
+            )),
+        ));
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
+            FailureDisposition::ReconciliationRequired
+        ));
+        assert!(!pipeline_failure_message(&error).contains("private-journal-cause"));
+    }
+
+    #[test]
+    fn adoption_local_read_and_provenance_failures_cannot_prove_a_prior_attempt_had_no_effect() {
+        use super::super::{CheckoutInventoryOrderAdoptionError, CheckoutOrderCreationError};
+        for (adoption, retryable, code) in [
+            (
+                CheckoutInventoryOrderAdoptionError::Database(sea_orm::DbErr::Custom(
+                    "private-before-replay-storage".to_string(),
+                )),
+                true,
+                "checkout.inventory_adoption_journal_unavailable",
+            ),
+            (
+                CheckoutInventoryOrderAdoptionError::Conflict(
+                    "private-before-replay-provenance".to_string(),
+                ),
+                false,
+                "checkout.inventory_adoption_handoff_unverified",
+            ),
+        ] {
+            let error = CheckoutStagePipelineError::OrderStage(Box::new(
+                CheckoutOrderStageError::Creation(CheckoutOrderCreationError::Adoption(adoption)),
+            ));
+            assert_eq!(pipeline_error_code(&error), code);
+            let disposition = pipeline_failure_disposition(&error);
+            if retryable {
+                assert!(matches!(disposition, FailureDisposition::Retryable));
+            } else {
+                assert!(matches!(
+                    disposition,
+                    FailureDisposition::ReconciliationRequired
+                ));
+            }
+            assert!(!pipeline_failure_message(&error).contains("private-before-replay"));
+        }
     }
 
     #[test]

@@ -489,7 +489,7 @@ for (const marker of [
   'pub async fn list_categories',
   'parse_virtual_category_rule_v1(&input.rule_config)',
   'validate_virtual_category_rule_references',
-  'load_effective_form_for_category(tenant_id, source_category_id, &[])',
+  'Self::load_effective_form_for_category_in(&txn, tenant_id, source_category_id, &[])',
   'serde_json::to_value(form.attributes)',
   'ensure_structural_category(&txn, tenant_id, input.category_id)',
   'sync_created_category_to_taxonomy_in_tx',
@@ -557,7 +557,7 @@ for (const marker of [
   'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)',
   'BootstrapService::create_initial_records_in_tx(',
   'BootstrapService::load_available_quantities(conn, &variant_ids)',
-  'BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids)',
+  'BootstrapService::delete_records_for_variants_in_tx(&txn, tenant_id, &variant_ids)',
 ]) {
   requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }

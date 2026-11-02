@@ -22,8 +22,8 @@ use rustok_ui::{Size, input_classes};
 pub fn Input(
     #[prop(default = "text")] r#type: &'static str,
     #[prop(default = Size::Md)] size: Size,
-    #[prop(default = false)] disabled: bool,
-    #[prop(default = false)] invalid: bool,
+    #[prop(into, default = false.into())] disabled: Signal<bool>,
+    #[prop(into, default = false.into())] invalid: Signal<bool>,
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
@@ -32,20 +32,34 @@ pub fn Input(
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
+    #[prop(optional, into)] described_by: String,
+    #[prop(optional, into)] input_mode: String,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
     let name = (!name.is_empty()).then_some(name);
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let described_by = (!described_by.is_empty()).then_some(described_by);
+    let input_mode = (!input_mode.is_empty()).then_some(input_mode);
+    let custom_class = StoredValue::new(class);
+    let custom = move || custom_class.get_value();
 
     if prefix.is_none() && suffix.is_none() {
-        let full_class = input_classes(size, invalid, custom);
+        let full_class = move || {
+            let class = custom();
+            input_classes(
+                size,
+                invalid.get(),
+                (!class.is_empty()).then_some(class.as_str()),
+            )
+        };
         view! {
             <input
                 id=id
                 type=r#type
                 class=full_class
-                disabled=disabled
-                aria-invalid=invalid
+                disabled=move || disabled.get()
+                aria-invalid=move || invalid.get()
+                aria-describedby=described_by
+                inputmode=input_mode
                 placeholder=placeholder
                 name=name
                 prop:value=move || value.map(|v| v.get()).unwrap_or_default()
@@ -58,13 +72,23 @@ pub fn Input(
         }
         .into_any()
     } else {
-        let mut full_class = input_classes(size, invalid, custom);
-        if prefix.is_some() {
-            full_class.push_str(" pl-9");
-        }
-        if suffix.is_some() {
-            full_class.push_str(" pr-9");
-        }
+        let has_prefix = prefix.is_some();
+        let has_suffix = suffix.is_some();
+        let full_class = move || {
+            let class = custom();
+            let mut full_class = input_classes(
+                size,
+                invalid.get(),
+                (!class.is_empty()).then_some(class.as_str()),
+            );
+            if has_prefix {
+                full_class.push_str(" pl-9");
+            }
+            if has_suffix {
+                full_class.push_str(" pr-9");
+            }
+            full_class
+        };
         view! {
             <div class="relative flex items-center w-full">
                 {prefix.map(|p| view! {
@@ -76,8 +100,10 @@ pub fn Input(
                     id=id
                     type=r#type
                     class=full_class
-                    disabled=disabled
-                    aria-invalid=invalid
+                    disabled=move || disabled.get()
+                    aria-invalid=move || invalid.get()
+                aria-describedby=described_by
+                inputmode=input_mode
                     placeholder=placeholder
                     name=name
                     prop:value=move || value.map(|v| v.get()).unwrap_or_default()

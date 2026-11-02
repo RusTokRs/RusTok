@@ -8,11 +8,13 @@ The canonical durable reservation wrapper classifies covered owner failures
 using exact stable `code + message` pairs and returns the same delegated
 `PortError` unchanged.
 
-The covered operations remain reserve and release by durable reservation
-identity. Unknown owner envelopes pass through without an additional local
+The original slice covers reserve and release by durable reservation identity.
+The 2026-10-31 owner adoption command uses the same admitted wrapper/classifier. Unknown owner envelopes pass through without an additional local
 event.
 
 ## Bounded request shape
+
+All covered entry and outcome events use bounded request shape, never request payloads.
 
 Reserve diagnostics retain only:
 
@@ -49,13 +51,14 @@ The same delegated error is returned unchanged.
 
 ## Preserved owner behavior
 
-The persistent implementation in `ports.rs` is unchanged, including:
+The public facade now routes both crate-root and `ports` paths through the same wrapper;
+`ports.rs` is compiled privately as `ports_impl`. The persistent implementation preserves:
 
 - external-ID normalization;
 - positive quantity validation;
 - reservation and external-ID replay adoption;
 - row locking and transaction ordering;
-- stock and backorder policy;
+- canonical backorder policy (new allocations now filter active tenant-owned, channel-visible locations);
 - release identity checks and idempotency;
 - reservation-ledger mutation;
 - available-quantity calculation;
@@ -68,9 +71,24 @@ The persistent implementation in `ports.rs` is unchanged, including:
 - `scripts/verify/verify-inventory-reservation-local-context.mjs`
 - `scripts/verify/verify-inventory-reservation-owner-context.mjs`
 
-No tests, verifiers, formatting, Cargo commands, workflows, CI, or mounted
-runtime validation were run.
+The 2026-10-30 Product continuation runs source guards and selected Scalar Rust
+syntax/format checks only. No tests, Rust compilation, database/workflow, CI or mounted
+runtime validation are run. See the owning implementation plan for current evidence.
 
 The ecommerce correlation-safe mapper task remains open for the remaining
 payment, fulfillment, customer, promotion, ecommerce adapter, and non-`PortError`
 surfaces.
+
+
+## Bounded adoption batch (2026-10-31)
+
+Adoption captures only binding count, capped UUID/quantity/line presence and shape probes, and a
+capped maximum external-ID length. It never logs the complete request, an exact quantity, or a
+complete delegated `PortError`. Stable adoption batch/identity/ledger refusals are classified by
+exact owner code/message and preserve the same error and retryability. Tenant and admission order
+remain unchanged. See the [current owner contract](./implementation-plan.md#reservation-adoption-into-order-2026-10-31-source-work).
+No test or runtime status is promoted by adding these source declarations.
+
+Physical metadata capacity is an explicit owner-local nonretryable conflict, not generic storage
+unavailability. Size-proof/backend refusals are also bounded exact classifications; saved JSON and
+SQL detail are not logged or truncated. The new byte projection is source-only, not executed evidence.

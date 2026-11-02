@@ -5,7 +5,9 @@ Status: source-ready, unvalidated.
 ## Scope
 
 This slice covers the mounted GraphQL helper
-`reprice_storefront_cart_line_items` used by storefront cart mutations.
+`reprice_storefront_cart_line_items` still used by storefront payment-collection preparation.
+Context mutation now uses complete batch preparation plus a single Cart context command, not
+this former context-then-reprice sequence.
 
 Before this cutover the mounted path delegated through the private compatibility
 helper in `helpers.rs`. That helper converted both pricing and cart `PortError`
@@ -23,7 +25,7 @@ The following behavior is unchanged:
 
 - carts without line items return unchanged;
 - line items without a variant id are skipped;
-- the existing storefront pricing context builder is used;
+- shared Cart-to-Pricing admission uses saved channel and saved-or-caller locale, never page fallback;
 - the existing contextual pricing read port is used;
 - one price resolution is requested for each eligible line item;
 - the existing cart pricing update builder is used;
@@ -34,11 +36,11 @@ The following behavior is unchanged:
 
 ## Public GraphQL contract
 
-Every pricing or cart owner failure still produces exactly:
+Every pricing or Cart owner failure produces the stable public message/code with owner retryability:
 
 - message: `Cart pricing could not be refreshed`;
 - code: `CART_REPRICE_FAILED`;
-- retryable: `true`.
+- retryable: the owner `PortError.retryable` bit (including `false` for missing capability).
 
 The transport no longer uses an owner message as an intermediate GraphQL
 protocol. The owner `PortError.message` is not copied into the public envelope or
@@ -60,7 +62,9 @@ recorded at warning severity.
 
 ## Retained context
 
-The transport diagnostic event retains:
+The transport diagnostic event retains the original caller context listed below. The shared
+contextual Pricing decorator separately retains the effective saved-Cart context actually sent
+to Pricing; page channel/locale are not used as Cart selectors. The transport retains:
 
 - correlation id;
 - tenant id;
@@ -77,7 +81,7 @@ The transport diagnostic event retains:
 - current planned update count;
 - cart line-item count;
 - currency-code length;
-- normalized request-channel-slug length;
+- saved Cart request-channel-slug length;
 - owner code, kind, and retryability;
 - stable public code and retryability.
 
@@ -105,8 +109,9 @@ consumer operation and the affected ecommerce resources.
 `graphql/mutations/mod.rs` loads `typed_reprice_helper.rs` as a private module.
 `layered_order_helpers.rs` explicitly exports its
 `reprice_storefront_cart_line_items` symbol after the private compatibility glob.
-The cart resolver continues importing the same helper name through
-`super::helpers::*`, so its call signature is unchanged.
+The payment-collection resolver continues importing the same helper through
+`super::helpers::*`. Context preparation maps typed failure through
+`cart_context_preparation_error` to the same stable public envelope, before any Cart write.
 
 ## Static evidence
 
@@ -126,8 +131,28 @@ This slice does not:
 
 - replace direct owner composition outside this mounted helper;
 - retire `safe_helpers.rs`, `safe_legacy_helpers.rs`, or `helpers.rs`;
-- change REST or native storefront repricing;
+- certify REST/native parity; their live repricers now share the same Cart quote adapter,
+  but mounted execution remains a release gate;
 - establish mounted native/GraphQL parity;
 - provide runtime or remote-profile evidence;
 - close the broad ecommerce mapper cleanup item;
 - promote ecommerce FBA or FFA status.
+
+### Targeted review, 2026-10-30
+
+The aliased factory call now supplies its mandatory selected Product runtime. The previous
+2-argument call was a compilation defect; source formatting did not detect it. Request admission
+and response correlation are shared with REST/native/staged repricing without another price
+engine. Public messages/codes stay static, but owner retryability is no longer overwritten.
+Regression sources are unrun; see the [Commerce review record](implementation-plan.md#targeted-pricing-review-2026-10-30)
+for current static checks and their limits.
+
+
+### Atomic context continuation (2026-10-31)
+
+The previous per-line preserved-behavior list applies to the surviving payment helper, not buyer
+context changes. Context changes require complete target-context batch coverage; SKU-less lines,
+missing prices, incompatible responses or unsupported selected batch capability refuse without
+stored-price/single-read fallback. The actual contextual Pricing decorator records batch-owner
+facts. GraphQL sanitizes through `cart_context_preparation_error` and keeps owner retryability;
+context/price success is one Cart-owned transaction. See the [handoff](implementation-plan.md#atomic-cart-context-adoption-2026-10-31).

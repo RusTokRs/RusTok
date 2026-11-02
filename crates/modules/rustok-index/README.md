@@ -10,16 +10,23 @@ sorting, counting, and pagination without runtime fan-out to source modules.
 Backward compatibility with the rejected source-specific implementation is not
 a rewrite goal.
 
+Inventory source/listener/initial replay enqueue and the generic bounded worker are now authored
+through the [selected Distribution bridge](../rustok-distribution/docs/inventory-index.md), using
+current authenticated native owner reads and immutable source mutation UUIDs. This is uncompiled,
+unrun source work, not Inventory/Index or Product step-8 readiness. Failed-job retry/original-job
+operator recovery and backend/deployment/client evidence remain open. Do not substitute Product
+revisions, add Inventory SQL to Index/host code or infer historical delivery from a live scan.
+
 ---
 
 ## Architectural Comparison Matrix
 
-| Indexing Approach | Write Overhead | Cross-Module Filtering | Zero N+1 Queries | Consistency Model | Infrastructure Complexity |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Traditional SQL JOINs** | Low | Slow (Multi-table JOIN bottlenecks) | No (N+1 HTTP calls across microservices) | Immediate | Single DB |
-| **EAV Tables (Magento / Legacy CMS)** | High DDL & Row Bloat | Complex self-JOINs & lock contention | No | Immediate | Single DB |
-| **External Search Sync (Elasticsearch / Algolia)** | High (Outbox / Event Relay) | Fast | Yes | Eventual (Lag & drift risks) | Heavy JVM/Cloud cluster |
-| **`rustok-index` (JSONB + Keyset Engine)** | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)** | **Immediate (Transactional Outbox)** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
+| Indexing Approach                                  | Write Overhead                       | Cross-Module Filtering                        | Zero N+1 Queries                         | Consistency Model                                 | Infrastructure Complexity                               |
+| :------------------------------------------------- | :----------------------------------- | :-------------------------------------------- | :--------------------------------------- | :------------------------------------------------ | :------------------------------------------------------ |
+| **Traditional SQL JOINs**                          | Low                                  | Slow (Multi-table JOIN bottlenecks)           | No (N+1 HTTP calls across microservices) | Immediate                                         | Single DB                                               |
+| **EAV Tables (Magento / Legacy CMS)**              | High DDL & Row Bloat                 | Complex self-JOINs & lock contention          | No                                       | Immediate                                         | Single DB                                               |
+| **External Search Sync (Elasticsearch / Algolia)** | High (Outbox / Event Relay)          | Fast                                          | Yes                                      | Eventual (Lag & drift risks)                      | Heavy JVM/Cloud cluster                                 |
+| **`rustok-index` (JSONB + Keyset Engine)**         | **Low (Transactional Outbox Inbox)** | **Ultra-Fast (Derived B-Tree / GIN Indexes)** | **Yes (Single REPEATABLE READ query)**   | **Eventual ingestion; consistent query snapshot** | **Pure Rust + PostgreSQL (Zero external dependencies)** |
 
 ---
 
@@ -136,8 +143,8 @@ job completion requires an active lease and the exact durable rebuild checkpoint
 JSON null cursor.
 
 `PostgresIndexReplayRunner` resolves source ownership from `SharedIndexSourceRegistry`,
-processes at most the validated 1024-page invocation budget, heartbeats only between
-pages, yields unfinished work to an immediately claimable pending attempt, and observes
+processes at most the validated 1024-page invocation budget, renews the lease between
+pages and during in-flight page execution, yields unfinished work to an immediately claimable pending attempt, and observes
 durable cancellation before and after page execution. A cancellation committed first
 cannot be overwritten by success, failure, or yield.
 
@@ -367,3 +374,16 @@ DDL remains benchmark-only and must not be copied into production migrations.
 - [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Accepted storage ADR](../../../DECISIONS/2026-07-24-index-storage-layout.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Known Limitations / Pending Implementation — selected replay consumer
+
+The [selected Inventory bridge](../rustok-distribution/docs/inventory-index.md) and generic
+`index_replay` worker are source-authored, uncompiled/unrun. Worker discovery filters actual
+selected bindings and uses the single canonical shared runtime. Busy is held, bounded yield is
+resumable, and completed work checks the original durable job/null checkpoint; none replaces
+required persistence. Current page failures, including retryable source failures, still park
+terminally. Automatic backoff and authorized original-job recovery are not wired, and lease
+attempts include normal yields. Failed/cancelled jobs cannot be replaced by activation redelivery.
+Real credentials, PostgreSQL/concurrency/restart/broker and full operator-client parity remain
+pending in the [existing plan](docs/implementation-plan.md). Source registration or pending
+enqueue is not deployment, source readiness, M6 evidence or Product step-8 completion.

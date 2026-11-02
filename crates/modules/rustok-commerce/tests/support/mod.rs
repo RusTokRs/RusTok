@@ -172,6 +172,21 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(reservation_item::Entity),
     )
     .await;
+    for name in [
+        "m20261021_000024_create_inventory_return_restocks",
+        "m20261101_000025_create_shipment_stock_proofs",
+        "m20261101_000026_index_catalog_deletion_history",
+        "m20261101_000027_create_inventory_source_history",
+    ] {
+        rustok_inventory::migrations::migrations()
+            .into_iter()
+            .find(|migration| migration.name() == name)
+            .expect("native Inventory provenance migration is registered")
+            .up(&SchemaManager::new(db))
+            .await
+            .expect("native Inventory provenance schema should exist");
+    }
+
     create_entity_table(
         db,
         &builder,
@@ -391,6 +406,14 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(fulfillment_provider_operation::Entity),
     )
     .await;
+    rustok_fulfillment::migrations::migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261101_000121_enforce_provider_effect_admission")
+        .expect("provider admission migration is registered")
+        .up(&sea_orm_migration::SchemaManager::new(db))
+        .await
+        .expect("provider effect admission guard");
+
     create_entity_table(
         db,
         &builder,
@@ -839,8 +862,8 @@ async fn ensure_catalog_category_tables(db: &DatabaseConnection) {
             position INTEGER NULL,
             visibility_overrides TEXT NOT NULL DEFAULT '{}',
             validation_overrides TEXT NOT NULL DEFAULT '{}',
-            variant_axis_policy TEXT NULL,
-            default_variant_axis TEXT NULL,
+            variant_axis_policy TEXT NOT NULL DEFAULT 'forbidden',
+            default_variant_axis INTEGER NOT NULL DEFAULT 0,
             metadata TEXT NOT NULL DEFAULT '{}'
         )",
         "CREATE TABLE IF NOT EXISTS product_attribute_schemas (
@@ -872,8 +895,8 @@ async fn ensure_catalog_category_tables(db: &DatabaseConnection) {
             position INTEGER NOT NULL DEFAULT 0,
             visibility_overrides TEXT NOT NULL DEFAULT '{}',
             validation_overrides TEXT NOT NULL DEFAULT '{}',
-            variant_axis_policy TEXT NULL,
-            default_variant_axis TEXT NULL,
+            variant_axis_policy TEXT NOT NULL DEFAULT 'forbidden',
+            default_variant_axis INTEGER NOT NULL DEFAULT 0,
             metadata TEXT NOT NULL DEFAULT '{}'
         )",
     ] {
@@ -884,4 +907,16 @@ async fn ensure_catalog_category_tables(db: &DatabaseConnection) {
         .await
         .expect("failed to create catalog category test table");
     }
+}
+
+/// Explicit test intent/actor. Production entrypoints must use the caller's canonical context.
+pub fn shipment_context(tenant_id: uuid::Uuid) -> rustok_api::PortContext {
+    rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::user(uuid::Uuid::new_v4().to_string()),
+        "en",
+        uuid::Uuid::new_v4().to_string(),
+    )
+    .with_idempotency_key(uuid::Uuid::new_v4().to_string())
+    .with_deadline(std::time::Duration::from_secs(30))
 }

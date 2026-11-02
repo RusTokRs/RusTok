@@ -177,7 +177,7 @@ fn delivery(minimum_source_version: u64) -> IndexSourceRefreshEventDelivery<Stri
 }
 
 #[tokio::test]
-async fn canonical_source_mutation_is_rebound_committed_and_then_acknowledged() {
+async fn canonical_source_mutation_identity_is_preserved_before_acknowledgement() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let source_calls = Arc::new(Mutex::new(0));
     let observed_event_id = Arc::new(Mutex::new(None));
@@ -208,7 +208,7 @@ async fn canonical_source_mutation_is_rebound_committed_and_then_acknowledged() 
     assert_eq!(*calls.lock().expect("call lock"), vec!["apply", "ack"]);
     assert_eq!(
         *observed_event_id.lock().expect("observed event lock"),
-        Some(Uuid::from_u128(7))
+        Some(mutation(9).event_id())
     );
 }
 
@@ -292,4 +292,100 @@ fn delivery_rejects_invalid_identity_and_revision() {
         IndexSourceRefreshEventDelivery::new(EVENT_DOMAIN, Uuid::from_u128(7), key(), 0, (),),
         Err(IndexSourceRefreshEventError::ZeroMinimumSourceVersion)
     ));
+}
+
+#[tokio::test]
+async fn nil_loaded_owner_mutation_identity_is_refused_before_persistence_or_ack() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut invalid = mutation(9);
+    match &mut invalid {
+        IndexMutation::Upsert { event_id, .. } | IndexMutation::Delete { event_id, .. } => {
+            *event_id = Uuid::nil()
+        }
+    }
+    let (sources, events) = registries(Some(invalid), Arc::new(Mutex::new(0)));
+    let worker = IndexSourceRefreshEventWorker::new(
+        RecordingSink {
+            calls: calls.clone(),
+            observed_event_id: Arc::new(Mutex::new(None)),
+        },
+        RecordingAcknowledger {
+            calls: calls.clone(),
+        },
+    );
+    assert!(
+        worker
+            .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
+            .await
+            .is_err()
+    );
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn old_delivery_preserves_each_successively_loaded_owner_mutation_identity() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let observed = Arc::new(Mutex::new(None));
+    let worker = IndexSourceRefreshEventWorker::new(
+        RecordingSink {
+            calls: calls.clone(),
+            observed_event_id: observed.clone(),
+        },
+        RecordingAcknowledger {
+            calls: calls.clone(),
+        },
+    );
+    for version in [9, 10] {
+        let mut next = mutation(version);
+        match &mut next {
+            IndexMutation::Upsert { event_id, .. } | IndexMutation::Delete { event_id, .. } => {
+                *event_id = Uuid::from_u128(100 + u128::from(version))
+            }
+        }
+        let (sources, events) = registries(Some(next), Arc::new(Mutex::new(0)));
+        let outcome = worker
+            .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
+            .await
+            .unwrap();
+        assert_eq!(outcome.event_id(), Uuid::from_u128(7));
+        assert_eq!(
+            *observed.lock().unwrap(),
+            Some(Uuid::from_u128(100 + u128::from(version)))
+        );
+    }
+    assert_eq!(*calls.lock().unwrap(), vec!["apply", "ack", "apply", "ack"]);
+}
+
+#[derive(Clone)]
+struct RefusingSink;
+
+#[async_trait]
+impl IndexReplayMutationSink for RefusingSink {
+    async fn apply_replay_mutation(
+        &self,
+        _registry: &SchemaRegistry,
+        _source_name: &str,
+        _mutation: &IndexMutation,
+    ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
+        Err(IndexReplayFailure::retryable("fixture_storage_unavailable").unwrap())
+    }
+}
+
+#[tokio::test]
+async fn durable_persistence_failure_withholds_the_original_transport_ack() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let (sources, events) = registries(Some(mutation(9)), Arc::new(Mutex::new(0)));
+    let worker = IndexSourceRefreshEventWorker::new(
+        RefusingSink,
+        RecordingAcknowledger {
+            calls: calls.clone(),
+        },
+    );
+    assert!(
+        worker
+            .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
+            .await
+            .is_err()
+    );
+    assert!(calls.lock().unwrap().is_empty());
 }

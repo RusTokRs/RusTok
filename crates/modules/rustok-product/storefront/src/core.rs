@@ -1,4 +1,10 @@
+pub(crate) mod buyer;
+
 use rustok_api::locale_tags_match;
+use rustok_pricing_storefront::{
+    StorefrontPricingQueryError, parse_optional_currency_code, parse_optional_uuid_string,
+    parse_pricing_route_quantity, parse_resolution_quantity, pricing_context_matches_request,
+};
 use rustok_ui_core::apply_ui_query_pairs;
 // `resolve_requested_locale` is the only user, and it is an SSR-only entry point.
 #[cfg(feature = "ssr")]
@@ -13,11 +19,11 @@ use crate::catalog_controls::{
 };
 use crate::i18n::t;
 use crate::model::{
-    ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail, ProductPricingContext,
+    PricingResolutionContext, ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail,
     ProductPricingDetail, ProductTranslation, ProductVariant,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteInput {
     pub handle: Option<String>,
     pub locale: Option<String>,
@@ -87,8 +93,20 @@ pub fn build_route_input(
     channel_id: Option<String>,
     channel_slug: Option<String>,
     quantity: Option<String>,
-) -> RouteInput {
-    RouteInput {
+) -> Result<RouteInput, StorefrontPricingQueryError> {
+    let quantity = parse_pricing_route_quantity(quantity.as_deref())?;
+    let request = FetchRequest {
+        selected_handle: handle.clone(),
+        locale: locale.clone(),
+        currency_code: currency_code.clone(),
+        region_id: region_id.clone(),
+        price_list_id: price_list_id.clone(),
+        channel_id: channel_id.clone(),
+        channel_slug: channel_slug.clone(),
+        quantity,
+    };
+    validate_fetch_request(&request)?;
+    Ok(RouteInput {
         handle,
         locale,
         currency_code,
@@ -96,8 +114,8 @@ pub fn build_route_input(
         price_list_id,
         channel_id,
         channel_slug,
-        quantity: parse_quantity(quantity.as_deref()),
-    }
+        quantity,
+    })
 }
 
 pub fn build_fetch_request(input: &RouteInput) -> FetchRequest {
@@ -121,22 +139,23 @@ pub fn resolve_route_segment(route_segment: Option<&str>) -> String {
         .to_string()
 }
 
-fn sanitize_currency_code(currency_code: Option<String>) -> Option<String> {
-    currency_code
-        .map(|value| value.trim().to_ascii_uppercase())
-        .filter(|value| value.len() == 3)
-}
-
-pub(crate) fn sanitize_uuid_string(value: Option<String>) -> Option<String> {
-    value
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty() && uuid::Uuid::parse_str(item).is_ok())
-}
-
-pub(crate) fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
-    channel_slug
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
+/// Syntactic admission runs before IO; currency derivation happens only after a real catalog read.
+pub(crate) fn validate_fetch_request(
+    request: &FetchRequest,
+) -> Result<(), StorefrontPricingQueryError> {
+    parse_optional_currency_code(request.currency_code.clone())?;
+    parse_optional_uuid_string(request.region_id.clone(), "region_id")?;
+    parse_optional_uuid_string(request.price_list_id.clone(), "price_list_id")?;
+    parse_optional_uuid_string(request.channel_id.clone(), "channel_id")?;
+    parse_resolution_quantity(request.quantity)?;
+    if request
+        .channel_slug
+        .as_deref()
+        .is_some_and(|slug| slug.trim().is_empty())
+    {
+        return Err(StorefrontPricingQueryError::InvalidChannelSlug);
+    }
+    Ok(())
 }
 
 #[cfg(feature = "ssr")]
@@ -154,46 +173,6 @@ pub fn resolve_requested_locale(
         .unwrap_or_default()
 }
 
-fn sanitize_quantity(quantity: Option<i32>) -> Option<i32> {
-    quantity.filter(|value| *value > 0)
-}
-
-fn derive_pricing_currency(
-    selected_product: Option<&ProductDetail>,
-    currency_code: Option<String>,
-) -> Option<String> {
-    sanitize_currency_code(currency_code).or_else(|| {
-        selected_product.and_then(|product| {
-            product
-                .variants
-                .first()
-                .and_then(|variant| variant.prices.first())
-                .map(|price| price.currency_code.clone())
-                .and_then(|currency| sanitize_currency_code(Some(currency)))
-        })
-    })
-}
-
-pub fn build_pricing_context(
-    selected_product: Option<&ProductDetail>,
-    currency_code: Option<String>,
-    region_id: Option<String>,
-    price_list_id: Option<String>,
-    channel_id: Option<String>,
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-) -> Option<ProductPricingContext> {
-    let currency_code = derive_pricing_currency(selected_product, currency_code)?;
-    Some(ProductPricingContext {
-        currency_code,
-        region_id: sanitize_uuid_string(region_id),
-        price_list_id: sanitize_uuid_string(price_list_id),
-        channel_id: sanitize_uuid_string(channel_id),
-        channel_slug: sanitize_channel_slug(channel_slug),
-        quantity: sanitize_quantity(quantity).unwrap_or(1),
-    })
-}
-
 pub fn build_shell_view_model(locale: Option<&str>) -> ShellViewModel {
     ShellViewModel {
         badge: t(locale, "product.badge", "product"),
@@ -205,7 +184,7 @@ pub fn build_shell_view_model(locale: Option<&str>) -> ShellViewModel {
         subtitle: t(
             locale,
             "product.subtitle",
-            "This storefront route reads published catalog data through the product-owned package, with GraphQL kept as a fallback path.",
+            "Published products with sparse SKU selection and authoritative price observations through the selected native or GraphQL transport.",
         ),
         load_error: t(
             locale,
@@ -213,13 +192,6 @@ pub fn build_shell_view_model(locale: Option<&str>) -> ShellViewModel {
             "Failed to load storefront product data",
         ),
     }
-}
-
-pub fn parse_quantity(value: Option<&str>) -> Option<i32> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .and_then(|value| value.parse::<i32>().ok())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -239,17 +211,6 @@ pub struct SelectedProductViewModel {
     pub seller_boundary: String,
     pub title: String,
     pub description: String,
-    pub catalog_snapshot: String,
-    pub pricing_preview: String,
-    pub pricing_context: Option<String>,
-    pub inventory: i32,
-    pub pricing_href: String,
-    pub preview_context_label: String,
-    pub pricing_ownership_note: String,
-    pub catalog_snapshot_label: String,
-    pub pricing_preview_label: String,
-    pub inventory_label: String,
-    pub open_pricing_label: String,
     /// Header of the specifications block ("Specifications").
     pub attributes_label: String,
     /// Storefront-safe specifications: already localized by the Product owner, so the view only
@@ -356,14 +317,9 @@ pub fn build_selected_product_empty_view_model(
 
 pub fn build_selected_product_view_model(
     product: &ProductDetail,
-    pricing: Option<&ProductPricingDetail>,
-    resolution_context: Option<&ProductPricingContext>,
-    selected_handle: Option<&str>,
     locale: Option<&str>,
-    pricing_route_base: &str,
 ) -> SelectedProductViewModel {
     let translation = product_translation_for_locale(product.translations.as_slice(), locale);
-    let variant = product.variants.first();
     let title = translation
         .map(|item| item.title.clone())
         .unwrap_or_else(|| t(locale, "product.selected.untitled", "Untitled product"));
@@ -376,27 +332,6 @@ pub fn build_selected_product_view_model(
                 "No localized merchandising copy yet.",
             )
         });
-    let catalog_snapshot = variant
-        .and_then(|item| item.prices.first())
-        .map(|item| {
-            format_product_price(
-                locale,
-                item.currency_code.as_str(),
-                item.amount.as_str(),
-                item.compare_at_amount.as_deref(),
-                None,
-            )
-        })
-        .unwrap_or_else(|| t(locale, "product.selected.noPrice", "No pricing yet"));
-    let pricing_preview = format_pricing_preview(locale, pricing);
-    let pricing_context = resolution_context.map(|context| format_pricing_context(locale, context));
-    let pricing_href = build_pricing_href(
-        pricing_route_base,
-        selected_handle.or_else(|| translation.map(|item| item.handle.as_str())),
-        resolution_context,
-        variant,
-    );
-
     let product_type = product
         .product_type
         .clone()
@@ -461,86 +396,9 @@ pub fn build_selected_product_view_model(
         seller_boundary: format_seller_boundary(locale, product.seller_id.as_deref()),
         title,
         description,
-        catalog_snapshot,
-        pricing_preview,
-        pricing_context,
-        inventory: variant.map(|item| item.inventory_quantity).unwrap_or(0),
-        pricing_href,
-        preview_context_label: t(locale, "product.selected.previewContext", "pricing preview"),
-        pricing_ownership_note: t(
-            locale,
-            "product.selected.pricingOwnershipNote",
-            "Catalog snapshot stays product-owned; resolved pricing comes from the pricing module preview.",
-        ),
-        catalog_snapshot_label: t(
-            locale,
-            "product.selected.catalogSnapshot",
-            "Catalog snapshot",
-        ),
-        pricing_preview_label: t(
-            locale,
-            "product.selected.pricingPreview",
-            "Pricing module preview",
-        ),
-        inventory_label: t(locale, "product.selected.inventory", "Inventory"),
-        open_pricing_label: t(
-            locale,
-            "product.selected.openPricing",
-            "Open pricing module",
-        ),
         attributes_label: t(locale, "product.selected.attributes", "Specifications"),
         attributes,
     }
-}
-
-pub fn format_pricing_preview(
-    locale: Option<&str>,
-    pricing: Option<&ProductPricingDetail>,
-) -> String {
-    let Some(pricing) = pricing else {
-        return t(
-            locale,
-            "product.selected.noPricingPreview",
-            "Pricing module preview is unavailable.",
-        );
-    };
-
-    let Some(variant) = pricing.variants.first() else {
-        return t(locale, "product.selected.noPrice", "No pricing yet");
-    };
-
-    if let Some(price) = variant.effective_price.as_ref() {
-        let mut label = format_product_price(
-            locale,
-            price.currency_code.as_str(),
-            price.amount.as_str(),
-            price.compare_at_amount.as_deref(),
-            price.discount_percent.as_deref(),
-        );
-        if let Some(scope) = format_pricing_scope(
-            locale,
-            price.price_list_id.as_deref(),
-            price.channel_slug.as_deref(),
-            price.channel_id.as_deref(),
-        ) {
-            label.push_str(format!(" | {scope}").as_str());
-        }
-        return label;
-    }
-
-    variant
-        .prices
-        .first()
-        .map(|price| {
-            format_product_price(
-                locale,
-                price.currency_code.as_str(),
-                price.amount.as_str(),
-                price.compare_at_amount.as_deref(),
-                price.discount_percent.as_deref(),
-            )
-        })
-        .unwrap_or_else(|| t(locale, "product.selected.noPrice", "No pricing yet"))
 }
 
 pub fn product_translation_for_locale<'a>(
@@ -639,7 +497,7 @@ pub fn format_pricing_scope(
     Some(parts.join(" | "))
 }
 
-pub fn format_pricing_context(locale: Option<&str>, context: &ProductPricingContext) -> String {
+pub fn format_pricing_context(locale: Option<&str>, context: &PricingResolutionContext) -> String {
     let mut parts = vec![
         format!(
             "{} {}",
@@ -915,7 +773,10 @@ pub fn build_catalog_rail_view_model(
                 .published_at
                 .clone()
                 .unwrap_or_else(|| product.created_at.clone()),
-            href: format!("{module_route_base}?handle={}", product.handle),
+            href: apply_ui_query_pairs(
+                module_route_base,
+                &[("handle", Some(product.handle.as_str()))],
+            ),
             image_url: product
                 .primary_image
                 .as_ref()
@@ -952,68 +813,32 @@ pub fn build_catalog_rail_view_model(
     }
 }
 
-pub fn build_pricing_href(
-    module_route_base: &str,
-    handle: Option<&str>,
-    resolution_context: Option<&ProductPricingContext>,
-    variant: Option<&ProductVariant>,
-) -> String {
-    let mut params = Vec::new();
-    if let Some(handle) = handle.map(str::trim).filter(|value| !value.is_empty()) {
-        params.push(format!("handle={handle}"));
-    }
-
-    let fallback_currency = variant
-        .and_then(|item| item.prices.first())
-        .map(|price| price.currency_code.as_str());
-    let currency_code = resolution_context
-        .map(|context| context.currency_code.as_str())
-        .or(fallback_currency);
-    if let Some(currency_code) = currency_code
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        params.push(format!("currency={currency_code}"));
-    }
-    if let Some(region_id) = resolution_context
-        .and_then(|context| context.region_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        params.push(format!("region_id={region_id}"));
-    }
-    if let Some(price_list_id) = resolution_context
-        .and_then(|context| context.price_list_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        params.push(format!("price_list_id={price_list_id}"));
-    }
-    if let Some(channel_id) = resolution_context
-        .and_then(|context| context.channel_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        params.push(format!("channel_id={channel_id}"));
-    }
-    if let Some(channel_slug) = resolution_context
-        .and_then(|context| context.channel_slug.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        params.push(format!("channel_slug={channel_slug}"));
-    }
-    if let Some(quantity) = resolution_context
-        .map(|context| context.quantity)
-        .filter(|value| *value > 0)
-    {
-        params.push(format!("quantity={quantity}"));
-    }
-
-    if params.is_empty() {
-        module_route_base.to_string()
-    } else {
-        format!("{module_route_base}?{}", params.join("&"))
+pub(crate) fn pricing_quote_matches_request(
+    product: &ProductPricingDetail,
+    requested: Option<&PricingResolutionContext>,
+) -> bool {
+    match (requested, product.resolution_context.as_ref()) {
+        (None, None) => {
+            product.resolved_at.is_none()
+                && product
+                    .variants
+                    .iter()
+                    .all(|variant| variant.effective_price.is_none())
+        }
+        (Some(expected), Some(actual)) => {
+            pricing_context_matches_request(actual, expected)
+                && product
+                    .resolved_at
+                    .as_deref()
+                    .is_some_and(rustok_pricing_storefront::valid_quote_time)
+                && product.variants.iter().all(|variant| {
+                    variant
+                        .effective_price
+                        .as_ref()
+                        .is_none_or(|price| price.currency_code == expected.currency_code)
+                })
+        }
+        _ => false,
     }
 }
 
@@ -1021,9 +846,45 @@ pub fn build_pricing_href(
 mod tests {
     use super::*;
     use crate::model::{
-        ProductAttribute, ProductAttributeValue, ProductDetail, ProductImage, ProductPrice,
-        ProductPricingContext, ProductTranslation,
+        PricingResolutionContext, ProductAttribute, ProductAttributeValue, ProductDetail,
+        ProductImage, ProductPrice, ProductTranslation,
     };
+
+    #[test]
+    fn quote_observation_cannot_downgrade_to_inspection_or_change_currency_or_quantity() {
+        let expected = PricingResolutionContext {
+            currency_code: "JPY".into(),
+            region_id: None,
+            price_list_id: None,
+            channel_id: None,
+            channel_slug: None,
+            quantity: 2,
+        };
+        let mut product = ProductPricingDetail {
+            id: "product-1".into(),
+            resolution_context: None,
+            resolved_at: None,
+            variants: vec![crate::model::ProductPricingVariant {
+                id: "sku".into(),
+                title: "SKU".into(),
+                sku: None,
+                effective_price: None,
+            }],
+        };
+        assert!(pricing_quote_matches_request(&product, None));
+        assert!(!pricing_quote_matches_request(&product, Some(&expected)));
+        product.resolution_context = Some(expected.clone());
+        assert!(!pricing_quote_matches_request(&product, Some(&expected)));
+        product.resolved_at = Some("2026-10-30T10:00:00Z".into());
+        assert!(pricing_quote_matches_request(&product, Some(&expected)));
+        assert!(!pricing_quote_matches_request(&product, None));
+        let mut other = expected.clone();
+        other.currency_code = "EUR".into();
+        assert!(!pricing_quote_matches_request(&product, Some(&other)));
+        other.currency_code = "JPY".into();
+        other.quantity = 3;
+        assert!(!pricing_quote_matches_request(&product, Some(&other)));
+    }
 
     fn catalog_controls_with_attribute_filters(filters: &[&str]) -> CatalogListInput {
         CatalogListInput {
@@ -1173,12 +1034,28 @@ mod tests {
             None,
             None,
             Some(" 3 ".to_string()),
-        );
+        )
+        .expect("valid price context");
 
         assert_eq!(input.handle.as_deref(), Some("boot"));
         assert_eq!(input.quantity, Some(3));
-        assert_eq!(parse_quantity(Some("bad")), None);
-        assert_eq!(parse_quantity(Some("   ")), None);
+        assert!(
+            build_route_input(None, None, None, None, None, None, None, Some("bad".into()))
+                .is_err()
+        );
+        assert!(
+            build_route_input(
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(String::new())
+            )
+            .is_err()
+        );
 
         let request = build_fetch_request(&input);
         assert_eq!(request.selected_handle.as_deref(), Some("boot"));
@@ -1206,7 +1083,7 @@ mod tests {
         );
         assert_eq!(
             view_model.subtitle,
-            "This storefront route reads product-owned catalog data and shows resolved pricing through a separate pricing-module hook, with GraphQL kept as a fallback path."
+            "Published products with sparse SKU selection and authoritative price observations through the selected native or GraphQL transport."
         );
         assert_eq!(
             view_model.load_error,
@@ -1228,45 +1105,6 @@ mod tests {
         assert_eq!(
             format_seller_boundary(Some("en"), Some("  ")),
             "seller id: unassigned".to_string(),
-        );
-    }
-
-    #[test]
-    fn pricing_href_preserves_context_params() {
-        let context = ProductPricingContext {
-            currency_code: "EUR".to_string(),
-            region_id: Some("region-1".to_string()),
-            price_list_id: Some("list-1".to_string()),
-            channel_id: Some("channel-1".to_string()),
-            channel_slug: Some("web".to_string()),
-            quantity: 2,
-        };
-
-        assert_eq!(
-            build_pricing_href("/products", Some(" boot "), Some(&context), None),
-            "/products?handle=boot&currency=EUR&region_id=region-1&price_list_id=list-1&channel_id=channel-1&channel_slug=web&quantity=2".to_string(),
-        );
-    }
-
-    #[test]
-    fn pricing_href_uses_variant_currency_fallback() {
-        let variant = ProductVariant {
-            id: "variant-1".to_string(),
-            title: "Variant".to_string(),
-            sku: None,
-            inventory_quantity: 1,
-            in_stock: true,
-            prices: vec![ProductPrice {
-                currency_code: "USD".to_string(),
-                amount: "10.00".to_string(),
-                compare_at_amount: None,
-                on_sale: false,
-            }],
-        };
-
-        assert_eq!(
-            build_pricing_href("/products", Some("boot"), None, Some(&variant)),
-            "/products?handle=boot&currency=USD".to_string(),
         );
     }
 
@@ -1455,11 +1293,15 @@ mod tests {
                 handle: "trail-boot".to_string(),
                 description: Some("Ready for mud".to_string()),
             }],
+            variant_axes: Vec::new(),
             variants: vec![ProductVariant {
                 id: "variant-1".to_string(),
                 title: "Default".to_string(),
                 sku: Some("BOOT-1".to_string()),
                 inventory_quantity: 7,
+                inventory_policy: "deny".into(),
+                combination_identity: None,
+                axis_values: Vec::new(),
                 in_stock: true,
                 prices: vec![ProductPrice {
                     currency_code: "USD".to_string(),
@@ -1494,23 +1336,7 @@ mod tests {
                 },
             ],
         };
-        let context = ProductPricingContext {
-            currency_code: "USD".to_string(),
-            region_id: None,
-            price_list_id: Some("list-1".to_string()),
-            channel_id: None,
-            channel_slug: Some("web".to_string()),
-            quantity: 4,
-        };
-
-        let view_model = build_selected_product_view_model(
-            &product,
-            None,
-            Some(&context),
-            None,
-            Some("en"),
-            "/pricing",
-        );
+        let view_model = build_selected_product_view_model(&product, Some("en"));
 
         assert_eq!(view_model.product_type, "Boots");
         assert_eq!(view_model.vendor, "Acme");
@@ -1538,28 +1364,6 @@ mod tests {
         assert_eq!(view_model.title, "Trail boot");
         assert_eq!(view_model.description, "Ready for mud");
         assert_eq!(view_model.seller_boundary, "seller id: seller-1");
-        assert_eq!(
-            without_bidi_isolates(&view_model.catalog_snapshot),
-            "USD 25.00 (compare-at 30.00)"
-        );
-        assert_eq!(
-            view_model.pricing_preview,
-            "Pricing module preview is unavailable."
-        );
-        assert_eq!(
-            view_model.pricing_context,
-            Some("currency USD | qty 4 | price list list-1 | channel web".to_string()),
-        );
-        assert_eq!(view_model.inventory, 7);
-        assert_eq!(
-            view_model.pricing_href,
-            "/pricing?handle=trail-boot&currency=USD&price_list_id=list-1&channel_slug=web&quantity=4",
-        );
-        assert_eq!(view_model.preview_context_label, "pricing preview");
-        assert_eq!(view_model.catalog_snapshot_label, "Catalog snapshot");
-        assert_eq!(view_model.pricing_preview_label, "Pricing module preview");
-        assert_eq!(view_model.inventory_label, "Inventory");
-        assert_eq!(view_model.open_pricing_label, "Open pricing module");
         assert_eq!(view_model.attributes_label, "Specifications");
         assert_eq!(view_model.attributes.len(), 2);
         assert_eq!(view_model.attributes[0].code, "material");
@@ -1588,11 +1392,11 @@ mod tests {
             published_at: None,
             images: Vec::new(),
             translations: Vec::new(),
+            variant_axes: Vec::new(),
             variants: Vec::new(),
             attributes: Vec::new(),
         };
-        let view_model =
-            build_selected_product_view_model(&product, None, None, None, Some("ru"), "/pricing");
+        let view_model = build_selected_product_view_model(&product, Some("ru"));
         assert!(view_model.attributes.is_empty());
 
         // A hidden definition never reaches the contract, but a boolean the owner did send is
@@ -1611,8 +1415,7 @@ mod tests {
                 },
             ],
         }];
-        let view_model =
-            build_selected_product_view_model(&product, None, None, None, Some("ru"), "/pricing");
+        let view_model = build_selected_product_view_model(&product, Some("ru"));
         assert_eq!(view_model.attributes_label, "Характеристики");
         assert_eq!(
             view_model.attributes[0].values,

@@ -18,12 +18,18 @@
 ### Data Types
 - `GraphqlRequest<V>`: typed GraphQL request container supporting optional query variables and protocol extensions.
 - `GraphqlResponse<T>`: response container encapsulating optional typed data and structured error lists.
-- `GraphqlError`: individual GraphQL error message container.
+- `GraphqlError`: individual message plus optional typed `GraphqlErrorExtensions`.
+- `GraphqlErrorExtensions`: optional `code`, `retryable`, `outcome`; data, not a retry decision.
+- `GraphqlOperationError`: metadata-preserving wrapper around unchanged `GraphqlHttpError`.
 - `GraphqlHttpError`: typed transport and application error enum (`Network`, `Graphql`, `Http`, `Unauthorized`).
 
 ### Execution Functions
 - `execute<V, T>(endpoint: &str, request: GraphqlRequest<V>, token: Option<String>, tenant_slug: Option<String>, locale: Option<String>) -> Result<T, GraphqlHttpError>`: sends a GraphQL request using the default client.
 - `execute_with_client<V, T>(client: &ClientWithMiddleware, endpoint: &str, request: GraphqlRequest<V>, token: Option<String>, tenant_slug: Option<String>, locale: Option<String>) -> Result<T, GraphqlHttpError>`: sends a GraphQL request using an explicitly provided client.
+
+- `execute_with_metadata` / `execute_with_client_metadata`: opt-in counterparts with the same
+  request/header/client policy, returning `GraphqlOperationError`. Legacy functions drop the
+  additional metadata and retain their error enum. No implicit retry is added.
 
 ## Invariants
 

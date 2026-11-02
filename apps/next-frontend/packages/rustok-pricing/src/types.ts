@@ -35,7 +35,15 @@ export interface PricingPrice {
   onSale: boolean;
 }
 
+export interface PricingPriceSource {
+  priceId: string;
+  kind: "base" | "price_list_override" | "price_list_rule";
+  ruleKind: "percentage_discount" | null;
+  adjustmentPercent: string | null;
+}
+
 export interface PricingEffectivePrice {
+  source: PricingPriceSource;
   currencyCode: string;
   amount: string;
   compareAtAmount?: string | null;
@@ -65,6 +73,8 @@ export interface PricingProductTranslation {
 }
 
 export interface PricingProductDetail {
+  resolutionContext: PricingResolutionContext | null;
+  resolvedAt: string | null;
   id: string;
   status: string;
   sellerId?: string | null;

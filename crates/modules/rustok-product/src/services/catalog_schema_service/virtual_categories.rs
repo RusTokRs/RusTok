@@ -10,6 +10,7 @@ pub(crate) async fn validate_virtual_category_rule_references(
 ) -> CommerceResult<()> {
     #[derive(FromQueryResult)]
     struct AttributeRuleDefinitionRow {
+        id: Uuid,
         value_type: String,
         scope: String,
         is_localized: bool,
@@ -42,7 +43,7 @@ pub(crate) async fn validate_virtual_category_rule_references(
             AttributeRuleDefinitionRow::find_by_statement(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
-                SELECT value_type, scope, is_localized
+                SELECT id, value_type, scope, is_localized
                 FROM product_attributes
                 WHERE tenant_id = $1 AND code = $2 AND archived_at IS NULL
                 "#,
@@ -70,6 +71,20 @@ pub(crate) async fn validate_virtual_category_rule_references(
         }
         let value_type = AttributeValueType::from_storage(&definition.value_type)
             .map_err(map_schema_resolution_error)?;
+        if let VirtualCategoryAttributeCondition::Eq { value } = &attribute.condition {
+            if matches!(
+                value_type,
+                AttributeValueType::Select | AttributeValueType::Multiselect
+            ) {
+                let exists = txn.query_one_raw(Statement::from_sql_and_values(txn.get_database_backend(),
+                    "SELECT id FROM product_attribute_options WHERE tenant_id = $1 AND attribute_id = $2 AND code = $3 AND archived_at IS NULL",
+                    vec![tenant_id.into(), definition.id.into(), value.trim().into()],
+                )).await?.is_some();
+                if !exists {
+                    return Err(CommerceError::Validation("Virtual category option must be active and belong to the selected attribute and tenant".into()));
+                }
+            }
+        }
         match &attribute.condition {
             VirtualCategoryAttributeCondition::Range { .. }
                 if !matches!(

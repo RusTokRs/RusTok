@@ -29,6 +29,7 @@ pub(super) struct GraphqlCallContext {
     sort_direction_present: bool,
     attribute_filter_count: usize,
     facet_code_count: usize,
+    variant_count: usize,
 }
 
 impl GraphqlCallContext {
@@ -51,6 +52,7 @@ impl GraphqlCallContext {
             sort_direction_present: controls.sort_direction.is_some(),
             attribute_filter_count: controls.attribute_filters.len(),
             facet_code_count: 0,
+            variant_count: 0,
         }
     }
 
@@ -73,6 +75,7 @@ impl GraphqlCallContext {
             sort_direction_present: false,
             attribute_filter_count: 0,
             facet_code_count: 0,
+            variant_count: 0,
         }
     }
 
@@ -99,6 +102,30 @@ impl GraphqlCallContext {
             sort_direction_present: controls.sort_direction.is_some(),
             attribute_filter_count: controls.attribute_filters.len(),
             facet_code_count: facet_codes.len(),
+            variant_count: 0,
+        }
+    }
+
+    pub(super) fn fetch_buyer_quote(request: &crate::core::buyer::BuyerQuoteRequest) -> Self {
+        Self {
+            owner_operation: "fetch_buyer_quote",
+            correlation_id: correlation_id("fetch_buyer_quote"),
+            tenant_slug_length: configured_tenant_slug_length(),
+            selected_handle_length: Some(request.handle.chars().count()),
+            locale_length: text_length(request.locale.as_deref()),
+            currency_code_length: Some(request.pricing.currency_code.chars().count()),
+            region_id_length: text_length(request.pricing.region_id.as_deref()),
+            price_list_id_length: text_length(request.pricing.price_list_id.as_deref()),
+            channel_id_length: text_length(request.pricing.channel_id.as_deref()),
+            channel_slug_length: text_length(request.pricing.channel_slug.as_deref()),
+            quantity_present: true,
+            search_length: None,
+            category_id_length: None,
+            sort_by_present: false,
+            sort_direction_present: false,
+            attribute_filter_count: 0,
+            facet_code_count: 0,
+            variant_count: request.variant_ids.len(),
         }
     }
 
@@ -150,6 +177,7 @@ impl GraphqlCallContext {
                 parsed_error_valid,
                 owner = PRODUCT_STOREFRONT_GRAPHQL_OWNER,
                 owner_operation = self.owner_operation,
+                variant_count = self.variant_count,
                 correlation_id = %self.correlation_id,
                 tenant_slug_configured = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -188,6 +216,7 @@ impl GraphqlCallContext {
                 parsed_error_valid,
                 owner = PRODUCT_STOREFRONT_GRAPHQL_OWNER,
                 owner_operation = self.owner_operation,
+                variant_count = self.variant_count,
                 correlation_id = %self.correlation_id,
                 tenant_slug_configured = self.tenant_slug_length.is_some(),
                 tenant_slug_length = ?self.tenant_slug_length,
@@ -237,16 +266,6 @@ fn text_length(value: Option<&str>) -> Option<usize> {
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let value = value.trim();
-            (!value.is_empty()).then_some(value.chars().count())
-        })
-    })
+    // Observe the same canonical reader as the actual GraphQL request, not an env-only shadow.
+    leptos_auth::storage::get_tenant().map(|value| value.chars().count())
 }

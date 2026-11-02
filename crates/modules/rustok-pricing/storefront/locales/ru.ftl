@@ -25,7 +25,7 @@ pricing-list-vendorFallback = Независимый бренд
 pricing-selected-basePriceListFallback = базовые цены
 pricing-selected-catalog = каталог
 pricing-selected-channelLabel = channel
-pricing-selected-channelSwitcherSubtitle = Switch between global pricing and channel-scoped pricing without leaving the pricing module route.
+pricing-selected-channelSwitcherSubtitle = Используйте текущий канал витрины или явно выберите другой канал.
 pricing-selected-channelSwitcherTitle = channel
 pricing-selected-currencies = Валюты
 pricing-selected-currencyLabel = currency
@@ -33,7 +33,7 @@ pricing-selected-effectiveContext = effective context
 pricing-selected-effectiveLabel = effective
 pricing-selected-emptyBody = Откройте опубликованный товар через `?handle=`, чтобы посмотреть variant-level pricing coverage и sale markers.
 pricing-selected-emptyTitle = Pricing-карточка не выбрана
-pricing-selected-globalChannelFallback = глобальный канал
+pricing-selected-currentChannelFallback = текущий канал
 pricing-selected-globalRegionFallback = глобальный регион
 pricing-selected-noDescription = Локализованное описание пока не заполнено.
 pricing-selected-openProduct = Открыть модуль товаров

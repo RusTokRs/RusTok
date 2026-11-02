@@ -168,6 +168,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn typed_http_retry_metadata_survives_host_error_delegation() {
+        for retryable in [false, true] {
+            let error = http_error(
+                HttpError::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "pricing.product_identity_capability_unavailable",
+                    "The requested service is temporarily unavailable",
+                )
+                .with_retryable(retryable),
+            );
+            let (status, body) = parse_error_response(error.into_response()).await;
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(body.code, "pricing.product_identity_capability_unavailable");
+            assert_eq!(body.retryable, Some(retryable));
+        }
+    }
+
+    #[tokio::test]
+    async fn untyped_internal_http_failure_does_not_invent_owner_retry_advice() {
+        let (status, body) = parse_error_response(Error::InternalServerError.into_response()).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.retryable, None);
+    }
+
+    #[tokio::test]
     async fn error_into_response_maps_unauthorized() {
         let err = Error::Unauthorized("token expired".into());
         let (status, body) = parse_error_response(err.into_response()).await;

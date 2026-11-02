@@ -17,6 +17,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:rustok-commerce",
     "dep:rustok-outbox",
+    "dep:rustok-product",
     "rustok-api/server",
 ]
 
@@ -30,6 +31,7 @@ leptos_axum = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-commerce = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true
 uuid.workspace = true

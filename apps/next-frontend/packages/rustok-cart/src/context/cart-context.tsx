@@ -15,7 +15,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -28,20 +30,39 @@ import {
   updateStorefrontCartLineItemQuantity,
   updateStorefrontCartShipping,
 } from "../api/cart";
-import type { Cart } from "../api/types";
+import type { Cart, CartPricingExpectation } from "../api/types";
+import {
+  UNSCOPED_CART_STORAGE_KEY,
+  cartMatchesPricingExpectation,
+  cartStorageKey,
+  adoptBuyerCart,
+  validCartBuyerSelection,
+  cartMutationMarkerKey,
+  cartReferenceFromSearch,
+} from "../core";
 
-const CART_STORAGE_KEY = "rustok_storefront_cart_id";
-
+export type CartActionError =
+  | "auth"
+  | "restore"
+  | "context"
+  | "invalid"
+  | "unconfirmed";
 export interface CartContextValue {
   cart: Cart | null;
+  reference: string | null;
   isOpen: boolean;
   isLoading: boolean;
   isUpdating: boolean;
   itemCount: number;
+  actionError: CartActionError | null;
   openCart: () => void;
   closeCart: () => void;
   toggleCart: () => void;
-  addItem: (variantId: string, quantity?: number) => Promise<boolean>;
+  addItem: (
+    variantId: string,
+    quantity: number,
+    context: CartPricingExpectation,
+  ) => Promise<boolean>;
   updateQuantity: (lineItemId: string, quantity: number) => Promise<boolean>;
   removeItem: (lineItemId: string) => Promise<boolean>;
   refreshCart: () => Promise<void>;
@@ -50,257 +71,458 @@ export interface CartContextValue {
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
-
 export interface CartProviderProps {
   children: ReactNode;
-  locale?: string;
-  currencyCode?: string;
+  locale: string;
   tenantSlug?: string | null;
+  authToken?: string | null;
+  authReady: boolean;
+  authRefused: boolean;
+  authScopeIsCurrent: () => boolean;
 }
+
+type Scope = { tenant: string | null; token: string | null; locale: string };
+type Session = {
+  scope: Scope;
+  cart: Cart | null;
+  storageKey: string | null;
+  storedId: string | null;
+  loading: boolean;
+};
 
 export function CartProvider({
   children,
-  locale = "ru",
-  currencyCode = "RUB",
+  locale,
   tenantSlug = null,
+  authToken = null,
+  authReady,
+  authRefused,
+  authScopeIsCurrent,
 }: CartProviderProps) {
-  const [cart, setCart] = useState<Cart | null>(null);
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const scope = useMemo<Scope>(
+    () => ({ tenant: tenantSlug, token: authToken, locale }),
+    [tenantSlug, authToken, locale],
+  );
+  const [session, setSession] = useState<Session>({
+    scope,
+    cart: null,
+    storageKey: null,
+    storedId: null,
+    loading: true,
+  });
+  const [error, setErrorState] = useState<{
+    scope: Scope;
+    code: CartActionError;
+  } | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [operation, setOperation] = useState<{ scope: Scope } | null>(null);
+  const inFlight = useRef<{ scope: Scope } | null>(null);
+  const liveScope = useRef(scope);
+  const liveAuthCheck = useRef(authScopeIsCurrent);
+  useLayoutEffect(() => {
+    liveScope.current = scope;
+    liveAuthCheck.current = authScopeIsCurrent;
+  }, [scope, authScopeIsCurrent]);
+  const scopeCurrent = useCallback(
+    () => liveScope.current === scope && liveAuthCheck.current(),
+    [scope],
+  );
+  const blockedScope = useRef<Scope | null>(null);
+  const adoptedInitialUrl = useRef(false);
+  const setError = useCallback(
+    (value: { scope: Scope; code: CartActionError } | null) => {
+      if (!scopeCurrent()) return;
+      blockedScope.current =
+        value?.code === "unconfirmed" || value?.code === "restore"
+          ? scope
+          : null;
+      setErrorState(value);
+    },
+    [scope, scopeCurrent],
+  );
+  const current = session.scope === scope ? session : null;
+  const cart = current?.cart ?? null;
+  const actionError = authRefused
+    ? "auth"
+    : error?.scope === scope
+      ? error.code
+      : null;
+  const isLoading = !authReady || (current?.loading ?? true);
+  const isUpdating = operation !== null;
 
-  // Load existing cart from localStorage on client mount
   useEffect(() => {
-    let isCancelled = false;
-
-    async function initializeCart() {
+    if (!authReady || !scopeCurrent()) return;
+    let cancelled = false;
+    async function restore() {
+      let key: string | null = null;
+      let storedId: string | null = null;
+      let uncertain = false;
       try {
-        const storedCartId = window.localStorage.getItem(CART_STORAGE_KEY);
-        if (!storedCartId) return;
-
-        setIsLoading(true);
-        const fetchedCart = await fetchStorefrontCart(
-          storefrontGraphql,
-          storedCartId,
-          tenantSlug,
-        );
-
-        if (isCancelled) return;
-
-        if (fetchedCart && fetchedCart.status === "ACTIVE") {
-          setCart(fetchedCart);
-        } else {
-          // Cart not found or expired; clean up storage
-          window.localStorage.removeItem(CART_STORAGE_KEY);
-          setCart(null);
+        key = await cartStorageKey(scope.tenant, scope.token);
+        if (cancelled || !scopeCurrent()) return;
+        const explicit = adoptedInitialUrl.current
+          ? null
+          : cartReferenceFromSearch(window.location.search);
+        adoptedInitialUrl.current = true;
+        const scoped = window.localStorage.getItem(key);
+        // Only the initial explicit URL requests adoption. An auth switch never adopts the previous
+        // actor's URL. Scoped empty entries explicitly suppress the old global storage reference.
+        storedId =
+          explicit ??
+          (scoped === null
+            ? window.localStorage.getItem(UNSCOPED_CART_STORAGE_KEY)
+            : scoped || null);
+        const markerKey = cartMutationMarkerKey(key);
+        const marker = window.localStorage.getItem(markerKey);
+        if (marker !== null && !storedId) {
+          uncertain = true;
+          throw new Error("An earlier create is unconfirmed");
         }
-      } catch (err) {
-        console.error("Failed to restore storefront cart:", err);
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
+        const restored = storedId
+          ? await fetchStorefrontCart(
+              storefrontGraphql,
+              storedId,
+              scope.tenant,
+              scope.token,
+            )
+          : null;
+        if (cancelled || !scopeCurrent()) return;
+        const active = storedId ? adoptBuyerCart(restored, storedId) : null;
+        // A successful owner read validates a persisted old ID in this tenant/actor/capability.
+        window.localStorage.setItem(key, active?.id ?? "");
+        if (window.localStorage.getItem(markerKey) !== marker) {
+          uncertain = true;
+          throw new Error("Cart changed during restore");
         }
+        window.localStorage.removeItem(markerKey);
+        setSession({
+          scope,
+          cart: active,
+          storageKey: key,
+          storedId: active?.id ?? null,
+          loading: false,
+        });
+        setError(null);
+      } catch {
+        if (cancelled || !scopeCurrent()) return;
+        // Preserve the reference on failure. A failed read does not prove a missing/empty cart.
+        setSession({
+          scope,
+          cart: null,
+          storageKey: key,
+          storedId,
+          loading: false,
+        });
+        setError({ scope, code: uncertain ? "unconfirmed" : "restore" });
       }
     }
-
-    void initializeCart();
-
+    void restore();
     return () => {
-      isCancelled = true;
+      cancelled = true;
     };
-  }, [tenantSlug]);
+  }, [scope, authReady, scopeCurrent, setError]);
 
-  const openCart = useCallback(() => {
-    setIsOpen(true);
-  }, []);
+  const openCart = useCallback(() => setIsOpen(true), []);
+  const closeCart = useCallback(() => setIsOpen(false), []);
+  const toggleCart = useCallback(() => setIsOpen((value) => !value), []);
 
-  const closeCart = useCallback(() => {
-    setIsOpen(false);
-  }, []);
-
-  const toggleCart = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
+  const commit = useCallback(
+    (value: Cart) => {
+      if (!scopeCurrent()) return;
+      setSession((previous) =>
+        previous.scope === scope
+          ? { ...previous, cart: value, storedId: value.id }
+          : previous,
+      );
+    },
+    [scope, scopeCurrent],
+  );
 
   const refreshCart = useCallback(async () => {
-    if (!cart?.id) return;
-    setIsUpdating(true);
+    const id = current?.cart?.id ?? current?.storedId;
+    if (!scopeCurrent() || !id || inFlight.current) return;
+    const op = { scope };
+    inFlight.current = op;
+    setOperation(op);
     try {
+      if (!current?.storageKey)
+        throw new Error("Cart reference storage is unavailable");
+      const markerKey = cartMutationMarkerKey(current.storageKey);
+      const marker = window.localStorage.getItem(markerKey);
       const refreshed = await fetchStorefrontCart(
         storefrontGraphql,
-        cart.id,
-        tenantSlug,
+        id,
+        scope.tenant,
+        scope.token,
       );
-      if (refreshed) {
-        setCart(refreshed);
-      }
+      if (!scopeCurrent()) return;
+      const active = adoptBuyerCart(refreshed, id);
+      window.localStorage.setItem(current.storageKey, active?.id ?? "");
+      if (window.localStorage.getItem(markerKey) !== marker)
+        throw new Error("Cart changed during inspection");
+      window.localStorage.removeItem(markerKey);
+      setSession({
+        ...current,
+        cart: active,
+        storedId: active?.id ?? null,
+        loading: false,
+      });
+      setError(null);
+    } catch {
+      if (scopeCurrent()) setError({ scope, code: "restore" });
     } finally {
-      setIsUpdating(false);
+      if (inFlight.current === op) {
+        inFlight.current = null;
+        setOperation(null);
+      }
     }
-  }, [cart?.id, tenantSlug]);
+  }, [current, scope, scopeCurrent, setError]);
 
   const addItem = useCallback(
-    async (variantId: string, quantity = 1): Promise<boolean> => {
-      setIsUpdating(true);
+    async (
+      variantId: string,
+      quantity: number,
+      expectation: CartPricingExpectation,
+    ): Promise<boolean> => {
+      if (
+        !scopeCurrent() ||
+        inFlight.current ||
+        blockedScope.current === scope ||
+        !current ||
+        current.loading
+      )
+        return false;
+      if (!validCartBuyerSelection(variantId, expectation, quantity)) {
+        setError({ scope, code: "invalid" });
+        return false;
+      }
+      if (
+        current.cart &&
+        !cartMatchesPricingExpectation(current.cart, expectation)
+      ) {
+        setError({ scope, code: "context" });
+        return false;
+      }
+      const op = { scope };
+      inFlight.current = op;
+      setOperation(op);
+      setError(null);
+      let marker: { key: string; id: string } | null = null;
+      let transmitted = false;
       try {
-        let activeCartId = cart?.id;
-
-        // Create new cart if none exists
-        if (!activeCartId) {
-          const newCart = await createStorefrontCart(
+        if (!current.storageKey) {
+          setError({ scope, code: "restore" });
+          return false;
+        }
+        const key = cartMutationMarkerKey(current.storageKey);
+        if (window.localStorage.getItem(key) !== null) {
+          setError({ scope, code: "unconfirmed" });
+          return false;
+        }
+        marker = { key, id: globalThis.crypto.randomUUID() };
+        window.localStorage.setItem(key, marker.id);
+        let active = current.cart;
+        if (!active) {
+          transmitted = true;
+          active = await createStorefrontCart(
             storefrontGraphql,
-            { currencyCode, locale },
-            tenantSlug,
+            {
+              currencyCode: expectation.currencyCode,
+              regionId: expectation.regionId,
+              locale: expectation.locale,
+            },
+            scope.tenant,
+            scope.token,
           );
-          if (!newCart) {
-            console.error("Could not create storefront cart");
+          if (!active) {
+            if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
             return false;
           }
-          activeCartId = newCart.id;
-          window.localStorage.setItem(CART_STORAGE_KEY, activeCartId);
-          setCart(newCart);
+          adoptBuyerCart(active, active.id);
+          // Retain a confirmed response under its ORIGINAL actor's key even if auth changed during
+          // create. Never publish it or continue the add in the new actor. Backend restore still
+          // proves access; this is only a local reference, not a transferable guest capability.
+          if (scopeCurrent()) commit(active);
+          if (!current.storageKey) {
+            if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
+            return false;
+          }
+          try {
+            window.localStorage.setItem(current.storageKey, active.id);
+          } catch {
+            if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
+            return false;
+          }
+          if (!scopeCurrent()) return false;
         }
-
+        if (!cartMatchesPricingExpectation(active, expectation)) {
+          if (window.localStorage.getItem(marker.key) === marker.id)
+            window.localStorage.removeItem(marker.key);
+          setError({ scope, code: "context" });
+          return false;
+        }
+        transmitted = true;
         const updated = await addStorefrontCartLineItem(
           storefrontGraphql,
-          activeCartId,
+          active.id,
           variantId,
           quantity,
-          tenantSlug,
+          scope.tenant,
+          expectation,
+          scope.token,
         );
-
-        if (updated) {
-          setCart(updated);
-          return true;
+        if (!updated) {
+          if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
+          return false;
         }
-        return false;
-      } catch (error) {
-        console.error("Failed to add item to cart:", error);
+        adoptBuyerCart(updated, active.id);
+        if (window.localStorage.getItem(marker.key) === marker.id)
+          window.localStorage.removeItem(marker.key);
+        if (!scopeCurrent()) return false;
+        commit(updated);
+        return true;
+      } catch {
+        if (scopeCurrent())
+          setError({ scope, code: transmitted ? "unconfirmed" : "restore" });
         return false;
       } finally {
-        setIsUpdating(false);
+        if (inFlight.current === op) {
+          inFlight.current = null;
+          setOperation(null);
+        }
       }
     },
-    [cart?.id, currencyCode, locale, tenantSlug],
+    [current, scope, commit, scopeCurrent, setError],
+  );
+
+  const mutate = useCallback(
+    async (run: (active: Cart) => Promise<Cart | null>): Promise<boolean> => {
+      if (
+        !scopeCurrent() ||
+        !cart ||
+        inFlight.current ||
+        blockedScope.current === scope ||
+        isLoading
+      )
+        return false;
+      const op = { scope };
+      inFlight.current = op;
+      setOperation(op);
+      setError(null);
+      let marker: { key: string; id: string } | null = null;
+      let transmitted = false;
+      try {
+        if (!current?.storageKey)
+          throw new Error("Cart reference storage is unavailable");
+        const key = cartMutationMarkerKey(current.storageKey);
+        if (window.localStorage.getItem(key) !== null) {
+          setError({ scope, code: "unconfirmed" });
+          return false;
+        }
+        marker = { key, id: globalThis.crypto.randomUUID() };
+        window.localStorage.setItem(key, marker.id);
+        transmitted = true;
+        const updated = await run(cart);
+        if (!updated) {
+          if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
+          return false;
+        }
+        adoptBuyerCart(updated, cart.id);
+        if (window.localStorage.getItem(marker.key) === marker.id)
+          window.localStorage.removeItem(marker.key);
+        if (!scopeCurrent()) return false;
+        commit(updated);
+        return true;
+      } catch {
+        if (scopeCurrent())
+          setError({ scope, code: transmitted ? "unconfirmed" : "restore" });
+        return false;
+      } finally {
+        if (inFlight.current === op) {
+          inFlight.current = null;
+          setOperation(null);
+        }
+      }
+    },
+    [cart, current, isLoading, scope, commit, scopeCurrent, setError],
   );
 
   const updateQuantity = useCallback(
-    async (lineItemId: string, quantity: number): Promise<boolean> => {
-      if (!cart?.id) return false;
-      setIsUpdating(true);
-      try {
-        if (quantity <= 0) {
-          const updated = await removeStorefrontCartLineItem(
-            storefrontGraphql,
-            cart.id,
-            lineItemId,
-            tenantSlug,
-          );
-          if (updated) {
-            setCart(updated);
-            return true;
-          }
-          return false;
-        }
-
-        const updated = await updateStorefrontCartLineItemQuantity(
-          storefrontGraphql,
-          cart.id,
-          lineItemId,
-          quantity,
-          tenantSlug,
-        );
-
-        if (updated) {
-          setCart(updated);
-          return true;
-        }
-        return false;
-      } catch (error) {
-        console.error("Failed to update cart line item:", error);
-        return false;
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [cart?.id, tenantSlug],
+    (lineItemId: string, quantity: number) =>
+      mutate((active) =>
+        quantity <= 0
+          ? removeStorefrontCartLineItem(
+              storefrontGraphql,
+              active.id,
+              lineItemId,
+              scope.tenant,
+              scope.token,
+            )
+          : updateStorefrontCartLineItemQuantity(
+              storefrontGraphql,
+              active.id,
+              lineItemId,
+              quantity,
+              scope.tenant,
+              scope.token,
+            ),
+      ),
+    [mutate, scope],
   );
-
   const removeItem = useCallback(
-    async (lineItemId: string): Promise<boolean> => {
-      if (!cart?.id) return false;
-      setIsUpdating(true);
-      try {
-        const updated = await removeStorefrontCartLineItem(
+    (lineItemId: string) =>
+      mutate((active) =>
+        removeStorefrontCartLineItem(
           storefrontGraphql,
-          cart.id,
+          active.id,
           lineItemId,
-          tenantSlug,
-        );
-
-        if (updated) {
-          setCart(updated);
-          return true;
-        }
-        return false;
-      } catch (error) {
-        console.error("Failed to remove cart line item:", error);
-        return false;
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [cart?.id, tenantSlug],
+          scope.tenant,
+          scope.token,
+        ),
+      ),
+    [mutate, scope],
   );
-
   const selectShippingOption = useCallback(
-    async (shippingOptionId: string): Promise<boolean> => {
-      if (!cart?.id) return false;
-      setIsUpdating(true);
-      try {
-        const updated = await updateStorefrontCartShipping(
+    (shippingOptionId: string) =>
+      mutate((active) =>
+        updateStorefrontCartShipping(
           storefrontGraphql,
-          cart.id,
+          active.id,
           shippingOptionId,
           undefined,
-          tenantSlug,
-        );
-        if (updated) {
-          setCart(updated);
-          return true;
-        }
-        return false;
-      } catch (err) {
-        console.error("Failed to update shipping option:", err);
-        return false;
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [cart?.id, tenantSlug],
+          scope.tenant,
+          scope.token,
+        ),
+      ),
+    [mutate, scope],
   );
-
   const clearCart = useCallback(() => {
+    if (!scopeCurrent() || inFlight.current || !current?.storageKey) return;
     try {
-      window.localStorage.removeItem(CART_STORAGE_KEY);
+      // Explicit user action drops only this session's local reference, never persisted cart data.
+      window.localStorage.setItem(current.storageKey, "");
+      window.localStorage.removeItem(cartMutationMarkerKey(current.storageKey));
+      setSession({ ...current, cart: null, storedId: null, loading: false });
+      setError(null);
     } catch {
-      // ignore
+      setError({ scope, code: "restore" });
     }
-    setCart(null);
-  }, []);
+  }, [current, scope, scopeCurrent, setError]);
 
-  const itemCount = useMemo(() => {
-    if (!cart?.lineItems) return 0;
-    return cart.lineItems.reduce((acc, item) => acc + item.quantity, 0);
-  }, [cart?.lineItems]);
-
+  const itemCount = useMemo(
+    () => cart?.lineItems.reduce((sum, line) => sum + line.quantity, 0) ?? 0,
+    [cart],
+  );
+  const reference = current?.cart?.id ?? current?.storedId ?? null;
   const value = useMemo<CartContextValue>(
     () => ({
       cart,
+      reference,
       isOpen,
       isLoading,
       isUpdating,
       itemCount,
+      actionError,
       openCart,
       closeCart,
       toggleCart,
@@ -313,10 +535,12 @@ export function CartProvider({
     }),
     [
       cart,
+      reference,
       isOpen,
       isLoading,
       isUpdating,
       itemCount,
+      actionError,
       openCart,
       closeCart,
       toggleCart,
@@ -328,14 +552,11 @@ export function CartProvider({
       clearCart,
     ],
   );
-
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart(): CartContextValue {
   const context = useContext(CartContext);
-  if (!context) {
-    throw new Error("useCart must be used within a CartProvider");
-  }
+  if (!context) throw new Error("useCart must be used within a CartProvider");
   return context;
 }

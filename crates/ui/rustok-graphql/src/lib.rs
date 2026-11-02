@@ -121,6 +121,35 @@ pub struct GraphqlResponse<T> {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GraphqlError {
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<GraphqlErrorExtensions>,
+}
+
+/// Owner error metadata is data, not a retry decision. Consumers must recognize their owner's
+/// closed codes and explicit durable outcome; auth/admission/HTTP failures stay uncertain.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GraphqlErrorExtensions {
+    pub code: Option<String>,
+    pub retryable: Option<bool>,
+    pub outcome: Option<String>,
+}
+
+/// Metadata-preserving execution error. Existing GraphqlHttpError callers keep their original
+/// enum and behavior; operation owners may opt into this richer shared transport projection.
+#[derive(thiserror::Error, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[error("{error}")]
+pub struct GraphqlOperationError {
+    pub error: GraphqlHttpError,
+    pub extensions: Option<GraphqlErrorExtensions>,
+}
+
+impl From<GraphqlHttpError> for GraphqlOperationError {
+    fn from(error: GraphqlHttpError) -> Self {
+        Self {
+            error,
+            extensions: None,
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +231,46 @@ where
     V: Serialize,
     T: DeserializeOwned,
 {
+    execute_with_client_metadata(client, endpoint, request, token, tenant_slug, locale)
+        .await
+        .map_err(|error| error.error)
+}
+
+/// Shared execution with owner error metadata and no automatic retries.
+pub async fn execute_with_metadata<V, T>(
+    endpoint: &str,
+    request: GraphqlRequest<V>,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<T, GraphqlOperationError>
+where
+    V: Serialize,
+    T: DeserializeOwned,
+{
+    execute_with_client_metadata(
+        default_client()?,
+        endpoint,
+        request,
+        token,
+        tenant_slug,
+        locale,
+    )
+    .await
+}
+
+pub async fn execute_with_client_metadata<V, T>(
+    client: &ClientWithMiddleware,
+    endpoint: &str,
+    request: GraphqlRequest<V>,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: Option<String>,
+) -> Result<T, GraphqlOperationError>
+where
+    V: Serialize,
+    T: DeserializeOwned,
+{
     let mut req = client.post(endpoint).json(&request);
 
     if let Some(token) = token {
@@ -219,11 +288,11 @@ where
     let response = req.send().await.map_err(|_| GraphqlHttpError::Network)?;
 
     if response.status() == 401 {
-        return Err(GraphqlHttpError::Unauthorized);
+        return Err(GraphqlHttpError::Unauthorized.into());
     }
 
     if !response.status().is_success() {
-        return Err(GraphqlHttpError::Http(response.status().to_string()));
+        return Err(GraphqlHttpError::Http(response.status().to_string()).into());
     }
 
     let body: GraphqlResponse<T> = response
@@ -234,11 +303,15 @@ where
     if let Some(errors) = body.errors
         && let Some(error) = errors.first()
     {
-        return Err(GraphqlHttpError::Graphql(error.message.clone()));
+        return Err(GraphqlOperationError {
+            error: GraphqlHttpError::Graphql(error.message.clone()),
+            extensions: error.extensions.clone(),
+        });
     }
 
-    body.data
-        .ok_or_else(|| GraphqlHttpError::Graphql("No data".to_string()))
+    body.data.ok_or_else(|| {
+        GraphqlOperationError::from(GraphqlHttpError::Graphql("No data".to_string()))
+    })
 }
 
 pub async fn execute_with_raw_client<V, T>(
@@ -336,5 +409,18 @@ mod tests {
         let mutation = GraphqlRequest::<()>::new("mutation CreateItem { create { id } }", None);
         assert!(mutation.is_mutation());
         assert!(!mutation.is_query());
+    }
+    #[test]
+    fn error_metadata_is_optional_and_preserved_without_inventing_an_outcome() {
+        let response: super::GraphqlResponse<serde_json::Value> = serde_json::from_value(json!({ "errors": [{ "message": "refused", "extensions": { "code": "PRODUCT_VARIANT_AXES_STALE", "retryable": false, "outcome": "rejected", "correlation_id": "opaque" } }] })).unwrap();
+        let metadata = response.errors.unwrap()[0].extensions.clone().unwrap();
+        assert_eq!(metadata.code.as_deref(), Some("PRODUCT_VARIANT_AXES_STALE"));
+        assert_eq!(metadata.retryable, Some(false));
+        assert_eq!(metadata.outcome.as_deref(), Some("rejected"));
+        let legacy: super::GraphqlError =
+            serde_json::from_value(json!({ "message": "older server" })).unwrap();
+        assert_eq!(legacy.extensions, None);
+        let partial: super::GraphqlError = serde_json::from_value(json!({ "message": "not a durable decision", "extensions": { "code": "PRODUCT_VALIDATION" } })).unwrap();
+        assert_eq!(partial.extensions.unwrap().outcome, None);
     }
 }

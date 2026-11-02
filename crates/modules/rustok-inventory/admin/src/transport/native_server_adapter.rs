@@ -78,6 +78,35 @@ fn inventory_admin_correlation_id(operation: &'static str) -> String {
 }
 
 #[cfg(feature = "ssr")]
+fn reservation_write_context(
+    tenant_id: uuid::Uuid,
+    actor_id: uuid::Uuid,
+    correlation_id: &str,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<rustok_api::PortContext, ServerFnError> {
+    if request_context.is_some_and(|context| context.tenant_id != tenant_id) {
+        return Err(ServerFnError::new(
+            "Inventory request context and current tenant must agree",
+        ));
+    }
+    // Missing optional presentation context is explicitly undetermined, not a reconstructed
+    // channel/locale. The command remains a global anonymous-pool operation.
+    let mut context = rustok_api::PortContext::new(
+        tenant_id.to_string(),
+        rustok_api::PortActor::user(actor_id.to_string()),
+        request_context
+            .map(|context| context.locale.as_str())
+            .unwrap_or("und"),
+        correlation_id,
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+    // Diagnostic admission metadata only: quantity commands are NOT replay-safe.
+    .with_idempotency_key(correlation_id);
+    context.channel = request_context.and_then(|context| context.channel_slug.clone());
+    Ok(context)
+}
+
+#[cfg(feature = "ssr")]
 fn inventory_context_error<E>(
     _error: E,
     owner_operation: &'static str,
@@ -879,7 +908,16 @@ async fn inventory_reserve_quantity_native(
             auth.user_id,
             request_context.as_ref(),
         )?
-        .reserve(tenant.id, variant_id, quantity)
+        .reserve(
+            &reservation_write_context(
+                tenant.id,
+                auth.user_id,
+                &correlation_id,
+                request_context.as_ref(),
+            )?,
+            variant_id,
+            quantity,
+        )
         .await
         .map(map_reservation_result)
         .map_err(|error| {
@@ -1013,7 +1051,16 @@ async fn inventory_release_reservation_native(
             auth.user_id,
             request_context.as_ref(),
         )?
-        .release_reservation_quantity(tenant.id, variant_id, quantity)
+        .release_reservation_quantity(
+            &reservation_write_context(
+                tenant.id,
+                auth.user_id,
+                &correlation_id,
+                request_context.as_ref(),
+            )?,
+            variant_id,
+            quantity,
+        )
         .await
         .map(map_release_result)
         .map_err(|error| {

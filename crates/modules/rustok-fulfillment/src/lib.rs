@@ -30,7 +30,8 @@ mod contract_tests;
 pub use admin_command::{
     CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, FulfillmentAdminCommandPort,
     FulfillmentAdminCommandRuntime, InProcessFulfillmentAdminCommandPort,
-    ReopenAdminFulfillmentRequest, ReshipAdminFulfillmentRequest, ShipAdminFulfillmentRequest,
+    ReopenAdminFulfillmentRequest, ReshipAdminFulfillmentRequest,
+    RetryLocalFulfillmentPersistenceRequest, ShipAdminFulfillmentRequest,
     in_process_fulfillment_admin_command_port,
 };
 pub use admin_create_command::{
@@ -74,8 +75,9 @@ pub use providers::{
     FulfillmentRateQuoteRequest, MANUAL_FULFILLMENT_PROVIDER_ID, ManualFulfillmentProvider,
 };
 pub use shipment_stock::{
-    NoopShipmentStockPort, ShipmentStockError, ShipmentStockPort, ShipmentStockRequest,
-    UnconfiguredShipmentStockPort,
+    MAX_SHIPMENT_STOCK_ITEMS, NoopShipmentStockPort, PreparedFulfillmentStock,
+    PreparedShipmentStock, ShipmentStockAction, ShipmentStockError, ShipmentStockItemScope,
+    ShipmentStockPort, ShipmentStockRequest, ShipmentStockScope, UnconfiguredShipmentStockPort,
 };
 pub use shipping_option_admin_command::{
     CreateAdminShippingOptionRequest, DeactivateAdminShippingOptionRequest,

@@ -425,6 +425,8 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
                 position: 10,
                 visibility_overrides: json!({}),
                 validation_overrides: json!({}),
+                variant_axis_policy: None,
+                default_variant_axis: None,
                 metadata: json!({"evidence": "binding-only"}),
             },
         )

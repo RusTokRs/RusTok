@@ -19,6 +19,25 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
+/// Route text is admitted before either selected transport starts IO.
+pub(crate) async fn fetch_storefront_pricing_route(
+    mut query: StorefrontPricingQuery,
+    quantity: Option<String>,
+) -> TransportResult<StorefrontPricingData> {
+    query.quantity =
+        crate::core::parse_pricing_route_quantity(quantity.as_deref()).map_err(|error| {
+            match selected_transport_path() {
+                UiTransportPath::NativeServer => {
+                    rustok_ui_transport::UiTransportError::native("pricing", error)
+                }
+                UiTransportPath::Graphql => {
+                    rustok_ui_transport::UiTransportError::graphql("pricing", error)
+                }
+            }
+        })?;
+    fetch_storefront_pricing(query).await
+}
+
 pub(crate) async fn fetch_storefront_pricing(
     query: StorefrontPricingQuery,
 ) -> TransportResult<StorefrontPricingData> {
@@ -83,6 +102,20 @@ mod tests {
             resolution_context: None,
             available_channels: Vec::new(),
             active_price_lists: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn malformed_route_quantity_refuses_before_a_selected_provider_can_run() {
+        for value in ["", "0", "1.5", "2tail", "2147483648"] {
+            let error = block_on(fetch_storefront_pricing_route(
+                sample_query(),
+                Some(value.to_string()),
+            ))
+            .expect_err("invalid quantity must not start provider IO");
+            assert_eq!(error.failed_path, selected_transport_path());
+            assert!(!error.fallback_attempted);
+            assert!(error.to_string().contains("positive 32-bit integer"));
         }
     }
 

@@ -57,10 +57,15 @@ impl CommerceHttpRuntime {
             rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone());
         let fulfillment_lifecycle_read_runtime =
             crate::graphql_runtime::CommerceFulfillmentLifecycleReadRuntime::in_process(db.clone());
+        let order_read_runtime = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
+            db.clone(),
+            event_bus.clone(),
+        );
         let fulfillment_admin_command_runtime = crate::projecting_fulfillment_admin_command_runtime(
             crate::fulfillment_admin_command_runtime(
                 db.clone(),
                 fulfillment_provider_registry.clone(),
+                order_read_runtime.order_read_port(),
             ),
             crate::OrderShipmentProjector::new(db.clone(), event_bus.clone()),
         );
@@ -69,15 +74,17 @@ impl CommerceHttpRuntime {
                 db.clone(),
                 fulfillment_provider_registry.clone(),
             );
-        let order_read_runtime = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
-            db.clone(),
-            event_bus.clone(),
-        );
         let order_admin_command_runtime = crate::orchestrated_order_admin_command_runtime(
             rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone()),
             crate::OrderCancellationOrchestrator::new(db.clone(), event_bus.clone())
                 .with_payment_provider_registry(payment_provider_registry.clone())
-                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone()),
+                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone())
+                .with_fulfillment_read_port(
+                    fulfillment_lifecycle_read_runtime.fulfillment_read_port(),
+                )
+                .with_fulfillment_admin_command_port(
+                    fulfillment_admin_command_runtime.command_port(),
+                ),
         );
         let order_post_order_command_runtime =
             rustok_order::OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus.clone());
@@ -268,6 +275,10 @@ impl CommerceHttpRuntime {
         )
     }
 
+    fn product_catalog_read_runtime(&self) -> rustok_product::ProductCatalogReadRuntime {
+        self.product_catalog_read_runtime.clone()
+    }
+
     fn product_catalog_read_port(
         &self,
     ) -> std::sync::Arc<dyn rustok_product::ProductCatalogReadPort> {
@@ -336,12 +347,20 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require CommerceFulfillmentLifecycleReadRuntime in HostRuntimeContext"
                 )
             })?;
+        let order_read_runtime = runtime
+            .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require CommerceOrderReadRuntime in HostRuntimeContext"
+                )
+            })?;
         let fulfillment_admin_command_runtime = runtime
             .shared_get::<rustok_fulfillment::FulfillmentAdminCommandRuntime>()
             .unwrap_or_else(|| {
                 crate::fulfillment_admin_command_runtime(
                     runtime.db_clone(),
                     fulfillment_provider_registry.clone(),
+                    order_read_runtime.order_read_port(),
                 )
             });
         // Order shipment status follows fulfillment truth.
@@ -357,13 +376,6 @@ impl CommerceHttpRuntime {
                     fulfillment_provider_registry.clone(),
                 )
             });
-        let order_read_runtime = runtime
-            .shared_get::<crate::graphql_runtime::CommerceOrderReadRuntime>()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Commerce HTTP routes require CommerceOrderReadRuntime in HostRuntimeContext"
-                )
-            })?;
         let order_admin_command_runtime = runtime
             .shared_get::<rustok_order::OrderAdminCommandRuntime>()
             .ok_or_else(|| {
@@ -376,7 +388,13 @@ impl CommerceHttpRuntime {
             order_admin_command_runtime,
             crate::OrderCancellationOrchestrator::new(runtime.db_clone(), event_bus.clone())
                 .with_payment_provider_registry(payment_provider_registry.clone())
-                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone()),
+                .with_fulfillment_provider_registry(fulfillment_provider_registry.clone())
+                .with_fulfillment_read_port(
+                    fulfillment_lifecycle_read_runtime.fulfillment_read_port(),
+                )
+                .with_fulfillment_admin_command_port(
+                    fulfillment_admin_command_runtime.command_port(),
+                ),
         );
         let order_post_order_command_runtime = runtime
             .shared_get::<rustok_order::OrderPostOrderCommandRuntime>()

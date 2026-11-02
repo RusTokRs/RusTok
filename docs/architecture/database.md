@@ -297,6 +297,43 @@ translation donor/read/write path until they acquire an equivalent Taxonomy cuto
 And the same principle applies elsewhere: base rows are language-agnostic, and localized fields
 remain in their demonstrated owner-specific storage rather than being duplicated across modules.
 
+### Native shipment movement provenance (2026-11-01; source only)
+
+Inventory owns `inventory_shipment_stock_proofs`, introduced only by additive
+`m20261101_000025_create_shipment_stock_proofs`. Its global primary key is
+`fulfillment_item_id`; immutable columns bind tenant, Order, F, Order line, explicit nullable
+saved Variant, planned quantity and original inventory item/reservation/location. Checked
+cumulative shipped and outstanding restored quantities describe only new native movements.
+Nullable SKU identity is all-null or all-present for physical allocation fields. Tenant/F and
+tenant/line indexes support exact proof/overlap reads. These are logical owner identities,
+not cross-owner foreign-key ownership or Product/Pricing eligibility.
+
+Tentative preparation key probes always roll back; physical stock/reservation/proof writes
+commit only on F's caller transaction with its progress/provider checkpoint. PostgreSQL line
+advisory and SQLite write-fence semantics are unexecuted source, not SQL certification.
+No history is backfilled from counters, zero/deleted reservations, cancellation, provider
+metadata or return receipts. Nonempty migration down refuses rather than deleting provenance.
+The existing `inventory_return_restocks` global return-item PK and all applied migration
+payloads remain unchanged. Exact return receipt replay precedes the new shipment dependency.
+
+The [owning amendment](../../DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md#shipment-identity-and-native-movement-provenance-amendment-2026-11-01)
+and [source record](../../crates/modules/rustok-commerce/contracts/evidence/shipment-stock-provenance-source.json)
+record the unexecuted migration and remaining compilation, SQL/rollback/carrier, event/outbox/
+Index and deployment gates. No schema installation or full Product step-8 completion is claimed.
+
+Fulfillment's forward-only `m20261101_000121_enforce_provider_effect_admission`, ordered after
+`m20261003_000120_create_checkout_identity_anchor`, corrects the existing journal's single-row
+state/identity guards for PostgreSQL/SQLite. It adds no shipment table or history and rewrites
+no rows/applied payloads. Pending/Executing require null outcome evidence, ERROR never directly
+reclaims Executing, explicit no-effect resolution preserves identity as Pending, and success
+resolution preserves recorded references. F121 also prohibits replacing/clearing any retained
+nonnull provider result/reference and permits explicit promotion of an identical quarantined
+result. Runtime resolution preserves its original completion time; no historical row is repaired
+or reinterpreted. Native proof/stock and final F receipt commits recheck elapsed budgets, without
+claiming database statement timeouts. F121 and I025 are both unexecuted; coordinated
+rollout drains old stock/provider writers before installation and matching binary enablement.
+
+
 ## Registry / Marketplace
 
 Registry storage for publish/governance is also aligned with the same multilingual contract:

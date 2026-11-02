@@ -8,10 +8,22 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-'use strict';
+'use client';
 
-import type { UpdateVariantInput } from '../../api/products';
+import type {
+  CreateVariantInput,
+  UpdateVariantInput
+} from '../../api/products';
 import * as React from 'react';
+import { useTranslations } from '@rustok/next-fluent';
+import { CombinationPicker } from './combination-picker';
+import {
+  MAX_COMBINATION_MEMBERS,
+  savedCombinationAxes,
+  retainedCombinationLabels
+} from '../../combinations';
+import { validateAxisValues } from '../../variant-draft';
+import type { VariantAxisConfig, VariantAxisValueInput } from '../../api/types';
 import { parsePriceAmount, salePercent, discountedPrice } from '../../money';
 import {
   Card,
@@ -79,41 +91,30 @@ const SUPPORTED_CURRENCIES = [
 
 interface ProductVariantsCardProps {
   variants: ProductVariant[];
-  onAddVariant?: (variant: Omit<ProductVariant, 'id'>) => Promise<void>;
+  axes?: VariantAxisConfig[];
+  onAddVariant?: (variant: CreateVariantInput) => Promise<void>;
   onUpdateVariant?: (id: string, variant: UpdateVariantInput) => Promise<void>;
   onDeleteVariant?: (id: string) => Promise<void>;
-  isNew: boolean;
-  onNewVariantDraftChange?: (draft: {
-    sku: string;
-    barcode: string;
-    priceAmount: string;
-    currencyCode: string;
-    compareAtAmount?: string | null;
-    inventoryQuantity: number;
-    inventoryPolicy: string;
-  }) => void;
-  newVariantDraft?: {
-    sku: string;
-    barcode: string;
-    priceAmount: string;
-    currencyCode: string;
-    compareAtAmount?: string | null;
-    inventoryQuantity: number;
-    inventoryPolicy: string;
-  };
+  /** An explicit, terminally rejected creation reopened as a new operation. */
+  creationDraft?: { input: CreateVariantInput; intent: string } | null;
   disabled?: boolean;
 }
 
 export function ProductVariantsCard({
   variants,
+  axes = [],
   onAddVariant,
   onUpdateVariant,
   onDeleteVariant,
-  isNew,
-  onNewVariantDraftChange,
-  newVariantDraft,
+  creationDraft,
   disabled = false
 }: ProductVariantsCardProps) {
+  const combinationsCopy = useTranslations('product.combinations');
+  const creationCopy = useTranslations('product.variantCreate');
+  const combinationAxes = React.useCallback(
+    () => savedCombinationAxes(axes),
+    [axes]
+  );
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingVariant, setEditingVariant] =
     React.useState<ProductVariant | null>(null);
@@ -122,10 +123,12 @@ export function ProductVariantsCard({
 
   // Dialog form fields
   const [formSku, setFormSku] = React.useState('');
+  const [formAxisValues, setFormAxisValues] = React.useState<
+    VariantAxisValueInput[]
+  >([]);
   const [formBarcode, setFormBarcode] = React.useState('');
-  const [formPrices, setFormPrices] = React.useState<PriceRowDraft[]>([
-    { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
-  ]);
+  const [formShippingProfile, setFormShippingProfile] = React.useState('');
+  const [formPrices, setFormPrices] = React.useState<PriceRowDraft[]>([]);
   const [formStock, setFormStock] = React.useState('0');
   const [formPolicy, setFormPolicy] = React.useState('deny');
 
@@ -133,19 +136,48 @@ export function ProductVariantsCard({
     setError(null);
     setEditingVariant(null);
     setFormSku('');
+    setFormAxisValues([]);
     setFormBarcode('');
-    setFormPrices([
-      { currencyCode: 'USD', amount: '0.00', compareAtAmount: '' }
-    ]);
+    setFormShippingProfile('');
+    setFormPrices([]);
     setFormStock('0');
     setFormPolicy('deny');
     setDialogOpen(true);
   };
 
+  const restoredCreation = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (
+      !creationDraft ||
+      disabled ||
+      restoredCreation.current === creationDraft.intent
+    )
+      return;
+    const input = creationDraft.input;
+    restoredCreation.current = creationDraft.intent;
+    setError(null);
+    setEditingVariant(null);
+    setFormSku(input.sku ?? '');
+    setFormBarcode(input.barcode ?? '');
+    setFormShippingProfile(input.shippingProfileSlug ?? '');
+    setFormAxisValues(structuredClone(input.axisValues ?? []));
+    setFormPrices(
+      input.prices.map((price) => ({
+        currencyCode: price.currencyCode,
+        amount: price.amount,
+        compareAtAmount: price.compareAtAmount ?? ''
+      }))
+    );
+    setFormStock(String(input.inventoryQuantity ?? 0));
+    setFormPolicy(input.inventoryPolicy ?? 'deny');
+    setDialogOpen(true);
+  }, [creationDraft, disabled]);
+
   const openEditDialog = (variant: ProductVariant) => {
     setError(null);
     setEditingVariant(variant);
     setFormSku(variant.sku || '');
+    setFormAxisValues(variant.axisValues);
     setFormBarcode(variant.barcode || '');
 
     if (variant.prices && variant.prices.length > 0) {
@@ -200,7 +232,7 @@ export function ProductVariantsCard({
       'EUR';
     setFormPrices((prev) => [
       ...prev,
-      { currencyCode: nextCur, amount: '0.00', compareAtAmount: '' }
+      { currencyCode: nextCur, amount: '', compareAtAmount: '' }
     ]);
   };
 
@@ -209,6 +241,20 @@ export function ProductVariantsCard({
   };
 
   const handleSaveDialog = async () => {
+    if (disabled || isBusy) return;
+    // Bind the intended operation before validating or closing. A disappearing updater
+    // must never turn an edit into a create (or a missing writer into fake success).
+    const saveVariant = editingVariant
+      ? onUpdateVariant &&
+        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
+          onUpdateVariant(editingVariant.id, fields))
+      : onAddVariant &&
+        ((fields: Omit<CreateVariantInput, 'axisValues'>) =>
+          onAddVariant({ ...fields, axisValues: formAxisValues }));
+    if (!saveVariant) {
+      setError(combinationsCopy('writeUnavailable'));
+      return;
+    }
     const qty = Number(formStock);
     if (
       !/^\d+$/.test(formStock) ||
@@ -221,6 +267,17 @@ export function ProductVariantsCard({
 
     let mappedPrices: ProductVariantPrice[];
     try {
+      // Scalar/price editing does not submit assignments. A stale dialog tuple
+      // after an axis refresh must not block that unrelated edit.
+      if (!editingVariant) {
+        validateAxisValues(
+          axes.map((axis) => ({
+            attributeId: axis.attributeId,
+            allowedOptionIds: axis.allowedValues.map((value) => value.optionId)
+          })),
+          formAxisValues
+        );
+      }
       mappedPrices = formPrices.map((price) => ({
         currencyCode: price.currencyCode,
         amount: parsePriceAmount(price.amount),
@@ -236,25 +293,16 @@ export function ProductVariantsCard({
 
     setIsBusy(true);
     try {
-      if (editingVariant && onUpdateVariant) {
-        await onUpdateVariant(editingVariant.id, {
-          sku: formSku.trim() || null,
-          barcode: formBarcode.trim() || null,
-          inventoryQuantity: qty,
-          inventoryPolicy: formPolicy,
-          prices: mappedPrices
-        });
-      } else if (onAddVariant) {
-        await onAddVariant({
-          sku: formSku || null,
-          barcode: formBarcode || null,
-          title: formSku ? `Variant ${formSku}` : null,
-          inventoryQuantity: qty,
-          inventoryPolicy: formPolicy,
-          inStock: qty > 0,
-          prices: mappedPrices
-        });
-      }
+      await saveVariant({
+        sku: (editingVariant ? formSku.trim() : formSku) || null,
+        barcode: (editingVariant ? formBarcode.trim() : formBarcode) || null,
+        inventoryQuantity: qty,
+        inventoryPolicy: formPolicy,
+        prices: mappedPrices,
+        ...(!editingVariant
+          ? { shippingProfileSlug: formShippingProfile || null }
+          : {})
+      });
       setDialogOpen(false);
     } catch (failure) {
       setError(
@@ -283,13 +331,17 @@ export function ProductVariantsCard({
               </CardDescription>
             </div>
           </div>
-          {!isNew && onAddVariant && (
+          {onAddVariant && (
             <Button
               type='button'
               size='sm'
               onClick={openAddDialog}
               className='h-8 gap-1.5 self-start rounded-xl px-3 text-xs sm:self-auto'
-              disabled={disabled}
+              disabled={
+                disabled ||
+                variants.length >= MAX_COMBINATION_MEMBERS ||
+                (axes.length === 0 && variants.length > 0)
+              }
             >
               <Plus className='h-3.5 w-3.5' />
               Добавить вариант
@@ -298,113 +350,7 @@ export function ProductVariantsCard({
         </div>
       </CardHeader>
       <CardContent className='pt-4'>
-        {isNew ? (
-          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-            <div className='space-y-1.5'>
-              <Label htmlFor='new-sku' className='text-xs font-medium'>
-                SKU (Артикул)
-              </Label>
-              <Input
-                id='new-sku'
-                value={newVariantDraft?.sku || ''}
-                onChange={(e) =>
-                  onNewVariantDraftChange?.({
-                    ...(newVariantDraft || {
-                      sku: '',
-                      barcode: '',
-                      priceAmount: '0',
-                      currencyCode: 'USD',
-                      inventoryQuantity: 0,
-                      inventoryPolicy: 'deny'
-                    }),
-                    sku: e.target.value
-                  })
-                }
-                placeholder='e.g. PROD-001'
-                className='h-9 rounded-xl font-mono text-xs'
-                disabled={disabled}
-              />
-            </div>
-            <div className='space-y-1.5'>
-              <Label htmlFor='new-barcode' className='text-xs font-medium'>
-                Штрихкод (Barcode / EAN)
-              </Label>
-              <Input
-                id='new-barcode'
-                value={newVariantDraft?.barcode || ''}
-                onChange={(e) =>
-                  onNewVariantDraftChange?.({
-                    ...(newVariantDraft || {
-                      sku: '',
-                      barcode: '',
-                      priceAmount: '0',
-                      currencyCode: 'USD',
-                      inventoryQuantity: 0,
-                      inventoryPolicy: 'deny'
-                    }),
-                    barcode: e.target.value
-                  })
-                }
-                placeholder='e.g. 793573192842'
-                className='h-9 rounded-xl font-mono text-xs'
-                disabled={disabled}
-              />
-            </div>
-            <div className='space-y-1.5'>
-              <Label htmlFor='new-price' className='text-xs font-medium'>
-                Цена по умолчанию ({newVariantDraft?.currencyCode || 'USD'}) *
-              </Label>
-              <div className='relative'>
-                <Input
-                  id='new-price'
-                  type='number'
-                  step='any'
-                  value={newVariantDraft?.priceAmount ?? '0'}
-                  onChange={(e) => {
-                    onNewVariantDraftChange?.({
-                      ...(newVariantDraft || {
-                        sku: '',
-                        barcode: '',
-                        priceAmount: '0',
-                        currencyCode: 'USD',
-                        inventoryQuantity: 0,
-                        inventoryPolicy: 'deny'
-                      }),
-                      priceAmount: e.target.value
-                    });
-                  }}
-                  className='h-9 rounded-xl font-mono text-xs'
-                  disabled={disabled}
-                />
-              </div>
-            </div>
-            <div className='space-y-1.5'>
-              <Label htmlFor='new-stock' className='text-xs font-medium'>
-                Начальный остаток
-              </Label>
-              <Input
-                id='new-stock'
-                type='number'
-                value={newVariantDraft?.inventoryQuantity ?? 0}
-                onChange={(e) => {
-                  const qty = parseInt(e.target.value, 10) || 0;
-                  onNewVariantDraftChange?.({
-                    ...(newVariantDraft || {
-                      sku: '',
-                      barcode: '',
-                      priceAmount: '0',
-                      currencyCode: 'USD',
-                      inventoryPolicy: 'deny'
-                    }),
-                    inventoryQuantity: qty
-                  });
-                }}
-                className='h-9 rounded-xl font-mono text-xs'
-                disabled={disabled}
-              />
-            </div>
-          </div>
-        ) : variants.length === 0 ? (
+        {variants.length === 0 ? (
           <div className='text-muted-foreground bg-muted/20 rounded-xl py-8 text-center text-xs italic'>
             Нет вариантов для этого товара. Нажмите «Добавить вариант».
           </div>
@@ -414,6 +360,7 @@ export function ProductVariantsCard({
               <TableHeader className='bg-muted/50'>
                 <TableRow className='text-[11px]'>
                   <TableHead>SKU / Штрихкод</TableHead>
+                  <TableHead>{combinationsCopy('assignments')}</TableHead>
                   <TableHead>Основная цена</TableHead>
                   <TableHead>Валютная сетка</TableHead>
                   <TableHead>Остаток</TableHead>
@@ -444,6 +391,16 @@ export function ProductVariantsCard({
                             {v.barcode}
                           </div>
                         )}
+                      </TableCell>
+
+                      <TableCell>
+                        {v.axisValues.length
+                          ? retainedCombinationLabels(axes, v.axisValues).join(
+                              ' · '
+                            )
+                          : axes.length
+                            ? combinationsCopy('unassigned')
+                            : combinationsCopy('default')}
                       </TableCell>
 
                       {/* Primary Price & Sale Badges */}
@@ -603,7 +560,12 @@ export function ProductVariantsCard({
       </CardContent>
 
       {/* Add / Edit Variant Dialog with Multi-Currency & Discount Tools */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (!isBusy) setDialogOpen(open);
+        }}
+      >
         <DialogContent className='max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg'>
           <DialogHeader>
             <DialogTitle className='text-sm font-semibold'>
@@ -617,281 +579,387 @@ export function ProductVariantsCard({
             </DialogDescription>
           </DialogHeader>
 
-          <div className='space-y-4 py-2 text-xs'>
-            {/* SKU and Barcode */}
-            <div className='grid grid-cols-2 gap-3'>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-sku'>SKU (Артикул)</Label>
-                <Input
-                  id='var-sku'
-                  value={formSku}
-                  onChange={(e) => setFormSku(e.target.value)}
-                  placeholder='e.g. MOUSE-BLK'
-                  className='h-9 rounded-xl font-mono text-xs'
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-barcode'>Штрихкод (Barcode / EAN)</Label>
-                <Input
-                  id='var-barcode'
-                  value={formBarcode}
-                  onChange={(e) => setFormBarcode(e.target.value)}
-                  placeholder='e.g. 123456789012'
-                  className='h-9 rounded-xl font-mono text-xs'
-                />
-              </div>
-            </div>
-
-            {/* Pricing Section - Multi-Currency Grid */}
-            <div className='border-border bg-muted/10 space-y-3 rounded-xl border p-3.5'>
-              <div className='flex items-center justify-between'>
-                <div className='text-foreground flex items-center gap-1.5 text-xs font-semibold'>
-                  <Coins className='text-primary h-3.5 w-3.5' />
-                  <span>Валютная сетка и цены</span>
+          <fieldset disabled={disabled || isBusy} className='min-w-0 space-y-3'>
+            {!editingVariant && (
+              <CombinationPicker
+                getAxes={combinationAxes}
+                members={variants}
+                disabled={disabled || isBusy || !onAddVariant}
+                atCapacity={variants.length >= MAX_COMBINATION_MEMBERS}
+                onPick={(axisValues) => {
+                  if (!disabled && !isBusy) setFormAxisValues(axisValues);
+                }}
+              />
+            )}
+            <div className='space-y-4 py-2 text-xs'>
+              {/* SKU and Barcode */}
+              <div className='grid grid-cols-2 gap-3'>
+                <div className='space-y-1.5'>
+                  <Label htmlFor='var-sku'>SKU (Артикул)</Label>
+                  <Input
+                    id='var-sku'
+                    value={formSku}
+                    onChange={(e) => setFormSku(e.target.value)}
+                    placeholder='e.g. MOUSE-BLK'
+                    className='h-9 rounded-xl font-mono text-xs'
+                  />
                 </div>
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  onClick={handleAddPriceRow}
-                  className='h-7 gap-1 rounded-lg px-2 text-[11px]'
-                >
-                  <Plus className='h-3 w-3' />
-                  Добавить валюту
-                </Button>
-              </div>
-
-              {/* Price Rows */}
-              <div className='space-y-2.5'>
-                {formPrices.map((row, idx) => {
-                  let discountPct: string | null = null;
-                  try {
-                    discountPct = salePercent(row.amount, row.compareAtAmount);
-                  } catch {
-                    /* Incomplete input is validated on save. */
-                  }
-                  const hasDiscount = discountPct !== null;
-
-                  return (
-                    <div
-                      key={idx}
-                      className='border-border/80 bg-background space-y-2 rounded-xl border p-2.5'
-                    >
-                      <div className='grid grid-cols-3 items-end gap-2.5'>
-                        {/* Currency */}
-                        <div className='space-y-1'>
-                          <Label className='text-muted-foreground text-[10px]'>
-                            Валюта
-                          </Label>
-                          <Select
-                            value={row.currencyCode}
-                            onValueChange={(val) =>
-                              handlePriceChange(idx, 'currencyCode', val)
-                            }
-                          >
-                            <SelectTrigger className='h-8 rounded-lg font-mono text-xs'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {SUPPORTED_CURRENCIES.map((c) => (
-                                <SelectItem
-                                  key={c.code}
-                                  value={c.code}
-                                  className='text-xs'
-                                >
-                                  {c.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Price */}
-                        <div className='space-y-1'>
-                          <Label className='text-muted-foreground text-[10px]'>
-                            Цена продажи *
-                          </Label>
-                          <Input
-                            type='number'
-                            step='any'
-                            value={row.amount}
-                            onChange={(e) =>
-                              handlePriceChange(idx, 'amount', e.target.value)
-                            }
-                            className='h-8 rounded-lg font-mono text-xs font-semibold'
-                          />
-                        </div>
-
-                        {/* Compare-at Price */}
-                        <div className='space-y-1'>
-                          <div className='flex items-center justify-between'>
-                            <Label className='text-muted-foreground text-[10px]'>
-                              Старая цена
-                            </Label>
-                            {formPrices.length > 1 && (
-                              <button
-                                type='button'
-                                onClick={() => handleRemovePriceRow(idx)}
-                                className='text-[10px] text-rose-500 hover:text-rose-700'
-                                title='Удалить цену в этой валюте'
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                          <Input
-                            type='number'
-                            step='any'
-                            value={row.compareAtAmount}
-                            onChange={(e) =>
-                              handlePriceChange(
-                                idx,
-                                'compareAtAmount',
-                                e.target.value
-                              )
-                            }
-                            placeholder='0.00'
-                            className='h-8 rounded-lg font-mono text-xs'
-                          />
-                        </div>
-                      </div>
-
-                      {/* Quick Discount Buttons & Sale Indicator */}
-                      <div className='border-border/40 flex items-center justify-between border-t pt-1 text-[10px]'>
-                        <div className='flex items-center gap-1'>
-                          <span className='text-muted-foreground'>Скидка:</span>
-                          {[10, 15, 20, 30].map((pct) => (
-                            <button
-                              key={pct}
-                              type='button'
-                              onClick={() =>
-                                handleApplyDiscountPercent(idx, pct)
-                              }
-                              className='bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 transition'
-                            >
-                              -{pct}%
-                            </button>
-                          ))}
-                        </div>
-                        {hasDiscount && (
-                          <Badge
-                            variant='outline'
-                            className='border-rose-200 bg-rose-50 px-1.5 py-0 text-[9px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                          >
-                            Скидка {discountPct}% (ON SALE)
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Inventory and Policy */}
-            <div className='grid grid-cols-2 gap-3'>
-              <div className='space-y-1.5'>
-                <div className='flex items-center justify-between'>
-                  <Label htmlFor='var-stock'>Остаток на складе</Label>
-                  <div className='flex items-center gap-1'>
-                    <button
-                      type='button'
-                      onClick={() =>
-                        setFormStock(
-                          Math.max(
-                            0,
-                            (parseInt(formStock, 10) || 0) - 1
-                          ).toString()
-                        )
-                      }
-                      className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
-                      title='-1 шт.'
-                    >
-                      -1
-                    </button>
-                    <button
-                      type='button'
-                      onClick={() =>
-                        setFormStock(
-                          ((parseInt(formStock, 10) || 0) + 1).toString()
-                        )
-                      }
-                      className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
-                      title='+1 шт.'
-                    >
-                      +1
-                    </button>
-                    <button
-                      type='button'
-                      onClick={() =>
-                        setFormStock(
-                          ((parseInt(formStock, 10) || 0) + 10).toString()
-                        )
-                      }
-                      className='bg-muted hover:bg-muted/80 h-5 rounded px-1 text-[10px] font-medium'
-                      title='+10 шт.'
-                    >
-                      +10
-                    </button>
-                  </div>
+                <div className='space-y-1.5'>
+                  <Label htmlFor='var-barcode'>Штрихкод (Barcode / EAN)</Label>
+                  <Input
+                    id='var-barcode'
+                    value={formBarcode}
+                    onChange={(e) => setFormBarcode(e.target.value)}
+                    placeholder='e.g. 123456789012'
+                    className='h-9 rounded-xl font-mono text-xs'
+                  />
                 </div>
-                <Input
-                  id='var-stock'
-                  type='number'
-                  value={formStock}
-                  onChange={(e) => setFormStock(e.target.value)}
-                  className='h-9 rounded-xl font-mono text-xs'
-                />
               </div>
-              <div className='space-y-1.5'>
-                <Label htmlFor='var-policy'>Политика списания</Label>
-                <Select value={formPolicy} onValueChange={setFormPolicy}>
-                  <SelectTrigger
-                    id='var-policy'
-                    className='h-9 rounded-xl text-xs'
+
+              {!editingVariant && (
+                <div className='space-y-1.5'>
+                  <Label htmlFor='var-shipping-profile'>
+                    {creationCopy('shippingProfile')}
+                  </Label>
+                  <Input
+                    id='var-shipping-profile'
+                    value={formShippingProfile}
+                    onChange={(event) =>
+                      setFormShippingProfile(event.target.value)
+                    }
+                  />
+                </div>
+              )}
+              {!editingVariant && formAxisValues.length > 0 && (
+                <div className='space-y-2'>
+                  <p>
+                    {combinationsCopy('assignments')}:{' '}
+                    {retainedCombinationLabels(axes, formAxisValues).join(
+                      ' · '
+                    )}
+                  </p>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={() => setFormAxisValues([])}
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value='deny' className='text-xs'>
-                      Блокировать при 0 остатке (Deny)
-                    </SelectItem>
-                    <SelectItem value='continue' className='text-xs'>
-                      Разрешить предзаказ (Backorder / Continue)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                    {creationCopy('clearAssignments')}
+                  </Button>
+                </div>
+              )}
+              {/* Pricing Section - Multi-Currency Grid */}
+              <div className='border-border bg-muted/10 space-y-3 rounded-xl border p-3.5'>
+                <div className='flex items-center justify-between'>
+                  <div className='text-foreground flex items-center gap-1.5 text-xs font-semibold'>
+                    <Coins className='text-primary h-3.5 w-3.5' />
+                    <span>Валютная сетка и цены</span>
+                  </div>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={handleAddPriceRow}
+                    className='h-7 gap-1 rounded-lg px-2 text-[11px]'
+                  >
+                    <Plus className='h-3 w-3' />
+                    Добавить валюту
+                  </Button>
+                </div>
+
+                {!editingVariant && formPrices.length === 0 && (
+                  <p className='text-muted-foreground text-xs'>
+                    {combinationsCopy('noPrice')}
+                  </p>
+                )}
+                {/* Price Rows */}
+                <div className='space-y-2.5'>
+                  {formPrices.map((row, idx) => {
+                    let discountPct: string | null = null;
+                    try {
+                      discountPct = salePercent(
+                        row.amount,
+                        row.compareAtAmount
+                      );
+                    } catch {
+                      /* Incomplete input is validated on save. */
+                    }
+                    const hasDiscount = discountPct !== null;
+
+                    return (
+                      <div
+                        key={idx}
+                        className='border-border/80 bg-background space-y-2 rounded-xl border p-2.5'
+                      >
+                        <div className='grid grid-cols-3 items-end gap-2.5'>
+                          {/* Currency */}
+                          <div className='space-y-1'>
+                            <Label className='text-muted-foreground text-[10px]'>
+                              Валюта
+                            </Label>
+                            <Select
+                              disabled={disabled || isBusy}
+                              value={row.currencyCode}
+                              onValueChange={(val) =>
+                                handlePriceChange(idx, 'currencyCode', val)
+                              }
+                            >
+                              <SelectTrigger className='h-8 rounded-lg font-mono text-xs'>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {!SUPPORTED_CURRENCIES.some(
+                                  (currency) =>
+                                    currency.code === row.currencyCode
+                                ) && row.currencyCode ? (
+                                  <SelectItem value={row.currencyCode}>
+                                    {row.currencyCode}
+                                  </SelectItem>
+                                ) : null}
+                                {SUPPORTED_CURRENCIES.map((c) => (
+                                  <SelectItem
+                                    key={c.code}
+                                    value={c.code}
+                                    className='text-xs'
+                                  >
+                                    {c.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Price */}
+                          <div className='space-y-1'>
+                            <Label className='text-muted-foreground text-[10px]'>
+                              Цена продажи *
+                            </Label>
+                            <Input
+                              type='number'
+                              step='any'
+                              value={row.amount}
+                              onChange={(e) =>
+                                handlePriceChange(idx, 'amount', e.target.value)
+                              }
+                              className='h-8 rounded-lg font-mono text-xs font-semibold'
+                            />
+                          </div>
+
+                          {/* Compare-at Price */}
+                          <div className='space-y-1'>
+                            <div className='flex items-center justify-between'>
+                              <Label className='text-muted-foreground text-[10px]'>
+                                Старая цена
+                              </Label>
+                              {(!editingVariant || formPrices.length > 1) && (
+                                <Button
+                                  type='button'
+                                  variant='ghost'
+                                  size='icon'
+                                  onClick={() => handleRemovePriceRow(idx)}
+                                  className='text-destructive h-6 w-6'
+                                  aria-label={combinationsCopy('removePrice')}
+                                >
+                                  <Trash2 className='h-3 w-3' />
+                                </Button>
+                              )}
+                            </div>
+                            <Input
+                              type='number'
+                              step='any'
+                              value={row.compareAtAmount}
+                              onChange={(e) =>
+                                handlePriceChange(
+                                  idx,
+                                  'compareAtAmount',
+                                  e.target.value
+                                )
+                              }
+                              placeholder='0.00'
+                              className='h-8 rounded-lg font-mono text-xs'
+                            />
+                          </div>
+                        </div>
+
+                        {/* Quick Discount Buttons & Sale Indicator */}
+                        <div className='border-border/40 flex items-center justify-between border-t pt-1 text-[10px]'>
+                          <div className='flex items-center gap-1'>
+                            <span className='text-muted-foreground'>
+                              Скидка:
+                            </span>
+                            {[10, 15, 20, 30].map((pct) => (
+                              <button
+                                key={pct}
+                                type='button'
+                                onClick={() =>
+                                  handleApplyDiscountPercent(idx, pct)
+                                }
+                                className='bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground rounded px-1.5 py-0.5 transition'
+                              >
+                                -{pct}%
+                              </button>
+                            ))}
+                          </div>
+                          {hasDiscount && (
+                            <Badge
+                              variant='outline'
+                              className='border-rose-200 bg-rose-50 px-1.5 py-0 text-[9px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                            >
+                              Скидка {discountPct}% (ON SALE)
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Inventory and Policy */}
+              <div className='grid grid-cols-2 gap-3'>
+                <div className='space-y-1.5'>
+                  <div className='flex items-center justify-between'>
+                    <Label htmlFor='var-stock'>Остаток на складе</Label>
+                    <div className='flex items-center gap-1'>
+                      <button
+                        type='button'
+                        onClick={() =>
+                          setFormStock(
+                            Math.max(
+                              0,
+                              (parseInt(formStock, 10) || 0) - 1
+                            ).toString()
+                          )
+                        }
+                        className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
+                        title='-1 шт.'
+                      >
+                        -1
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() =>
+                          setFormStock(
+                            ((parseInt(formStock, 10) || 0) + 1).toString()
+                          )
+                        }
+                        className='bg-muted hover:bg-muted/80 h-5 w-5 rounded text-[10px] font-bold'
+                        title='+1 шт.'
+                      >
+                        +1
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() =>
+                          setFormStock(
+                            ((parseInt(formStock, 10) || 0) + 10).toString()
+                          )
+                        }
+                        className='bg-muted hover:bg-muted/80 h-5 rounded px-1 text-[10px] font-medium'
+                        title='+10 шт.'
+                      >
+                        +10
+                      </button>
+                    </div>
+                  </div>
+                  <Input
+                    id='var-stock'
+                    type='number'
+                    value={formStock}
+                    onChange={(e) => setFormStock(e.target.value)}
+                    className='h-9 rounded-xl font-mono text-xs'
+                  />
+                </div>
+                <div className='space-y-1.5'>
+                  <Label htmlFor='var-policy'>Политика списания</Label>
+                  <Select value={formPolicy} onValueChange={setFormPolicy}>
+                    <SelectTrigger
+                      id='var-policy'
+                      className='h-9 rounded-xl text-xs'
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='deny' className='text-xs'>
+                        Блокировать при 0 остатке (Deny)
+                      </SelectItem>
+                      <SelectItem value='continue' className='text-xs'>
+                        Разрешить предзаказ (Backorder / Continue)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          </div>
 
-          {error && (
-            <p role='alert' className='text-destructive text-sm'>
-              {error}
-            </p>
-          )}
-          <DialogFooter className='gap-2 pt-2 sm:gap-0'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setDialogOpen(false)}
-              className='h-9 rounded-xl text-xs'
-            >
-              Отмена
-            </Button>
-            <Button
-              type='button'
-              onClick={handleSaveDialog}
-              disabled={isBusy}
-              className='h-9 rounded-xl text-xs font-semibold'
-            >
-              {isBusy
-                ? 'Сохранение...'
-                : editingVariant
-                  ? 'Сохранить вариант'
-                  : 'Создать вариант'}
-            </Button>
-          </DialogFooter>
+            {error && (
+              <p role='alert' className='text-destructive text-sm'>
+                {error}
+              </p>
+            )}
+            {axes.length > 0 && !editingVariant ? (
+              <div className='grid gap-3'>
+                {axes.map((axis) => (
+                  <div key={axis.attributeId} className='space-y-1'>
+                    <Label htmlFor={`sku-axis-${axis.attributeId}`}>
+                      {axis.name}
+                    </Label>
+                    <Select
+                      disabled={disabled || isBusy}
+                      value={
+                        formAxisValues.find(
+                          (value) => value.attributeId === axis.attributeId
+                        )?.optionId ?? ''
+                      }
+                      onValueChange={(optionId) =>
+                        setFormAxisValues((current) => [
+                          ...current.filter(
+                            (value) => value.attributeId !== axis.attributeId
+                          ),
+                          { attributeId: axis.attributeId, optionId }
+                        ])
+                      }
+                    >
+                      <SelectTrigger id={`sku-axis-${axis.attributeId}`}>
+                        <SelectValue placeholder='Choose an allowed value' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {axis.allowedValues.map((value) => (
+                          <SelectItem
+                            key={value.optionId}
+                            value={value.optionId}
+                          >
+                            {value.value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <DialogFooter className='gap-2 pt-2 sm:gap-0'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setDialogOpen(false)}
+                className='h-9 rounded-xl text-xs'
+              >
+                Отмена
+              </Button>
+              <Button
+                type='button'
+                onClick={handleSaveDialog}
+                disabled={isBusy}
+                className='h-9 rounded-xl text-xs font-semibold'
+              >
+                {isBusy
+                  ? 'Сохранение...'
+                  : editingVariant
+                    ? 'Сохранить вариант'
+                    : 'Создать вариант'}
+              </Button>
+            </DialogFooter>
+          </fieldset>
         </DialogContent>
       </Dialog>
     </Card>

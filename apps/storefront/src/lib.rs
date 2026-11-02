@@ -10,17 +10,35 @@
 
 #![recursion_limit = "256"]
 
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod app;
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod entities;
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod modules;
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod pages;
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod shared;
-#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
+#[cfg(any(
+    feature = "ssr",
+    not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+))]
 pub mod widgets;
 
 #[cfg(all(feature = "blog-comment-island", target_arch = "wasm32"))]
@@ -66,6 +84,27 @@ pub fn start_blog_comment_client() {
     })
     .forget();
 }
+
+#[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn start_product_buyer_client() -> Result<(), wasm_bindgen::JsValue> {
+    use wasm_bindgen::JsCast;
+    console_error_panic_hook::set_once();
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| wasm_bindgen::JsValue::from_str("Buyer document is unavailable"))?;
+    let Some(root) = document.query_selector("[data-product-buyer-island='true']")? else {
+        return Ok(());
+    };
+    let root = root
+        .dyn_into::<web_sys::HtmlElement>()
+        .map_err(|_| wasm_bindgen::JsValue::from_str("Invalid buyer mount point"))?;
+    rustok_product_storefront::mount_product_buyer(root)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(all(feature = "ssr", feature = "product-buyer-assets"))]
+mod product_buyer_assets;
 
 #[cfg(feature = "ssr")]
 mod forum_category_route;
@@ -142,6 +181,14 @@ fn render_document(
         let _ = csp_nonce;
         String::new()
     };
+    #[cfg(feature = "product-buyer-assets")]
+    let buyer_bootstrap = if app_html.contains(r#"data-product-buyer-island="true""#) {
+        csp_nonce.map(|nonce| format!(r#"<script nonce="{}" type="module" src="/assets/product-buyer-bootstrap.js"></script>"#, nonce.as_str())).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    #[cfg(not(feature = "product-buyer-assets"))]
+    let buyer_bootstrap = String::new();
     format!(
         r#"<!DOCTYPE html>
 <html lang="{locale}">
@@ -155,6 +202,7 @@ fn render_document(
 <body>
   <div id="app">{app_html}</div>
   {comment_bootstrap}
+  {buyer_bootstrap}
 </body>
 </html>"#,
         locale = locale,
@@ -162,6 +210,7 @@ fn render_document(
         extra_head = extra_head,
         app_html = app_html,
         comment_bootstrap = comment_bootstrap,
+        buyer_bootstrap = buyer_bootstrap,
     )
 }
 
@@ -185,17 +234,22 @@ pub async fn render_shell(
     let enabled_modules = enabled_modules_or_empty().await;
 
     let owner = Owner::new();
-    let app_html = owner.with(|| {
-        let locale = locale_owned.clone();
-        view! {
-            <StorefrontShell
-                locale=locale
-                enabled_modules=enabled_modules
-                query_params=query_params
-            />
-        }
-        .to_html()
-    });
+    let app_html = owner
+        .with(|| {
+            let locale = locale_owned.clone();
+            let stream = view! {
+                <StorefrontShell
+                    locale=locale
+                    enabled_modules=enabled_modules
+                    query_params=query_params
+                />
+            }
+            .to_html_stream_in_order();
+            leptos::reactive::computed::ScopedFuture::new(async move {
+                futures::StreamExt::collect::<String>(stream).await
+            })
+        })
+        .await;
     render_document(locale, "RusToK Storefront", "", app_html, None)
 }
 
@@ -232,22 +286,27 @@ async fn render_module_page_with_nonce(
     let enabled_modules = enabled_modules_or_empty().await;
 
     let owner = Owner::new();
-    let app_html = owner.with(|| {
-        if let Some(snapshot) = navigation_snapshot {
-            provide_context(snapshot);
-        }
-        let locale = locale_owned.clone();
-        let route_segment = route_segment_owned.clone();
-        view! {
-            <StorefrontModulePage
-                locale=locale
-                enabled_modules=enabled_modules
-                route_segment=route_segment
-                query_params=query_params
-            />
-        }
-        .to_html()
-    });
+    let app_html = owner
+        .with(|| {
+            if let Some(snapshot) = navigation_snapshot {
+                provide_context(snapshot);
+            }
+            let locale = locale_owned.clone();
+            let route_segment = route_segment_owned.clone();
+            let stream = view! {
+                <StorefrontModulePage
+                    locale=locale
+                    enabled_modules=enabled_modules
+                    route_segment=route_segment
+                    query_params=query_params
+                />
+            }
+            .to_html_stream_in_order();
+            leptos::reactive::computed::ScopedFuture::new(async move {
+                futures::StreamExt::collect::<String>(stream).await
+            })
+        })
+        .await;
     let title = seo_context
         .map(|context| {
             if context.document.title.trim().is_empty() {
@@ -618,10 +677,25 @@ async fn provide_leptos_request_context(
     request: Request,
     next: Next,
 ) -> Response {
+    if rustok_ui_core::decode_single_value_ui_query(request.uri().query().unwrap_or_default())
+        .is_err()
+    {
+        return private_status_response(
+            StatusCode::BAD_REQUEST,
+            "Query selectors must be unique and bounded",
+        );
+    }
     let (request, parts) = leptos_axum::generate_request_and_parts(request);
+    let tenant = parts
+        .extensions
+        .get::<rustok_api::TenantContextExtension>()
+        .map(|tenant| tenant.0.clone());
     let owner = Owner::new();
     let future = owner.with(|| {
         provide_context(runtime);
+        if let Some(tenant) = tenant {
+            provide_context(tenant);
+        }
         provide_context(parts);
         provide_context(leptos_axum::ResponseOptions::default());
         leptos::reactive::computed::ScopedFuture::new(next.run(request))
@@ -643,8 +717,12 @@ async fn render_blog_feed_response(
     runtime: rustok_api::HostRuntimeContext,
     locale: String,
 ) -> Response {
-    let tenant = leptos_axum::extract::<rustok_api::TenantContext>().await.ok();
-    let request = leptos_axum::extract::<rustok_api::RequestContext>().await.ok();
+    let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+        .await
+        .ok();
+    let request = leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .ok();
     let auth = leptos_axum::extract::<rustok_api::AuthContext>().await.ok();
     match rustok_blog_storefront::render_rss_feed(
         &runtime,
@@ -657,16 +735,21 @@ async fn render_blog_feed_response(
     {
         Ok(xml) => (
             [
-                (axum::http::header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    "application/rss+xml; charset=utf-8",
+                ),
                 (CACHE_CONTROL, "no-store"),
             ],
             xml,
-        ).into_response(),
+        )
+            .into_response(),
         Err(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             [(CACHE_CONTROL, "no-store")],
             "Blog RSS is temporarily unavailable",
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -675,7 +758,7 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     let _ = any_spawner::Executor::init_tokio();
     let rss_runtime = runtime.clone();
     let localized_rss_runtime = runtime.clone();
-    Router::new()
+    let router = Router::new()
         .route("/assets/app.css", get(app_css_handler))
         .route(
             "/blog/feed.xml",
@@ -877,7 +960,10 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
                 },
             ),
         )
-        .layer(from_fn_with_state(runtime, provide_leptos_request_context))
+        .layer(from_fn_with_state(runtime, provide_leptos_request_context));
+    #[cfg(feature = "product-buyer-assets")]
+    let router = router.merge(product_buyer_assets::router());
+    router
 }
 
 #[cfg(feature = "ssr")]

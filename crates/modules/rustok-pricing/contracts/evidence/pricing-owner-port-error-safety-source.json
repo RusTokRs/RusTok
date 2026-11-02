@@ -14,8 +14,8 @@
     "documentation": "crates/modules/rustok-pricing/docs/pricing-owner-port-error-safety.md"
   },
   "source_contract": {
-    "port_operation_count": 10,
-    "read_operation_count": 6,
+    "port_operation_count": 12,
+    "read_operation_count": 8,
     "write_operation_count": 4,
     "commerce_error_variant_count": 15,
     "complete_owner_error_logged": false,
@@ -55,13 +55,32 @@
   },
   "validation": {
     "tests_run": false,
-    "verifiers_run": false,
+    "verifiers_run": true,
     "cargo_run": false,
-    "format_run": false,
+    "format_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "compile_proven": false,
     "mounted_runtime_proven": false
   },
-  "execution": []
+  "execution": [
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-owner-port-error-safety.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-product-identity-context.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "source_format",
+      "tool": "@scalar/rust-fmt 0.3.0 WASM; edition/styleEdition 2024",
+      "scope": "35 selected Rust sources; syntax/format/idempotence, not compilation",
+      "rust_compilation": false
+    }
+  ],
+  "continuation_date": "2026-10-30",
+  "continuation_scope": "Current eight-read/four-write facade and selected Product identity admission; original diagnostic-mapper preservation flags are not whole-feature or runtime certification."
 }

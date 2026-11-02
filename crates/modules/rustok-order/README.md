@@ -1,5 +1,12 @@
 # rustok-order
 
+## Known Limitations / Pending Implementation
+
+The mandatory bounded saved-inventory-binding read and its return-restock consumer are source-only.
+The original six projections remain intact; compilation, SQL, mounted/remote parity and regressions
+are unrun. This read is not shipment/cancellation movement provenance or stock availability. See the
+[read contract](docs/order-read-port.md#saved-binding-return-restock-continuation-2026-10-31).
+
 ## Purpose
 
 `rustok-order` is the default order submodule of the `Ecommerce` family.

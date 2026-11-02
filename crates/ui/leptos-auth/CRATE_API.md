@@ -3,10 +3,10 @@
 ## Public surface
 
 ### Constants
-- `ADMIN_TOKEN_KEY`: local/session storage key for authentication access token.
+- `ADMIN_TOKEN_KEY`: retired credential-storage key, purged by the canonical browser reader; tokens are memory-only.
 - `ADMIN_TENANT_KEY`: storage key for tenant slug context.
-- `ADMIN_USER_KEY`: storage key for cached authenticated user details.
-- `ADMIN_SESSION_KEY`: storage key for session metadata.
+- `ADMIN_USER_KEY`: retired persisted-user key, purged on browser access.
+- `ADMIN_SESSION_KEY`: retired persisted-session key, purged on browser access.
 - `ADMIN_REFRESH_COOKIE`: HttpOnly cookie name (`rustok-admin-refresh-v1`) for BFF session refresh.
 
 ### Cookie and Session Helpers
@@ -18,7 +18,7 @@
 - `session_id_from_access_token(token: &str) -> Option<String>`: unverified payload parser extracting stable session UUID for CSRF protection.
 
 ### Components
-- `AuthProvider`: top-level context provider managing authentication state.
+- `AuthProvider(children, tenant_slug?)`: canonical context provider. An optional resolved host tenant binds only missing public tenant metadata; foreign saved tenants refuse.
 - `RequireAuth`: component wrapper requiring an authenticated session before rendering children.
 - `ProtectedRoute`: router wrapper protecting private route views.
 - `GuestRoute`: router wrapper restricting views to unauthenticated guests.
@@ -32,10 +32,10 @@
 - `use_token() -> Signal<Option<String>>`: returns current access token string.
 - `use_tenant() -> Signal<Option<String>>`: returns active tenant slug.
 - `use_session() -> Signal<Option<AuthSession>>`: returns active session structure.
-- `use_auth_error() -> Signal<Option<AuthError>>`: returns latest authentication error.
+- `use_auth_error() -> Signal<Option<String>>`: returns latest authentication error.
 
 ## Invariants
 
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
-- **SSR & Hydration Consistency**: Initial server auth snapshot (`ServerAuthSnapshot`) hydrates seamlessly into client reactive signals without auth flickering or premature redirection.
+- **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
 - **CSRF Protection**: Stable session ID derived from unverified access token payload serves as request secret across state-modifying requests.

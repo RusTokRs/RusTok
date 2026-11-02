@@ -392,6 +392,11 @@ fn log_cart_delivery_group_enrichment_error(
         | FulfillmentError::ProviderResultInvalid(_) => {
             ("fulfillment.invalid_transition", "conflict", false)
         }
+        FulfillmentError::OwnerPort(stock) => (
+            "fulfillment.shipment_stock_refused",
+            "shipment_stock",
+            rustok_fulfillment::error::owner_port_error(stock).retryable,
+        ),
         FulfillmentError::Database(_) => ("fulfillment.database_unavailable", "unavailable", true),
     };
     let technical = matches!(error, FulfillmentError::Database(_));

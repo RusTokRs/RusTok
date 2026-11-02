@@ -46,6 +46,36 @@ fn has_request_body(spec: &Value, path: &str, method: &str) -> bool {
 }
 
 #[test]
+fn openapi_composes_one_error_schema_with_optional_non_nullable_retry_advice() {
+    let spec = openapi_json();
+    let reference = response_schema_ref(&spec, "/store/carts", "post", "400")
+        .expect("Cart errors reference the canonical HTTP envelope");
+    for (path, method, status) in [
+        ("/store/carts/{id}", "get", "404"),
+        ("/store/carts/{id}/line-items", "post", "400"),
+        ("/store/carts/{id}/complete", "post", "409"),
+        ("/store/payment-collections", "post", "400"),
+        ("/store/products", "get", "503"),
+    ] {
+        assert_eq!(
+            response_schema_ref(&spec, path, method, status).as_deref(),
+            Some(reference.as_str()),
+            "{method} {path} ({status}) must reuse the same error schema",
+        );
+    }
+    let schema = spec
+        .pointer(reference.strip_prefix('#').expect("local schema reference"))
+        .expect("Composed error schema survives component pruning");
+    assert_eq!(schema["properties"]["retryable"]["type"], "boolean");
+    let required = schema["required"]
+        .as_array()
+        .expect("required envelope members");
+    assert!(required.iter().any(|field| field == "code"));
+    assert!(required.iter().any(|field| field == "message"));
+    assert!(!required.iter().any(|field| field == "retryable"));
+}
+
+#[test]
 fn openapi_includes_store_cart_contract_paths() {
     let spec = openapi_json();
     let paths = spec

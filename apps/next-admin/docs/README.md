@@ -151,3 +151,21 @@ This is an origin-local plaintext Product draft projection, never token storage 
 Browser clearing/eviction, cross-device recovery and owner receipt retention are not guaranteed;
 never clear storage to resolve an uncertain operation. Actual browser/real-backend execution and
 retained identities for child mutations remain open. See the Product write boundary and owner plan.
+
+### Shared HTTP retry advice
+
+`src/shared/api/http.ts` projects the canonical flat `rustok-web::ErrorBody` for the existing
+registry-governance REST helper in `src/shared/api/modules.ts`. `HttpError` retains HTTP status,
+public code/message and optional exact `retryable`; `retryableState` is `owner`, `absent` or
+`invalid`. Explicit false remains false even on 503, and true remains true on 409. Unknown,
+malformed, unreadable, oversized or unfinished metadata never becomes status-derived advice.
+The reader accepts at most 16 KiB of UTF-8 JSON within a two-second metadata budget, cancels
+oversized/unfinished reads and releases its timer/reader; failed or stalled cancellation is not
+an additional wait prerequisite. This is source policy, not measured mounted/browser timing.
+HTML/raw/nested diagnostic responses use the caller's static fallback, not response text.
+
+The decoder performs no fetch, transport fallback or write replay, and ignores outcome/key
+claims. Existing request bodies, auth/tenant headers, write identities and owner recovery stay
+unchanged. This does not change GraphQL extensions, Product write-outcome classification or
+native server-function envelopes. Eleven reader regression functions are **unrun**; see the
+[canonical HTTP contract](../../../docs/architecture/api.md#http-error-retry-advice).

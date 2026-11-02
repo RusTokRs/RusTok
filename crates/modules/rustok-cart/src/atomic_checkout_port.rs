@@ -17,8 +17,8 @@ use crate::checkout_snapshot::{
     in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
 };
 use crate::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse, CartService,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest, CartError, CartPricingAdjustmentUpdate, CartResponse, CartService,
     CartStatus,
 };
 
@@ -287,7 +287,7 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
     async fn update_cart_checkout_context(
         &self,
         context: PortContext,
-        request: CartCheckoutContextUpdateRequest,
+        request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         context.require_write_semantics()?;
         self.ensure_cart_id(request.cart_id)?;
@@ -299,13 +299,16 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
             cart_id = %request.cart_id,
             "updating atomic cart checkout context"
         );
-        if let Some(cart) = self.prepared_for_orchestration()? {
-            return Ok(cart);
+        if self.prepared_for_orchestration()?.is_some() {
+            return Err(PortError::conflict(
+                "cart.checkout_context_locked",
+                "Prepared Cart context is immutable; read or recover the original checkout",
+            ));
         }
-        self.snapshot_port
-            .prepare_checkout(context, self.prepare_request.clone())
+        self.service
+            .update_context(tenant_id, request)
             .await
-            .map(|snapshot| snapshot.cart)
+            .map_err(cart_error_to_port_error)
     }
 
     async fn begin_cart_checkout(
@@ -541,6 +544,10 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
         CartError::InvalidTransition { from, to } => PortError::conflict(
             "cart.invalid_transition",
             format!("invalid cart status transition: {from} -> {to}"),
+        ),
+        CartError::PricingContextChanged => PortError::conflict(
+            "cart.pricing_context_changed",
+            "Cart pricing context changed; refresh the cart and quote",
         ),
         CartError::Database(_) => PortError::unavailable(
             "cart.checkout_storage_unavailable",

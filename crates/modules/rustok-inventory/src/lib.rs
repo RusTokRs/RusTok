@@ -13,45 +13,70 @@ pub mod entities {
 
 pub mod migrations;
 pub mod module;
-pub mod ports;
+#[path = "ports.rs"]
+mod ports_impl;
+
+/// Canonical owner contracts and admitted in-process entry points. The persistent
+/// implementation stays private; all public paths use the same diagnostic boundary.
+pub mod ports {
+    pub use crate::ports_impl::{
+        InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
+        InventoryIdentityReservationAdoptionItem, InventoryIdentityReservationAdoptionRequest,
+        InventoryIdentityReservationAdoptionSnapshot, InventoryIdentityReservationReleaseRequest,
+        InventoryIdentityReservationReleaseSnapshot, InventoryIdentityReservationRequest,
+        InventoryIdentityReservationSnapshot, InventoryReservationIdentityPort,
+        InventoryReservationPort, InventoryReservationReleaseRequest,
+        InventoryReservationReleaseSnapshot, InventoryReservationRequest,
+        InventoryReservationSnapshot, MAX_RESERVATION_ADOPTION_ITEMS,
+    };
+    pub use crate::reservation_owner_context::{
+        PersistentInventoryReservationIdentityPort, in_process_inventory_reservation_identity_port,
+    };
+    pub use crate::reservation_port_context::{
+        InProcessInventoryReservationPort, in_process_inventory_reservation_port,
+    };
+}
+mod reservation_adoption;
+mod reservation_events;
 mod reservation_owner_context;
 mod reservation_port_context;
 pub mod return_restock;
 pub mod services;
 pub mod shipment_stock;
+pub mod source_history;
+mod stock_events;
 mod translation_changes;
 mod translation_target;
 
 #[cfg(test)]
 mod contract_tests;
 
-pub use module::InventoryModule;
+pub use module::{InventoryModule, InventoryRuntimeSelected};
 pub use ports::{
-    InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
-    InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
-    InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
-    InventoryReservationIdentityPort, InventoryReservationPort, InventoryReservationReleaseRequest,
+    InProcessInventoryReservationPort, InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
+    InventoryIdentityReservationAdoptionItem, InventoryIdentityReservationAdoptionRequest,
+    InventoryIdentityReservationAdoptionSnapshot, InventoryIdentityReservationReleaseRequest,
+    InventoryIdentityReservationReleaseSnapshot, InventoryIdentityReservationRequest,
+    InventoryIdentityReservationSnapshot, InventoryReservationIdentityPort,
+    InventoryReservationPort, InventoryReservationReleaseRequest,
     InventoryReservationReleaseSnapshot, InventoryReservationRequest, InventoryReservationSnapshot,
-};
-pub use reservation_owner_context::{
-    PersistentInventoryReservationIdentityPort, in_process_inventory_reservation_identity_port,
-};
-pub use reservation_port_context::{
-    InProcessInventoryReservationPort, in_process_inventory_reservation_port,
+    MAX_RESERVATION_ADOPTION_ITEMS, PersistentInventoryReservationIdentityPort,
+    in_process_inventory_reservation_identity_port, in_process_inventory_reservation_port,
 };
 pub use rustok_commerce_foundation::entities::product::ProductStatus;
 pub use services::{
-    BootstrapService, InitialInventory, InventoryAvailabilityCheckResult,
-    InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
-    InventoryReservationWriteResult, InventoryService, PublicChannelInventoryProjection,
-    PublicChannelInventoryVariantProjectionInput, StockLocationTranslationExactLocaleApply,
-    StockLocationTranslationExactLocaleApplyReceipt, StockLocationTranslationExactLocaleError,
-    StockLocationTranslationExactLocaleRecord, StockLocationTranslationExactLocaleResult,
-    StockLocationTranslationExactLocaleSnapshot, StockLocationTranslationService,
-    check_public_channel_inventory_request, check_variant_availability_for_public_channel,
-    extract_allowed_channel_slugs, inventory_policy_allows_backorder,
-    is_allowlist_visible_for_public_channel, is_metadata_visible_for_public_channel,
-    load_available_inventory_by_variant_for_public_channel,
+    BootstrapService, CatalogDeletionBlocker, CatalogDeletionError, InitialInventory,
+    InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
+    InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,
+    MAX_CATALOG_DELETE_VARIANTS, PublicChannelInventoryProjection,
+    PublicChannelInventoryVariantProjectionInput, QuantityWriteBlocker, QuantityWriteError,
+    StockLocationTranslationExactLocaleApply, StockLocationTranslationExactLocaleApplyReceipt,
+    StockLocationTranslationExactLocaleError, StockLocationTranslationExactLocaleRecord,
+    StockLocationTranslationExactLocaleResult, StockLocationTranslationExactLocaleSnapshot,
+    StockLocationTranslationService, check_public_channel_inventory_request,
+    check_variant_availability_for_public_channel, extract_allowed_channel_slugs,
+    inventory_policy_allows_backorder, is_allowlist_visible_for_public_channel,
+    is_metadata_visible_for_public_channel, load_available_inventory_by_variant_for_public_channel,
     load_available_inventory_for_variant_in_public_channel,
     load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
     public_channel_inventory_projection,

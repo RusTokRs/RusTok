@@ -29,7 +29,7 @@ export interface CartAdjustment {
   lineItemId?: string | null;
   sourceType: string;
   sourceId?: string | null;
-  adjustedAmount: string;
+  amount: string;
 }
 
 export interface CartShippingOptionSummary {
@@ -51,6 +51,8 @@ export interface CartDeliveryGroup {
 
 export interface Cart {
   id: string;
+  channelId: string | null;
+  channelSlug: string | null;
   currencyCode: string;
   subtotalAmount: string;
   adjustmentTotal: string;
@@ -125,4 +127,15 @@ export interface CustomerShippingAddress {
   postalCode: string;
   paymentMethod: "card" | "cod" | "transfer";
   notes?: string;
+}
+
+/** An exact Pricing observation, not money or permission to select a price list. */
+export interface CartPricingExpectation {
+  locale: string;
+  currencyCode: string;
+  regionId: string | null;
+  priceListId: string | null;
+  channelId: string | null;
+  channelSlug: string | null;
+  quantity: number;
 }

@@ -73,3 +73,48 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 
 - [App docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)
+
+## Known Limitations / Pending Implementation
+
+The reservation-fact continuation source-wires acknowledged sealed module startup on the actual
+listener bus. `outbox` awaits explicit local handlers; `outbox_iggy` accepts the original frame
+at the configured primary, then awaits required local delivery. Failure retains the same Outbox
+identity for retry, potentially resending remotely. Root best-effort fanout is unchanged. The
+host composes owner handlers and durable artifact intake; it never publishes Inventory facts.
+Five new transport-double definitions are uncompiled/unrun, not real Iggy/cursor/ACK or
+relay/restart/concurrency evidence. Canonical digests, SQL/Search, generic Index and Product
+step 8 remain open. See the [runtime contract](docs/README.md#acknowledged-sealed-delivery-2026-11-01-source-only)
+and [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+## Inventory source fan-out continuation (2026-11-02; source only)
+
+Fan-out checks compiled sealed required-module policy before primary sending: an active but
+unmatched registry cannot silently ACK Inventory source/reservation facts. With a match, primary
+acceptance precedes awaited local completion; failure retains the original frame for at-least-once
+retry. Product remote-only routes remain supported; host has no Inventory source SQL/conversion.
+
+Four memory/fan-out definitions use transport/listener doubles, not Iggy cursor or Index evidence.
+At this publication handoff the production consumer code was not yet selected. The following
+selected-consumer source continuation supersedes that missing-code boundary, not deployment proof. Tests/compilation/runtime remain unrun;
+[owner evidence](../../crates/modules/rustok-inventory/contracts/evidence/source-delivery-source.json)
+claims no readiness. No live baseline before real handlers and current operator recovery.
+
+## Selected current worker contexts and Index replay (2026-11-02; source only)
+
+Host-provider composition now supplies the Auth-owned current-service context port before source
+factories. It resolves exact tenant/consumer SecretRef bindings using canonical secrets/current
+OAuth authorization and module availability, not event actors, saved grants or invented service
+UUIDs. `RUSTOK_WORKER_SERVICE_TOKENS_JSON` and optional
+`RUSTOK_WORKER_SERVICE_SECRET_MOUNT_ROOT` are documented in the
+[selected Distribution contract](../../crates/modules/rustok-distribution/docs/inventory-index.md).
+The canonical Index materializer registers generic `index_replay` work through the existing
+ModuleWork lifecycle; only a server role running background workers polls it. There is no host
+Inventory SQL/conversion or domain-specific root worker.
+
+### Known Limitations / Pending Implementation
+
+Tests/build/SQL/runtime were not executed. Native source/listener/worker code is authored, not
+proof of deployed credentials, PostgreSQL locking, broker ACK/restart or source readiness. Page
+failures currently park; automatic backoff/original-job and full operator-client recovery remain
+pending. Do not initialize a live baseline/cutover without explicit credential/schema/digest/
+worker/backlog/history/recovery preflight. Original job/lease metadata grants no source authority.

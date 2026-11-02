@@ -6,46 +6,116 @@
   "generated_from": "crates/modules/rustok-inventory/contracts/inventory-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
   "contract_version": "inventory.reservation.v1",
-  "profiles": [
-    "in_process",
-    "remote_adapter_placeholder"
-  ],
+  "profiles": ["in_process", "remote_adapter_placeholder"],
   "cases": [
     {
       "operation": "check_availability",
-      "profiles": [
-        "in_process",
-        "remote_adapter_placeholder"
-      ],
-      "assertions": [
-        "typed_port_error_mapping",
-        "context_deadline_preserved"
-      ],
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved"],
       "execution_status": "static_locked_runtime_pending"
     },
     {
       "operation": "reserve_inventory",
-      "profiles": [
-        "in_process",
-        "remote_adapter_placeholder"
-      ],
+      "profiles": ["in_process", "remote_adapter_placeholder"],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
-        "write_idempotency_required"
+        "write_idempotency_required",
+        "anonymous_pool_only_no_identity_fallback",
+        "explicit_cart_line_selectors_refused",
+        "shared_item_write_lock",
+        "bounded_anonymous_pool_admission",
+        "checked_reserved_and_signed_available_quantities",
+        "transport_key_is_not_compatibility_receipt",
+        "exact_one_anonymous_reservation_insert",
+        "current_actor_context_forwarded_to_native_writer",
+        "quantity_free_inventory_fact_in_same_owner_transaction",
+        "exact_replay_noop_adoption_emit_no_fact",
+        "typed_outbox_memory_and_iggy_local_delivery_wired",
+        "search_explicit_authoritative_refetch",
+        "digest_compile_runtime_index_evidence_pending"
       ],
       "execution_status": "static_locked_runtime_pending"
     },
     {
       "operation": "release_inventory_reservation",
-      "profiles": [
-        "in_process",
-        "remote_adapter_placeholder"
-      ],
+      "profiles": ["in_process", "remote_adapter_placeholder"],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
-        "write_idempotency_required"
+        "write_idempotency_required",
+        "anonymous_pool_only_no_identity_fallback",
+        "explicit_order_line_selectors_refused",
+        "original_location_and_full_claim_coverage",
+        "keyed_claims_aggregated_without_candidate_cap",
+        "exact_one_conditional_row_and_level_updates",
+        "complete_owner_transaction_rollback",
+        "checked_signed_availability_preserves_backorders",
+        "zero_quantity_no_state_creation",
+        "transport_key_is_not_compatibility_receipt",
+        "current_actor_context_forwarded_to_native_writer",
+        "quantity_free_inventory_fact_in_same_owner_transaction",
+        "exact_replay_noop_adoption_emit_no_fact",
+        "typed_outbox_memory_and_iggy_local_delivery_wired",
+        "search_explicit_authoritative_refetch",
+        "digest_compile_runtime_index_evidence_pending"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "reserve_inventory_by_identity",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "current_actor_context_forwarded_to_native_writer",
+        "quantity_free_inventory_fact_in_same_owner_transaction",
+        "exact_replay_noop_adoption_emit_no_fact",
+        "typed_outbox_memory_and_iggy_local_delivery_wired",
+        "search_explicit_authoritative_refetch",
+        "digest_compile_runtime_index_evidence_pending"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "release_inventory_by_identity",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "current_actor_context_forwarded_to_native_writer",
+        "quantity_free_inventory_fact_in_same_owner_transaction",
+        "exact_replay_noop_adoption_emit_no_fact",
+        "typed_outbox_memory_and_iggy_local_delivery_wired",
+        "search_explicit_authoritative_refetch",
+        "digest_compile_runtime_index_evidence_pending"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "adopt_inventory_by_identity",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required",
+        "complete_bounded_batch",
+        "tenant_proof_before_locks",
+        "original_reservation_external_variant_location_quantity_preserved",
+        "complete_response_correlation",
+        "exact_replay_without_reallocation_or_timestamp_refresh",
+        "known_legacy_and_compacted_provenance_preserved",
+        "released_or_consumed_allocation_refused",
+        "owner_local_atomicity_separate_from_commerce_checkpoint",
+        "retry_advice_is_not_outcome_or_compensation_authority",
+        "backend_native_32kib_metadata_preflight_before_any_write",
+        "metadata_capacity_refusal_nonretryable_without_truncation",
+        "positive_deadline_before_provider_poll",
+        "local_replay_read_failure_is_not_no_effect_proof",
+        "typed_recovery_cause_preserved_without_automatic_compensation",
+        "terminal_metadata_cannot_be_repaired_into_active_allocation"
       ],
       "execution_status": "static_locked_runtime_pending"
     }

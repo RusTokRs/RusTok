@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "dependencies": {
     "react": "^19.2.0",
-    "decimal.js-light": "^2.5.1"
+    "decimal.js-light": "^2.5.1",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be"
   },
   "license": "BUSL-1.1",
   "scripts": {

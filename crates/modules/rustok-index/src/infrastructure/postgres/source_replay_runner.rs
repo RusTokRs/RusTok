@@ -33,6 +33,7 @@ pub struct IndexReplayRunRequest {
     lease_duration: Duration,
     max_pages: usize,
     heartbeat_every_pages: usize,
+    job_id: Option<Uuid>,
 }
 
 impl IndexReplayRunRequest {
@@ -120,7 +121,17 @@ impl IndexReplayRunRequest {
             lease_duration,
             max_pages,
             heartbeat_every_pages,
+            job_id: None,
         })
+    }
+
+    /// Restrict acquisition to an existing exact original job identity.
+    pub fn for_job(mut self, job_id: Uuid) -> Result<Self, IndexReplayRunError> {
+        if job_id.is_nil() {
+            return Err(IndexReplayJobError::NilJobId.into());
+        }
+        self.job_id = Some(job_id);
+        Ok(self)
     }
 
     pub fn page_request(&self) -> &IndexReplayPageRequest {
@@ -416,22 +427,26 @@ fn lease_request_for_run(
     request: &IndexReplayRunRequest,
     source_name: String,
 ) -> Result<IndexReplayJobLeaseRequest, IndexReplayRunError> {
-    match request.locale() {
-        Some(locale) => Ok(IndexReplayJobLeaseRequest::for_locale(
+    let lease_request = match request.locale() {
+        Some(locale) => IndexReplayJobLeaseRequest::for_locale(
             request.page_request().tenant_id(),
             request.page_request().schema().clone(),
             locale.clone(),
             source_name,
             request.worker_id().to_owned(),
             request.lease_duration(),
-        )?),
-        None => Ok(IndexReplayJobLeaseRequest::new(
+        )?,
+        None => IndexReplayJobLeaseRequest::new(
             request.page_request().tenant_id(),
             request.page_request().schema().clone(),
             source_name,
             request.worker_id().to_owned(),
             request.lease_duration(),
-        )?),
+        )?,
+    };
+    match request.job_id {
+        Some(job_id) => Ok(lease_request.for_job(job_id)?),
+        None => Ok(lease_request),
     }
 }
 

@@ -1,10 +1,10 @@
 # Commerce admin Fulfillment owner-command cutover — 2026-08-09
 
-Status: source-complete for mounted admin Fulfillment ship/deliver/reopen/reship/cancel routes; execution evidence pending and unvalidated.
+Status: source-complete for mounted admin Fulfillment ship/deliver/reopen/reship/cancel routes; execution evidence pending and unvalidated. The 2026-11-01 shipment continuation below supersedes the original reconstructed-key and replay assumptions.
 
 ## Scope
 
-This slice advances the canonical ecommerce topology P0 without closing it. Five mounted admin Fulfillment lifecycle routes now call a Fulfillment-owned command capability:
+The canonical mounted lifecycle routes call a Fulfillment-owned command capability:
 
 - `POST /admin/fulfillments/{id}/ship`;
 - `POST /admin/fulfillments/{id}/deliver`;
@@ -12,84 +12,44 @@ This slice advances the canonical ecommerce topology P0 without closing it. Five
 - `POST /admin/fulfillments/{id}/reship`;
 - `POST /admin/fulfillments/{id}/cancel`.
 
-`POST /admin/fulfillments` is intentionally out of scope. Manual fulfillment creation is a cross-owner Commerce workflow: it validates Order ownership and remaining quantities, applies seller-aware shipping-profile grouping, persists the Fulfillment, and then creates a provider label. Moving that entire workflow into `rustok-fulfillment` would incorrectly make Fulfillment own Order/Commerce policy.
+Manual fulfillment creation is a cross-owner Commerce workflow. Its separate [create cutover](admin-fulfillment-create-owner-port-cutover-2026-08-09.md) also uses typed owner capabilities. It does not move Order, seller or shipping-profile policy into F.
+
+`controllers/admin/mod.rs` mounts only `fulfillments_owner_commands.rs` as `fulfillments`. That module owns list/show/create as well as the five lifecycle handlers. There is no old `fulfillments.rs` controller or wildcard compatibility re-export to retain. Public router/OpenAPI symbol names remain unchanged.
 
 ## Fulfillment owner capability
 
-`rustok-fulfillment` now publishes `FulfillmentAdminCommandPort` and `FulfillmentAdminCommandRuntime` with typed ship, deliver, reopen, reship, and cancel commands. The built-in adapter owns:
+`FulfillmentAdminCommandPort` and `FulfillmentAdminCommandRuntime` own service construction, lifecycle/counters, selected provider resolution, journal execution/checkpoint and local recovery. Mounted Commerce handlers construct neither `FulfillmentService` nor the old orchestration service.
 
-- `FulfillmentService` construction and lifecycle persistence;
-- shipping-option provider resolution;
-- `FulfillmentProviderOperationJournal` construction and replay adoption;
-- provider execution through the host-selected `FulfillmentProviderRegistry` for ship/reship/cancel;
-- provider-result metadata adoption;
-- reconciliation checkpointing when a provider side effect succeeded but local persistence failed.
+C composes selected saved Order facts with Inventory's native shipment implementation before carrier/F write transaction. F consumes a prepare/apply port without depending on O/I. Locked F snapshot correlation, native physical movement/proof, progress and provider checkpoint use one local transaction. The carrier and saved O reads are not part of that transaction. See the [shipment handoff](implementation-plan.md#shipment-stock-provenance-source-evidence).
 
-Mounted Commerce HTTP does not construct `FulfillmentService` or `FulfillmentOrchestrationService` for these five routes.
+## Literal intent and replay identity
 
-## Provider replay compatibility
+Every write requires a caller-owned `Idempotency-Key` header of 1..=191 UTF-8 bytes. Distinct later intents require distinct keys; uncertain retries retain key and payload. The admitted key is forwarded literally to the owner journal/provider. Neither the controller nor F reconstructs an intent from a fulfillment ID or current payload hash.
 
-The owner command adapter preserves the pre-cutover immutable provider request payload and exact payload-sensitive key algorithm:
+Historical lifecycle keys used `fulfillment:{fulfillment_id}:{operation}:{fnv128}`. Their exact retained journal value, not a new calculation, remains the only recovery identity. Private `commerce_orchestration` descriptors retain immutable operation/carrier/tracking/item or reason facts; they are not stock history or caller metadata.
 
-`fulfillment:{fulfillment_id}:{operation}:{fnv128}`
+Committed provider replay does not reinvoke the carrier or reacquire stock. Deliver/reopen kernel commands bind key, payload and exact response through their owner-local receipt transaction; plain domain methods do not provide that kernel receipt contract. Cancelled status or provider metadata alone does not prove restored stock.
 
-The two FNV-1a 64-bit passes retain the existing offset bases and concatenate into the same 32-hex-character suffix. Provider request metadata also remains compatible:
+## Canonical request context
 
-- ship: `commerce_orchestration.operation = ship` plus carrier, tracking number, and item adjustments;
-- reship: `commerce_orchestration.operation = reship` plus carrier, tracking number, and item adjustments;
-- cancel: `commerce_orchestration.operation = cancel` plus the requested reason.
+HTTP uses `auth.port_actor()` to preserve human versus OAuth service identity, forwards permissions/scopes, locale/channel and actual request correlation, and uses a two-second call budget. AuthContext has no roles field. Native callers retain their own roles, causation and tracing rather than accepting a synthetic reconstructed context.
 
-The existing local `provider_operation` metadata is also retained when provider results are committed to Fulfillment state.
+The generic key is not outcome evidence or authorization. Actual kernel/journal admission and immutable correlation remain the owner contract. A deadline phase check is not a SQL statement timeout.
 
-## Lifecycle replay compatibility
+## Provider outcome and reconciliation
 
-The owner path retains two compatibility behaviors from the previous Commerce facade:
+Fresh claims require Pending with absent result/reference/completion/commit markers and no unresolved sibling effect. Legacy `provider_error`, unknown states and malformed Pending/Committed records fence a new identity; the same owner predicate also fences local progress. A private release is permitted only before carrier invocation. Explicit operator confirmation of no effect may requeue the original key, but cannot erase retained reference/result/commit evidence. Neither action infers safety from a legacy error label.
 
-- a completed reship replay returns the already-shipped Fulfillment when `metadata.provider_operation.operation == "reship"`;
-- cancelling an already-cancelled Fulfillment returns the current projection instead of re-running the provider operation.
+Fulfillment-owned local recovery validates current context and retains the saved literal key. It applies only local progress/stock/checkpoint without calling a carrier. Selected recovery takes precedence; unsupported selected capability never falls back to native data. Other operator list/resolve/create-label remote composition remains a separate topology gate.
 
-Ship continues to adopt already-committed provider journal state. Provider operations already marked `reconciliation_required` remain a validation-class replay result, matching the pre-cutover mounted HTTP family.
+Known or ambiguous carrier outcome with failed local persistence requires reconciliation, not automatic key rotation or compensation. The public HTTP 409 family remains `commerce_admin_fulfillment_reconciliation_required`; bounded owner advice is preserved. Storage, validation, state conflict and not-found families retain static messages, not raw provider/database text.
 
-## Reconciliation semantics
+## Runtime composition and remaining work
 
-When ship/reship/cancel provider execution succeeds but the subsequent local Fulfillment persistence fails, the owner adapter marks the provider operation `reconciliation_required` and returns the existing public reconciliation family:
+`CommerceHttpRuntime` prefers the selected F command runtime. Native composition receives the actual selected Order reader and deployment-selected provider registry. A missing stock configuration fails closed; it is never replaced by Noop. Only explicit Noop is a deployment/test opt-out, including unknown header-only fresh Ship. Pending cancel, delivery and undo-delivery need no stock dependency.
 
-- HTTP 409;
-- `commerce_admin_fulfillment_reconciliation_required`;
-- `Fulfillment operation requires reconciliation`.
-
-Ordinary validation, not-found, invalid-transition, and storage failures keep their existing public HTTP families. Internal provider/database text is not copied into owner `PortError` messages.
-
-## Port write identity
-
-Mounted HTTP supplies tenant, authenticated user actor, locale, optional channel, a two-second deadline, and a stable transition-scoped admission identity:
-
-`admin-fulfillment:{fulfillment_id}:{operation}`
-
-This identity satisfies the generic write-port admission contract. It is not a newly claimed durable command receipt. Durable provider replay for ship/reship/cancel remains the Fulfillment-owned payload-sensitive provider journal described above. Deliver/reopen do not gain a durable replay receipt in this slice.
-
-## Runtime composition
-
-`CommerceHttpRuntime` prefers a host-injected `FulfillmentAdminCommandRuntime`. When none is supplied, it composes the public in-process Fulfillment owner runtime using the same host-selected `FulfillmentProviderRegistry` already used by Commerce provider integration.
-
-This preserves external adapter precedence without constructing concrete Fulfillment services in the mounted command adapter.
-
-## Mounted compatibility strategy
-
-The existing `controllers/admin/fulfillments.rs` remains a private compatibility module. `fulfillments_owner_commands.rs` wildcard-reexports its unaffected list/show/create and generated Utoipa compatibility symbols, while local definitions shadow the five mounted lifecycle commands.
-
-This follows the already-established Payment cutover pattern and avoids changing public route/OpenAPI symbol names.
-
-## Remaining topology work
-
-The canonical broad item “Move remaining mounted Commerce REST/GraphQL construction of Product, Order, Payment, and Fulfillment concrete services behind host-composed owner ports” remains open.
-
-The next Fulfillment-specific boundary is manual admin fulfillment creation. That work should keep Order and seller/shipping-profile policy in Commerce while replacing cross-owner concrete access with typed owner capabilities and keeping create-label durability/recovery intact.
-
-Post-order/change/return workflows and remaining GraphQL/provider-operation construction also keep the broad P0 open.
+The canonical broad Commerce topology P0 remains open. Both new additive migrations must precede the new binary: I's native shipment proof and F's provider-effect admission correction. Applied migrations and historical rows are not rewritten. Full event/outbox/Index, mounted/remote, unpaid-return and deployment convergence remain open.
 
 ## Validation status
 
-`scripts/verify/verify-commerce-admin-fulfillment-owner-command-cutover.mjs` is added as a source guard but is intentionally not executed here.
-
-No tests, Cargo commands, formatting, verifier execution, workflows, CI, runtime HTTP calls, restart/lost-response evidence, or external-provider execution evidence are claimed in this slice.
+The current source guards may execute read-only source checks. Syntax parsing and WASM formatting are not Rust typechecking or behavioral proof. No tests, Rust compilation, SQL/carrier execution, runtime HTTP, restart/lost-response, CI/workflow or remote-adapter validation is claimed. Tests remain with the maintainer; see the [source evidence](../contracts/evidence/shipment-stock-provenance-source.json).

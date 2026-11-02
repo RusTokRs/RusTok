@@ -4,18 +4,249 @@
 > [reference-hardening-current.md](./reference-hardening-current.md). That cursor is authoritative
 > for cross-module parity with the source-certified Blog v1 reference; this long-form plan remains
 > authoritative for Product-specific historical/runtime work.
->
+
 ## Current state
 
 ### Accepted variant-axis target
 
 [Unified variant axis architecture](../../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md)
-is the accepted target for Product variant identity. The ADR registry currently
-marks the cutover as `Not started`: the legacy option vocabulary may still
-exist in current code, but it must not be extended as the target model. The
-implementation slice must follow the ADR's atomic zero-legacy cutover and
-verification contract.
+is the accepted target for Product variant identity. Implementation is **In progress**. Current
+writers already use the unified model; the ADR's historical legacy inventory is not evidence
+that similarly named current dictionaries, journals or installed rows may be deleted.
 
+### Downstream owner continuation (2026-10-30; step 8 in progress)
+
+A bounded source slice now shares checked UUID-based checkout stock demand and exact
+Product/SKU/fulfillment/context correlation between direct and staged Commerce. Channel
+completes saved selectors without page/default fallback; Inventory scopes only new identity
+allocations while preserving exact receipt replay/release. No SKU or stored owner link is
+retired and no historical migration is changed. See the
+[Commerce plan](../../rustok-commerce/docs/implementation-plan.md#product-downstream-continuation-2026-10-30)
+and [ADR contract](../../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md#10e-downstream-sku-contracts-2026-10-30).
+
+Regression sources are unrun, and source checks are not Rust/database/mounted evidence.
+Selected Product identity is now carried into Pricing in source: optional lean capability,
+mandatory tenant-correlated responses before price IO, mandatory full-runtime factories and
+actual Commerce/native/staged repricing roots. External capability failure refuses rather than
+rebuild local Product; external SKU authoring is explicitly unsupported until its write protocol
+exists. See the [Pricing plan](../../rustok-pricing/docs/implementation-plan.md). Real remote
+execution, Cart quantity/tier mutations and the complete Order/Fulfillment/stock/outbox/Index/
+selected-runtime chain remain open; step 8 is not complete.
+The 2026-10-31 [Inventory adoption source handoff](../../rustok-commerce/docs/implementation-plan.md#inventory-owned-reservation-adoption-2026-10-31)
+now keeps reservation binding mutation with Inventory and preserves UUID-based downstream lineage.
+This removes one concrete direct-write leak; it does not close shipment/return/outbox/Index or runtime
+verification, and adds no schema/history rewrite or new receipt.
+The bounded [return-restock identity continuation](../../rustok-commerce/docs/implementation-plan.md#return-restock-identity-source-evidence)
+now correlates saved Order SKU/quantity through the selected read port and scopes Inventory's
+allocation/receipt replay. It adds no receipt/schema/history rewrite; 33 Rust/23 MJS definitions
+remain unrun. The archived receiving-location correction preserves read-only replay while
+refusing new stock at closed locations under the existing storage guard; no automatic
+reactivation, relocation or key rotation occurs. Shipment/cancel/reopen tenant/allocation/history, lifecycle overlap and complete
+outbox/Index/runtime convergence still remain open; this is not full return/step-8 completion.
+Native physical stock now has I-owned canonical root outbox invalidations in the local
+mutation transaction; [owner plan/evidence](../../rustok-inventory/docs/implementation-plan.md#native-stock-outbox-continuation-2026-11-01-source-only).
+Preparation/exact replay/no movement do not publish; equal-availability shipment does.
+The v1 quantities remain descriptive global availability, not stock movement deltas. Added
+16 Rust/10 Node definitions are all unrun. Existing Search refetch wiring is traced, not
+runtime delivery or generic Index/normal reservation convergence. No new schema/capability,
+unpaid-return policy or inspection top-up is inferred; full step 8 remains open.
+
+Step 9 remains consumer- and persisted-state-led, not a name-based deletion pass.
+
+### Variant-axis continuation (2026-10-29)
+
+This is ordinary feature work against base `16cb22206ca19de8218f47a1056d946105c7b09f`,
+not execution or advancement of the reference/audit cursor.
+
+**Saved source changes (not runtime-certified):**
+
+- Schema/category binding inputs accept optional `variant_axis_policy` and
+  `default_variant_axis` patches. Omission retains an existing binding; a new binding defaults
+  to `forbidden`/`false`. The merged pair is validated, not only the supplied fields. Allowed
+  and required axes require an unarchived `select` definition with `variant`/`both` scope.
+- Canonical effective forms retain inheritance, reusable-schema, local overlay and independent
+  clone-snapshot precedence. Unknown policy, invalid default hints and missing/malformed clone
+  snapshots fail closed rather than masquerading as empty/forbidden forms. Product EAV inputs
+  do not admit variant-only definitions.
+- Policy-affecting binds, category mode changes and clone creation share a PostgreSQL tenant
+  advisory transaction fence with Product/category/axis/EAV writes. Schema writers take the
+  exclusive fence before before/after reads; Product writers take the shared fence before
+  aggregate locks. SQLite reserves its writer before reads; unsupported engines fail closed.
+  Changed effective categories (including inherited descendants) scan Products in pages of
+  128 and refuse invalidation with at most eight UUID-only examples plus `has_more`.
+  Refusal does not modify SKU identities, assignments, stock, prices or outbox state.
+- Initial axes are installed inside the existing Product create transaction before selected
+  SKU tuples are inserted. There is no intermediate default SKU for an axis-bearing Product
+  and no Cartesian generation. Existing canonical command receipts remain the write boundary.
+- Next and the routed Leptos editor expose eligible axes, allowed values and explicitly selected
+  sparse tuples. Required/default suggestions seed the first untouched category draft; later
+  category/value/axis changes retain rows and block invalid saves instead of silently pruning
+  or rebasing them. Draft bounds are 32 axes, 256 values per axis and 128 initial SKUs; the SKU
+  bound is a client draft bound, not a new owner-wide import limit.
+- Both admin clients send assignments for standalone SKU creation. The shared Leptos SKU
+  section is now mounted in `ui/product_editor.rs`; its projection reload merges only confirmed
+  variants/axes and does not overwrite dirty document fields. Existing-axis saves are guarded
+  during an unsaved category change. The newly mounted section does not expose deletion before
+  a stock-safe owner retirement contract exists.
+- The Next browser journal stores exact sparse create snapshots under the existing scoped
+  recovery identity. Persisted pre-axis scalar create attempts remain readable and replay their
+  original shape; they are durable pending requests, not a second canonical write model.
+
+- Existing-axis reconfiguration now uses the selected command provider for preview and the
+  existing receipt-bound command for atomic CAS application. Both admin clients expose full
+  target tuple correction/confirmation and immutable, scope/locale-bound recovery. Configuration
+  row IDs, Variant UUIDs and removed-axis EAV are retained. Native axes use JSON input; no
+  transport/provider fallback follows an unknown response. Detailed semantics, bounds and
+  outstanding gates live in the [owner contract](./variant-axis-reconfiguration.md).
+
+- Bounded local combination browsing/picking is implemented in both admin clients, reusing
+  existing atomic Product create and standalone SKU create. Configured-axis subsets are the
+  candidate source; filters never change them. The picker checks complete saved membership
+  (up to 256), refuses spaces above 4096 and generates only a 12-row page. Explicit picks add
+  one initial draft or replace only the saved-SKU form's tuple; no price/stock is inferred.
+  Saved assignments are visible in the SKU lists. Blank initial price is absent, explicit zero
+  remains a price and orphan compare-at refuses. See the [workflow and source-only gates](./variant-combinations.md).
+- Error-review corrections preserve a picked Leptos manual tuple through control mounting,
+  clear and metadata refresh. Retained unavailable choices stay visible; filter resets no longer
+  write through a reverse control effect. New-Product save ignores unused scalar inventory when
+  explicit rows supply the actual values. Next validates assignments only for creation and binds
+  the intended writer, refusing a missing callback instead of falling through to create or closing
+  without a write. The price-save VM harness now supplies busy/disabled/localization bindings.
+  Added regressions are source only and were not executed.
+
+- Standalone SKU creation now has immutable full-request recovery in **both** clients through
+  the existing owner command/receipt. Leptos shares the axes journal/browser mechanism and
+  selects native JSON or metadata-preserving GraphQL before IO. Next extends its Product
+  journal/action/recovery-only route with a distinct Variant acknowledgement, not a fabricated
+  Product revision. Exact body/key/original locale survive reload, unavailable Product GET,
+  unknown outcomes and explicit terminal correction. Missing storage, late acknowledgement
+  CAS and terminal-only rotation fail closed. Stable root fences cover axes and SKU creation;
+  stale auth/bootstrap/owner responses cannot retarget Leptos recovery. Both reference entry
+  paths reuse the keyed routed editor for selected Products, not their old GET-dependent form.
+  The obsolete memory-only standalone creator is removed, not retained as a second path. Details and bounds are in the
+  [same owner recovery contract](./variant-axis-reconfiguration.md#standalone-sku-creation-and-recovery).
+  Other Leptos CRUD outside the axes/SKU/definition journals remains memory-only/GraphQL-backed
+  and is not certified durable.
+
+- Attribute/option lifecycle now uses the selected schema ports and existing owner receipt
+  ledger: presentation-only updates, reference-checked archive and same-ID non-cascading restore.
+  Both admin clients persist full dictionary command/key/scope/original locale before IO, recover
+  without dictionary GET and require explicit terminal Fresh. Shared `attribute_id`/`option_id`
+  keys and retained missing targets prevent an implicit parent/first-option replacement. Defaults,
+  immutable identity, EAV/SKU assignments and cross-owner links are not rewritten. Deferred stable
+  code hints remain metadata, not applied assignments. Source tests include strict preparation,
+  receipts/recovery, missing projections, SQL bounds and separate-connection reference creation
+  versus archive; they were not run. The [bounded contract and unexecuted gates](../../../../DECISIONS/2026-09-18-unified-variant-axis-architecture.md#10c-attribute-and-option-definition-lifecycle)
+  do not certify Rust, database or mounted execution. Storefront/downstream work remains open.
+
+**Source/data inventory and retention decision:**
+
+| Surface                                                                              | Current role / disposition                                                                                            |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `product_attributes`, `product_attribute_options` and option translations            | Canonical dictionary and localization; retain. An option is not an obsolete independent Product option model.         |
+| Product/Variant typed EAV values and option joins                                    | Current value/assignment storage; retain.                                                                             |
+| `product_variant_axes`, allowed-value configuration and `combination_identity`       | Current SKU tuple identity/configuration; retain stable Variant UUIDs.                                                |
+| Catalog variant prices/inventory fields                                              | Active compatibility/read snapshots; Pricing and Inventory remain authoritative. Migrate consumers before retirement. |
+| Product graph/relation snapshots, tombstones, translation/change journals            | Active rebuild/replay and translation consumers; retain until owner/runtime evidence proves otherwise.                |
+| Shipping-profile bindings, channel graph relations and inventory reservation records | Active cross-owner links; no cleanup inferred from names.                                                             |
+| Browser pending Product attempts and server receipts                                 | Durable retry identity; do not rewrite an unknown request or invalidate its receipt framing.                          |
+| Historical migrations and installed tables/rows/FKs                                  | Deployment inventory unavailable; no historical migrations changed and no destructive cleanup authorized.             |
+
+Source tracing is not deployment inventory. No database rows, installed migration history,
+external callers, production FKs or deployment configuration were inspected in this environment.
+No canonical entity/table was retired in this change.
+
+**Verification evidence:** tests were deliberately **not executed**, at the user's request.
+Focused source scenarios were added for policy omission/eligibility, effective precedence,
+bounded impact/rollback, the second Product page, sparse tuples, assignment errors, exact browser
+replay and old pending scalar attempts. An ignored PostgreSQL test in
+`apps/server/tests/product_variant_axis_policy_postgres.rs` uses a disposable database, real
+migrations/outbox and separate connections for create versus policy withdrawal. The test is
+source only, not proof that its assertions passed. Its reconfiguration continuation also covers
+axis/value position swaps, complete tuple swaps, stable EAV/Inventory links, receipt replay and
+explicit reassignment after an axis-removal collision. Owner/core/Next and shared GraphQL source
+scenarios cover bounded planning, metadata/tuple preservation, closed refusals and exact replay.
+Additional unrun combination scenarios cover mixed-radix pages, the exact 4096 bound, local
+filters, full membership, stale/click-time refusals, single-row append and absent-versus-zero
+prices. No test modules or runtime fixtures were executed. The latest expanded host check still
+has 57 diagnostics and zero direct Product/detail/action diagnostics; that is not a green build.
+The review's repository i18n parity gate accepts the Product catalogs but fails on existing
+Messenger/Workflow plural messages; the i18n contract gate reports a missing Blog migration.
+The remediation gate passes diff invariants but cannot complete architecture metadata checks
+because Cargo is absent, even with its clippy step skipped. These gates are not reported as green.
+
+Strict TypeScript checking passed for `api/types.ts`, `money.ts`, `schema-policy.ts`,
+`variant-draft.ts`, `axis-reconfiguration.ts`, `combinations.ts`, `write-attempt.ts`,
+`write-journal.ts`, `variant-create.ts` and transitive `attribute-lifecycle.ts`.
+Source-only native TypeScript module linking passed; no test modules were imported. Rust
+formatter/parser, JavaScript syntax, Fluent generation/syntax and diff checks are scoped source
+checks, not execution evidence. Expanded UI/host typing includes the actual Product detail
+route/actions and has no direct Product diagnostics, but is **not passing**: transient tooling
+lacks form/richtext/UI dependencies and the graph also reports errors outside Product. Apollo
+and the pinned Fluent package were restored to the transient tooling; no full app dependency
+install or build was performed. Rust/Cargo and PostgreSQL CLIs remain unavailable. The
+remediation gate's diff-invariant phase passed, but its architecture phase cannot invoke
+`cargo metadata`; `--skip-cargo` does not bypass that dependency. `npm run verify:adrs` also
+fails on pre-existing missing/unsorted registry entries, an unrelated Product image-status
+mismatch and missing headings in other ADRs; it reports no unified-axis ADR mismatch.
+
+The standalone-recovery continuation also adds unrun Next request/SDK/action/CAS scenarios,
+Rust exact-price/retained-assignment/metadata/native-mapping/old-axes-envelope scenarios, and a
+PostgreSQL stored-response scenario after later stock mutation. Current scoped checks parse and
+format 27 affected Rust sources without compiling macros; strict core TS includes
+`variant-create.ts`. The source reachability guard is synchronized with the selected adapters
+and shared durable journal, not the removed in-memory retry chain. No tests were executed and
+no database, migration, storefront or audit cursor was advanced.
+
+The dictionary lifecycle continuation's final scoped static checks parsed/idempotently formatted
+63 selected Rust sources, formatted 11 TS/TSX/MJS sources, passed strict core TypeScript and the
+two read-only Product source-reachability guards, and checked JavaScript syntax without importing
+test modules. Four Fluent catalogs parse with 44 paired lifecycle keys; generated types are current.
+Expanded Product/UI/host typing still reports 57 diagnostics outside Product and is not green.
+No tests, Rust compilation/macro expansion, database or mounted-client checks were executed.
+
+**Remaining work / release blockers:**
+
+1. Compile affected Rust owner/transport/admin crates, run the focused tests and PostgreSQL
+   integration test, validate GraphQL/native parity, and exercise both mounted clients. The
+   current source must not be represented as validated merely because formatting parsed it.
+2. Verify Taxonomy-owned reparenting participates in the schema validity fence; direct Product
+   operations alone do not prove all external hierarchy writers are coordinated. Measure full
+   tenant effective-form snapshot cost and lock contention at realistic catalog sizes.
+3. Execute the new existing-axis planner/recovery scenarios and ignored PostgreSQL
+   reconfiguration contract (position/tuple swaps, read-only preview, stable IDs/links,
+   replay/stale refusal and axis-removal collisions). Measure maximum-bound transaction/lock
+   costs and native/GraphQL host body limits. Source implementation is not a runtime sign-off.
+4. Execute the new attribute/option lifecycle owner/impact/native/Next and ignored PostgreSQL
+   contracts, including receipt replay, missing IDs, exact copy, bounds and reference-write races.
+   Its update/archive/restore source implementation is not runtime certification. Stock-safe SKU
+   retirement remains unfinished. Bounded sparse browsing/picking also needs mounted execution,
+   including retained filters, duplicate membership and unpriced create/retry. Existing standalone
+   deletion is not newly certified as stock-safe; no such action is exposed by the newly mounted
+   Leptos section.
+5. Ship the structured storefront axis/actual-SKU contract and Next/Leptos selectors,
+   missing-versus-unavailable behavior, authoritative Pricing, links, accessibility and
+   localization. Storefront packages have not been cut over in this continuation.
+6. Verify Pricing/Inventory/Channel/Index/Cart/Order/Media/Fulfillment effects with real receipts,
+   outbox/projection replay and stable Variant links; no end-to-end cross-owner completion claim.
+7. Verify localized axes/SKU recovery controls and browser storage/History/scope/late-response
+   paths in both mounted clients, including missing Product GET and every shipped transport
+   profile. Axes and standalone SKU now have durable browser recovery in source. Other Leptos
+   lifecycle writers remain memory-only and need separate immutable snapshot cutovers; Product
+   create and remaining CRUD still delegate to the lifecycle GraphQL gateway. Native standalone
+   creation does not certify a general native CRUD cutover. Finish remaining initial/schema
+   control localization. Execute the new Next/Rust regressions and the PostgreSQL stored-response
+   scenario; never infer successful execution from syntax/source-marker checks.
+8. Obtain deployment data/caller/migration inventory before any destructive legacy retirement;
+   preserve potentially applied history and document deterministic data treatment.
+
+Maintainer checks (not run here): scoped `cargo check`/`cargo test` for `rustok-product`,
+`rustok-product-admin` and affected Commerce/Pricing contracts; the Product Next package test
+script; and `cargo test -p rustok-server --test product_variant_axis_policy_postgres -- --ignored`
+with `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` pointing to a disposable PostgreSQL admin environment.
+The PostgreSQL test creates and drops its own uniquely named database, not the configured
+application database. These commands still require the repository's normal feature/dependency
+setup; this list is not successful execution evidence.
 
 `rustok-product` owns the catalog, variants, category-bound attribute schemas,
 typed attribute values, and product admin/storefront packages. Product UI uses
@@ -272,10 +503,10 @@ rustok-pricing` dependency cycle.
 1. Run the source guard before execution:
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`;
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs`.
-   Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
-   from a clean commit with migrated provider and consumer PostgreSQL databases,
-   matching loopback bind/endpoint values, one bearer credential, and existing
-   tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
+     Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
+     from a clean commit with migrated provider and consumer PostgreSQL databases,
+     matching loopback bind/endpoint values, one bearer credential, and existing
+     tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
 2. After a successful capture, retain authenticated Commerce checkout and AI
    product-generation business requests through the separately running consumer
    server. Promote above `boundary_ready` only after those results and their
@@ -400,6 +631,7 @@ rustok-pricing` dependency cycle.
 ## Source Layout: Port Responsibility Modularization
 
 Per `docs/backend/module-backend-implementation.md`, `src/ports/` is organized into canonical responsibility submodules bounded below 32 KiB:
+
 - `ports/mod.rs`: Module facade, documentation, and public re-exports.
 - `ports/types.rs`: Request and projection DTOs (`ProductProjectionRequest`, `PublishedProductsRequest`, etc.) and pagination bounds validation.
 - `ports/diagnostics.rs`: Structured telemetry, bounded context/error facts, tenant parsing, and stable error mapping without consumer type coupling.
@@ -605,7 +837,6 @@ checking, rustfmt or database execution. Maintainer commands:
 - `cargo test -p rustok-product --lib services::write_transaction`
 - the existing Pricing/money regressions and scoped PostgreSQL tests.
 
-
 ## Atomic editorial follow-up (2026-10-17)
 
 Canonical create/update DTOs now carry typed locale/patch batches. Catalog owner transactions apply
@@ -648,7 +879,6 @@ Node adapter tests do not replace them. Maintainer gates include:
 revision participation and both mounted editor cutovers; they are source checks only. Targeted TS
 checks cover actual Product API files and the create adapter extracted from its UI barrel with
 real host/Apollo declarations; this is not a full application or mounted React build.
-
 
 ## Next editorial retry follow-up (2026-10-17)
 
@@ -722,7 +952,6 @@ acknowledgements for Variant/Image/axes/Relation/Bundle/Pricing callbacks; prefl
 liveness; Leptos pending-request recovery and nullable Variant patches. The secondary-Variant
 Save behavior is superseded by the explicit-action cutover below. Media
 retention ADR remains **Proposed**; neither module readiness nor the sequential audit cursor advances.
-
 
 ## Leptos explicit Variant action follow-up (2026-10-18)
 
@@ -824,7 +1053,6 @@ and Media-delete/cleanup maintenance window, bounded backfill/retry procedure, q
 rollback constraints, and maintainer execution commands. This slice does not fix the independent
 Shipping Profile preflight, nullable Variant patch semantics, or child-editor durable retries.
 
-
 ### 2026-10-18 continuation: release replica race and real-owner integration sources
 
 The release worker now conditionally updates failure metadata by image ID and original
@@ -860,7 +1088,6 @@ four storefront, scoped TypeScript and 28-file parser results remain historical,
 reruns in this continuation. No cargo/rustc is available. ADR stays **Accepted / In progress**;
 all runtime/feature-matrix/unknown-commit/restart/mounted-client gates above remain open.
 
-
 ### 2026-10-18 implementation continuation (maintainer executes tests later)
 
 Source review identified and fixed further production wiring gaps:
@@ -888,7 +1115,6 @@ unrun. Per maintainer request, no test suite was executed in this continuation. 
 source guards, syntax/formatting and whitespace checks were run; the earlier 146 Node
 passes are historical and do not certify these edits. Rust compilation, runtime/feature
 matrix, database, restart, replica and mounted-client gates remain with the maintainer.
-
 
 ### 2026-10-18 Shipping Profile receipt-admission continuation
 
@@ -935,7 +1161,6 @@ SQLite/PostgreSQL transaction/receipt execution; authenticated mounted transport
 provider outage/lease reclaim, unknown commit, restart and concurrent profile lifecycle
 changes. No runtime certification or module-readiness advancement is asserted.
 
-
 ### 2026-10-18 diagnostic continuation superseding the three guard failures
 
 The three historical HTTP diagnostic/route and GraphQL helper source guards reported
@@ -945,7 +1170,6 @@ leaks, preserved Order Forbidden, and added authenticated Product/Order scope ch
 before IO plus trusted request correlation propagation. See the Commerce plan and
 current Product diagnostic contract for scope. Four new Rust unit scenario sources
 remain unrun; no test suite was executed. Source checks/formatting are not runtime proof.
-
 
 ## Nullable Variant patches (2026-10-18)
 
@@ -959,7 +1183,6 @@ sources are unrun, existing editor validation sources are migrated, and no test 
 Mounted transports, database/concurrency/rollback and actual UI gates remain open; this does not
 close durable child-command retry or whole-screen Variant atomicity gaps or advance readiness.
 
-
 ## Flex/error/receipt boundary (2026-10-18)
 
 Flex conversion is exhaustive and payload-safe; fixed Product entity registration rejection is
@@ -970,7 +1193,6 @@ or permission failure is not terminal merely because `retryable=false`. See the
 [current diagnostic contract and open runtime gates](./product-public-error-diagnostic-safety.md#flex-and-receipt-failure-continuation-2026-10-18).
 Six new Rust scenario sources are unrun; no test suite was executed. Broader Core/Taxonomy
 classification, mounted runtime and lease-reclaim execution remain open. Readiness is unchanged.
-
 
 ## Taxonomy and Core error continuation (2026-10-18)
 
@@ -984,3 +1206,221 @@ same-ID/all-backend owner composition rather than retired donor/binding/closure 
 Seven new Rust scenarios and strengthened existing hierarchy scenarios are unrun. Sixteen standalone
 source guards and WASM formatting/idempotence of 27 Rust files pass; these do not prove compilation,
 mounted behavior, rollback/replay/reclaim or privacy at runtime. No test suites or CI were run.
+
+## Storefront/Pricing continuation (2026-10-29)
+
+Pricing foundation source is extended in its owner before the axis-aware buyer UI:
+Product exposes bounded identity-only batch/page reads; Pricing owns normalized
+single/batch quotes, one Pricing snapshot/time, explicit unpriced items and source
+provenance. Native and GraphQL effective-price paths use that port; the public Pricing
+atlas no longer fabricates SKU/sale/currency coverage. Product contextual unpriced
+previews do not fall back to raw rows, and missing Pricing is shown separately.
+
+**Still open:** real sparse-tuple axis selection in Next and Leptos storefronts,
+canonical SKU and quantity/context URL state, complete Product route/context refusal
+rather than sanitizer defaulting, live quantity/context re-quotation, cart eligibility
+and context handoff, accessibility/localization review and downstream owner verification.
+Existing flat/first-variant selection and no-context base inspection do not complete
+this block. No tests or Rust/database/mounted validation were executed for this work.
+See the [Pricing owner plan](../../rustok-pricing/docs/implementation-plan.md).
+
+## Buyer interaction continuation (2026-10-30)
+
+Affected-contract inventory before implementation:
+
+- Product's existing `ProductResponse.variant_axes`, `VariantResponse.axis_values`
+  and `ProductCatalogReadPort.read_storefront_variant_product_projection` own
+  identity/labels/public visibility. Next and native storefront transport models
+  currently drop axes; their selected panels currently inspect the first SKU.
+- Pricing already owns strict route quantity/context validation, bounded quotes,
+  UUID joins and explicit unpriced results. Product must consume this contract,
+  not calculate an effective price from compatibility rows.
+- Next's Product route reads Pricing selectors but drops them at the buyer-panel
+  boundary. Native Product sanitizers currently discard invalid explicit values.
+- Cart owns persisted cart context and row-locked insertion. Next Cart query
+  `adjustedAmount` and quantity mutation drift from the live Commerce schema;
+  both actual adapters must use the real schema before wiring the buyer action.
+- Commerce already owns cross-owner storefront/cart/checkout orchestration.
+  Native/GraphQL buyer additions must share an owner workflow, selected Product
+  port, Pricing and guarded Cart port; no UI-private product-table reader.
+- Existing Cart guest-token claims/cookies and customer access remain authoritative.
+  No historical migration, installed tuple, journal, stock or link is retired.
+
+Work in progress: sparse selector, strict URL refusal, live quote binding and exact
+cart-context handoff for Next/Leptos. Tests remain explicitly unexecuted at the
+maintainer's request; Rust/database/mounted verification is not available here.
+
+### Buyer source implementation and handoff (2026-10-30)
+
+The inventory above describes the pre-change consumers, not the resulting implementation.
+The step-7 buyer source is now implemented on Next and Leptos:
+
+- Actual persisted sparse tuples, canonical non-nil UUIDs and a single no-axis default SKU;
+  partial/missing tuples never select a different SKU. Projection bounds are 256 SKUs, 32 axes
+  and 256 values per axis; malformed inventory booleans/i32 quantities and tuple mirrors refuse.
+- URL-owned SKU/axes, quantity, Pricing context and Cart reference; duplicate/array-valued query
+  selectors and oversized queries refuse. Links preserve unrelated scalar state and invalid
+  quantity text while disabling purchase. Snapshot route/input disagreement and invalid tenant
+  metadata refuse before mounting.
+- SKU/quantity/input-cycle and auth/tenant/Cart-scope quote fencing, including A→B→A; selection
+  survives auth changes, but stale money and added-state do not authorize another purchase.
+  Full Product/SKU/context/RFC3339-time correlation precedes effective-price presentation.
+- Commerce-owned exact SKU add, guarded Cart access and server-side repricing. The command never
+  carries displayed money. Arbitrary list-scoped previews remain ineligible for ordinary Cart
+  writes; immutable Cart currency/region/channel/exact locale must match, or the buyer must
+  inspect/reset/use its context and quote again.
+- Scoped Cart reference restoration and pending-before-IO warning hints on both clients. A known
+  original-scope create ID is retained before checking the current actor; inactive/foreign/
+  failed reads never silently clear a reference. Private Cart projections are hidden across
+  actor changes. No unknown write is replayed automatically.
+- Canonical auth/tenant metadata, bilingual notices and shared presentational controls. Native
+  guest mounting binds a missing public tenant using the existing auth tenant key, never a
+  foreign saved tenant or a fabricated session. Native declarations are shared with SSR-only
+  handlers; GraphQL remains independently selected, never a native fallback.
+
+**Evidence:** scoped strict Next typechecks, standalone source guards, Fluent generation and
+syntax/format checks only. New/updated Rust and Node regression sources are intentionally unrun.
+Cargo/rustc are unavailable. Lock entries for already-resolved local/workspace dependencies were
+synchronized without changing registry versions/checksums; Cargo/npm installation is not certified.
+
+**Release gates still open:** Rust default/SSR/hydrate and WASM builds; mounted Next/Leptos state,
+URL history, keyboard/focus/screen-reader and locale behavior; actual auth refresh, guest HttpOnly
+cookie/Set-Cookie forwarding and tenant middleware; backend/SQL concurrency and Pricing freshness;
+remote selected capabilities, cancellation and full downstream-owner verification (step 8).
+`apps/storefront/scripts/build-product-buyer-client.mjs` and the opt-in asset feature still need a
+real build. Local pending hints are not receipts, locks, exactly-once execution or cancellation
+proof. Opaque-token scope rotation does not infer principal continuity or merge another actor's
+Cart. Pricing write CAS/receipts, list eligibility/invalidation/outbox work remain separate.
+
+Maintainer commands (not run here):
+
+```sh
+cd apps/next-frontend && npm run test:storefront-buyer
+cargo test -p rustok-product-storefront --lib
+cargo test -p rustok-cart-storefront --lib
+cargo test -p rustok-pricing-storefront --lib
+cargo check -p rustok-product-storefront --features ssr
+cargo check -p rustok-product-storefront --features hydrate
+```
+
+### Latest static handoff evidence
+
+- Focused strict TypeScript check: zero diagnostics for Product pages (including the actual RSC
+  detail route), buyer SDK/core/panel, Cart provider/core, Pricing and shared controls/auth wiring.
+  Cached pinned tooling/one React declaration path was used; this is not a full app build or lint.
+- Scalar Rust syntax/format idempotence: 62 scoped files; no Rust typechecking or compilation.
+- Prettier idempotence: 43 scoped files; Node syntax-only parsing: 14 MJS files, including unrun
+  regression sources. GraphQL syntax-only parsing: 14 actual SDK documents; no schema/runtime proof.
+- Fluent syntax/duplicate-ID checks: six catalogs. Host type generation was refreshed earlier.
+- Seven unique Product/Cart boundary/error-safety source guards pass. `git diff --check` passes.
+- Selected Cargo/npm manifest↔lock dependency sets match structurally; existing registry versions
+  and checksums were preserved, but no Cargo/npm resolver or application installation was run.
+
+No test body, Cargo build/check/test, database, browser, mounted, WASM, CI or workflow verification
+was executed. Temporary repository tooling links are removed before handoff. All release gates
+above remain unpromoted.
+
+### Step 8 — anonymous reservation prerequisite (2026-11-01; source only)
+
+The reservation-notification continuation first corrects Inventory's unsafe quantity release:
+proved anonymous pool only, original location, complete claim coverage, exact-one transactional
+reductions and explicit refusal of Cart/Order/line selectors. Selected checkout continues using
+durable identity. Numeric availability remains signed/global; a key is not an anonymous receipt.
+
+See the [Inventory plan](../../rustok-inventory/docs/implementation-plan.md#anonymous-quantity-reservation-release-2026-11-01-source-only).
+The prerequisite's 27 Rust/10 Node definitions remain uncompiled/unrun. The subsequent
+reservation-fact continuation below wires the quantity-free Inventory family/current context and
+explicit typed delivery/consumers in source. Existing `InventoryUpdated` v1 cannot represent
+negative backorders; Product-owned revision/refresh-ledger facts cannot be counterfeit Inventory
+publishers. Generic Index and end-to-end Search/relay/lag/restart evidence remain open. The
+prerequisite itself added no schema/digest/migration/receipt or convergence claim.
+
+### Step 8 — reservation fact/delivery continuation (2026-11-01; source only)
+
+Inventory's quantity-free sealed fact/current-context transactional publisher, acknowledged
+existing Core/Memory delivery, Iggy-first/local-ack fanout, artifact intake and explicit Search
+refetch are source-wired. Identity and quantity responses use bounded checked signed arithmetic,
+not saturation. Replay/zero/adoption remain publication-free; C/host/Product is not a publisher.
+Search product writes/rebuilds/deletes serialize before fresh persisted-state reads, but this is
+not generic Index's Inventory-owned source/revision/consumer or an owner-read/sellability API.
+
+[Inventory plan](../../rustok-inventory/docs/implementation-plan.md#reservation-fact-delivery-continuation-2026-11-01-source-only)
+and [source packet](../../rustok-inventory/contracts/evidence/reservation-events-source.json):
+**34 additional Rust/10 Node definitions uncompiled/unrun**. Canonical Rust digest generation
+(Cargo/rustc absent), actual SQL/relay/Iggy/cursor/restart/lag/concurrency, client/remote/deployment
+and generic Index gates remain open. No Product revision/ledger refresh is fabricated.
+**Step 8 is incomplete; source wiring is not runtime/readiness certification.**
+
+### Step 8 — catalog deletion prerequisite (2026-11-01; source only)
+
+Before an Inventory Index source can retain meaningful tombstones, canonical stock/history
+must not be erased by Product deletion. Both real delete callers now use Inventory's bounded
+concrete-transaction/current-tenant guard, with exact Product graph effects and existing
+publication/default-SKU rules. Any reservation/shipment/return reference blocks, even zero,
+deleted or terminal history; each stock counter must be zero. Missing item identity is not
+absence. Root deletion refuses an empty corrupt graph or more than 256 children before cleanup.
+
+The [owner collaboration contract](product-lifecycle-collaboration.md#catalog-deletion-retention-2026-11-01-source-only),
+[Inventory plan](../../rustok-inventory/docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only)
+and [source packet](../../rustok-inventory/contracts/evidence/catalog-deletion-source.json)
+record the finite error policy, original locations/current locks, additive I026 indexes and
+31 Rust/10 Node definitions, all uncompiled/unrun. HTTP/GraphQL presentation is not terminal
+receipt authority: known nonretryable Validation/Conflict follows actual rollback/finalization,
+whereas invariant/storage uncertainty remains unknown. Retry metadata alone cannot prove outcome.
+
+Existing Next recovery requires real transport/browser evidence. Leptos remaining Product CRUD
+continues through its generic GraphQL lifecycle gateway/redaction with non-durable retained
+CRUD keys; actionable full-client recovery parity and a general retirement/disposal workflow
+remain open. No destructive SKU UI was added. Inventory-owned revision, baseline, retained
+tombstone, all-writer publication/source/bridge/worker and Product step 8 remain incomplete.
+
+## Inventory quantity prerequisite (2026-11-01; source only)
+
+The next Inventory Index trace exposed unsafe native set/adjust/bootstrap writes. Their shared
+bounded quantity plan and the real Product caller are now source-wired before starting revisions.
+See [collaboration](product-lifecycle-collaboration.md#quantity-writer-consolidation-2026-11-01-source-only)
+and [source packet](../../rustok-inventory/contracts/evidence/quantity-writes-source.json).
+Checked arithmetic/current identity-location proof/exact effects/canonical publication and typed
+receipt/error preservation have 33 Rust/10 Node new focused definitions, **none executed**.
+This is not a completed Inventory baseline/revision/tombstone/Index or step-8 gate; native stock
+replay and full Next/Leptos actionable recovery remain open, with client code unchanged.
+
+## Inventory source-history owner continuation (2026-11-01)
+
+The fresh bootstrap now takes the concrete caller transaction; fresh creation, native/Product
+quantity and history-preserving deletion share Inventory-owned source-history updates once an
+explicit baseline is active. Missing source state is a nonterminal infrastructure/provenance
+failure, never a fabricated deletion or terminal client validation. Building baseline fences
+actual effects; replay/no-op/adoption/preparation do not advance. See the
+[owner plan](../../rustok-inventory/docs/implementation-plan.md#inventory-source-history-continuation-2026-11-01-uncompiled).
+18 Rust/8 Node definitions remain unrun. Canonical publication was pending at this handoff; the
+continuation below adds that source slice. Selected Distribution bridge/current-authority generic
+source, stale fence, persist-before-ACK and client recovery remain pending.
+
+## Inventory canonical source delivery (2026-11-02; uncompiled)
+
+Both fresh Bootstrap and both guarded deletion callers now forward current actor, not saved
+metadata. Inventory changed/final-activation facts reuse retained change/baseline UUIDs on the
+actual caller transaction; no Product revision proxy or second publisher. Required module
+handling refuses unmatched broker-only acknowledgement while preserving Product remote-only
+routes. [Owner plan](../../rustok-inventory/docs/implementation-plan.md#source-canonical-delivery-continuation-2026-11-02-uncompiled)
+and [source evidence](../../rustok-inventory/contracts/evidence/source-delivery-source.json)
+record 26 new Rust/10 Node definitions, all unrun. Selected authoritative Distribution source,
+durable initial replay, exact min-version/stale fence/persist-before-ACK Index and full operator
+client recovery remain pending. No live baseline before real handlers and operator recovery;
+Cargo/digest/backend/runtime/Index/Product step-8 readiness stays unverified.
+
+## Selected Inventory Index consumer (2026-11-02; source only)
+
+Distribution now authors the actual native Inventory schema/source/sealed handler bridge and
+Index owns durable min-version/stale-fenced persistence, original-ID initial enqueue and bounded
+ModuleWork replay. Current authenticated service authority is independent of Product/event/
+baseline actors; no Product revision or refresh proxy is introduced. Existing Product and remote
+consumers remain selected separately. [Actual contract](../../rustok-distribution/docs/inventory-index.md)
+and [source packet](../../rustok-inventory/contracts/evidence/source-index-consumer-source.json).
+
+- [ ] Integrate failed-job retry and original-job operator recovery, then cross-client recovery.
+- [ ] Compile/run focused definitions; validate current credentials/policy, SQL/concurrency/broker/
+      restart/deployment and older-baseline cutover. No historical facts or checkpoint reset inferred.
+- [ ] Admit full downstream Product step-8 evidence. Source/worker registration and initial pending
+      enqueue are authored only; no test/build/runtime/readiness evidence is claimed here.

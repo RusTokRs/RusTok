@@ -437,3 +437,50 @@ No verification or capture command was executed in this source wave.
    Commerce plan with a delivery/provider contract change.
 3. Update status blocks and `docs/modules/registry.md` only with proven FFA/FBA
    boundary changes.
+
+## Prepared shipment stock continuation (2026-11-01; source only)
+
+- [x] Publish F-owned prepare/apply protocol, opaque locked-snapshot correlation, decreasing
+  budget and explicit Noop versus Unconfigured semantics; header-only fresh Ship is unknown.
+- [x] Keep native stock/proof/progress/provider checkpoint on one caller transaction, with
+  selected Order preparation composed by C before carrier and without a new F peer dependency.
+- [x] Add owner pending-only cancel, literal-key/current-context local recovery without carrier,
+  pending/null provider claims and durable deliver/reopen kernel response receipts.
+- [x] Bound creation/complete projections to 1024 items; refuse oversized retained work without
+  truncation/deletion and bound batched child SQL reads without introducing N+1 projections.
+- [x] Register forward-only F121 after F120 and align raw fixtures/runtime recovery with its
+  Pending-only/null-outcome admission, shared unresolved fence and explicit same-key no-effect
+  requeue. Preserve/CAS retained success references; never automatically reclaim ERROR.
+- [ ] Coordinate drained old-writer rollout of I025/F121; both migrations are unexecuted.
+- [x] Correct key/payload replay, bounded provider pinning/collision admission, monotonic late
+  outcomes and nullable timestamp reopening; retain root/read/receipt/native-commit budgets.
+  Fresh registry preflight refuses known-uninvoked work before claim. Delivered reship correlates
+  a movement-free scope and literal key without stock-peer dependencies. Only explicit matching
+  success resolution promotes quarantine and preserves completion time; F121 preserves retained
+  result/reference facts. Native create-label Succeeded resumes its saved-result local commit,
+  not an early acknowledgment; no second carrier invocation is allowed.
+- [ ] Compile and execute 22 leaf F owner definitions, 4 focused internal current-schema/outcome
+  cases and affected existing fulfillment/serialization/provider and Commerce GraphQL parity
+  suites; none were run here. The source-guard companion's 30 cases are also unrun.
+- [ ] Execute PostgreSQL/SQLite rollback/contention, known/unknown carrier outcome, restart and
+  selected/mounted/remote-owner recovery evidence; finish event/outbox/Index convergence.
+
+See the [owning amendment](../../../../DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md#shipment-identity-and-native-movement-provenance-amendment-2026-11-01)
+and [source handoff](../../rustok-commerce/docs/implementation-plan.md#shipment-stock-provenance-source-evidence).
+Product step 8 and runtime readiness remain open; source guards are not behavioral proof.
+
+## Native stock outbox continuation (2026-11-01; source only)
+
+- [x] Preserve F consumer/lifecycle ownership while the native I implementation appends its
+  canonical root invalidation on the supplied stock/proof/progress transaction. No new F
+  dependency, contract field or host publisher; publication failure requires rollback.
+- [x] Keep rolled-back preparation and movement-free/replay paths free of event publication;
+  I's final elapsed gate includes event IO. Descriptive global quantities are not event deltas.
+- [ ] Compile/run the additional 9 C physical, 5 pure I, 2 Outbox and 10 Node definitions;
+  all are unrun, alongside the prior shipment/recovery packet.
+- [ ] Execute PostgreSQL/SQLite rollback/contention and actual relay/Search/remote-owner
+  delivery; normal reservation notifications, generic Index and Product step 8 remain open.
+
+[Inventory API](../../rustok-inventory/CRATE_API.md#native-stock-outbox-2026-11-01-source-only)
+and [source handoff](../../rustok-commerce/docs/implementation-plan.md#native-stock-outbox-continuation-source-evidence).
+No carrier/Order/financial/C-checkpoint distributed atomicity or new migration is implied.

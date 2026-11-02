@@ -134,6 +134,24 @@ impl SecretResolverRegistry {
         Ok(value)
     }
 
+    /// Enforces tenant policy and resolves the current value without reading or
+    /// populating the registry cache. Authentication callers must not rely on
+    /// invalidate-then-resolve: a concurrent older resolution can refill that cache.
+    /// This does not promise a linearizable snapshot of an external resolver.
+    pub async fn resolve_fresh_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        reference: &SecretRef,
+    ) -> Result<SecretString, SecretError> {
+        self.validate_reference_for_tenant(tenant_id, reference)?;
+        // INVARIANT: validation above confirms this immutable registration exists.
+        let registration = self
+            .resolvers
+            .get(&reference.resolver)
+            .expect("validated secret resolver registration must exist");
+        registration.resolver.resolve(&reference.key).await
+    }
+
     /// Validates an externally persisted secret reference without resolving or
     /// exposing its value. Profile create/update paths use this before writing
     /// a reference so invalid resolver aliases and tenant-forbidden keys fail
@@ -457,5 +475,200 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, SecretError::ForbiddenKey { .. }));
         unsafe { std::env::remove_var(key) };
+    }
+
+    #[tokio::test]
+    async fn fresh_resolution_bypasses_but_does_not_replace_other_consumers_cached_value() {
+        let resolver = RotatingResolver {
+            value: Arc::new(Mutex::new("fixture-before".to_owned())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let calls = Arc::clone(&resolver.calls);
+        let value = Arc::clone(&resolver.value);
+        let reference = SecretRef {
+            resolver: "rotation".to_owned(),
+            key: "tenant/fixture".to_owned(),
+        };
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "rotation",
+                resolver,
+                SecretAccessPolicy::Exact(vec![reference.key.clone()]),
+            )
+            .build();
+        let tenant = Uuid::new_v4();
+        assert_eq!(
+            registry
+                .resolve_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-before"
+        );
+        *value.lock().await = "fixture-after".to_owned();
+        assert_eq!(
+            registry
+                .resolve_fresh_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-after"
+        );
+        assert_eq!(
+            registry
+                .resolve_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-before"
+        );
+        assert_eq!(
+            registry
+                .resolve_fresh_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-after"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn fresh_resolution_checks_tenant_policy_and_alias_before_invoking_resolver() {
+        let tenant = Uuid::new_v4();
+        let resolver = RotatingResolver {
+            value: Arc::new(Mutex::new("fixture-value".to_owned())),
+            calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let calls = Arc::clone(&resolver.calls);
+        let reference = SecretRef {
+            resolver: "rotation".to_owned(),
+            key: format!("tenants/{tenant}/fixture"),
+        };
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "rotation",
+                resolver,
+                SecretAccessPolicy::TenantPrefix {
+                    prefix: "tenants/".to_owned(),
+                },
+            )
+            .build();
+        registry
+            .resolve_for_tenant(tenant, &reference)
+            .await
+            .unwrap();
+        assert!(matches!(
+            registry
+                .resolve_fresh_for_tenant(Uuid::new_v4(), &reference)
+                .await,
+            Err(SecretError::ForbiddenKey { .. })
+        ));
+        let missing = SecretRef {
+            resolver: "missing".to_owned(),
+            key: reference.key.clone(),
+        };
+        assert!(matches!(
+            registry.resolve_fresh_for_tenant(tenant, &missing).await,
+            Err(SecretError::ResolverNotFound(_))
+        ));
+        let blank = SecretRef {
+            resolver: reference.resolver.clone(),
+            key: " ".to_owned(),
+        };
+        assert!(matches!(
+            registry.resolve_fresh_for_tenant(tenant, &blank).await,
+            Err(SecretError::BlankKey)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[derive(Clone)]
+    struct DelayedFirstResolver {
+        value: Arc<Mutex<String>>,
+        calls: Arc<AtomicUsize>,
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl SecretResolver for DelayedFirstResolver {
+        async fn resolve(&self, _key: &str) -> Result<SecretString, SecretError> {
+            let first = self.calls.fetch_add(1, Ordering::SeqCst) == 0;
+            let value = self.value.lock().await.clone();
+            if first {
+                self.started.notify_one();
+                self.release.notified().await;
+            }
+            Ok(SecretString::from(value))
+        }
+    }
+
+    #[tokio::test]
+    async fn fresh_resolution_is_not_contaminated_by_an_overlapping_old_cache_fill() {
+        let resolver = DelayedFirstResolver {
+            value: Arc::new(Mutex::new("fixture-before".to_owned())),
+            calls: Arc::new(AtomicUsize::new(0)),
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let reference = SecretRef {
+            resolver: "rotation".to_owned(),
+            key: "tenant/fixture".to_owned(),
+        };
+        let registry = SecretResolverRegistry::builder()
+            .resolver(
+                "rotation",
+                resolver.clone(),
+                SecretAccessPolicy::Exact(vec![reference.key.clone()]),
+            )
+            .build();
+        let tenant = Uuid::new_v4();
+        let cached_registry = registry.clone();
+        let cached_reference = reference.clone();
+        let older = tokio::spawn(async move {
+            cached_registry
+                .resolve_for_tenant(tenant, &cached_reference)
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(2), resolver.started.notified())
+            .await
+            .unwrap();
+        *resolver.value.lock().await = "fixture-after".to_owned();
+        registry.invalidate(Some(&reference)).await;
+        assert_eq!(
+            registry
+                .resolve_fresh_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-after"
+        );
+        resolver.release.notify_one();
+        let older = tokio::time::timeout(Duration::from_secs(2), older)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(older.expose_secret(), "fixture-before");
+        // The old ordinary request refilled the cache after invalidation. Fresh reads
+        // remain independent of it without changing other consumers' cache behavior.
+        assert_eq!(
+            registry
+                .resolve_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-before"
+        );
+        assert_eq!(
+            registry
+                .resolve_fresh_for_tenant(tenant, &reference)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "fixture-after"
+        );
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 3);
     }
 }

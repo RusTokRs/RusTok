@@ -134,7 +134,8 @@
     "uuid": "^14.0.3",
     "vaul": "^1.1.2",
     "zod": "^4.6.6",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "@rustok/ui-controls": "file:../../packages/rustok-ui-controls"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",

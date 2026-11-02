@@ -2,7 +2,7 @@
 
 use super::native_server_adapter::ApiError;
 use crate::catalog_controls::CatalogListInput;
-use crate::core::{FetchRequest, build_pricing_context};
+use crate::core::FetchRequest;
 use crate::model::{
     ProductCatalogFacet, ProductCatalogSearchOptions, ProductDetail, ProductList,
     ProductPricingDetail, StorefrontProductsData,
@@ -11,8 +11,8 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 
 const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontProductCatalog($locale: String, $filter: StorefrontProductCatalogFilter) { storefrontProductCatalog(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags primaryImage { mediaId url altText position } priceFrom { currencyCode amount compareAtAmount onSale } createdAt publishedAt } } }";
-const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt images { mediaId url altText position } translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } attributes { code label valueType isLocalized values { text } } } }";
-const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
+const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt images { mediaId url altText position } translations { locale title handle description } variantAxes { id attributeId name position allowedValues { optionId value position } } variants { id title sku inventoryQuantity inventoryPolicy combinationIdentity axisValues { attributeId optionId } inStock prices { currencyCode amount compareAtAmount onSale } } attributes { code label valueType isLocalized values { text } } } }";
+const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { resolutionContext { currencyCode regionId priceListId channelId channelSlug quantity } resolvedAt id variants { id title sku effectivePrice { source { priceId kind ruleKind adjustmentPercent } currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
 const STOREFRONT_CATALOG_FACETS_QUERY: &str = "query StorefrontCatalogFacets($locale: String, $filter: StorefrontProductCatalogFilter, $facetCodes: [String!]!) { storefrontProductCatalogFacets(locale: $locale, filter: $filter, facetCodes: $facetCodes) { code label valueType isLocalized isEnumerable isTruncated totalProducts values { value label count } } }";
 
@@ -113,25 +113,6 @@ struct CatalogSearchOptionsResponse {
     options: ProductCatalogSearchOptions,
 }
 
-fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
-}
-
 async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,
@@ -140,8 +121,8 @@ where
     execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(query, Some(variables)),
-        None,
-        configured_tenant_slug(),
+        leptos_auth::storage::get_token(),
+        leptos_auth::storage::get_tenant(),
         None,
     )
     .await
@@ -261,8 +242,8 @@ async fn fetch_storefront_products(
         None
     };
 
-    let resolution_context = build_pricing_context(
-        selected_product.as_ref(),
+    // Catalog availability is independent from the optional buyer quote request.
+    let _ = (
         currency_code,
         region_id,
         price_list_id,
@@ -270,41 +251,34 @@ async fn fetch_storefront_products(
         channel_slug,
         quantity,
     );
-    let selected_pricing = if let Some(handle) = resolved_handle.clone() {
-        let response: StorefrontPricingProductResponse = request(
-            STOREFRONT_PRICING_PRODUCT_QUERY,
-            StorefrontPricingProductVariables {
-                locale,
-                handle,
-                currency_code: resolution_context
-                    .as_ref()
-                    .map(|context| context.currency_code.clone()),
-                region_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.region_id.clone()),
-                price_list_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.price_list_id.clone()),
-                channel_id: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.channel_id.clone()),
-                channel_slug: resolution_context
-                    .as_ref()
-                    .and_then(|context| context.channel_slug.clone()),
-                quantity: resolution_context.as_ref().map(|context| context.quantity),
-            },
-        )
-        .await?;
-        response.storefront_pricing_product
-    } else {
-        None
-    };
-
     Ok(StorefrontProductsData {
         products: products_response.storefront_product_catalog,
         selected_product,
-        selected_pricing,
         selected_handle: resolved_handle,
-        resolution_context,
     })
+}
+
+pub(super) async fn fetch_buyer_quote(
+    input: crate::core::buyer::BuyerQuoteRequest,
+) -> Result<ProductPricingDetail, ApiError> {
+    crate::core::buyer::validate_quote_request(&input)
+        .map_err(|_| ApiError::Graphql("Invalid buyer quote request".into()))?;
+    let pricing = input.pricing;
+    let response: StorefrontPricingProductResponse = request(
+        STOREFRONT_PRICING_PRODUCT_QUERY,
+        StorefrontPricingProductVariables {
+            locale: input.locale,
+            handle: input.handle,
+            currency_code: Some(pricing.currency_code),
+            region_id: pricing.region_id,
+            price_list_id: pricing.price_list_id,
+            channel_id: pricing.channel_id,
+            channel_slug: pricing.channel_slug,
+            quantity: Some(pricing.quantity),
+        },
+    )
+    .await?;
+    response
+        .storefront_pricing_product
+        .ok_or_else(|| ApiError::Graphql("The selected product quote is not available".into()))
 }

@@ -10,12 +10,10 @@ use crate::guest_access::{
     record_issued_guest_cart_token, sanitize_guest_cart_metadata, verify_guest_cart_token,
 };
 use crate::ports::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartStorefrontAddLineItemRequest,
-    CartStorefrontContextUpdateRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
-    CartStorefrontRepriceRequest,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+    CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
+    CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
 };
 
 pub fn guarded_cart_storefront_port(db: DatabaseConnection) -> Arc<dyn CartStorefrontPort> {
@@ -49,7 +47,7 @@ impl GuardedCartPort {
         &self,
         context: &PortContext,
         cart_id: uuid::Uuid,
-    ) -> Result<(), PortError> {
+    ) -> Result<CartResponse, PortError> {
         if cart_id.is_nil() {
             return Err(PortError::validation(
                 "cart.cart_id_nil",
@@ -60,7 +58,8 @@ impl GuardedCartPort {
             .storefront
             .read_storefront_cart(context.clone(), CartStorefrontReadRequest { cart_id })
             .await?;
-        authorize_guest_cart(context, &cart)
+        authorize_guest_cart(context, &cart)?;
+        Ok(cart)
     }
 }
 
@@ -164,9 +163,10 @@ impl CartStorefrontPort for GuardedCartPort {
     async fn add_storefront_line_item(
         &self,
         context: PortContext,
-        request: CartStorefrontAddLineItemRequest,
+        mut request: CartStorefrontAddLineItemRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.storefront
             .add_storefront_line_item(context, request)
             .await
@@ -176,23 +176,12 @@ impl CartStorefrontPort for GuardedCartPort {
     async fn update_storefront_context(
         &self,
         context: PortContext,
-        request: CartStorefrontContextUpdateRequest,
+        mut request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.storefront
             .update_storefront_context(context, request)
-            .await
-            .map(sanitize_cart)
-    }
-
-    async fn update_storefront_line_item_quantity(
-        &self,
-        context: PortContext,
-        request: CartStorefrontLineItemQuantityRequest,
-    ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
-        self.storefront
-            .update_storefront_line_item_quantity(context, request)
             .await
             .map(sanitize_cart)
     }
@@ -200,9 +189,10 @@ impl CartStorefrontPort for GuardedCartPort {
     async fn update_storefront_line_item_pricing(
         &self,
         context: PortContext,
-        request: CartStorefrontLineItemPricingRequest,
+        mut request: CartStorefrontLineItemPricingRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.storefront
             .update_storefront_line_item_pricing(context, request)
             .await
@@ -212,9 +202,10 @@ impl CartStorefrontPort for GuardedCartPort {
     async fn remove_storefront_line_item(
         &self,
         context: PortContext,
-        request: CartStorefrontRemoveLineItemRequest,
+        mut request: CartStorefrontRemoveLineItemRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.storefront
             .remove_storefront_line_item(context, request)
             .await
@@ -224,9 +215,10 @@ impl CartStorefrontPort for GuardedCartPort {
     async fn reprice_storefront_line_items(
         &self,
         context: PortContext,
-        request: CartStorefrontRepriceRequest,
+        mut request: CartStorefrontRepriceRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.storefront
             .reprice_storefront_line_items(context, request)
             .await
@@ -251,9 +243,10 @@ impl CartCheckoutPort for GuardedCartPort {
     async fn update_cart_checkout_context(
         &self,
         context: PortContext,
-        request: CartCheckoutContextUpdateRequest,
+        mut request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
-        self.authorize_cart(&context, request.cart_id).await?;
+        let authorized = self.authorize_cart(&context, request.cart_id).await?;
+        request.pricing_context.bind_authorized_access(&authorized);
         self.checkout
             .update_cart_checkout_context(context, request)
             .await

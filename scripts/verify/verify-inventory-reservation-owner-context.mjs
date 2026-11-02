@@ -8,7 +8,8 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
   : new URL('../../', import.meta.url);
-const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
+const read = (relativePath) =>
+  readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
 const paths = {
@@ -63,12 +64,25 @@ for (const [value, label] of [
   ['pub mod ports {', 'public compatibility facade'],
   ['pub use crate::ports_impl::{', 'public owner contract facade'],
   ['pub use crate::reservation_owner_context::{', 'public wrapper facade'],
-  ['pub use ports::*;', 'crate-root compatibility export'],
-]) requireText(lib, value, label);
+  ['pub use ports::{', 'explicit canonical crate-root exports'],
+])
+  requireText(lib, value, label);
 
-for (const value of ['pub mod ports;', 'pub use ports_impl::*;', 'pub use reservation_owner_context::*;']) {
+for (const value of [
+  'pub mod ports;',
+  'pub use ports_impl::*;',
+  'pub use reservation_owner_context::*;',
+]) {
   forbidText(lib, value, 'public legacy bypass');
 }
+
+const contractExports =
+  lib.match(/pub use crate::ports_impl::\{([^}]+)\}/s)?.[1] ?? '';
+forbidText(
+  contractExports,
+  'PersistentInventoryReservationIdentityPort',
+  'private implementation cannot be re-exported through the owner facade',
+);
 
 for (const [value, label] of [
   ['const INVENTORY_OWNER: &str = "rustok_inventory";', 'truthful owner'],
@@ -76,17 +90,32 @@ for (const [value, label] of [
     'const INVENTORY_RESERVATION_BOUNDARY: &str = "inventory_reservation_identity_port";',
     'stable boundary',
   ],
-  ['const RESERVE_OPERATION: &str = "reserve_inventory_by_identity";', 'reserve operation'],
-  ['const RELEASE_OPERATION: &str = "release_inventory_by_identity";', 'release operation'],
+  [
+    'const RESERVE_OPERATION: &str = "reserve_inventory_by_identity";',
+    'reserve operation',
+  ],
+  [
+    'const RELEASE_OPERATION: &str = "release_inventory_by_identity";',
+    'release operation',
+  ],
   ['pub struct PersistentInventoryReservationIdentityPort {', 'wrapper struct'],
   ['inner: Arc<dyn InventoryReservationIdentityPort>', 'delegated owner port'],
   [
     'crate::ports_impl::PersistentInventoryReservationIdentityPort::new(db)',
     'legacy owner construction',
   ],
-  ['pub fn in_process_inventory_reservation_identity_port(', 'canonical factory'],
-  ['async fn reserve_inventory_by_identity(', 'reserve operation implementation'],
-  ['async fn release_inventory_by_identity(', 'release operation implementation'],
+  [
+    'pub fn in_process_inventory_reservation_identity_port(',
+    'canonical factory',
+  ],
+  [
+    'async fn reserve_inventory_by_identity(',
+    'reserve operation implementation',
+  ],
+  [
+    'async fn release_inventory_by_identity(',
+    'release operation implementation',
+  ],
   [
     'require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;',
     'reserve admission',
@@ -105,15 +134,39 @@ for (const [value, label] of [
   ],
   ['.reserve_inventory_by_identity(context, request)', 'reserve delegation'],
   ['.release_inventory_by_identity(context, request)', 'release delegation'],
-]) requireText(wrapper, value, label);
+])
+  requireText(wrapper, value, label);
 
-const contextFacts = functionBody(wrapper, 'inventory_reservation_context_facts');
-const kindLabel = functionBody(wrapper, 'inventory_reservation_port_error_kind');
-const admission = functionBody(wrapper, 'require_inventory_reservation_write_admission');
-const admissionLogger = functionBody(wrapper, 'log_inventory_reservation_admission_rejection');
-const tenantParser = functionBody(wrapper, 'parse_inventory_reservation_tenant_id');
-const tenantLogger = functionBody(wrapper, 'log_inventory_reservation_tenant_rejection');
-const diagnosticScope = [contextFacts, kindLabel, admissionLogger, tenantLogger].join('\n');
+const contextFacts = functionBody(
+  wrapper,
+  'inventory_reservation_context_facts',
+);
+const kindLabel = functionBody(
+  wrapper,
+  'inventory_reservation_port_error_kind',
+);
+const admission = functionBody(
+  wrapper,
+  'require_inventory_reservation_write_admission',
+);
+const admissionLogger = functionBody(
+  wrapper,
+  'log_inventory_reservation_admission_rejection',
+);
+const tenantParser = functionBody(
+  wrapper,
+  'parse_inventory_reservation_tenant_id',
+);
+const tenantLogger = functionBody(
+  wrapper,
+  'log_inventory_reservation_tenant_rejection',
+);
+const diagnosticScope = [
+  contextFacts,
+  kindLabel,
+  admissionLogger,
+  tenantLogger,
+].join('\n');
 
 for (const [value, label] of [
   ['tenant_id_length: context.tenant_id.chars().count()', 'tenant shape'],
@@ -124,11 +177,18 @@ for (const [value, label] of [
   ['channel_present: context.channel.is_some()', 'channel presence'],
   ['channel_length: context.channel.as_ref().map(', 'channel length'],
   ['locale_length: context.locale.chars().count()', 'locale length'],
-  ['causation_id_present: context.causation_id.is_some()', 'causation presence'],
+  [
+    'causation_id_present: context.causation_id.is_some()',
+    'causation presence',
+  ],
   ['traceparent_present: context.traceparent.is_some()', 'trace presence'],
-  ['idempotency_key_present: context.idempotency_key.is_some()', 'idempotency presence'],
+  [
+    'idempotency_key_present: context.idempotency_key.is_some()',
+    'idempotency presence',
+  ],
   ['deadline_ms: context.deadline_ms', 'deadline shape'],
-]) requireText(contextFacts, value, label);
+])
+  requireText(contextFacts, value, label);
 
 for (const [value, label] of [
   ['PortErrorKind::Validation => "validation"', 'validation label'],
@@ -137,17 +197,28 @@ for (const [value, label] of [
   ['PortErrorKind::Forbidden => "forbidden"', 'forbidden label'],
   ['PortErrorKind::Unavailable => "unavailable"', 'unavailable label'],
   ['PortErrorKind::Timeout => "timeout"', 'timeout label'],
-  ['PortErrorKind::InvariantViolation => "invariant_violation"', 'invariant label'],
-]) requireText(kindLabel, value, label);
+  [
+    'PortErrorKind::InvariantViolation => "invariant_violation"',
+    'invariant label',
+  ],
+])
+  requireText(kindLabel, value, label);
 
 for (const [value, label] of [
   ['.require_policy(PortCallPolicy::write())', 'write policy preserved'],
   ['.inspect_err(|error| {', 'write policy interception'],
   ['"policy"', 'policy phase'],
-  ['context.require_write_semantics().inspect_err(|error| {', 'write semantics interception'],
+  [
+    'context.require_write_semantics().inspect_err(|error| {',
+    'write semantics interception',
+  ],
   ['"write_semantics"', 'write semantics phase'],
-  ['log_inventory_reservation_admission_rejection(', 'bounded admission logger call'],
-]) requireText(admission, value, label);
+  [
+    'log_inventory_reservation_admission_rejection(',
+    'bounded admission logger call',
+  ],
+])
+  requireText(admission, value, label);
 
 for (const [value, label] of [
   ['tracing::error!(', 'technical event'],
@@ -176,16 +247,24 @@ for (const [value, label] of [
     'PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation',
     'severity classification',
   ],
-]) requireText(admissionLogger, value, label);
+])
+  requireText(admissionLogger, value, label);
 
 for (const [value, label] of [
-  ['Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {', 'trimmed UUID parsing'],
+  [
+    'Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {',
+    'trimmed UUID parsing',
+  ],
   ['let error = PortError::validation(', 'stable validation construction'],
   ['"inventory.context_invalid"', 'stable code'],
   ['"inventory request context is invalid"', 'stable message'],
-  ['log_inventory_reservation_tenant_rejection(context, operation, &error);', 'bounded tenant logger'],
+  [
+    'log_inventory_reservation_tenant_rejection(context, operation, &error);',
+    'bounded tenant logger',
+  ],
   ['error\n    })', 'same validation error return'],
-]) requireText(tenantParser, value, label);
+])
+  requireText(tenantParser, value, label);
 
 for (const [value, label] of [
   ['tracing::warn!(', 'warning event'],
@@ -200,7 +279,8 @@ for (const [value, label] of [
     'closed error kind',
   ],
   ['boundary = INVENTORY_RESERVATION_BOUNDARY', 'boundary'],
-]) requireText(tenantLogger, value, label);
+])
+  requireText(tenantLogger, value, label);
 
 for (const [value, label] of [
   ['error = ?error', 'complete PortError debug payload'],
@@ -215,7 +295,8 @@ for (const [value, label] of [
   ['traceparent = ?context.traceparent', 'raw trace'],
   ['idempotency_key = ?context.idempotency_key', 'raw idempotency'],
   ['parse_cause =', 'UUID parse cause'],
-]) forbidText(diagnosticScope, value, label);
+])
+  forbidText(diagnosticScope, value, label);
 
 for (const marker of [
   'let owner_operation = "reserve_inventory_by_identity";',
@@ -223,7 +304,8 @@ for (const marker of [
   'context.require_policy(PortCallPolicy::write())?;',
   'context.require_write_semantics()?;',
   'let tenant_id = parse_port_tenant_id(&context, owner_operation)?;',
-]) requireText(legacy, marker, 'unchanged persistent owner');
+])
+  requireText(legacy, marker, 'unchanged persistent owner');
 
 for (const [key, expected] of Object.entries({
   admission_diagnostic_cleanup_closed: true,
@@ -242,7 +324,9 @@ for (const [key, expected] of Object.entries({
   broad_ecommerce_cleanup_closed: false,
 })) {
   if (evidence.source_contract?.[key] !== expected) {
-    failures.push(`${paths.evidence}: source_contract.${key} must be ${expected}`);
+    failures.push(
+      `${paths.evidence}: source_contract.${key} must be ${expected}`,
+    );
   }
 }
 for (const key of [
@@ -278,7 +362,9 @@ for (const [key, expected] of Object.entries({
   runtime_evidence_claimed: false,
 })) {
   if (review.review_findings?.[key] !== expected) {
-    failures.push(`${paths.review}: review_findings.${key} must be ${expected}`);
+    failures.push(
+      `${paths.review}: review_findings.${key} must be ${expected}`,
+    );
   }
 }
 
@@ -290,10 +376,13 @@ for (const marker of [
   'UUID parse cause is not recorded',
   'The exact admission and tenant-validation errors are returned unchanged.',
   'No FBA or FFA status is promoted',
-]) requireText(document, marker, 'truthful owner diagnostic document');
+])
+  requireText(document, marker, 'truthful owner diagnostic document');
 
 if (failures.length > 0) {
-  console.error('Inventory reservation owner diagnostic-safety verification failed:');
+  console.error(
+    'Inventory reservation owner diagnostic-safety verification failed:',
+  );
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }

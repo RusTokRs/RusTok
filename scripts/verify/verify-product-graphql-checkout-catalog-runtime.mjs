@@ -88,7 +88,7 @@ if (!wrapperBody) {
   requireText(wrapperBody, ".read_port()", "Commerce GraphQL checkout compatibility wrapper");
   requireText(
     wrapperBody,
-    "complete_storefront_checkout_input_with_product_port",
+    "complete_storefront_checkout_input_with_product_runtime",
     "Commerce GraphQL checkout compatibility wrapper",
   );
   if (wrapperBody.includes("CatalogService::new")) {

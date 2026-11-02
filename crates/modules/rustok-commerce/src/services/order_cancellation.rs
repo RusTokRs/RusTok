@@ -23,7 +23,10 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{PortContext, PortError};
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
-use rustok_fulfillment::{FulfillmentService, FulfillmentStatusKind};
+use rustok_fulfillment::{
+    CancelAdminFulfillmentRequest, FulfillmentAdminCommandPort, FulfillmentAdminCommandRuntime,
+    FulfillmentReadPort, FulfillmentStatusKind, ListFulfillmentProjectionsRequest,
+};
 use rustok_order::{
     CancelOrderRequest, DeliverOrderRequest, MarkOrderPaidRequest, OrderAdminCommandPort,
     OrderAdminCommandRuntime, OrderError, OrderResponse, OrderService, ShipOrderRequest,
@@ -41,7 +44,6 @@ use uuid::Uuid;
 
 use crate::dto::{CancelFulfillmentInput, FulfillmentResponse};
 
-use super::fulfillment_orchestration_facade::FulfillmentOrchestrationService;
 use super::order_shipment_projection::{ManualShipmentCommand, OrderShipmentProjector};
 use super::payment_orchestration::PaymentOrchestrationService;
 
@@ -205,6 +207,8 @@ pub struct OrderCancellationOrchestrator {
     event_bus: TransactionalEventBus,
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
+    fulfillment_reads: Option<Arc<dyn FulfillmentReadPort>>,
+    fulfillment_commands: Option<Arc<dyn FulfillmentAdminCommandPort>>,
 }
 
 impl OrderCancellationOrchestrator {
@@ -214,6 +218,8 @@ impl OrderCancellationOrchestrator {
             event_bus,
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
             fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
+            fulfillment_reads: None,
+            fulfillment_commands: None,
         }
     }
 
@@ -227,6 +233,19 @@ impl OrderCancellationOrchestrator {
         registry: FulfillmentProviderRegistry,
     ) -> Self {
         self.fulfillment_provider_registry = registry;
+        self
+    }
+
+    /// Selected read failures/capability gaps never fall back to native storage or full cancel.
+    pub fn with_fulfillment_read_port(mut self, reads: Arc<dyn FulfillmentReadPort>) -> Self {
+        self.fulfillment_reads = Some(reads);
+        self
+    }
+    pub fn with_fulfillment_admin_command_port(
+        mut self,
+        commands: Arc<dyn FulfillmentAdminCommandPort>,
+    ) -> Self {
+        self.fulfillment_commands = Some(commands);
         self
     }
 
@@ -270,11 +289,12 @@ impl OrderCancellationOrchestrator {
             ));
         }
 
-        // Phase 1: plan. Nothing below may reject after an effect has been executed.
-        let fulfillments = FulfillmentService::new(self.db.clone())
-            .list_by_order(tenant_id, order_id)
-            .await
-            .map_err(|error| unavailable("order_cancellation.fulfillment_read_failed", error))?;
+        // Phase 1: reject known scope/plan conflicts before effects. Concurrent changes and
+        // later owner/storage failures remain possible; this is not distributed atomicity.
+        let (reads, commands) = self.fulfillment_ports()?;
+        let fulfillments = self
+            .read_fulfillments(&reads, &context, tenant_id, order_id)
+            .await?;
         let fulfillment_ids = plan_fulfillment_cancellation(&fulfillments)
             .map_err(CancellationBlock::into_port_error)?;
 
@@ -297,7 +317,7 @@ impl OrderCancellationOrchestrator {
             plan_payment_cancellation(&collections).map_err(CancellationBlock::into_port_error)?;
 
         // Phase 2: effects, safest first. Money moves last, right before the order status flips.
-        self.cancel_fulfillments(tenant_id, &request, &fulfillment_ids)
+        self.cancel_fulfillments(&commands, &context, &request, &fulfillment_ids)
             .await?;
         self.unwind_payments(tenant_id, order_id, &request, &payment_actions)
             .await?;
@@ -316,31 +336,138 @@ impl OrderCancellationOrchestrator {
         }
     }
 
+    fn fulfillment_ports(
+        &self,
+    ) -> Result<
+        (
+            Arc<dyn FulfillmentReadPort>,
+            Arc<dyn FulfillmentAdminCommandPort>,
+        ),
+        PortError,
+    > {
+        match (&self.fulfillment_reads, &self.fulfillment_commands) {
+            (Some(reads), Some(commands)) => Ok((reads.clone(), commands.clone())),
+            (None, None) => Ok((
+                rustok_fulfillment::in_process_fulfillment_read_port(self.db.clone()),
+                FulfillmentAdminCommandRuntime::in_process(
+                    self.db.clone(),
+                    self.fulfillment_provider_registry.clone(),
+                )
+                .command_port(),
+            )),
+            (None, Some(_)) => Err(PortError::unavailable(
+                "order_cancellation.fulfillment_reads_missing",
+                "selected Fulfillment commands require the matching selected reader",
+            )
+            .with_retryable(false)),
+            (Some(_), None) => Err(PortError::unavailable(
+                "order_cancellation.fulfillment_commands_missing",
+                "selected Fulfillment reader requires matching pending-only cancellation commands",
+            )
+            .with_retryable(false)),
+        }
+    }
+
+    async fn read_fulfillments(
+        &self,
+        reads: &Arc<dyn FulfillmentReadPort>,
+        context: &PortContext,
+        tenant_id: Uuid,
+        order_id: Uuid,
+    ) -> Result<Vec<FulfillmentResponse>, PortError> {
+        const MAX_FULFILLMENTS: u64 = 1024;
+        const PAGE_SIZE: u64 = 100;
+        let mut result = Vec::new();
+        let mut ids = std::collections::BTreeSet::new();
+        let mut child_ids = std::collections::BTreeSet::new();
+        let mut expected_total = None;
+        for page in 1..=MAX_FULFILLMENTS.div_ceil(PAGE_SIZE) {
+            let response = reads
+                .list_fulfillment_projections(
+                    context.clone(),
+                    ListFulfillmentProjectionsRequest {
+                        page,
+                        per_page: PAGE_SIZE,
+                        status: None,
+                        order_id: Some(order_id),
+                        customer_id: None,
+                    },
+                )
+                .await?;
+            if response.total > MAX_FULFILLMENTS || response.items.len() > PAGE_SIZE as usize {
+                return Err(PortError::invariant_violation(
+                    "order_cancellation.fulfillment_limit",
+                    "cancellation requires a complete bounded Fulfillment plan; split or reconcile owner work",
+                ));
+            }
+            // Freeze the first total; shrinking/growing totals or short nonterminal pages can
+            // otherwise skip a fulfillment while still claiming complete coverage.
+            let total = *expected_total.get_or_insert(response.total);
+            let remaining = total
+                .checked_sub(result.len() as u64)
+                .ok_or_else(unverified_fulfillment_scope)?;
+            if response.total != total || response.items.len() as u64 != remaining.min(PAGE_SIZE) {
+                return Err(unverified_fulfillment_scope());
+            }
+            for item in response.items {
+                let mut order_lines = std::collections::BTreeSet::new();
+                if item.id.is_nil()
+                    || item.tenant_id != tenant_id
+                    || item.order_id != order_id
+                    || !ids.insert(item.id)
+                    || item.items.len() > rustok_fulfillment::MAX_SHIPMENT_STOCK_ITEMS
+                    || item.items.iter().any(|line| {
+                        line.id.is_nil()
+                            || line.order_line_item_id.is_nil()
+                            || line.fulfillment_id != item.id
+                            || !child_ids.insert(line.id)
+                            || !order_lines.insert(line.order_line_item_id)
+                            || line.quantity <= 0
+                            || line.shipped_quantity < 0
+                            || line.delivered_quantity < 0
+                            || line.delivered_quantity > line.shipped_quantity
+                            || line.shipped_quantity > line.quantity
+                            || (item.status == "pending"
+                                && (line.shipped_quantity != 0 || line.delivered_quantity != 0))
+                    })
+                {
+                    return Err(unverified_fulfillment_scope());
+                }
+                result.push(item);
+            }
+            if result.len() as u64 == total {
+                return Ok(result);
+            }
+        }
+        Err(PortError::invariant_violation(
+            "order_cancellation.fulfillment_limit",
+            "Fulfillment plan exceeded its bounded page budget",
+        ))
+    }
+
     async fn cancel_fulfillments(
         &self,
-        tenant_id: Uuid,
+        commands: &Arc<dyn FulfillmentAdminCommandPort>,
+        context: &PortContext,
         request: &CancelOrderRequest,
         fulfillment_ids: &[Uuid],
     ) -> Result<(), PortError> {
-        if fulfillment_ids.is_empty() {
-            return Ok(());
-        }
-        let service = FulfillmentOrchestrationService::new(self.db.clone())
-            .with_provider_registry(self.fulfillment_provider_registry.clone());
         for fulfillment_id in fulfillment_ids {
-            service
-                .cancel_fulfillment(
-                    tenant_id,
-                    *fulfillment_id,
-                    CancelFulfillmentInput {
-                        reason: request.reason.clone(),
-                        metadata: cancellation_metadata(request.order_id),
+            commands
+                .cancel_pending_fulfillment(
+                    context.clone().with_idempotency_key(format!(
+                        "order-cancellation:{}:fulfillment:{}:cancel",
+                        request.order_id, fulfillment_id
+                    )),
+                    CancelAdminFulfillmentRequest {
+                        fulfillment_id: *fulfillment_id,
+                        input: CancelFulfillmentInput {
+                            reason: request.reason.clone(),
+                            metadata: cancellation_metadata(request.order_id),
+                        },
                     },
                 )
-                .await
-                .map_err(|error| {
-                    unavailable("order_cancellation.fulfillment_cancel_failed", error)
-                })?;
+                .await?;
         }
         Ok(())
     }
@@ -401,6 +528,13 @@ impl OrderCancellationOrchestrator {
         }
         Ok(())
     }
+}
+
+fn unverified_fulfillment_scope() -> PortError {
+    PortError::invariant_violation(
+        "order_cancellation.fulfillment_scope_unverified",
+        "selected Fulfillment page coverage, child identity or counters do not correlate to the frozen tenant/Order scope; re-read before effects",
+    )
 }
 
 fn cancellation_metadata(order_id: Uuid) -> Value {
@@ -729,3 +863,7 @@ mod tests {
         assert!(validate_cancellation_reason(Some(&"x".repeat(501))).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "order_cancellation/selected_fulfillment_tests.rs"]
+mod selected_fulfillment_tests;

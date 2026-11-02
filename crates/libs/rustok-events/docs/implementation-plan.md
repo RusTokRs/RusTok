@@ -237,3 +237,16 @@ this slice.
 13. Keep producer storage authoritative for bounded repair.
 14. Update module docs, event flow, and recovery guidance with every contract change.
 15. Keep the central plan registry limited to status and nearest priority.
+
+## Inventory reservation family (2026-11-01; source only)
+
+- [x] Register sealed `InventoryReservationEvent::Changed`, quantity-free non-nil Product/Variant
+      UUIDs, `inventory.reservation.changed` v1, appended typed wrapper; preserve root wire.
+- [x] Add four focused family regression definitions, **uncompiled/unrun**.
+- [ ] Run the canonical Rust digest generator on the complete current tree and review admission
+      together with the still-pending Checkout-family change. No generated values were edited.
+- [ ] Compile and execute scoped contract regressions; prove configured delivery/consumer behavior
+      in the owning Core/Outbox/server/Inventory/Search boundaries, not by registry markers.
+
+[Admission gate](event-contract-digest-admission.md#pending-inventory-reservation-admission-2026-11-01).
+This source continuation does not supersede historical generated evidence or certify Product step 8.

@@ -52,15 +52,15 @@ const registrySource = read(registryPath);
 const plan = read(planPath);
 
 for (const marker of [
-  "complete_storefront_checkout_with_product_port",
-  "complete_storefront_checkout_input_with_product_port",
+  "complete_storefront_checkout_with_product_runtime",
+  "complete_storefront_checkout_input_with_product_runtime",
   "product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>",
 ]) {
   requireText(staged, marker, "Commerce staged checkout");
 }
 const composedBody = findFunctionBody(
   staged,
-  "complete_storefront_checkout_input_with_product_port",
+  "complete_storefront_checkout_input_with_product_runtime",
 );
 if (!composedBody) {
   failures.push("Commerce staged checkout: composed input function body is missing");
@@ -87,7 +87,7 @@ if (!compatibilityBody) {
 for (const marker of [
   "shared_get::<ProductCatalogReadRuntime>()",
   ".read_port()",
-  "complete_storefront_checkout_with_product_port",
+  "complete_storefront_checkout_with_product_runtime",
   'dependency = "ProductCatalogReadRuntime"',
 ]) {
   requireText(native, marker, "Order native checkout");

@@ -2,6 +2,17 @@
 
 `rustok-inventory` is the default inventory submodule of the `ecommerce` family.
 
+Current prerequisite: [history-preserving Product/Variant deletion](./implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only)
+with 31 Rust/10 Node definitions uncompiled/unrun, not SKU retirement or an Inventory Index
+source/tombstone. The [source packet](../contracts/evidence/catalog-deletion-source.json) records
+read-only evidence separately from compiler, SQL, migration and runtime gates.
+
+Previous source continuation: [reservation facts and acknowledged typed delivery](./implementation-plan.md#reservation-fact-delivery-continuation-2026-11-01-source-only),
+following [Inventory-owned adoption](./implementation-plan.md#reservation-adoption-into-order-2026-10-31-source-work)
+and the anonymous release prerequisite. Current context, canonical transactional facts and explicit
+Search refetch are wired in source; regression sources remain uncompiled/unrun. Rust digests,
+actual SQL/relay/Iggy/restart/Search, generic Index and Product step 8 are not certified.
+
 ## Purpose
 
 - inventory service logic;
@@ -54,3 +65,41 @@
 - [README crate](../README.md)
 - [README admin package](../admin/README.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
+
+## Shipment source continuation
+
+The [native shipment handoff](../../rustok-commerce/docs/implementation-plan.md#shipment-stock-provenance-source-evidence)
+and [owner API](../CRATE_API.md#native-shipment-provenance-2026-11-01-source-only) record the
+new bounded provenance/return-overlap implementation and additive migration. Source guards
+are not SQL/locking, compiled regression or deployment evidence; Product step 8 stays open.
+Native elapsed-budget gates now include awaited locks/reads, batch writes and return; failed
+preparation still rolls back rather than retaining probes or refreshing the admitted budget.
+
+## Native stock outbox continuation
+
+The [native API](../CRATE_API.md#native-stock-outbox-2026-11-01-source-only) and
+[plan/evidence](implementation-plan.md#native-stock-outbox-continuation-2026-11-01-source-only)
+now include I-owned canonical invalidations in the physical write transaction. No new event
+schema/public capability exists; preparation/exact replay/no movement do not publish. Global
+availability snapshots are descriptive, never movement deltas. All 16 additional Rust/10 Node
+cases remain unrun; Search source wiring is not delivery, generic Index or step-8 certification.
+
+## Anonymous quantity prerequisite
+
+The [current owner contract](../CRATE_API.md#anonymous-quantity-reservations-2026-11-01-source-only)
+and [plan/evidence](./implementation-plan.md#anonymous-quantity-reservation-release-2026-11-01-source-only)
+replace the independent quantity FIFO reducers with exact anonymous allocation/location effects.
+Scoped selectors refuse instead of being ignored; keyed claims remain protected. The 27 Rust/10
+Node regression definitions are unrun. Quantity operations remain non-idempotent; ordinary
+reservation typed invalidations, delivery/consumers and Product step 8 remain unfinished.
+
+## Canonical source delivery continuation (2026-11-02; uncompiled)
+
+[Owner API](../CRATE_API.md#inventory-source-canonical-delivery-2026-11-02-source-continuation)
+separates Changed from final BaselineActivated: retained UUID/version/current actor share the
+actual caller transaction; staged pages do not announce ready SKUs. Product actors are forwarded
+explicitly. Required module handling cannot silently succeed as broker-only delivery.
+[Evidence](../contracts/evidence/source-delivery-source.json) lists 26 new Rust/10 Node definitions,
+all unrun. Selected authoritative source/initial replay/Index and full operator-client recovery
+remain pending. Reads never fabricate missing historical facts; no live baseline before real
+handlers and operator recovery.

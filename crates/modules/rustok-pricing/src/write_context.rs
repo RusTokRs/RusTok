@@ -69,9 +69,14 @@ pub struct InProcessPricingWritePort {
 }
 
 impl InProcessPricingWritePort {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        product_runtime: rustok_product::ProductCatalogReadRuntime,
+    ) -> Self {
         Self {
-            inner: PricingService::new(db, event_bus),
+            inner: PricingService::new(db, event_bus)
+                .with_product_catalog_read_runtime(product_runtime),
         }
     }
 
@@ -85,8 +90,13 @@ impl InProcessPricingWritePort {
 pub fn in_process_pricing_write_port(
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    product_runtime: rustok_product::ProductCatalogReadRuntime,
 ) -> Arc<dyn PricingWritePort> {
-    Arc::new(InProcessPricingWritePort::new(db, event_bus))
+    Arc::new(InProcessPricingWritePort::new(
+        db,
+        event_bus,
+        product_runtime,
+    ))
 }
 
 #[async_trait]

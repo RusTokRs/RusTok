@@ -8,15 +8,19 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import type { Metadata } from 'next';
-import { storefrontGraphql } from '@/shared/lib/graphql';
-import { getStorefrontTenantSlug } from '@/shared/api/modules';
-import { buildSeoMetadata } from '@/shared/seo/metadata';
-import { resolveSeoPageContextForRoute } from '@/shared/seo/runtime';
+import type { Metadata } from "next";
+import { storefrontGraphql } from "@/shared/lib/graphql";
+import { getStorefrontTenantSlug } from "@/shared/api/modules";
+import { buildSeoMetadata } from "@/shared/seo/metadata";
+import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
-  PricingView,
-  fetchStorefrontPricing
-} from '@rustok/pricing-frontend';
+  PricingRequestError,
+  fetchStorefrontPricing,
+  parsePricingRouteQuery,
+  pricingReadKey,
+  type StorefrontPricingQuery,
+} from "@rustok/pricing-frontend";
+import { PricingRouteClient } from "@/features/pricing/components/pricing-route-client";
 
 interface PricingPageProps {
   params: Promise<{ locale: string }>;
@@ -29,8 +33,8 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const isRu = locale === 'ru';
-  const path = '/pricing';
+  const isRu = locale === "ru";
+  const path = "/pricing";
   const seoResolution = await resolveSeoPageContextForRoute({
     locale,
     route: path,
@@ -38,10 +42,12 @@ export async function generateMetadata({
 
   return buildSeoMetadata({
     locale,
-    title: isRu ? 'Каталог цен и скидок | RusToK' : 'Pricing & Discounts Atlas | RusToK',
+    title: isRu
+      ? "Каталог цен и скидок | RusToK"
+      : "Pricing & Discounts Atlas | RusToK",
     description: isRu
-      ? 'Публичный атлас цен, валютного покрытия и активных скидок RusToK'
-      : 'Public atlas of prices, currencies, and discounts across channels',
+      ? "Публичный атлас цен, валютного покрытия и активных скидок RusToK"
+      : "Public atlas of prices, currencies, and discounts across channels",
     path,
     context: seoResolution.context,
   });
@@ -54,42 +60,32 @@ export default async function PricingRoutePage({
   const { locale } = await params;
   const query = await searchParams;
   const tenantSlug = getStorefrontTenantSlug();
+  const resetHref = `/${encodeURIComponent(locale)}/pricing`;
 
-  const selectedHandle =
-    typeof query.handle === 'string' ? query.handle : null;
-  const currencyCode =
-    typeof query.currency === 'string' ? query.currency : null;
-  const channelId =
-    typeof query.channel_id === 'string' ? query.channel_id : null;
-  const channelSlug =
-    typeof query.channel_slug === 'string' ? query.channel_slug : null;
-  const priceListId =
-    typeof query.price_list_id === 'string' ? query.price_list_id : null;
-  const quantity =
-    typeof query.quantity === 'string'
-      ? parseInt(query.quantity, 10) || 1
-      : 1;
-
+  let pricingQuery: StorefrontPricingQuery;
+  try {
+    pricingQuery = parsePricingRouteQuery(query, locale);
+  } catch {
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <PricingRequestError resetHref={resetHref} />
+      </main>
+    );
+  }
   const initialData = await fetchStorefrontPricing(
     storefrontGraphql,
-    {
-      selectedHandle,
-      locale,
-      currencyCode,
-      channelId,
-      channelSlug,
-      priceListId,
-      quantity
-    },
+    pricingQuery,
     null,
-    tenantSlug
+    tenantSlug,
   ).catch(() => null);
 
   return (
-    <main className='mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'>
-      <PricingView
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <PricingRouteClient
+        key={pricingReadKey(pricingQuery, tenantSlug, null)}
         initialData={initialData}
-        graphql={storefrontGraphql}
+        initialQuery={pricingQuery}
+        resetHref={resetHref}
         tenantSlug={tenantSlug}
         locale={locale}
       />

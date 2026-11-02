@@ -29,6 +29,10 @@ blog-comment-island = [
   "rustok-blog-storefront/comment-island",
 ]
 blog-comment-assets = []
+product-buyer-island = [
+  "hydrate", "dep:wasm-bindgen", "dep:rustok-product-storefront", "rustok-product-storefront/hydrate",
+]
+product-buyer-assets = ["ssr"]
 ssr = [
   "dep:axum",
   "dep:any_spawner",
@@ -164,6 +168,12 @@ bootstrap-path = "/assets/blog-comment-bootstrap.js"
 module-path = "/assets/blog-comment/rustok_storefront.js"
 wasm-path = "/assets/blog-comment/rustok_storefront_bg.wasm"
 export = "start_blog_comment_client"
+
+[package.metadata.product-buyer-client]
+bootstrap-path = "/assets/product-buyer-bootstrap.js"
+module-path = "/assets/product-buyer/rustok_storefront.js"
+wasm-path = "/assets/product-buyer/rustok_storefront_bg.wasm"
+export = "start_product_buyer_client"
 
 [package.metadata.cargo-udeps.ignore]
 normal = [

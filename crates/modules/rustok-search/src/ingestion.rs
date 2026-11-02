@@ -8,7 +8,10 @@ use uuid::Uuid;
 
 use rustok_core::Error;
 use rustok_core::events::{EventHandler, HandlerResult};
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::{
+    ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope,
+    InventoryReservationEvent,
+};
 use rustok_telemetry::metrics;
 use tracing::Instrument;
 
@@ -285,6 +288,34 @@ async fn toggle_owner_scope(
 impl EventHandler for SearchIngestionHandler {
     fn name(&self) -> &'static str {
         "search_ingestion"
+    }
+
+    fn handles_contract(&self, payload: &ContractEventPayload) -> bool {
+        matches!(payload, ContractEventPayload::InventoryReservation(_))
+    }
+
+    async fn handle_contract(&self, envelope: &ContractEventEnvelope) -> HandlerResult {
+        let payload = envelope
+            .payload()
+            .map_err(|error| Error::Validation(error.to_string()))?;
+        match payload {
+            ContractEventPayload::InventoryReservation(InventoryReservationEvent::Changed {
+                product_id,
+                ..
+            }) => {
+                // Refetch current state, never apply a quantity/delta from this fact. This is
+                // the existing Search-owned Product facade, not Product's Index refresh ledger.
+                self.projector.upsert_product(envelope.tenant_id(), *product_id)
+                    .instrument(tracing::info_span!(
+                        "search.reservation_refetch",
+                        handler = self.name(), event_id = %envelope.id(),
+                        tenant_id = %envelope.tenant_id(), correlation_id = %envelope.correlation_id(),
+                    )).await
+            }
+            _ => Err(Error::Validation(
+                "Search reservation listener received another sealed family".to_owned(),
+            )),
+        }
     }
 
     fn handles(&self, event: &DomainEvent) -> bool {
@@ -750,5 +781,63 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
         | DomainEvent::TenantCreated { .. }
         | DomainEvent::TenantUpdated { .. } => "rebuild_tenant",
         _ => "noop",
+    }
+}
+
+#[cfg(test)]
+mod reservation_contract_tests {
+    use super::*;
+    use rustok_events::ProductIndexRefreshEvent;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn search_opts_into_inventory_without_impersonating_product_refresh() {
+        let handler =
+            SearchIngestionHandler::new(Database::connect("sqlite::memory:").await.unwrap());
+        let inventory = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            InventoryReservationEvent::Changed {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
+        assert!(handler.handles_contract(inventory.payload().unwrap()));
+        let product = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+        assert!(!handler.handles_contract(product.payload().unwrap()));
+        assert!(matches!(
+            handler.handle_contract(&product).await,
+            Err(Error::Validation(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn search_backend_refusal_propagates_before_sealed_delivery_can_acknowledge() {
+        let handler =
+            SearchIngestionHandler::new(Database::connect("sqlite::memory:").await.unwrap());
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            InventoryReservationEvent::Changed {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap();
+        let error = handler
+            .handle_contract(&envelope)
+            .await
+            .expect_err("SQLite cannot fabricate a Search projection");
+        assert!(matches!(error, Error::External(_)));
     }
 }

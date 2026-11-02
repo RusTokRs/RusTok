@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UiRouteContext {
     pub locale: Option<String>,
     pub route_segment: Option<String>,
@@ -198,6 +198,32 @@ pub fn safe_join_url(base: &str, path: &str) -> String {
         return base_url.to_string();
     }
     format!("{}/{}", base.trim_end_matches('/'), clean_path)
+}
+
+/// Decode the host's single-valued query contract without erasing duplicates or explicit blanks.
+pub fn decode_single_value_ui_query(query: &str) -> Result<BTreeMap<String, String>, &'static str> {
+    if query.len() > 16 * 1024 {
+        return Err("query_too_large");
+    }
+    let mut values = BTreeMap::new();
+    for (index, (key, value)) in url::form_urlencoded::parse(query.as_bytes()).enumerate() {
+        if index >= 256
+            || values
+                .insert(key.into_owned(), value.into_owned())
+                .is_some()
+        {
+            return Err("query_duplicate_or_too_many_pairs");
+        }
+    }
+    Ok(values)
+}
+
+/// Encode already-admitted values without dropping explicit empty values. Strict route selectors
+/// need `quantity=` to remain invalid across reloads rather than becoming default quantity one.
+pub fn encode_ui_query_pairs(pairs: &[(&str, &str)]) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs.iter().copied())
+        .finish()
 }
 
 /// Applies `key=value` pairs on top of a UI route path that may already carry a query string.

@@ -48,9 +48,9 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         tracing::debug!(
             target: "rustok_inventory::reservation_port_context",
             operation = AVAILABILITY_OPERATION,
-            variant_id = %request.variant_id,
-            requested_quantity = request.requested_quantity,
-            channel_slug = ?request.channel_slug,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.requested_quantity < 0,
+            channel_present = request.channel_slug.is_some(),
             "in-process check availability request received"
         );
         require_inventory_reservation_read_admission(&context, AVAILABILITY_OPERATION)?;
@@ -78,10 +78,10 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         tracing::debug!(
             target: "rustok_inventory::reservation_port_context",
             operation = RESERVE_OPERATION,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
-            cart_id = ?request.cart_id,
-            line_item_id = ?request.line_item_id,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
+            cart_id_present = request.cart_id.is_some(),
+            line_item_id_present = request.line_item_id.is_some(),
             "in-process reserve inventory request received"
         );
         require_inventory_reservation_write_admission(&context, RESERVE_OPERATION)?;
@@ -109,10 +109,10 @@ impl InventoryReservationPort for InProcessInventoryReservationPort {
         tracing::debug!(
             target: "rustok_inventory::reservation_port_context",
             operation = RELEASE_OPERATION,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
-            order_id = ?request.order_id,
-            line_item_id = ?request.line_item_id,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
+            order_id_present = request.order_id.is_some(),
+            line_item_id_present = request.line_item_id.is_some(),
             "in-process release inventory reservation request received"
         );
         require_inventory_reservation_write_admission(&context, RELEASE_OPERATION)?;

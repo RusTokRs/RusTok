@@ -7,6 +7,7 @@ async fn test_resolve_variant_price_prefers_exact_region_over_global() {
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let region_id = Uuid::new_v4();
+    seed_pricing_region(&_db, tenant_id, region_id, "USD").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(99.99), None)
@@ -34,7 +35,7 @@ async fn test_resolve_variant_price_prefers_exact_region_over_global() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "usd".to_string(),
@@ -106,7 +107,7 @@ async fn test_resolve_variant_price_prefers_more_specific_quantity_tier() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -178,7 +179,7 @@ async fn test_resolve_variant_price_prefers_narrower_max_quantity_when_min_quant
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -202,6 +203,8 @@ async fn test_resolve_variant_price_prefers_narrower_max_quantity_when_min_quant
 async fn test_resolve_variant_price_falls_back_to_global_price_without_region_specific_match() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
+    let region_id = Uuid::new_v4();
+    seed_pricing_region(&_db, tenant_id, region_id, "USD").await;
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 
@@ -212,11 +215,11 @@ async fn test_resolve_variant_price_falls_back_to_global_price_without_region_sp
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
-                region_id: Some(Uuid::new_v4()),
+                region_id: Some(region_id),
                 price_list_id: None,
                 channel_id: None,
                 channel_slug: None,
@@ -235,6 +238,7 @@ async fn test_resolve_variant_price_falls_back_to_global_price_without_region_sp
 async fn test_resolve_variant_price_matches_channel_slug_without_channel_id() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, Uuid::new_v4(), "web-store").await;
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 
@@ -260,7 +264,7 @@ async fn test_resolve_variant_price_matches_channel_slug_without_channel_id() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -288,6 +292,7 @@ async fn test_resolve_variant_price_prefers_channel_scoped_base_price() {
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, channel_id, "web-store").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
@@ -311,7 +316,7 @@ async fn test_resolve_variant_price_prefers_channel_scoped_base_price() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -336,9 +341,12 @@ async fn test_resolve_variant_price_prefers_channel_scoped_base_price() {
 async fn test_resolve_variant_price_does_not_leak_channel_scoped_price() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, mobile_channel_id, "mobile-app").await;
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&_db, tenant_id, channel_id, "web-store").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
@@ -362,13 +370,13 @@ async fn test_resolve_variant_price_does_not_leak_channel_scoped_price() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
-                channel_id: Some(Uuid::new_v4()),
+                channel_id: Some(mobile_channel_id),
                 channel_slug: Some("mobile-app".to_string()),
                 quantity: Some(1),
             },
@@ -416,7 +424,7 @@ async fn test_resolve_variant_price_prefers_active_price_list_over_base_price() 
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -455,7 +463,7 @@ async fn test_resolve_variant_price_applies_active_price_list_rule_without_overr
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -483,6 +491,7 @@ async fn test_resolve_variant_price_rule_uses_channel_quantity_tier_and_rounds()
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -521,7 +530,7 @@ async fn test_resolve_variant_price_rule_uses_channel_quantity_tier_and_rounds()
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -580,7 +589,7 @@ async fn test_resolve_variant_price_prefers_explicit_override_over_price_list_ru
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -623,7 +632,7 @@ async fn test_resolve_variant_price_falls_back_to_base_after_clearing_price_list
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -654,7 +663,7 @@ async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -668,12 +677,9 @@ async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("active price list"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }
 
 #[tokio::test]
@@ -692,7 +698,7 @@ async fn test_resolve_variant_price_rejects_price_list_not_active_yet() {
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -706,12 +712,9 @@ async fn test_resolve_variant_price_rejects_price_list_not_active_yet() {
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("not active yet"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }
 
 #[tokio::test]
@@ -730,7 +733,7 @@ async fn test_resolve_variant_price_rejects_expired_price_list_context() {
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -744,20 +747,20 @@ async fn test_resolve_variant_price_rejects_expired_price_list_context() {
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("already expired"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }
 
 #[tokio::test]
 async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel() {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, mobile_channel_id, "mobile-app").await;
     let actor_id = Uuid::new_v4();
     let web_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, web_channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -777,13 +780,13 @@ async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
-                channel_id: Some(Uuid::new_v4()),
+                channel_id: Some(mobile_channel_id),
                 channel_slug: Some("mobile-app".to_string()),
                 quantity: Some(1),
             },
@@ -791,12 +794,9 @@ async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("price_list_id is not available for the requested channel"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }
 
 #[tokio::test]
@@ -813,7 +813,7 @@ async fn test_resolve_variant_price_rejects_non_positive_quantity() {
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -827,12 +827,9 @@ async fn test_resolve_variant_price_rejects_non_positive_quantity() {
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("quantity must be at least 1"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }
 
 #[tokio::test]
@@ -849,7 +846,7 @@ async fn test_resolve_variant_price_rejects_non_letter_currency_code() {
 
     let result = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "US1".to_string(),
@@ -863,10 +860,7 @@ async fn test_resolve_variant_price_rejects_non_letter_currency_code() {
         .await;
 
     assert!(result.is_err());
-    match result.unwrap_err() {
-        CommerceError::Validation(message) => {
-            assert!(message.contains("currency_code must be a 3-letter code"));
-        }
-        other => panic!("Expected validation error, got {other:?}"),
-    }
+    let error = result.unwrap_err();
+    assert_eq!(error.kind, rustok_api::PortErrorKind::Validation);
+    assert!(!error.retryable);
 }

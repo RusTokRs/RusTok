@@ -118,3 +118,38 @@ Reusable storefront presentation components that are shared across multiple doma
 - The lightweight verification without compilation runs via `npm run verify:seo-runtime-fixtures` from `apps/next-frontend`; it additionally checks the existence of docs rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template and key static symbols for Next SEO adapter, Rust renderer, Next Admin transport and Leptos storefront SEO runtime wiring.
 - Live closeout artifact set must now explicitly include backend GraphQL/REST parity sample, before/after outbox/index counters, Next runtime robots/sitemap/metadata sample, Leptos `SeoPageContext` smoke, media descriptor fallback smoke and owner sign-off notes; for each file the fixture stores a separate must-capture checklist and blockers, and until live files are attached, D8/D9 remain pending.
 - D8/D9 closeout guardrails additionally source-lock the runbook-to-artifact crosswalk, CI attachment metadata/redaction checklist, defect triage severity matrix and owner sign-off state machine, so that the live evidence packet cannot be promoted from static seed directly to signed without runtime artifacts and owner review; template files for required artifacts are located in `contracts/seo/live-evidence/templates/` and are verified by the same compile-free verifier.
+
+
+### Pricing scope / RSC recheck (2026-10-30)
+
+The endpoint-shared GraphQL client disables Apollo in-flight query deduplication,
+because Apollo's document/variables key does not include tenant or Authorization
+headers. `no-cache` alone does not prevent that cross-viewer request sharing. This
+may repeat same-viewer queries; it does not introduce a per-token client registry.
+Concurrent-scope regression sources exist in `src/shared/lib/graphql.test.mjs` and
+were not executed by the agent.
+
+`/[locale]/pricing` keeps server data loading and SEO in its route and wires the
+shared executor inside `features/pricing/components/pricing-route-client.tsx`.
+Ordinary functions must not be serialized through RSC props. Pricing-owned core
+parses canonical URL fields and preserves original request intent when SSR loading
+fails; invalid quantity never becomes an implicit one. The Product host reuses the
+Pricing SDK's quantity parser. See the
+[owner recheck](../../../crates/modules/rustok-pricing/docs/implementation-plan.md#targeted-recheck-2026-10-30)
+for remaining runtime checks and unchanged Product buyer-flow boundaries.
+
+## Product buyer and Cart auth scope (2026-10-30)
+
+Product selection/quantity and Pricing request state are module-owned, retained across session
+changes and URL-driven. Quote/added state and Cart recovery are actor/tenant-bound. The host adapts
+the canonical `@rustok/ui-auth/browser` reader, without issuing/decoding/persisting credentials;
+a foreign selected tenant refuses rather than replacing the resolved host. Mutations also check
+fresh auth synchronously before IO. Server bearer tokens are not Client Component props.
+
+Browser GraphQL uses same-origin `/api/graphql`, credentials and the configured `next.config.mjs`
+API rewrite; there is no second route-local GraphQL proxy. Actual HttpOnly guest-cookie and
+Set-Cookie forwarding still need mounted verification. Cart pending markers are local uncertainty
+hints, not backend receipts or multi-tab locks; reset never deletes a Cart or cancels a request.
+The source-only regression command is `npm run test:storefront-buyer` (not run by the agent).
+Shared Input/NativeSelect/Label live in `packages/rustok-ui-controls`, with no host aliases or
+Pricing/auth/domain policy. See the Product/Cart plans for the unexecuted release gates.

@@ -360,6 +360,29 @@ impl FulfillmentAdminCommandPort for ProjectingFulfillmentAdminCommandPort {
     ) -> Result<FulfillmentResponse, PortError> {
         self.inner.cancel_fulfillment(context, request).await
     }
+    async fn cancel_pending_fulfillment(
+        &self,
+        context: PortContext,
+        request: CancelAdminFulfillmentRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        self.inner
+            .cancel_pending_fulfillment(context, request)
+            .await
+    }
+    async fn retry_local_persistence(
+        &self,
+        context: PortContext,
+        request: rustok_fulfillment::RetryLocalFulfillmentPersistenceRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        let fulfillment = self
+            .inner
+            .retry_local_persistence(context.clone(), request)
+            .await?;
+        self.projector
+            .project_after_fulfillment_command(&context, &fulfillment)
+            .await;
+        Ok(fulfillment)
+    }
 }
 
 /// Wraps a fulfillment admin command runtime so shipment results are projected onto the order.

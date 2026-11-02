@@ -38,6 +38,7 @@
 - `ReactionsEvent`
 - `REACTIONS_EVENT_SCHEMAS`
 - `TranslationWorkflowEvent`
+- `InventoryReservationEvent` / `INVENTORY_RESERVATION_EVENT_SCHEMAS`
 - `TRANSLATION_WORKFLOW_EVENT_SCHEMAS`
 
 ## Interactions
@@ -68,3 +69,24 @@ families.
 - [Event contract digest admission](./docs/event-contract-digest-admission.md)
 - [Event schema release decision](../../../DECISIONS/2026-07-23-event-schema-release-discipline.md)
 - [Platform docs index](../../../docs/index.md)
+
+## Known Limitations / Pending Implementation
+
+The new quantity-free sealed `inventory.reservation.changed` v1 family is registered in source;
+only non-nil Product/Variant UUIDs enter its payload. It neither changes root `InventoryUpdated`
+nor borrows Product's refresh revision. The committed release digests remain unchanged: canonical
+Rust regeneration is blocked by missing Cargo/rustc and must include the existing pending
+Checkout-family changes. Four new family regression definitions are uncompiled/unrun. See the
+[digest admission gates](docs/event-contract-digest-admission.md#pending-inventory-reservation-admission-2026-11-01)
+and [Inventory source packet](../../modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
+Transport/runtime certification belongs to Core/Outbox/server and consumers, not this registry.
+
+## Inventory source continuation (2026-11-02; uncompiled)
+
+The additive sealed source family uses retained change/baseline UUIDs and Inventory revisions,
+not Product revisions/copied stock. Compiled required-module policy refuses unmatched Inventory
+source/reservation facts before broker-only success; Product remote-only routes remain supported.
+No production source/Index listener is installed by schema registration. See
+[API](CRATE_API.md#inventory-source-facts-and-delivery-policy-2026-11-02-source-only) and
+[pending admission](docs/event-contract-digest-admission.md#pending-inventory-source-admission-2026-11-02).
+Six family definitions and all downstream definitions remain uncompiled/unrun.

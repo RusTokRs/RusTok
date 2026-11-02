@@ -542,6 +542,7 @@ fn admin_order_mutation(
             paymentMethod
           }}
           shipFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:ship",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{
@@ -554,6 +555,7 @@ fn admin_order_mutation(
             trackingNumber
           }}
           deliverFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:deliver",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{
@@ -1109,6 +1111,7 @@ fn admin_partial_fulfillment_progress_mutation(
         r#"
         mutation {{
           shipFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:ship",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{
@@ -1130,6 +1133,7 @@ fn admin_partial_fulfillment_progress_mutation(
             }}
           }}
           deliverFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:deliver",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{
@@ -1164,6 +1168,7 @@ fn admin_reopen_fulfillment_mutation(
         r#"
         mutation {{
           reopenFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:reopen",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{
@@ -1198,6 +1203,7 @@ fn admin_reship_fulfillment_mutation(
         r#"
         mutation {{
           reshipFulfillment(
+            idempotencyKey: "graphql-fulfillment:{fulfillment_id}:reship",
             tenantId: "{tenant_id}",
             id: "{fulfillment_id}",
             input: {{

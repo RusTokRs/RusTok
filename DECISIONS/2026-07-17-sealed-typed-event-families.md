@@ -61,3 +61,57 @@ reasons, arbitrary metadata, and legacy snapshot provenance remain owner-private
 - consumers use canonical event-type and schema registries from `rustok-events`;
 - owner modules still must publish inside the same database transaction as state,
   timeline, and durable receipt changes.
+
+## Acknowledged local contract listeners (2026-11-01)
+
+The explicit persistent cursor remains mandatory for **remote** consumption. Local module
+listeners now also opt into sealed payloads through the existing `EventHandler` / module
+listener registry. This extends the canonical delivery bus, not a second event bus, untyped
+channel or domain-specific host publisher. Established root APIs and wire formats stay intact.
+
+`EventDispatcher::start_with_contract_delivery` binds the registered handlers to the transport's
+**listener** bus. Local sealed delivery validates the exact original envelope, bounds in-flight
+work, awaits all matching handlers, and propagates refusal/failure. No matching active listener
+is a delivery error, not a successful broadcast with no receiver. Handler completion is the
+acknowledgement boundary; the existing outbox row and relay retry/DLQ policy remain the durable
+work and recovery mechanism. There is no additional in-memory queue or best-effort skip path.
+The binding closes with its dispatcher; a stopped/panicked dispatcher cannot acknowledge facts.
+Consumers must be idempotent under duplicates and refetch authoritative state under reordering.
+
+The `outbox` Memory target uses that acknowledged path. For `outbox_iggy`, the existing configured
+Iggy connector accepts the unchanged sealed envelope first, then matching local listeners must
+complete before the relay can mark it delivered. A local failure can therefore republish the
+same envelope identity to Iggy on retry: this is explicit at-least-once delivery, not a new fact.
+An active listener registry is required before this decision; remote-only families with no
+matching local handler still use their explicit persistent consumer groups. There is no
+fallback from Iggy to Memory and no second bundled connector. The artifact delivery wrapper materializes matching subscriptions through the existing durable
+binding queue with the sealed payload wrapper and original envelope identity. Cache wrappers
+forward bounded families intact and retain their root-specific policy processing.
+
+The Inventory reservation fact below is the concrete local consumer requirement. Its Search
+listener must finish its Search-owned transaction before success; it does not certify generic
+Index, external consumers, operational lag repair or broker restart behavior. Digest generation,
+compilation and backend/runtime evidence are independent gates, never implied by source wiring.
+
+## Inventory source delivery continuation (2026-11-02; source only)
+
+The additive `InventorySourceEvent` family has `Changed` (baseline/Variant/positive owner
+version) and `BaselineActivated` (baseline) facts. The canonical current-context owner writer
+uses retained change UUID / baseline UUID as the existing write-once envelope identity; no
+Product refresh proxy, second queue or observation-based replay is introduced. The compiled
+sealed payload owns the mandatory module-delivery policy, not host domain-name matching:
+Inventory source and reservation facts require acknowledged module listeners before relay
+success in memory/Iggy fan-out. Unrelated remote-consumer families retain their cursor policy.
+Schema registration is additive; canonical Rust digest generation/admission remains unrun.
+
+## Inventory selected consumer composition (2026-11-02)
+
+The existing Index source-factory catalog can contribute a real module event listener at the
+normal listener lifecycle, after shared source capabilities exist. The selected Distribution
+Inventory bridge uses that path for the two existing sealed source facts. It authenticates
+current deployment-bound service credentials independently of envelope actors, persists loaded
+current mutations before changed ACK and durably enqueues original-identity initial replay
+before activation ACK. No root-event conversion, successful no-op handler, parallel bus or
+new event version is introduced. An old delivery UUID is not reused for a changing loaded
+projection payload. Core exposes the canonical sealed envelope/payload types used by its
+public handler trait; Inventory re-exports its own existing source wire fact.

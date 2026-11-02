@@ -1,3 +1,4 @@
+use super::policy::{BindingOwner, lock_schema_for_policy_write, resolve_binding_axis_policy_in};
 mod translation;
 
 use super::{
@@ -169,8 +170,27 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<()> {
         input.validate()?;
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_policy_write(&txn, tenant_id).await?;
         ensure_attribute(&txn, tenant_id, input.attribute_id).await?;
+        super::attribute_validation::validate_rule_option_references_in(
+            &txn,
+            tenant_id,
+            input.attribute_id,
+            &input.validation_overrides,
+        )
+        .await?;
         ensure_schema(&txn, tenant_id, input.schema_id).await?;
+        let previous_policies = Self::axis_policy_snapshot_in(&txn, tenant_id).await?;
+        let (axis_policy, default_axis) = resolve_binding_axis_policy_in(
+            &txn,
+            tenant_id,
+            BindingOwner::Schema(input.schema_id),
+            input.attribute_id,
+            input.variant_axis_policy,
+            input.default_variant_axis,
+        )
+        .await?;
+
         let group_id = match input.group_code.as_deref() {
             Some(code) => Some(
                 load_schema_group_id(&txn, tenant_id, input.schema_id, code)
@@ -185,8 +205,9 @@ impl ProductCatalogSchemaService {
             r#"
             INSERT INTO product_attribute_schema_attributes (
                 id, tenant_id, schema_id, attribute_id, group_id, is_required,
-                is_disabled, position, visibility_overrides, validation_overrides, metadata
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                is_disabled, position, visibility_overrides, validation_overrides, metadata,
+                variant_axis_policy, default_variant_axis
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (schema_id, attribute_id) DO UPDATE SET
                 group_id = EXCLUDED.group_id,
                 is_required = EXCLUDED.is_required,
@@ -194,7 +215,9 @@ impl ProductCatalogSchemaService {
                 position = EXCLUDED.position,
                 visibility_overrides = EXCLUDED.visibility_overrides,
                 validation_overrides = EXCLUDED.validation_overrides,
-                metadata = EXCLUDED.metadata
+                metadata = EXCLUDED.metadata,
+                variant_axis_policy = EXCLUDED.variant_axis_policy,
+                default_variant_axis = EXCLUDED.default_variant_axis
             "#,
             vec![
                 generate_id().into(),
@@ -208,9 +231,13 @@ impl ProductCatalogSchemaService {
                 input.visibility_overrides.clone().into(),
                 input.validation_overrides.clone().into(),
                 input.metadata.clone().into(),
+                axis_policy.as_str().into(),
+                default_axis.into(),
             ],
         ))
         .await?;
+
+        Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
         txn.publish(
             tenant_id,

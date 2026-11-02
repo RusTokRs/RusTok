@@ -1,5 +1,9 @@
+#[path = "variant_axes.rs"]
+pub(super) mod variant_axes;
+
 use super::concurrency::{ensure_expected_revision, next_revision, validate_patch_text_length};
 use super::*;
+use crate::services::catalog_schema_service::policy::lock_schema_for_product_write;
 use rustok_api::{Patch, TenantLocale};
 use rustok_core::error::Error as CoreError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
@@ -109,13 +113,6 @@ impl CatalogService {
         }
         self.validate_primary_category(tenant_id, input.primary_category_id)
             .await?;
-        validate_variant_axis_configuration_in(
-            &self.db,
-            tenant_id,
-            input.primary_category_id,
-            input.variant_axes.as_slice(),
-        )
-        .await?;
         let product_id = current_product_operation_id().unwrap_or_else(generate_id);
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
@@ -139,6 +136,14 @@ impl CatalogService {
         );
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
+        validate_variant_axis_configuration_in(
+            &txn,
+            tenant_id,
+            input.primary_category_id,
+            input.variant_axes.as_slice(),
+        )
+        .await?;
 
         let product = entities::product::ActiveModel {
             id: Set(product_id),
@@ -310,6 +315,7 @@ impl CatalogService {
             BootstrapService::create_initial_records_in_tx(
                 &txn,
                 &default_stock_location,
+                actor_id,
                 InitialInventory {
                     variant_id,
                     sku: var_input.sku.clone(),
@@ -410,7 +416,14 @@ impl CatalogService {
         }
 
         let result = self
-            .get_product_in(&txn, tenant_id, product_id, preferred_locale.as_str(), None)
+            .get_product_in(
+                &txn,
+                tenant_id,
+                product_id,
+                preferred_locale.as_str(),
+                None,
+                None,
+            )
             .await?;
         record_product_operation_result(&result);
         txn.commit().await?;
@@ -457,6 +470,7 @@ impl CatalogService {
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
             .await
@@ -470,20 +484,34 @@ impl CatalogService {
         ensure_expected_revision(&existing_product, input.expected_revision)?;
         if !input.changes_document() && input.status.as_ref() == Some(&existing_product.status) {
             let result = self
-                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .get_product_in(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    PLATFORM_FALLBACK_LOCALE,
+                    None,
+                    None,
+                )
                 .await?;
             record_product_operation_result(&result);
             txn.commit().await?;
             return Ok(result);
         }
-        if let Patch::Set(primary_category_id) = &input.primary_category_id {
-            validate_existing_variant_axes_for_category_in(
-                &txn,
-                tenant_id,
-                product_id,
-                *primary_category_id,
-            )
-            .await?;
+        match &input.primary_category_id {
+            Patch::Set(primary_category_id) => {
+                validate_existing_variant_axes_for_category_in(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    Some(*primary_category_id),
+                )
+                .await?
+            }
+            Patch::Clear => {
+                validate_existing_variant_axes_for_category_in(&txn, tenant_id, product_id, None)
+                    .await?
+            }
+            Patch::Keep => {}
         }
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.updated_at = Set(Utc::now().into());
@@ -814,7 +842,14 @@ impl CatalogService {
         }
 
         let result = self
-            .get_product_in(&txn, tenant_id, product_id, preferred_locale.as_str(), None)
+            .get_product_in(
+                &txn,
+                tenant_id,
+                product_id,
+                preferred_locale.as_str(),
+                None,
+                None,
+            )
             .await?;
         record_product_operation_result(&result);
         txn.commit().await?;
@@ -864,6 +899,7 @@ impl CatalogService {
         debug!(product_id = %product_id, "Publishing product");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id)
             .await
@@ -877,7 +913,14 @@ impl CatalogService {
         // Retries of a completed transition must not change timestamps or emit events.
         if product.status == entities::product::ProductStatus::Active {
             let result = self
-                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .get_product_in(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    PLATFORM_FALLBACK_LOCALE,
+                    None,
+                    None,
+                )
                 .await?;
             record_product_operation_result(&result);
             txn.commit().await?;
@@ -904,7 +947,14 @@ impl CatalogService {
         .await?;
 
         let result = self
-            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .get_product_in(
+                &txn,
+                tenant_id,
+                product_id,
+                PLATFORM_FALLBACK_LOCALE,
+                None,
+                None,
+            )
             .await?;
         record_product_operation_result(&result);
         txn.commit().await?;
@@ -923,13 +973,21 @@ impl CatalogService {
         debug!(product_id = %product_id, "Unpublishing product");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         // Retries of a completed transition must not change timestamps or emit events.
         if product.status == entities::product::ProductStatus::Draft {
             let result = self
-                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .get_product_in(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    PLATFORM_FALLBACK_LOCALE,
+                    None,
+                    None,
+                )
                 .await?;
             record_product_operation_result(&result);
             txn.commit().await?;
@@ -952,7 +1010,14 @@ impl CatalogService {
         .await?;
 
         let result = self
-            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .get_product_in(
+                &txn,
+                tenant_id,
+                product_id,
+                PLATFORM_FALLBACK_LOCALE,
+                None,
+                None,
+            )
             .await?;
         record_product_operation_result(&result);
         txn.commit().await?;
@@ -971,13 +1036,21 @@ impl CatalogService {
         debug!(product_id = %product_id, "Archiving product");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
         // Retries of a completed transition must not change timestamps or emit events.
         if product.status == entities::product::ProductStatus::Archived {
             let result = self
-                .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+                .get_product_in(
+                    &txn,
+                    tenant_id,
+                    product_id,
+                    PLATFORM_FALLBACK_LOCALE,
+                    None,
+                    None,
+                )
                 .await?;
             record_product_operation_result(&result);
             txn.commit().await?;
@@ -1000,7 +1073,14 @@ impl CatalogService {
         .await?;
 
         let result = self
-            .get_product_in(&txn, tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .get_product_in(
+                &txn,
+                tenant_id,
+                product_id,
+                PLATFORM_FALLBACK_LOCALE,
+                None,
+                None,
+            )
             .await?;
         record_product_operation_result(&result);
         txn.commit().await?;
@@ -1019,6 +1099,7 @@ impl CatalogService {
         debug!(product_id = %product_id, "Deleting product");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
@@ -1027,26 +1108,59 @@ impl CatalogService {
             return Err(CommerceError::CannotDeletePublished);
         }
 
+        // INVARIANT: the parent was tenant-proved and locked above. Load the complete
+        // bounded child identity set, including a contradictory child tenant, before any
+        // owner cleanup. Do not pass a truncated page as a complete deletion command.
         let variants = entities::product_variant::Entity::find()
+            .select_only()
+            .column(entities::product_variant::Column::Id)
+            .column(entities::product_variant::Column::TenantId)
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
+            .order_by_asc(entities::product_variant::Column::Id)
+            .limit((rustok_inventory::MAX_CATALOG_DELETE_VARIANTS + 1) as u64)
+            .into_tuple::<(Uuid, Uuid)>()
             .all(&txn)
             .await?;
-        let variant_ids: Vec<Uuid> = variants.iter().map(|variant| variant.id).collect();
+        if variants.len() > rustok_inventory::MAX_CATALOG_DELETE_VARIANTS {
+            return Err(CommerceError::InventoryDeletionBlocked(
+                rustok_inventory::CatalogDeletionBlocker::LimitExceeded,
+            ));
+        }
+        if variants.iter().any(|(_, owner)| *owner != tenant_id) {
+            return Err(CommerceError::InventoryDeletionBlocked(
+                rustok_inventory::CatalogDeletionBlocker::IdentityUnavailable,
+            ));
+        }
+        if variants.is_empty() {
+            return Err(CommerceError::NoVariants);
+        }
+        let variant_ids = variants.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        BootstrapService::delete_records_for_variants_in_tx(
+            &txn,
+            tenant_id,
+            actor_id,
+            &variant_ids,
+        )
+        .await?;
+        PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &variant_ids).await?;
 
-        if !variant_ids.is_empty() {
-            BootstrapService::delete_records_for_variants_in_tx(&txn, &variant_ids).await?;
+        entities::variant_translation::Entity::delete_many()
+            .filter(
+                entities::variant_translation::Column::VariantId.is_in(variant_ids.iter().copied()),
+            )
+            .exec(&txn)
+            .await?;
 
-            PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &variant_ids).await?;
-
-            entities::variant_translation::Entity::delete_many()
-                .filter(entities::variant_translation::Column::VariantId.is_in(variant_ids))
-                .exec(&txn)
-                .await?;
-
-            entities::product_variant::Entity::delete_many()
-                .filter(entities::product_variant::Column::ProductId.eq(product_id))
-                .exec(&txn)
-                .await?;
+        let deleted_variants = entities::product_variant::Entity::delete_many()
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_variant::Column::ProductId.eq(product_id))
+            .filter(entities::product_variant::Column::Id.is_in(variant_ids.iter().copied()))
+            .exec(&txn)
+            .await?;
+        if deleted_variants.rows_affected != variant_ids.len() as u64 {
+            return Err(CommerceError::InventoryDeletionBlocked(
+                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+            ));
         }
 
         entities::product_translation::Entity::delete_many()
@@ -1100,9 +1214,15 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        entities::product::Entity::delete_by_id(product_id)
+        let deleted_product = entities::product::Entity::delete_by_id(product_id)
+            .filter(entities::product::Column::TenantId.eq(tenant_id))
             .exec(&txn)
             .await?;
+        if deleted_product.rows_affected != 1 {
+            return Err(CommerceError::InventoryDeletionBlocked(
+                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+            ));
+        }
 
         flex::delete_attached_localized_values(
             &txn,
@@ -1146,6 +1266,7 @@ impl CatalogService {
         validate_variant_prices(&input.prices)?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let configured_axes =
@@ -1229,6 +1350,7 @@ impl CatalogService {
         BootstrapService::create_initial_records_in_tx(
             &txn,
             &default_stock_location,
+            actor_id,
             InitialInventory {
                 variant_id,
                 sku: input.sku.clone(),
@@ -1332,6 +1454,7 @@ impl CatalogService {
         }
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let observed_variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
@@ -1469,7 +1592,10 @@ impl CatalogService {
         }
 
         if let Some(quantity) = input.inventory_quantity {
-            BootstrapService::update_initial_quantity_in_tx(&txn, variant_id, quantity).await?;
+            BootstrapService::update_initial_quantity_in_tx(
+                &txn, tenant_id, actor_id, variant_id, quantity,
+            )
+            .await?;
         }
 
         txn.publish(
@@ -1505,6 +1631,7 @@ impl CatalogService {
         debug!("Deleting product variant");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let observed_variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
@@ -1516,6 +1643,7 @@ impl CatalogService {
         let _variant = find_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
         let count = entities::product_variant::Entity::find()
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
             .count(&txn)
             .await?;
@@ -1523,7 +1651,13 @@ impl CatalogService {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
 
-        BootstrapService::delete_records_for_variants_in_tx(&txn, &[variant_id]).await?;
+        BootstrapService::delete_records_for_variants_in_tx(
+            &txn,
+            tenant_id,
+            actor_id,
+            &[variant_id],
+        )
+        .await?;
         PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
 
         entities::variant_translation::Entity::delete_many()
@@ -1531,9 +1665,16 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        entities::product_variant::Entity::delete_by_id(variant_id)
+        let deleted_variant = entities::product_variant::Entity::delete_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_variant::Column::ProductId.eq(product_id))
             .exec(&txn)
             .await?;
+        if deleted_variant.rows_affected != 1 {
+            return Err(CommerceError::InventoryDeletionBlocked(
+                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+            ));
+        }
 
         txn.publish(
             tenant_id,
@@ -1597,6 +1738,7 @@ impl CatalogService {
             .await?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
@@ -1712,6 +1854,7 @@ impl CatalogService {
             .transpose()?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
@@ -1836,6 +1979,7 @@ impl CatalogService {
         debug!("Deleting product image");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
 
@@ -1898,6 +2042,7 @@ impl CatalogService {
         debug!(count = image_ids.len(), "Reordering product images");
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
 
         let _product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
         let existing_images = entities::product_image::Entity::find()
@@ -1933,121 +2078,6 @@ impl CatalogService {
         info!(product_id = %product_id, "Product images reordered successfully");
 
         Ok(())
-    }
-
-    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, product_id = %product_id))]
-    pub async fn set_variant_axes(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        product_id: Uuid,
-        input: SetVariantAxesInput,
-    ) -> CommerceResult<Vec<VariantAxisConfigResponse>> {
-        debug!("Setting variant axes for product");
-
-        input
-            .validate()
-            .map_err(|e| CommerceError::Validation(e.to_string()))?;
-
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-
-        let product = find_product_for_update_in_tx(&txn, tenant_id, product_id).await?;
-        validate_variant_axis_configuration_in(
-            &txn,
-            tenant_id,
-            product.primary_category_id,
-            input.axes.as_slice(),
-        )
-        .await?;
-
-        let existing_variants = entities::product_variant::Entity::find()
-            .filter(entities::product_variant::Column::ProductId.eq(product_id))
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .all(&txn)
-            .await?;
-        let next_identities = validate_existing_variant_axis_assignments_in(
-            &txn,
-            tenant_id,
-            existing_variants.as_slice(),
-            input.axes.as_slice(),
-        )
-        .await?;
-
-        let existing_axis_ids: Vec<Uuid> = entities::product_variant_axis::Entity::find()
-            .filter(entities::product_variant_axis::Column::ProductId.eq(product_id))
-            .filter(entities::product_variant_axis::Column::TenantId.eq(tenant_id))
-            .all(&txn)
-            .await?
-            .into_iter()
-            .map(|axis| axis.id)
-            .collect();
-
-        if !existing_axis_ids.is_empty() {
-            // The value rows are actual Variant EAV data and must survive a configuration
-            // change. Only configuration rows are replaced after the proposed configuration
-            // was proven compatible with every existing Variant above.
-            entities::product_variant_axis_value::Entity::delete_many()
-                .filter(
-                    entities::product_variant_axis_value::Column::AxisId
-                        .is_in(existing_axis_ids.clone()),
-                )
-                .exec(&txn)
-                .await?;
-            entities::product_variant_axis::Entity::delete_many()
-                .filter(entities::product_variant_axis::Column::Id.is_in(existing_axis_ids))
-                .exec(&txn)
-                .await?;
-        }
-
-        let now = Utc::now();
-        for (index, axis_input) in input.axes.iter().enumerate() {
-            let axis_id = generate_id();
-            entities::product_variant_axis::ActiveModel {
-                id: Set(axis_id),
-                tenant_id: Set(tenant_id),
-                product_id: Set(product_id),
-                attribute_id: Set(axis_input.attribute_id),
-                position: Set(resolved_axis_position(axis_input.position, index)?),
-                created_at: Set(now.into()),
-            }
-            .insert(&txn)
-            .await?;
-
-            for (value_index, option_id) in axis_input.allowed_option_ids.iter().enumerate() {
-                entities::product_variant_axis_value::ActiveModel {
-                    id: Set(generate_id()),
-                    tenant_id: Set(tenant_id),
-                    axis_id: Set(axis_id),
-                    option_id: Set(*option_id),
-                    position: Set(resolved_axis_position(0, value_index)?),
-                    created_at: Set(now.into()),
-                }
-                .insert(&txn)
-                .await?;
-            }
-        }
-
-        replace_variant_combination_identities_in_tx(&txn, tenant_id, next_identities.as_slice())
-            .await?;
-
-        txn.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductUpdated { product_id },
-        )
-        .await?;
-
-        let result = super::projection::load_product_variant_axes(
-            &txn,
-            tenant_id,
-            product_id,
-            PLATFORM_FALLBACK_LOCALE,
-        )
-        .await?;
-        record_product_operation_result(&result);
-        txn.commit().await?;
-
-        Ok(result)
     }
 }
 
@@ -2105,8 +2135,6 @@ fn validate_product_image_input(
     Ok(())
 }
 
-const MAX_VARIANT_AXES: usize = 32;
-const MAX_VARIANT_AXIS_VALUES: usize = 256;
 const VARIANT_AXIS_POSITION_GAP: i32 = 100;
 
 #[derive(Clone, Debug)]
@@ -2126,12 +2154,6 @@ struct VariantAxisDefinitionRow {
 struct VariantAxisOptionRow {
     id: Uuid,
     attribute_id: Uuid,
-}
-
-#[derive(FromQueryResult)]
-struct ExistingVariantAxisAssignmentRow {
-    attribute_id: Uuid,
-    option_id: Uuid,
 }
 
 async fn load_variant_axis_configuration_in<C>(
@@ -2341,24 +2363,29 @@ where
         }
     }
 
-    let option_placeholders = (0..requested_option_ids.len())
-        .map(|index| format!("${}", index + 2))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let mut option_values = vec![tenant_id.into()];
-    option_values.extend(requested_option_ids.iter().copied().map(Into::into));
-    let option_owners = VariantAxisOptionRow::find_by_statement(Statement::from_sql_and_values(
-        conn.get_database_backend(),
-        format!(
-            "SELECT id, attribute_id FROM product_attribute_options WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({option_placeholders})"
-        ),
-        option_values,
-    ))
-    .all(conn)
-    .await?
-    .into_iter()
-    .map(|option| (option.id, option.attribute_id))
-    .collect::<HashMap<_, _>>();
+    let mut option_owners = HashMap::new();
+    for option_ids in requested_option_ids.chunks(128) {
+        let placeholders = (0..option_ids.len())
+            .map(|index| format!("${}", index + 2))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut values = vec![tenant_id.into()];
+        values.extend(option_ids.iter().copied().map(Into::into));
+        let options = VariantAxisOptionRow::find_by_statement(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            format!(
+                "SELECT id, attribute_id FROM product_attribute_options WHERE tenant_id = $1 AND archived_at IS NULL AND id IN ({placeholders})"
+            ),
+            values,
+        ))
+        .all(conn)
+        .await?;
+        option_owners.extend(
+            options
+                .into_iter()
+                .map(|option| (option.id, option.attribute_id)),
+        );
+    }
     for axis in axes {
         for option_id in &axis.allowed_option_ids {
             if option_owners.get(option_id) != Some(&axis.attribute_id) {
@@ -2377,7 +2404,7 @@ async fn validate_existing_variant_axes_for_category_in<C>(
     conn: &C,
     tenant_id: Uuid,
     product_id: Uuid,
-    primary_category_id: Uuid,
+    primary_category_id: Option<Uuid>,
 ) -> CommerceResult<()>
 where
     C: ConnectionTrait,
@@ -2391,13 +2418,8 @@ where
             allowed_option_ids: axis.allowed_option_ids.into_iter().collect(),
         });
     }
-    validate_variant_axis_configuration_in(
-        conn,
-        tenant_id,
-        Some(primary_category_id),
-        &proposed_axes,
-    )
-    .await
+    validate_variant_axis_configuration_in(conn, tenant_id, primary_category_id, &proposed_axes)
+        .await
 }
 
 fn validate_variant_axis_values_against_configuration(
@@ -2448,108 +2470,6 @@ fn validate_variant_axis_values_against_configuration(
     Ok(())
 }
 
-async fn validate_existing_variant_axis_assignments_in(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    variants: &[entities::product_variant::Model],
-    proposed_axes: &[VariantAxisInput],
-) -> CommerceResult<Vec<(Uuid, Option<String>)>> {
-    if proposed_axes.is_empty() {
-        if variants.len() > 1 {
-            return Err(CommerceError::Validation(
-                "cannot remove all variant axes while multiple variants exist; consolidate to one variant first"
-                    .to_owned(),
-            ));
-        }
-        return Ok(variants.iter().map(|variant| (variant.id, None)).collect());
-    }
-
-    let proposed_configuration = proposed_axes
-        .iter()
-        .map(|axis| ConfiguredVariantAxis {
-            attribute_id: axis.attribute_id,
-            allowed_option_ids: axis.allowed_option_ids.iter().copied().collect(),
-        })
-        .collect::<Vec<_>>();
-    let attribute_placeholders = (0..proposed_configuration.len())
-        .map(|index| format!("${}", index + 3))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let mut identities = Vec::with_capacity(variants.len());
-    let mut seen_identities = HashSet::new();
-    for variant in variants {
-        let mut values = vec![tenant_id.into(), variant.id.into()];
-        values.extend(
-            proposed_configuration
-                .iter()
-                .map(|axis| axis.attribute_id.into()),
-        );
-        let assignments = ExistingVariantAxisAssignmentRow::find_by_statement(
-            Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                format!(
-                    "SELECT pvav.attribute_id, pvavo.option_id FROM product_variant_attribute_values pvav JOIN product_variant_attribute_value_options pvavo ON pvavo.tenant_id = pvav.tenant_id AND pvavo.value_id = pvav.id WHERE pvav.tenant_id = $1 AND pvav.variant_id = $2 AND pvav.detached_at IS NULL AND pvav.attribute_id IN ({attribute_placeholders})"
-                ),
-                values,
-            ),
-        )
-        .all(txn)
-        .await?
-        .into_iter()
-        .map(|assignment| VariantAxisValueInput {
-            attribute_id: assignment.attribute_id,
-            option_id: assignment.option_id,
-        })
-        .collect::<Vec<_>>();
-        validate_variant_axis_values_against_configuration(
-            assignments.as_slice(),
-            proposed_configuration.as_slice(),
-        )?;
-        let identity = variant_combination_identity(assignments.as_slice()).ok_or_else(|| {
-            CommerceError::Core(CoreError::Internal(
-                "configured variant axes produced no combination identity".to_owned(),
-            ))
-        })?;
-        if !seen_identities.insert(identity.clone()) {
-            return Err(CommerceError::Validation(
-                "the proposed axes would create duplicate variant combinations".to_owned(),
-            ));
-        }
-        identities.push((variant.id, Some(identity)));
-    }
-    Ok(identities)
-}
-
-async fn replace_variant_combination_identities_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    identities: &[(Uuid, Option<String>)],
-) -> CommerceResult<()> {
-    if identities.len() > 1 {
-        // Combination identity is indexed immediately. First move every affected Variant to a
-        // transaction-unique sentinel so swapping two otherwise-valid combinations cannot
-        // transiently collide with the unique Product combination index.
-        let reconfiguration_id = generate_id();
-        for (variant_id, _) in identities {
-            txn.execute_raw(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
-                vec![format!("__axis-reconfiguration:{reconfiguration_id}:{variant_id}").into(), tenant_id.into(), (*variant_id).into()],
-            ))
-            .await?;
-        }
-    }
-    for (variant_id, identity) in identities {
-        txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            "UPDATE product_variants SET combination_identity = $1 WHERE tenant_id = $2 AND id = $3",
-            vec![identity.clone().into(), tenant_id.into(), (*variant_id).into()],
-        ))
-        .await?;
-    }
-    Ok(())
-}
-
 fn variant_combination_identity(axis_values: &[VariantAxisValueInput]) -> Option<String> {
     if axis_values.is_empty() {
         return None;
@@ -2565,7 +2485,7 @@ fn variant_combination_identity(axis_values: &[VariantAxisValueInput]) -> Option
     )
 }
 
-pub(crate) async fn assign_variant_axis_values_in_tx(
+async fn assign_variant_axis_value_rows_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     variant_id: Uuid,
@@ -2625,6 +2545,17 @@ pub(crate) async fn assign_variant_axis_values_in_tx(
         .await?;
     }
 
+    Ok(())
+}
+
+pub(crate) async fn assign_variant_axis_values_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    axis_values: &[VariantAxisValueInput],
+) -> CommerceResult<()> {
+    assign_variant_axis_value_rows_in_tx(txn, tenant_id, variant_id, axis_values).await?;
+
     let combination_identity = variant_combination_identity(axis_values);
     txn.execute_raw(Statement::from_sql_and_values(
         txn.get_database_backend(),
@@ -2644,6 +2575,18 @@ pub(crate) fn validate_variant_axes_and_combinations(
     variant_axes: &[VariantAxisInput],
     variants: &[CreateVariantInput],
 ) -> CommerceResult<()> {
+    let tuples = variants
+        .iter()
+        .map(|variant| variant.axis_values.clone())
+        .collect::<Vec<_>>();
+    validate_variant_axis_tuples(variant_axes, &tuples)
+}
+
+/// One identity validator for authored and public-read tuples; no price/stock input is fabricated.
+pub(super) fn validate_variant_axis_tuples(
+    variant_axes: &[VariantAxisInput],
+    variants: &[Vec<VariantAxisValueInput>],
+) -> CommerceResult<()> {
     if variant_axes.is_empty() {
         if variants.len() != 1 {
             return Err(CommerceError::Validation(
@@ -2651,7 +2594,7 @@ pub(crate) fn validate_variant_axes_and_combinations(
                     .to_owned(),
             ));
         }
-        if !variants[0].axis_values.is_empty() {
+        if !variants[0].is_empty() {
             return Err(CommerceError::Validation(
                 "a default variant cannot include axis assignments".to_owned(),
             ));
@@ -2686,24 +2629,24 @@ pub(crate) fn validate_variant_axes_and_combinations(
 
     let mut seen_combinations = HashSet::new();
     for (idx, variant) in variants.iter().enumerate() {
-        if variant.axis_values.is_empty() {
+        if variant.is_empty() {
             return Err(CommerceError::Validation(format!(
                 "Variant at index {} is missing axis values for configured axes",
                 idx
             )));
         }
-        if variant.axis_values.len() != variant_axes.len() {
+        if variant.len() != variant_axes.len() {
             return Err(CommerceError::Validation(format!(
                 "Variant at index {} has {} axis assignments, expected {}",
                 idx,
-                variant.axis_values.len(),
+                variant.len(),
                 variant_axes.len()
             )));
         }
 
         let mut variant_axis_attrs = HashSet::new();
         let mut sorted_pairs = Vec::new();
-        for val in &variant.axis_values {
+        for val in variant {
             if !variant_axis_attrs.insert(val.attribute_id) {
                 return Err(CommerceError::Validation(format!(
                     "Variant at index {} has duplicate assignment for axis `{}`",

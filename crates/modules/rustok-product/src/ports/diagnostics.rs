@@ -129,6 +129,8 @@ pub(crate) fn product_owner_error_facts(
         CommerceError::Validation(value) => {
             if crate::services::catalog::revision_conflict_of(value).is_some() {
                 ProductOwnerErrorFacts::empty("revision_conflict")
+            } else if crate::services::catalog::reconfiguration_error_code(value).is_some() {
+                ProductOwnerErrorFacts::empty("variant_axes_refusal")
             } else {
                 ProductOwnerErrorFacts::text("validation", &[value.as_str()])
             }
@@ -146,8 +148,16 @@ pub(crate) fn product_owner_error_facts(
         CommerceError::CannotDeletePublished => {
             ProductOwnerErrorFacts::empty("cannot_delete_published")
         }
+        CommerceError::InventoryDeletionBlocked(_) => {
+            ProductOwnerErrorFacts::empty("inventory_deletion_blocked")
+        }
+        CommerceError::InventoryQuantityBlocked(_) => {
+            ProductOwnerErrorFacts::empty("inventory_quantity_blocked")
+        }
         CommerceError::Core(_) => ProductOwnerErrorFacts::opaque("core"),
-        CommerceError::Conflict(_) => ProductOwnerErrorFacts::opaque("conflict"),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            ProductOwnerErrorFacts::opaque("conflict")
+        }
     }
 }
 
@@ -344,14 +354,25 @@ fn product_error_code(error: &crate::error::CommerceError) -> &'static str {
         CommerceError::Validation(message) => {
             if crate::services::catalog::revision_conflict_of(message).is_some() {
                 "product.revision_conflict"
+            } else if let Some(code) = crate::services::catalog::reconfiguration_error_code(message)
+            {
+                code
             } else {
                 "product.validation"
             }
         }
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeletePublished => "product.cannot_delete_published",
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_error_code(blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_error_code(blocker)
+        }
         CommerceError::Core(error) => crate::error::core_error_code(error),
-        CommerceError::Conflict(_) => "product.conflict",
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            "product.conflict"
+        }
     }
 }
 
@@ -364,7 +385,18 @@ pub(super) fn product_error_to_port_error(
 
     let code = product_error_code(&error);
     let error_facts = product_owner_error_facts(&error);
-    let technical_failure = matches!(&error, CommerceError::Database(_) | CommerceError::Core(_));
+    let technical_failure = match &error {
+        CommerceError::Database(_) | CommerceError::Core(_) => true,
+        CommerceError::InventoryDeletionBlocked(blocker) => matches!(
+            crate::error::inventory_deletion_port_error(blocker).kind,
+            rustok_api::PortErrorKind::InvariantViolation
+        ),
+        CommerceError::InventoryQuantityBlocked(blocker) => matches!(
+            crate::error::inventory_quantity_port_error(blocker).kind,
+            rustok_api::PortErrorKind::InvariantViolation
+        ),
+        _ => false,
+    };
     log_product_port_failure(
         context,
         owner_operation,
@@ -410,10 +442,18 @@ pub(super) fn product_error_to_port_error(
             "product.cannot_delete_published",
             "cannot delete a published product",
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
     }
 }

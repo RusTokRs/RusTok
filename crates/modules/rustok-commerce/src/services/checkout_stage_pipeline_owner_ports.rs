@@ -61,6 +61,22 @@ pub enum CheckoutStagePipelineError {
     Conflict(String),
 }
 
+impl CheckoutStagePipelineError {
+    pub(crate) fn inventory_adoption_failure(
+        &self,
+    ) -> Option<&super::CheckoutInventoryOrderAdoptionError> {
+        match self {
+            Self::OrderStage(stage) => match stage.as_ref() {
+                super::CheckoutOrderStageError::Creation(
+                    super::CheckoutOrderCreationError::Adoption(error),
+                ) => Some(error),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 pub type CheckoutStagePipelineResult<T> = Result<T, CheckoutStagePipelineError>;
 
 impl From<CheckoutOrderStageError> for CheckoutStagePipelineError {

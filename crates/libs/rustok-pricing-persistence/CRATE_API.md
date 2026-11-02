@@ -30,3 +30,11 @@
 ### Errors / Failure Codes
 - `sea_orm::DbErr::Custom`: validation failure (nil UUID, negative amount, invalid currency code).
 - `sea_orm::DbErr`: underlying database query or transaction failure.
+
+
+### Catalog inspection predicate
+
+`catalog_base_scope()` exposes the same unscoped-base predicate used by catalog
+bootstrap/readback, so Pricing can add a bounded public inspection query without
+copying scope semantics. It excludes lists, channels, regions and quantity tiers;
+it is not a selling-price resolver. Existing historical schema/migrations are unchanged.

@@ -24,17 +24,13 @@
       "module": "commerce",
       "profile": "checkout_product_projection",
       "degraded_modes": [],
-      "fallback_profiles": [
-        "embedded_native"
-      ]
+      "fallback_profiles": ["embedded_native"]
     },
     {
       "module": "marketplace-listing",
       "profile": "listing_product_projection",
       "degraded_modes": [],
-      "fallback_profiles": [
-        "embedded_native"
-      ]
+      "fallback_profiles": ["embedded_native"]
     },
     {
       "module": "ai-product",
@@ -44,9 +40,7 @@
         "skip_catalog_enrichment",
         "require_operator_review"
       ],
-      "fallback_profiles": [
-        "embedded_native"
-      ]
+      "fallback_profiles": ["embedded_native"]
     }
   ],
   "evidence": {
@@ -70,16 +64,19 @@
     "runtime_contract_smoke": "crates/modules/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
     "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
     "runtime_fallback_smoke": "crates/modules/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
-    "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs"
+    "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs",
+    "catalog_deletion_source": "crates/modules/rustok-inventory/contracts/evidence/catalog-deletion-source.json",
+    "catalog_deletion_guard": "scripts/verify/verify-inventory-catalog-deletion.mjs",
+    "quantity_writes_source": "crates/modules/rustok-inventory/contracts/evidence/quantity-writes-source.json",
+    "quantity_writes_guard": "scripts/verify/verify-inventory-quantity-writes.mjs",
+    "source_history_source": "crates/modules/rustok-inventory/contracts/evidence/source-history-source.json",
+    "source_history_guard": "scripts/verify/verify-inventory-source-history.mjs"
   },
   "runtime_composition": {
     "runtime": "ProductCatalogReadRuntime",
     "source": "crates/modules/rustok-product/src/runtime.rs",
     "host_composition": "apps/server/src/services/commerce_provider_runtime.rs",
-    "profiles": [
-      "embedded_native",
-      "external"
-    ],
+    "profiles": ["embedded_native", "external"],
     "source_complete_consumers": [
       "ai-product",
       "marketplace-listing",
@@ -100,10 +97,7 @@
     "server": "ProductCatalogGrpcService",
     "server_authenticator": "ProductCatalogGrpcBearerInterceptor",
     "trusted_authority": "TrustedProductCatalogAuthority",
-    "authentication_metadata": [
-      "authorization",
-      "x-rustok-tenant-id"
-    ],
+    "authentication_metadata": ["authorization", "x-rustok-tenant-id"],
     "authentication_assertions": [
       "constant_time_complete_authorization_compare",
       "tenant_uuid_validated",
@@ -148,10 +142,7 @@
     "transport_profile": "grpc_loopback_external_runtime",
     "commerce_test": "crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs",
     "ai_source_test": "crates/modules/rustok-ai/src/direct_product_attributes.rs",
-    "failure_profiles": [
-      "unavailable",
-      "timeout"
-    ],
+    "failure_profiles": ["unavailable", "timeout"],
     "assertions": [
       "commerce_hard_dependency_no_cart_snapshot_fallback",
       "commerce_typed_boundary_error_preserved",
@@ -219,11 +210,7 @@
     "source": "crates/modules/rustok-product/contracts/product-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "execution_attestation": "maintainer_attested_passed_no_raw_logs",
-    "profiles": [
-      "in_process",
-      "remote_adapter_placeholder",
-      "grpc_loopback"
-    ],
+    "profiles": ["in_process", "remote_adapter_placeholder", "grpc_loopback"],
     "cases": [
       {
         "operation": "read_product_projection",
@@ -268,9 +255,7 @@
     ],
     "fallback_smoke": {
       "status": "planned_runtime_pending",
-      "profiles": [
-        "embedded_native"
-      ],
+      "profiles": ["embedded_native"],
       "degraded_modes": [
         "generate_from_prompt_only",
         "skip_catalog_enrichment",

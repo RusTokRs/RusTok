@@ -9,6 +9,10 @@
  */
 
 import type { Metadata } from "next";
+import { locales } from "@/i18n-config";
+import { cookies } from "next/headers";
+import { ADMIN_TOKEN_KEY } from "@rustok/ui-auth/browser";
+import { ProductRouteClient } from "@/features/product/components/product-route-client";
 import { notFound } from "next/navigation";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import { getStorefrontTenantSlug } from "@/shared/api/modules";
@@ -17,16 +21,17 @@ import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import {
   fetchStorefrontProduct,
   fetchStorefrontProductPricing,
-  ProductDetailView,
+  assertBuyerQuote,
+  parseBuyerRoute,
+  ProductBuyerError,
+  type BuyerErrorCode,
+  type BuyerRoute,
+  type StorefrontProductPricingDetail,
 } from "../../../../../packages/rustok-product/src";
 
 interface ProductPageProps {
   params: Promise<{ locale: string; slug: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}
-
-function pickParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
 }
 
 export async function generateMetadata({
@@ -38,7 +43,7 @@ export async function generateMetadata({
     storefrontGraphql,
     slug,
     locale,
-    tenantSlug
+    tenantSlug,
   );
 
   const path = `/products/${slug}`;
@@ -83,38 +88,79 @@ export default async function ProductDetailPage({
     storefrontGraphql,
     slug,
     locale,
-    tenantSlug
+    tenantSlug,
   );
 
   if (!product) {
     notFound();
   }
 
-  const rawQuantity = pickParam(query.quantity);
-  const parsedQuantity = rawQuantity ? parseInt(rawQuantity, 10) : undefined;
+  const token = (await cookies()).get(ADMIN_TOKEN_KEY)?.value ?? null;
+  const buyerPath = `/${encodeURIComponent(locale)}/products/${encodeURIComponent(slug)}`;
+  const originalSearch = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (Array.isArray(value))
+      for (const entry of value) originalSearch.append(key, entry);
+    else if (value !== undefined) originalSearch.set(key, value);
+  }
+  let buyerRoute: BuyerRoute | null = null;
+  let buyerError: BuyerErrorCode | null = null;
+  try {
+    buyerRoute = parseBuyerRoute(product, query, locale);
+  } catch (error) {
+    buyerError = error instanceof ProductBuyerError ? error.code : "request";
+  }
 
-  const pricingData = await fetchStorefrontProductPricing(
-    storefrontGraphql,
-    slug,
-    locale,
-    {
-      currencyCode: pickParam(query.currency)?.trim().toUpperCase(),
-      regionId: pickParam(query.region_id)?.trim(),
-      priceListId: pickParam(query.price_list_id)?.trim(),
-      channelId: pickParam(query.channel_id)?.trim(),
-      channelSlug: pickParam(query.channel_slug)?.trim(),
-      quantity: Number.isFinite(parsedQuantity) ? parsedQuantity : undefined,
-    },
-    tenantSlug
-  );
+  let pricingData: StorefrontProductPricingDetail | null = null;
+  if (buyerRoute?.selection.variant && buyerRoute.pricing.currencyCode) {
+    const request = {
+      ...buyerRoute.pricing,
+      currencyCode: buyerRoute.pricing.currencyCode,
+      quantity: buyerRoute.pricing.quantity ?? 1,
+    };
+    try {
+      pricingData = await fetchStorefrontProductPricing(
+        storefrontGraphql,
+        slug,
+        locale,
+        {
+          currencyCode: request.currencyCode,
+          regionId: request.regionId ?? undefined,
+          priceListId: request.priceListId ?? undefined,
+          channelId: request.channelId ?? undefined,
+          channelSlug: request.channelSlug ?? undefined,
+          quantity: request.quantity,
+        },
+        tenantSlug,
+        token,
+      );
+      if (pricingData) assertBuyerQuote(product, pricingData, request);
+    } catch {
+      // Keep catalog content, but never seed the buyer panel with a rejected/partial quote.
+      pricingData = null;
+    }
+  }
 
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <ProductDetailView
+        <ProductRouteClient
+          key={`${tenantSlug}:${locale}:${product.id}:${originalSearch.toString()}`}
           product={product}
-          pricingVariants={pricingData?.variants || []}
+          handle={slug}
           locale={locale}
+          tenantSlug={tenantSlug}
+          path={buyerPath}
+          localePaths={Object.fromEntries(
+            locales.map((supported) => [
+              supported,
+              `/${encodeURIComponent(supported)}/products/${encodeURIComponent(slug)}`,
+            ]),
+          )}
+          initialSearch={originalSearch.toString()}
+          initialRoute={buyerRoute}
+          initialError={buyerError}
+          initialQuote={pricingData}
         />
       </div>
     </main>

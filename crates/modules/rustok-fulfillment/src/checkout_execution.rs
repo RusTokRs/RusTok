@@ -1206,6 +1206,9 @@ fn fulfillment_error_to_port_error(
                 "fulfillment provider result requires reconciliation",
             )
         }
+        error @ FulfillmentError::OwnerPort(_) => {
+            crate::error::map_fulfillment_error_without_context(error)
+        }
         FulfillmentError::Database(error) => {
             let database_error_type = std::any::type_name_of_val(&error);
             tracing::error!(

@@ -4,11 +4,11 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
-use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_cart::error::CartError;
 use rustok_cart::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest,
 };
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
@@ -19,7 +19,6 @@ use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
-    entities::product::ProductStatus,
 };
 use sea_orm::DatabaseConnection;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
@@ -31,12 +30,8 @@ use crate::dto::{
     CreateOrderTaxLineInput, CreatePaymentCollectionInput, ResolveStoreContextInput,
     UpdateCartContextInput,
 };
-use crate::storefront_channel::{
-    is_metadata_visible_for_public_channel, normalize_public_channel_slug,
-};
-use crate::storefront_shipping::{
-    effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
-};
+use crate::storefront_channel::is_metadata_visible_for_public_channel;
+use crate::storefront_shipping::is_shipping_option_compatible_with_profiles;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 
@@ -73,7 +68,7 @@ pub enum CheckoutError {
 pub type CheckoutResult<T> = Result<T, CheckoutError>;
 
 pub struct CheckoutService {
-    _db: DatabaseConnection,
+    db: DatabaseConnection,
     cart_checkout_port: Arc<dyn CartCheckoutPort>,
     inventory_reservation_port: Arc<dyn InventoryReservationPort>,
     product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
@@ -94,7 +89,7 @@ impl CheckoutService {
         product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
     ) -> Self {
         Self {
-            _db: db.clone(),
+            db: db.clone(),
             cart_checkout_port,
             inventory_reservation_port,
             product_catalog_read_port,
@@ -166,40 +161,14 @@ impl CheckoutService {
             )
             .await
             .map_err(|error| checkout_port_error("read_cart_checkout_snapshot", error))?;
-        if input.shipping_selections.is_some()
-            || input.shipping_option_id.is_some()
-            || input.region_id.is_some()
-            || input.country_code.is_some()
-            || input.locale.is_some()
-        {
-            cart = self
-                .cart_checkout_port
-                .update_cart_checkout_context(
-                    checkout_cart_port_context(
-                        tenant_id,
-                        actor_id,
-                        cart.id,
-                        input.locale.as_deref().or(cart.locale_code.as_deref()),
-                        cart.channel_slug.as_deref(),
-                        "update_context",
-                        true,
-                    ),
-                    CartCheckoutContextUpdateRequest {
-                        cart_id: cart.id,
-                        input: UpdateCartContextInput {
-                            email: cart.email.clone(),
-                            region_id: cart.region_id.or(input.region_id),
-                            country_code: cart.country_code.clone().or(input.country_code.clone()),
-                            locale_code: cart.locale_code.clone().or(input.locale.clone()),
-                            selected_shipping_option_id: input
-                                .shipping_option_id
-                                .or(cart.selected_shipping_option_id),
-                            shipping_selections: input.shipping_selections.clone(),
-                        },
-                    },
-                )
-                .await
-                .map_err(|error| checkout_port_error("update_cart_checkout_context", error))?;
+        if cart.id != input.cart_id || cart.tenant_id != tenant_id {
+            return Err(checkout_port_error(
+                "read_cart_checkout_snapshot",
+                PortError::invariant_violation(
+                    "commerce.checkout_cart_mismatch",
+                    "Cart owner returned a different checkout identity",
+                ),
+            ));
         }
         if cart.status == "completed" {
             if let Some(response) = self
@@ -225,6 +194,52 @@ impl CheckoutService {
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+        // Refuse malformed/oversized input before changing the cart lifecycle. The locked
+        // snapshot is checked again below, so this admission is not a concurrency fence.
+        super::checkout_catalog::variant_demands(&cart)?;
+        let context_input = UpdateCartContextInput {
+            email: cart.email.clone(),
+            region_id: cart.region_id.or(input.region_id),
+            country_code: cart.country_code.clone().or(input.country_code.clone()),
+            locale_code: cart.locale_code.clone().or(input.locale.clone()),
+            selected_shipping_option_id: input
+                .shipping_option_id
+                .or(cart.selected_shipping_option_id),
+            shipping_selections: input.shipping_selections.clone(),
+        };
+        // Atomic preparation may already have frozen this exact context. Compare only; do
+        // not route it through a context writer or re-quote it during materialization/recovery.
+        let context_is_current =
+            cart.context_is_current(&context_input)
+                .map_err(|error| match error {
+                    CartError::Validation(message) => CheckoutError::Validation(message),
+                    other => CheckoutError::from(other),
+                })?;
+        if !context_is_current {
+            let pricing_context = rustok_cart::CartPricingContextGuard::capture(&cart)
+                .map_err(|error| checkout_port_error("capture_cart_context", error))?;
+            cart = self
+                .cart_checkout_port
+                .update_cart_checkout_context(
+                    checkout_cart_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart.id,
+                        cart.locale_code.as_deref().or(input.locale.as_deref()),
+                        cart.channel_slug.as_deref(),
+                        "update_context",
+                        true,
+                    ),
+                    CartContextUpdateRequest {
+                        cart_id: cart.id,
+                        input: context_input,
+                        pricing_context,
+                        pricing: rustok_cart::CartContextPricing::Preserve,
+                    },
+                )
+                .await
+                .map_err(|error| checkout_port_error("update_cart_checkout_context", error))?;
+        }
         let cart = self
             .cart_checkout_port
             .begin_cart_checkout(
@@ -241,14 +256,17 @@ impl CheckoutService {
             )
             .await
             .map_err(|error| checkout_port_error("begin_cart_checkout", error))?;
-        if let Err(error) = self
+        let public_channel_slug = match self
             .validate_cart_inventory(tenant_id, actor_id, &cart)
             .await
         {
-            self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
-                .await;
-            return Err(error);
-        }
+            Ok(channel) => channel,
+            Err(error) => {
+                self.release_cart_checkout_or_log(tenant_id, actor_id, &cart)
+                    .await;
+                return Err(error);
+            }
+        };
         let context = match self
             .context_service
             .resolve_context(
@@ -275,6 +293,7 @@ impl CheckoutService {
                 &cart,
                 context.locale.as_str(),
                 Some(context.default_locale.as_str()),
+                public_channel_slug.as_deref(),
             )
             .await
         {
@@ -675,14 +694,23 @@ impl CheckoutService {
         tenant_id: Uuid,
         actor_id: Uuid,
         cart: &rustok_cart::dto::CartResponse,
-    ) -> CheckoutResult<()> {
-        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
-        for line_item in &cart.line_items {
-            let Some(variant_id) = line_item.variant_id else {
-                continue;
-            };
+    ) -> CheckoutResult<Option<String>> {
+        let demands = super::checkout_catalog::variant_demands(cart)?;
+        let channel_context = checkout_product_port_context(
+            tenant_id,
+            actor_id,
+            cart.id,
+            cart.locale_code.as_deref(),
+            None,
+        );
+        let public_channel_slug =
+            crate::storefront_channel::resolve_cart_channel(&self.db, &channel_context, cart)
+                .await
+                .map_err(|error| checkout_port_error("read_checkout_channel", error))?;
+        for demand in demands {
+            let variant_id = demand.variant_id;
 
-            let product = match line_item.product_id {
+            let product = match demand.product_id {
                 Some(product_id) => {
                     self.product_catalog_read_port
                         .read_product_projection(
@@ -721,46 +749,13 @@ impl CheckoutService {
                 }
             }
             .map_err(|error| checkout_port_error("read_checkout_product_projection", error))?;
-            let variant = product
-                .variants
-                .iter()
-                .find(|variant| variant.id == variant_id)
-                .ok_or_else(|| {
-                    CheckoutError::Validation(format!(
-                        "Variant {} is no longer available for checkout",
-                        variant_id
-                    ))
-                })?;
-
-            if product.status != ProductStatus::Active
-                || product.published_at.is_none()
-                || !is_metadata_visible_for_public_channel(
-                    &product.metadata,
+            for line_item in demand.line_items {
+                super::checkout_catalog::validate_variant_line(
+                    tenant_id,
+                    line_item,
+                    &product,
                     public_channel_slug.as_deref(),
-                )
-            {
-                return Err(CheckoutError::Validation(format!(
-                    "Product {} is not available for the cart channel",
-                    product.id
-                )));
-            }
-            let current_shipping_profile_slug = effective_shipping_profile_slug(
-                product.shipping_profile_slug.as_deref(),
-                &product.metadata,
-                variant.shipping_profile_slug.as_deref(),
-            );
-            if line_item.shipping_profile_slug.as_deref()
-                != Some(current_shipping_profile_slug.as_str())
-            {
-                return Err(CheckoutError::Validation(format!(
-                    "Line item {} uses stale shipping profile snapshot {} (current: {})",
-                    line_item.id,
-                    line_item
-                        .shipping_profile_slug
-                        .as_deref()
-                        .unwrap_or_default(),
-                    current_shipping_profile_slug
-                )));
+                )?;
             }
 
             let availability = self
@@ -774,22 +769,28 @@ impl CheckoutService {
                         public_channel_slug.as_deref(),
                     ),
                     InventoryAvailabilityRequest {
-                        variant_id: variant.id,
-                        requested_quantity: line_item.quantity,
+                        variant_id,
+                        requested_quantity: demand.quantity,
                         channel_slug: public_channel_slug.clone(),
                     },
                 )
                 .await
                 .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
+            super::checkout_catalog::validate_inventory_observation(
+                &availability,
+                variant_id,
+                demand.quantity,
+            )
+            .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
             if !availability.available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {} does not have enough available inventory for the cart channel",
-                    variant.id
+                    variant_id
                 )));
             }
         }
 
-        Ok(())
+        Ok(public_channel_slug)
     }
 
     async fn release_cart_checkout(
@@ -928,9 +929,8 @@ impl CheckoutService {
         cart: &rustok_cart::dto::CartResponse,
         requested_locale: &str,
         tenant_default_locale: Option<&str>,
+        public_channel_slug: Option<&str>,
     ) -> CheckoutResult<()> {
-        let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
-
         for delivery_group in &cart.delivery_groups {
             let Some(selected_shipping_option_id) = delivery_group.selected_shipping_option_id
             else {
@@ -958,10 +958,7 @@ impl CheckoutService {
                     option.id, option.currency_code, cart.currency_code
                 )));
             }
-            if !is_metadata_visible_for_public_channel(
-                &option.metadata,
-                public_channel_slug.as_deref(),
-            ) {
+            if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
                 return Err(CheckoutError::Validation(format!(
                     "Shipping option {} is not available for the cart channel",
                     option.id
@@ -1104,7 +1101,7 @@ fn checkout_inventory_port_context(
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
+        super::checkout_catalog::checkout_actor(actor_id),
         locale,
         format!("checkout:{cart_id}:inventory"),
     )
@@ -1128,7 +1125,7 @@ fn checkout_product_port_context(
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
+        super::checkout_catalog::checkout_actor(actor_id),
         locale,
         format!("checkout:{cart_id}:product"),
     )
@@ -1154,7 +1151,7 @@ fn checkout_cart_port_context(
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
     let context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(actor_id.to_string()),
+        super::checkout_catalog::checkout_actor(actor_id),
         locale,
         format!("checkout:{cart_id}:cart:{operation}"),
     )

@@ -144,6 +144,10 @@ async fn storefront_fulfillment_select_shipping_option_native(
                 event_bus,
                 shipping_option_read_runtime.shipping_option_read_port(),
             );
+        let runtime = match runtime_ctx.shared_get::<rustok_product::ProductCatalogReadRuntime>() {
+            Some(product) => runtime.with_product_catalog_read_runtime(product),
+            None => runtime,
+        };
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(map_tenant_context_error)?;

@@ -298,7 +298,7 @@ fn map_storefront_order_port_error(
         boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
         "storefront order owner read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_storefront_order_command_port_error(
@@ -364,7 +364,7 @@ fn map_storefront_order_command_port_error(
         boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
         "storefront Order return command failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_storefront_payment_port_error(
@@ -456,7 +456,7 @@ fn map_storefront_payment_port_error(
         boundary = STOREFRONT_ORDER_PAYMENT_BOUNDARY,
         "storefront Payment refund read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 async fn current_storefront_customer_id(

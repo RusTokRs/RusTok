@@ -2,12 +2,20 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const scriptPath = path.resolve("scripts/verify/verify-product-storefront-boundary.mjs");
+const scriptPath = path.resolve(
+  "scripts/verify/verify-product-storefront-boundary.mjs",
+);
 
 function writeFixtureFile(root, relativePath, content) {
   const filePath = path.join(root, relativePath);
@@ -70,6 +78,7 @@ pub fn ProductView() {
     ${omitSearchControl ? "" : 'let controls = build_catalog_list_input(read_route_query_value(&route_context, "search"));'}
     ${omitSearchControl ? "" : 'let _search = view! { <input name="search" /> };'}
     ${omitSearchControl ? "" : "let _transport = transport::fetch_products(request, controls);"}
+    let _support = Ok::<_, transport::ProductTransportError>((options, facets));
     let _facets = view! { <CatalogFacetFilters /> };
     let _labels = build_product_catalog_rail_labels;
     let _rail = build_catalog_rail_view_model;
@@ -145,32 +154,92 @@ fn product_title_search_condition() {}
 const repoRoot = path.resolve(".");
 
 function withFixture(options = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), "rustok-product-storefront-boundary-"));
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/lib.rs", libSource());
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/catalog_controls.rs", catalogControlsSource());
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/mod.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/mod.rs"), "utf8"));
-  let realCatalogList = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs"), "utf8");
+  const root = mkdtempSync(
+    path.join(tmpdir(), "rustok-product-storefront-boundary-"),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/lib.rs",
+    libSource(),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/catalog_controls.rs",
+    catalogControlsSource(),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/core.rs",
+    coreSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/ui/leptos.rs",
+    uiSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/transport/mod.rs",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/storefront/src/transport/mod.rs",
+      ),
+      "utf8",
+    ),
+  );
+  let realCatalogList = readFileSync(
+    path.join(
+      repoRoot,
+      "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs",
+    ),
+    "utf8",
+  );
   if (options.optionalListContext) {
-    realCatalogList = realCatalogList.replace(/(require_request_context\([\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+    realCatalogList = realCatalogList.replace(
+      /(product_buyer_scope\([\s\S]*?\)\s*\.await)\?;/,
+      "$1.ok();",
+    );
   }
   if (options.rawTenantDiagnostic) {
-    realCatalogList = realCatalogList.replace("request_context_present = true,", "request_context_present = true, channel_slug = ?request_context.channel_slug,");
+    realCatalogList +=
+      "\ntracing::error!(channel_slug = ?scope.request.channel_slug);\n";
   }
-  let realFacets = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs"), "utf8");
+  let realFacets = readFileSync(
+    path.join(
+      repoRoot,
+      "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs",
+    ),
+    "utf8",
+  );
   if (options.optionalFacetContext) {
-    realFacets = realFacets.replace(/(require_request_context\([\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+    realFacets = realFacets.replace(
+      /(product_buyer_scope\([\s\S]*?\)\s*\.await)\?;/,
+      "$1.ok();",
+    );
   }
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs", realFacets);
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/transport/catalog_facets_native.rs",
+    realFacets,
+  );
   writeFixtureFile(
     root,
     "crates/modules/rustok-product/storefront/src/transport/catalog_list_native.rs",
     options.omitNativeSearch
-      ? realCatalogList.replace(".list_published_products_with_query(", ".list_published_products(")
+      ? realCatalogList.replace(
+          ".list_filtered_published_products(",
+          ".list_published_products(",
+        )
       : realCatalogList,
   );
-  const realGqlAdapter = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs"), "utf8");
+  const realGqlAdapter = readFileSync(
+    path.join(
+      repoRoot,
+      "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs",
+    ),
+    "utf8",
+  );
   writeFixtureFile(
     root,
     "crates/modules/rustok-product/storefront/src/transport/graphql_adapter.rs",
@@ -180,31 +249,131 @@ function withFixture(options = {}) {
           .replaceAll("search: controls.search.clone(),", "search: None,")
       : realGqlAdapter,
   );
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
-  let realNative = readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs"), "utf8");
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/storefront/src/transport/graphql_error_safety.rs",
+      ),
+      "utf8",
+    ),
+  );
+  let realNative = readFileSync(
+    path.join(
+      repoRoot,
+      "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs",
+    ),
+    "utf8",
+  );
   if (options.optionalDetailContext) {
-    realNative = realNative.replace(/(require_request_context\(\s*"storefront_products"[\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+    realNative = realNative.replace(
+      /(product_buyer_scope\(\s*"storefront_product_detail"\s*\)\s*\.await)\?;/,
+      "$1.ok();",
+    );
   }
   if (options.optionalSearchContext) {
-    realNative = realNative.replace(/(require_request_context\(\s*"storefront_catalog_search_options"[\s\S]*?\)\s*\.await)\?;/, "$1.ok();");
+    realNative = realNative.replace(
+      /(product_buyer_scope\(\s*"storefront_catalog_search_options"\s*\)\s*\.await)\?;/,
+      "$1.ok();",
+    );
   }
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs", realNative);
-  writeFixtureFile(root, "crates/modules/rustok-product/src/services/catalog/queries.rs", catalogQueriesSource());
-  writeFixtureFile(root, "crates/modules/rustok-product/storefront/Cargo.toml", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/storefront/Cargo.toml"), "utf8"));
-  writeFixtureFile(root, "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json"), "utf8"));
-  writeFixtureFile(root, "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
-  writeFixtureFile(root, "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
-  writeFixtureFile(root, "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md"), "utf8"));
-  if (options.legacyApi) writeFixtureFile(root, "crates/modules/rustok-product/storefront/src/api.rs", nativeServerAdapterSource());
-  writeFixtureFile(root, "crates/modules/rustok-product/docs/implementation-plan.md", "verify-product-storefront-boundary.mjs");
-  writeFixtureFile(root, "docs/modules/registry.md", "verify-product-storefront-boundary.mjs");
-  writeFixtureFile(root, "package.json", JSON.stringify({
-    scripts: {
-      "verify:product:storefront-boundary": "node scripts/verify/verify-product-storefront-boundary.mjs",
-      "test:verify:product:storefront-boundary": "node scripts/verify/verify-product-storefront-boundary.test.mjs",
-      "test:verify:ffa:ui:migration": "npm run test:verify:product:storefront-boundary",
-    },
-  }));
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/src/transport/native_server_adapter.rs",
+    realNative,
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/src/services/catalog/queries.rs",
+    catalogQueriesSource(),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/storefront/Cargo.toml",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/storefront/Cargo.toml",
+      ),
+      "utf8",
+    ),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json",
+      ),
+      "utf8",
+    ),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json",
+      ),
+      "utf8",
+    ),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+      ),
+      "utf8",
+    ),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md",
+    readFileSync(
+      path.join(
+        repoRoot,
+        "crates/modules/rustok-product/docs/storefront-graphql-error-safety.md",
+      ),
+      "utf8",
+    ),
+  );
+  if (options.legacyApi)
+    writeFixtureFile(
+      root,
+      "crates/modules/rustok-product/storefront/src/api.rs",
+      nativeServerAdapterSource(),
+    );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-product/docs/implementation-plan.md",
+    "verify-product-storefront-boundary.mjs",
+  );
+  writeFixtureFile(
+    root,
+    "docs/modules/registry.md",
+    "verify-product-storefront-boundary.mjs",
+  );
+  writeFixtureFile(
+    root,
+    "package.json",
+    JSON.stringify({
+      scripts: {
+        "verify:product:storefront-boundary":
+          "node scripts/verify/verify-product-storefront-boundary.mjs",
+        "test:verify:product:storefront-boundary":
+          "node scripts/verify/verify-product-storefront-boundary.test.mjs",
+        "test:verify:ffa:ui:migration":
+          "npm run test:verify:product:storefront-boundary",
+      },
+    }),
+  );
   return root;
 }
 
@@ -232,7 +401,10 @@ test("product storefront boundary verifier passes canonical fixture", () => {
   try {
     const result = runVerifier(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /product storefront boundary verification passed/);
+    assert.match(
+      result.stdout,
+      /product storefront boundary verification passed/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -257,7 +429,7 @@ test("product storefront boundary verifier rejects missing GraphQL search mappin
 test("product storefront boundary verifier rejects missing native owner search", () => {
   assertFixtureFails(
     { omitNativeSearch: true },
-    /native catalog list must validate typed controls|execute the owner service query/,
+    /owner capability|native catalog list must validate typed controls|execute the owner service query/,
     "Expected missing native owner search fixture to fail",
   );
 });
@@ -326,26 +498,40 @@ test("product storefront boundary verifier rejects legacy api module", () => {
   );
 });
 
-
 // Added for the trusted-context continuation; intentionally unrun in the no-tests work session.
 test("product storefront rejects optional fallback on a rejected list context", () => {
-  assertFixtureFails({ optionalListContext: true }, /required context propagation/,
-    "Rejected list context must not silently widen scope");
+  assertFixtureFails(
+    { optionalListContext: true },
+    /required context propagation/,
+    "Rejected list context must not silently widen scope",
+  );
 });
 test("product storefront rejects optional fallback on a rejected facet context", () => {
-  assertFixtureFails({ optionalFacetContext: true }, /required context propagation/,
-    "Rejected facet context must not silently widen scope");
+  assertFixtureFails(
+    { optionalFacetContext: true },
+    /required context propagation/,
+    "Rejected facet context must not silently widen scope",
+  );
 });
 test("product storefront rejects optional fallback on a rejected detail context", () => {
-  assertFixtureFails({ optionalDetailContext: true }, /required context propagation/,
-    "Detail and Pricing reads must retain trusted context admission");
+  assertFixtureFails(
+    { optionalDetailContext: true },
+    /required context propagation/,
+    "Detail and Pricing reads must retain trusted context admission",
+  );
 });
 test("product storefront rejects raw channel diagnostics", () => {
-  assertFixtureFails({ rawTenantDiagnostic: true }, /raw context diagnostic/,
-    "Trusted context is not permission to log request payload");
+  assertFixtureFails(
+    { rawTenantDiagnostic: true },
+    /raw diagnostic payload/,
+    "Trusted context is not permission to log request payload",
+  );
 });
 
 test("product storefront rejects optional fallback on a rejected search-options context", () => {
-  assertFixtureFails({ optionalSearchContext: true }, /required context propagation/,
-    "Search option owner reads must retain trusted context admission");
+  assertFixtureFails(
+    { optionalSearchContext: true },
+    /required context propagation/,
+    "Search option owner reads must retain trusted context admission",
+  );
 });

@@ -8,7 +8,8 @@ const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? path.resolve(configuredRoot)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
+const read = (relativePath) =>
+  readFileSync(path.join(root, relativePath), "utf8");
 const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -19,11 +20,16 @@ const forbidText = (source, value, label) => {
 
 const files = {
   transport: "crates/modules/rustok-cart/storefront/src/transport/mod.rs",
-  adapter: "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
-  safety: "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
-  nativeSafety: "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
-  evidence: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
-  review: "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
+  adapter:
+    "crates/modules/rustok-cart/storefront/src/transport/graphql_adapter.rs",
+  safety:
+    "crates/modules/rustok-cart/storefront/src/transport/graphql_error_safety.rs",
+  nativeSafety:
+    "crates/modules/rustok-cart/storefront/src/transport/native_server_adapter_ssr.rs",
+  evidence:
+    "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source.json",
+  review:
+    "crates/modules/rustok-cart/contracts/evidence/storefront-graphql-error-safety-source-review.json",
   doc: "crates/modules/rustok-cart/docs/storefront-graphql-error-safety.md",
   masterPlan: "crates/modules/rustok-commerce/docs/implementation-plan.md",
 };
@@ -38,6 +44,9 @@ const transport = read(files.transport);
 const adapter = read(files.adapter);
 const safety = read(files.safety);
 const nativeSafety = read(files.nativeSafety);
+const nativeOwnerSafety = read(
+  "crates/modules/rustok-cart/storefront/src/transport/buyer_native.rs",
+);
 const evidence = JSON.parse(read(files.evidence));
 const review = JSON.parse(read(files.review));
 const doc = read(files.doc);
@@ -48,36 +57,80 @@ for (const [value, label] of [
   ["GraphqlCallContext::fetch_cart(&request)", "fetch context"],
   ["GraphqlCallContext::decrement_line_item(&request)", "decrement context"],
   ["GraphqlCallContext::remove_line_item(&request)", "remove context"],
+  ["GraphqlCallContext::create_cart(&request)", "buyer create context"],
+  ["GraphqlCallContext::add_variant(&request)", "buyer add context"],
   ["graphql_adapter::fetch_cart(request)", "fetch adapter preservation"],
-  ["graphql_adapter::decrement_line_item(request)", "decrement adapter preservation"],
+  [
+    "graphql_adapter::decrement_line_item(request)",
+    "decrement adapter preservation",
+  ],
   ["graphql_adapter::remove_line_item(request)", "remove adapter preservation"],
   [".map_err(|error| context.map_error(error))", "consumer-boundary mapping"],
-  ["NativeClientErrorContext::fetch_cart(&native_request)", "native fetch context preservation"],
-  ["native_server_adapter::fetch_cart(native_request)", "native fetch preservation"],
-  ["NativeClientErrorContext::decrement_line_item(", "native decrement context preservation"],
-  ["native_server_adapter::decrement_line_item(native_request)", "native decrement preservation"],
-  ["NativeClientErrorContext::remove_line_item(", "native remove context preservation"],
-  ["native_server_adapter::remove_line_item(native_request)", "native remove preservation"],
-]) requireText(transport, value, label);
-forbidText(transport, "move || graphql_adapter::", "unsanitized GraphQL closure");
+  [
+    "NativeClientErrorContext::fetch_cart(&native_request)",
+    "native fetch context preservation",
+  ],
+  [
+    "native_server_adapter::fetch_cart(native_request)",
+    "native fetch preservation",
+  ],
+  [
+    "NativeClientErrorContext::decrement_line_item(",
+    "native decrement context preservation",
+  ],
+  [
+    "native_server_adapter::decrement_line_item(native_request)",
+    "native decrement preservation",
+  ],
+  [
+    "NativeClientErrorContext::remove_line_item(",
+    "native remove context preservation",
+  ],
+  [
+    "native_server_adapter::remove_line_item(native_request)",
+    "native remove preservation",
+  ],
+])
+  requireText(transport, value, label);
+forbidText(
+  transport,
+  "move || graphql_adapter::",
+  "unsanitized GraphQL closure",
+);
 
 for (const [value, label] of [
   ["Self::Graphql(value.to_string())", "typed display handoff"],
   ["STOREFRONT_CART_QUERY", "cart query preservation"],
-  ["UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION", "quantity mutation preservation"],
+  [
+    "UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION",
+    "quantity mutation preservation",
+  ],
   ["REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION", "remove mutation preservation"],
   ["parse_cart_id(request.selected_cart_id)?", "fetch validation preservation"],
   ["parse_line_item_id(line_item_id)?", "line-item validation preservation"],
-]) requireText(adapter, value, label);
+])
+  requireText(adapter, value, label);
 
 for (const [value, label] of [
   ["pub(super) struct GraphqlCallContext", "private call context"],
   ["let ApiError::Graphql(raw_error) = error else", "GraphQL-only mapping"],
   ["return error;", "non-GraphQL pass-through"],
-  ["let raw_error_present = !raw_error.trim().is_empty();", "raw display presence fact"],
-  ["let raw_error_length = raw_error.chars().count();", "raw display length fact"],
-  ["GraphqlHttpError::from_str(raw_error.as_str())", "typed GraphQL display reparse"],
-  ["let parsed_error_valid = parsed_error.is_ok();", "typed parse validity fact"],
+  [
+    "let raw_error_present = !raw_error.trim().is_empty();",
+    "raw display presence fact",
+  ],
+  [
+    "let raw_error_length = raw_error.chars().count();",
+    "raw display length fact",
+  ],
+  [
+    "GraphqlHttpError::from_str(raw_error.as_str())",
+    "typed GraphQL display reparse",
+  ],
+  [
+    "let parsed_error_valid = parsed_error.is_ok();",
+    "typed parse validity fact",
+  ],
   ["GraphqlHttpError::Network", "network policy"],
   ["GraphqlHttpError::Http(_)", "HTTP policy"],
   ["GraphqlHttpError::Unauthorized", "unauthorized policy"],
@@ -110,7 +163,8 @@ for (const [value, label] of [
   ["error_kind,", "closed error category diagnostics"],
   ["code,", "stable code diagnostics"],
   ["ApiError::Graphql(public_message.to_string())", "static public remap"],
-]) requireText(safety, value, label);
+])
+  requireText(safety, value, label);
 
 for (const forbidden of [
   "raw_error = %raw_error",
@@ -132,27 +186,43 @@ for (const forbidden of [
   "query = ?",
   "variables =",
   "token =",
-]) forbidText(safety, forbidden, "safe GraphQL diagnostics");
+])
+  forbidText(safety, forbidden, "safe GraphQL diagnostics");
 
+requireText(
+  nativeOwnerSafety,
+  "fn port_error",
+  "canonical native owner mapper",
+);
+requireText(
+  nativeOwnerSafety,
+  "Cart operation could not be confirmed. Inspect the cart before trying again.",
+  "canonical native static public envelope",
+);
 for (const [value, label] of [
   ["const CART_STOREFRONT_NATIVE_BOUNDARY", "native safety boundary"],
   ["fn tenant_context_error", "native tenant mapper"],
-  ["fn cart_error", "native cart mapper"],
-]) requireText(nativeSafety, value, label);
+])
+  requireText(nativeSafety, value, label);
 
-if (evidence.status !== "cart_storefront_graphql_error_safety_source_unvalidated") {
+if (
+  evidence.status !== "cart_storefront_graphql_error_safety_source_unvalidated"
+) {
   failures.push(`evidence status mismatch: ${evidence.status}`);
 }
-if (review.status !== "cart_storefront_graphql_error_safety_source_reviewed_unvalidated") {
+if (
+  review.status !==
+  "cart_storefront_graphql_error_safety_source_reviewed_unvalidated"
+) {
   failures.push(`review status mismatch: ${review.status}`);
 }
 for (const [key, expected] of Object.entries({
   public_consumer_boundary_sanitized: true,
-  private_graphql_adapter_changed: false,
-  graphql_documents_changed: false,
-  request_response_dto_changed: false,
-  validation_changed: false,
-  native_server_functions_changed: false,
+  private_graphql_adapter_changed: true,
+  graphql_documents_changed: true,
+  request_response_dto_changed: true,
+  validation_changed: true,
+  native_server_functions_changed: true,
   transport_selection_changed: false,
   native_to_graphql_fallback_added: false,
   graphql_http_error_reparsed: true,
@@ -182,9 +252,9 @@ for (const [key, expected] of Object.entries({
   all_three_operations_preserved: true,
   per_call_correlation_id: true,
   safe_request_shape_only: true,
-  private_graphql_adapter_changed: false,
-  native_path_changed: false,
-  graphql_documents_changed: false,
+  private_graphql_adapter_changed: true,
+  native_path_changed: true,
+  graphql_documents_changed: true,
   transport_selection_changed: false,
   runtime_evidence_claimed: false,
 })) {
@@ -195,8 +265,6 @@ for (const [key, expected] of Object.entries({
 for (const key of [
   "tests_run",
   "cargo_run",
-  "format_run",
-  "verifiers_run",
   "workflow_checks_run",
   "ci_run",
   "graphql_runtime_proven",
@@ -215,7 +283,8 @@ for (const marker of [
   "raw-display presence and character length",
   "The broad ecommerce correlation-safe mapper cleanup remains open.",
   "No tests, verifiers, Cargo commands, formatting, workflows, or CI were run",
-]) requireText(doc, marker, `${files.doc}: truthful documentation`);
+])
+  requireText(doc, marker, `${files.doc}: truthful documentation`);
 requireText(
   masterPlan,
   "Finish correlation-safe mapper cleanup",

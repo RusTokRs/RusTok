@@ -1,13 +1,12 @@
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::{
-    CartCheckoutSnapshotRequest, CartStorefrontContextUpdateRequest, CartStorefrontPort,
-    CartStorefrontReadRequest, CartStorefrontRepriceRequest, in_process_cart_checkout_port,
+    CartCheckoutSnapshotRequest, CartStorefrontReadRequest, in_process_cart_checkout_port,
     in_process_cart_storefront_port,
 };
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_fulfillment::ShippingOptionReadPort;
 use rustok_outbox::TransactionalEventBus;
-use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
+use rustok_pricing::in_process_pricing_read_port;
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -19,6 +18,7 @@ pub struct StorefrontCheckoutRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
+    product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
 }
 
 impl StorefrontCheckoutRuntime {
@@ -35,11 +35,26 @@ impl StorefrontCheckoutRuntime {
         event_bus: TransactionalEventBus,
         shipping_option_read_port: Arc<dyn ShippingOptionReadPort>,
     ) -> Self {
+        let product_catalog_read_runtime =
+            rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
         Self {
             db,
             event_bus,
             shipping_option_read_port,
+            product_catalog_read_runtime,
         }
+    }
+
+    pub fn with_product_catalog_read_runtime(
+        mut self,
+        runtime: rustok_product::ProductCatalogReadRuntime,
+    ) -> Self {
+        self.product_catalog_read_runtime = runtime;
+        self
+    }
+
+    pub fn product_catalog_read_runtime(&self) -> rustok_product::ProductCatalogReadRuntime {
+        self.product_catalog_read_runtime.clone()
     }
 
     pub fn db(&self) -> &DatabaseConnection {
@@ -89,13 +104,26 @@ pub struct StorefrontCheckoutCompletionCommand {
 #[error("{message}")]
 pub struct StorefrontCheckoutRuntimeError {
     message: String,
+    owner_retryable: Option<bool>,
 }
 
 impl StorefrontCheckoutRuntimeError {
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            owner_retryable: None,
         }
+    }
+
+    pub(super) fn from_port_error(error: rustok_api::PortError) -> Self {
+        Self {
+            message: format!("{error:?}"),
+            owner_retryable: Some(error.retryable),
+        }
+    }
+
+    pub(super) fn owner_retryable(&self) -> Option<bool> {
+        self.owner_retryable
     }
 }
 
@@ -202,17 +230,51 @@ pub async fn create_storefront_payment_collection(
         )
         .await
         .map_err(runtime_error)?;
+    let auth_context = auth.0.clone();
     let storefront_customer_id =
         resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-    let cart = reprice_storefront_cart_line_items(
-        runtime,
+    let mut pricing_context = storefront_cart_storefront_port_context(
         tenant.id,
-        cart_storefront_port.as_ref(),
-        cart,
+        cart.id,
         Some(request_context),
+        "reprice",
+        true,
+    );
+    if let Some(auth) = &auth_context {
+        pricing_context.actor = PortActor::user(auth.user_id.to_string());
+        pricing_context.claims = auth
+            .scopes
+            .iter()
+            .chain(auth.permissions.iter())
+            .cloned()
+            .collect();
+    }
+    let input = rustok_cart::UpdateCartContextInput {
+        email: cart.email.clone(),
+        region_id: cart.region_id,
+        country_code: cart.country_code.clone(),
+        locale_code: cart.locale_code.clone(),
+        selected_shipping_option_id: cart.selected_shipping_option_id,
+        shipping_selections: None,
+    };
+    let pricing = in_process_pricing_read_port(
+        runtime.db_clone(),
+        runtime.event_bus(),
+        runtime.product_catalog_read_runtime(),
+    );
+    let command = crate::prepare_storefront_cart_context(
+        pricing.as_ref(),
+        pricing_context.clone(),
+        &cart,
+        input,
     )
-    .await?;
+    .await
+    .map_err(port_runtime_error)?;
+    let cart = cart_storefront_port
+        .update_storefront_context(pricing_context, command)
+        .await
+        .map_err(port_runtime_error)?;
 
     let service = rustok_payment::PaymentService::new(runtime.db_clone());
     if let Some(existing) = service
@@ -266,73 +328,97 @@ pub async fn select_storefront_shipping_option(
     auth: OptionalAuthContext,
     command: StorefrontShippingSelectionCommand,
 ) -> Result<(), StorefrontCheckoutRuntimeError> {
+    let request = request_context.ok_or_else(|| {
+        StorefrontCheckoutRuntimeError::new(
+            "Shipping changes require the admitted storefront request",
+        )
+    })?;
+    if tenant.id.is_nil()
+        || request.tenant_id != tenant.id
+        || auth
+            .0
+            .as_ref()
+            .is_some_and(|auth| auth.tenant_id != tenant.id || auth.user_id.is_nil())
+        || request
+            .user_id
+            .is_some_and(|id| auth.0.as_ref().map(|auth| auth.user_id) != Some(id))
+    {
+        return Err(StorefrontCheckoutRuntimeError::new(
+            "Shipping request context is unavailable",
+        ));
+    }
+    crate::admit_storefront_buyer_request(runtime.db(), tenant.id, request)
+        .await
+        .map_err(port_runtime_error)?;
+    let mut context = storefront_cart_storefront_port_context(
+        tenant.id,
+        command.cart_id,
+        Some(request),
+        "update-context",
+        true,
+    );
+    if let Some(auth) = &auth.0 {
+        context.actor = PortActor::user(auth.user_id.to_string());
+        context.claims = auth
+            .scopes
+            .iter()
+            .chain(auth.permissions.iter())
+            .cloned()
+            .collect();
+    }
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let cart = cart_storefront_port
         .read_storefront_cart(
-            storefront_cart_storefront_port_context(
-                tenant.id,
-                command.cart_id,
-                request_context,
-                "read",
-                false,
-            ),
+            context.clone(),
             CartStorefrontReadRequest {
                 cart_id: command.cart_id,
             },
         )
         .await
         .map_err(runtime_error)?;
-    let auth_context = auth.0.clone();
     let storefront_customer_id =
         resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-
-    let public_channel_slug =
-        normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
-            request_context
-                .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()))
-        });
-    let owner_locale = request_context
-        .map(|context| context.locale.as_str())
-        .filter(|locale| !locale.trim().is_empty())
-        .or(cart.locale_code.as_deref())
-        .unwrap_or(tenant.default_locale.as_str());
-    let owner_actor = auth_context
-        .as_ref()
-        .map(|context| PortActor::user(context.user_id.to_string()))
-        .unwrap_or_else(|| PortActor::service("rustok-commerce.storefront-shipping"));
-    let owner_context = storefront_shipping_option_selection_port_context(
-        tenant.id,
-        command.cart_id,
-        owner_locale,
-        public_channel_slug.as_deref(),
-        owner_actor,
-    );
-
     let shipping_selections = command
         .shipping_selections
         .into_iter()
-        .map(|selection| rustok_cart::dto::CartShippingSelectionInput {
+        .map(|selection| rustok_cart::CartShippingSelectionInput {
             shipping_profile_slug: selection.shipping_profile_slug,
             seller_id: selection.seller_id,
             seller_scope: None,
             selected_shipping_option_id: selection.selected_shipping_option_id,
         })
         .collect::<Vec<_>>();
-
-    for selection in &shipping_selections {
+    let input = rustok_cart::UpdateCartContextInput {
+        email: cart.email.clone(),
+        region_id: cart.region_id,
+        country_code: cart.country_code.clone(),
+        locale_code: cart.locale_code.clone(),
+        selected_shipping_option_id: None,
+        shipping_selections: Some(shipping_selections),
+    };
+    let target = cart
+        .project_context(&input)
+        .map_err(|_| StorefrontCheckoutRuntimeError::new("Shipping context is invalid"))?;
+    let public_channel_slug =
+        crate::storefront_channel::resolve_cart_channel(runtime.db(), &context, &target)
+            .await
+            .map_err(port_runtime_error)?;
+    for selection in input.shipping_selections.iter().flatten() {
         if selection.selected_shipping_option_id.is_none() {
             continue;
         }
-
         crate::storefront_shipping::validate_storefront_shipping_option_selection(
-            &cart,
+            &target,
             selection,
-            cart.currency_code.as_str(),
+            target.currency_code.as_str(),
             public_channel_slug.as_deref(),
-            Some(owner_locale),
+            target
+                .locale_code
+                .as_deref()
+                .or(Some(request.locale.as_str())),
             Some(tenant.default_locale.as_str()),
-            &owner_context,
+            &context,
             runtime.shipping_option_read_port(),
         )
         .await
@@ -340,39 +426,19 @@ pub async fn select_storefront_shipping_option(
             StorefrontCheckoutRuntimeError::new("storefront shipping selection validation failed")
         })?;
     }
-
-    let updated_cart = cart_storefront_port
-        .update_storefront_context(
-            storefront_cart_storefront_port_context(
-                tenant.id,
-                command.cart_id,
-                request_context,
-                "update-context",
-                true,
-            ),
-            CartStorefrontContextUpdateRequest {
-                cart_id: command.cart_id,
-                input: rustok_cart::dto::UpdateCartContextInput {
-                    email: cart.email.clone(),
-                    region_id: cart.region_id,
-                    country_code: cart.country_code.clone(),
-                    locale_code: cart.locale_code.clone(),
-                    selected_shipping_option_id: None,
-                    shipping_selections: Some(shipping_selections),
-                },
-            },
-        )
+    let pricing = in_process_pricing_read_port(
+        runtime.db_clone(),
+        runtime.event_bus(),
+        runtime.product_catalog_read_runtime(),
+    );
+    let command =
+        crate::prepare_storefront_cart_context(pricing.as_ref(), context.clone(), &cart, input)
+            .await
+            .map_err(port_runtime_error)?;
+    cart_storefront_port
+        .update_storefront_context(context, command)
         .await
         .map_err(runtime_error)?;
-    let _ = reprice_storefront_cart_line_items(
-        runtime,
-        tenant.id,
-        cart_storefront_port.as_ref(),
-        updated_cart,
-        request_context,
-    )
-    .await?;
-
     Ok(())
 }
 
@@ -420,25 +486,6 @@ fn storefront_cart_port_context(tenant_id: Uuid, cart_id: Uuid) -> PortContext {
     .with_deadline(std::time::Duration::from_secs(2))
 }
 
-fn storefront_shipping_option_selection_port_context(
-    tenant_id: Uuid,
-    cart_id: Uuid,
-    locale: &str,
-    public_channel_slug: Option<&str>,
-    actor: PortActor,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant_id.to_string(),
-        actor,
-        locale,
-        format!("storefront-shipping:selection:{cart_id}"),
-    )
-    .with_deadline(std::time::Duration::from_secs(2));
-    public_channel_slug
-        .map(|channel| context.clone().with_channel(channel))
-        .unwrap_or(context)
-}
-
 fn storefront_cart_storefront_port_context(
     tenant_id: Uuid,
     cart_id: Uuid,
@@ -446,23 +493,27 @@ fn storefront_cart_storefront_port_context(
     operation: &str,
     is_write: bool,
 ) -> PortContext {
-    let correlation_id = format!("storefront-cart:{operation}:{cart_id}");
+    let operation_key = format!("storefront-cart:{operation}:{cart_id}");
+    let correlation_id = request_context
+        .map(|context| context.correlation_id.clone())
+        .unwrap_or_else(|| operation_key.clone());
     let locale = request_context
         .map(|context| context.locale.as_str())
-        .unwrap_or("en");
+        .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
     let context = PortContext::new(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.storefront"),
         locale,
         correlation_id.clone(),
     )
+    .with_causation_id(operation_key.clone())
     .with_deadline(std::time::Duration::from_secs(2));
     let context = request_context
         .and_then(|request| request.channel_slug.as_deref())
         .map(|channel| context.clone().with_channel(channel))
         .unwrap_or(context);
     if is_write {
-        context.with_idempotency_key(correlation_id)
+        context.with_idempotency_key(operation_key)
     } else {
         context
     }
@@ -515,153 +566,6 @@ fn cart_context_metadata(
     })
 }
 
-async fn reprice_storefront_cart_line_items(
-    runtime: &StorefrontCheckoutRuntime,
-    tenant_id: Uuid,
-    cart_storefront_port: &dyn CartStorefrontPort,
-    cart: rustok_cart::CartResponse,
-    request_context: Option<&RequestContext>,
-) -> Result<rustok_cart::CartResponse, StorefrontCheckoutRuntimeError> {
-    if cart.line_items.is_empty() {
-        return Ok(cart);
-    }
-
-    let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), runtime.event_bus());
-    let channel_id = cart
-        .channel_id
-        .or_else(|| request_context.and_then(|ctx| ctx.channel_id));
-    let channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
-        request_context.and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()))
-    });
-    let mut updates = Vec::new();
-    for line_item in &cart.line_items {
-        let Some(variant_id) = line_item.variant_id else {
-            continue;
-        };
-        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-            .resolve_product_price(
-                storefront_cart_storefront_port_context(
-                    tenant_id,
-                    cart.id,
-                    request_context,
-                    "price-read",
-                    false,
-                ),
-                ResolveProductPriceRequest {
-                    product_id: line_item.product_id,
-                    variant_id,
-                    region_id: cart.region_id,
-                    price_list_id: None,
-                    channel_id,
-                    channel_slug: channel_slug.clone(),
-                    quantity: Some(line_item.quantity),
-                    currency_code: cart.currency_code.to_ascii_uppercase(),
-                },
-            )
-            .await
-            .map_err(runtime_error)?
-            .into();
-        updates.push(storefront_cart_pricing_update(
-            line_item.id,
-            line_item.quantity,
-            &resolved_price,
-        ));
-    }
-
-    if updates.is_empty() {
-        Ok(cart)
-    } else {
-        cart_storefront_port
-            .reprice_storefront_line_items(
-                storefront_cart_storefront_port_context(
-                    tenant_id,
-                    cart.id,
-                    request_context,
-                    "reprice",
-                    true,
-                ),
-                CartStorefrontRepriceRequest {
-                    cart_id: cart.id,
-                    updates,
-                },
-            )
-            .await
-            .map_err(runtime_error)
-    }
-}
-
-fn storefront_cart_pricing_update(
-    line_item_id: Uuid,
-    quantity: i32,
-    resolved_price: &rustok_pricing::ResolvedPrice,
-) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
-    let base_unit_price = resolved_price
-        .compare_at_amount
-        .filter(|compare_at| *compare_at > resolved_price.amount)
-        .unwrap_or(resolved_price.amount);
-    let pricing_adjustment = if base_unit_price > resolved_price.amount {
-        let mut metadata = serde_json::Map::new();
-        metadata.insert(
-            "kind".to_string(),
-            Value::from(if resolved_price.price_list_id.is_some() {
-                "price_list"
-            } else {
-                "sale"
-            }),
-        );
-        metadata.insert(
-            "base_amount".to_string(),
-            Value::from(base_unit_price.normalize().to_string()),
-        );
-        metadata.insert(
-            "effective_amount".to_string(),
-            Value::from(resolved_price.amount.normalize().to_string()),
-        );
-        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
-            metadata.insert(
-                "compare_at_amount".to_string(),
-                Value::from(compare_at_amount.normalize().to_string()),
-            );
-        }
-        if let Some(discount_percent) = resolved_price.discount_percent {
-            metadata.insert(
-                "discount_percent".to_string(),
-                Value::from(discount_percent.normalize().to_string()),
-            );
-        }
-        if let Some(price_list_id) = resolved_price.price_list_id {
-            metadata.insert(
-                "price_list_id".to_string(),
-                Value::from(price_list_id.to_string()),
-            );
-        }
-        if let Some(channel_id) = resolved_price.channel_id {
-            metadata.insert(
-                "channel_id".to_string(),
-                Value::from(channel_id.to_string()),
-            );
-        }
-        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
-            metadata.insert("channel_slug".to_string(), Value::from(channel_slug));
-        }
-
-        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
-            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
-            amount: (base_unit_price - resolved_price.amount)
-                * rust_decimal::Decimal::from(quantity),
-            metadata: Value::Object(metadata),
-        })
-    } else {
-        None
-    };
-
-    rustok_cart::services::cart::CartLineItemPricingUpdate {
-        line_item_id,
-        unit_price: base_unit_price,
-        pricing_adjustment,
-    }
-}
-
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
@@ -695,4 +599,8 @@ fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
 
 fn runtime_error(error: impl std::fmt::Debug) -> StorefrontCheckoutRuntimeError {
     StorefrontCheckoutRuntimeError::new(format!("{error:?}"))
+}
+
+fn port_runtime_error(error: rustok_api::PortError) -> StorefrontCheckoutRuntimeError {
+    StorefrontCheckoutRuntimeError::from_port_error(error)
 }

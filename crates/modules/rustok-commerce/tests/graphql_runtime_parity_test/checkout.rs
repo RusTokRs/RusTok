@@ -2458,7 +2458,7 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
             rustok_fulfillment::NoopShipmentStockPort,
         ))
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -2593,7 +2593,7 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
             rustok_fulfillment::NoopShipmentStockPort,
         ))
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),

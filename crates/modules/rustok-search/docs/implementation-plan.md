@@ -708,3 +708,19 @@ A fresh cross-surface error audit found that Search GraphQL adapters exposed `ru
 The Search GraphQL surface now has one owner-local error adapter in `graphql/mod.rs`. Caller-safe validation, not-found, authentication, and permission failures retain typed GraphQL codes; infrastructure and internal failures are mapped to the generic `INTERNAL_ERROR` message while detailed errors remain in server-side telemetry/logging. Query, mutation, and Forum Search reconciliation paths use the same adapter, eliminating transport-specific error drift. Regression tests cover redaction and typed public codes.
 
 Runtime, build, gatekeeper, and automated tests remain maintainer-owned and unrun by the agent.
+
+## Inventory reservation refetch (2026-11-01; source only)
+
+- [x] Explicitly consume `inventory.reservation.changed` through existing registered module
+      listeners and refetch Product/stock state; no quantity delta or Product revision spoofing.
+- [x] Serialize product upsert/rebuild/delete using one tenant product-scope PostgreSQL advisory
+      transaction lock before fresh reads under READ COMMITTED; use bigint stock subtraction.
+- [x] Add two focused family/refusal definitions, **uncompiled/unrun**.
+- [ ] Compile and prove PostgreSQL duplicate/reordered/concurrent refresh/rebuild/delete behavior.
+- [ ] Prove real Outbox/Iggy/local-failure/restart/lag convergence and operational recovery.
+- [ ] Keep generic Index's Inventory-owned source/revision/consumer gate separate; current
+      direct-table refetch and positive-stock predicate are not owner-read/sellability contracts.
+
+[API](../CRATE_API.md#inventory-reservation-refetch-2026-11-01-source-only) and
+[source packet](../../rustok-inventory/contracts/evidence/reservation-events-source.json).
+Product step 8 is still incomplete; no runtime readiness status is promoted.

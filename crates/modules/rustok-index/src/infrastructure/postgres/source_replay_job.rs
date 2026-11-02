@@ -1,3 +1,7 @@
+#[path = "source_replay_enqueue.rs"]
+mod enqueue;
+pub use enqueue::{IndexReplayJobEnqueueOutcome, IndexReplayJobEnqueueRequest};
+
 use std::time::Duration;
 
 use sea_orm::{
@@ -25,6 +29,7 @@ pub struct IndexReplayJobLeaseRequest {
     source_name: String,
     worker_id: String,
     lease_seconds: u64,
+    job_id: Option<Uuid>,
 }
 
 impl IndexReplayJobLeaseRequest {
@@ -86,7 +91,17 @@ impl IndexReplayJobLeaseRequest {
             source_name,
             worker_id,
             lease_seconds,
+            job_id: None,
         })
+    }
+
+    /// Fence an already-enqueued original job; absence is a refusal, never job creation.
+    pub fn for_job(mut self, job_id: Uuid) -> Result<Self, IndexReplayJobError> {
+        if job_id.is_nil() {
+            return Err(IndexReplayJobError::NilJobId);
+        }
+        self.job_id = Some(job_id);
+        Ok(self)
     }
 
     pub fn tenant_id(&self) -> Uuid {
@@ -172,6 +187,12 @@ pub enum IndexReplayJobAcquireOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IndexReplayJobError {
+    #[error("Index replay original job UUID must not be nil")]
+    NilJobId,
+    #[error("Index replay original job {0} was not found in the exact requested scope")]
+    JobNotFound(Uuid),
+    #[error("Index replay job identity differs: expected {expected}, actual {actual}")]
+    JobIdentityConflict { expected: Uuid, actual: Uuid },
     #[error("Index replay job tenant id must not be nil")]
     NilTenantId,
     #[error("invalid Index replay source name: {reason}")]
@@ -196,6 +217,10 @@ pub enum IndexReplayJobError {
     },
     #[error("stored Index replay job is invalid: {0}")]
     InvalidStoredJob(String),
+    #[error(
+        "Index replay checkpoint exists without its retained original job; recover that history without replacement"
+    )]
+    CheckpointWithoutJob,
     #[error("Index replay completion checkpoint is missing")]
     CheckpointMissing,
     #[error("Index replay completion checkpoint still has a continuation cursor")]
@@ -342,6 +367,14 @@ impl PostgresIndexReplayJobStore {
         let mut claimable = None;
         if let Some(row) = rows.into_iter().next() {
             let stored = stored_job(&row, backend)?;
+            if let Some(expected) = request.job_id {
+                if stored.job_id != expected {
+                    return Err(IndexReplayJobError::JobIdentityConflict {
+                        expected,
+                        actual: stored.job_id,
+                    });
+                }
+            }
             if stored.source_name != request.source_name {
                 return Err(IndexReplayJobError::InvalidStoredJob(
                     "request.source_name does not match the replay scope owner".to_owned(),
@@ -354,6 +387,7 @@ impl PostgresIndexReplayJobStore {
             }
             match stored.state.as_str() {
                 "succeeded" => {
+                    require_complete_checkpoint_for_scope(transaction, request, backend).await?;
                     return Ok(IndexReplayJobAcquireOutcome::AlreadyComplete {
                         job_id: stored.job_id,
                     });
@@ -409,6 +443,9 @@ impl PostgresIndexReplayJobStore {
                 return Err(IndexReplayJobError::LeaseLost);
             }
         } else {
+            if let Some(original) = request.job_id {
+                return Err(IndexReplayJobError::JobNotFound(original));
+            }
             job_id = Uuid::new_v4();
             attempt_count = 1;
             let job_request = replay_job_request(request);
@@ -454,12 +491,12 @@ impl PostgresIndexReplayJobStore {
 }
 
 #[derive(Debug)]
-struct StoredJob {
-    job_id: Uuid,
-    state: String,
-    source_name: String,
-    locale: Option<LocaleKey>,
-    attempt_count: u32,
+pub(super) struct StoredJob {
+    pub(super) job_id: Uuid,
+    pub(super) state: String,
+    pub(super) source_name: String,
+    pub(super) locale: Option<LocaleKey>,
+    pub(super) attempt_count: u32,
     claimable: bool,
     last_error_code: Option<String>,
 }
@@ -478,18 +515,21 @@ fn replay_job_request(request: &IndexReplayJobLeaseRequest) -> JsonValue {
     }
 }
 
-fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexReplayJobError> {
+pub(super) fn stored_job(
+    row: &QueryResult,
+    backend: DbBackend,
+) -> Result<StoredJob, IndexReplayJobError> {
     let scope_kind: String = row.try_get("", "scope_kind").map_err(storage_error)?;
     let locale_key: Option<String> = row.try_get("", "locale_key").map_err(storage_error)?;
     let locale = match (scope_kind.as_str(), locale_key) {
         ("schema", None) => None,
-        ("locale", Some(raw)) => {
-            let locale = LocaleKey::new(&raw).map_err(|_| {
+        ("locale", Some(stored_locale)) => {
+            let locale = LocaleKey::new(&stored_locale).map_err(|_| {
                 IndexReplayJobError::InvalidStoredJob(
                     "locale_key is outside the canonical locale contract".to_owned(),
                 )
             })?;
-            if locale.as_str() != raw {
+            if locale.as_str() != stored_locale {
                 return Err(IndexReplayJobError::InvalidStoredJob(
                     "locale_key is not canonical".to_owned(),
                 ));
@@ -610,23 +650,28 @@ async fn require_complete_checkpoint(
     lease: &IndexReplayJobLease,
     backend: DbBackend,
 ) -> Result<(), IndexReplayJobError> {
+    let request = IndexReplayJobLeaseRequest {
+        tenant_id: lease.tenant_id,
+        schema: lease.schema.clone(),
+        locale: lease.locale.clone(),
+        source_name: lease.source_name.clone(),
+        worker_id: lease.worker_id.clone(),
+        lease_seconds: 1,
+        job_id: Some(lease.job_id),
+    };
+    require_complete_checkpoint_for_scope(transaction, &request, backend).await
+}
+
+pub(super) async fn require_complete_checkpoint_for_scope<C: ConnectionTrait>(
+    transaction: &C,
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Result<(), IndexReplayJobError> {
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
             backend,
             complete_checkpoint_sql(backend),
-            vec![
-                uuid_value(lease.tenant_id, backend),
-                lease.source_name.clone().into(),
-                lease.schema.module.as_str().to_owned().into(),
-                lease.schema.entity.as_str().to_owned().into(),
-                i64::from(lease.schema.version.get()).into(),
-                lease
-                    .locale
-                    .as_ref()
-                    .map(|locale| locale.as_str().to_owned())
-                    .unwrap_or_default()
-                    .into(),
-            ],
+            replay_checkpoint_scope_values(request, backend),
         ))
         .await
         .map_err(storage_error)?
@@ -636,6 +681,25 @@ async fn require_complete_checkpoint(
         return Err(IndexReplayJobError::CheckpointIncomplete);
     }
     Ok(())
+}
+
+fn replay_checkpoint_scope_values(
+    request: &IndexReplayJobLeaseRequest,
+    backend: DbBackend,
+) -> Vec<SqlValue> {
+    vec![
+        uuid_value(request.tenant_id, backend),
+        request.source_name.clone().into(),
+        request.schema.module.as_str().to_owned().into(),
+        request.schema.entity.as_str().to_owned().into(),
+        i64::from(request.schema.version.get()).into(),
+        request
+            .locale
+            .as_ref()
+            .map(|locale| locale.as_str().to_owned())
+            .unwrap_or_default()
+            .into(),
+    ]
 }
 
 async fn finish_job(
@@ -812,7 +876,7 @@ fn placeholder_prefix(backend: DbBackend) -> &'static str {
     }
 }
 
-fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
+pub(super) fn uuid_value(value: Uuid, backend: DbBackend) -> SqlValue {
     match backend {
         DbBackend::Postgres => value.into(),
         DbBackend::Sqlite => value.to_string().into(),
@@ -865,6 +929,10 @@ fn select_schema_sql(backend: DbBackend) -> String {
 }
 
 fn select_replay_jobs_sql(backend: DbBackend) -> String {
+    select_replay_job_history_sql(backend, false)
+}
+
+fn select_replay_job_history_sql(backend: DbBackend, include_cancelled: bool) -> String {
     let prefix = placeholder_prefix(backend);
     let (attempt_count, claimable, locale_match) = match backend {
         DbBackend::Postgres => (
@@ -879,8 +947,13 @@ fn select_replay_jobs_sql(backend: DbBackend) -> String {
         ),
         _ => unreachable!("unsupported database backend was validated"),
     };
+    let state_filter = if include_cancelled {
+        ""
+    } else {
+        " AND state IN ('pending', 'running', 'succeeded', 'failed')"
+    };
     format!(
-        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match} AND state IN ('pending', 'running', 'succeeded', 'failed') ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
+        "SELECT job_id, state, scope_kind, locale_key, request, last_error_code, {attempt_count} AS attempt_count_value, {claimable} AS claimable FROM index_jobs WHERE tenant_id = {prefix}1 AND module_name = {prefix}2 AND entity_name = {prefix}3 AND schema_version = {prefix}4 AND kind = 'rebuild' AND scope_kind = {prefix}5 AND {locale_match}{state_filter} ORDER BY CASE state WHEN 'succeeded' THEN 0 WHEN 'running' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, created_at DESC"
     )
 }
 

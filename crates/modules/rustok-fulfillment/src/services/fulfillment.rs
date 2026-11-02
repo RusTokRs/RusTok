@@ -1,3 +1,5 @@
+mod stock;
+
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
@@ -15,7 +17,7 @@ use validator::Validate;
 
 use rustok_core::generate_id;
 
-use rustok_api::{TenantLocale, UNKNOWN_PROVENANCE_LOCALE, normalize_locale_tag};
+use rustok_api::{PortContext, TenantLocale, UNKNOWN_PROVENANCE_LOCALE, normalize_locale_tag};
 
 use super::provider_operation::{
     FulfillmentProviderOperationJournal, PROVIDER_OPERATION_COMMITTED,
@@ -34,7 +36,8 @@ use crate::providers::{
     validate_durable_provider_payload, validate_provider_id, validate_provider_metadata_safety,
 };
 use crate::shipment_stock::{
-    ShipmentStockError, ShipmentStockPort, ShipmentStockRequest, UnconfiguredShipmentStockPort,
+    PreparedFulfillmentStock, ShipmentStockAction, ShipmentStockError, ShipmentStockPort,
+    ShipmentStockRequest, UnconfiguredShipmentStockPort,
 };
 use crate::translation_changes::{
     ShippingOptionTranslationChangeLifecycle, record_shipping_option_translation_change_in_tx,
@@ -1048,36 +1051,39 @@ impl FulfillmentService {
             });
         }
 
-        let updated =
-            if create_label_provider_operation_id(&fulfillment.metadata) == Some(operation_id) {
-                fulfillment
-            } else {
-                let carrier_missing = fulfillment
-                    .carrier
-                    .as_deref()
-                    .map(|carrier| carrier.trim().is_empty())
-                    .unwrap_or(true);
-                let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
-                let current_metadata = active.metadata.clone().take().unwrap_or_default();
-                active.metadata = Set(prepare_create_label_result_metadata(
-                    current_metadata,
-                    result,
-                    operation_id,
-                )?);
-                if carrier_missing {
-                    active.carrier = Set(Some(result.provider_id.clone()));
-                }
-                if let Some(tracking_number) = result
-                    .tracking_number
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    active.tracking_number = Set(Some(tracking_number.to_string()));
-                }
-                active.updated_at = Set(Utc::now().into());
-                active.update(&txn).await?
-            };
+        let updated = if create_label_provider_operation_id(&fulfillment.metadata)
+            == Some(operation_id)
+        {
+            fulfillment
+        } else {
+            self.assert_progress_not_fenced(&txn, tenant_id, fulfillment_id, Some(operation_id))
+                .await?;
+            let carrier_missing = fulfillment
+                .carrier
+                .as_deref()
+                .map(|carrier| carrier.trim().is_empty())
+                .unwrap_or(true);
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let current_metadata = active.metadata.clone().take().unwrap_or_default();
+            active.metadata = Set(prepare_create_label_result_metadata(
+                current_metadata,
+                result,
+                operation_id,
+            )?);
+            if carrier_missing {
+                active.carrier = Set(Some(result.provider_id.clone()));
+            }
+            if let Some(tracking_number) = result
+                .tracking_number
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                active.tracking_number = Set(Some(tracking_number.to_string()));
+            }
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?
+        };
 
         let journal = FulfillmentProviderOperationJournal::new(self.db.clone());
         journal
@@ -1092,31 +1098,97 @@ impl FulfillmentService {
 
     pub async fn ship_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        self.ship_fulfillment_internal(tenant_id, fulfillment_id, input, None)
-            .await
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        let prepared = self
+            .prepare_shipment_stock(
+                context,
+                fulfillment_id,
+                ShipmentStockAction::Ship,
+                input.items.as_deref(),
+            )
+            .await?;
+        self.ship_fulfillment_internal(
+            prepared.scope.tenant_id,
+            fulfillment_id,
+            input,
+            None,
+            Some(prepared),
+        )
+        .await
     }
 
-    /// Apply a provider-backed ship result after the provider operation has been journaled.
-    ///
-    /// The public service entrypoint strips caller-supplied provider receipts; only this
-    /// crate-internal path can attach the journal-owned receipt to the lifecycle write.
+    /// Replay committed/locally applied provider receipts before any new peer preparation.
     pub async fn ship_fulfillment_with_provider_result(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
         provider_metadata: Value,
         operation_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let started = std::time::Instant::now();
+        self.validate_provider_stock_context(&context, fulfillment_id, operation_id, "ship")
+            .await?;
+        let tenant_id = stock::stock_tenant(&context)?;
+        if let Some(response) = self
+            .provider_stock_replay(
+                tenant_id,
+                fulfillment_id,
+                operation_id,
+                "ship",
+                &provider_metadata,
+            )
+            .await?
+        {
+            return Ok(response);
+        }
+        let context = crate::shipment_stock::remaining_stock_context(&context, started)
+            .map_err(FulfillmentError::OwnerPort)?;
+        let prepared = self
+            .prepare_shipment_stock(
+                context,
+                fulfillment_id,
+                ShipmentStockAction::Ship,
+                input.items.as_deref(),
+            )
+            .await?;
+        self.ship_fulfillment_with_prepared_provider_result(
+            prepared,
+            input,
+            provider_metadata,
+            operation_id,
+        )
+        .await
+    }
+
+    /// Canonical orchestration: retain preparation across carrier execution, then atomically
+    /// commit native stock, lifecycle/progress, reserved receipt and provider journal.
+    pub async fn ship_fulfillment_with_prepared_provider_result(
+        &self,
+        prepared: PreparedFulfillmentStock,
+        input: ShipFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.validate_provider_stock_context(
+            &prepared.context,
+            prepared.scope.fulfillment_id,
+            operation_id,
+            "ship",
+        )
+        .await?;
         self.ship_fulfillment_internal(
-            tenant_id,
-            fulfillment_id,
+            prepared.scope.tenant_id,
+            prepared.scope.fulfillment_id,
             input,
             Some((provider_metadata, operation_id)),
+            Some(prepared),
         )
         .await
     }
@@ -1127,7 +1199,13 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: ShipFulfillmentInput,
         provider_result: Option<(Value, Uuid)>,
+        prepared_stock: Option<PreparedFulfillmentStock>,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let original_input = serde_json::to_value(&input).map_err(|_| {
+            FulfillmentError::Validation(
+                "fulfillment lifecycle input could not be normalized".into(),
+            )
+        })?;
         validate_tenant_id(tenant_id)?;
         validate_fulfillment_id(fulfillment_id)?;
         input
@@ -1149,6 +1227,13 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+        self.assert_progress_not_fenced(
+            &txn,
+            tenant_id,
+            fulfillment_id,
+            provider_result.as_ref().map(|(_, id)| *id),
+        )
+        .await?;
 
         if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
             validate_journal_owned_provider_metadata(
@@ -1158,6 +1243,9 @@ impl FulfillmentService {
                 *operation_id,
                 "ship",
                 provider_metadata,
+                (!has_matching_provider_operation(&fulfillment.metadata, *operation_id, "ship"))
+                    .then_some(&original_input),
+                &fulfillment.status,
             )
             .await?;
         }
@@ -1168,6 +1256,16 @@ impl FulfillmentService {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
                 .await?;
+            if let Some((_, operation_id)) = provider_result.as_ref() {
+                FulfillmentProviderOperationJournal::new(self.db.clone())
+                    .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                    .await?;
+            }
+            if let Some(prepared) = prepared_stock.as_ref() {
+                prepared
+                    .remaining_context()
+                    .map_err(FulfillmentError::OwnerPort)?;
+            }
             txn.commit().await?;
             return Ok(response);
         }
@@ -1179,8 +1277,17 @@ impl FulfillmentService {
             });
         }
         let items = self
-            .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
+            .load_stock_items(&txn, tenant_id, fulfillment.id)
             .await?;
+        self.apply_prepared_stock(
+            &txn,
+            prepared_stock.as_ref(),
+            &fulfillment,
+            &items,
+            ShipmentStockAction::Ship,
+            input.items.as_deref(),
+        )
+        .await?;
         if items.is_empty() {
             if fulfillment.status != STATUS_PENDING {
                 return Err(FulfillmentError::InvalidTransition {
@@ -1211,6 +1318,16 @@ impl FulfillmentService {
             active.shipped_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
+            if let Some((_, operation_id)) = provider_result.as_ref() {
+                FulfillmentProviderOperationJournal::new(self.db.clone())
+                    .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                    .await?;
+            }
+            if let Some(prepared) = prepared_stock.as_ref() {
+                prepared
+                    .remaining_context()
+                    .map_err(FulfillmentError::OwnerPort)?;
+            }
             txn.commit().await?;
 
             return self.get_fulfillment(tenant_id, fulfillment_id).await;
@@ -1240,17 +1357,6 @@ impl FulfillmentService {
             active.updated_at = Set(now.into());
             adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
             let updated = active.update(&txn).await?;
-            self.shipment_stock
-                .consume_shipped(
-                    &txn,
-                    ShipmentStockRequest {
-                        tenant_id,
-                        order_line_item_id: item.order_line_item_id,
-                        quantity: adjustment,
-                    },
-                )
-                .await
-                .map_err(map_shipment_stock_error)?;
             adjusted_items.push(updated);
         }
 
@@ -1289,6 +1395,16 @@ impl FulfillmentService {
         }
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        if let Some((_, operation_id)) = provider_result.as_ref() {
+            FulfillmentProviderOperationJournal::new(self.db.clone())
+                .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                .await?;
+        }
+        if let Some(prepared) = prepared_stock.as_ref() {
+            prepared
+                .remaining_context()
+                .map_err(FulfillmentError::OwnerPort)?;
+        }
         txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
@@ -1298,7 +1414,38 @@ impl FulfillmentService {
         &self,
         tenant_id: Uuid,
         fulfillment_id: Uuid,
+        input: DeliverFulfillmentInput,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.deliver_fulfillment_internal(tenant_id, fulfillment_id, input, None, None)
+            .await
+    }
+
+    pub(crate) async fn deliver_fulfillment_with_receipt(
+        &self,
+        context: PortContext,
+        fulfillment_id: Uuid,
+        input: DeliverFulfillmentInput,
+        receipt: rustok_outbox::idempotency::Lease,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let started = std::time::Instant::now();
+        let tenant_id = stock_tenant(&context)?;
+        self.deliver_fulfillment_internal(
+            tenant_id,
+            fulfillment_id,
+            input,
+            Some(receipt),
+            Some((context, started)),
+        )
+        .await
+    }
+
+    async fn deliver_fulfillment_internal(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
         mut input: DeliverFulfillmentInput,
+        receipt: Option<rustok_outbox::idempotency::Lease>,
+        budget: Option<(PortContext, std::time::Instant)>,
     ) -> FulfillmentResult<FulfillmentResponse> {
         validate_tenant_id(tenant_id)?;
         validate_fulfillment_id(fulfillment_id)?;
@@ -1313,6 +1460,8 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+        self.assert_progress_not_fenced(&txn, tenant_id, fulfillment_id, None)
+            .await?;
         if fulfillment.status != STATUS_SHIPPED {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
@@ -1322,6 +1471,11 @@ impl FulfillmentService {
         let items = self
             .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
             .await?;
+        if let Some((context, started)) = &budget {
+            crate::shipment_stock::remaining_stock_context(context, *started)
+                .map_err(FulfillmentError::OwnerPort)?;
+        }
+
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
             let now = Utc::now();
@@ -1342,9 +1496,17 @@ impl FulfillmentService {
             active.delivered_at = Set(Some(now.into()));
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
-            txn.commit().await?;
-
-            return self.get_fulfillment(tenant_id, fulfillment_id).await;
+            return self
+                .finish_progress_transition(
+                    txn,
+                    tenant_id,
+                    fulfillment_id,
+                    receipt,
+                    budget
+                        .as_ref()
+                        .map(|(context, started)| (context, *started)),
+                )
+                .await;
         }
 
         validate_item_quantity_adjustments(input.items.as_deref())?;
@@ -1405,17 +1567,60 @@ impl FulfillmentService {
         }
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
-        txn.commit().await?;
-
-        self.get_fulfillment(tenant_id, fulfillment_id).await
+        self.finish_progress_transition(
+            txn,
+            tenant_id,
+            fulfillment_id,
+            receipt,
+            budget
+                .as_ref()
+                .map(|(context, started)| (context, *started)),
+        )
+        .await
     }
 
     pub async fn reopen_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
+        fulfillment_id: Uuid,
+        input: ReopenFulfillmentInput,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.reopen_fulfillment_internal(context, fulfillment_id, input, None)
+            .await
+    }
+
+    pub(crate) async fn reopen_fulfillment_with_receipt(
+        &self,
+        context: PortContext,
+        fulfillment_id: Uuid,
+        input: ReopenFulfillmentInput,
+        receipt: rustok_outbox::idempotency::Lease,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.reopen_fulfillment_internal(context, fulfillment_id, input, Some(receipt))
+            .await
+    }
+
+    async fn reopen_fulfillment_internal(
+        &self,
+        context: PortContext,
         fulfillment_id: Uuid,
         mut input: ReopenFulfillmentInput,
+        receipt: Option<rustok_outbox::idempotency::Lease>,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let tenant_id = stock::stock_tenant(&context)?;
+        let prepared_stock = self
+            .prepare_shipment_stock(
+                context,
+                fulfillment_id,
+                ShipmentStockAction::Reconsume,
+                None,
+            )
+            .await?;
+        if prepared_stock.scope.status == STATUS_CANCELLED
+            && input.items.as_ref().is_some_and(|items| !items.is_empty())
+        {
+            return Err(FulfillmentError::Validation("cancelled fulfillment reopening requires its complete retained undelivered stock batch".into()));
+        }
         validate_tenant_id(tenant_id)?;
         validate_fulfillment_id(fulfillment_id)?;
         input.metadata = strip_provider_operation_metadata(input.metadata);
@@ -1423,6 +1628,20 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+        self.assert_progress_not_fenced(&txn, tenant_id, fulfillment_id, None)
+            .await?;
+        let stock_items = self
+            .load_stock_items(&txn, tenant_id, fulfillment.id)
+            .await?;
+        self.apply_prepared_stock(
+            &txn,
+            Some(&prepared_stock),
+            &fulfillment,
+            &stock_items,
+            ShipmentStockAction::Reconsume,
+            None,
+        )
+        .await?;
         let now = Utc::now();
 
         match fulfillment.status.as_str() {
@@ -1430,27 +1649,9 @@ impl FulfillmentService {
                 let items = self
                     .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
                     .await?;
+                let status_after = reopened_status_for_cancelled(&items, &fulfillment);
                 let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
                 let metadata = active.metadata.clone().take().unwrap_or_default();
-                let status_after = reopened_status_for_cancelled(&items, &active);
-                // Cancelling a shipped fulfillment put its undelivered units back on the
-                // shelf; reopening it takes them off again.
-                for item in &items {
-                    let undelivered = item.shipped_quantity - item.delivered_quantity;
-                    if undelivered > 0 {
-                        self.shipment_stock
-                            .reconsume_restored(
-                                &txn,
-                                ShipmentStockRequest {
-                                    tenant_id,
-                                    order_line_item_id: item.order_line_item_id,
-                                    quantity: undelivered,
-                                },
-                            )
-                            .await
-                            .map_err(map_shipment_stock_error)?;
-                    }
-                }
                 active.status = Set(status_after.to_string());
                 active.cancellation_reason = Set(None);
                 active.cancelled_at = Set(None);
@@ -1467,9 +1668,17 @@ impl FulfillmentService {
                 )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
-                txn.commit().await?;
-
-                self.get_fulfillment(tenant_id, fulfillment_id).await
+                prepared_stock
+                    .remaining_context()
+                    .map_err(FulfillmentError::OwnerPort)?;
+                self.finish_progress_transition(
+                    txn,
+                    tenant_id,
+                    fulfillment_id,
+                    receipt,
+                    Some((&prepared_stock.context, prepared_stock.started)),
+                )
+                .await
             }
             STATUS_DELIVERED => {
                 let items = self
@@ -1494,9 +1703,15 @@ impl FulfillmentService {
                     )?);
                     active.updated_at = Set(now.into());
                     active.update(&txn).await?;
-                    txn.commit().await?;
-
-                    return self.get_fulfillment(tenant_id, fulfillment_id).await;
+                    return self
+                        .finish_progress_transition(
+                            txn,
+                            tenant_id,
+                            fulfillment_id,
+                            receipt,
+                            Some((&prepared_stock.context, prepared_stock.started)),
+                        )
+                        .await;
                 }
 
                 validate_item_quantity_adjustments(input.items.as_deref())?;
@@ -1543,9 +1758,17 @@ impl FulfillmentService {
                 )?);
                 active.updated_at = Set(now.into());
                 active.update(&txn).await?;
-                txn.commit().await?;
-
-                self.get_fulfillment(tenant_id, fulfillment_id).await
+                prepared_stock
+                    .remaining_context()
+                    .map_err(FulfillmentError::OwnerPort)?;
+                self.finish_progress_transition(
+                    txn,
+                    tenant_id,
+                    fulfillment_id,
+                    receipt,
+                    Some((&prepared_stock.context, prepared_stock.started)),
+                )
+                .await
             }
             status => Err(FulfillmentError::InvalidTransition {
                 from: status.to_string(),
@@ -1560,7 +1783,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        self.reship_fulfillment_internal(tenant_id, fulfillment_id, input, None)
+        self.reship_fulfillment_internal(tenant_id, fulfillment_id, input, None, None, None)
             .await
     }
 
@@ -1578,6 +1801,35 @@ impl FulfillmentService {
             fulfillment_id,
             input,
             Some((provider_metadata, operation_id)),
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Context-preserving owner path. Delivered reship changes no native stock, but fresh
+    /// provider admission still carries an immutable scope and the original decreasing budget.
+    pub(crate) async fn reship_fulfillment_with_prepared_provider_result(
+        &self,
+        context: PortContext,
+        prepared_stock: Option<PreparedFulfillmentStock>,
+        fulfillment_id: Uuid,
+        input: ReshipFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let started = std::time::Instant::now();
+        let tenant_id = stock_tenant(&context)?;
+        self.validate_provider_stock_context(&context, fulfillment_id, operation_id, "reship")
+            .await?;
+
+        self.reship_fulfillment_internal(
+            tenant_id,
+            fulfillment_id,
+            input,
+            Some((provider_metadata, operation_id)),
+            prepared_stock,
+            Some((context, started)),
         )
         .await
     }
@@ -1588,7 +1840,14 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: ReshipFulfillmentInput,
         provider_result: Option<(Value, Uuid)>,
+        prepared_stock: Option<PreparedFulfillmentStock>,
+        budget: Option<(PortContext, std::time::Instant)>,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let original_input = serde_json::to_value(&input).map_err(|_| {
+            FulfillmentError::Validation(
+                "fulfillment lifecycle input could not be normalized".into(),
+            )
+        })?;
         validate_tenant_id(tenant_id)?;
         validate_fulfillment_id(fulfillment_id)?;
         input
@@ -1610,6 +1869,13 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+        self.assert_progress_not_fenced(
+            &txn,
+            tenant_id,
+            fulfillment_id,
+            provider_result.as_ref().map(|(_, id)| *id),
+        )
+        .await?;
 
         if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
             validate_journal_owned_provider_metadata(
@@ -1619,6 +1885,9 @@ impl FulfillmentService {
                 *operation_id,
                 "reship",
                 provider_metadata,
+                (!has_matching_provider_operation(&fulfillment.metadata, *operation_id, "reship"))
+                    .then_some(&original_input),
+                &fulfillment.status,
             )
             .await?;
         }
@@ -1629,6 +1898,15 @@ impl FulfillmentService {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
                 .await?;
+            if let Some((_, operation_id)) = provider_result.as_ref() {
+                FulfillmentProviderOperationJournal::new(self.db.clone())
+                    .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                    .await?;
+            }
+            if let Some((context, started)) = &budget {
+                crate::shipment_stock::remaining_stock_context(context, *started)
+                    .map_err(FulfillmentError::OwnerPort)?;
+            }
             txn.commit().await?;
             return Ok(response);
         }
@@ -1643,6 +1921,21 @@ impl FulfillmentService {
         let items = self
             .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
             .await?;
+        if prepared_stock.is_some() {
+            self.apply_prepared_stock(
+                &txn,
+                prepared_stock.as_ref(),
+                &fulfillment,
+                &items,
+                ShipmentStockAction::Reconsume,
+                None,
+            )
+            .await?;
+        }
+        if let Some((context, started)) = &budget {
+            crate::shipment_stock::remaining_stock_context(context, *started)
+                .map_err(FulfillmentError::OwnerPort)?;
+        }
         let now = Utc::now();
         if items.is_empty() {
             let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
@@ -1665,6 +1958,15 @@ impl FulfillmentService {
             )?);
             active.updated_at = Set(now.into());
             active.update(&txn).await?;
+            if let Some((_, operation_id)) = provider_result.as_ref() {
+                FulfillmentProviderOperationJournal::new(self.db.clone())
+                    .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                    .await?;
+            }
+            if let Some((context, started)) = &budget {
+                crate::shipment_stock::remaining_stock_context(context, *started)
+                    .map_err(FulfillmentError::OwnerPort)?;
+            }
             txn.commit().await?;
 
             return self.get_fulfillment(tenant_id, fulfillment_id).await;
@@ -1715,6 +2017,15 @@ impl FulfillmentService {
         )?);
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        if let Some((_, operation_id)) = provider_result.as_ref() {
+            FulfillmentProviderOperationJournal::new(self.db.clone())
+                .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                .await?;
+        }
+        if let Some((context, started)) = &budget {
+            crate::shipment_stock::remaining_stock_context(context, *started)
+                .map_err(FulfillmentError::OwnerPort)?;
+        }
         txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
@@ -1722,28 +2033,84 @@ impl FulfillmentService {
 
     pub async fn cancel_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentResult<FulfillmentResponse> {
-        self.cancel_fulfillment_internal(tenant_id, fulfillment_id, input, None)
-            .await
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        let prepared = self
+            .prepare_shipment_stock(context, fulfillment_id, ShipmentStockAction::Restore, None)
+            .await?;
+        self.cancel_fulfillment_internal(
+            prepared.scope.tenant_id,
+            fulfillment_id,
+            input,
+            None,
+            Some(prepared),
+        )
+        .await
     }
 
-    /// Apply a provider-backed cancellation result after the provider operation has been journaled.
     pub async fn cancel_fulfillment_with_provider_result(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
         provider_metadata: Value,
         operation_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let started = std::time::Instant::now();
+        self.validate_provider_stock_context(&context, fulfillment_id, operation_id, "cancel")
+            .await?;
+        let tenant_id = stock::stock_tenant(&context)?;
+        if let Some(response) = self
+            .provider_stock_replay(
+                tenant_id,
+                fulfillment_id,
+                operation_id,
+                "cancel",
+                &provider_metadata,
+            )
+            .await?
+        {
+            return Ok(response);
+        }
+        let context = crate::shipment_stock::remaining_stock_context(&context, started)
+            .map_err(FulfillmentError::OwnerPort)?;
+        let prepared = self
+            .prepare_shipment_stock(context, fulfillment_id, ShipmentStockAction::Restore, None)
+            .await?;
+        self.cancel_fulfillment_with_prepared_provider_result(
+            prepared,
+            input,
+            provider_metadata,
+            operation_id,
+        )
+        .await
+    }
+
+    pub async fn cancel_fulfillment_with_prepared_provider_result(
+        &self,
+        prepared: PreparedFulfillmentStock,
+        input: CancelFulfillmentInput,
+        provider_metadata: Value,
+        operation_id: Uuid,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        self.validate_provider_stock_context(
+            &prepared.context,
+            prepared.scope.fulfillment_id,
+            operation_id,
+            "cancel",
+        )
+        .await?;
         self.cancel_fulfillment_internal(
-            tenant_id,
-            fulfillment_id,
+            prepared.scope.tenant_id,
+            prepared.scope.fulfillment_id,
             input,
             Some((provider_metadata, operation_id)),
+            Some(prepared),
         )
         .await
     }
@@ -1754,7 +2121,13 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
         mut input: CancelFulfillmentInput,
         provider_result: Option<(Value, Uuid)>,
+        prepared_stock: Option<PreparedFulfillmentStock>,
     ) -> FulfillmentResult<FulfillmentResponse> {
+        let original_input = serde_json::to_value(&input).map_err(|_| {
+            FulfillmentError::Validation(
+                "fulfillment lifecycle input could not be normalized".into(),
+            )
+        })?;
         validate_tenant_id(tenant_id)?;
         validate_fulfillment_id(fulfillment_id)?;
         input
@@ -1776,6 +2149,13 @@ impl FulfillmentService {
         let fulfillment = self
             .load_fulfillment_for_update(&txn, tenant_id, fulfillment_id)
             .await?;
+        self.assert_progress_not_fenced(
+            &txn,
+            tenant_id,
+            fulfillment_id,
+            provider_result.as_ref().map(|(_, id)| *id),
+        )
+        .await?;
 
         if let Some((provider_metadata, operation_id)) = provider_result.as_ref() {
             validate_journal_owned_provider_metadata(
@@ -1785,6 +2165,9 @@ impl FulfillmentService {
                 *operation_id,
                 "cancel",
                 provider_metadata,
+                (!has_matching_provider_operation(&fulfillment.metadata, *operation_id, "cancel"))
+                    .then_some(&original_input),
+                &fulfillment.status,
             )
             .await?;
         }
@@ -1795,6 +2178,16 @@ impl FulfillmentService {
             let response = self
                 .build_fulfillment_response(&txn, tenant_id, fulfillment)
                 .await?;
+            if let Some((_, operation_id)) = provider_result.as_ref() {
+                FulfillmentProviderOperationJournal::new(self.db.clone())
+                    .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                    .await?;
+            }
+            if let Some(prepared) = prepared_stock.as_ref() {
+                prepared
+                    .remaining_context()
+                    .map_err(FulfillmentError::OwnerPort)?;
+            }
             txn.commit().await?;
             return Ok(response);
         }
@@ -1806,29 +2199,18 @@ impl FulfillmentService {
             });
         }
 
-        if fulfillment.status == STATUS_SHIPPED {
-            // Shipped-but-undelivered units never reach the customer: return them to stock in
-            // the same transaction as the cancellation.
-            let items = self
-                .load_fulfillment_items(&txn, tenant_id, fulfillment.id)
-                .await?;
-            for item in &items {
-                let undelivered = item.shipped_quantity - item.delivered_quantity;
-                if undelivered > 0 {
-                    self.shipment_stock
-                        .restore_unshipped(
-                            &txn,
-                            ShipmentStockRequest {
-                                tenant_id,
-                                order_line_item_id: item.order_line_item_id,
-                                quantity: undelivered,
-                            },
-                        )
-                        .await
-                        .map_err(map_shipment_stock_error)?;
-                }
-            }
-        }
+        let items = self
+            .load_stock_items(&txn, tenant_id, fulfillment.id)
+            .await?;
+        self.apply_prepared_stock(
+            &txn,
+            prepared_stock.as_ref(),
+            &fulfillment,
+            &items,
+            ShipmentStockAction::Restore,
+            None,
+        )
+        .await?;
 
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let now = Utc::now();
@@ -1849,6 +2231,16 @@ impl FulfillmentService {
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&txn).await?;
+        if let Some((_, operation_id)) = provider_result.as_ref() {
+            FulfillmentProviderOperationJournal::new(self.db.clone())
+                .mark_committed_in_txn(&txn, tenant_id, *operation_id)
+                .await?;
+        }
+        if let Some(prepared) = prepared_stock.as_ref() {
+            prepared
+                .remaining_context()
+                .map_err(FulfillmentError::OwnerPort)?;
+        }
         txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
@@ -1901,6 +2293,11 @@ impl FulfillmentService {
             .iter()
             .map(|fulfillment| fulfillment.id)
             .collect::<Vec<_>>();
+        let maximum_projection_items = fulfillments
+            .len()
+            .checked_mul(crate::MAX_SHIPMENT_STOCK_ITEMS)
+            .and_then(|limit| limit.checked_add(1))
+            .ok_or_else(stock::item_limit_refusal)?;
         let item_rows = entities::fulfillment_item::Entity::find()
             .join(
                 JoinType::InnerJoin,
@@ -1911,16 +2308,18 @@ impl FulfillmentService {
             .order_by_asc(entities::fulfillment_item::Column::FulfillmentId)
             .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
             .order_by_asc(entities::fulfillment_item::Column::Id)
+            .limit(maximum_projection_items as u64)
             .all(db)
             .await?;
 
         let mut items_by_fulfillment =
             HashMap::<Uuid, Vec<entities::fulfillment_item::Model>>::new();
         for item in item_rows {
-            items_by_fulfillment
-                .entry(item.fulfillment_id)
-                .or_default()
-                .push(item);
+            let owner_items = items_by_fulfillment.entry(item.fulfillment_id).or_default();
+            if owner_items.len() == crate::MAX_SHIPMENT_STOCK_ITEMS {
+                return Err(stock::item_limit_refusal());
+            }
+            owner_items.push(item);
         }
 
         let mut responses = Vec::with_capacity(fulfillments.len());
@@ -1945,17 +2344,7 @@ impl FulfillmentService {
     where
         C: ConnectionTrait,
     {
-        let items = entities::fulfillment_item::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                entities::fulfillment_item::Relation::Fulfillment.def(),
-            )
-            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
-            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
-            .order_by_asc(entities::fulfillment_item::Column::Id)
-            .all(db)
-            .await?;
+        let items = self.load_stock_items(db, tenant_id, fulfillment.id).await?;
 
         Ok(map_fulfillment(fulfillment, items))
     }
@@ -1987,18 +2376,7 @@ impl FulfillmentService {
         C: ConnectionTrait,
     {
         validate_fulfillment_id(fulfillment_id)?;
-        entities::fulfillment_item::Entity::find()
-            .join(
-                JoinType::InnerJoin,
-                entities::fulfillment_item::Relation::Fulfillment.def(),
-            )
-            .filter(entities::fulfillment::Column::TenantId.eq(tenant_id))
-            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
-            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
-            .order_by_asc(entities::fulfillment_item::Column::Id)
-            .all(db)
-            .await
-            .map_err(Into::into)
+        self.load_stock_items(db, tenant_id, fulfillment_id).await
     }
 
     async fn set_shipping_option_active(
@@ -2272,6 +2650,8 @@ async fn validate_journal_owned_provider_metadata(
     operation_id: Uuid,
     operation: &str,
     provider_metadata: &Value,
+    local_input: Option<&Value>,
+    owner_status: &str,
 ) -> FulfillmentResult<()> {
     if operation_id.is_nil() {
         return Err(FulfillmentError::Validation(
@@ -2300,6 +2680,11 @@ async fn validate_journal_owned_provider_metadata(
             from: journaled.status,
             to: PROVIDER_OPERATION_COMMITTED.to_string(),
         });
+    }
+    if journaled.status != PROVIDER_OPERATION_COMMITTED {
+        if let Some(input) = local_input {
+            stock::validate_journal_local_input(&journaled, input, owner_status)?;
+        }
     }
     let Some(journaled_result) = journaled.provider_result else {
         return Err(FulfillmentError::ProviderResultInvalid(
@@ -2618,6 +3003,12 @@ fn validate_fulfillment_items(
         return Ok(());
     };
 
+    if items.len() > crate::MAX_SHIPMENT_STOCK_ITEMS {
+        return Err(FulfillmentError::Validation(
+            "a fulfillment supports at most 1024 typed items; split owner work".into(),
+        ));
+    }
+
     let mut seen_line_items = BTreeSet::new();
     for item in items {
         item.validate()
@@ -2860,22 +3251,16 @@ impl FulfillmentItemAction {
 }
 
 fn map_shipment_stock_error(error: ShipmentStockError) -> FulfillmentError {
-    match error {
-        ShipmentStockError::Rejected(message) => FulfillmentError::Validation(message),
-        ShipmentStockError::NotConfigured => FulfillmentError::Validation(
-            "shipment stock port is not configured for this fulfillment runtime".to_string(),
-        ),
-        ShipmentStockError::Database(error) => FulfillmentError::Database(error),
-    }
+    FulfillmentError::OwnerPort(crate::error::shipment_stock_error_to_port_error(&error))
 }
 
 fn reopened_status_for_cancelled(
     items: &[entities::fulfillment_item::Model],
-    fulfillment: &entities::fulfillment::ActiveModel,
+    fulfillment: &entities::fulfillment::Model,
 ) -> &'static str {
-    if items.iter().any(|item| item.shipped_quantity > 0)
-        || fulfillment.shipped_at.clone().take().is_some()
-    {
+    // ActiveValue::take() returns Some(None) for an unchanged nullable field. Inspect
+    // the model's actual timestamp, not that outer wrapper, before selecting lifecycle state.
+    if items.iter().any(|item| item.shipped_quantity > 0) || fulfillment.shipped_at.is_some() {
         STATUS_SHIPPED
     } else {
         STATUS_PENDING

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { getTranslations } from '@rustok/next-fluent/server';
 import {
   Card,
   CardContent,
@@ -22,15 +23,25 @@ import type {
   CreateProductAttributeSchemaGroupPayload,
   CreateProductAttributeSchemaPayload,
   ProductAttributeSummary,
+  ProductEffectiveForm,
   ProductAttributeSchemaSummary,
   SetCategorySchemaModePayload
 } from '../api/types';
+import {
+  AttributeLifecycleCard,
+  type AttributeLifecycleCardProps
+} from '../components/attributes/attribute-lifecycle-card';
 import { AttributesTable } from '../components/attributes/attributes-table';
 import { AttributeCreateDialog } from '../components/attributes/attribute-create-dialog';
 import { AttributeSchemasCard } from '../components/attributes/attribute-schemas-card';
 import { SchemaAuthoringCard } from '../components/attributes/schema-authoring-card';
 
 export interface AttributesPageProps {
+  definition: Omit<AttributeLifecycleCardProps, 'locale'>;
+  fetchEffectiveForm: (
+    categoryId: string,
+    locale: string
+  ) => Promise<ProductEffectiveForm | null>;
   token: string | null;
   tenantSlug: string | null;
   tenantId: string | null;
@@ -56,6 +67,54 @@ export interface AttributesPageProps {
 }
 
 export async function AttributesPage({
+  definition,
+  ...props
+}: AttributesPageProps) {
+  const locale = props.locale ?? 'en';
+  const t = await getTranslations('product');
+  return (
+    <div className='space-y-6'>
+      <AttributeLifecycleCard
+        key={JSON.stringify([
+          definition.scope.tenantId,
+          definition.scope.actorId,
+          definition.attributeId
+        ])}
+        {...definition}
+        locale={locale}
+        heading={
+          <div className='flex items-center justify-between'>
+            <div>
+              <h2 className='text-lg font-semibold tracking-tight'>
+                Product Attributes & Schemas
+              </h2>
+              <p className='text-muted-foreground text-sm'>
+                Define dynamic attributes, option dictionaries, and schema
+                templates for catalog products.
+              </p>
+            </div>
+            <AttributeCreateDialog
+              onCreateAttribute={props.onCreateAttribute}
+            />
+          </div>
+        }
+      >
+        <React.Suspense
+          fallback={
+            <p role='status' aria-busy='true'>
+              {t('attributeLifecycle-loading')}
+            </p>
+          }
+        >
+          <AttributesDirectory {...props} locale={locale} />
+        </React.Suspense>
+      </AttributeLifecycleCard>
+    </div>
+  );
+}
+
+async function AttributesDirectory({
+  fetchEffectiveForm,
   token,
   tenantSlug,
   tenantId,
@@ -68,7 +127,7 @@ export async function AttributesPage({
   onCreateCategoryGroup,
   onBindSchemaAttribute,
   onBindCategoryAttribute
-}: AttributesPageProps) {
+}: Omit<AttributesPageProps, 'definition'>) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   let attributes: ProductAttributeSummary[] = [];
   let schemas: ProductAttributeSchemaSummary[] = [];
@@ -90,20 +149,7 @@ export async function AttributesPage({
   }
 
   return (
-    <div className='space-y-6'>
-      <div className='flex items-center justify-between'>
-        <div>
-          <h2 className='text-lg font-semibold tracking-tight'>
-            Product Attributes & Schemas
-          </h2>
-          <p className='text-muted-foreground text-sm'>
-            Define dynamic attributes, option dictionaries, and schema templates
-            for catalog products.
-          </p>
-        </div>
-        <AttributeCreateDialog onCreateAttribute={onCreateAttribute} />
-      </div>
-
+    <>
       {error ? (
         <Card className='border-destructive/50'>
           <CardContent className='text-destructive py-6 text-sm'>
@@ -134,6 +180,8 @@ export async function AttributesPage({
           />
 
           <SchemaAuthoringCard
+            locale={locale}
+            fetchEffectiveForm={fetchEffectiveForm}
             categories={categories}
             schemas={schemas}
             attributes={attributes}
@@ -145,6 +193,6 @@ export async function AttributesPage({
           />
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -104,8 +104,16 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
         ),
         CommerceError::CannotDeleteOnlyVariant => ("cannot_delete_only_variant", 0, 0, 0, 0, false),
         CommerceError::CannotDeletePublished => ("cannot_delete_published", 0, 0, 0, 0, false),
+        CommerceError::InventoryDeletionBlocked(_) => {
+            ("inventory_deletion_blocked", 0, 0, 0, 0, false)
+        }
+        CommerceError::InventoryQuantityBlocked(_) => {
+            ("inventory_quantity_blocked", 0, 0, 0, 0, false)
+        }
         CommerceError::Core(_) => ("core", 0, 0, 0, 0, true),
-        CommerceError::Conflict(_) => ("conflict", 0, 0, 0, 0, true),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            ("conflict", 0, 0, 0, 0, true)
+        }
     };
 
     ProductOwnerErrorFacts {
@@ -215,8 +223,14 @@ pub fn map_product_public_error(
             "CANNOT_DELETE_PUBLISHED",
             false,
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_public_policy(blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_public_policy(blocker)
+        }
         CommerceError::Core(error) => core_public_error_policy(error),
-        CommerceError::Conflict(_) => (
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => (
             "Product request conflicts with the current state",
             "PRODUCT_CONFLICT",
             false,

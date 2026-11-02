@@ -34,7 +34,7 @@ impl AuthContext {
     pub fn new() -> Self {
         let user = RwSignal::new(storage::load_user().ok());
         let session = RwSignal::new(storage::load_session().ok());
-        let is_loading = RwSignal::new(false);
+        let is_loading = RwSignal::new(cfg!(target_arch = "wasm32"));
         let error = RwSignal::new(None);
 
         Self {
@@ -207,13 +207,24 @@ impl Default for AuthContext {
 }
 
 #[component]
-pub fn AuthProvider(children: Children) -> impl IntoView {
+pub fn AuthProvider(
+    children: Children,
+    #[prop(optional)] tenant_slug: Option<String>,
+) -> impl IntoView {
+    let binding = tenant_slug
+        .as_deref()
+        .map(storage::bind_request_tenant)
+        .transpose();
     let auth_context = AuthContext::new();
+    if let Err(error) = &binding {
+        auth_context.error.set(Some(error.to_string()));
+        auth_context.is_loading.set(false);
+    }
 
     provide_context(auth_context.clone());
 
     #[cfg(target_arch = "wasm32")]
-    {
+    if binding.is_ok() {
         // Credentials are never read from browser storage: restore the
         // session from the server-held HttpOnly cookie (silent
         // refresh), keeping the loading flag up so protected routes

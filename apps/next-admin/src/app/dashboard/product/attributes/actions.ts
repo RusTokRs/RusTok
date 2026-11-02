@@ -3,6 +3,13 @@
 import { auth } from '@/auth';
 import { graphqlRequest } from '@/shared/api/graphql';
 import {
+  readAttributeLifecycle,
+  updateAttributeDefinition,
+  isAttributeDefinitionRequest,
+  type AttributeDefinitionWriteRequest,
+  type AttributeLifecycleRequest,
+  type ProductWriteScope,
+  type ProductWriteOutcome,
   bindCategoryAttribute,
   bindSchemaAttribute,
   createCategoryAttributeGroup,
@@ -22,11 +29,19 @@ import {
 } from '@rustok/product-admin';
 import { revalidatePath } from 'next/cache';
 
-async function getSessionOpts() {
+async function getSessionOpts(expectedScope?: ProductWriteScope) {
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
   const tenantId = session?.user?.tenantId ?? null;
+
+  if (
+    expectedScope &&
+    (expectedScope.tenantId !== tenantId ||
+      expectedScope.actorId !== session?.user?.id)
+  ) {
+    throw new Error('Dictionary authentication context changed');
+  }
 
   if (!token || !tenantSlug || !tenantId) {
     throw new Error('Sign in again to manage attributes.');
@@ -107,4 +122,46 @@ export async function bindCategoryAttributeAction(
   const opts = await getSessionOpts();
   await bindCategoryAttribute(opts, payload);
   await revalidateSchemaAuthoringPaths();
+}
+
+export async function readAttributeLifecycleAction(
+  scope: ProductWriteScope,
+  locale: string,
+  request: AttributeLifecycleRequest
+) {
+  const opts = await getSessionOpts(scope);
+  return readAttributeLifecycle(opts, locale, request);
+}
+
+export async function updateAttributeDefinitionAction(
+  request: AttributeDefinitionWriteRequest,
+  idempotencyKey: string
+): Promise<ProductWriteOutcome> {
+  let outcome: ProductWriteOutcome;
+  try {
+    if (!isAttributeDefinitionRequest(request))
+      return {
+        status: 'unknown',
+        message:
+          'Dictionary outcome is not confirmed. Retain the exact saved request.'
+      };
+    const opts = await getSessionOpts(request.scope);
+    outcome = await updateAttributeDefinition(opts, request, idempotencyKey);
+  } catch {
+    return {
+      status: 'unknown',
+      message:
+        'Dictionary outcome is not confirmed. Retain the exact saved request.'
+    };
+  }
+  if (outcome.status === 'confirmed') {
+    try {
+      revalidatePath('/dashboard/product/attributes');
+      revalidatePath('/dashboard/product/categories');
+      revalidatePath('/dashboard/product');
+    } catch {
+      // Cache failure cannot erase an authoritative owner acknowledgement or rotate its key.
+    }
+  }
+  return outcome;
 }

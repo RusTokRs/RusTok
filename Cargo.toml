@@ -346,6 +346,7 @@ rustok-social-graph = { path = "crates/modules/rustok-social-graph" }
 rustok-comments = { path = "crates/modules/rustok-comments", default-features = false }
 rustok-region = { path = "crates/modules/rustok-region" }
 rustok-pricing = { path = "crates/modules/rustok-pricing" }
+rustok-pricing-storefront = { path = "crates/modules/rustok-pricing/storefront" }
 rustok-pricing-persistence = { path = "crates/libs/rustok-pricing-persistence" }
 rustok-tax = { path = "crates/modules/rustok-tax" }
 rustok-inventory = { path = "crates/modules/rustok-inventory" }

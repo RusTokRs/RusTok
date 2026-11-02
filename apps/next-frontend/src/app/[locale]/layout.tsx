@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { setRequestLocale } from "@rustok/next-fluent/server";
-import { CartProvider, CartDrawer, CartTrigger } from "@rustok/cart-frontend";
+import { CartDrawer, CartTrigger } from "@rustok/cart-frontend";
+import { StorefrontProviders } from "@/widgets/providers/storefront-providers";
 import { getStorefrontTenantSlug } from "@/shared/api/modules";
 
 export default async function LocaleLayout({
@@ -16,10 +17,10 @@ export default async function LocaleLayout({
   const tenantSlug = getStorefrontTenantSlug();
 
   return (
-    <CartProvider locale={locale} tenantSlug={tenantSlug}>
+    <StorefrontProviders locale={locale} tenantSlug={tenantSlug}>
       {children}
       <CartTrigger locale={locale} />
       <CartDrawer locale={locale} />
-    </CartProvider>
+    </StorefrontProviders>
   );
 }

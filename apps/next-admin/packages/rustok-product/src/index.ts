@@ -23,6 +23,9 @@ import type {
 } from './api/types';
 import { productNavItems } from './nav';
 import { parsePriceAmount } from './money';
+import type { CreateVariantInput } from './api/products';
+export { initialVariantInput } from './variant-draft';
+export { isVariantCreateInput } from './variant-create';
 
 registerAdminModule({
   id: 'product',
@@ -34,9 +37,14 @@ export { productNavItems } from './nav';
 export * from './api/types';
 export * from './api/categories';
 export * from './api/attributes';
+export * from './api/attribute-lifecycle';
+export * from './attribute-lifecycle';
+export { ATTRIBUTE_DEFINITION_INTENT_QUERY_KEY } from './write-journal';
 export * from './api/products';
 export * from './api/write-outcome';
 export type {
+  ProductAxesWriteRequest,
+  ProductVariantCreateRequest,
   ProductSavePayload,
   ProductWriteOutcome,
   ProductWriteAcknowledgement,
@@ -48,6 +56,7 @@ export * from './api/bundles';
 export * from './components/categories/categories-table';
 export * from './components/categories/category-create-dialog';
 export * from './components/attributes/attributes-table';
+export * from './components/attributes/attribute-lifecycle-card';
 export * from './components/attributes/attribute-create-dialog';
 export * from './components/attributes/attribute-options-dialog';
 export * from './components/attributes/attribute-schemas-card';
@@ -332,6 +341,8 @@ export async function listCatalogAttributeSearchOptions(
 }
 
 export type CreateProductPayload = {
+  variantAxes?: import('./api/types').VariantAxisDraftInput[];
+  variants?: CreateVariantInput[];
   attributeValues?: import('./api/types').ProductAttributeValueBatch[];
   title: string;
   translations?: ProductTranslation[];
@@ -409,7 +420,10 @@ export async function createProduct(
       metaTitle: translation.metaTitle || null,
       metaDescription: translation.metaDescription || null
     })),
-    variants: [
+    ...(payload.variantAxes !== undefined
+      ? { variantAxes: payload.variantAxes }
+      : {}),
+    variants: payload.variants ?? [
       {
         sku: payload.sku || null,
         barcode: payload.barcode || null,

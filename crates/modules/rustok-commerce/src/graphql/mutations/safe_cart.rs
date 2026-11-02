@@ -113,9 +113,8 @@ mod cart_storefront_owner_boundary {
     use std::sync::Arc;
 
     use ::rustok_cart::{
-        CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
-        CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
-        CartStorefrontLineItemQuantityRequest, CartStorefrontPort, CartStorefrontReadRequest,
+        CartContextUpdateRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+        CartStorefrontLineItemPricingRequest, CartStorefrontPort, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest, CartStorefrontRepriceRequest,
     };
     use rustok_api::{PortActorKind, PortContext, PortError};
@@ -276,28 +275,11 @@ mod cart_storefront_owner_boundary {
         async fn update_storefront_context(
             &self,
             context: PortContext,
-            request: CartStorefrontContextUpdateRequest,
+            request: CartContextUpdateRequest,
         ) -> Result<::rustok_cart::CartResponse, PortError> {
             let error_context = context.clone();
             let result = self.inner.update_storefront_context(context, request).await;
             retain_cart_owner_context(&error_context, "update_storefront_context", result)
-        }
-
-        async fn update_storefront_line_item_quantity(
-            &self,
-            context: PortContext,
-            request: CartStorefrontLineItemQuantityRequest,
-        ) -> Result<::rustok_cart::CartResponse, PortError> {
-            let error_context = context.clone();
-            let result = self
-                .inner
-                .update_storefront_line_item_quantity(context, request)
-                .await;
-            retain_cart_owner_context(
-                &error_context,
-                "update_storefront_line_item_quantity",
-                result,
-            )
         }
 
         async fn update_storefront_line_item_pricing(
@@ -498,6 +480,29 @@ mod pricing_read_owner_boundary {
             retain_pricing_owner_context(&error_context, "resolve_product_price", result)
         }
 
+        async fn resolve_product_prices(
+            &self,
+            context: PortContext,
+            request: ::rustok_pricing::ResolveProductPricesRequest,
+        ) -> Result<::rustok_pricing::ResolvedProductPricesSnapshot, PortError> {
+            let error_context = context.clone();
+            let result = self.inner.resolve_product_prices(context, request).await;
+            retain_pricing_owner_context(&error_context, "resolve_product_prices", result)
+        }
+
+        async fn list_storefront_product_pricing(
+            &self,
+            context: PortContext,
+            request: ::rustok_pricing::StorefrontProductPricingListRequest,
+        ) -> Result<::rustok_pricing::StorefrontPricingProductList, PortError> {
+            let error_context = context.clone();
+            let result = self
+                .inner
+                .list_storefront_product_pricing(context, request)
+                .await;
+            retain_pricing_owner_context(&error_context, "list_storefront_product_pricing", result)
+        }
+
         async fn read_price_list_projection(
             &self,
             context: PortContext,
@@ -576,9 +581,10 @@ mod pricing_read_owner_boundary {
     pub(crate) fn in_process_pricing_read_port(
         db: sea_orm::DatabaseConnection,
         event_bus: rustok_outbox::TransactionalEventBus,
+        product_runtime: ::rustok_product::ProductCatalogReadRuntime,
     ) -> Arc<dyn PricingReadPort> {
         Arc::new(ContextualPricingReadPort {
-            inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus),
+            inner: ::rustok_pricing::in_process_pricing_read_port(db, event_bus, product_runtime),
         })
     }
 }
@@ -588,9 +594,8 @@ pub(crate) use pricing_read_owner_boundary::in_process_pricing_read_port as cont
 mod rustok_cart_shim {
     pub(crate) use super::cart_storefront_owner_boundary::in_process_cart_storefront_port;
     pub use ::rustok_cart::{
-        CartStorefrontAddLineItemRequest, CartStorefrontContextUpdateRequest,
-        CartStorefrontCreateRequest, CartStorefrontLineItemPricingRequest,
-        CartStorefrontLineItemQuantityRequest, CartStorefrontReadRequest,
+        CartContextUpdateRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
+        CartStorefrontLineItemPricingRequest, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest,
     };
 }

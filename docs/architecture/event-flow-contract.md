@@ -6,6 +6,7 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
+
 # Domain Event Flow Contract
 
 This document captures the canonical path of a `DomainEvent` in RusToK: from a domain
@@ -18,7 +19,8 @@ operation to updating downstream read-side state.
 3. `rustok-outbox` delivers the event to the transport/runtime layer.
 4. Registered consumers update projections, indexes and other
    downstream surfaces idempotently.
-5. UI and API read the already consistent read-side state.
+5. UI and API read projections subject to delivery lag and consumer convergence; enqueue or
+   relay publication alone is not a read-consistency barrier.
 
 ## Sources of Truth
 
@@ -231,3 +233,48 @@ docs.
 - [Channels and Real-time Surfaces](./channels.md)
 - [Platform Diagrams](./diagram.md)
 - [Module Platform Crate Registry](../modules/crates-registry.md)
+
+## Acknowledged sealed local listeners (2026-11-01; source only)
+
+Existing EventHandler/module registry/dispatcher/EventBus/Memory now offer explicit sealed
+opt-in through `start_with_contract_delivery`. Handlers validate the canonical frame and are
+awaited under bounded concurrency; unbound/closed/no-handler/capacity/failure paths refuse local
+acknowledgement. A Weak bus binding follows the running task's lifecycle and avoids handler/bus
+cycles. Root wire/APIs and best-effort root broadcast do not acquire this stronger guarantee.
+This is not another event bus, in-memory fallback queue or domain publisher; Outbox remains the
+single durable retry/DLQ owner.
+
+For `outbox`, the existing relay target awaits required sealed local handlers. For `outbox_iggy`,
+the configured primary first accepts the unchanged envelope, then matching local handlers must
+succeed. Failure after send can republish the **same identity**; every consumer must tolerate
+at-least-once intake. Iggy send/local acknowledgement is not remote persistent receive/cursor
+ACK. Artifact exact/wildcard subscriptions validate and durably enqueue original-source sealed
+frames before forwarding, retaining the existing root representation.
+
+The Inventory owner now emits quantity-free `inventory.reservation.changed` v1 for fresh positive
+identity/anonymous reserve/release on its counter/receipt transaction. Replay/zero/adoption emit
+none. Current actor remains envelope metadata, not saved payload reconstruction. Explicit Search
+refetch serializes PostgreSQL product writes/rebuilds/deletes before fresh reads. No root fallback,
+Product refresh/revision impersonation, raw-table pipeline or C/host publisher is introduced.
+
+This is source wiring, not runtime certification. Canonical Rust digests, scoped compilation,
+actual relay/Iggy/restart/lag/Search concurrency and generic Index's Inventory-owned source /
+revision remain open; Product step 8 is incomplete. See the [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json)
+and [delivery decision](../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).
+
+## Inventory source canonical continuation (2026-11-02; source only)
+
+Changed facts use retained change UUIDs and positive Inventory versions on the actual caller
+transaction. Final explicit baseline activation uses the globally unique original baseline UUID;
+Building seeds emit no per-SKU ready facts. Current actor is forwarded; journal/status reads
+never reconstruct historical publication.
+
+Compiled required-module policy refuses unmatched Inventory source/reservation frames before
+Iggy broker-only success. With a match, local completion is awaited after primary acceptance;
+errors retain the same frame for retry. Product remote-only primary/cursor routing is preserved.
+Memory uses the same bounded registry. No production source listener is selected. This is not
+remote cursor, Index persistence or exactly-once evidence.
+[Owner evidence](../../crates/modules/rustok-inventory/contracts/evidence/source-delivery-source.json)
+keeps current-authority Distribution source, durable initial replay, generic Index worker/ACK,
+digest/compiler/backend/runtime and step-8 gates false. No live baseline before real handlers
+plus operator preflight/recovery.

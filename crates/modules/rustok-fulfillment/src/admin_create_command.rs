@@ -205,8 +205,7 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
         let idempotency_key = context
             .idempotency_key
             .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
                 PortError::validation(
                     "fulfillment.provider_idempotency_key_missing",
@@ -325,14 +324,11 @@ impl FulfillmentAdminCreateCommandPort for InProcessFulfillmentAdminCreateComman
             ));
         }
 
-        if matches!(
-            operation.status.as_str(),
-            PROVIDER_OPERATION_COMMITTED
-                | PROVIDER_OPERATION_SUCCEEDED
-                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        ) {
+        if operation.status == PROVIDER_OPERATION_COMMITTED {
             return Ok(fulfillment);
         }
+        // A retained provider success is not proof that native label metadata/checkpoint
+        // committed. The saved-result path below applies it locally without another carrier.
 
         let provider_request = FulfillmentProviderOperationRequest {
             tenant_id,
@@ -394,11 +390,16 @@ impl InProcessFulfillmentAdminCreateCommandPort {
         operation: provider_operation::Model,
         request: FulfillmentProviderOperationRequest,
     ) -> Result<FulfillmentProviderOperationResult, PortError> {
+        if operation.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(PortError::conflict(
+                "fulfillment.reconciliation_required",
+                "create-label outcome requires explicit owner reconciliation",
+            )
+            .with_retryable(false));
+        }
         if matches!(
             operation.status.as_str(),
-            PROVIDER_OPERATION_COMMITTED
-                | PROVIDER_OPERATION_SUCCEEDED
-                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            PROVIDER_OPERATION_COMMITTED | PROVIDER_OPERATION_SUCCEEDED
         ) {
             let result = deserialize_create_label_result(context, owner_operation, &operation)?;
             self.commit_create_label_provider_result(context, owner_operation, &operation, &result)
@@ -412,6 +413,9 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             ));
         }
 
+        self.provider_registry
+            .executable_provider(provider_id, "create_label")
+            .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
         if self
             .operation_journal
             .claim_execution(operation.tenant_id, operation.id)
@@ -424,11 +428,16 @@ impl InProcessFulfillmentAdminCreateCommandPort {
                 .get(operation.tenant_id, operation.id)
                 .await
                 .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                return Err(PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "create-label outcome requires explicit owner reconciliation",
+                )
+                .with_retryable(false));
+            }
             if matches!(
                 current.status.as_str(),
-                PROVIDER_OPERATION_COMMITTED
-                    | PROVIDER_OPERATION_SUCCEEDED
-                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                PROVIDER_OPERATION_COMMITTED | PROVIDER_OPERATION_SUCCEEDED
             ) {
                 let result = deserialize_create_label_result(context, owner_operation, &current)?;
                 self.commit_create_label_provider_result(
@@ -569,7 +578,8 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             }
         };
 
-        self.operation_journal
+        let checkpoint = self
+            .operation_journal
             .mark_provider_succeeded(
                 operation.tenant_id,
                 operation.id,
@@ -578,6 +588,10 @@ impl InProcessFulfillmentAdminCreateCommandPort {
             )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
+        if checkpoint.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(PortError::conflict("fulfillment.reconciliation_required",
+                "create-label outcome is retained after quarantine; explicitly reconcile local persistence").with_retryable(false));
+        }
         self.commit_create_label_provider_result(context, owner_operation, &operation, &result)
             .await?;
         Ok(result)
@@ -745,6 +759,10 @@ fn map_fulfillment_error(
                 "fulfillment.shipping_option_translation_revision_conflict",
                 "shipping option translation revision conflicts with the current state",
             ),
+        ),
+        error @ FulfillmentError::OwnerPort(_) => (
+            "shipment_stock",
+            crate::error::map_fulfillment_error_without_context(error),
         ),
         FulfillmentError::Database(_) => (
             "database",

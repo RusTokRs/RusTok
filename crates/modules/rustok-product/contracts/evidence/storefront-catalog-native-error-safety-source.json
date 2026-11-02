@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-10-18",
+  "generated_at": "2026-10-30",
   "status": "product_storefront_catalog_native_error_safety_source_unvalidated",
-  "scope": "Product native storefront catalog list, facets, detail/pricing and search-options trusted context admission",
-  "contract_extension": "storefront catalog-list now forwards an optional display currency to the owner price snapshot and returns owner-resolved primaryImage/priceFrom alongside the pre-existing item fields; trusted RequestContext rejection now fails closed before all four native owner read paths",
+  "scope": "Five Product native catalog/detail/schema/facet/buyer-quote endpoints with trusted admission and selected read capabilities",
+  "contract_extension": "Required context and commerce admission precede owner IO. Selected optional schema absence refuses; a shared two-second budget wraps admission and owner calls.",
   "source_contract": {
     "runtime_dependency_static_public_envelope": true,
     "tenant_context_static_public_envelope": true,
@@ -23,7 +23,9 @@
     "raw_context_payload_logged": false,
     "correlation_shape_only": true,
     "channel_shape_only": true,
-    "locale_shape_only": true
+    "locale_shape_only": true,
+    "selected_runtime_preserved": true,
+    "shared_read_budget_enforced": true
   },
   "stable_public_messages": {
     "catalog_runtime_unavailable": "Product catalog is temporarily unavailable",
@@ -44,6 +46,10 @@
     "ci_run": false,
     "native_runtime_proven": false,
     "mounted_parity_proven": false,
-    "verification_scope": "standalone source guards and three-file Scalar rust-fmt 0.3.0 formatting/idempotence only; tests and compilation not executed"
+    "verification_scope": "Scoped source guards, syntax/format only; no tests, Rust compilation, database or mounted behavior. Registry resolution/install not certified."
+  },
+  "buyer_continuation": {
+    "base_main_sha": "16cb22206ca19de8218f47a1056d946105c7b09f",
+    "source_guard": "node scripts/verify/verify-product-storefront-boundary.mjs"
   }
 }

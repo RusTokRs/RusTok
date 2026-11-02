@@ -47,7 +47,7 @@ fn map_storefront_product_error(
             error,
             "commerce_store_product_failed",
         ),
-        ProductError::Conflict(_) => (
+        ProductError::Conflict(_) | ProductError::VariantAxisPolicyConflict(_) => (
             StatusCode::CONFLICT,
             "commerce_store_product_conflict",
             "Product request conflicts with the current state",
@@ -77,6 +77,7 @@ fn map_storefront_product_error(
         | ProductError::DuplicateSku(_)
         | ProductError::NoVariants
         | ProductError::CannotDeletePublished
+        | ProductError::InventoryDeletionBlocked(_)
         | ProductError::CannotDeleteOnlyVariant => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "commerce_store_product_failed",
@@ -197,7 +198,7 @@ fn map_storefront_product_port_error(
         boundary = "commerce_storefront_product_http",
         "storefront product owner read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn storefront_port_error_kind(kind: &PortErrorKind) -> &'static str {
@@ -399,7 +400,7 @@ fn map_storefront_shipping_port_error(
         boundary = "commerce_storefront_auxiliary_http",
         "storefront shipping-option owner read failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 /// List published storefront products
@@ -410,7 +411,7 @@ fn map_storefront_shipping_port_error(
     params(StoreListProductsParams),
     responses(
         (status = 200, description = "Published storefront products", body = PaginatedResponse<ProductListItem>),
-        (status = 400, description = "Invalid request")
+        (status = 400, description = "Invalid request", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn list_products(
@@ -571,12 +572,12 @@ pub async fn list_products(
     params(("id" = Uuid, Path, description = "Product ID")),
     responses(
         (status = 200, description = "Product details", body = ProductResponse),
-        (status = 400, description = "Invalid request"),
-        (status = 404, description = "Product not found"),
-        (status = 403, description = "Product access denied"),
-        (status = 409, description = "Product state conflict"),
-        (status = 503, description = "Product service unavailable"),
-        (status = 500, description = "Product invariant failure")
+        (status = 400, description = "Invalid request", body = rustok_web::ErrorBody),
+        (status = 404, description = "Product not found", body = rustok_web::ErrorBody),
+        (status = 403, description = "Product access denied", body = rustok_web::ErrorBody),
+        (status = 409, description = "Product state conflict", body = rustok_web::ErrorBody),
+        (status = 503, description = "Product service unavailable", body = rustok_web::ErrorBody),
+        (status = 500, description = "Product invariant failure", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn show_product(
@@ -710,8 +711,8 @@ pub async fn list_regions(
     params(StoreContextQuery),
     responses(
         (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn list_shipping_options(
