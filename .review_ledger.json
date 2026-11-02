@@ -37,9 +37,9 @@
       "category": "libs",
       "files": 37,
       "loc": 12729,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-02 22:14",
+      "notes": "Audited in Round 2; regenerated canonical event-contract digests via canonical generator; standardized Cargo metadata (readme); verified 82 unit tests and 44 integration tests (126 total); clippy clean on all targets; remediation gate approved."
     },
     "crates/libs/rustok-fba": {
       "name": "rustok-fba",
