@@ -33,4 +33,8 @@ Document when this operational item is used, who owns it, and what successful ex
 
 ## Notes
 
+This feature flag is a fail-closed composition gate. When it is false, the server does not mount
+`/api/oauth/*` or the OAuth discovery metadata, and OpenAPI omits the OAuth paths. Deployments that
+expose an authorization server must set it to true explicitly.
+
 Generated from diagnostic `diag_env_362558e52b276830`. Review this page before relying on it as operational documentation.

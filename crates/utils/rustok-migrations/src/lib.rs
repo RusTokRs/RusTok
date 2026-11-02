@@ -46,6 +46,7 @@ mod m20261025_000001_add_user_login_lockout;
 mod m20261025_000003_add_session_reuse_detection;
 mod m20261025_000005_add_oauth_token_family;
 mod m20261028_000001_enforce_single_running_install_http_job;
+mod m20261101_000001_add_user_password_changed_at;
 
 pub mod schema_diff;
 pub use schema_diff::{
@@ -553,6 +554,9 @@ impl MigratorTrait for Migrator {
         all.push(Box::new(m20261025_000005_add_oauth_token_family::Migration));
         all.push(Box::new(
             m20261028_000001_enforce_single_running_install_http_job::Migration,
+        ));
+        all.push(Box::new(
+            m20261101_000001_add_user_password_changed_at::Migration,
         ));
         let dependencies = collect_migration_descriptors();
 

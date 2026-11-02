@@ -48,6 +48,7 @@ query PlatformSettings($category: String!) {
   platformSettings(category: $category) {
     category
     settings
+    schemaVersion
   }
 }
 `;
@@ -58,6 +59,7 @@ mutation UpdatePlatformSettings($input: UpdatePlatformSettingsInput!) {
     success
     category
     settings
+    schemaVersion
   }
 }
 `;
@@ -66,8 +68,13 @@ interface CacheHealthResponse {
   cacheHealth: CacheHealthPayload;
 }
 
+export interface CacheSettingsSnapshot {
+  settings: CacheSettings;
+  schemaVersion: number;
+}
+
 interface PlatformSettingsResponse {
-  platformSettings: { category: string; settings: string };
+  platformSettings: { category: string; settings: string; schemaVersion: number };
 }
 
 interface UpdateSettingsResponse {
@@ -75,6 +82,7 @@ interface UpdateSettingsResponse {
     success: boolean;
     category: string;
     settings: string;
+    schemaVersion: number;
   };
 }
 
@@ -92,7 +100,7 @@ export async function getCacheHealth(
 
 export async function getCacheSettings(
   opts: GqlOpts = {}
-): Promise<CacheSettings> {
+): Promise<CacheSettingsSnapshot> {
   const data = await graphqlRequest<
     { category: string },
     PlatformSettingsResponse
@@ -103,42 +111,63 @@ export async function getCacheSettings(
     opts.tenantSlug
   );
 
+  const schemaVersion = data.platformSettings.schemaVersion;
   try {
     const parsed = JSON.parse(
       data.platformSettings.settings
     ) as Partial<CacheSettings>;
     return {
-      ...DEFAULT_CACHE_SETTINGS,
-      ...parsed
+      settings: {
+        ...DEFAULT_CACHE_SETTINGS,
+        ...parsed
+      },
+      schemaVersion
     };
   } catch {
-    return DEFAULT_CACHE_SETTINGS;
+    return { settings: DEFAULT_CACHE_SETTINGS, schemaVersion };
   }
 }
 
 export async function updateCacheSettings(
   settings: CacheSettingsInput,
+  expectedSchemaVersion: number,
   opts: GqlOpts = {}
-): Promise<CacheSettings> {
+): Promise<CacheSettingsSnapshot> {
   const data = await graphqlRequest<
-    { input: { category: string; settings: string } },
+    {
+      input: {
+        category: string;
+        settings: string;
+        expectedSchemaVersion: number;
+      };
+    },
     UpdateSettingsResponse
   >(
     UPDATE_PLATFORM_SETTINGS_MUTATION,
-    { input: { category: 'cache', settings: JSON.stringify(settings) } },
+    {
+      input: {
+        category: 'cache',
+        settings: JSON.stringify(settings),
+        expectedSchemaVersion
+      }
+    },
     opts.token,
     opts.tenantSlug
   );
 
+  const schemaVersion = data.updatePlatformSettings.schemaVersion;
   try {
     const parsed = JSON.parse(
       data.updatePlatformSettings.settings
     ) as Partial<CacheSettings>;
     return {
-      ...DEFAULT_CACHE_SETTINGS,
-      ...parsed
+      settings: {
+        ...DEFAULT_CACHE_SETTINGS,
+        ...parsed
+      },
+      schemaVersion
     };
   } catch {
-    return DEFAULT_CACHE_SETTINGS;
+    return { settings: DEFAULT_CACHE_SETTINGS, schemaVersion };
   }
 }

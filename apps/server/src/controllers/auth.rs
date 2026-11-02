@@ -74,7 +74,7 @@ async fn register(
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::register entry");
+    tracing::debug!("auth::register entry");
     ensure_registration_enabled(ctx.runtime_ctx().settings())?;
 
     let runtime_ctx = ctx.runtime_ctx();
@@ -139,7 +139,7 @@ async fn login(
     Json(params): Json<LoginParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::login entry");
+    tracing::debug!("auth::login entry");
     let user_agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
@@ -356,7 +356,7 @@ async fn session_login(
     Json(params): Json<LoginParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::session_login entry");
+    tracing::debug!("auth::session_login entry");
     let user_agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
@@ -399,7 +399,7 @@ async fn session_register(
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::session_register entry");
+    tracing::debug!("auth::session_register entry");
     ensure_registration_enabled(ctx.runtime_ctx().settings())?;
 
     let runtime_ctx = ctx.runtime_ctx();
@@ -543,12 +543,6 @@ async fn accept_invite(
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
     tracing::debug!("auth::accept_invite entry");
-    if !ctx.runtime_ctx().settings().features.invites_enabled {
-        // Deliberately indistinguishable from an invalid token.
-        return Err(Error::Unauthorized(
-            "Invalid or already consumed invite token".into(),
-        ));
-    }
     let config = ctx
         .auth_config()
         .cloned()
@@ -585,7 +579,7 @@ async fn request_reset(
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::request_reset entry");
+    tracing::debug!("auth::request_reset entry");
     let config = ctx
         .auth_config()
         .cloned()
@@ -685,7 +679,7 @@ async fn request_verification(
     Json(params): Json<RequestVerificationParams>,
 ) -> Result<Response> {
     let email = params.email.trim();
-    tracing::debug!(email, "auth::request_verification entry");
+    tracing::debug!("auth::request_verification entry");
     let config = ctx
         .auth_config()
         .cloned()

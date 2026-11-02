@@ -1056,8 +1056,10 @@ impl AuthLifecycleService {
         .await?
         .ok_or(AuthLifecycleError::SessionExpired)?;
 
+        let now = Utc::now();
         let mut user_active: users::ActiveModel = user.into();
         user_active.password_hash = Set(new_password_hash);
+        user_active.password_changed_at = Set(Some(now.into()));
         user_active.failed_login_count = Set(0);
         user_active.locked_until = Set(None);
         user_active
@@ -1072,6 +1074,15 @@ impl AuthLifecycleService {
             Some(current_session_id),
         )
         .await?;
+        let _revoked_oauth_tokens =
+            crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
+                &txn,
+                tenant_id,
+                user_id,
+                now,
+            )
+            .await
+            .map_err(AuthLifecycleError::from)?;
         Self::publish_user_event_in_tx(
             db.clone(),
             &txn,

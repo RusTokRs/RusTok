@@ -32,6 +32,12 @@ pub struct Claims {
     pub scopes: Vec<String>,
     #[serde(default = "default_grant_type")]
     pub grant_type: String,
+    /// Registered OAuth access-token id (`jti`). Direct first-party
+    /// session tokens leave this absent; delegated/service OAuth tokens
+    /// must carry the id of their durable `oauth_tokens` access row so
+    /// revocation can fence an already-issued JWT before its TTL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<Uuid>,
 }
 
 fn default_grant_type() -> String {
@@ -111,6 +117,7 @@ pub fn encode_access_token(
         client_id: None,
         scopes: Vec::new(),
         grant_type: DIRECT_GRANT_TYPE.to_string(),
+        jti: None,
     };
 
     encode(&jwt_header(config), &claims, &encoding_key(config)?)
@@ -121,7 +128,11 @@ pub fn encode_oauth_access_token(
     config: &AuthConfig,
     input: OauthAccessTokenInput<'_>,
 ) -> Result<String> {
-    if input.app_id.is_nil() || input.tenant_id.is_nil() || input.client_id.is_nil() {
+    if input.app_id.is_nil()
+        || input.tenant_id.is_nil()
+        || input.client_id.is_nil()
+        || input.token_id.is_nil()
+    {
         return Err(AuthError::TokenEncodingFailed);
     }
     tracing::debug!(
@@ -147,6 +158,7 @@ pub fn encode_oauth_access_token(
         client_id: Some(input.client_id),
         scopes: input.scopes.to_vec(),
         grant_type: input.grant_type.to_string(),
+        jti: Some(input.token_id),
     };
 
     encode(&jwt_header(config), &claims, &encoding_key(config)?)
@@ -161,6 +173,8 @@ pub struct OauthAccessTokenInput<'a> {
     pub scopes: &'a [String],
     pub grant_type: &'a str,
     pub expires_in_secs: u64,
+    /// Durable access-token row id; becomes the JWT `jti`.
+    pub token_id: Uuid,
 }
 
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
@@ -607,6 +621,7 @@ mod tests {
                     scopes: &[],
                     grant_type: "client_credentials",
                     expires_in_secs: u64::MAX,
+                    token_id: Uuid::new_v4(),
                 },
             )
             .is_err()
@@ -784,6 +799,7 @@ mod tests {
                 scopes: &scopes,
                 grant_type: "client_credentials",
                 expires_in_secs: 3600,
+                token_id: Uuid::new_v4(),
             },
         )
         .unwrap();
@@ -807,6 +823,7 @@ mod tests {
                 scopes: &["catalog:read".to_string()],
                 grant_type: "client_credentials",
                 expires_in_secs: 3600,
+                token_id: Uuid::new_v4(),
             },
         )
         .unwrap();

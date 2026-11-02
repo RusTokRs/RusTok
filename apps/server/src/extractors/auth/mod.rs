@@ -3,6 +3,7 @@ use crate::context::{TenantContextExt, infer_user_role_from_permissions};
 use crate::models::{
     oauth_apps::{self, Entity as OAuthApps},
     oauth_consents::Entity as OAuthConsents,
+    oauth_tokens::{self, Entity as OAuthTokens},
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
@@ -20,10 +21,10 @@ use rustok_api::{
     context::{restrict_permissions_to_scopes, scope_matches},
 };
 use rustok_core::{SecurityActorKind, UserRole};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tracing::warn;
 
-use crate::services::server_runtime_context::ServerAuthRuntime;
+use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
 const AUTHORIZATION_CODE_GRANT_TYPE: &str = "authorization_code";
 const CLIENT_CREDENTIALS_GRANT_TYPE: &str = "client_credentials";
@@ -39,6 +40,7 @@ pub struct CurrentUser {
     pub client_id: Option<uuid::Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
+    pub access_token_expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl CurrentUser {
@@ -95,6 +97,7 @@ async fn validate_active_user_consent(
     tenant_id: uuid::Uuid,
     user_id: uuid::Uuid,
     token_scopes: &[String],
+    token_consent_granted_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
 ) -> Result<(), (StatusCode, &'static str)> {
     if !app.requires_user_consent() {
         return Ok(());
@@ -104,6 +107,12 @@ async fn validate_active_user_consent(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or((StatusCode::UNAUTHORIZED, "OAuth consent revoked or missing"))?;
+    if token_consent_granted_at != Some(consent.granted_at) {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth token predates the current consent epoch",
+        ));
+    }
     let consent_scopes = consent.scopes_list();
     if token_scopes
         .iter()
@@ -116,6 +125,48 @@ async fn validate_active_user_consent(
         StatusCode::UNAUTHORIZED,
         "OAuth consent no longer covers token scopes",
     ))
+}
+
+/// Fail-closed registration fence for already-issued OAuth access JWTs.
+/// The signed `jti` must name a live access row whose hash, client,
+/// tenant, grant, and subject bind the presented credential. Revoking
+/// that row (or its family) therefore invalidates the JWT before TTL.
+async fn validate_oauth_access_token_registration(
+    db: &DatabaseConnection,
+    app_id: uuid::Uuid,
+    tenant_id: uuid::Uuid,
+    grant_type: &str,
+    jti: Option<uuid::Uuid>,
+    access_token: &str,
+    expected_user_id: Option<uuid::Uuid>,
+) -> Result<oauth_tokens::Model, (StatusCode, &'static str)> {
+    let jti = jti.ok_or((
+        StatusCode::UNAUTHORIZED,
+        "OAuth access token is not registered",
+    ))?;
+    let token_hash = crate::auth::hash_refresh_token(access_token);
+    let row = OAuthTokens::find_by_id(jti)
+        .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
+        .filter(oauth_tokens::Column::AppId.eq(app_id))
+        .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::GrantType.eq(grant_type))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_ACCESS))
+        .filter(oauth_tokens::Column::RevokedAt.is_null())
+        .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .one(db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            "OAuth access token revoked or unknown",
+        ))?;
+    if row.user_id != expected_user_id {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "OAuth access token subject mismatch",
+        ));
+    }
+    Ok(row)
 }
 
 async fn resolve_active_oauth_app(
@@ -146,14 +197,51 @@ async fn resolve_active_oauth_app(
     Ok(app)
 }
 
+fn filter_available_permissions(
+    permissions: Vec<Permission>,
+    availability: Option<rustok_rbac::PermissionAvailability>,
+) -> Vec<Permission> {
+    match availability {
+        Some(availability) => availability.active_permissions(&permissions),
+        None => permissions,
+    }
+}
+
+async fn active_permissions_for_tenant(
+    ctx: &ServerRuntimeContext,
+    tenant_id: uuid::Uuid,
+    principal_id: uuid::Uuid,
+    permissions: Vec<Permission>,
+) -> Result<Vec<Permission>, (StatusCode, &'static str)> {
+    let availability =
+        crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    principal_id = %principal_id,
+                    "RBAC module availability resolution failed"
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Module policy unavailable",
+                )
+            })?;
+    Ok(filter_available_permissions(permissions, availability))
+}
+
 async fn resolve_service_token_permissions(
-    db: &DatabaseConnection,
+    ctx: &ServerRuntimeContext,
     tenant_id: uuid::Uuid,
     subject_id: uuid::Uuid,
     client_id: uuid::Uuid,
     claimed_role: UserRole,
     token_scopes: &[String],
+    access_token: &str,
+    jti: Option<uuid::Uuid>,
 ) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
+    let db = ctx.db();
     let app = resolve_active_oauth_app(
         db,
         tenant_id,
@@ -170,6 +258,17 @@ async fn resolve_service_token_permissions(
         ));
     }
 
+    validate_oauth_access_token_registration(
+        db,
+        app.id,
+        tenant_id,
+        CLIENT_CREDENTIALS_GRANT_TYPE,
+        jti,
+        access_token,
+        None,
+    )
+    .await?;
+
     let granted_permissions = app.parsed_granted_permissions().map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -177,6 +276,8 @@ async fn resolve_service_token_permissions(
         )
     })?;
     let effective_permissions = restrict_permissions_to_scopes(&granted_permissions, token_scopes);
+    let effective_permissions =
+        active_permissions_for_tenant(ctx, tenant_id, client_id, effective_permissions).await?;
     let inferred_role = infer_user_role_from_permissions(&effective_permissions);
     if claimed_role != inferred_role {
         RbacService::record_claim_role_mismatch();
@@ -228,6 +329,8 @@ pub async fn resolve_current_user_from_access_token(
 
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
+    let access_token_expires_at = chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
 
     if claims.tenant_id != tenant_id {
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
@@ -262,7 +365,25 @@ pub async fn resolve_current_user_from_access_token(
             &claims.scopes,
         )
         .await?;
-        validate_active_user_consent(db, &app, tenant_id, claims.sub, &claims.scopes).await?;
+        let access_row = validate_oauth_access_token_registration(
+            db,
+            app.id,
+            tenant_id,
+            AUTHORIZATION_CODE_GRANT_TYPE,
+            claims.jti,
+            access_token,
+            Some(claims.sub),
+        )
+        .await?;
+        validate_active_user_consent(
+            db,
+            &app,
+            tenant_id,
+            claims.sub,
+            &claims.scopes,
+            access_row.consent_granted_at,
+        )
+        .await?;
     }
 
     let (user, permissions, inferred_role, session_id, actor_kind) = match principal_kind {
@@ -281,6 +402,18 @@ pub async fn resolve_current_user_from_access_token(
                 return Err((StatusCode::FORBIDDEN, "User is inactive"));
             }
 
+            if principal_kind == AuthPrincipalKind::DelegatedUser {
+                let issued_at =
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(claims.iat as i64, 0)
+                        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token issued-at"))?;
+                if user.rejects_delegated_token_issued_at(issued_at) {
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        "OAuth token predates the current credential state",
+                    ));
+                }
+            }
+
             let granted_permissions =
                 RbacService::get_user_permissions_authoritative(db, &tenant_id, &user.id)
                     .await
@@ -292,28 +425,13 @@ pub async fn resolve_current_user_from_access_token(
             // everywhere, while the persisted role grants remain intact and
             // reactivate when the module is enabled again. Availability
             // resolution failures fail closed, like role resolution above.
-            let granted_permissions =
-                match crate::services::rbac_module_availability::permission_availability_for(
-                    ctx.runtime_ctx(),
-                    tenant_id,
-                )
-                .await
-                {
-                    Ok(Some(availability)) => availability.active_permissions(&granted_permissions),
-                    Ok(None) => granted_permissions,
-                    Err(error) => {
-                        tracing::error!(
-                            %error,
-                            tenant_id = %tenant_id,
-                            user_id = %user.id,
-                            "RBAC module availability resolution failed"
-                        );
-                        return Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Module policy unavailable",
-                        ));
-                    }
-                };
+            let granted_permissions = active_permissions_for_tenant(
+                ctx.runtime_ctx(),
+                tenant_id,
+                user.id,
+                granted_permissions,
+            )
+            .await?;
 
             let effective_permissions = if principal_kind == AuthPrincipalKind::DelegatedUser {
                 restrict_permissions_to_scopes(&granted_permissions, &claims.scopes)
@@ -353,12 +471,14 @@ pub async fn resolve_current_user_from_access_token(
                 "OAuth service token is missing client_id",
             ))?;
             let (permissions, inferred_role) = resolve_service_token_permissions(
-                db,
+                ctx.runtime_ctx(),
                 tenant_id,
                 claims.sub,
                 client_id,
                 claims.role,
                 &claims.scopes,
+                access_token,
+                claims.jti,
             )
             .await?;
 
@@ -382,6 +502,7 @@ pub async fn resolve_current_user_from_access_token(
         client_id: claims.client_id,
         scopes: claims.scopes,
         grant_type: claims.grant_type,
+        access_token_expires_at,
     })
 }
 

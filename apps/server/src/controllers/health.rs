@@ -94,12 +94,14 @@ struct ReadinessResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ReadinessProfile {
     registry_only: bool,
+    runs_background_workers: bool,
 }
 
 impl ReadinessProfile {
     fn from_settings(settings: &RustokSettings) -> Self {
         Self {
             registry_only: settings.runtime.is_registry_only(),
+            runs_background_workers: settings.runtime.runs_background_workers(),
         }
     }
 
@@ -109,6 +111,10 @@ impl ReadinessProfile {
 
     fn includes_module_health(self) -> bool {
         !self.registry_only
+    }
+
+    fn includes_local_worker_checks(self) -> bool {
+        self.runs_background_workers
     }
 }
 
@@ -276,7 +282,11 @@ async fn collect_readiness(
             pending.push((false, check_search_index_lag(ctx, settings).boxed()));
         }
         checks.push(email_backend_check(settings));
-        checks.extend(check_runtime_workers(ctx, settings));
+        if profile.includes_local_worker_checks() {
+            checks.extend(check_runtime_workers(ctx, settings));
+        } else {
+            checks.push(worker_host_mode_check());
+        }
         #[cfg(feature = "mod-media")]
         pending.push((false, run_guarded_check(
             "storage", DependencyCriticality::NonCritical, "dependency", || check_storage_backend(ctx),
@@ -740,6 +750,20 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
     message.contains("no such table")
         || message.contains("undefinedtable")
         || message.contains("relation") && message.contains("does not exist")
+}
+
+fn worker_host_mode_check() -> ReadinessCheck {
+    ReadinessCheck {
+        name: "worker_host_mode".to_string(),
+        kind: "runtime",
+        criticality: DependencyCriticality::NonCritical,
+        status: ReadinessStatus::Ok,
+        latency_ms: 0,
+        reason: Some(
+            "surface host mode does not run local background workers; worker readiness is owned by the worker host"
+                .to_string(),
+        ),
+    }
 }
 
 fn check_runtime_workers(
@@ -1331,6 +1355,31 @@ mod tests {
 
         assert_eq!(healthy.status.metric_value(), 2);
         assert_eq!(degraded.status.metric_value(), 3);
+    }
+
+    #[test]
+    fn readiness_profile_only_requires_local_workers_in_full_and_worker_modes() {
+        for (host_mode, expected) in [
+            (crate::common::settings::RuntimeHostMode::Full, true),
+            (crate::common::settings::RuntimeHostMode::Worker, true),
+            (crate::common::settings::RuntimeHostMode::Api, false),
+            (crate::common::settings::RuntimeHostMode::AdminSsr, false),
+            (crate::common::settings::RuntimeHostMode::StorefrontSsr, false),
+            (crate::common::settings::RuntimeHostMode::RegistryOnly, false),
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = host_mode;
+            let profile = ReadinessProfile::from_settings(&settings);
+            assert_eq!(profile.includes_local_worker_checks(), expected);
+        }
+    }
+
+    #[test]
+    fn surface_host_mode_worker_check_is_non_critical() {
+        let check = worker_host_mode_check();
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(aggregate_status(&[check], &[]), ReadinessStatus::Ok);
     }
 
     #[test]

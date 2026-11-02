@@ -121,7 +121,7 @@ pub mod module_event_dispatcher {
     };
 
     pub use super::module_event_dispatcher_base::{
-        build_module_event_dispatcher, build_shared_runtime_extensions,
+        ModuleEventDispatcherHandle, build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
     };
 

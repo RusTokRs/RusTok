@@ -60,7 +60,7 @@
 - `pub struct CacheModule`
 - `pub struct CacheService`
 - `pub struct CacheSettings`
-- `pub trait CacheSettingsAdminPort` / `pub struct SharedCacheSettingsAdmin`
+- `pub trait CacheSettingsAdminPort` / `pub struct SharedCacheSettingsAdmin` / `pub struct CacheSettingsSnapshot` (`read` returns settings + `schema_version`; `update` requires `expected_schema_version`)
 - `pub struct RedisCacheStatus` (`connectivity_healthy`, `generation_recovery_pending`, `recovery_error`)
 - `pub enum CacheRefreshClock` (`System`, `Fixed`)
 - `pub enum CacheError`

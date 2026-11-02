@@ -42,6 +42,7 @@ pub fn CacheAdmin() -> impl IntoView {
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<bool, String>>::None);
     let (loaded, set_loaded) = signal(false);
+    let (schema_version, set_schema_version) = signal(0_i32);
 
     let health_resource = local_resource(
         move || (token.get(), tenant.get()),
@@ -69,6 +70,7 @@ pub fn CacheAdmin() -> impl IntoView {
                 set_redis_db.set(draft.redis_db);
                 set_redis_url.set(draft.redis_url);
             }
+            set_schema_version.set(response.platform_settings.schema_version);
             set_loaded.set(true);
         }
     });
@@ -95,15 +97,23 @@ pub fn CacheAdmin() -> impl IntoView {
             }
         };
         let settings_str = payload.to_string();
+        let expected_schema_version = schema_version.get();
 
         set_saving.set(true);
         set_save_result.set(None);
 
         spawn_local(async move {
-            let res = transport::update_cache_settings(token_val, tenant_val, settings_str).await;
+            let res = transport::update_cache_settings(
+                token_val,
+                tenant_val,
+                settings_str,
+                expected_schema_version,
+            )
+            .await;
             set_saving.set(false);
             match res {
-                Ok(_) => {
+                Ok(response) => {
+                    set_schema_version.set(response.update_platform_settings.schema_version);
                     set_save_result.set(Some(Ok(true)));
                     set_redis_password.set(String::new());
                 }

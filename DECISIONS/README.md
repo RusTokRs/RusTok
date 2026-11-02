@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-01](./2026-11-01-oauth-access-token-revocation-fence.md) | OAuth access-token revocation fence | Accepted | In progress | — |
 | [2026-10-21](./2026-10-21-order-shipment-status-projection.md) | Order shipped/delivered status follows fulfillment truth; stock consumption stays trigger-owned for now | Accepted | In progress | — |
 | [2026-10-21](./2026-10-21-return-refund-server-side-valuation.md) | Return refund amounts are valued on the server from the order line snapshot | Accepted | In progress | — |
 | [2026-10-21](./2026-10-21-order-cancellation-orchestration.md) | Order cancellation is a commerce-owned idempotent saga over fulfillment and payment | Accepted | In progress | Extends [Checkout operation invariants are owned by typed Rust](./2026-10-07-checkout-operation-invariants-owned-by-rust.md) |

@@ -31,7 +31,8 @@
 - `pub struct AuthModule`
 - `pub struct AuthConfig`
 - `pub enum AuthError`
-- `pub struct Claims`
+- `pub struct Claims` (OAuth access tokens carry `jti`; direct session tokens leave it absent)
+- `pub struct OauthAccessTokenInput` (requires a durable `token_id` that becomes `jti`)
 - `pub struct UserAdminMutationRuntime`
 - `pub struct OAuthAdminRuntime`
 
@@ -59,6 +60,9 @@
 - Multi-tenant tenant boundary checks are mandatory on all user lookups and mutations.
 - Refresh tokens must be hashed before persistence; plaintext refresh tokens are returned exactly once upon generation.
 - Expired or revoked tokens must fail verification closed.
+- OAuth access JWTs must be registered (`jti` -> `oauth_tokens.token_kind = access`); the host
+  extractor must reject missing/revoked/mismatched access rows, and family revocation must
+  fence access and refresh rows together.
 
 ### Events / Outbox Side Effects
 - State changes (user registration, password changes, token revocation) emit domain events for audit and session termination.

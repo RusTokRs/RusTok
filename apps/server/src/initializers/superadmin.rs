@@ -57,14 +57,14 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
         let role = RbacService::get_user_role(ctx.db(), &tenant.id, &user.id).await?;
         if role == rustok_core::UserRole::SuperAdmin {
             tracing::debug!(
-                email = %email,
                 tenant = %tenant_slug,
+                user_id = %user.id,
                 "Default superadmin already exists"
             );
         } else {
             tracing::warn!(
-                email = %email,
                 tenant = %tenant_slug,
+                user_id = %user.id,
                 current_role = %role,
                 "Configured superadmin account exists without the SuperAdmin role; leaving it unchanged (recovery is an explicit admin action)"
             );
@@ -85,7 +85,6 @@ pub async fn ensure_default_superadmin(ctx: &ServerRuntimeContext) -> Result<()>
     .await?;
 
     tracing::info!(
-        email = %email,
         tenant = %tenant_slug,
         user_id = %user.id,
         "Default superadmin created"

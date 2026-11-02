@@ -14,7 +14,7 @@ and other invariants that the remaining RusToK modules rely on.
 
 - typed primitives and shared value objects (e.g., `UserRole`, `UserStatus` for RBAC);
 - basic error/validation helpers and security contracts;
-- foundation event contracts: canonical event re-exports, in-memory transport, bus stats, observability for backpressure, dispatcher retry semantics and dispatch delay hooks;
+- foundation event contracts: canonical event re-exports, in-memory transport, bus stats, observability for backpressure, dispatcher retry semantics, dispatch delay hooks, and cooperative dispatcher stop/drain (`request_stop` + `join`, with abort as the emergency fallback);
 - reject invalid root envelopes at the in-memory event-bus ingress through the canonical `rustok-events` validation contract;
 - flex/custom-fields schema contracts (`field_schema`);
 - shared API surface for the foundation layer;

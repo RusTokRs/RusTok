@@ -11,7 +11,13 @@ export default async function EmailSettingsPage({
   tenantSlug
 }: EmailSettingsPageProps) {
   const opts: GqlOpts = { token, tenantSlug };
-  const settings = await getEmailSettings(opts);
+  const snapshot = await getEmailSettings(opts);
 
-  return <EmailSettingsForm initialSettings={settings} opts={opts} />;
+  return (
+    <EmailSettingsForm
+      initialSettings={snapshot.settings}
+      initialSchemaVersion={snapshot.schemaVersion}
+      opts={opts}
+    />
+  );
 }

@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
-use tokio::sync::{Semaphore, broadcast};
-use tokio::task::JoinHandle;
+use tokio::sync::{Semaphore, broadcast, watch};
+use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, debug, error, info, warn};
 
 use super::bus::EventBus;
@@ -99,6 +98,7 @@ impl EventDispatcher {
         let bus = self.bus.clone();
         let backpressure = bus.backpressure();
         let consumer_runtime = EventConsumerRuntime::new("event_dispatcher");
+        let (stop_tx, mut stop_rx) = watch::channel(false);
 
         let handle = tokio::spawn(
             async move {
@@ -114,62 +114,91 @@ impl EventDispatcher {
                 let max_concurrent = config.max_concurrent.max(1);
                 let semaphore = Arc::new(Semaphore::new(max_concurrent));
                 let queue = Arc::new(Semaphore::new(queue_capacity));
+                let mut in_flight = JoinSet::new();
 
                 loop {
-                    let queue_permit = match Arc::clone(&queue).acquire_owned().await {
-                        Ok(permit) => Arc::new(permit),
-                        Err(_) => {
-                            error!("Event dispatcher queue semaphore closed");
-                            break;
-                        }
-                    };
-
-                    match receiver.recv().await {
-                        Ok(envelope) => {
-                            let span = tracing::info_span!(
-                                "event_dispatch",
-                                event_type = envelope.event.event_type(),
-                                event_id = %envelope.id,
-                                tenant_id = %envelope.tenant_id
-                            );
-
-                            let bp = backpressure.clone();
-                            let handlers = handlers.clone();
-                            let config = config.clone();
-                            let semaphore = semaphore.clone();
-                            let consumer_runtime = consumer_runtime;
-                            let queue_permit = queue_permit;
-
-                            tokio::spawn(
-                                async move {
-                                    Self::dispatch_to_handlers(
-                                        envelope,
-                                        handlers,
-                                        config,
-                                        semaphore,
-                                        bp,
-                                        consumer_runtime,
-                                        queue_permit,
-                                    )
-                                    .await;
-                                }
-                                .instrument(span),
-                            );
-                        }
-                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                            consumer_runtime.lagged(skipped);
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {
-                            consumer_runtime.closed();
-                            break;
+                    // Reap completed dispatch tasks so the JoinSet does not
+                    // retain finished tasks for the lifetime of the process.
+                    while let Some(result) = in_flight.try_join_next() {
+                        if let Err(error) = result {
+                            error!(%error, "Event dispatch task failed");
                         }
                     }
+
+                    let queue_permit = tokio::select! {
+                        _ = stop_rx.changed() => break,
+                        permit = Arc::clone(&queue).acquire_owned() => match permit {
+                            Ok(permit) => Arc::new(permit),
+                            Err(_) => {
+                                error!("Event dispatcher queue semaphore closed");
+                                break;
+                            }
+                        },
+                    };
+
+                    let envelope = tokio::select! {
+                        _ = stop_rx.changed() => break,
+                        received = receiver.recv() => match received {
+                            Ok(envelope) => envelope,
+                            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                                consumer_runtime.lagged(skipped);
+                                continue;
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {
+                                consumer_runtime.closed();
+                                break;
+                            }
+                        },
+                    };
+
+                    let span = tracing::info_span!(
+                        "event_dispatch",
+                        event_type = envelope.event.event_type(),
+                        event_id = %envelope.id,
+                        tenant_id = %envelope.tenant_id
+                    );
+
+                    let bp = backpressure.clone();
+                    let handlers = handlers.clone();
+                    let config = config.clone();
+                    let semaphore = semaphore.clone();
+                    let consumer_runtime = consumer_runtime;
+
+                    in_flight.spawn(
+                        async move {
+                            Self::dispatch_to_handlers(
+                                envelope,
+                                handlers,
+                                config,
+                                semaphore,
+                                bp,
+                                consumer_runtime,
+                                queue_permit,
+                            )
+                            .await;
+                        }
+                        .instrument(span),
+                    );
                 }
+
+                // Cooperative drain: stop admitting new events, then wait for
+                // already admitted dispatches (and their handler tasks) to
+                // finish. Host shutdown owns the outer timeout/abort fallback.
+                while let Some(result) = in_flight.join_next().await {
+                    if let Err(error) = result {
+                        error!(%error, "Event dispatch task failed during drain");
+                    }
+                }
+                info!("Event dispatcher drained");
             }
             .in_current_span(),
         );
 
-        RunningDispatcher { handle, bus }
+        RunningDispatcher {
+            handle,
+            bus,
+            stop_tx,
+        }
     }
 
     async fn dispatch_to_handlers(
@@ -206,8 +235,6 @@ impl EventDispatcher {
             "Dispatching to handlers"
         );
 
-        let handler_count = matching_handlers.len();
-
         if config.fail_fast {
             for handler in matching_handlers {
                 let envelope = envelope.clone();
@@ -228,59 +255,43 @@ impl EventDispatcher {
             return;
         }
 
-        // For concurrent execution, track handler completion
-        let completion_count = Arc::new(AtomicUsize::new(0));
-
+        // Concurrent handlers are owned by this dispatch task. Joining them
+        // here makes the dispatcher's in-flight JoinSet a real drain boundary
+        // instead of leaking detached handler tasks past shutdown.
+        let mut handler_tasks = JoinSet::new();
         for handler in matching_handlers {
             let envelope = envelope.clone();
             let config = config.clone();
-            let permit = semaphore.clone().acquire_owned().await;
-            let bp = backpressure.clone();
-            let count = Arc::clone(&completion_count);
+            let semaphore = Arc::clone(&semaphore);
             let event_type = event_type.clone();
             let queue_permit = Arc::clone(&queue_permit);
 
-            tokio::spawn(async move {
-                let _permit = permit;
-
-                struct CompletionGuard {
-                    count: Arc<AtomicUsize>,
-                    limit: usize,
-                    bp: Option<Arc<super::backpressure::BackpressureController>>,
-                    consumer_runtime: EventConsumerRuntime,
-                    event_type: String,
-                    dispatch_started_at: Instant,
-                    _queue_permit: Arc<tokio::sync::OwnedSemaphorePermit>,
-                }
-
-                impl Drop for CompletionGuard {
-                    fn drop(&mut self) {
-                        let completed = self.count.fetch_add(1, Ordering::Relaxed) + 1;
-                        if completed == self.limit {
-                            if let Some(bp) = &self.bp {
-                                bp.release();
-                            }
-                            self.consumer_runtime.record_dispatch_latency(
-                                &self.event_type,
-                                self.dispatch_started_at,
-                            );
-                        }
-                    }
-                }
-
-                let _guard = CompletionGuard {
-                    count,
-                    limit: handler_count,
-                    bp,
-                    consumer_runtime,
-                    event_type,
-                    dispatch_started_at,
-                    _queue_permit: Arc::clone(&queue_permit),
+            handler_tasks.spawn(async move {
+                let Ok(_permit) = semaphore.acquire_owned().await else {
+                    error!("Event dispatcher handler semaphore closed");
+                    return;
                 };
-
-                let _ = Self::handle_with_retry(handler, envelope, &config).await;
+                let _queue_permit = queue_permit;
+                if let Err(error) = Self::handle_with_retry(handler, envelope, &config).await {
+                    debug!(
+                        event_type = event_type.as_str(),
+                        %error,
+                        "Event handler finished with an error after retry policy"
+                    );
+                }
             });
         }
+
+        while let Some(result) = handler_tasks.join_next().await {
+            if let Err(error) = result {
+                error!(%error, "Event handler task failed");
+            }
+        }
+
+        if let Some(bp) = backpressure {
+            bp.release();
+        }
+        consumer_runtime.record_dispatch_latency(&event_type, dispatch_started_at);
     }
 
     async fn handle_with_retry(
@@ -341,6 +352,7 @@ impl EventDispatcher {
 pub struct RunningDispatcher {
     handle: JoinHandle<()>,
     bus: EventBus,
+    stop_tx: watch::Sender<bool>,
 }
 
 impl RunningDispatcher {
@@ -348,12 +360,26 @@ impl RunningDispatcher {
         &self.bus
     }
 
-    pub fn stop(self) {
+    /// Request a cooperative stop. The receive loop stops admitting new
+    /// events and drains already admitted dispatches before exiting.
+    pub fn request_stop(&self) {
+        self.stop_tx.send_replace(true);
+    }
+
+    /// Emergency abort. Prefer `request_stop` + `join` for graceful shutdown.
+    pub fn abort(&self) {
         self.handle.abort();
     }
 
-    pub fn abort(&self) {
-        self.handle.abort();
+    /// Abort handle usable after `join` has been moved into a timeout future.
+    pub fn abort_handle(&self) -> tokio::task::AbortHandle {
+        self.handle.abort_handle()
+    }
+
+    /// Request cooperative stop and wait for the dispatcher to drain.
+    pub async fn stop(self) -> Result<(), tokio::task::JoinError> {
+        self.request_stop();
+        self.join().await
     }
 
     pub fn is_finished(&self) -> bool {
@@ -572,7 +598,10 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert_eq!(started.load(Ordering::SeqCst), 2);
-        running.stop();
+        // This test intentionally leaves the second handler blocked; use the
+        // emergency abort path instead of cooperative drain.
+        running.abort();
+        assert!(running.join().await.is_err());
     }
 
     #[tokio::test]
@@ -713,5 +742,65 @@ mod tests {
         // After abort, join yields cancelled/join error
         let join_result = running.join().await;
         assert!(join_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn cooperative_stop_drains_in_flight_handlers_before_join_returns() {
+        struct BlockingHandler {
+            started: Arc<Notify>,
+            release: Arc<Notify>,
+            completed: Arc<AtomicUsize>,
+        }
+
+        #[async_trait]
+        impl EventHandler for BlockingHandler {
+            fn name(&self) -> &'static str {
+                "cooperative_drain_handler"
+            }
+
+            fn handles(&self, _event: &DomainEvent) -> bool {
+                true
+            }
+
+            async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+                self.started.notify_one();
+                self.release.notified().await;
+                self.completed.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let bus = EventBus::new();
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let completed = Arc::new(AtomicUsize::new(0));
+        let mut dispatcher = EventDispatcher::new(bus.clone());
+        dispatcher.register(BlockingHandler {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+            completed: Arc::clone(&completed),
+        });
+        let running = dispatcher.start();
+
+        bus.publish(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::IndexUpdated {
+                index_name: "products".to_string(),
+                target_id: Uuid::new_v4(),
+            },
+        )
+        .expect("publish drain test event");
+        started.notified().await;
+
+        running.request_stop();
+        assert!(
+            !running.is_finished(),
+            "stop must wait for the admitted handler instead of aborting it"
+        );
+        release.notify_one();
+
+        running.stop().await.expect("cooperative dispatcher stop");
+        assert_eq!(completed.load(Ordering::SeqCst), 1);
     }
 }

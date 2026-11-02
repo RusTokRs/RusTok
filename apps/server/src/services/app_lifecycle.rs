@@ -519,6 +519,27 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    let module_event_dispatcher_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>()
+        {
+            // Request a cooperative drain first; if a handler blocks past the
+            // host deadline, abort the dispatcher task as the emergency fallback.
+            worker.request_stop();
+            let abort_handle = worker.abort_handle();
+            match tokio::time::timeout(timeout_duration, worker.join()).await {
+                Ok(Ok(())) => tracing::info!("Module event dispatcher stopped gracefully"),
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, "Module event dispatcher exited with error")
+                }
+                Err(_) => {
+                    abort_handle.abort();
+                    tracing::warn!("Module event dispatcher shutdown timed out after 5s")
+                }
+            }
+        }
+    };
+
     let module_artifact_maintenance_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>() {
             match tokio::time::timeout(timeout_duration, worker.join()).await {
@@ -610,6 +631,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         module_work_drain,
         workflow_drain,
         watchdog_drain,
+        module_event_dispatcher_drain,
         module_artifact_maintenance_drain,
         paid_order_label_drain,
         marketplace_financial_drain,
@@ -691,6 +713,7 @@ fn auth_retention_removed_artifacts(
         || purge.invite_consumptions > 0
         || purge.invites > 0
         || purge.oauth_tokens > 0
+        || purge.oauth_authorization_codes > 0
 }
 
 async fn auth_retention_loop(
@@ -713,6 +736,7 @@ async fn auth_retention_loop(
                     invite_consumptions = purge.invite_consumptions,
                     invites = purge.invites,
                     oauth_tokens = purge.oauth_tokens,
+                    oauth_authorization_codes = purge.oauth_authorization_codes,
                     "Purged expired auth artifacts past retention"
                 );
             }
@@ -1185,6 +1209,11 @@ mod tests {
             ..Default::default()
         };
         assert!(super::auth_retention_removed_artifacts(&oauth_only));
+        let code_only = crate::services::auth_retention::AuthRetentionPurge {
+            oauth_authorization_codes: 2,
+            ..Default::default()
+        };
+        assert!(super::auth_retention_removed_artifacts(&code_only));
         assert!(!super::auth_retention_removed_artifacts(
             &crate::services::auth_retention::AuthRetentionPurge::default()
         ));

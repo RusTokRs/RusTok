@@ -59,19 +59,20 @@ pub async fn update_email_settings(
     token: Option<String>,
     tenant_slug: Option<String>,
     settings: String,
-) -> Result<bool, String> {
+    expected_schema_version: i32,
+) -> Result<UpdateSettingsResponse, String> {
     request::<UpdateSettingsVariables, UpdateSettingsResponse>(
         UPDATE_PLATFORM_SETTINGS_MUTATION,
         UpdateSettingsVariables {
             input: UpdateSettingsInput {
                 category: "email".to_string(),
                 settings,
+                expected_schema_version,
             },
         },
         token,
         tenant_slug,
     )
     .await
-    .map(|response| response.update_platform_settings.success)
     .map_err(|error| error.to_string())
 }

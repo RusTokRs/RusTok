@@ -22,22 +22,26 @@ import {
 
 interface EmailSettingsFormProps {
   initialSettings: EmailSettings;
+  initialSchemaVersion: number;
   opts: GqlOpts;
 }
 
 export function EmailSettingsForm({
   initialSettings,
+  initialSchemaVersion,
   opts
 }: EmailSettingsFormProps) {
   const t = useTranslations('email');
   const [settings, setSettings] = useState<EmailSettings>(initialSettings);
+  const [schemaVersion, setSchemaVersion] = useState(initialSchemaVersion);
   const [isPending, startTransition] = useTransition();
 
   const handleSave = () => {
     startTransition(async () => {
       try {
-        const updated = await updateEmailSettings(settings, opts);
-        setSettings(updated);
+        const updated = await updateEmailSettings(settings, schemaVersion, opts);
+        setSettings(updated.settings);
+        setSchemaVersion(updated.schemaVersion);
         toast.success(t('savedToast'));
       } catch {
         toast.error(t('errorToast'));

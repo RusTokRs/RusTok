@@ -58,6 +58,14 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> Result<AcceptedInvite, InviteAcceptanceError> {
+        // Canonical feature gate for every transport (REST middleware, REST
+        // handler, GraphQL/native provider). Keep the rejection deliberately
+        // indistinguishable from an invalid token so disabled invites do not
+        // become an oracle for token validity.
+        if !ctx.settings().features.invites_enabled {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
         if claims.tenant_id != tenant_id {
@@ -247,7 +255,33 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> InviteAcceptanceError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::common::RustokSettings;
     use sha2::{Digest, Sha256};
+
+    #[tokio::test]
+    async fn disabled_invites_reject_before_token_decode() {
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite test database");
+        let mut settings = RustokSettings::default();
+        settings.features.invites_enabled = false;
+        let ctx = ServerRuntimeContext::new(db, settings);
+        let config = AuthConfig::new("invite-feature-gate-secret".to_string());
+
+        let error = AuthLifecycleService::accept_invite_once_runtime(
+            &ctx,
+            &config,
+            uuid::Uuid::new_v4(),
+            "not-a-jwt",
+            "Password123!",
+            None,
+        )
+        .await
+        .expect_err("disabled invites must reject");
+
+        assert!(matches!(error, InviteAcceptanceError::InvalidToken));
+    }
 
     #[test]
     fn invite_digest_is_stable_and_does_not_store_plaintext() {

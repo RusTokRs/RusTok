@@ -1319,17 +1319,63 @@ fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
         || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
 }
 
+/// Canonical deployment environment selector.
+///
+/// `RUSTOK_ENV` is canonical; `RUST_ENV` and `APP_ENV` are compatibility
+/// aliases. All present aliases must agree, otherwise config-file selection
+/// and production security gates could silently disagree.
+pub(crate) fn resolve_environment_name() -> Result<String, String> {
+    resolve_environment_from(
+        ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
+            .into_iter()
+            .map(|key| (key, std::env::var(key).ok())),
+    )
+}
+
+fn resolve_environment_from(
+    values: impl IntoIterator<Item = (&'static str, Option<String>)>,
+) -> Result<String, String> {
+    let mut selected: Option<(&'static str, String)> = None;
+    for (key, value) in values {
+        let Some(value) = value else { continue };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+        {
+            return Err(format!(
+                "{key} must be a simple environment name containing only ASCII letters, digits, '-' or '_'"
+            ));
+        }
+        let normalized = value.to_ascii_lowercase();
+        if let Some((selected_key, selected_value)) = selected.as_ref()
+            && *selected_value != normalized
+        {
+            return Err(format!(
+                "{key} conflicts with {selected_key}; environment aliases must select the same deployment environment"
+            ));
+        }
+        selected = Some((key, normalized));
+    }
+    Ok(selected.map(|(_, value)| value).unwrap_or_else(|| {
+        if cfg!(debug_assertions) {
+            "development".to_string()
+        } else {
+            "production".to_string()
+        }
+    }))
+}
+
 pub(crate) fn is_production_environment() -> bool {
-    ["RUSTOK_ENV", "RUST_ENV", "APP_ENV"]
-        .iter()
-        .find_map(|key| std::env::var(key).ok())
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "prod" | "production"
-            )
-        })
-        .unwrap_or(!cfg!(debug_assertions))
+    match resolve_environment_name() {
+        Ok(environment) => matches!(environment.as_str(), "prod" | "production"),
+        // Conflicting selectors are rejected by host startup. Any earlier
+        // consumer fails closed into the production security posture.
+        Err(_) => true,
+    }
 }
 
 fn email_disabled_production_override_enabled() -> bool {
@@ -2104,6 +2150,36 @@ mod tests {
             Err(TenantSettingsError::MissingSubdomainBaseDomain)
         );
     }
+    #[test]
+    fn environment_aliases_must_agree() {
+        let conflict = super::resolve_environment_from([
+            ("RUSTOK_ENV", Some("production".to_string())),
+            ("RUST_ENV", Some("development".to_string())),
+            ("APP_ENV", None),
+        ])
+        .expect_err("conflicting aliases must fail");
+        assert!(conflict.contains("conflicts"));
+
+        let agreed = super::resolve_environment_from([
+            ("RUSTOK_ENV", Some(" Production ".to_string())),
+            ("RUST_ENV", Some("production".to_string())),
+            ("APP_ENV", Some("PRODUCTION".to_string())),
+        ])
+        .expect("matching aliases are accepted");
+        assert_eq!(agreed, "production");
+    }
+
+    #[test]
+    fn environment_selector_rejects_path_like_names() {
+        let error = super::resolve_environment_from([
+            ("RUSTOK_ENV", Some("../production".to_string())),
+            ("RUST_ENV", None),
+            ("APP_ENV", None),
+        ])
+        .expect_err("path-like environment names must fail");
+        assert!(error.contains("simple environment name"));
+    }
+
     #[test]
     fn production_environment_is_detected_from_rust_env() {
         let _guard = env_lock().lock().expect("env lock");

@@ -700,6 +700,7 @@ mod tests {
             client_id: None,
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
+            jti: None,
         };
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),

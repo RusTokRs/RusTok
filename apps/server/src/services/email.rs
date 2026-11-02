@@ -216,10 +216,7 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
         &self,
         email: PasswordResetEmail,
     ) -> std::result::Result<(), EmailError> {
-        tracing::info!(
-            recipient = %email.to,
-            "Password reset email provider disabled; skipping outbound send"
-        );
+        tracing::info!("Password reset email provider disabled; skipping outbound send");
         record_email_send_skipped();
         Ok(())
     }
@@ -228,10 +225,7 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
         &self,
         email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
-        tracing::info!(
-            recipient = %email.to,
-            "Email verification provider disabled; skipping outbound send"
-        );
+        tracing::info!("Email verification provider disabled; skipping outbound send");
         record_email_send_skipped();
         Ok(())
     }

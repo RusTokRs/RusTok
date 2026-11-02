@@ -7,6 +7,7 @@ pub enum ErrorCode {
     InternalError,
     BadUserInput,
     NotFound,
+    Conflict,
 }
 
 impl ErrorCode {
@@ -17,6 +18,7 @@ impl ErrorCode {
             Self::InternalError => "INTERNAL_ERROR",
             Self::BadUserInput => "BAD_USER_INPUT",
             Self::NotFound => "NOT_FOUND",
+            Self::Conflict => "CONFLICT",
         }
     }
 }
@@ -27,6 +29,7 @@ pub trait GraphQLError {
     fn internal_error(message: &str) -> FieldError;
     fn bad_user_input(message: &str) -> FieldError;
     fn not_found(message: &str) -> FieldError;
+    fn conflict(message: &str) -> FieldError;
 }
 
 impl GraphQLError for FieldError {
@@ -59,6 +62,12 @@ impl GraphQLError for FieldError {
             e.set("code", ErrorCode::NotFound.as_str());
         })
     }
+
+    fn conflict(message: &str) -> FieldError {
+        FieldError::new(message).extend_with(|_, e| {
+            e.set("code", ErrorCode::Conflict.as_str());
+        })
+    }
 }
 
 #[cfg(test)]
@@ -74,6 +83,7 @@ mod tests {
         assert_eq!(ErrorCode::InternalError.as_str(), "INTERNAL_ERROR");
         assert_eq!(ErrorCode::BadUserInput.as_str(), "BAD_USER_INPUT");
         assert_eq!(ErrorCode::NotFound.as_str(), "NOT_FOUND");
+        assert_eq!(ErrorCode::Conflict.as_str(), "CONFLICT");
     }
 
     #[test]
@@ -98,6 +108,10 @@ mod tests {
             (
                 <FieldError as GraphQLError>::not_found("missing").extend(),
                 ErrorCode::NotFound.as_str(),
+            ),
+            (
+                <FieldError as GraphQLError>::conflict("stale").extend(),
+                ErrorCode::Conflict.as_str(),
             ),
         ];
 

@@ -76,7 +76,7 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ)',
-    'SettingsService::get(runtime_ctx, tenant.id, &category)',
+    'SettingsService::get_snapshot(runtime_ctx, tenant.id, &category)',
   ],
   'single-category settings read',
 );
@@ -86,7 +86,7 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ)',
-    'SettingsService::get_all(runtime_ctx, tenant.id)',
+    'SettingsService::get_all_snapshots(runtime_ctx, tenant.id)',
   ],
   'all settings read',
 );
@@ -96,9 +96,9 @@ requireOrder(
     'ctx.data::<TenantContext>()?',
     'require_tenant_settings_scope(auth, tenant.id)?;',
     'has_effective_permission(&auth.permissions, &Permission::SETTINGS_MANAGE)',
-    'SettingsService::update(',
+    'SettingsService::update_if_current(',
     'event_bus',
-    '.publish(',
+    'input.expected_schema_version',
   ],
   'settings write and event publication',
 );

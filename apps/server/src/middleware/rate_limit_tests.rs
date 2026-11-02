@@ -295,6 +295,7 @@ fn build_rate_limit_key_adds_oauth_app_dimension_for_oauth_token() {
         &["catalog:read".to_string()],
         "client_credentials",
         3600,
+        Uuid::new_v4(),
     )
     .expect("token");
 

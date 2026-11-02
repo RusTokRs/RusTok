@@ -28,15 +28,18 @@ import {
 
 interface CacheSettingsFormProps {
   initialSettings: CacheSettings;
+  initialSchemaVersion: number;
   opts: GqlOpts;
 }
 
 export function CacheSettingsForm({
   initialSettings,
+  initialSchemaVersion,
   opts
 }: CacheSettingsFormProps) {
   const t = useTranslations('cache');
   const [settings, setSettings] = useState<CacheSettings>(initialSettings);
+  const [schemaVersion, setSchemaVersion] = useState(initialSchemaVersion);
   const [isPending, startTransition] = useTransition();
 
   const isRedisMode = settings.mode === 'redis' || settings.mode === 'hybrid';
@@ -56,8 +59,9 @@ export function CacheSettingsForm({
           payload.redis_password = settings.redis_password;
         }
 
-        const updated = await updateCacheSettings(payload, opts);
-        setSettings(updated);
+        const updated = await updateCacheSettings(payload, schemaVersion, opts);
+        setSettings(updated.settings);
+        setSchemaVersion(updated.schemaVersion);
         toast.success(t('settings.savedToast'));
       } catch {
         toast.error(t('settings.errorToast'));
