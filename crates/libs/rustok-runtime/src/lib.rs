@@ -69,7 +69,7 @@ pub enum RuntimeCompositionError {
     InvalidInstanceRoot(String),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RuntimeComposition {
     host: Option<HostRuntimeContext>,
     settings: serde_json::Value,
@@ -216,6 +216,14 @@ struct RegisteredModuleWork {
     handler: Arc<dyn ModuleWorkHandler>,
 }
 
+impl std::fmt::Debug for RegisteredModuleWork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisteredModuleWork")
+            .field("worker_slug", &self.handler.worker_slug())
+            .finish()
+    }
+}
+
 /// Generic runtime scheduler for tenant-scoped durable module work.
 ///
 /// Every worker slug owns its source/handler pair. This permits independent
@@ -224,6 +232,19 @@ struct RegisteredModuleWork {
 #[derive(Clone, Default)]
 pub struct ModuleWorkScheduler {
     workers: Arc<RwLock<BTreeMap<String, RegisteredModuleWork>>>,
+}
+
+impl std::fmt::Debug for ModuleWorkScheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let workers = self.workers.try_read();
+        let slugs: Vec<String> = match &workers {
+            Ok(guard) => guard.keys().cloned().collect(),
+            Err(_) => vec!["<locked>".to_string()],
+        };
+        f.debug_struct("ModuleWorkScheduler")
+            .field("workers", &slugs)
+            .finish()
+    }
 }
 
 #[async_trait::async_trait]
@@ -238,6 +259,14 @@ pub trait ModuleWorkRegistration: Send + Sync {
 #[derive(Clone, Default)]
 pub struct ModuleWorkRegistrations {
     entries: Arc<Vec<Arc<dyn ModuleWorkRegistration>>>,
+}
+
+impl std::fmt::Debug for ModuleWorkRegistrations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleWorkRegistrations")
+            .field("count", &self.entries.len())
+            .finish()
+    }
 }
 
 impl ModuleWorkRegistrations {
@@ -465,5 +494,65 @@ mod tests {
             .run_until_stopped(stop_rx, std::time::Duration::from_millis(1))
             .await;
         assert!(source.item.lock().expect("queued item mutex").is_some());
+    }
+
+    #[tokio::test]
+    async fn scheduler_rejects_duplicate_registration() {
+        let scheduler = ModuleWorkScheduler::new();
+        let source = Arc::new(TestSource::default());
+        scheduler
+            .register(source.clone(), Arc::new(TestHandler("unique-slug")))
+            .await
+            .expect("first registration succeeds");
+
+        let err = scheduler
+            .register(source, Arc::new(TestHandler("unique-slug")))
+            .await
+            .expect_err("duplicate registration must fail");
+        assert!(matches!(err, rustok_api::ModuleWorkError::DuplicateHandler(slug) if slug == "unique-slug"));
+    }
+
+    #[tokio::test]
+    async fn module_work_registrations_lifecycle_and_debug() {
+        use super::ModuleWorkRegistration;
+
+        struct TestReg;
+        #[async_trait]
+        impl ModuleWorkRegistration for TestReg {
+            async fn register(
+                &self,
+                _host: &super::HostRuntimeContext,
+                scheduler: &ModuleWorkScheduler,
+            ) -> Result<(), rustok_api::ModuleWorkError> {
+                scheduler
+                    .register(
+                        Arc::new(TestSource::default()),
+                        Arc::new(TestHandler("from-reg")),
+                    )
+                    .await
+            }
+        }
+
+        let mut regs = super::ModuleWorkRegistrations::default();
+        assert!(regs.is_empty());
+        assert_eq!(format!("{regs:?}"), "ModuleWorkRegistrations { count: 0 }");
+
+        regs.register(Arc::new(TestReg));
+        assert!(!regs.is_empty());
+        assert_eq!(format!("{regs:?}"), "ModuleWorkRegistrations { count: 1 }");
+
+        let scheduler = ModuleWorkScheduler::new();
+        let scheduler_debug = format!("{scheduler:?}");
+        assert!(scheduler_debug.contains("ModuleWorkScheduler"));
+        assert!(scheduler_debug.contains("workers: []"));
+    }
+
+    #[test]
+    fn runtime_composition_debug_format() {
+        let composition = RuntimeComposition::without_database(serde_json::json!({"k": "v"}));
+        let debug = format!("{composition:?}");
+        assert!(debug.contains("RuntimeComposition"));
+        assert!(debug.contains("settings"));
+        assert!(debug.contains("instance_root"));
     }
 }

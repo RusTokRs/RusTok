@@ -2,7 +2,10 @@
 name = "rustok-runtime"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Host runtime foundation helpers for RusToK server and module adapters"
 
 [package.metadata.docs.rs]
