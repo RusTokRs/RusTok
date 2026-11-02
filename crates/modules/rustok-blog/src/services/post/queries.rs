@@ -1,4 +1,5 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
+use rustok_core::PermissionScope;
 
 mod related;
 mod single;
@@ -90,22 +91,34 @@ impl PostService {
         // otherwise the customer-facing list would show a post that the public
         // list, the sitemap and the comments gate all refuse.
         let can_read_non_public = can_read_non_public_posts(&security);
+        // An author with Own scope may list their own posts regardless of
+        // publication status. Channel visibility still applies to public reads.
+        let can_read_own = security.user_id.is_some()
+            && matches!(
+                security.get_scope(Resource::BlogPosts, Action::Read),
+                PermissionScope::Own
+            );
+        if can_read_own {
+            select = select.filter(blog_post::Column::AuthorId.eq(
+                security.user_id.expect("user_id checked above"),
+            ));
+        }
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
-            if status == BlogPostStatus::Published && !can_read_non_public {
+            if status == BlogPostStatus::Published && !can_read_non_public && !can_read_own {
                 select = select.filter(blog_post::Column::PublishedAt.is_not_null());
             }
-        } else if !can_read_non_public {
+        } else if !can_read_non_public && !can_read_own {
             select = select
                 .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
                 .filter(blog_post::Column::PublishedAt.is_not_null());
         }
-        if !can_read_non_public
+        if !can_read_non_public && !can_read_own
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
         {
             return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
         }
-        if !can_read_non_public {
+        if !can_read_non_public && !can_read_own {
             if !self
                 .channel_is_public_visible(tenant_id, channel_slug)
                 .await?

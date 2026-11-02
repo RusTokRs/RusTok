@@ -35,8 +35,12 @@ export function orderThreadedComments(items: BlogPublicComment[]): DisplayedComm
     children.get(comment.id)?.forEach((reply) => visit(reply, depth + 1));
   };
   roots.forEach((root) => visit(root, 0));
-  // Defend against pre-existing cycles or malformed projections: never hide a row.
-  items.forEach((comment) => visit(comment, 0));
+  // Defend against pre-existing cycles or malformed projections: any comment
+  // not yet reached (e.g. an orphan whose parent is missing from the page)
+  // still renders once, so nothing is silently dropped.
+  items
+    .filter((comment) => !seen.has(comment.id))
+    .forEach((comment) => visit(comment, 0));
   return result;
 }
 

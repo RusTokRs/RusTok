@@ -1,3 +1,4 @@
+use rustok_core::PermissionScope;
 use super::*;
 
 impl PostService {
@@ -58,7 +59,16 @@ impl PostService {
         // Public detail reads follow the same corpus contract as the public
         // list and Search/SEO projections. A published row missing its stamp
         // is damaged state, visible only to an editor who can repair it.
-        if !can_read_non_public_posts(&security)
+        // An author with Own scope may read their own post regardless of
+        // publication status; tenant-wide readers (All) may read any post.
+        let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+        let can_read_this_post = can_read_non_public_posts(&security)
+            || (is_author
+                && matches!(
+                    security.get_scope(Resource::BlogPosts, Action::Read),
+                    PermissionScope::Own
+                ));
+        if !can_read_this_post
             && (storage_to_status(&post.status)? != BlogPostStatus::Published
                 || post.published_at.is_none())
         {
@@ -66,7 +76,7 @@ impl PostService {
         }
         let translations = self.load_translations(tenant_id, post_id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, post_id).await?;
-        if !can_read_non_public_posts(&security)
+        if !can_read_this_post
             && (!self
                 .channel_is_public_visible(tenant_id, channel_slug)
                 .await?
@@ -191,7 +201,14 @@ impl PostService {
             return Ok(None);
         };
 
-        if !can_read_non_public_posts(&security)
+        let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+        let can_read_this_post = can_read_non_public_posts(&security)
+            || (is_author
+                && matches!(
+                    security.get_scope(Resource::BlogPosts, Action::Read),
+                    PermissionScope::Own
+                ));
+        if !can_read_this_post
             && (storage_to_status(&post.status)? != BlogPostStatus::Published
                 || post.published_at.is_none())
         {

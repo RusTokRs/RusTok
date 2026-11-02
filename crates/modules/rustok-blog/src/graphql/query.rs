@@ -1,10 +1,10 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
+    Action, AuthContext, RequestContext, Resource, TenantContext,
     graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
-use rustok_core::SecurityContext;
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{GqlProfileSummary, ProfileSummaryAudience};
 use rustok_telemetry::metrics;
@@ -538,11 +538,20 @@ pub(super) fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
 /// "authenticated" as "may read non-public posts" gave every signed-in
 /// customer a different view of the same post than an anonymous reader.
 fn is_post_readable_for_request(ctx: &Context<'_>, post: &crate::PostResponse) -> bool {
+    let security = request_security_context(ctx);
+    let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+    let can_read_own = is_author
+        && matches!(
+            security.get_scope(crate::services::rbac::Resource::BlogPosts,
+                crate::services::rbac::Action::Read),
+            rustok_core::PermissionScope::Own
+        );
     post_is_readable(
-        &request_security_context(ctx),
+        &security,
         post.status,
         post.channel_slugs.as_slice(),
         public_channel_slug(ctx).as_deref(),
+        can_read_own,
     )
 }
 
@@ -556,8 +565,16 @@ pub(super) fn post_is_readable(
     status: crate::BlogPostStatus,
     channel_slugs: &[String],
     channel_slug: Option<&str>,
+    can_read_own: bool,
 ) -> bool {
     if can_read_non_public_posts(security) {
+        return true;
+    }
+    // An author with Own scope may read their own post regardless of
+    // publication status; channel visibility still applies.
+    if can_read_own
+        && is_post_visible_for_channel(channel_slugs, channel_slug)
+    {
         return true;
     }
     status == crate::BlogPostStatus::Published

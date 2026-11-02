@@ -6,6 +6,7 @@ use rustok_core::{
     events::{DispatcherConfig, EventBus, EventDispatcher, EventHandler},
 };
 use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
@@ -91,7 +92,10 @@ async fn duplicate_delivery_updates_counter_and_outbox_once() -> TestResult<()> 
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
     let envelope = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
-    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+        test_db.db.clone(),
+    )));
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus);
     handler.handle(&envelope).await?;
     handler.handle(&envelope).await?;
 
@@ -230,7 +234,9 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
         let barrier = Arc::clone(&barrier);
         let envelope = envelope.clone();
         tasks.push(tokio::spawn(async move {
-            let handler = BlogCommentProjectionHandler::new(db);
+            let event_bus =
+                TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+            let handler = BlogCommentProjectionHandler::new(db, event_bus);
             barrier.wait().await;
             handler.handle(&envelope).await
         }));
@@ -271,7 +277,10 @@ async fn approval_counts_once_and_update_events_preserve_the_count() -> TestResu
     let comment_id = Uuid::new_v4();
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
-    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+        test_db.db.clone(),
+    )));
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus);
     let created = comment_created_envelope(tenant_id, actor_id, comment_id, post_id);
     handler.handle(&created).await?;
 
@@ -327,7 +336,10 @@ async fn delete_before_create_stays_non_negative_and_replays_in_order() -> TestR
     let comment_id = Uuid::new_v4();
     insert_post(&test_db.db, tenant_id, post_id, actor_id, 0, 1).await?;
 
-    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+        test_db.db.clone(),
+    )));
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus);
     let deleted = EventEnvelope::new(
         tenant_id,
         Some(actor_id),
@@ -381,7 +393,10 @@ async fn missing_post_replay_commits_only_after_source_appears() -> TestResult<(
             new_status: "approved".to_string(),
         },
     );
-    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+        test_db.db.clone(),
+    )));
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus);
 
     let error = handler
         .handle(&envelope)
@@ -427,7 +442,10 @@ async fn outbox_failure_rolls_back_counter_and_delivery_before_retry() -> TestRe
             new_status: "approved".to_string(),
         },
     );
-    let handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+        test_db.db.clone(),
+    )));
+    let handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus);
 
     test_db
         .db
