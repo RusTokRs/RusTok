@@ -894,18 +894,58 @@ pub fn apply_module_package_manifest(
     slug: &str,
     spec: &ManifestModuleSpec,
 ) -> Result<ManifestModuleSpec, ManifestError> {
+    apply_module_package_manifest_inner(slug, spec, false)
+}
+
+/// Settings validation requires actual package evidence; a missing package or
+/// a source that has not been materialized cannot imply an empty schema.
+pub(super) fn apply_required_module_package_manifest(
+    slug: &str,
+    spec: &ManifestModuleSpec,
+) -> Result<ManifestModuleSpec, ManifestError> {
+    // The declaring package owns the schema, including the empty schema.
+    // Manifest projections must not fill an empty package schema from stale
+    // inline metadata.
+    let mut package_spec = spec.clone();
+    package_spec.settings_schema.clear();
+    apply_module_package_manifest_inner(slug, &package_spec, true)
+}
+
+fn apply_module_package_manifest_inner(
+    slug: &str,
+    spec: &ManifestModuleSpec,
+    required: bool,
+) -> Result<ManifestModuleSpec, ManifestError> {
     let Some(path) = module_package_manifest_path(spec) else {
-        return Ok(spec.clone());
+        return if required {
+            Err(ManifestError::MissingModulePackageManifest {
+                slug: slug.to_string(),
+                path: "<package source unavailable>".to_string(),
+            })
+        } else {
+            Ok(spec.clone())
+        };
     };
 
-    if !path.exists() {
-        return Ok(spec.clone());
-    }
-
-    let raw = std::fs::read_to_string(&path).map_err(|error| ManifestError::ModulePackageRead {
-        path: path.display().to_string(),
-        error: error.to_string(),
-    })?;
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return if required {
+                Err(ManifestError::MissingModulePackageManifest {
+                    slug: slug.to_string(),
+                    path: path.display().to_string(),
+                })
+            } else {
+                Ok(spec.clone())
+            };
+        }
+        Err(error) => {
+            return Err(ManifestError::ModulePackageRead {
+                path: path.display().to_string(),
+                error: error.to_string(),
+            });
+        }
+    };
     let package_manifest: ModulePackageManifest =
         toml::from_str(&raw).map_err(|error| ManifestError::ModulePackageParse {
             path: path.display().to_string(),

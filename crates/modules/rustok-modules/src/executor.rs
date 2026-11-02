@@ -49,8 +49,9 @@ pub struct ModuleLifecycleToggleRequest {
     pub requested_override_enabled: Option<bool>,
     pub current_settings: serde_json::Value,
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
-    /// Host-composed active static schema, validated under the lifecycle claim.
-    pub static_settings_schema: Option<HashMap<String, crate::ModuleSettingSpec>>,
+    /// Host-composed schema or resolution failure. The owner checks the
+    /// journal for replay before rejecting a new command with unavailable evidence.
+    pub static_settings_schema: Option<Result<HashMap<String, crate::ModuleSettingSpec>, String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -82,6 +83,8 @@ pub enum ModuleLifecycleExecutionError {
     PreHook(String),
     #[error("settings migration required for module `{module_slug}`: {reason}")]
     SettingsMigrationRequired { module_slug: String, reason: String },
+    #[error("module settings schema is unavailable: {0}")]
+    SettingsSchemaUnavailable(String),
     #[error("module post-hook failed: {0}")]
     PostHook(String),
     #[error(transparent)]
@@ -165,6 +168,13 @@ pub async fn execute_module_toggle(
         &request.module_slug,
         request.enabled,
     )?;
+    if request.enabled
+        && let Some(Err(reason)) = &request.static_settings_schema
+    {
+        return Err(ModuleLifecycleExecutionError::SettingsSchemaUnavailable(
+            reason.clone(),
+        ));
+    }
     if request.policy_transition.is_some() && policy_transition_coordinator.is_none() {
         return Err(ModuleLifecycleExecutionError::PolicyTransition(
             "publisher is required for an effective-policy transition".to_string(),
@@ -330,7 +340,7 @@ pub async fn execute_module_toggle(
     };
 
     let normalized_static_settings = if request.enabled {
-        if let Some(schema) = &request.static_settings_schema {
+        if let Some(Ok(schema)) = &request.static_settings_schema {
             match crate::normalize_module_settings(&request.module_slug, schema, settings.clone()) {
                 Ok(normalized) => {
                     settings = normalized.clone();
@@ -1183,9 +1193,12 @@ mod tests {
     }
 
     async fn journal_only_database() -> DatabaseConnection {
-        let database = Database::connect("sqlite::memory:")
-            .await
-            .expect("database");
+        let mut options = sea_orm::ConnectOptions::new("sqlite::memory:");
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let database = Database::connect(options).await.expect("database");
         database
             .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
@@ -1205,7 +1218,8 @@ mod tests {
                     error_message TEXT, \
                     result_snapshot TEXT, \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    FOREIGN KEY (tenant_id) REFERENCES tenants(id)\
                  )"
                 .to_string(),
             ))
@@ -1229,6 +1243,14 @@ mod tests {
 
     async fn journal_and_state_database() -> DatabaseConnection {
         let database = journal_only_database().await;
+        database
+            .execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .expect("tenant table");
+        database
+            .execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .expect("enable fixture foreign keys");
         crate::migrations::m20260902_000046_module_transition_and_retention_tables::Migration
             .up(&sea_orm_migration::SchemaManager::new(&database))
             .await
@@ -1244,7 +1266,8 @@ mod tests {
                     settings TEXT NOT NULL DEFAULT '{}', \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-                    UNIQUE (tenant_id, module_slug)\
+                    UNIQUE (tenant_id, module_slug), \
+                    FOREIGN KEY (tenant_id) REFERENCES tenants(id)\
                  )"
                 .to_string(),
             ))
@@ -1261,7 +1284,8 @@ mod tests {
                     active_claimed_at TEXT, \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-                    PRIMARY KEY (tenant_id, module_slug)\
+                    PRIMARY KEY (tenant_id, module_slug), \
+                    FOREIGN KEY (tenant_id) REFERENCES tenants(id)\
                  )"
                 .to_string(),
             ))
@@ -1280,6 +1304,17 @@ mod tests {
         }
     }
 
+    async fn seed_tenant(database: &DatabaseConnection, tenant_id: uuid::Uuid) {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT OR IGNORE INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.to_string().into()],
+            ))
+            .await
+            .expect("tenant fixture");
+    }
+
     async fn operation_count(
         database: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -1290,12 +1325,93 @@ mod tests {
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM module_operations \
                  WHERE tenant_id = ?1 AND idempotency_key = ?2",
-                vec![tenant_id.into(), idempotency_key.into()],
+                vec![tenant_id.to_string().into(), idempotency_key.into()],
             ))
             .await
             .expect("operation count query")
             .expect("operation count row");
         row.try_get("", "count").expect("operation count")
+    }
+
+    #[tokio::test]
+    async fn native_sqlite_lifecycle_toggles_and_replays_with_real_foreign_keys() {
+        let database = journal_and_state_database().await;
+        let tenant_id = uuid::Uuid::new_v4();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.into()],
+            ))
+            .await
+            .unwrap();
+        let registry = ModuleRegistry::new().register(OptionalModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let enable = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: None,
+        };
+        let enabled = execute_module_toggle(&database, &dispatcher, None, enable.clone())
+            .await
+            .unwrap();
+        let replay = execute_module_toggle(&database, &dispatcher, None, enable)
+            .await
+            .unwrap();
+        assert_eq!(enabled, replay);
+        assert_eq!(enabled.revision, 1);
+        assert_eq!(
+            TenantModuleStateStore::read(&database, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled,
+            Some(true)
+        );
+        let disable = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: false,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 1,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::from(["optional_test".into()]),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: Some(true),
+            requested_override_enabled: Some(false),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: None,
+        };
+        let disabled = execute_module_toggle(&database, &dispatcher, None, disable.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            execute_module_toggle(&database, &dispatcher, None, disable)
+                .await
+                .unwrap(),
+            disabled
+        );
+        assert_eq!(disabled.revision, 2);
+        assert_eq!(
+            TenantModuleStateStore::read(&database, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled,
+            Some(false)
+        );
     }
 
     #[tokio::test]
@@ -1305,6 +1421,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         let idempotency_key = uuid::Uuid::new_v4();
         let request = ModuleLifecycleToggleRequest {
             tenant_id,
@@ -1349,7 +1466,7 @@ mod tests {
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT COUNT(*) AS count FROM module_operations WHERE tenant_id = ?1 AND idempotency_key = ?2",
-                vec![tenant_id.into(), idempotency_key.into()],
+                vec![tenant_id.to_string().into(), idempotency_key.into()],
             ))
             .await
             .expect("journal count query")
@@ -1394,6 +1511,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
@@ -1426,16 +1544,19 @@ mod tests {
             // A stale caller snapshot must never authorize this operation.
             current_settings: serde_json::json!({}),
             policy_transition: None,
-            static_settings_schema: Some(schema),
+            static_settings_schema: Some(Ok(schema)),
         };
         assert!(matches!(
             execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
             Err(ModuleLifecycleExecutionError::SettingsMigrationRequired { .. })
         ));
+        let available_schema = request.static_settings_schema.clone();
+        request.static_settings_schema = Some(Err("schema source unavailable".into()));
         assert!(matches!(
             execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
             Err(ModuleLifecycleExecutionError::SettingsMigrationRequired { .. })
         ));
+        request.static_settings_schema = available_schema;
         let snapshot = StaticTenantLifecycleStore::snapshot(&database, tenant_id, "optional_test")
             .await
             .unwrap();
@@ -1473,12 +1594,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn schema_resolution_failure_blocks_new_command_but_not_exact_replay() {
+        let database = journal_and_state_database().await;
+        let registry = ModuleRegistry::new().register(OptionalModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
+        let mut request = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+            static_settings_schema: Some(Err("schema source unavailable".into())),
+        };
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone()).await,
+            Err(ModuleLifecycleExecutionError::SettingsSchemaUnavailable(_))
+        ));
+        assert_eq!(
+            operation_count(&database, tenant_id, request.context.idempotency_key).await,
+            0
+        );
+        let snapshot = StaticTenantLifecycleStore::snapshot(&database, tenant_id, "optional_test")
+            .await
+            .unwrap();
+        assert_eq!(snapshot.revision, 0);
+        assert!(snapshot.active_idempotency_key.is_none());
+
+        request.static_settings_schema = Some(Ok(HashMap::new()));
+        let committed = execute_module_toggle(&database, &dispatcher, None, request.clone())
+            .await
+            .unwrap();
+        request.static_settings_schema = Some(Err("schema source unavailable".into()));
+        assert_eq!(
+            execute_module_toggle(&database, &dispatcher, None, request.clone())
+                .await
+                .unwrap(),
+            committed
+        );
+        request.expected_revision = 1;
+        assert!(matches!(
+            execute_module_toggle(&database, &dispatcher, None, request).await,
+            Err(ModuleLifecycleExecutionError::IdempotencyConflict)
+        ));
+    }
+
+    #[tokio::test]
     async fn lifecycle_replay_survives_transition_while_new_changes_are_blocked() {
         let database = journal_and_state_database().await;
         let registry = ModuleRegistry::new().register(OptionalModule);
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         let mut request = ModuleLifecycleToggleRequest {
             tenant_id,
             module_slug: "optional_test".into(),
@@ -1492,7 +1669,7 @@ mod tests {
             requested_override_enabled: Some(true),
             current_settings: serde_json::json!({}),
             policy_transition: None,
-            static_settings_schema: Some(HashMap::new()),
+            static_settings_schema: Some(Ok(HashMap::new())),
         };
         let committed = execute_module_toggle(&database, &dispatcher, None, request.clone())
             .await
@@ -1583,6 +1760,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&db, tenant_id).await;
         let settings = serde_json::json!({"limit": 1});
         TenantModuleStateStore::persist_settings(
             &db,
@@ -1634,6 +1812,51 @@ mod tests {
             crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
             Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
         ));
+
+        let now = chrono::Utc::now();
+        let mut checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: uuid::Uuid::new_v4(),
+            revision: 1,
+            module_slug: "optional_test".into(),
+            tenant_id: None,
+            predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "recovery required".into(),
+            },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
+        let blocked = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 1,
+        };
+        for _ in 0..2 {
+            assert!(
+                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, blocked.clone()).await,
+                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "release_transition_unresolved")
+            );
+        }
+        assert_eq!(inputs.lock().unwrap().len(), 1);
+        assert!(
+            StaticTenantLifecycleStore::snapshot(&db, tenant_id, "optional_test")
+                .await
+                .unwrap()
+                .active_idempotency_key
+                .is_none()
+        );
+        checkpoint.revision = 2;
+        checkpoint.state = crate::ModuleTransitionState::Converged { finalized_at: now };
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
 
         TenantModuleStateStore::persist_settings(
             &db,
@@ -1732,6 +1955,238 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires RUSTOK_MODULES_TEST_DATABASE_URL and PostgreSQL temporary table privileges"]
+    async fn postgres_post_hook_recovery_preserves_original_settings() {
+        struct PgRecoveryModule(std::sync::Arc<AtomicUsize>);
+        impl MigrationSource for PgRecoveryModule {
+            fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+                vec![]
+            }
+        }
+        #[async_trait]
+        impl RusToKModule for PgRecoveryModule {
+            fn slug(&self) -> &'static str {
+                "optional_test"
+            }
+            fn name(&self) -> &'static str {
+                "PostgreSQL recovery test"
+            }
+            fn description(&self) -> &'static str {
+                "PostgreSQL lifecycle recovery fixture"
+            }
+            fn version(&self) -> &'static str {
+                "0.1.0"
+            }
+            async fn post_enable(
+                &self,
+                _ctx: rustok_core::ModuleContext<'_>,
+            ) -> rustok_core::Result<()> {
+                if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Err(rustok_core::Error::External("temporary failure".into()))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        let url = std::env::var("RUSTOK_MODULES_TEST_DATABASE_URL")
+            .expect("RUSTOK_MODULES_TEST_DATABASE_URL is required");
+        let mut options = sea_orm::ConnectOptions::new(url);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options).await.unwrap();
+        assert_eq!(db.get_database_backend(), DbBackend::Postgres);
+        for sql in [
+            "CREATE TEMP TABLE module_operations (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, requested_enabled BOOLEAN NOT NULL, previous_effective_enabled BOOLEAN NOT NULL, status TEXT NOT NULL, requested_by TEXT, trace_id TEXT, correlation_id TEXT, idempotency_key UUID, expected_revision BIGINT, error_message TEXT, result_snapshot TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+            "CREATE UNIQUE INDEX ON module_operations (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
+            "CREATE TEMP TABLE module_operation_override_states (operation_id UUID PRIMARY KEY, previous_override_enabled BOOLEAN, requested_override_enabled BOOLEAN)",
+            "CREATE TEMP TABLE tenant_modules (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, enabled BOOLEAN, settings JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE (tenant_id, module_slug))",
+            "CREATE TEMP TABLE module_static_tenant_lifecycle (tenant_id UUID NOT NULL, module_slug TEXT NOT NULL, revision BIGINT NOT NULL, active_idempotency_key UUID, active_claimed_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (tenant_id, module_slug))",
+            "CREATE TEMP TABLE module_transition_checkpoints (operation_id UUID PRIMARY KEY, revision BIGINT NOT NULL, module_slug TEXT NOT NULL, tenant_id UUID, predecessor_digest TEXT, candidate_digest TEXT NOT NULL, state JSONB NOT NULL, security_epoch BIGINT NOT NULL, fences JSONB NOT NULL, recovery_attempt_count INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL)",
+        ] {
+            db.execute_unprepared(sql).await.unwrap();
+        }
+        let migration = crate::migrations::migrations()
+            .into_iter()
+            .find(|migration| migration.name() == "m20261030_000089_lifecycle_hook_settings")
+            .expect("recovery evidence migration is registered");
+        migration
+            .up(&sea_orm_migration::SchemaManager::new(&db))
+            .await
+            .unwrap();
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let registry = ModuleRegistry::new().register(PgRecoveryModule(calls.clone()));
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).unwrap();
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        let settings = serde_json::json!({"limit": 1});
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: settings.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        let toggle_key = uuid::Uuid::new_v4();
+        let toggle = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional_test".into(),
+            enabled: true,
+            context: command_context(tenant_id, toggle_key),
+            expected_revision: 0,
+            recovery_source_id: None,
+            effective_enabled_modules: HashSet::new(),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: settings.clone(),
+            policy_transition: None,
+            static_settings_schema: None,
+        };
+        let initial = execute_module_toggle(&db, &dispatcher, None, toggle).await;
+        assert!(
+            matches!(initial, Err(ModuleLifecycleExecutionError::PostHook(_))),
+            "unexpected initial result: {initial:?}"
+        );
+        let original =
+            ModuleOperationJournal::failed_for_tenant(&db, tenant_id, Some("optional_test"))
+                .await
+                .unwrap()
+                .remove(0);
+        let collision = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(tenant_id, toggle_key),
+            expected_revision: 0,
+        };
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, collision).await,
+            Err(crate::ModuleOperationRecoveryError::IdempotencyConflict)
+        ));
+        let mut retry = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(tenant_id, uuid::Uuid::new_v4()),
+            expected_revision: 1,
+        };
+        let foreign_tenant = uuid::Uuid::new_v4();
+        let foreign_retry = crate::recovery::ModulePostHookRetryRequest {
+            operation_id: original.id,
+            context: command_context(foreign_tenant, uuid::Uuid::new_v4()),
+            expected_revision: 1,
+        };
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, foreign_retry)
+                .await,
+            Err(crate::ModuleOperationRecoveryError::InvalidCommandIdentity)
+        ));
+        let now = chrono::Utc::now();
+        let mut checkpoint = crate::ModuleTransitionCheckpoint {
+            operation_id: uuid::Uuid::new_v4(),
+            revision: 1,
+            module_slug: "optional_test".into(),
+            tenant_id: None,
+            predecessor_digest: Some("predecessor".into()),
+            candidate_digest: "candidate".into(),
+            state: crate::ModuleTransitionState::InterventionRequired {
+                failure_reason: "recovery required".into(),
+            },
+            security_epoch: crate::GlobalSecurityEpoch::INITIAL,
+            fences: crate::ConflictFenceSet::new(vec![]),
+            recovery_attempt_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
+        for _ in 0..2 {
+            assert!(
+                matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+                Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "release_transition_unresolved")
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        checkpoint.revision = 2;
+        checkpoint.state = crate::ModuleTransitionState::Converged { finalized_at: now };
+        crate::TransitionCheckpointStore::save_checkpoint(&db, &checkpoint)
+            .await
+            .unwrap();
+        retry.context.idempotency_key = uuid::Uuid::new_v4();
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings: serde_json::json!({"limit": 2}),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone()).await,
+            Err(crate::ModuleOperationRecoveryError::NotRetryable(reason)) if reason == "hook_settings_changed")
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        TenantModuleStateStore::persist_settings(
+            &db,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "optional_test".into(),
+                settings,
+            },
+        )
+        .await
+        .unwrap();
+        retry.context.idempotency_key = uuid::Uuid::new_v4();
+        db.execute_unprepared("CREATE FUNCTION pg_temp.block_recovery_resolution() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.status = 'committed_hook_failed' AND NEW.status = 'committed' THEN RAISE EXCEPTION 'forced resolution failure'; END IF; RETURN NEW; END; $$").await.unwrap();
+        db.execute_unprepared("CREATE TRIGGER block_recovery_resolution BEFORE UPDATE OF status ON module_operations FOR EACH ROW EXECUTE FUNCTION pg_temp.block_recovery_resolution()").await.unwrap();
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await,
+            Err(crate::ModuleOperationRecoveryError::Persistence(_))
+        ));
+        assert!(matches!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await,
+            Err(crate::ModuleOperationRecoveryError::OperationInProgress)
+        ));
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::CommittedHookFailed
+        );
+        db.execute_unprepared("DROP TRIGGER block_recovery_resolution ON module_operations")
+            .await
+            .unwrap();
+        retry.context.idempotency_key = uuid::Uuid::new_v4();
+        let completed =
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry.clone())
+                .await
+                .unwrap();
+        assert_eq!(
+            crate::recovery::retry_failed_post_hook_operation(&db, &dispatcher, retry)
+                .await
+                .unwrap(),
+            completed
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            ModuleOperationJournal::find(&db, original.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::Committed
+        );
+    }
+
+    #[tokio::test]
     async fn state_commit_failure_marks_running_operation_as_failed() {
         let database = journal_and_state_database().await;
         database
@@ -1748,6 +2203,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
 
         let result = execute_module_toggle(
             &database,
@@ -1798,6 +2254,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         let holder_key = uuid::Uuid::new_v4();
         StaticTenantLifecycleStore::claim(&database, tenant_id, "optional_test", 0, holder_key)
             .await
@@ -1878,6 +2335,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         let idempotency_key = uuid::Uuid::new_v4();
         let context = command_context(tenant_id, idempotency_key);
         let operation = ModuleOperationJournal::record(
@@ -1944,6 +2402,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
         let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         database
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
@@ -2015,6 +2474,7 @@ mod tests {
         let artifact_executor = CountingArtifactExecutor(AtomicUsize::new(0));
         let dispatcher = ModuleExecutionDispatcher::artifact_only(&catalog, &artifact_executor);
         let tenant_id = uuid::Uuid::new_v4();
+        seed_tenant(&database, tenant_id).await;
         let wrong_schema_key = uuid::Uuid::new_v4();
         let wrong_schema = execute_module_toggle(
             &database,
@@ -2033,7 +2493,7 @@ mod tests {
                 requested_override_enabled: Some(true),
                 current_settings: serde_json::json!({}),
                 policy_transition: None,
-                static_settings_schema: Some(HashMap::new()),
+                static_settings_schema: Some(Ok(HashMap::new())),
             },
         )
         .await;

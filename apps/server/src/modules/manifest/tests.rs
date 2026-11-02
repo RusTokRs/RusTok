@@ -55,6 +55,57 @@ fn module_slug_accepts_canonical_underscore_format() {
 }
 
 #[test]
+fn settings_schema_distinguishes_unknown_module_from_known_empty_schema() {
+    let package_dir = tempdir().unwrap();
+    write_module_manifest(
+        package_dir.path(),
+        "[module]\nslug = \"known-empty\"\nname = \"Known\"\nversion = \"0.1.0\"\nownership = \"first_party\"\ntrust_level = \"verified\"\n",
+    );
+    let mut manifest = ModulesManifest::default();
+    manifest.modules.insert(
+        "known-empty".to_string(),
+        super::ManifestModuleSpec {
+            source: "path".to_string(),
+            crate_name: "known-empty".to_string(),
+            path: Some(package_dir.path().to_string_lossy().into_owned()),
+            ..Default::default()
+        },
+    );
+    manifest
+        .modules
+        .get_mut("known-empty")
+        .unwrap()
+        .settings_schema
+        .insert(
+            "unverified".into(),
+            super::ModuleSettingSpec {
+                value_type: "string".into(),
+                ..Default::default()
+            },
+        );
+
+    assert!(
+        ManifestManager::module_settings_schema_from_manifest(&manifest, "known-empty")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        ManifestManager::module_settings_schema_from_manifest(&manifest, "unknown-fixture"),
+        Err(ManifestError::UnknownModule(slug)) if slug == "unknown-fixture"
+    ));
+    std::fs::remove_file(package_dir.path().join("rustok-module.toml")).unwrap();
+    assert!(matches!(
+        ManifestManager::module_settings_schema_from_manifest(&manifest, "known-empty"),
+        Err(ManifestError::MissingModulePackageManifest { slug, .. }) if slug == "known-empty"
+    ));
+    manifest.modules.get_mut("known-empty").unwrap().source = "git".into();
+    assert!(matches!(
+        ManifestManager::module_settings_schema_from_manifest(&manifest, "known-empty"),
+        Err(ManifestError::MissingModulePackageManifest { slug, .. }) if slug == "known-empty"
+    ));
+}
+
+#[test]
 #[serial]
 fn derives_deployment_surface_contract_from_build_server_flags() {
     let mut manifest = ModulesManifest::default();

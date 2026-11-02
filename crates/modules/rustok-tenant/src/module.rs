@@ -13,10 +13,16 @@ impl MigrationSource for TenantModule {
     }
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
-        vec![MigrationDependencyDescriptor::new(
-            "m20260726_000001_enforce_tenant_locale_policy",
-            vec!["m20260405_000001_expand_locale_storage_columns"],
-        )]
+        vec![
+            MigrationDependencyDescriptor::new(
+                "m20260726_000001_enforce_tenant_locale_policy",
+                vec!["m20260405_000001_expand_locale_storage_columns"],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20261102_000002_tenant_identity_keys",
+                vec!["m20250101_000001_create_tenants"],
+            ),
+        ]
     }
 }
 

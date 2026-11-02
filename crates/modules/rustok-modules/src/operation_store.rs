@@ -121,6 +121,8 @@ pub enum ModuleOperationStoreError {
     IdempotencyConflict,
     #[error("module operation idempotency key is required")]
     MissingIdempotencyKey,
+    #[error("SQLite tenant or module operation identity is missing, unsupported, or ambiguous")]
+    UnverifiableSqliteIdentity,
 }
 
 /// Owner-owned persistence for lifecycle operation journaling.
@@ -229,17 +231,69 @@ impl ModuleOperationJournal {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
         let sql = match backend {
             SupportedBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
-            SupportedBackend::Sqlite => format!("{} WHERE id = ?1", operation_select_sql()),
+            SupportedBackend::Sqlite => "WITH selected AS (SELECT * FROM module_operations WHERE id IN (?1, ?2) LIMIT 2), \
+                candidate AS (SELECT selected.*, CASE \
+                  WHEN typeof(tenant_id) = 'blob' AND length(tenant_id) = 16 THEN \
+                    lower(substr(hex(tenant_id), 1, 8) || '-' || substr(hex(tenant_id), 9, 4) || '-' || \
+                          substr(hex(tenant_id), 13, 4) || '-' || substr(hex(tenant_id), 17, 4) || '-' || substr(hex(tenant_id), 21, 12)) \
+                  WHEN typeof(tenant_id) = 'text' THEN unhex(replace(tenant_id, '-', '')) \
+                  ELSE NULL END AS tenant_alternate FROM selected) \
+                SELECT candidate.*, candidate.module_slug AS matched_module, \
+                (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN (candidate.tenant_id, candidate.tenant_alternate)) AS parent_count, \
+                (candidate.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (candidate.tenant_id, candidate.tenant_alternate) LIMIT 1)) AS matches_parent, \
+                (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_id) AND \
+                 EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_alternate)) AS mixed_identity, \
+                ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_id) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = candidate.tenant_id)) OR \
+                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_alternate) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = candidate.tenant_alternate))) AS orphaned_identity, \
+                typeof(candidate.tenant_id) AS tenant_id_storage, typeof(candidate.tenant_alternate) AS alternate_storage, \
+                length(candidate.tenant_alternate) AS alternate_length, typeof(candidate.id) AS operation_id_storage, \
+                typeof(candidate.idempotency_key) AS idempotency_key_storage FROM candidate".to_string(),
         };
-        db.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![operation_id.into()],
-        ))
-        .await
-        .map_err(database_error)?
-        .map(|row| operation_snapshot(backend, row))
-        .transpose()
+        let mut values = vec![operation_id.into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(operation_id.to_string().into());
+        }
+        let mut rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                values,
+            ))
+            .await
+            .map_err(database_error)?;
+        if rows.len() > 1 {
+            return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+        }
+        let Some(row) = rows.pop() else {
+            return Ok(None);
+        };
+        if matches!(backend, SupportedBackend::Sqlite) {
+            if !validate_sqlite_journal_identity(&row)? {
+                return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+            }
+            let tenant_storage: String = row.try_get("", "tenant_id_storage").map_err(database_error)?;
+            let alternate_storage: String = row.try_get("", "alternate_storage").map_err(database_error)?;
+            let alternate_length: Option<i64> = row.try_get("", "alternate_length").map_err(database_error)?;
+            if !matches!((tenant_storage.as_str(), alternate_storage.as_str(), alternate_length),
+                ("blob", "text", Some(36)) | ("text", "blob", Some(16))) {
+                return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+            }
+            let storage: String = row
+                .try_get("", "operation_id_storage")
+                .map_err(database_error)?;
+            if storage != "blob" {
+                return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+            }
+            let key_storage: String = row
+                .try_get("", "idempotency_key_storage")
+                .map_err(database_error)?;
+            if key_storage != "blob" && key_storage != "null" {
+                return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+            }
+        }
+        Ok(Some(operation_snapshot(backend, row)?))
     }
 
     /// Lists operations needing operator attention for one tenant: hard
@@ -258,8 +312,54 @@ impl ModuleOperationJournal {
             ModuleOperationStatus::CommittedHookFailed.as_str(),
             ModuleOperationStatus::Orphaned.as_str()
         );
-        let (sql, values) = match (backend, module_slug) {
-            (SupportedBackend::Postgres, Some(module_slug)) => (
+        if matches!(backend, SupportedBackend::Sqlite) {
+            let sql = format!(
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)), \
+                 matched AS (SELECT * FROM module_operations WHERE tenant_id IN (?1, ?2) AND {statuses} \
+                 AND (?3 IS NULL OR module_slug = ?3) ORDER BY created_at DESC, id DESC LIMIT {MAX_FAILED_OPERATIONS_FOR_TENANT}) \
+                 SELECT matched.*, matched.module_slug AS matched_module, identity.parent_count, \
+                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2)) AS mixed_identity, \
+                 ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
+                  (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity, \
+                 typeof(matched.id) AS operation_id_storage, typeof(matched.idempotency_key) AS idempotency_key_storage \
+                 FROM identity LEFT JOIN matched ON TRUE ORDER BY matched.created_at DESC, matched.id DESC"
+            );
+            let rows = db
+                .query_all_raw(Statement::from_sql_and_values(
+                    backend.db_backend(),
+                    sql,
+                    vec![
+                        tenant_id.into(),
+                        tenant_id.to_string().into(),
+                        module_slug.map(str::to_owned).into(),
+                    ],
+                ))
+                .await
+                .map_err(database_error)?;
+            let mut operations = Vec::with_capacity(rows.len());
+            for row in rows {
+                if !validate_sqlite_journal_identity(&row)? {
+                    continue;
+                }
+                let storage: String = row
+                    .try_get("", "operation_id_storage")
+                    .map_err(database_error)?;
+                if storage != "blob" {
+                    return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+                }
+                let key_storage: String = row
+                    .try_get("", "idempotency_key_storage")
+                    .map_err(database_error)?;
+                if key_storage != "blob" && key_storage != "null" {
+                    return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+                }
+                operations.push(operation_snapshot(backend, row)?);
+            }
+            return Ok(operations);
+        }
+        let (sql, values) = match module_slug {
+            Some(module_slug) => (
                 format!(
                     "{} WHERE tenant_id = $1 AND {statuses} AND module_slug = $2 ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
@@ -267,25 +367,9 @@ impl ModuleOperationJournal {
                 ),
                 vec![tenant_id.into(), module_slug.into()],
             ),
-            (SupportedBackend::Postgres, None) => (
+            None => (
                 format!(
                     "{} WHERE tenant_id = $1 AND {statuses} ORDER BY created_at DESC, id DESC LIMIT {}",
-                    operation_select_sql(),
-                    MAX_FAILED_OPERATIONS_FOR_TENANT
-                ),
-                vec![tenant_id.into()],
-            ),
-            (SupportedBackend::Sqlite, Some(module_slug)) => (
-                format!(
-                    "{} WHERE tenant_id = ?1 AND {statuses} AND module_slug = ?2 ORDER BY created_at DESC, id DESC LIMIT {}",
-                    operation_select_sql(),
-                    MAX_FAILED_OPERATIONS_FOR_TENANT
-                ),
-                vec![tenant_id.into(), module_slug.into()],
-            ),
-            (SupportedBackend::Sqlite, None) => (
-                format!(
-                    "{} WHERE tenant_id = ?1 AND {statuses} ORDER BY created_at DESC, id DESC LIMIT {}",
                     operation_select_sql(),
                     MAX_FAILED_OPERATIONS_FOR_TENANT
                 ),
@@ -393,27 +477,37 @@ impl ModuleOperationJournal {
                     "module lifecycle expected revision exceeds storage range".to_string(),
                 )
             })?;
+        let sql = match backend {
+            SupportedBackend::Postgres => render_parameters(
+                "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, NULL)", backend),
+            SupportedBackend::Sqlite => "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) \
+                SELECT ?1, parent.id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL \
+                FROM tenant_identity_keys parent WHERE parent.id IN (?2, ?13) \
+                AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN (?2, ?13)) = 1 \
+                AND NOT EXISTS (SELECT 1 FROM module_operations o WHERE o.tenant_id IN (?2, ?13) AND o.tenant_id != parent.id)".to_string(),
+        };
+        let mut values = vec![
+            id.into(),
+            request.tenant_id.into(),
+            request.module_slug.into(),
+            request.requested_enabled.into(),
+            request.previous_effective_enabled.into(),
+            ModuleOperationStatus::Validated.as_str().into(),
+            request.requested_by.into(),
+            request.trace_id.into(),
+            request.correlation_id.into(),
+            request.idempotency_key.into(),
+            expected_revision.into(),
+            request.recovery_source_id.map(|id| id.to_string()).into(),
+        ];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(request.tenant_id.to_string().into());
+        }
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, NULL)",
-                    backend,
-                ),
-                vec![
-                    id.into(),
-                    request.tenant_id.into(),
-                    request.module_slug.into(),
-                    request.requested_enabled.into(),
-                    request.previous_effective_enabled.into(),
-                    ModuleOperationStatus::Validated.as_str().into(),
-                    request.requested_by.into(),
-                    request.trace_id.into(),
-                    request.correlation_id.into(),
-                    request.idempotency_key.into(),
-                    expected_revision.into(),
-                    request.recovery_source_id.map(|id| id.to_string()).into(),
-                ],
+                sql,
+                values,
             ))
             .await
             .map_err(|error| {
@@ -424,6 +518,9 @@ impl ModuleOperationJournal {
                 }
             })?;
         if result.rows_affected() != 1 {
+            if matches!(backend, SupportedBackend::Sqlite) && result.rows_affected() == 0 {
+                return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+            }
             return Err(ModuleOperationStoreError::Database(format!(
                 "expected module operation insert to affect exactly one row, affected {}",
                 result.rows_affected()
@@ -465,25 +562,50 @@ impl ModuleOperationJournal {
         idempotency_key: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
-        let sql = match backend {
-            SupportedBackend::Postgres => format!(
-                "{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1",
-                operation_select_sql()
+        let (sql, values) = match backend {
+            SupportedBackend::Postgres => (
+                format!("{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1", operation_select_sql()),
+                vec![tenant_id.into(), idempotency_key.into()],
             ),
-            SupportedBackend::Sqlite => format!(
-                "{} WHERE tenant_id = ?1 AND idempotency_key = ?2 LIMIT 1",
-                operation_select_sql()
+            SupportedBackend::Sqlite => (
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)), \
+                 matched AS (SELECT * FROM module_operations WHERE tenant_id IN (?1, ?3) AND idempotency_key IN (?2, ?4)) \
+                 SELECT matched.*, matched.module_slug AS matched_module, identity.parent_count, \
+                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?3)) AS mixed_identity, \
+                 ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
+                  (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?3) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?3))) AS orphaned_identity, \
+                 typeof(matched.id) AS operation_id_storage, typeof(matched.idempotency_key) AS idempotency_key_storage \
+                 FROM identity LEFT JOIN matched ON TRUE LIMIT 2".to_string(),
+                vec![tenant_id.into(), idempotency_key.into(), tenant_id.to_string().into(), idempotency_key.to_string().into()],
             ),
         };
-        db.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![tenant_id.into(), idempotency_key.into()],
-        ))
-        .await
-        .map_err(database_error)?
-        .map(|row| operation_snapshot(backend, row))
-        .transpose()
+        let mut rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                values,
+            ))
+            .await
+            .map_err(database_error)?;
+        if rows.len() > 1 {
+            return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+        }
+        let Some(row) = rows.pop() else {
+            return Ok(None);
+        };
+        if matches!(backend, SupportedBackend::Sqlite) {
+            if !validate_sqlite_journal_identity(&row)? {
+                return Ok(None);
+            }
+            for column in ["operation_id_storage", "idempotency_key_storage"] {
+                let storage: String = row.try_get("", column).map_err(database_error)?;
+                if storage != "blob" {
+                    return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+                }
+            }
+        }
+        Ok(Some(operation_snapshot(backend, row)?))
     }
 
     pub async fn mark_running<C: ConnectionTrait>(
@@ -770,8 +892,14 @@ impl ModuleOperationJournal {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut report = StaleModuleOperationReapReport::default();
+        let mut validated_tenants = BTreeSet::new();
         for candidate in candidates {
             report.scanned += 1;
+            if matches!(backend, SupportedBackend::Sqlite)
+                && validated_tenants.insert(candidate.tenant_id)
+            {
+                validate_sqlite_journal_tenant(&transaction, candidate.tenant_id).await?;
+            }
             let claim_state = StaticTenantLifecycleStore::claim_state_for_update(
                 &transaction,
                 candidate.tenant_id,
@@ -982,27 +1110,93 @@ impl StaticTenantLifecycleStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<Option<StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError> {
+        let slugs = BTreeSet::from([module_slug.to_string()]);
+        Ok(Self::read_persisted_many(db, tenant_id, &slugs)
+            .await?
+            .remove(module_slug))
+    }
+
+    async fn read_persisted_many<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slugs: &BTreeSet<String>,
+    ) -> Result<BTreeMap<String, StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError>
+    {
+        if module_slugs.is_empty() {
+            return Ok(BTreeMap::new());
+        }
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![backend.uuid_value(tenant_id)];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+        }
+        let placeholders = module_slugs
+            .iter()
+            .map(|slug| {
+                values.push(slug.clone().into());
+                backend.placeholder(values.len())
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
         let sql = match backend {
-            SupportedBackend::Postgres => {
-                "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
-                 WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            SupportedBackend::Sqlite => {
-                "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
-                 WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-            }
+            SupportedBackend::Postgres => format!(
+                "SELECT module_slug, revision, active_idempotency_key FROM module_static_tenant_lifecycle \
+                 WHERE tenant_id = $1 AND module_slug IN ({placeholders})"
+            ),
+            SupportedBackend::Sqlite => format!(
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)) \
+                 SELECT t.module_slug AS matched_module, t.module_slug, t.revision, t.active_idempotency_key, \
+                 identity.parent_count, \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?1) AND \
+                  EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?2)) AS mixed_identity, \
+                 ((EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?1) AND \
+                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
+                  (EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?2) AND \
+                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity \
+                 FROM identity LEFT JOIN module_static_tenant_lifecycle t \
+                 ON t.tenant_id IN (?1, ?2) AND t.module_slug IN ({placeholders})"
+            ),
         };
-        db.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![backend.uuid_value(tenant_id), module_slug.into()],
-        ))
-        .await
-        .map_err(static_lifecycle_database_error)?
-        .map(|row| static_lifecycle_snapshot_from_row(backend, row, tenant_id, module_slug))
-        .transpose()
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                values,
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        let mut snapshots = BTreeMap::new();
+        for row in rows {
+            if matches!(backend, SupportedBackend::Sqlite) {
+                let orphaned: bool = row
+                    .try_get("", "orphaned_identity")
+                    .map_err(static_lifecycle_database_error)?;
+                let matched =
+                    crate::backend::sqlite_tenant_module_identity(&row).map_err(|_| {
+                        StaticTenantLifecycleStoreError::InconsistentState(
+                            module_slugs.iter().next().expect("nonempty slugs").clone(),
+                        )
+                    })?;
+                if orphaned {
+                    return Err(StaticTenantLifecycleStoreError::InconsistentState(
+                        module_slugs.iter().next().expect("nonempty slugs").clone(),
+                    ));
+                }
+                if !matched {
+                    continue;
+                }
+            }
+            let slug: String = row
+                .try_get("", "module_slug")
+                .map_err(static_lifecycle_database_error)?;
+            let snapshot = static_lifecycle_snapshot_from_row(backend, row, tenant_id, &slug)?;
+            if snapshots.insert(slug.clone(), snapshot).is_some() {
+                return Err(StaticTenantLifecycleStoreError::InconsistentState(slug));
+            }
+        }
+        Ok(snapshots)
     }
 
     /// Reads one claim for a reap decision, locking the claim row on
@@ -1015,6 +1209,15 @@ impl StaticTenantLifecycleStore {
     ) -> Result<Option<StaticTenantLifecycleClaimState>, StaticTenantLifecycleStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        // The reaper calls this on its transaction. Validate both SQLite UUID
+        // forms in that same snapshot before using either one for the claim.
+        if matches!(backend, SupportedBackend::Sqlite)
+            && Self::read_persisted(db, tenant_id, module_slug)
+                .await?
+                .is_none()
+        {
+            return Ok(None);
+        }
         let lock_clause = match backend {
             SupportedBackend::Postgres => " FOR UPDATE",
             SupportedBackend::Sqlite => "",
@@ -1034,13 +1237,17 @@ impl StaticTenantLifecycleStore {
                  (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')) \
                  THEN 'expired' ELSE 'active' END AS claim_expiry \
                  FROM module_static_tenant_lifecycle \
-                 WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1{lock_clause}"
+                 WHERE tenant_id IN (?1, ?3) AND module_slug = ?2 LIMIT 1{lock_clause}"
             ),
         };
+        let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+        }
         db.query_one_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             sql,
-            vec![backend.uuid_value(tenant_id), module_slug.into()],
+            values,
         ))
         .await
         .map_err(static_lifecycle_database_error)?
@@ -1084,19 +1291,24 @@ impl StaticTenantLifecycleStore {
             SupportedBackend::Sqlite => format!(
                 "UPDATE module_static_tenant_lifecycle \
                  SET active_idempotency_key = NULL, active_claimed_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
-                 WHERE tenant_id = ?1 AND module_slug = ?2 AND active_idempotency_key = ?3 \
+                 WHERE tenant_id IN (?1, ?4) AND module_slug = ?2 AND active_idempotency_key IN (?3, ?5) \
                    AND (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
             ),
         };
+        let mut values = vec![
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            backend.uuid_value(idempotency_key),
+        ];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+            values.push(idempotency_key.into());
+        }
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
                 sql,
-                vec![
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    backend.uuid_value(idempotency_key),
-                ],
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1116,31 +1328,6 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let backend = SupportedBackend::new(db.get_database_backend())
-            .map_err(static_lifecycle_database_error)?;
-        let mut values = vec![backend.uuid_value(tenant_id)];
-        let placeholders = module_slugs
-            .iter()
-            .enumerate()
-            .map(|(index, module_slug)| {
-                values.push(module_slug.clone().into());
-                backend.placeholder(index + 2)
-            })
-            .collect::<Vec<_>>();
-        let tenant_placeholder = backend.placeholder(1);
-        let rows = db
-            .query_all_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                format!(
-                    "SELECT module_slug, revision, active_idempotency_key \
-                     FROM module_static_tenant_lifecycle WHERE tenant_id = {tenant_placeholder} \
-                     AND module_slug IN ({})",
-                    placeholders.join(", ")
-                ),
-                values,
-            ))
-            .await
-            .map_err(static_lifecycle_database_error)?;
         let mut snapshots = module_slugs
             .iter()
             .map(|module_slug| {
@@ -1155,14 +1342,7 @@ impl StaticTenantLifecycleStore {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        for row in rows {
-            let module_slug: String = row
-                .try_get("", "module_slug")
-                .map_err(static_lifecycle_database_error)?;
-            let snapshot =
-                static_lifecycle_snapshot_from_row(backend, row, tenant_id, &module_slug)?;
-            snapshots.insert(module_slug, snapshot);
-        }
+        snapshots.extend(Self::read_persisted_many(db, tenant_id, &module_slugs).await?);
         Ok(snapshots)
     }
 
@@ -1236,37 +1416,44 @@ impl StaticTenantLifecycleStore {
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
         if persisted.is_none() {
+            let mut values = vec![
+                backend.uuid_value(tenant_id),
+                module_slug.into(),
+                i64::try_from(expected_revision)
+                    .map_err(|_| {
+                        StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                    })?
+                    .into(),
+                backend.uuid_value(idempotency_key),
+            ];
+            let tenant_key = static_tenant_key_sql(
+                backend,
+                1,
+                tenant_id,
+                &mut values,
+                StaticTenantRows::Lifecycle,
+            );
+            let sql = match backend {
+                SupportedBackend::Postgres => "INSERT INTO module_static_tenant_lifecycle \
+                    (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                    VALUES ($1, $2, $3, $4, NOW())"
+                    .to_string(),
+                SupportedBackend::Sqlite => format!(
+                    "INSERT INTO module_static_tenant_lifecycle \
+                    (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
+                    SELECT {tenant_key}, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
+                    WHERE {tenant_key} IS NOT NULL"
+                ),
+            };
             let insert = db
                 .execute_raw(Statement::from_sql_and_values(
                     backend.db_backend(),
-                    match backend {
-                        SupportedBackend::Postgres => {
-                            "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
-                             VALUES ($1, $2, $3, $4, NOW())"
-                        }
-                        SupportedBackend::Sqlite => {
-                            "INSERT INTO module_static_tenant_lifecycle \
-                             (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) \
-                             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))"
-                        }
-                    },
-                    vec![
-                        backend.uuid_value(tenant_id),
-                        module_slug.into(),
-                        i64::try_from(expected_revision)
-                            .map_err(|_| {
-                                StaticTenantLifecycleStoreError::RevisionOverflow(
-                                    module_slug.to_string(),
-                                )
-                            })?
-                            .into(),
-                        backend.uuid_value(idempotency_key),
-                    ],
+                    sql,
+                    values,
                 ))
                 .await;
             match insert {
-                Ok(_) => {
+                Ok(result) if result.rows_affected() == 1 => {
                     return Ok(StaticTenantLifecycleClaim::Acquired(
                         StaticTenantLifecycleSnapshot {
                             tenant_id,
@@ -1274,6 +1461,11 @@ impl StaticTenantLifecycleStore {
                             revision: expected_revision,
                             active_idempotency_key: Some(idempotency_key),
                         },
+                    ));
+                }
+                Ok(_) => {
+                    return Err(StaticTenantLifecycleStoreError::InconsistentState(
+                        module_slug.to_string(),
                     ));
                 }
                 Err(error) if backend.is_unique_violation(&error) => {
@@ -1311,29 +1503,33 @@ impl StaticTenantLifecycleStore {
             }
         }
 
+        let mut values = vec![
+            backend.uuid_value(idempotency_key),
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            i64::try_from(expected_revision)
+                .map_err(|_| {
+                    StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                })?
+                .into(),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            2,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Lifecycle,
+        );
+        let sql = "UPDATE module_static_tenant_lifecycle \
+            SET active_idempotency_key = {1}, active_claimed_at = {now}, updated_at = {now} \
+            WHERE tenant_id = {tenant} AND module_slug = {3} \
+            AND revision = {4} AND active_idempotency_key IS NULL"
+            .replace("{tenant}", &tenant_key);
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = {1}, active_claimed_at = {now}, \
-                         updated_at = {now} \
-                     WHERE tenant_id = {2} AND module_slug = {3} \
-                       AND revision = {4} AND active_idempotency_key IS NULL",
-                    backend,
-                ),
-                vec![
-                    backend.uuid_value(idempotency_key),
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    i64::try_from(expected_revision)
-                        .map_err(|_| {
-                            StaticTenantLifecycleStoreError::RevisionOverflow(
-                                module_slug.to_string(),
-                            )
-                        })?
-                        .into(),
-                ],
+                render_parameters(&sql, backend),
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1386,28 +1582,34 @@ impl StaticTenantLifecycleStore {
     ) -> Result<bool, StaticTenantLifecycleStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            i64::try_from(expected_revision)
+                .map_err(|_| {
+                    StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                })?
+                .into(),
+            backend.uuid_value(idempotency_key),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            1,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Lifecycle,
+        );
+        let claim_key = lifecycle_claim_key_sql(backend, 4, idempotency_key, &mut values);
+        let sql = "UPDATE module_static_tenant_lifecycle \
+            SET active_claimed_at = {now}, updated_at = {now} \
+            WHERE tenant_id = {tenant} AND module_slug = {2} AND revision = {3} AND {claim}"
+            .replace("{tenant}", &tenant_key)
+            .replace("{claim}", &claim_key);
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    "UPDATE module_static_tenant_lifecycle \
-                     SET active_claimed_at = {now}, updated_at = {now} \
-                     WHERE tenant_id = {1} AND module_slug = {2} \
-                       AND revision = {3} AND active_idempotency_key = {4}",
-                    backend,
-                ),
-                vec![
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    i64::try_from(expected_revision)
-                        .map_err(|_| {
-                            StaticTenantLifecycleStoreError::RevisionOverflow(
-                                module_slug.to_string(),
-                            )
-                        })?
-                        .into(),
-                    backend.uuid_value(idempotency_key),
-                ],
+                render_parameters(&sql, backend),
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1436,33 +1638,36 @@ impl StaticTenantLifecycleStore {
                 "(active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
             ),
         };
+        let mut values = vec![
+            backend.uuid_value(idempotency_key),
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            i64::try_from(expected_revision)
+                .map_err(|_| {
+                    StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                })?
+                .into(),
+            backend.uuid_value(expired_idempotency_key),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            2,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Lifecycle,
+        );
+        let claim_key = lifecycle_claim_key_sql(backend, 5, expired_idempotency_key, &mut values);
+        let sql = format!(
+            "UPDATE module_static_tenant_lifecycle \
+            SET active_idempotency_key = {{1}}, active_claimed_at = {{now}}, updated_at = {{now}} \
+            WHERE tenant_id = {tenant_key} AND module_slug = {{3}} AND revision = {{4}} \
+            AND {claim_key} AND {claim_expired}"
+        );
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    &format!(
-                        "UPDATE module_static_tenant_lifecycle \
-                         SET active_idempotency_key = {{1}}, active_claimed_at = {{now}}, \
-                             updated_at = {{now}} \
-                         WHERE tenant_id = {{2}} AND module_slug = {{3}} \
-                           AND revision = {{4}} AND active_idempotency_key = {{5}} \
-                           AND {claim_expired}"
-                    ),
-                    backend,
-                ),
-                vec![
-                    backend.uuid_value(idempotency_key),
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    i64::try_from(expected_revision)
-                        .map_err(|_| {
-                            StaticTenantLifecycleStoreError::RevisionOverflow(
-                                module_slug.to_string(),
-                            )
-                        })?
-                        .into(),
-                    backend.uuid_value(expired_idempotency_key),
-                ],
+                render_parameters(&sql, backend),
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1484,35 +1689,38 @@ impl StaticTenantLifecycleStore {
         })?;
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![
+            i64::try_from(next_revision)
+                .map_err(|_| {
+                    StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                })?
+                .into(),
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            i64::try_from(expected_revision)
+                .map_err(|_| {
+                    StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+                })?
+                .into(),
+            backend.uuid_value(idempotency_key),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            2,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Lifecycle,
+        );
+        let claim_key = lifecycle_claim_key_sql(backend, 5, idempotency_key, &mut values);
+        let sql = "UPDATE module_static_tenant_lifecycle SET revision = {1}, updated_at = {now} \
+            WHERE tenant_id = {tenant} AND module_slug = {3} AND revision = {4} AND {claim}"
+            .replace("{tenant}", &tenant_key)
+            .replace("{claim}", &claim_key);
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    "UPDATE module_static_tenant_lifecycle \
-                     SET revision = {1}, updated_at = {now} \
-                     WHERE tenant_id = {2} AND module_slug = {3} \
-                       AND revision = {4} AND active_idempotency_key = {5}",
-                    backend,
-                ),
-                vec![
-                    i64::try_from(next_revision)
-                        .map_err(|_| {
-                            StaticTenantLifecycleStoreError::RevisionOverflow(
-                                module_slug.to_string(),
-                            )
-                        })?
-                        .into(),
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    i64::try_from(expected_revision)
-                        .map_err(|_| {
-                            StaticTenantLifecycleStoreError::RevisionOverflow(
-                                module_slug.to_string(),
-                            )
-                        })?
-                        .into(),
-                    backend.uuid_value(idempotency_key),
-                ],
+                render_parameters(&sql, backend),
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1534,22 +1742,29 @@ impl StaticTenantLifecycleStore {
     ) -> Result<(), StaticTenantLifecycleStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        let mut values = vec![
+            backend.uuid_value(tenant_id),
+            module_slug.into(),
+            backend.uuid_value(idempotency_key),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            1,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Lifecycle,
+        );
+        let claim_key = lifecycle_claim_key_sql(backend, 3, idempotency_key, &mut values);
+        let sql = "UPDATE module_static_tenant_lifecycle \
+            SET active_idempotency_key = NULL, active_claimed_at = NULL, updated_at = {now} \
+            WHERE tenant_id = {tenant} AND module_slug = {2} AND {claim}"
+            .replace("{tenant}", &tenant_key)
+            .replace("{claim}", &claim_key);
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                render_parameters(
-                    "UPDATE module_static_tenant_lifecycle \
-                     SET active_idempotency_key = NULL, active_claimed_at = NULL, \
-                         updated_at = {now} \
-                     WHERE tenant_id = {1} AND module_slug = {2} \
-                       AND active_idempotency_key = {3}",
-                    backend,
-                ),
-                vec![
-                    backend.uuid_value(tenant_id),
-                    module_slug.into(),
-                    backend.uuid_value(idempotency_key),
-                ],
+                render_parameters(&sql, backend),
+                values,
             ))
             .await
             .map_err(static_lifecycle_database_error)?;
@@ -1674,6 +1889,38 @@ fn database_error(error: impl std::fmt::Display) -> ModuleOperationStoreError {
     ModuleOperationStoreError::Database(error.to_string())
 }
 
+fn validate_sqlite_journal_identity(
+    row: &sea_orm::QueryResult,
+) -> Result<bool, ModuleOperationStoreError> {
+    let parent_count: i64 = row.try_get("", "parent_count").map_err(database_error)?;
+    let orphaned: bool = row
+        .try_get("", "orphaned_identity")
+        .map_err(database_error)?;
+    let matched = crate::backend::sqlite_tenant_module_identity(row)
+        .map_err(|_| ModuleOperationStoreError::UnverifiableSqliteIdentity)?;
+    if parent_count != 1 || orphaned {
+        return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
+    }
+    Ok(matched)
+}
+
+async fn validate_sqlite_journal_tenant<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+) -> Result<(), ModuleOperationStoreError> {
+    let row = db.query_one_raw(Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "SELECT COUNT(*) AS parent_count, NULL AS matched_module, NULL AS matches_parent, \
+         (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2)) AS mixed_identity, \
+         ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
+          (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity \
+         FROM tenant_identity_keys WHERE id IN (?1, ?2)",
+        vec![tenant_id.into(), tenant_id.to_string().into()],
+    )).await.map_err(database_error)?.ok_or_else(|| database_error("tenant identity query returned no aggregate"))?;
+    validate_sqlite_journal_identity(&row)?;
+    Ok(())
+}
+
 impl TenantModuleStateStore {
     pub async fn read<C: ConnectionTrait>(
         db: &C,
@@ -1686,85 +1933,94 @@ impl TenantModuleStateStore {
                 "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
             }
             SupportedBackend::Sqlite => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                 SELECT t.module_slug AS matched_module, t.id, t.enabled, identity.parent_count, \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity, \
+                 ((EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
+                  (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3) AND \
+                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?3))) AS orphaned_identity \
+                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?3) \
+                 AND t.module_slug = ?2 LIMIT 2"
             }
         };
-        db.query_one_raw(Statement::from_sql_and_values(
-            backend.db_backend(),
-            sql,
-            vec![backend.uuid_value(tenant_id), module_slug.into()],
-        ))
-        .await
-        .map_err(database_error)?
-        .map(|row| {
-            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
-            Ok(TenantModuleStateRecord {
-                id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
-                enabled,
-                previous_enabled: enabled,
-                changed: false,
-            })
-        })
-        .transpose()
+        let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
+        if matches!(backend, SupportedBackend::Sqlite) {
+            values.push(tenant_id.into());
+        }
+        let mut rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                sql,
+                values,
+            ))
+            .await
+            .map_err(database_error)?;
+        if rows.len() > 1 {
+            return Err(database_error(
+                "tenant module state has conflicting UUID representations",
+            ));
+        }
+        let Some(row) = rows.pop() else {
+            return Ok(None);
+        };
+        if matches!(backend, SupportedBackend::Sqlite) {
+            let orphaned: bool = row
+                .try_get("", "orphaned_identity")
+                .map_err(database_error)?;
+            let matched =
+                crate::backend::sqlite_tenant_module_identity(&row).map_err(database_error)?;
+            if orphaned {
+                return Err(database_error(
+                    "tenant module state has an orphaned tenant identity",
+                ));
+            }
+            if !matched {
+                return Ok(None);
+            }
+        }
+        let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
+        Ok(Some(TenantModuleStateRecord {
+            id: backend.uuid_from_row(&row, "id").map_err(database_error)?,
+            enabled,
+            previous_enabled: enabled,
+            changed: false,
+        }))
     }
 
     pub async fn persist<C: ConnectionTrait>(
         db: &C,
         request: TenantModuleStateRequest,
     ) -> Result<TenantModuleStateRecord, ModuleOperationStoreError> {
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
-        let select = match backend {
-            SupportedBackend::Postgres => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            SupportedBackend::Sqlite => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-            }
-        };
-        if let Some(row) = db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                select,
-                vec![
-                    backend.uuid_value(request.tenant_id),
-                    request.module_slug.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?
-        {
-            let id: Uuid = backend
-                .uuid_from_row(&row, "id")
-                .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            let previous_enabled: Option<bool> = row
-                .try_get("", "enabled")
-                .map_err(|error| ModuleOperationStoreError::Database(error.to_string()))?;
-            if previous_enabled != Some(request.enabled) {
-                execute_one(
+        if let Some(state) = Self::read(db, request.tenant_id, &request.module_slug).await? {
+            if state.enabled != Some(request.enabled) {
+                Self::update_existing(
                     db,
-                    "UPDATE tenant_modules SET enabled = {1}, updated_at = {now} WHERE id = {2}",
-                    vec![request.enabled.into(), id.into()],
+                    request.tenant_id,
+                    &request.module_slug,
+                    &state,
+                    OverrideUpdate::Enabled(Some(request.enabled)),
                 )
                 .await?;
             }
             return Ok(TenantModuleStateRecord {
-                id,
+                id: state.id,
                 enabled: Some(request.enabled),
-                previous_enabled,
-                changed: previous_enabled != Some(request.enabled),
+                previous_enabled: state.enabled,
+                changed: state.enabled != Some(request.enabled),
             });
         }
 
         let id = rustok_core::generate_id();
-        execute_one(
+        Self::insert(
             db,
-            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, '{}')",
-            vec![
-                id.into(),
-                backend.uuid_value(request.tenant_id),
-                request.module_slug.into(),
-                request.enabled.into(),
-            ],
+            id,
+            request.tenant_id,
+            &request.module_slug,
+            Some(request.enabled),
+            serde_json::json!({}),
         )
         .await?;
         Ok(TenantModuleStateRecord {
@@ -1792,41 +2048,21 @@ impl TenantModuleStateStore {
     ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
         let module_slug = request.module_slug.clone();
         let settings = request.settings.clone();
-        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
-        let select = match backend {
-            SupportedBackend::Postgres => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            SupportedBackend::Sqlite => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
-            }
-        };
-        let existing = db
-            .query_one_raw(Statement::from_sql_and_values(
-                backend.db_backend(),
-                select,
-                vec![
-                    backend.uuid_value(request.tenant_id),
-                    request.module_slug.clone().into(),
-                ],
-            ))
-            .await
-            .map_err(database_error)?;
-        if let Some(row) = existing {
-            let id: Uuid = backend.uuid_from_row(&row, "id").map_err(database_error)?;
-            let enabled: Option<bool> = row.try_get("", "enabled").map_err(database_error)?;
+        if let Some(state) = Self::read(db, request.tenant_id, &request.module_slug).await? {
             // A settings save never changes recorded enablement intent:
             // the column is not part of this UPDATE at all.
-            execute_one(
+            Self::update_existing(
                 db,
-                "UPDATE tenant_modules SET settings = {1}, updated_at = {now} WHERE id = {2}",
-                vec![json_value(request.settings), id.into()],
+                request.tenant_id,
+                &request.module_slug,
+                &state,
+                OverrideUpdate::Settings(request.settings),
             )
             .await?;
             return Ok(TenantModuleSettingsRecord {
-                id,
+                id: state.id,
                 module_slug,
-                enabled,
+                enabled: state.enabled,
                 settings,
             });
         }
@@ -1835,16 +2071,13 @@ impl TenantModuleStateStore {
         // A first row created by a settings save records no enablement
         // intent (NULL): the platform default keeps applying until the
         // tenant explicitly toggles the module.
-        execute_one(
+        Self::insert(
             db,
-            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})",
-            vec![
-                id.into(),
-                backend.uuid_value(request.tenant_id),
-                request.module_slug.into(),
-                Option::<bool>::None.into(),
-                json_value(request.settings),
-            ],
+            id,
+            request.tenant_id,
+            &request.module_slug,
+            None,
+            request.settings,
         )
         .await?;
         Ok(TenantModuleSettingsRecord {
@@ -1854,10 +2087,172 @@ impl TenantModuleStateStore {
             settings,
         })
     }
+
+    pub(crate) async fn clear<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<(), ModuleOperationStoreError> {
+        if let Some(state) = Self::read(db, tenant_id, module_slug).await? {
+            if state.enabled.is_some() {
+                Self::update_existing(
+                    db,
+                    tenant_id,
+                    module_slug,
+                    &state,
+                    OverrideUpdate::Enabled(None),
+                )
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn insert<C: ConnectionTrait>(
+        db: &C,
+        id: Uuid,
+        tenant_id: Uuid,
+        slug: &str,
+        enabled: Option<bool>,
+        settings: serde_json::Value,
+    ) -> Result<(), ModuleOperationStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let mut values = vec![
+            id.into(),
+            backend.uuid_value(tenant_id),
+            slug.into(),
+            enabled.into(),
+            json_value(settings),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            2,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Overrides,
+        );
+        let sql = match backend {
+            SupportedBackend::Postgres => "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES ({1}, {2}, {3}, {4}, {5})".to_string(),
+            SupportedBackend::Sqlite => "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) \
+                SELECT {1}, {tenant}, {3}, {4}, {5} WHERE {tenant} IS NOT NULL".replace("{tenant}", &tenant_key),
+        };
+        execute_one(db, &sql, values).await
+    }
+
+    async fn update_existing<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        slug: &str,
+        state: &TenantModuleStateRecord,
+        update: OverrideUpdate,
+    ) -> Result<(), ModuleOperationStoreError> {
+        let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let (column, value) = match update {
+            OverrideUpdate::Enabled(value) => ("enabled", value.into()),
+            OverrideUpdate::Settings(value) => ("settings", json_value(value)),
+        };
+        let mut values = vec![
+            value,
+            backend.uuid_value(tenant_id),
+            slug.into(),
+            state.enabled.into(),
+            state.id.into(),
+        ];
+        let tenant_key = static_tenant_key_sql(
+            backend,
+            2,
+            tenant_id,
+            &mut values,
+            StaticTenantRows::Overrides,
+        );
+        let id_match = static_override_id_sql(backend, 5, state.id, &mut values);
+        let enabled_match = match backend {
+            SupportedBackend::Postgres => "enabled IS NOT DISTINCT FROM {4}",
+            SupportedBackend::Sqlite => "enabled IS {4}",
+        };
+        let sql = format!(
+            "UPDATE tenant_modules SET {column} = {{1}}, updated_at = {{now}} \
+            WHERE tenant_id = {tenant_key} AND module_slug = {{3}} AND {enabled_match} AND {id_match}"
+        );
+        execute_one(db, &sql, values).await
+    }
+}
+
+enum OverrideUpdate {
+    Enabled(Option<bool>),
+    Settings(serde_json::Value),
 }
 
 fn json_value(value: serde_json::Value) -> sea_orm::Value {
     sea_orm::Value::Json(Some(Box::new(value)))
+}
+
+#[derive(Clone, Copy)]
+enum StaticTenantRows {
+    Lifecycle,
+    Overrides,
+}
+
+/// Resolve the tenant key inside the mutating statement's SQLite snapshot.
+/// The text form is already bound at `position`; the native form is appended.
+/// A missing, ambiguous, or orphaned identity produces no writable key.
+fn static_tenant_key_sql(
+    backend: SupportedBackend,
+    position: usize,
+    tenant_id: Uuid,
+    values: &mut Vec<sea_orm::Value>,
+    rows: StaticTenantRows,
+) -> String {
+    let text = backend.placeholder(position);
+    if backend == SupportedBackend::Postgres {
+        return text;
+    }
+    values.push(tenant_id.into());
+    let native = backend.placeholder(values.len());
+    let table = match rows {
+        StaticTenantRows::Lifecycle => "module_static_tenant_lifecycle",
+        StaticTenantRows::Overrides => "tenant_modules",
+    };
+    format!(
+        "(SELECT parent.id FROM tenant_identity_keys parent WHERE parent.id IN ({text}, {native}) \
+         AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN ({text}, {native})) = 1 \
+         AND NOT EXISTS (SELECT 1 FROM {table} existing \
+         WHERE existing.tenant_id IN ({text}, {native}) AND existing.tenant_id != parent.id))"
+    )
+}
+
+/// Compare legacy native and current text encodings of an aggregate claim key.
+fn lifecycle_claim_key_sql(
+    backend: SupportedBackend,
+    position: usize,
+    key: Uuid,
+    values: &mut Vec<sea_orm::Value>,
+) -> String {
+    let text = backend.placeholder(position);
+    if backend == SupportedBackend::Postgres {
+        return format!("active_idempotency_key = {text}");
+    }
+    values.push(key.into());
+    format!(
+        "active_idempotency_key IN ({text}, {})",
+        backend.placeholder(values.len())
+    )
+}
+
+/// Restrict the CAS update to the same physical override row even if an old
+/// SQLite row stored its UUID as canonical text instead of a native blob.
+fn static_override_id_sql(
+    backend: SupportedBackend,
+    position: usize,
+    id: Uuid,
+    values: &mut Vec<sea_orm::Value>,
+) -> String {
+    let native = backend.placeholder(position);
+    if backend == SupportedBackend::Postgres {
+        return format!("id = {native}");
+    }
+    values.push(id.to_string().into());
+    format!("id IN ({native}, {})", backend.placeholder(values.len()))
 }
 
 /// Executes a statement that must affect exactly one row.
@@ -1890,13 +2285,31 @@ async fn execute_one<C: ConnectionTrait>(
 }
 
 fn render_parameters(sql_template: &str, backend: SupportedBackend) -> String {
-    let rendered = (1..=11).fold(sql_template.to_string(), |sql, index| {
-        let parameter = backend.placeholder(index);
-        sql.replace(format!("{{{index}}}").as_str(), parameter.as_str())
-    });
-    // `{now}` renders the backend's canonical SQL-side clock expression
-    // so templates never spell a backend-specific timestamp literal.
-    rendered.replace("{now}", backend.now_sql())
+    let mut rendered = String::with_capacity(sql_template.len());
+    let mut remaining = sql_template;
+    while let Some(start) = remaining.find('{') {
+        rendered.push_str(&remaining[..start]);
+        remaining = &remaining[start..];
+        let Some(end) = remaining.find('}') else {
+            rendered.push_str(remaining);
+            return rendered;
+        };
+        let key = &remaining[1..end];
+        if key == "now" {
+            rendered.push_str(backend.now_sql());
+        } else if !key.is_empty()
+            && key.bytes().all(|byte| byte.is_ascii_digit())
+            && let Ok(index) = key.parse::<usize>()
+            && index > 0
+        {
+            rendered.push_str(&backend.placeholder(index));
+        } else {
+            rendered.push_str(&remaining[..=end]);
+        }
+        remaining = &remaining[end + 1..];
+    }
+    rendered.push_str(remaining);
+    rendered
 }
 
 #[cfg(test)]
@@ -1907,10 +2320,29 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn sql_parameter_rendering_supports_all_positions_without_touching_literals() {
+        let template = "VALUES ({1}, {10}, {12}, {123}, '{}', {now})";
+        for (backend, prefix) in [
+            (SupportedBackend::Sqlite, "?"),
+            (SupportedBackend::Postgres, "$"),
+        ] {
+            let expected = format!(
+                "VALUES ({prefix}1, {prefix}10, {prefix}12, {prefix}123, '{{}}', {})",
+                backend.now_sql()
+            );
+            assert_eq!(render_parameters(template, backend), expected);
+        }
+    }
+
     async fn database() -> sea_orm::DatabaseConnection {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database");
+        database
+            .execute_unprepared("CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants")
+            .await
+            .expect("tenant table");
         database
             .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
@@ -1927,12 +2359,214 @@ mod tests {
             .await
             .expect("tenant modules table");
         database
+            .execute_unprepared(
+                "CREATE TRIGGER fixture_tenant AFTER INSERT ON tenant_modules BEGIN \
+                 INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
+            )
+            .await
+            .expect("tenant fixture trigger");
+        database
+    }
+
+    #[tokio::test]
+    async fn override_writes_preserve_parent_identity_and_detect_stale_rows() {
+        let mut options = sea_orm::ConnectOptions::new("sqlite::memory:");
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options).await.unwrap();
+        for sql in [
+            "PRAGMA foreign_keys = ON",
+            "CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants",
+            "CREATE TABLE tenant_modules (id BLOB PRIMARY KEY NOT NULL, tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, \
+             enabled BOOLEAN, settings TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, module_slug), FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
+        ] {
+            db.execute_unprepared(sql).await.unwrap();
+        }
+        let native = Uuid::new_v4();
+        let text = Uuid::new_v4();
+        for parent in [native.into(), text.to_string().into()] {
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![parent],
+            ))
+            .await
+            .unwrap();
+        }
+        for tenant in [native, text] {
+            let created = TenantModuleStateStore::persist_settings(
+                &db,
+                TenantModuleSettingsRequest {
+                    tenant_id: tenant,
+                    module_slug: "blog".into(),
+                    settings: json!({"first": true}),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(created.enabled, None);
+            // Historical override IDs may be stored as text.
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE tenant_modules SET id = ?1 WHERE id = ?2",
+                vec![created.id.to_string().into(), created.id.into()],
+            ))
+            .await
+            .unwrap();
+            let toggled = TenantModuleStateStore::persist(
+                &db,
+                TenantModuleStateRequest {
+                    tenant_id: tenant,
+                    module_slug: "blog".into(),
+                    enabled: true,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(toggled.previous_enabled, None);
+            let changed = TenantModuleStateStore::persist_settings(
+                &db,
+                TenantModuleSettingsRequest {
+                    tenant_id: tenant,
+                    module_slug: "blog".into(),
+                    settings: json!({"second": true}),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(changed.id, created.id);
+            assert_eq!(changed.enabled, Some(true));
+            let stale = TenantModuleStateStore::read(&db, tenant, "blog")
+                .await
+                .unwrap()
+                .unwrap();
+            TenantModuleStateStore::clear(&db, tenant, "blog")
+                .await
+                .unwrap();
+            assert!(
+                TenantModuleStateStore::update_existing(
+                    &db,
+                    tenant,
+                    "blog",
+                    &stale,
+                    OverrideUpdate::Enabled(Some(false))
+                )
+                .await
+                .is_err()
+            );
+            let reader = crate::DatabaseStaticModuleSettingsReader::new(db.clone());
+            let after = reader.settings(tenant, "blog").await.unwrap().unwrap();
+            assert_eq!(after.enabled, None);
+            assert_eq!(after.settings, json!({"second": true}));
+        }
+        let before_ambiguity = TenantModuleStateStore::read(&db, native, "blog")
+            .await
+            .unwrap()
+            .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![native.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        assert!(
+            TenantModuleStateStore::update_existing(
+                &db,
+                native,
+                "blog",
+                &before_ambiguity,
+                OverrideUpdate::Settings(json!({"must_not_persist": true}))
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            TenantModuleStateStore::persist_settings(
+                &db,
+                TenantModuleSettingsRequest {
+                    tenant_id: native,
+                    module_slug: "blog".into(),
+                    settings: json!({"must_not_persist": true}),
+                }
+            )
+            .await
+            .is_err()
+        );
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM tenants WHERE id = ?1",
+            vec![native.to_string().into()],
+        ))
+        .await
+        .unwrap();
+        let reader = crate::DatabaseStaticModuleSettingsReader::new(db.clone());
+        assert_eq!(
+            reader
+                .settings(native, "blog")
+                .await
+                .unwrap()
+                .unwrap()
+                .settings,
+            json!({"second": true})
+        );
+    }
+
+    #[tokio::test]
+    async fn tenant_state_and_recovery_read_native_uuid_and_reject_ambiguity() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES (?1, ?2, 'blog', TRUE, '{}')",
+            vec![Uuid::new_v4().to_string().into(), tenant_id.into()],
+        )).await.unwrap();
+        assert_eq!(
+            TenantModuleStateStore::read(&database, tenant_id, "blog")
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled,
+            Some(true)
+        );
+        assert_eq!(
+            crate::recovery::read_tenant_override_enabled(&database, tenant_id, "blog")
+                .await
+                .unwrap(),
+            Some(true)
+        );
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings) VALUES (?1, ?2, 'other', FALSE, '{}')",
+            vec![Uuid::new_v4().to_string().into(), tenant_id.to_string().into()],
+        )).await.unwrap();
+        assert!(
+            TenantModuleStateStore::read(&database, tenant_id, "missing")
+                .await
+                .is_err()
+        );
+        assert!(
+            crate::recovery::read_tenant_override_enabled(&database, tenant_id, "blog")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn settings_persistence_creates_no_intent_and_preserves_recorded_intent() {
         let database = database().await;
         let tenant_id = Uuid::new_v4();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.to_string().into()],
+            ))
+            .await
+            .unwrap();
         // A first settings save records no enablement intent: the row
         // carries settings only and the platform default keeps applying.
         let dormant = TenantModuleStateStore::persist_settings(
@@ -2001,6 +2635,14 @@ mod tests {
     async fn disable_and_reenable_preserve_settings_for_the_runtime_reader() {
         let database = database().await;
         let tenant_id = Uuid::new_v4();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.to_string().into()],
+            ))
+            .await
+            .unwrap();
         TenantModuleStateStore::persist_settings(
             &database,
             TenantModuleSettingsRequest {
@@ -2056,6 +2698,9 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("operation database");
+        database.execute_unprepared(
+            "CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants",
+        ).await.expect("tenant identity fixture");
         database
             .execute_raw(Statement::from_string(
                 DbBackend::Sqlite,
@@ -2108,6 +2753,10 @@ mod tests {
             ))
             .await
             .expect("module lifecycle aggregate table");
+        database.execute_unprepared(
+            "CREATE TRIGGER fixture_lifecycle_tenant AFTER INSERT ON module_static_tenant_lifecycle BEGIN \
+             INSERT OR IGNORE INTO tenants (id) VALUES (NEW.tenant_id); END",
+        ).await.expect("lifecycle tenant fixture");
         database
     }
 
@@ -2130,6 +2779,34 @@ mod tests {
         }
     }
 
+    async fn seed_native_tenant(database: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.into()],
+            ))
+            .await
+            .unwrap();
+    }
+
+    async fn raw_journal_status(
+        database: &sea_orm::DatabaseConnection,
+        operation_id: Uuid,
+    ) -> String {
+        database
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT status FROM module_operations WHERE id = ?1",
+                vec![operation_id.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "status")
+            .unwrap()
+    }
+
     async fn insert_stale_operation(
         database: &sea_orm::DatabaseConnection,
         operation_id: Uuid,
@@ -2149,7 +2826,7 @@ mod tests {
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 vec![
                     operation_id.into(),
-                    tenant_id.into(),
+                    tenant_id.to_string().into(),
                     module_slug.into(),
                     true.into(),
                     false.into(),
@@ -2193,6 +2870,140 @@ mod tests {
             ))
             .await
             .expect("lifecycle claim insert");
+    }
+
+    #[tokio::test]
+    async fn reaper_rejects_orphaned_or_ambiguous_journal_tenants_without_mutating_operations() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        seed_native_tenant(&database, tenant_id).await;
+        let operation_id = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            operation_id,
+            tenant_id,
+            "orphan",
+            ModuleOperationStatus::Running,
+            Uuid::new_v4(),
+        )
+        .await;
+        let healthy_tenant = Uuid::new_v4();
+        let healthy_operation = Uuid::new_v4();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![healthy_tenant.to_string().into()],
+            ))
+            .await
+            .unwrap();
+        insert_stale_operation(
+            &database,
+            healthy_operation,
+            healthy_tenant,
+            "healthy",
+            ModuleOperationStatus::Running,
+            Uuid::new_v4(),
+        )
+        .await;
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_operations SET updated_at = '1999-01-01T00:00:00Z' WHERE id = ?1",
+                vec![healthy_operation.into()],
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            ModuleOperationJournal::reap_stale(&database, 10).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+        assert_eq!(
+            ModuleOperationJournal::find(&database, healthy_operation)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::Running,
+            "the earlier candidate's status update must roll back with the batch"
+        );
+        assert!(matches!(
+            ModuleOperationJournal::find(&database, operation_id).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+        assert_eq!(raw_journal_status(&database, operation_id).await, "running");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.to_string().into()],
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            ModuleOperationJournal::reap_stale(&database, 10).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+        assert!(matches!(
+            ModuleOperationJournal::find(&database, operation_id).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+        assert_eq!(raw_journal_status(&database, operation_id).await, "running");
+    }
+
+    #[tokio::test]
+    async fn reaper_handles_native_sqlite_tenant_claims_without_orphaning_live_work() {
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let operation_id = Uuid::new_v4();
+        let key = Uuid::new_v4();
+        insert_stale_operation(
+            &database,
+            operation_id,
+            tenant_id,
+            "native",
+            ModuleOperationStatus::Running,
+            key,
+        )
+        .await;
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_operations SET tenant_id = ?1 WHERE id = ?2",
+                vec![tenant_id.into(), operation_id.into()],
+            ))
+            .await
+            .unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_static_tenant_lifecycle (tenant_id, module_slug, revision, active_idempotency_key, active_claimed_at) VALUES (?1, 'native', 0, ?2, ?3)",
+            vec![tenant_id.into(), key.to_string().into(), Utc::now().to_rfc3339().into()],
+        )).await.unwrap();
+        let live = ModuleOperationJournal::reap_stale(&database, 10)
+            .await
+            .unwrap();
+        assert_eq!(live.orphaned, 0);
+        assert_eq!(
+            ModuleOperationJournal::find(&database, operation_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            ModuleOperationStatus::Running
+        );
+        database.execute_unprepared("UPDATE module_static_tenant_lifecycle SET active_claimed_at = '2000-01-01T00:00:00Z'").await.unwrap();
+        let expired = ModuleOperationJournal::reap_stale(&database, 10)
+            .await
+            .unwrap();
+        assert_eq!(expired.orphaned, 1);
+        assert_eq!(expired.released_claims, 1);
+        assert_eq!(
+            StaticTenantLifecycleStore::snapshot(&database, tenant_id, "native")
+                .await
+                .unwrap()
+                .active_idempotency_key,
+            None
+        );
     }
 
     #[tokio::test]
@@ -2466,9 +3277,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn journal_refuses_legacy_or_duplicate_uuid_encodings_before_reexecution() {
+        for column in ["tenant_id", "idempotency_key", "id"] {
+            let database = operation_database().await;
+            let tenant_id = Uuid::new_v4();
+            seed_native_tenant(&database, tenant_id).await;
+            let key = Uuid::new_v4();
+            let request = operation_request(tenant_id, "journal", key);
+            let recorded = ModuleOperationJournal::record(&database, request.clone())
+                .await
+                .unwrap();
+            let legacy = match column {
+                "tenant_id" => tenant_id,
+                "idempotency_key" => key,
+                "id" => recorded.id,
+                _ => unreachable!(),
+            };
+            database
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    format!("UPDATE module_operations SET {column} = ?1 WHERE id = ?2"),
+                    vec![legacy.to_string().into(), recorded.id.into()],
+                ))
+                .await
+                .unwrap();
+            assert!(
+                matches!(
+                    ModuleOperationJournal::record_idempotent(&database, request.clone()).await,
+                    Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+                ),
+                "legacy {column} must fail before inserting a second operation"
+            );
+            assert!(matches!(
+                ModuleOperationJournal::find(&database, recorded.id).await,
+                Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+            ));
+            let row = database
+                .query_one_raw(Statement::from_string(
+                    DbBackend::Sqlite,
+                    "SELECT COUNT(*) AS count FROM module_operations",
+                ))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(row.try_get::<i64>("", "count").unwrap(), 1);
+        }
+
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        seed_native_tenant(&database, tenant_id).await;
+        let key = Uuid::new_v4();
+        let request = operation_request(tenant_id, "journal", key);
+        let original = ModuleOperationJournal::record(&database, request.clone())
+            .await
+            .unwrap();
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_operations SET tenant_id = ?1 WHERE id = ?2",
+                vec![tenant_id.to_string().into(), original.id.into()],
+            ))
+            .await
+            .unwrap();
+        database.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, idempotency_key, expected_revision) VALUES (?1, ?2, 'journal', TRUE, FALSE, 'validated', ?3, 0)",
+            vec![Uuid::new_v4().into(), tenant_id.into(), key.into()],
+        )).await.unwrap();
+        assert!(matches!(
+            ModuleOperationJournal::record_idempotent(&database, request).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+
+        let database = operation_database().await;
+        let tenant_id = Uuid::new_v4();
+        let operation_id = Uuid::new_v4();
+        let unsupported_parent = format!("urn:uuid:{tenant_id}");
+        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)", vec![unsupported_parent.clone().into()])).await.unwrap();
+        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, idempotency_key, expected_revision) VALUES (?1, ?2, 'journal', TRUE, FALSE, 'validated', ?3, 0)",
+            vec![operation_id.into(), unsupported_parent.into(), Uuid::new_v4().into()])).await.unwrap();
+        assert!(matches!(ModuleOperationJournal::find(&database, operation_id).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)));
+    }
+
+    #[tokio::test]
     async fn journal_insert_narrows_only_unique_violations_and_types_transitions() {
         let database = operation_database().await;
         let tenant_id = Uuid::new_v4();
+        seed_native_tenant(&database, tenant_id).await;
         let idempotency_key = Uuid::new_v4();
         let request = operation_request(tenant_id, "journal", idempotency_key);
 
@@ -2515,6 +3413,7 @@ mod tests {
     async fn discard_validated_only_removes_an_unstarted_operation() {
         let database = operation_database().await;
         let tenant_id = Uuid::new_v4();
+        seed_native_tenant(&database, tenant_id).await;
         let discarded = ModuleOperationJournal::record(
             &database,
             operation_request(tenant_id, "discarded", Uuid::new_v4()),

@@ -32,15 +32,19 @@ struct StaticSettingsLocalizationPackageMetadata {
 /// Resolves the authoritative Settings localization registry for one static
 /// module slug without exposing manifest/filesystem access to Translation.
 ///
-/// Unknown or non-localized valid module slugs resolve to an empty registry,
-/// matching the existing `ManifestManager::module_settings_schema` behavior.
+/// Unknown or non-localized valid module slugs resolve to an empty registry;
+/// this localization-only fallback is not a settings validation schema.
 /// Invalid slugs or invalid localization metadata fail through the owner
 /// registry constructor.
 pub fn resolve_static_settings_localization_registry(
     module_slug: &str,
 ) -> Result<rustok_modules::StaticSettingsLocalizationRegistry, ManifestError> {
     let package_contract = rustok_modules::StaticModulePackageContract {
-        settings_schema: ManifestManager::module_settings_schema(module_slug)?,
+        settings_schema: match ManifestManager::module_settings_schema(module_slug) {
+            Ok(schema) => schema,
+            Err(ManifestError::UnknownModule(_)) => Default::default(),
+            Err(error) => return Err(error),
+        },
         ..Default::default()
     };
     let manifest = ManifestManager::load()?;
@@ -109,6 +113,7 @@ fn parse_package_localization_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::collections::HashMap;
 
     fn package_contract() -> rustok_modules::StaticModulePackageContract {
@@ -131,6 +136,33 @@ mod tests {
             ]),
             ..Default::default()
         }
+    }
+
+    #[test]
+    #[serial]
+    fn unknown_module_has_empty_localization_registry_without_validating_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("modules.toml");
+        ManifestManager::save_to_path(&path, &Default::default()).unwrap();
+        let previous = std::env::var_os("RUSTOK_MODULES_MANIFEST");
+        unsafe { std::env::set_var("RUSTOK_MODULES_MANIFEST", &path) };
+        let schema = ManifestManager::module_settings_schema("unknown-fixture");
+        let validation =
+            ManifestManager::validate_module_settings("unknown-fixture", serde_json::json!({}));
+        let registry = resolve_static_settings_localization_registry("unknown-fixture");
+        let invalid_registry = resolve_static_settings_localization_registry("Invalid.Module");
+        match previous {
+            Some(value) => unsafe { std::env::set_var("RUSTOK_MODULES_MANIFEST", value) },
+            None => unsafe { std::env::remove_var("RUSTOK_MODULES_MANIFEST") },
+        }
+
+        assert!(matches!(schema, Err(ManifestError::UnknownModule(_))));
+        assert!(matches!(validation, Err(ManifestError::UnknownModule(_))));
+        assert!(registry.unwrap().localized_fields().is_empty());
+        assert!(matches!(
+            invalid_registry,
+            Err(ManifestError::InvalidModuleSettingSchema { .. })
+        ));
     }
 
     #[test]

@@ -85,9 +85,9 @@ Reviewed through `main@5c283707cef13da9a99c665e3cf1b3c2ebddba78`.
 
 | Phase | Current behavior | Consequence |
 | --- | --- | --- |
-| Schema discovery | Server parses `[settings]` and maps to `ModuleSettingSpec` | Schema is available to Admin and write validation |
+| Schema discovery | Server resolves manifest metadata, but an unknown module or absent package manifest can yield an empty schema | An empty map does not establish that the active release has no settings; immutable release-bound schema evidence is required |
 | First toggle | Server-composed enables validate and persist normalized defaults under the lifecycle claim; installer seed toggles lack schema composition | Installer enablement does not yet guarantee default materialization |
-| Settings save | Active schema validates and fills defaults, then owner revision/CAS persists the full JSON | Saved documents are normalized at write time |
+| Settings save | Host schema validates and fills defaults before the owner receipts the normalized JSON and performs revision/CAS | Saved documents are normalized at write time; receipts do not retain the original input or schema evidence needed to reconstruct every replay after schema loss |
 | Disable | Only `enabled` changes; settings JSON remains | Configuration survives disable |
 | Edit while disabled | Generic owner writer admits and validates dormant settings updates against active schema; preserves disabled state | Dormant settings can be repaired before re-enable without premature runtime activation |
 | Re-enable | Server-composed enables and enable-direction compensation validate retained settings under the lifecycle claim before hooks and commit the normalized document | Incompatible settings fail closed; standalone installer schema composition remains open |
@@ -437,7 +437,7 @@ Owners must document:
 
 | Priority | Gap | Required outcome |
 | --- | --- | --- |
-| P0 | Re-enable does not validate retained static settings before hooks | Resolved: Active-schema preflight and `SettingsMigrationRequired` in `toggle_module` |
+| P0 | Re-enable may validate retained settings against incomplete schema evidence | The lifecycle claim runs schema preflight and reports `SettingsMigrationRequired`, but the host still needs exact release-bound schema evidence when package manifests are absent |
 | P0 | Static N/N+1 schema evidence and an atomic rollout fence are absent | Resolve exact schemas through the owner and guard all writes atomically against static rollout transitions |
 | P0 | Generic email settings can diverge from runtime and historically hold secrets | Email-owned typed settings, secret handles, data scrub/rotation, `snake_case` cutover |
 | P0 | Platform settings event is published after save on a best-effort path | Resolved: Owner transaction and transactional outbox `publish_in_tx` in `SettingsService::update` |

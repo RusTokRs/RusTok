@@ -265,6 +265,26 @@ impl SupportedBackend {
     }
 }
 
+/// Validates the SQLite identity columns returned by a tenant-module read.
+/// The parent and child representation must agree, and a logical UUID may
+/// not identify two parent rows or two different child representations.
+/// A `false` result denotes the left-join sentinel for a missing module row.
+pub(crate) fn sqlite_tenant_module_identity(row: &QueryResult) -> Result<bool, DbErr> {
+    let parent_count: i64 = row.try_get("", "parent_count")?;
+    let matched: Option<String> = row.try_get("", "matched_module")?;
+    let mixed: bool = row.try_get("", "mixed_identity")?;
+    let matches_parent: Option<bool> = row.try_get("", "matches_parent")?;
+    if parent_count > 1
+        || mixed
+        || (matched.is_some() && (parent_count != 1 || matches_parent != Some(true)))
+    {
+        return Err(DbErr::Custom(
+            "tenant module state has conflicting UUID representations".to_string(),
+        ));
+    }
+    Ok(matched.is_some())
+}
+
 /// Decode a stored count or byte length. Signed storage must never be cast
 /// directly to `u64`: a corrupt negative value would wrap into a plausible
 /// enormous count instead of failing closed at the row boundary.

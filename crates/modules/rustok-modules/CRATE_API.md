@@ -51,11 +51,36 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   `ArtifactHttpBindingRequest` admit and dispatch exact installed artifacts.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
+- `DatabaseStaticModuleSettingsReader` accepts either native or text tenant
+  UUID storage on SQLite, including transactional reads. It rejects ambiguous
+  parent identities through the tenant-owned SQLite key projection, mixed
+  representations, and orphaned matching rows.
+- The lifecycle policy and its transaction-bound consumer share one bounded
+  tenant-override reader. SQLite validates both possible UUID representations
+  against a unique tenant parent and rejects mixed or orphaned rows, including
+  settings-only rows; bounded operator snapshots apply the same rule before
+  returning a page.
+- Static lifecycle snapshots and writes validate SQLite tenant identities and
+  recognize both valid key representations. Aggregate claim, heartbeat,
+  revision advance, and release resolve the unique parent in each statement;
+  watchdog reconciliation uses the same transaction snapshot. Override writes
+  match the prior row and enablement intent before applying an update.
+- SQLite journal insertion and idempotency lookup validate the unique tenant
+  parent in the same statement. Native and canonical text tenant keys can be
+  replayed when operation and idempotency keys are native; unsupported key
+  encodings or conflicting identities fail closed. After migration, the
+  normalized SQLite index prevents native/canonical-text duplicates, including from
+  older concurrent writers. Existing duplicate receipts block that migration.
 - `ModuleLifecycleDbWriter::with_static_settings_schema` supplies the active
   host-resolved schema for one static module. Enables with this schema validate
   retained settings under the lifecycle claim and persist the normalized value
   with the lifecycle state. Enable-direction static compensation requires it;
   all other static enable consumers must also compose it to obtain preflight.
+- `ModuleLifecycleDbWriter::with_static_settings_schema_result` carries either
+  the host schema or its resolution error into the owner. The owner checks an
+  exact existing journal entry before rejecting a new enable whose schema could
+  not be resolved. The host must not treat an unknown or missing schema as an
+  empty one. This does not establish release-bound schema provenance.
 - Post-hook recovery requires the original hook settings digest and rejects
   changed settings or historical operations without evidence. Recovery replay
   identity binds the exact source operation. Successful retry and original

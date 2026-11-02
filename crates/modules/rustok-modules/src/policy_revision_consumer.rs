@@ -424,42 +424,69 @@ async fn persist_cursor_state<C: ConnectionTrait>(
     })
 }
 
-async fn load_tenant_overrides<C: ConnectionTrait>(
+pub(crate) async fn load_tenant_overrides<C: ConnectionTrait>(
     connection: &C,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
     let backend = SupportedBackend::new(connection.get_database_backend())
         .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+    let limit = crate::lifecycle_writer::MAX_TENANT_MODULE_OVERRIDES + 1;
     let sql = match backend {
-        SupportedBackend::Postgres => {
-            "SELECT module_slug, enabled FROM tenant_modules \
-             WHERE tenant_id = $1 AND enabled IS NOT NULL"
-        }
-        SupportedBackend::Sqlite => {
-            "SELECT module_slug, enabled FROM tenant_modules \
-             WHERE tenant_id = ?1 AND enabled IS NOT NULL"
-        }
+        SupportedBackend::Postgres => format!(
+            "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1 LIMIT {limit}"
+        ),
+        SupportedBackend::Sqlite => format!(
+            "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)) \
+             SELECT t.module_slug AS matched_module, t.module_slug AS module_slug, t.enabled, identity.parent_count, \
+             (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
+             (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
+              EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?2)) AS mixed_identity \
+             FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?2) LIMIT {limit}"
+        ),
     };
-    connection
+    let mut values = vec![backend.uuid_value(tenant_id)];
+    if matches!(backend, SupportedBackend::Sqlite) {
+        values.push(tenant_id.into());
+    }
+    let rows = connection
         .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             sql,
-            vec![backend.uuid_value(tenant_id)],
+            values,
         ))
         .await
-        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?
-        .into_iter()
-        .map(|row| {
-            Ok(TenantModuleOverride {
-                module_slug: row
-                    .try_get("", "module_slug")
-                    .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?,
-                enabled: row
-                    .try_get("", "enabled")
-                    .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?,
-            })
-        })
-        .collect()
+        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+    if rows.len() > crate::lifecycle_writer::MAX_TENANT_MODULE_OVERRIDES as usize {
+        return Err(ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery);
+    }
+    let mut slugs = std::collections::HashSet::with_capacity(rows.len());
+    let mut overrides = Vec::with_capacity(rows.len());
+    for row in rows {
+        if matches!(backend, SupportedBackend::Sqlite)
+            && !crate::backend::sqlite_tenant_module_identity(&row)
+                .map_err(|error| ModuleLifecycleDbWriterError::Configuration(error.to_string()))?
+        {
+            continue;
+        }
+        let module_slug: String = row
+            .try_get("", "module_slug")
+            .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+        if !slugs.insert(module_slug.clone()) {
+            return Err(ModuleLifecycleDbWriterError::Configuration(
+                "tenant module state has conflicting UUID representations".to_string(),
+            ));
+        }
+        let enabled: Option<bool> = row
+            .try_get("", "enabled")
+            .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
+        if let Some(enabled) = enabled {
+            overrides.push(TenantModuleOverride {
+                module_slug,
+                enabled,
+            });
+        }
+    }
+    Ok(overrides)
 }
 
 fn validate_request(
