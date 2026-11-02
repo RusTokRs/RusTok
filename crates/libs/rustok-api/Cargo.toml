@@ -3,6 +3,9 @@ name = "rustok-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Shared RusToK web/API contracts for server adapters and module-facing GraphQL/HTTP integration"
 
 [package.metadata.docs.rs]

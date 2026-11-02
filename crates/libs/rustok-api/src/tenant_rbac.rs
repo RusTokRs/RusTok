@@ -77,6 +77,12 @@ pub trait TenantRbacCatalog: Send + Sync {
 #[derive(Clone)]
 pub struct SharedTenantRbacCatalog(pub Arc<dyn TenantRbacCatalog>);
 
+impl std::fmt::Debug for SharedTenantRbacCatalog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedTenantRbacCatalog").finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

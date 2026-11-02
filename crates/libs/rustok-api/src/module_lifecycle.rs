@@ -60,6 +60,12 @@ pub trait StaticModuleSettingsReader: Send + Sync {
 #[derive(Clone)]
 pub struct SharedStaticModuleSettingsReader(pub Arc<dyn StaticModuleSettingsReader>);
 
+impl std::fmt::Debug for SharedStaticModuleSettingsReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedStaticModuleSettingsReader").finish()
+    }
+}
+
 impl SharedStaticModuleSettingsReader {
     pub async fn settings(
         &self,

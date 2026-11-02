@@ -32,3 +32,9 @@ pub trait EventDeliveryControl: Send + Sync {
 
 #[derive(Clone)]
 pub struct SharedEventDeliveryControl(pub Arc<dyn EventDeliveryControl>);
+
+impl std::fmt::Debug for SharedEventDeliveryControl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedEventDeliveryControl").finish()
+    }
+}

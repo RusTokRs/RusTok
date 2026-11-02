@@ -205,7 +205,7 @@ fn is_storefront_resource(resource: Resource) -> bool {
 
 pub use crate::permissions::{has_any_effective_permission, has_effective_permission};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AuthContext {
     pub user_id: Uuid,
     pub session_id: Uuid,
@@ -228,10 +228,10 @@ impl AuthPrincipalContext {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AuthContextExtension(pub AuthContext);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct AuthPrincipalContextExtension(pub AuthPrincipalContext);
 
 impl AuthContext {
@@ -288,6 +288,7 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct OptionalAuthContext(pub Option<AuthContext>);
 
 impl<S> FromRequestParts<S> for OptionalAuthContext

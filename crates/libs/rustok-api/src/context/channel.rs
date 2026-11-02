@@ -72,7 +72,7 @@ pub struct ChannelContext {
 }
 
 #[cfg(feature = "server")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChannelContextExtension(pub ChannelContext);
 
 #[cfg(feature = "server")]
@@ -109,6 +109,7 @@ where
 }
 
 #[cfg(feature = "server")]
+#[derive(Clone, Debug)]
 pub struct OptionalChannel(pub Option<ChannelContext>);
 
 #[cfg(feature = "server")]

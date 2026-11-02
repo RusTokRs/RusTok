@@ -15,7 +15,7 @@ pub struct GraphqlContributionDescriptor {
 /// factory. Values beyond the database are carried through the host's typed
 /// shared-value store, so foundation does not depend on capability crates.
 #[cfg(feature = "server")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GraphqlRuntimeInputs {
     host: crate::HostRuntimeContext,
 }

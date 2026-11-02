@@ -122,3 +122,104 @@ pub trait ArtifactPermissionRegistrationPort: Send + Sync {
         request: PermissionContinuityEvaluationRequest,
     ) -> Result<ArtifactPermissionContinuityReceipt, PortError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authorization_fingerprint_is_order_independent() {
+        let perm_a = ArtifactPermissionRegistration {
+            key: "catalog:read".to_string(),
+            localizations: vec![ArtifactPermissionLocalization {
+                locale: "en".to_string(),
+                label: "Read Catalog".to_string(),
+                description: "Read catalog products".to_string(),
+            }],
+        };
+        let perm_b = ArtifactPermissionRegistration {
+            key: "orders:create".to_string(),
+            localizations: vec![ArtifactPermissionLocalization {
+                locale: "en".to_string(),
+                label: "Create Orders".to_string(),
+                description: "Create new customer orders".to_string(),
+            }],
+        };
+
+        let fingerprint_ordered =
+            compute_canonical_authorization_fingerprint(&[perm_a.clone(), perm_b.clone()]);
+        let fingerprint_reversed =
+            compute_canonical_authorization_fingerprint(&[perm_b.clone(), perm_a.clone()]);
+
+        assert_eq!(fingerprint_ordered, fingerprint_reversed);
+        assert!(fingerprint_ordered.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn authorization_fingerprint_excludes_localization_differences() {
+        let perm_en = ArtifactPermissionRegistration {
+            key: "catalog:read".to_string(),
+            localizations: vec![ArtifactPermissionLocalization {
+                locale: "en".to_string(),
+                label: "Read Catalog".to_string(),
+                description: "English description".to_string(),
+            }],
+        };
+        let perm_ru = ArtifactPermissionRegistration {
+            key: "catalog:read".to_string(),
+            localizations: vec![ArtifactPermissionLocalization {
+                locale: "ru".to_string(),
+                label: "Чтение каталога".to_string(),
+                description: "Русское описание".to_string(),
+            }],
+        };
+
+        let fingerprint_en = compute_canonical_authorization_fingerprint(&[perm_en]);
+        let fingerprint_ru = compute_canonical_authorization_fingerprint(&[perm_ru]);
+
+        assert_eq!(
+            fingerprint_en, fingerprint_ru,
+            "localization changes must never alter authorization fingerprint"
+        );
+    }
+
+    #[test]
+    fn artifact_permission_scope_serde_roundtrips() {
+        let platform = ArtifactPermissionScope::Platform;
+        let encoded_platform = serde_json::to_string(&platform).expect("serialize platform scope");
+        assert_eq!(encoded_platform, r#"{"kind":"platform"}"#);
+        assert_eq!(
+            serde_json::from_str::<ArtifactPermissionScope>(&encoded_platform).unwrap(),
+            platform
+        );
+
+        let tenant_id = Uuid::new_v4();
+        let tenant = ArtifactPermissionScope::Tenant { tenant_id };
+        let encoded_tenant = serde_json::to_string(&tenant).expect("serialize tenant scope");
+        assert_eq!(
+            serde_json::from_str::<ArtifactPermissionScope>(&encoded_tenant).unwrap(),
+            tenant
+        );
+    }
+
+    #[test]
+    fn artifact_permission_diff_default_and_serde() {
+        let diff = ArtifactPermissionDiff::default();
+        assert!(diff.unchanged_keys.is_empty());
+        assert!(diff.modified_keys.is_empty());
+        assert!(diff.added_keys.is_empty());
+        assert!(diff.removed_dormant_keys.is_empty());
+
+        let diff_with_keys = ArtifactPermissionDiff {
+            unchanged_keys: vec!["a".to_string()],
+            modified_keys: vec!["b".to_string()],
+            added_keys: vec!["c".to_string()],
+            removed_dormant_keys: vec!["d".to_string()],
+        };
+        let serialized = serde_json::to_string(&diff_with_keys).expect("serialize diff");
+        assert_eq!(
+            serde_json::from_str::<ArtifactPermissionDiff>(&serialized).unwrap(),
+            diff_with_keys
+        );
+    }
+}

@@ -25,7 +25,7 @@ impl TenantContext {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TenantContextExtension(pub TenantContext);
 
 pub trait TenantContextExt {
@@ -64,6 +64,7 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct OptionalTenant(pub Option<TenantContext>);
 
 impl<S> FromRequestParts<S> for OptionalTenant

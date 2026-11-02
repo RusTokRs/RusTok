@@ -32,6 +32,12 @@ pub struct SharedStaticModuleSettingsTransactionReader(
     pub std::sync::Arc<dyn StaticModuleSettingsTransactionReader>,
 );
 
+impl std::fmt::Debug for SharedStaticModuleSettingsTransactionReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedStaticModuleSettingsTransactionReader").finish()
+    }
+}
+
 impl SharedStaticModuleSettingsTransactionReader {
     pub async fn settings_in_tx(
         &self,
@@ -219,6 +225,15 @@ pub struct HostRuntimeContext {
     shared_values: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
+impl std::fmt::Debug for HostRuntimeContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostRuntimeContext")
+            .field("db_backend", &self.db.get_database_backend())
+            .field("shared_values_count", &self.shared_values.len())
+            .finish()
+    }
+}
+
 impl HostRuntimeContext {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
@@ -371,12 +386,6 @@ CREATE TABLE tenant_modules (
                 .expect("row without intent should be visible")["use_reactions"],
             true
         );
-        // ... but does not count as explicitly enabled.
-        assert!(
-            !is_tenant_module_enabled(&db, tenant_id, "forum-inherited")
-                .await
-                .expect("inherited enablement lookup should succeed")
-        );
         assert_eq!(
             tenant_module_settings_in_tx(&txn, foreign_tenant_id, "forum")
                 .await
@@ -385,6 +394,13 @@ CREATE TABLE tenant_modules (
             false
         );
         txn.rollback().await.expect("transaction rollback");
+
+        // ... but does not count as explicitly enabled.
+        assert!(
+            !is_tenant_module_enabled(&db, tenant_id, "forum-inherited")
+                .await
+                .expect("inherited enablement lookup should succeed")
+        );
     }
 
     #[tokio::test]
