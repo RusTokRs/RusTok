@@ -113,13 +113,26 @@ jobs:
               emitted += 1
           print(f'::notice::clippy warnings: {lints}')
           "
-      - name: probe depth-limit targets
+      - name: inventory depth-limit targets (batch2)
         run: |
           set +e
           export CARGO_BUILD_JOBS=2 CARGO_TERM_COLOR=never
-          cargo test -p rustok-forum --no-run --test subscriptions --test graphql_stats_and_vote_tenant_scope_sqlite --message-format=json 2>/dev/null | python3 -c "
-          import json, sys
-          shown = 0
+          cargo test -p rustok-forum --no-run --keep-going \
+            --test subscription_reconciliation_sqlite \
+            --test subscriptions \
+            --test moderation_audience_policy_sqlite \
+            --test moderation_report_sqlite \
+            --test reply_update_window \
+            --test reply_position_integrity_sqlite \
+            --test solution_reconciliation_sqlite \
+            --test counter_reconciliation_sqlite \
+            --test topic_bulk_read_state_sqlite \
+            --test read_state_transport_contract \
+            --test storefront_read_state_sqlite \
+            --test notification_recipient_topic_subscription_audience_sqlite \
+            --message-format=json 2>/dev/null | python3 -c "
+          import json, re, sys
+          broken = []
           for raw in sys.stdin:
               try:
                   payload = json.loads(raw)
@@ -131,13 +144,12 @@ jobs:
               if msg.get('level') != 'error':
                   continue
               rendered = (msg.get('rendered') or msg.get('message') or '')
-              for line in rendered.splitlines()[:45]:
-                  safe = line.replace('%', '%25')
-                  print(f'::error::{safe[:280]}')
-                  shown += 1
-                  if shown > 45:
-                      break
-          print('::notice::probe done')
+              m = re.search(r'could not compile .* \(test \\"([^\\"]+)\\"\)', rendered)
+              if m and m.group(1) not in broken:
+                  broken.append(m.group(1))
+          for name in broken:
+              print(f'::error::BROKEN TARGET: {name}')
+          print(f'::notice::broken targets: {broken}')
           "
       - name: remediation-relevant forum test suites
         run: |
