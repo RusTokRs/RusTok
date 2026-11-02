@@ -77,13 +77,13 @@ The recovery side table is introduced by a new append-only platform migration. E
 
 Product owns:
 
-- products, variants, options, translations, images, tags, and Product events;
+- products, stable Variants, unified attribute/axis assignments, translations, images, tags, and Product events;
 - Product transaction admission and commit;
 - collection of initial inventory and price requests from Product input.
 
 Inventory owns:
 
-- stock locations, inventory items, inventory levels, and reservation cleanup;
+- stock locations, inventory items, inventory levels, retained reservation/shipment/return history, and history-preserving empty-bookkeeping deletion;
 - `rustok_inventory::BootstrapService`;
 - `InitialInventory` and the transaction-aware create/read/delete operations.
 
@@ -149,3 +149,76 @@ Source evidence is stored at:
 `crates/modules/rustok-product/contracts/evidence/product-lifecycle-collaboration-source.json`
 
 No tests, Cargo commands, formatting, verifier execution, workflow checks, tenant activation, non-default selection, policy-cache execution, staged recovery execution, migration execution, or transaction rollback execution evidence are claimed by this source wave.
+
+## Catalog deletion retention (2026-11-01; source only)
+
+The existing `BootstrapService::delete_records_for_variants_in_tx` now requires the concrete
+caller `DatabaseTransaction`, the current tenant and at most 256 distinct nonnil Variant IDs.
+Inventory proves positive tenant Variant/item identities, any retained history reference and a
+complete 4096-level plan before any effect. Every stocked/reserved/incoming counter must be
+zero individually. Original locations lock before levels; empty archived locations are not
+reopened. Missing/ambiguous identity cannot prove history-free state. PostgreSQL requires
+READ COMMITTED; MySQL current reads and SQLite conflict handling remain backend-unverified.
+
+Both real Product deletion callers pass the current tenant and propagate failure. Product root
+deletion probes 257 child identities, refuses overflow/empty/foreign graphs and checks exact
+final row counts. Publication/default-SKU/sparse-tuple rules and stable IDs remain unchanged.
+Inventory cleanup means only proved-empty levels/items, never reservation/proof/receipt purge.
+A later exact-effect failure rolls back prior levels, prices, Product state and event writes in
+the same transaction. There is no helper commit, stock adjustment, new Inventory event or
+counterfeit tombstone/revision.
+
+Eight typed blockers feed one Product policy: invalid/limit are Validation, history/stock/changed
+are Conflict, and identity/state/isolation uncertainty is InvariantViolation. HTTP maps these to
+400/409/500 with fixed actionable copy; GraphQL uses the same copy/code and current correlation.
+Storage remains unavailable, not a business refusal. Existing nonretryable Validation/NotFound/
+Conflict receipt finalization occurs only after rollback; invariants/storage stay unknown.
+Retry advice alone never establishes a terminal/no-effect outcome. Recover the original command
+with its original key; do not silently turn a retained refusal into a fresh deletion.
+
+The [Inventory contract](../../rustok-inventory/CRATE_API.md#catalog-deletion-safety-2026-11-01-source-only),
+[owning ADR](../../../../DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#catalog-deletion-retention-2026-11-01)
+and [source packet](../../rustok-inventory/contracts/evidence/catalog-deletion-source.json)
+record 31 Rust/10 Node definitions, all uncompiled/unrun, and the additive unexecuted I026 lookup
+indexes. Existing migrations/receipt identities are not rewritten. This follow-up does not
+retroactively change the separate lifecycle-selection wave's execution record above.
+
+Mounted Next recovery and native/HTTP/GraphQL behavior require real execution. Leptos remaining
+Product CRUD uses the generic GraphQL lifecycle gateway/redaction, not general native CRUD;
+retained CRUD keys are not durable. Full actionable presentation/recovery parity and a general
+retirement/disposal workflow remain incomplete. No new destructive SKU action is exposed.
+Generic Inventory Index revisions/baseline/tombstones/all-writer publication and Product step 8
+remain open; historical cascades or arbitrary SQL are not evidence of this business guard.
+
+## Quantity writer consolidation (2026-11-01; source only)
+
+`CatalogService::update_variant` now passes its concrete existing transaction and current
+nonnil tenant/actor/SKU to `BootstrapService::update_initial_quantity_in_tx`. Inventory owns the
+same bounded set plan used by native quantity commands, not an arbitrary first-level overwrite.
+Quantity means global available units; reserved/incoming/other-location/history state is retained.
+Product's existing nonnegative catalog input is preserved; native signed backorder no-op remains
+read-only. No stock/item/location history is inferred or silently created by this update hook.
+
+The selected owner default retains code=`default`, otherwise oldest active tenant location with
+UUID ties. A real move requires its saved level; a missing/archived/mismatched target refuses,
+without reselection after locks. Checked arithmetic and v1 event admission precede the exact
+conditional stocked update. Canonical stock publication shares Product's peer metadata/attribute/
+price/document transaction and later Variant publication. Any failure must roll the whole command
+back through existing deferred rollback/receipt finalization; the helper never commits independently.
+
+`QuantityWriteError` crosses the owner boundary deliberately. Eleven finite
+`product.inventory_quantity_*` policies preserve kind/code/fixed safe copy through native,
+HTTP and GraphQL. The uppercase public family is `PRODUCT_INVENTORY_QUANTITY_*`. Database failures
+stay storage unavailable; unknown publication failures are invariants, not terminal user validation.
+Only finalized deterministic Validation/NotFound/Conflict decisions can be terminal receipts.
+Provider text, contradictory retry advice and copied codes with the wrong kind cannot certify an
+outcome. Exact replay returns the original response/refusal without a new Inventory event.
+
+The Product response and public-channel quantity projection now use checked wide aggregation
+rather than order-dependent saturation; visibility and retained/absent stock remain different
+concepts. This does not make those existing read paths an authoritative Index source.
+
+[33 Rust/10 Node source definitions](../../rustok-inventory/contracts/evidence/quantity-writes-source.json)
+remain unrun/uncompiled; real SQL/isolation/locking/concurrency/client recovery remain maintainer
+gates. No client UI is changed or declared parity-complete. Installation baseline, Inventory-owned
+revisions, all-writer atomic publication, tombstones and Distribution→generic Index stay open.

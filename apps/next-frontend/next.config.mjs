@@ -15,6 +15,7 @@ const nextConfig = {
     "@rustok/comments-frontend",
     "@rustok/product-frontend",
     "@rustok/ui-grid",
+    "@rustok/ui-controls",
     "@rustok/richtext",
   ],
   async rewrites() {

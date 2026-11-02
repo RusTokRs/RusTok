@@ -2,7 +2,7 @@ use futures_util::{Sink, Stream};
 use leptos::server_fn::{
     Bytes,
     client::{Client, browser::BrowserClient},
-    error::FromServerFnError,
+    error::{FromServerFnError, ServerFnErrorErr},
     request::browser::BrowserRequest,
     response::browser::BrowserResponse,
 };
@@ -26,18 +26,35 @@ where
 
     fn send(request: Self::Request) -> impl Future<Output = Result<Self::Response, Error>> + Send {
         #[cfg(target_arch = "wasm32")]
-        {
+        let failure = (|| -> Result<(), &'static str> {
             let headers = request.headers();
             if let Some(token) = crate::storage::get_token() {
-                headers.set("Authorization", format!("Bearer {token}").as_str());
+                headers
+                    .set("Authorization", format!("Bearer {token}").as_str())
+                    .map_err(|_| "Authentication metadata could not be applied")?;
             }
             if let Some(tenant) = crate::storage::get_tenant() {
-                let _ = headers.set("X-Tenant-ID", tenant.as_str());
-                let _ = headers.set("X-Tenant-Slug", tenant.as_str());
+                headers
+                    .set("X-Tenant-ID", tenant.as_str())
+                    .map_err(|_| "Tenant metadata could not be applied")?;
+                headers
+                    .set("X-Tenant-Slug", tenant.as_str())
+                    .map_err(|_| "Tenant metadata could not be applied")?;
             }
+            Ok(())
+        })()
+        .err();
+        #[cfg(not(target_arch = "wasm32"))]
+        let failure: Option<&'static str> = None;
+        async move {
+            if let Some(message) = failure {
+                return Err(Error::from_server_fn_error(ServerFnErrorErr::Request(
+                    message.to_string(),
+                )));
+            }
+            <BrowserClient as Client<Error, InputStreamError, OutputStreamError>>::send(request)
+                .await
         }
-
-        <BrowserClient as Client<Error, InputStreamError, OutputStreamError>>::send(request)
     }
 
     fn open_websocket(

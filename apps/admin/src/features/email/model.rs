@@ -9,12 +9,16 @@ pub struct PlatformSettingsResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlatformSettingsPayload {
     pub settings: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct UpdateSettingsInput {
     pub category: String,
     pub settings: String,
+    #[serde(rename = "expectedSchemaVersion")]
+    pub expected_schema_version: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -26,4 +30,6 @@ pub struct UpdateSettingsResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UpdateSettingsPayload {
     pub success: bool,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: i32,
 }

@@ -61,6 +61,24 @@ transaction that persists a replacement refresh token. The former controller-loc
 and `OAuthAppService` token issuance paths have been deleted, so router middleware
 ordering cannot re-enable a non-transactional replay path.
 
+The host additionally composition-gates the OAuth protocol surface and discovery metadata with
+`settings.rustok.features.oauth_enabled`; when the gate is closed the routes are not mounted and
+OpenAPI omits them. This gate does not replace the per-request active-app, consent, scope, and
+credential-epoch checks below.
+
+RFC 7009 revocation is a host transport adapter over a transactional, family-scoped
+service operation: the token hash is resolved inside the transaction, `family_id`
+coalesces to the row id for pre-lineage rows, and the whole lineage is revoked with
+one client/tenant/user-scoped update. Unknown hashes succeed without revealing
+existence. Client authentication for revocation uses the security-only active-app
+lookup, not presentation translation hydration. OAuth access JWTs are registered
+credentials: the signed `jti` names a durable `oauth_tokens` access row, and the
+host extractor fails closed unless that row is active and hash/client/tenant/grant/
+subject-bound. RFC 7009 and security-family revocation revoke access and refresh
+rows together, fencing already-issued access JWTs before their signed TTL.
+Delegated rows also capture the consent epoch so revoke/re-grant cannot resurrect
+older credentials.
+
 The current inline `oauth_apps.name` and `oauth_apps.description` fields do not yet
 satisfy the platform multilingual storage contract. Their translation-table cutover
 is an explicit release-plan priority in this module's implementation plan; transports

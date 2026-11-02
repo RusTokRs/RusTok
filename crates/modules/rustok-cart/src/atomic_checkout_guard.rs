@@ -8,8 +8,8 @@ use uuid::Uuid;
 use crate::atomic_checkout_port::{self as legacy, AtomicCartCheckoutPricingResolver};
 use crate::checkout_snapshot::{PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot};
 use crate::{
-    CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartResponse,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest,
+    CartContextUpdateRequest, CartResponse,
 };
 
 const READ_ATOMIC_CART_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_atomic_cart_checkout_snapshot";
@@ -184,7 +184,7 @@ impl CartCheckoutPort for GuardedAtomicCartCheckoutPort {
     async fn update_cart_checkout_context(
         &self,
         context: PortContext,
-        request: CartCheckoutContextUpdateRequest,
+        request: CartContextUpdateRequest,
     ) -> Result<CartResponse, PortError> {
         if request.cart_id.is_nil() {
             return Err(PortError::validation(

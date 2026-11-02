@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::{MatchedPath, Request};
@@ -13,6 +14,7 @@ use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
 use tower_http::trace::{DefaultOnFailure, DefaultOnResponse, MakeSpan, TraceLayer};
 
 use super::cors::build_cors_layer;
+use crate::services::marketplace_catalog::registry_publish_artifact_path;
 
 pub const DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS: u64 = 30;
 pub const DEFAULT_HTTP_UPLOAD_TIMEOUT_SECONDS: u64 = 300;
@@ -122,24 +124,44 @@ pub async fn adaptive_timeout(request: Request, next: Next) -> Response {
 
 pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
     let method = request.method();
-    // Only mutation methods can upload payloads; GET/HEAD must never be granted
-    // extended upload deadlines (prevents slowloris attacks on static media downloads).
-    if !matches!(*method, Method::POST | Method::PUT | Method::PATCH) {
-        return false;
-    }
-
     let path = request.uri().path();
-    if path.contains("/artifacts") || path.contains("/upload") || path.contains("/media") {
-        return true;
-    }
-    request
+    let content_type = request
         .headers()
         .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|ct| {
-            ct.starts_with("multipart/form-data") || ct.starts_with("application/octet-stream")
-        })
-        .unwrap_or(false)
+        .and_then(|value| value.to_str().ok());
+    let multipart = content_type
+        .map(|value| value.starts_with("multipart/form-data"))
+        .unwrap_or(false);
+
+    // Extended deadlines belong to owner-declared binary upload transports,
+    // not to any URL containing `/media` or any client-supplied Content-Type.
+    // Media's owner streaming endpoint is `MEDIA_OWNER_STREAMING_UPLOAD_PATH`.
+    if method == Method::POST && multipart && path.trim_end_matches('/') == "/api/media" {
+        return true;
+    }
+    // Registry artifact publication is the host-owned artifact upload route.
+    // `/api/artifacts/{installation}/{*path}` is bounded JSON dispatch and must
+    // keep the ordinary request budget.
+    method == Method::PUT && path_matches_route_template(path, registry_publish_artifact_path())
+}
+
+fn path_matches_route_template(path: &str, template: &str) -> bool {
+    let path_segments: Vec<&str> = path.split('/').filter(|segment| !segment.is_empty()).collect();
+    let template_segments: Vec<&str> = template
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    path_segments.len() == template_segments.len()
+        && path_segments
+            .iter()
+            .zip(template_segments.iter())
+            .all(|(actual, expected)| {
+                if expected.starts_with('{') && expected.ends_with('}') {
+                    !actual.is_empty()
+                } else {
+                    actual == expected
+                }
+            })
 }
 
 fn method_str(method: &Method) -> &'static str {
@@ -194,166 +216,92 @@ fn status_code_str(status: StatusCode) -> &'static str {
     }
 }
 
-/// Axum middleware to record live Prometheus HTTP metrics into `rustok_telemetry`.
-///
-/// Bounded path normalization protects Prometheus against metric cardinality explosion:
-/// 1. 404 responses from vulnerability scanners or invalid routes are bucketed into
-///    `/:not_found`, `/api/:not_found`, or `/admin/:not_found`.
-/// 2. Known health/metric probes (`/health`, `/metrics`, `/`) use static strings.
-/// 3. Dynamic IDs/UUIDs and resource slugs in URL paths are sanitized to `:id` or `:slug`.
-/// 4. Path traversal depth is strictly capped at 8 segments.
-/// 5. Method and status labels are statically referenced with zero heap allocations.
-pub async fn record_http_metrics(request: Request, next: Next) -> Response {
+#[derive(Clone, Default)]
+struct MatchedRouteSlot(Arc<Mutex<Option<String>>>);
+
+impl MatchedRouteSlot {
+    fn set(&self, path: &str) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = Some(path.to_string());
+        }
+    }
+
+    fn take(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
+/// Runs as a route layer, i.e. after Axum selected the route and attached
+/// `MatchedPath`. The outer metrics middleware wraps the router before routing,
+/// so it cannot observe that extension directly.
+async fn capture_matched_path(request: Request, next: Next) -> Response {
+    if let (Some(slot), Some(matched)) = (
+        request.extensions().get::<MatchedRouteSlot>(),
+        request.extensions().get::<MatchedPath>(),
+    ) {
+        slot.set(matched.as_str());
+    }
+    next.run(request).await
+}
+
+/// Records HTTP metrics with a bounded path-label vocabulary:
+/// routed requests use the router's path template; unmatched requests use a
+/// fixed bucket regardless of status. Raw URL segments never become labels.
+pub async fn record_http_metrics(mut request: Request, next: Next) -> Response {
     let start = Instant::now();
     let method = method_str(request.method());
-    let uri = request.uri().clone();
-
-    let matched_path = request
-        .extensions()
-        .get::<MatchedPath>()
-        .map(|m| m.as_str().to_string());
+    let raw_path = request.uri().path().to_string();
+    let slot = MatchedRouteSlot::default();
+    request.extensions_mut().insert(slot.clone());
 
     let response = next.run(request).await;
     let latency = start.elapsed().as_secs_f64();
     let status = response.status();
     let status_str = status_code_str(status);
-    let raw_path = uri.path();
-
-    // Cardinality protection: bucket 404 scan probes so bots cannot explode Prometheus memory
-    let (sanitized_holder, path_ref): (Option<String>, &str) = if status == StatusCode::NOT_FOUND {
-        if raw_path.starts_with("/api") {
-            (None, "/api/:not_found")
-        } else if raw_path.starts_with("/admin") {
-            (None, "/admin/:not_found")
-        } else {
-            (None, "/:not_found")
-        }
-    } else if let Some(ref matched) = matched_path {
-        (None, matched.as_str())
-    } else if raw_path == "/health" || raw_path == "/metrics" || raw_path == "/" {
-        (None, raw_path)
-    } else {
-        let s = sanitize_metrics_path(raw_path);
-        (Some(s), "")
-    };
-
-    let effective_path = if let Some(ref s) = sanitized_holder {
-        s.as_str()
-    } else {
-        path_ref
+    let effective_path = match slot.take() {
+        Some(matched) => matched,
+        None if status == StatusCode::NOT_FOUND => not_found_metrics_path(&raw_path).to_string(),
+        None => unmatched_metrics_path(&raw_path).to_string(),
     };
 
     rustok_telemetry::HTTP_REQUESTS_TOTAL
-        .with_label_values(&[method, effective_path, status_str])
+        .with_label_values(&[method, effective_path.as_str(), status_str])
         .inc();
     rustok_telemetry::HTTP_REQUEST_DURATION_SECONDS
-        .with_label_values(&[method, effective_path])
+        .with_label_values(&[method, effective_path.as_str()])
         .observe(latency);
 
     response
 }
 
-/// Sanitizes URL path segments replacing dynamic UUIDs, hashes, numeric IDs,
-/// and collection slugs with `:id` or `:slug` to prevent metric cardinality explosion.
-/// Trailing slashes and duplicate slashes are normalized. Segment depth is capped at 8.
-pub fn sanitize_metrics_path(path: &str) -> String {
-    let trimmed = path.trim_matches('/');
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-
-    let segments: Vec<&str> = trimmed
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .take(8)
-        .collect();
-
-    let mut sanitized = Vec::with_capacity(segments.len() + 1);
-    sanitized.push("");
-    let mut prev_is_collection = false;
-
-    for seg in segments {
-        if is_identifier_like(seg) {
-            sanitized.push(":id");
-            prev_is_collection = false;
-        } else if prev_is_collection && !is_known_action(seg) {
-            sanitized.push(":slug");
-            prev_is_collection = false;
+fn not_found_metrics_path(path: &str) -> &'static str {
+    if path == "/health" || path == "/metrics" || path == "/" {
+        if path == "/health" {
+            "/health"
+        } else if path == "/metrics" {
+            "/metrics"
         } else {
-            prev_is_collection = is_collection_name(seg);
-            sanitized.push(seg);
+            "/"
         }
+    } else if path.starts_with("/api") {
+        "/api/:not_found"
+    } else if path.starts_with("/admin") {
+        "/admin/:not_found"
+    } else {
+        "/:not_found"
     }
-    sanitized.join("/")
 }
 
-fn is_collection_name(s: &str) -> bool {
-    matches!(
-        s,
-        "products"
-            | "categories"
-            | "collections"
-            | "blog"
-            | "posts"
-            | "articles"
-            | "pages"
-            | "topics"
-            | "users"
-            | "tenants"
-            | "channels"
-            | "orders"
-            | "media"
-            | "bundles"
-            | "brands"
-            | "tags"
-            | "artifacts"
-            | "customers"
-            | "reviews"
-            | "variants"
-            | "locales"
-            | "roles"
-            | "permissions"
-    )
-}
-
-fn is_known_action(s: &str) -> bool {
-    matches!(
-        s,
-        "new"
-            | "create"
-            | "edit"
-            | "delete"
-            | "status"
-            | "download"
-            | "upload"
-            | "search"
-            | "preview"
-            | "list"
-            | "dlq"
-            | "items"
-            | "health"
-            | "metrics"
-            | "schema"
-            | "auth"
-            | "login"
-            | "register"
-            | "oauth"
-            | "public"
-            | "images"
-    )
-}
-
-fn is_identifier_like(s: &str) -> bool {
-    if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
-        return true;
+/// Unmatched non-404 responses (SPA fallbacks, method errors, redirects) must
+/// not create a new time series per requested URL.
+fn unmatched_metrics_path(path: &str) -> &'static str {
+    if path.starts_with("/api") {
+        "/api/:unmatched"
+    } else if path.starts_with("/admin") {
+        "/admin/:unmatched"
+    } else {
+        "/:unmatched"
     }
-    if s.len() == 36 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        return true;
-    }
-    if s.len() >= 32 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return true;
-    }
-    false
 }
 
 /// Applies the canonical production HTTP middleware stack:
@@ -413,7 +361,11 @@ pub fn apply_http_edge_stack(
         .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .layer(compression_layer);
 
-    router.layer(service_stack)
+    // Route layers run after routing and can capture `MatchedPath` for the
+    // outer metrics middleware. Fallbacks intentionally leave the slot empty.
+    router
+        .route_layer(from_fn(capture_matched_path))
+        .layer(service_stack)
 }
 
 #[cfg(test)]
@@ -426,41 +378,53 @@ mod tests {
     use tower::ServiceExt;
 
     #[test]
-    fn path_sanitization_masks_dynamic_identifiers_and_slugs() {
+    fn unmatched_paths_use_a_bounded_label_vocabulary() {
         assert_eq!(
-            sanitize_metrics_path("/api/users/123/orders"),
-            "/api/users/:id/orders"
+            unmatched_metrics_path("/api/products/550e8400-e29b-41d4-a716-446655440000"),
+            "/api/:unmatched"
         );
         assert_eq!(
-            sanitize_metrics_path("/api/users/123/orders/"),
-            "/api/users/:id/orders"
+            unmatched_metrics_path("/admin/modules/blog/settings"),
+            "/admin/:unmatched"
         );
-        assert_eq!(
-            sanitize_metrics_path("/api/tenants/550e8400-e29b-41d4-a716-446655440000/settings"),
-            "/api/tenants/:id/settings"
-        );
-        assert_eq!(
-            sanitize_metrics_path("/api/products/c3ab8ff13720e8ad9047dd39466b3c89"),
-            "/api/products/:id"
-        );
-        assert_eq!(
-            sanitize_metrics_path("/products/nike-air-max-90"),
-            "/products/:slug"
-        );
-        assert_eq!(
-            sanitize_metrics_path("/blog/announcing-rustok-v1/"),
-            "/blog/:slug"
-        );
-        assert_eq!(
-            sanitize_metrics_path("/categories/mens-footwear"),
-            "/categories/:slug"
-        );
-        assert_eq!(sanitize_metrics_path("/health"), "/health");
-        assert_eq!(sanitize_metrics_path("/"), "/");
+        assert_eq!(unmatched_metrics_path("/random/attacker-path"), "/:unmatched");
+        assert_eq!(not_found_metrics_path("/api/unknown/123"), "/api/:not_found");
+        assert_eq!(not_found_metrics_path("/health"), "/health");
+        assert_eq!(not_found_metrics_path("/metrics"), "/metrics");
+        assert_eq!(not_found_metrics_path("/"), "/");
+    }
+
+    #[tokio::test]
+    async fn matched_route_slot_receives_only_routed_templates() {
+        let router = Router::new()
+            .route("/items/{id}", get(|| async { "ok" }))
+            .route_layer(from_fn(capture_matched_path));
+        let slot = MatchedRouteSlot::default();
+        let mut request = Request::builder()
+            .uri("/items/secret-customer-id")
+            .body(Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(slot.clone());
+        let response = router.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(slot.take().as_deref(), Some("/items/{id}"));
+
+        let fallback = Router::new()
+            .fallback(|| async { "spa" })
+            .route_layer(from_fn(capture_matched_path));
+        let slot = MatchedRouteSlot::default();
+        let mut request = Request::builder()
+            .uri("/anything/attacker-controlled")
+            .body(Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(slot.clone());
+        let response = fallback.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(slot.take(), None);
     }
 
     #[test]
-    fn upload_request_requires_mutation_method() {
+    fn upload_request_requires_an_owner_upload_route() {
         let get_req = Request::builder()
             .method("GET")
             .uri("/api/media/avatar.png")
@@ -470,17 +434,36 @@ mod tests {
 
         let post_req = Request::builder()
             .method("POST")
-            .uri("/api/media/upload")
+            .uri("/api/media/")
+            .header("content-type", "multipart/form-data; boundary=abc")
             .body(())
             .unwrap();
         assert!(is_upload_request(&post_req));
 
         let put_req = Request::builder()
             .method("PUT")
-            .uri("/api/artifacts/bundle.tar.gz")
+            .uri("/v2/catalog/publish/550e8400-e29b-41d4-a716-446655440000/artifact")
+            .header("content-type", "application/octet-stream")
             .body(())
             .unwrap();
         assert!(is_upload_request(&put_req));
+
+        // Artifact HTTP dispatch is bounded JSON, not an upload transport.
+        let dispatch_req = Request::builder()
+            .method("POST")
+            .uri("/api/artifacts/installation/dispatch")
+            .header("content-type", "application/octet-stream")
+            .body(())
+            .unwrap();
+        assert!(!is_upload_request(&dispatch_req));
+
+        let login_req = Request::builder()
+            .method("POST")
+            .uri("/api/auth/login")
+            .header("content-type", "multipart/form-data; boundary=abc")
+            .body(())
+            .unwrap();
+        assert!(!is_upload_request(&login_req));
     }
 
     #[tokio::test]

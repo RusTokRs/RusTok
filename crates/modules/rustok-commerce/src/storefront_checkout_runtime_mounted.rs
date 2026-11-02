@@ -127,8 +127,12 @@ impl MountedRuntimeErrorContext {
 fn map_legacy_runtime_error(
     context: MountedRuntimeErrorContext,
     policy: MountedRuntimePublicPolicy,
-    _error: legacy::StorefrontCheckoutRuntimeError,
+    error: legacy::StorefrontCheckoutRuntimeError,
 ) -> StorefrontCheckoutRuntimeError {
+    let policy = MountedRuntimePublicPolicy {
+        retryable: error.owner_retryable().unwrap_or(policy.retryable),
+        ..policy
+    };
     let diagnostic_error = MountedRuntimeDiagnosticError;
     let legacy_error_type = std::any::type_name::<legacy::StorefrontCheckoutRuntimeError>();
 
@@ -268,4 +272,33 @@ pub async fn complete_storefront_checkout(
         command,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mounted_repricing_does_not_replace_the_owner_retry_bit_with_a_static_policy() {
+        let context = MountedRuntimeErrorContext::new(
+            uuid::Uuid::from_u128(1),
+            false,
+            uuid::Uuid::from_u128(2),
+            None,
+            "reprice",
+        );
+        for retryable in [false, true] {
+            let error = legacy::StorefrontCheckoutRuntimeError::from_port_error(
+                rustok_api::PortError::new(
+                    rustok_api::PortErrorKind::Unavailable,
+                    "pricing.product_identity_capability_unavailable",
+                    "private-owner-details",
+                    retryable,
+                ),
+            );
+            let public = map_legacy_runtime_error(context, SHIPPING_SELECTION_POLICY, error);
+            assert_eq!(public.retryable(), retryable);
+            assert!(!format!("{public:?}").contains("private-owner-details"));
+        }
+    }
 }

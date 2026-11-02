@@ -110,20 +110,20 @@ pub async fn complete_storefront_checkout(
 ///
 /// Native and remote-selected transports use this entrypoint so Product execution is chosen by
 /// `ProductCatalogReadRuntime` rather than reconstructed inside Commerce.
-pub async fn complete_storefront_checkout_with_product_port(
+pub async fn complete_storefront_checkout_with_product_runtime(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
-    product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>,
+    product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     tenant: &TenantContext,
     request_context: &RequestContext,
     auth: OptionalAuthContext,
     idempotency_key: impl Into<String>,
     command: StorefrontCheckoutCompletionCommand,
 ) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
-    complete_storefront_checkout_input_with_product_port(
+    complete_storefront_checkout_input_with_product_runtime(
         runtime,
         payment_provider_registry,
-        product_catalog_read_port,
+        product_catalog_read_runtime,
         tenant.id,
         request_context,
         auth.0,
@@ -144,8 +144,8 @@ pub async fn complete_storefront_checkout_with_product_port(
 
 /// Resolver-scoped compatibility wrapper.
 ///
-/// Mounted GraphQL schemas receive the host-selected Product runtime through the Commerce resolver
-/// scope. Directly embedded schemas retain an explicit in-process fallback.
+/// Mounted callers capture the full host-selected Product runtime in StorefrontCheckoutRuntime.
+/// Directly embedded callers explicitly construct its in-process baseline.
 pub async fn complete_storefront_checkout_input(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -155,16 +155,11 @@ pub async fn complete_storefront_checkout_input(
     idempotency_key: impl Into<String>,
     checkout_input: crate::dto::CompleteCheckoutInput,
 ) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
-    let product_catalog_read_port =
-        crate::graphql_runtime::product_catalog_read_runtime_for_current_graphql_scope(
-            runtime.db_clone(),
-            runtime.event_bus(),
-        )
-        .read_port();
-    complete_storefront_checkout_input_with_product_port(
+    let product_catalog_read_runtime = runtime.product_catalog_read_runtime();
+    complete_storefront_checkout_input_with_product_runtime(
         runtime,
         payment_provider_registry,
-        product_catalog_read_port,
+        product_catalog_read_runtime,
         tenant_id,
         request_context,
         auth,
@@ -176,10 +171,10 @@ pub async fn complete_storefront_checkout_input(
 
 /// Completes one storefront checkout through the durable staged owner-port pipeline using the
 /// Product port selected by host composition.
-pub async fn complete_storefront_checkout_input_with_product_port(
+pub async fn complete_storefront_checkout_input_with_product_runtime(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
-    product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>,
+    product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime,
     tenant_id: Uuid,
     request_context: &RequestContext,
     auth: Option<AuthContext>,
@@ -196,6 +191,17 @@ pub async fn complete_storefront_checkout_input_with_product_port(
         return Err(StorefrontStagedCheckoutRuntimeError::Validation(
             "cart_id must be a non-nil UUID".to_string(),
         ));
+    }
+    if tenant_id.is_nil()
+        || request_context.tenant_id != tenant_id
+        || auth
+            .as_ref()
+            .is_some_and(|auth| auth.tenant_id != tenant_id || auth.user_id.is_nil())
+        || request_context
+            .user_id
+            .is_some_and(|id| auth.as_ref().map(|auth| auth.user_id) != Some(id))
+    {
+        return Err(StorefrontStagedCheckoutRuntimeError::CartAccess);
     }
     let cart_id = checkout_input.cart_id;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
@@ -255,8 +261,8 @@ pub async fn complete_storefront_checkout_input_with_product_port(
     let pricing_resolver = Arc::new(crate::StorefrontCheckoutPricingResolver::new(
         runtime.db_clone(),
         event_bus.clone(),
-        request_context.channel_id,
-        request_context.channel_slug.clone(),
+        product_catalog_read_runtime.clone(),
+        cart_port_context.clone(),
     ));
     let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
         runtime.db_clone(),
@@ -283,7 +289,7 @@ pub async fn complete_storefront_checkout_input_with_product_port(
         runtime.db_clone(),
         rustok_region::in_process_region_read_port(runtime.db_clone()),
         inventory_availability,
-        product_catalog_read_port,
+        product_catalog_read_runtime.read_port(),
     );
     let pipeline = crate::CheckoutStagePipeline::new(
         runtime.db_clone(),
@@ -383,10 +389,17 @@ fn cart_context(
         tenant_id.to_string(),
         actor,
         request_context.locale.clone(),
-        format!("storefront-checkout:cart:{cart_id}"),
+        request_context.correlation_id.clone(),
     )
+    .with_causation_id(format!("storefront-checkout:cart:{cart_id}"))
     .with_idempotency_key(idempotency_key)
     .with_deadline(Duration::from_secs(2));
+    if let Some(auth) = auth {
+        context.claims.extend(auth.scopes.iter().cloned());
+        context
+            .claims
+            .extend(auth.permissions.iter().map(ToString::to_string));
+    }
     if let Some(channel) = request_context.channel_slug.as_deref() {
         context = context.with_channel(channel.to_string());
     }
@@ -401,8 +414,11 @@ fn map_owner_port_error(
     fallback: StorefrontStagedCheckoutRuntimeError,
 ) -> StorefrontStagedCheckoutRuntimeError {
     let public = match &error.kind {
-        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout if error.retryable => {
             StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
+        }
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+            StorefrontStagedCheckoutRuntimeError::CheckoutFailed
         }
         _ => fallback,
     };
@@ -465,6 +481,29 @@ fn map_checkout_error(
     actor_id: Uuid,
     error: crate::RecoveringStagedCheckoutError,
 ) -> StorefrontStagedCheckoutRuntimeError {
+    if let Some((code, retryable)) = error
+        .inventory_adoption_failure()
+        .and_then(crate::CheckoutInventoryOrderAdoptionError::bounded_failure)
+    {
+        let public = if retryable {
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
+        } else {
+            StorefrontStagedCheckoutRuntimeError::ReconciliationRequired
+        };
+        // Owner advice survives all wrappers, but is neither a receipt nor permission to
+        // compensate or change keys. Never log the nested owner/journal payload here.
+        tracing::warn!(
+            owner = STOREFRONT_STAGED_CHECKOUT_OWNER,
+            operation = "complete_storefront_checkout",
+            correlation_id = %context.correlation_id,
+            code,
+            retryable,
+            public_code = public.public_code(),
+            boundary = STOREFRONT_STAGED_CHECKOUT_BOUNDARY,
+            "storefront inventory adoption requires recovery of the existing checkout identity"
+        );
+        return public;
+    }
     let (public, error_kind) = match &error {
         crate::RecoveringStagedCheckoutError::StagedAndCompensation {
             compensation: crate::CheckoutCompensationError::ManualReconciliation(_),
@@ -484,6 +523,14 @@ fn map_checkout_error(
         crate::RecoveringStagedCheckoutError::Journal(_) => (
             StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
             "journal",
+        ),
+        crate::RecoveringStagedCheckoutError::Staged(crate::StagedCheckoutError::Checkout(
+            crate::CheckoutError::BoundaryFailure {
+                retryable: true, ..
+            },
+        )) => (
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable,
+            "staged_owner_retryable",
         ),
         crate::RecoveringStagedCheckoutError::Staged(_) => (
             StorefrontStagedCheckoutRuntimeError::CheckoutFailed,
@@ -506,4 +553,171 @@ fn map_checkout_error(
         "storefront staged checkout failed"
     );
     public
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request_context() -> RequestContext {
+        RequestContext {
+            tenant_id: Uuid::from_u128(1),
+            user_id: Some(Uuid::from_u128(2)),
+            channel_id: Some(Uuid::from_u128(8)),
+            channel_slug: Some("page-channel".into()),
+            channel_resolution_source: None,
+            locale: "fr".into(),
+            correlation_id: "original-checkout-request".into(),
+        }
+    }
+
+    #[test]
+    fn checkout_context_keeps_authenticated_caller_and_original_correlation() {
+        let request = request_context();
+        let auth = AuthContext {
+            user_id: request.user_id.unwrap(),
+            tenant_id: request.tenant_id,
+            session_id: Uuid::from_u128(3),
+            permissions: vec![],
+            client_id: None,
+            scopes: vec!["storefront:cart".into()],
+            grant_type: "authorization_code".into(),
+        };
+        let context = cart_context(
+            request.tenant_id,
+            Uuid::from_u128(4),
+            &request,
+            Some(&auth),
+            "original-key",
+        );
+        assert_eq!(context.actor, PortActor::user(auth.user_id.to_string()));
+        assert_eq!(context.claims, auth.scopes);
+        assert_eq!(context.correlation_id, request.correlation_id);
+        assert_eq!(context.locale, request.locale);
+        assert_eq!(context.idempotency_key.as_deref(), Some("original-key"));
+        assert_eq!(context.deadline_ms, Some(2000));
+        assert!(context.causation_id.is_some());
+    }
+
+    #[test]
+    fn checkout_guest_is_service_not_nil_user() {
+        let mut request = request_context();
+        request.user_id = None;
+        let context = cart_context(
+            request.tenant_id,
+            Uuid::from_u128(4),
+            &request,
+            None,
+            "original-key",
+        );
+        assert_eq!(context.actor, PortActor::service("storefront-checkout"));
+        assert_eq!(context.correlation_id, request.correlation_id);
+        assert!(context.claims.is_empty());
+    }
+
+    #[test]
+    fn owner_mapping_never_promotes_permanent_unavailability() {
+        let request = request_context();
+        let context = cart_context(
+            request.tenant_id,
+            Uuid::from_u128(4),
+            &request,
+            None,
+            "original-key",
+        );
+        for kind in [PortErrorKind::Unavailable, PortErrorKind::Timeout] {
+            for retryable in [false, true] {
+                let error = PortError::new(
+                    kind.clone(),
+                    "pricing.product_identity_capability_unavailable",
+                    "private-owner-details",
+                    retryable,
+                );
+                let public = map_owner_port_error(
+                    &context,
+                    "rustok_pricing",
+                    "resolve_product_price",
+                    error,
+                    StorefrontStagedCheckoutRuntimeError::CartAccess,
+                );
+                assert_eq!(public.retryable(), retryable);
+                assert!(!public.public_message().contains("private-owner-details"));
+            }
+        }
+    }
+
+    #[test]
+    fn staged_cart_pricing_retains_owner_retryability_at_final_boundary() {
+        let request = request_context();
+        let cart_id = Uuid::from_u128(4);
+        let context = cart_context(request.tenant_id, cart_id, &request, None, "original-key");
+        for retryable in [false, true] {
+            let error = crate::RecoveringStagedCheckoutError::Staged(
+                crate::StagedCheckoutError::Checkout(crate::CheckoutError::BoundaryFailure {
+                    stage: "cart_prepare_checkout",
+                    kind: PortErrorKind::Unavailable,
+                    code: "pricing.checkout_resolution_unavailable".into(),
+                    message: "private-owner-details".into(),
+                    retryable,
+                }),
+            );
+            let public = map_checkout_error(&context, cart_id, Uuid::nil(), error);
+            assert_eq!(public.retryable(), retryable);
+            assert!(!public.public_message().contains("private-owner-details"));
+        }
+    }
+
+    #[test]
+    fn inventory_adoption_preserves_advice_and_reconciliation_through_all_error_wrappers() {
+        let request = request_context();
+        let cart_id = Uuid::from_u128(4);
+        let context = cart_context(request.tenant_id, cart_id, &request, None, "original-key");
+        for retryable in [false, true] {
+            for wrapper in 0..3 {
+                let pipeline = crate::CheckoutStagePipelineError::OrderStage(Box::new(
+                    crate::CheckoutOrderStageError::Creation(
+                        crate::CheckoutOrderCreationError::Adoption(
+                            crate::CheckoutInventoryOrderAdoptionError::Boundary {
+                                code: "inventory.adoption_unverified".to_string(),
+                                message: "Existing checkout identity requires recovery",
+                                retryable,
+                            },
+                        ),
+                    ),
+                ));
+                let error = match wrapper {
+                    0 => crate::RecoveringStagedCheckoutError::Staged(
+                        crate::StagedCheckoutError::Pipeline(pipeline),
+                    ),
+                    1 => crate::RecoveringStagedCheckoutError::Staged(
+                        crate::StagedCheckoutError::PipelineAndJournal {
+                            pipeline: Box::new(pipeline),
+                            journal: crate::CheckoutOperationError::Database(
+                                sea_orm::DbErr::Custom("private-journal-diagnostic".to_string()),
+                            ),
+                        },
+                    ),
+                    _ => crate::RecoveringStagedCheckoutError::StagedAndJournal {
+                        staged: Box::new(crate::StagedCheckoutError::Pipeline(pipeline)),
+                        journal: crate::CheckoutOperationError::Database(sea_orm::DbErr::Custom(
+                            "private-journal-diagnostic".to_string(),
+                        )),
+                    },
+                };
+                let public = map_checkout_error(&context, cart_id, Uuid::nil(), error);
+                assert_eq!(public.retryable(), retryable);
+                if !retryable {
+                    assert!(matches!(
+                        public,
+                        StorefrontStagedCheckoutRuntimeError::ReconciliationRequired
+                    ));
+                }
+                assert!(
+                    !public
+                        .public_message()
+                        .contains("private-journal-diagnostic")
+                );
+            }
+        }
+    }
 }

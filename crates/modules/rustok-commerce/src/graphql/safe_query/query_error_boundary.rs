@@ -400,6 +400,12 @@ impl From<FulfillmentError> for BoundaryError {
                 false,
                 "invalid_transition",
             ),
+            FulfillmentError::OwnerPort(stock) => (
+                "Fulfillment operation requires owner reconciliation",
+                "FULFILLMENT_RECONCILIATION_REQUIRED",
+                rustok_fulfillment::error::owner_port_error(stock).retryable,
+                "shipment_stock",
+            ),
             FulfillmentError::Database(_) => (
                 "Fulfillment data is temporarily unavailable",
                 "FULFILLMENT_TEMPORARILY_UNAVAILABLE",

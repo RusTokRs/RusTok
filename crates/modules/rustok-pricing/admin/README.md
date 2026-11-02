@@ -14,8 +14,9 @@ Leptos admin UI package for the `rustok-pricing` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses native `#[server]` functions as the default admin transport and keeps the existing `rustok-commerce` GraphQL facade in parallel behind the module-owned `admin/src/transport.rs` facade.
 - Exposes operator-side effective price inspection for `currency + optional region_id + optional price_list_id + optional quantity` without moving pricing ownership back into the host app.
-- Resolves active tenant-scoped price lists through `rustok-pricing::PricingService`
-  so operators can select overlays from pricing-owned data instead of typing raw UUIDs.
+- Resolves active tenant-scoped price lists through the canonical Pricing read port,
+  including bootstrap and ID-only/slug-only channel completion, so operators select
+  owner projections without mixing an explicit channel with the host's selector half.
 - Exposes normalized `discount_percent` on effective prices and variant price rows so sale math is available as typed read-side metadata instead of being inferred ad hoc in the host app.
 - Exposes a module-owned variant-price write path for base rows and active `price_list_id` overrides, including quantity-tier authoring via `min_quantity` / `max_quantity`.
 - Rejects invalid write-side scope identifiers such as malformed `price_list_id` instead of silently falling back to the base row.
@@ -50,3 +51,26 @@ Leptos admin UI package for the `rustok-pricing` module.
 
 - [CRATE_API.md](CRATE_API.md)
 - See [platform docs](../../../../docs/index.md).
+
+
+## Authoritative quote read continuation (2026-10-29)
+
+Effective prices use the bounded canonical Pricing batch port, retaining source-row /
+rule provenance, normalized context and resolution time on both selected transports.
+The public atlas uses real owner coverage (`storefrontPricingCatalog`), not fabricated
+SKU counts/currency defaults or a product-detail waterfall. Raw base/scoped rows are
+inspection data and do not replace an absent contextual quote. Selector URLs are
+encoded by the shared query primitive; a missing channel selector means the current
+host channel, not an implicit global preview.
+
+Source-only: no tests, Rust compilation, mounted or browser execution are certified.
+Durable Pricing write receipts/CAS and list-change event completeness remain pending
+in the [owner plan](../docs/implementation-plan.md). Product's real sparse-axis buyer
+selection, quantity refresh and cart-context handoff remain a separate next block.
+
+
+The 2026-10-30 recheck routes native bootstrap/active-list discovery through the same
+canonical list projection as GraphQL, retains trusted request correlation/actor claims,
+and refuses inconsistent tenants or contradictory channels. Selector regression source
+is extended but unrun; the [owner recheck](../docs/implementation-plan.md#targeted-recheck-2026-10-30)
+records static checks separately from required runtime evidence.

@@ -3,7 +3,7 @@ import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
   darkMode: "class",
-  content: ["./src/**/*.{ts,tsx}"],
+  content: ["./src/**/*.{ts,tsx}", "./packages/**/*.{ts,tsx}", "../../packages/rustok-ui-controls/src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {

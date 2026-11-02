@@ -189,7 +189,7 @@ async fn event_dispatcher_routes_registered_handler_and_commits_projection() -> 
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
-    running.stop();
+    running.stop().await.expect("dispatcher stop");
     test_db.cleanup().await
 }
 

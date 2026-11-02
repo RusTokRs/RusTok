@@ -78,11 +78,43 @@
 
 ## Shipment stock port
 
-`ShipmentStockPort` (`consume_shipped`, `restore_unshipped`, `reconsume_restored`) is declared here
-and implemented by the host composition (`rustok-commerce` wires the inventory-backed adapter).
-`FulfillmentService::new` is fail-closed: ship, cancel of a shipped fulfillment and reopen of a
-cancelled one fail until `with_shipment_stock_port` is called; use `NoopShipmentStockPort` for
-deployments without stock tracking. See `DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md`.
+F owns `ShipmentStockPort::prepare` and the returned `PreparedShipmentStock::apply` protocol.
+C composes the selected saved Order binding read with Inventory's native proof/arithmetic;
+F has no Order/Inventory dependency. Preparation precedes carrier/F write transaction, and
+an opaque token must match the full locked F snapshot before native effects use that same
+transaction as progress/provider checkpoint. Maximum scope is 1024 items; creation and native
+complete projections share that bound, refusing oversized retained work without truncation.
+
+`FulfillmentService::new` is fail-closed for positive stock movement. A fresh header-only Ship
+is unknown, not SKU-less: native composition refuses, Unconfigured fails before carrier, and
+only explicit `NoopShipmentStockPort` opts out. Pending cancellation, delivery and undo-delivery
+do not acquire stock dependencies. Deadlines remain the original decreasing positive budget.
+
+Owner local recovery retains the literal saved provider key and current operator context,
+never invokes a carrier, and commits native stock/progress/checkpoint atomically. Committed
+recovery does not require O/I. `cancel_pending_fulfillment` rechecks Pending under lock; kernel
+deliver/reopen replay uses a request/response receipt, unlike plain domain methods.
+
+The forward-only F121 provider-admission correction is registered after F120, but unexecuted.
+Pending claim/private uninvoked release require absent result/reference/completion/commit
+markers; shared unresolved fencing includes malformed Pending and incomplete Committed.
+Explicit operator no-effect confirmation requeues the same Recon/ERROR identity Pending only
+without reference/result/commit evidence. ERROR never permits automatic carrier execution.
+Success resolution preserves/CASes retained reference; Executing needs explicit stale quarantine.
+Retained tenant/Fulfillment/literal key pins provider selection; bounded ambiguous bindings
+refuse under parent admission/claim locks. Terminal status is not key/payload replay. Late success
+stays quarantined with immutable result/reference; explicit identical success resolution preserves
+stored facts/completion time. Automatic lifecycle/create-label calls honor that quarantine.
+Unavailable registry preflight leaves a known-uninvoked original intent Pending.
+Pending cancellation reopens Pending unless actual shipped progress/timestamp exists.
+Recovery/native wrappers and final progress/receipt commits keep the original decreasing budget;
+Delivered reship correlates a movement-free native scope without stock peers.
+Rollout must drain old provider/stock writers and install both I025 and F121 before enabling
+matching binaries. Historical migration payloads, rows and immutable keys are not rewritten.
+
+This is source-only, uncompiled/unexecuted work, not carrier/SQL/remote certification. See the
+[owning amendment](../../../DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md#shipment-identity-and-native-movement-provenance-amendment-2026-11-01)
+and [source handoff](../rustok-commerce/docs/implementation-plan.md#shipment-stock-provenance-source-evidence).
 
 ## Interactions
 
@@ -111,3 +143,13 @@ disabled. See
 - `entities::*`
 
 See also `docs/README.md` and [CRATE_API.md](CRATE_API.md).
+
+## Native physical stock invalidations
+
+Native I now queues the canonical stock invalidation on F's existing physical write
+transaction. F retains lifecycle, progress and consumer ownership, with no new Inventory/Order dependency
+or substitute F publisher. Preparation/no movement emit none; required publication errors
+roll back local effects. The [Inventory contract](../rustok-inventory/CRATE_API.md#native-stock-outbox-2026-11-01-source-only)
+and [source handoff](../rustok-commerce/docs/implementation-plan.md#native-stock-outbox-continuation-source-evidence)
+record descriptive global quantities and 16 additional Rust/10 Node cases, all unrun.
+Delivery, concurrency, generic Index and Product step 8 remain unverified.

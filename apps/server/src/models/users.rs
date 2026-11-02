@@ -15,6 +15,18 @@ impl Model {
         self.email_verified_at.is_some()
     }
 
+    /// Fail closed for delegated OAuth tokens minted at or before the last
+    /// password change. JWT `iat` has second granularity, so equality is
+    /// rejected to avoid accepting a token issued earlier in the same second.
+    pub fn rejects_delegated_token_issued_at(
+        &self,
+        issued_at: chrono::DateTime<chrono::Utc>,
+    ) -> bool {
+        self.password_changed_at
+            .map(|changed_at| issued_at <= changed_at.with_timezone(&chrono::Utc))
+            .unwrap_or(false)
+    }
+
     /// Create a minimal in-memory user model for OAuth2 service tokens.
     /// Used when the JWT `sub` is an app_id, not a real user_id.
     pub fn default_service_user(app_id: Uuid, tenant_id: Uuid) -> Self {
@@ -29,6 +41,7 @@ impl Model {
             last_login_at: None,
             failed_login_count: 0,
             locked_until: None,
+            password_changed_at: None,
             metadata: serde_json::json!({}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),
@@ -49,6 +62,7 @@ impl ActiveModel {
             last_login_at: sea_orm::ActiveValue::NotSet,
             failed_login_count: sea_orm::ActiveValue::Set(0),
             locked_until: sea_orm::ActiveValue::Set(None),
+            password_changed_at: sea_orm::ActiveValue::NotSet,
             metadata: sea_orm::ActiveValue::Set(serde_json::json!({})),
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
@@ -81,5 +95,28 @@ impl Entity {
             .filter(users::Column::Email.eq(email.to_lowercase()))
             .one(db)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+
+    #[test]
+    fn delegated_credential_epoch_rejects_tokens_issued_at_or_before_change() {
+        let mut user = Model::default_service_user(Uuid::new_v4(), Uuid::new_v4());
+        let changed_at = Utc::now();
+        user.password_changed_at = Some(changed_at.into());
+
+        assert!(user.rejects_delegated_token_issued_at(changed_at - Duration::seconds(1)));
+        assert!(user.rejects_delegated_token_issued_at(changed_at));
+        assert!(!user.rejects_delegated_token_issued_at(changed_at + Duration::seconds(1)));
+    }
+
+    #[test]
+    fn delegated_credential_epoch_is_absent_for_legacy_users() {
+        let user = Model::default_service_user(Uuid::new_v4(), Uuid::new_v4());
+        assert!(!user.rejects_delegated_token_issued_at(Utc::now()));
     }
 }

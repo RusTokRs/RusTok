@@ -31,14 +31,14 @@ interface AttributeCreateDialogProps {
 
 const VALUE_TYPES = [
   { value: 'text', label: 'Text (Single line)' },
-  { value: 'rich_text', label: 'Rich Text (Formatted)' },
+  { value: 'richtext', label: 'Rich Text (Formatted)' },
   { value: 'integer', label: 'Integer (Whole number)' },
   { value: 'decimal', label: 'Decimal (Floating number)' },
   { value: 'boolean', label: 'Boolean (Yes/No)' },
   { value: 'date', label: 'Date' },
   { value: 'datetime', label: 'Date & Time' },
-  { value: 'option', label: 'Single Option (Select dropdown)' },
-  { value: 'multi_option', label: 'Multi Option (Checklist)' },
+  { value: 'select', label: 'Single Option (Select dropdown)' },
+  { value: 'multiselect', label: 'Multi Option (Checklist)' },
   { value: 'json', label: 'JSON (Raw structured)' }
 ];
 
@@ -51,6 +51,8 @@ export function AttributeCreateDialog({
   const [label, setLabel] = React.useState('');
   const [code, setCode] = React.useState('');
   const [valueType, setValueType] = React.useState('text');
+  const [scope, setScope] =
+    React.useState<CreateProductAttributePayload['scope']>('product');
   const [helpText, setHelpText] = React.useState('');
   const [isLocalized, setIsLocalized] = React.useState(false);
   const [isFilterable, setIsFilterable] = React.useState(true);
@@ -94,6 +96,7 @@ export function AttributeCreateDialog({
         label: label.trim(),
         code: code.trim(),
         valueType,
+        scope,
         helpText: helpText.trim() || undefined,
         isLocalized,
         isFilterable,
@@ -106,6 +109,7 @@ export function AttributeCreateDialog({
       setLabel('');
       setCode('');
       setValueType('text');
+      setScope('product');
       setHelpText('');
       setIsLocalized(false);
       setIsFilterable(true);
@@ -140,6 +144,30 @@ export function AttributeCreateDialog({
           </DialogHeader>
 
           <div className='grid gap-4 py-4'>
+            <div className='space-y-1.5'>
+              <Label htmlFor='attr-scope'>Value scope</Label>
+              <Select
+                value={scope}
+                onValueChange={(value) =>
+                  setScope(value as CreateProductAttributePayload['scope'])
+                }
+                disabled={isSubmitting}
+              >
+                <SelectTrigger id='attr-scope'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='product'>Product</SelectItem>
+                  <SelectItem value='variant'>Variant (SKU)</SelectItem>
+                  <SelectItem value='both'>Product and variant</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className='text-muted-foreground text-xs'>
+                Variant axes require a select attribute with variant or both
+                scope.
+              </p>
+            </div>
+
             <div className='grid grid-cols-2 gap-3'>
               <div className='space-y-1.5'>
                 <Label htmlFor='attr-label'>Label *</Label>

@@ -374,7 +374,18 @@ async fn inventory_service_supports_normalized_inventory_on_migrated_schema() {
         .await
         .expect("inventory service should initialize inventory");
     inventory
-        .reserve(tenant_id, variant_id, 6)
+        .reserve(
+            &rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::user(actor_id.to_string()),
+                "en",
+                "migrated-inventory-reserve",
+            )
+            .with_deadline(std::time::Duration::from_secs(2))
+            .with_idempotency_key("migrated-inventory-reserve"),
+            variant_id,
+            6,
+        )
         .await
         .expect("inventory service should reserve inventory");
 

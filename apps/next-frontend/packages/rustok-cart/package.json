@@ -7,7 +7,9 @@
   "types": "./src/index.tsx",
   "license": "BUSL-1.1",
   "dependencies": {
-    "lucide-react": "^1.48.0"
+    "lucide-react": "^1.48.0",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
+    "@rustok/pricing-frontend": "file:../rustok-pricing"
   },
   "peerDependencies": {
     "react": "^19.0.0",

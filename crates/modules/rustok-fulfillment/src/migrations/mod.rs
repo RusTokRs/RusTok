@@ -14,6 +14,7 @@ mod m20260713_000117_enforce_checkout_fulfillment_identity;
 mod m20260912_000118_add_shipping_option_translation_change_journal;
 mod m20260925_000119_type_checkout_fulfillment_identity;
 mod m20261003_000120_create_checkout_identity_anchor;
+mod m20261101_000121_enforce_provider_effect_admission;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -36,11 +37,16 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260912_000118_add_shipping_option_translation_change_journal::Migration),
         Box::new(m20260925_000119_type_checkout_fulfillment_identity::Migration),
         Box::new(m20261003_000120_create_checkout_identity_anchor::Migration),
+        Box::new(m20261101_000121_enforce_provider_effect_admission::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261101_000121_enforce_provider_effect_admission",
+            vec!["m20261003_000120_create_checkout_identity_anchor"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20260713_000109_enforce_fulfillment_integrity",
             vec![

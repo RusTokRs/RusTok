@@ -8,15 +8,20 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-import type { storefrontGraphql } from '@/shared/lib/graphql';
+import type { storefrontGraphql } from "@/shared/lib/graphql";
+import {
+  assertPricingGraphqlSuccess,
+  assertPricingQuoteResponse,
+  normalizePricingQuery,
+} from "./core";
 import type {
   PricingChannelOption,
   PricingPriceListOption,
   PricingProductDetail,
   PricingProductList,
   StorefrontPricingData,
-  StorefrontPricingQuery
-} from './types';
+  StorefrontPricingQuery,
+} from "./types";
 
 type GraphqlExecutor = typeof storefrontGraphql;
 
@@ -26,21 +31,9 @@ export const STOREFRONT_PRODUCTS_QUERY = `
     $channelId: UUID
     $channelSlug: String
   ) {
-    storefrontProducts(locale: $locale) {
-      total
-      page
-      perPage
-      hasNext
-      items {
-        id
-        title
-        handle
-        sellerId
-        vendor
-        productType
-        createdAt
-        publishedAt
-      }
+    storefrontPricingCatalog(locale: $locale, channelId: $channelId, channelSlug: $channelSlug, page: 1, perPage: 8) {
+      total page perPage hasNext
+      items { id title handle sellerId vendor productType createdAt publishedAt variantCount saleVariantCount currencies }
     }
     storefrontPricingChannels {
       id
@@ -83,6 +76,8 @@ export const STOREFRONT_PRODUCT_QUERY = `
       channelSlug: $channelSlug
       quantity: $quantity
     ) {
+      resolutionContext { currencyCode regionId priceListId channelId channelSlug quantity }
+      resolvedAt
       id
       status
       sellerId
@@ -107,6 +102,7 @@ export const STOREFRONT_PRODUCT_QUERY = `
           onSale
         }
         effectivePrice {
+          source { priceId kind ruleKind adjustmentPercent }
           currencyCode
           amount
           compareAtAmount
@@ -128,95 +124,64 @@ export async function fetchStorefrontPricing(
   graphql: GraphqlExecutor,
   query: StorefrontPricingQuery,
   token?: string | null,
-  tenantSlug?: string | null
+  tenantSlug?: string | null,
 ): Promise<StorefrontPricingData> {
-  const [productsRes, productRes] = await Promise.all([
-    graphql<{
-      storefrontProducts?: {
-        items: Array<{
-          id: string;
-          title: string;
-          handle: string;
-          sellerId?: string | null;
-          vendor?: string | null;
-          productType?: string | null;
-          createdAt: string;
-          publishedAt?: string | null;
-        }>;
-        total: number;
-        page: number;
-        perPage: number;
-        hasNext: boolean;
-      };
-      storefrontPricingChannels?: PricingChannelOption[];
-      storefrontActivePriceLists?: PricingPriceListOption[];
+  query = normalizePricingQuery(query);
+  const productsRes = await graphql<{
+    storefrontPricingCatalog: PricingProductList;
+    storefrontPricingChannels: PricingChannelOption[];
+    storefrontActivePriceLists: PricingPriceListOption[];
+  }>({
+    query: STOREFRONT_PRODUCTS_QUERY,
+    variables: {
+      locale: query.locale ?? undefined,
+      channelId: query.channelId ?? undefined,
+      channelSlug: query.channelSlug ?? undefined,
+    },
+    token: token ?? undefined,
+    tenant: tenantSlug ?? undefined,
+  });
+  assertPricingGraphqlSuccess(productsRes);
+  const products = productsRes.data?.storefrontPricingCatalog;
+  if (!products) throw new Error("Pricing catalog response is unavailable");
+  const availableChannels = productsRes.data?.storefrontPricingChannels;
+  const activePriceLists = productsRes.data?.storefrontActivePriceLists;
+  if (!availableChannels || !activePriceLists)
+    throw new Error("Pricing discovery response is unavailable");
+  const selectedHandle =
+    query.selectedHandle?.trim() || products.items[0]?.handle || null;
+  let selectedProduct: PricingProductDetail | null = null;
+  if (selectedHandle) {
+    const productRes = await graphql<{
+      storefrontPricingProduct: PricingProductDetail | null;
     }>({
-      query: STOREFRONT_PRODUCTS_QUERY,
+      query: STOREFRONT_PRODUCT_QUERY,
       variables: {
         locale: query.locale ?? undefined,
+        handle: selectedHandle,
+        currencyCode: query.currencyCode || undefined,
+        regionId: query.regionId ?? undefined,
+        priceListId: query.priceListId ?? undefined,
         channelId: query.channelId ?? undefined,
-        channelSlug: query.channelSlug ?? undefined
+        channelSlug: query.channelSlug ?? undefined,
+        quantity: query.quantity ?? undefined,
       },
       token: token ?? undefined,
-      tenant: tenantSlug ?? undefined
-    }),
-    query.selectedHandle
-      ? graphql<{
-          storefrontPricingProduct?: PricingProductDetail | null;
-        }>({
-          query: STOREFRONT_PRODUCT_QUERY,
-          variables: {
-            locale: query.locale ?? undefined,
-            handle: query.selectedHandle,
-            currencyCode: query.currencyCode ?? undefined,
-            regionId: query.regionId ?? undefined,
-            priceListId: query.priceListId ?? undefined,
-            channelId: query.channelId ?? undefined,
-            channelSlug: query.channelSlug ?? undefined,
-            quantity: query.quantity ?? undefined
-          },
-          token: token ?? undefined,
-          tenant: tenantSlug ?? undefined
-        })
-      : Promise.resolve({ data: { storefrontPricingProduct: null } })
-  ]);
-
-  if (productsRes.errors?.length) {
-    throw new Error(productsRes.errors[0]?.message ?? 'Products query failed');
+      tenant: tenantSlug ?? undefined,
+    });
+    assertPricingGraphqlSuccess(productRes);
+    if (!productRes.data || !("storefrontPricingProduct" in productRes.data)) {
+      throw new Error("Pricing product response is unavailable");
+    }
+    selectedProduct = productRes.data.storefrontPricingProduct;
+    if (selectedProduct) assertPricingQuoteResponse(selectedProduct, query);
   }
-  if ('errors' in productRes && productRes.errors?.length) {
-    throw new Error(productRes.errors[0]?.message ?? 'Product pricing query failed');
-  }
-
-  const rawProducts = productsRes.data?.storefrontProducts;
-  const items = (rawProducts?.items ?? []).map((item) => ({
-    ...item,
-    variantCount: 1,
-    saleVariantCount: 0,
-    currencies: query.currencyCode ? [query.currencyCode] : ['USD']
-  }));
-
-  const products: PricingProductList = {
-    items,
-    total: rawProducts?.total ?? items.length,
-    page: rawProducts?.page ?? 1,
-    perPage: rawProducts?.perPage ?? 20,
-    hasNext: rawProducts?.hasNext ?? false
-  };
-
   return {
     products,
-    selectedProduct: productRes.data?.storefrontPricingProduct ?? null,
-    selectedHandle: query.selectedHandle ?? null,
-    resolutionContext: {
-      currencyCode: query.currencyCode ?? 'USD',
-      regionId: query.regionId ?? null,
-      priceListId: query.priceListId ?? null,
-      channelId: query.channelId ?? null,
-      channelSlug: query.channelSlug ?? null,
-      quantity: query.quantity ?? 1
-    },
-    availableChannels: productsRes.data?.storefrontPricingChannels ?? [],
-    activePriceLists: productsRes.data?.storefrontActivePriceLists ?? []
+    selectedProduct,
+    selectedHandle,
+    resolutionContext: selectedProduct?.resolutionContext ?? null,
+    availableChannels,
+    activePriceLists,
   };
 }

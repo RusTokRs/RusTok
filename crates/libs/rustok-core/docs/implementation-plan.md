@@ -54,3 +54,13 @@ needed and keeps no compatibility exports for their former locations.
    canonical foundation crate.
 2. Update the root README and local docs with a core contract change.
 3. Update consumer docs whenever a shared behavior changes live semantics.
+
+## Acknowledged sealed module delivery (2026-11-01; source only)
+
+The real Inventory/Search continuation extends existing EventHandler, dispatcher, bus and Memory
+with typed opt-in/awaited errors, bounded concurrency and Weak lifecycle binding. Root APIs and
+best-effort broadcast remain unchanged; retry/DLQ stays Outbox-owned, not a new Core queue.
+Server startup now propagates listener binding failures. Six focused regression definitions are
+**uncompiled/unrun**. Remaining: scoped Rust compilation, lifecycle/capacity/shutdown races and
+configured delivery/restart evidence. See the [API](../CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
+and [decision](../../../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).

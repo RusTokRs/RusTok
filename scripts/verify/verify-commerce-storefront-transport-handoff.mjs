@@ -228,7 +228,7 @@ for (const endpoint of ["commerce/create-payment-collection", "commerce/select-s
 assertContains(runtimeApi, "pub async fn create_storefront_payment_collection", `${runtimePath}: commerce runtime API must expose payment collection orchestration`);
 assertContains(runtimeApi, "pub async fn read_storefront_order_refunds", `${runtimePath}: commerce runtime API must expose access-checked order refund reads to the payment owner adapter`);
 assertContains(runtimeApi, "pub async fn select_storefront_shipping_option", `${runtimePath}: commerce runtime API must expose shipping selection orchestration`);
-assertContains(stagedRuntimeApi, "pub async fn complete_storefront_checkout_with_product_port", `${stagedRuntimePath}: staged commerce runtime API must expose checkout completion orchestration with the host-composed Product port`);
+assertContains(stagedRuntimeApi, "pub async fn complete_storefront_checkout_with_product_runtime", `${stagedRuntimePath}: staged commerce runtime API must expose checkout completion orchestration with the host-composed Product port`);
 assertContains(runtimeApi, "StorefrontPaymentCollectionCommand", `${runtimePath}: runtime API must use typed payment command input`);
 assertContains(runtimeApi, "StorefrontShippingSelectionCommand", `${runtimePath}: runtime API must use typed fulfillment command input`);
 assertContains(runtimeApi, "StorefrontCheckoutCompletionCommand", `${runtimePath}: runtime API must use typed order command input`);

@@ -28,5 +28,5 @@ fn module_contract_metadata_matches() {
     assert_eq!(module.slug(), "pricing");
     assert_eq!(module.name(), "Pricing");
     assert_eq!(module.kind(), ModuleKind::Optional);
-    assert_eq!(module.dependencies(), &["product"]);
+    assert_eq!(module.dependencies(), &["product", "region"]);
 }

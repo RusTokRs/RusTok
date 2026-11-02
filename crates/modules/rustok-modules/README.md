@@ -160,6 +160,11 @@ around the owner contracts.
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 
+- Sealed artifact subscription intake is now source-wired through the existing durable queue
+  with original-envelope dedupe and unchanged root representation. Two new definitions are
+  uncompiled/unrun; actual backend exact/wildcard delivery, worker/restart and transport recovery
+  remain open. See the [intake API](CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).
+
 - Scoped OCI admission and executor-readiness identity changes require
   PostgreSQL migration, RLS, and concurrent-admission verification before
   production use.

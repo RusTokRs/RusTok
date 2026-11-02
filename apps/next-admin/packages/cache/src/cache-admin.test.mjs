@@ -91,12 +91,14 @@ test('GraphQL queries and mutations expose required schema fields', () => {
   assert.match(api.PLATFORM_SETTINGS_QUERY, /platformSettings\(category: \$category\)/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /category/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /settings/);
+  assert.match(api.PLATFORM_SETTINGS_QUERY, /schemaVersion/);
 
   // Mutation fields
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /updatePlatformSettings\(input: \$input\)/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /success/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /category/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /settings/);
+  assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /schemaVersion/);
 });
 
 test('getCacheHealth propagates token and tenantSlug and returns health payload', async () => {
@@ -135,7 +137,8 @@ test('getCacheSettings parses valid JSON and merges with defaults', async () => 
           mode: 'redis',
           redis_host: '10.0.0.5',
           redis_port: 6380
-        })
+        }),
+        schemaVersion: 7
       }
     };
   });
@@ -145,23 +148,25 @@ test('getCacheSettings parses valid JSON and merges with defaults', async () => 
     tenantSlug: 'my-tenant'
   });
 
-  assert.equal(res.mode, 'redis');
-  assert.equal(res.redis_host, '10.0.0.5');
-  assert.equal(res.redis_port, 6380);
-  assert.equal(res.redis_db, 0); // Preserved from defaults
-  assert.equal(res.redis_password, ''); // Preserved from defaults
+  assert.equal(res.schemaVersion, 7);
+  assert.equal(res.settings.mode, 'redis');
+  assert.equal(res.settings.redis_host, '10.0.0.5');
+  assert.equal(res.settings.redis_port, 6380);
+  assert.equal(res.settings.redis_db, 0); // Preserved from defaults
+  assert.equal(res.settings.redis_password, ''); // Preserved from defaults
 });
 
 test('getCacheSettings falls back to DEFAULT_CACHE_SETTINGS on invalid JSON', async () => {
   const api = createApiModule(async () => ({
     platformSettings: {
       category: 'cache',
-      settings: 'invalid-json-content{'
+      settings: 'invalid-json-content{',
+      schemaVersion: 4
     }
   }));
 
   const res = await api.getCacheSettings();
-  assert.deepEqual(res, api.DEFAULT_CACHE_SETTINGS);
+  assert.deepEqual(res, { settings: api.DEFAULT_CACHE_SETTINGS, schemaVersion: 4 });
 });
 
 test('updateCacheSettings serializes payload and returns merged settings', async () => {
@@ -184,7 +189,8 @@ test('updateCacheSettings serializes payload and returns merged settings', async
           redis_host: 'redis.internal',
           redis_port: 6379,
           redis_db: 2
-        })
+        }),
+        schemaVersion: 9
       }
     };
   };
@@ -192,16 +198,19 @@ test('updateCacheSettings serializes payload and returns merged settings', async
   const api = createApiModule(mockGraphqlRequest);
   const updated = await api.updateCacheSettings(
     { mode: 'hybrid', redis_host: 'redis.internal', redis_db: 2 },
+    8,
     { token: 'secret-token', tenantSlug: 'tenant-beta' }
   );
 
-  assert.equal(updated.mode, 'hybrid');
-  assert.equal(updated.redis_host, 'redis.internal');
-  assert.equal(updated.redis_db, 2);
-  assert.equal(updated.redis_port, 6379);
+  assert.equal(updated.schemaVersion, 9);
+  assert.equal(updated.settings.mode, 'hybrid');
+  assert.equal(updated.settings.redis_host, 'redis.internal');
+  assert.equal(updated.settings.redis_db, 2);
+  assert.equal(updated.settings.redis_port, 6379);
 
   assert.match(calledQuery, /updatePlatformSettings/);
   assert.equal(calledVars.input.category, 'cache');
+  assert.equal(calledVars.input.expectedSchemaVersion, 8);
   assert.deepEqual(
     JSON.parse(calledVars.input.settings),
     { mode: 'hybrid', redis_host: 'redis.internal', redis_db: 2 }
@@ -215,11 +224,33 @@ test('updateCacheSettings returns defaults if backend returns unparseable respon
     updatePlatformSettings: {
       success: true,
       category: 'cache',
-      settings: 'broken-json'
+      settings: 'broken-json',
+      schemaVersion: 6
     }
   }));
 
-  const res = await api.updateCacheSettings({ mode: 'redis' });
-  assert.deepEqual(res, api.DEFAULT_CACHE_SETTINGS);
+  const res = await api.updateCacheSettings({ mode: 'redis' }, 5);
+  assert.deepEqual(res, { settings: api.DEFAULT_CACHE_SETTINGS, schemaVersion: 6 });
+});
+
+test('updateCacheSettings propagates a stale-revision conflict without replacing the snapshot', async () => {
+  const conflict = new Error('CONFLICT: Settings were changed concurrently; re-read the category and retry');
+  const api = createApiModule(async (_query, variables) => {
+    assert.equal(variables.input.expectedSchemaVersion, 7);
+    throw conflict;
+  });
+
+  await assert.rejects(
+    api.updateCacheSettings({ mode: 'redis' }, 7),
+    (error) => error === conflict
+  );
+});
+
+test('cache settings reads reject a missing revision instead of inventing a CAS baseline', async () => {
+  const api = createApiModule(async () => ({
+    platformSettings: { category: 'cache', settings: '{}' }
+  }));
+
+  await assert.rejects(api.getCacheSettings(), TypeError);
 });
 

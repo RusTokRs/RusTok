@@ -344,6 +344,11 @@ impl ProductCatalogSchemaService {
         ensure_postgres(self.db.get_database_backend())?;
 
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        // Lifecycle uses schema -> attribute -> option. Translation must not lock in reverse.
+        crate::services::catalog_schema_service::policy::lock_schema_for_product_write(
+            &txn, tenant_id,
+        )
+        .await?;
         let locked = txn
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -1852,11 +1857,19 @@ fn product_error_to_port_error(error: CommerceError) -> PortError {
                 "Product state conflicts with the requested Attribute translation mutation",
             )
         }
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{Duration, Utc};
-use rustok_api::{AuthContext, Permission, TenantContext};
+use rustok_api::{AuthContext, Permission, PortContext, RequestContext, TenantContext};
 use rustok_fulfillment::providers::FulfillmentProviderOperationResult;
 use rustok_fulfillment::{
     FulfillmentError, FulfillmentProviderOperationRecovery, entities::provider_operation,
@@ -402,6 +402,7 @@ pub async fn retry_local_persistence(
     State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(operation_id): Path<Uuid>,
 ) -> HttpResult<Json<crate::dto::FulfillmentResponse>> {
     require_manage_permission(&auth)?;
@@ -425,8 +426,26 @@ pub async fn retry_local_persistence(
         operation_id = %operation_id,
         "retrying local fulfillment persistence"
     );
+    let mut context = PortContext::new(
+        tenant.id.to_string(),
+        auth.port_actor(),
+        request_context.locale.clone(),
+        request_context.correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(30));
+    context.claims = auth
+        .permissions
+        .iter()
+        .map(ToString::to_string)
+        .chain(auth.scopes.iter().cloned())
+        .collect();
+    if let Some(channel) = request_context.channel_slug.as_deref() {
+        context = context.with_channel(channel);
+    }
     let fulfillment = FulfillmentReconciliationService::new(runtime.db_clone())
-        .retry_local_persistence(tenant.id, operation_id)
+        .with_order_read_port(runtime.order_read_port())
+        .with_fulfillment_admin_command_port(runtime.fulfillment_admin_command_port())
+        .retry_local_persistence(context, operation_id)
         .await
         .map_err(|error| {
             map_reconciliation_orchestration_error(
@@ -502,6 +521,52 @@ pub async fn retry_create_label(
     Ok(Json(fulfillment))
 }
 
+fn map_reconciliation_port_error(
+    context: AdminReconciliationErrorContext,
+    cause: rustok_api::PortError,
+) -> HttpError {
+    use rustok_api::PortErrorKind;
+    let cause = rustok_fulfillment::error::owner_port_error(&cause);
+    let (status, code, message) = match &cause.kind {
+        PortErrorKind::Validation => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+        ),
+        PortErrorKind::NotFound => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+        ),
+        PortErrorKind::Forbidden => (
+            axum::http::StatusCode::FORBIDDEN,
+            "commerce_permission_denied",
+            "Permission denied",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout if cause.retryable => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+        ),
+        _ => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_reconciliation_required",
+            "Fulfillment operation requires reconciliation",
+        ),
+    };
+    let context = AdminReconciliationDiagnosticContext::from(&context);
+    tracing::error!(
+        owner = ADMIN_RECONCILIATION_FULFILLMENT_OWNER,
+        operation = context.operation,
+        owner_code_length = cause.code.chars().count(),
+        retryable = cause.retryable,
+        public_code = code,
+        boundary = ADMIN_RECONCILIATION_BOUNDARY,
+        "fulfillment reconciliation received a typed owner refusal"
+    );
+    HttpError::new(status, code, message).with_retryable(cause.retryable)
+}
+
 fn map_reconciliation_fulfillment_error(
     context: AdminReconciliationErrorContext,
     error: FulfillmentError,
@@ -527,6 +592,9 @@ fn map_reconciliation_fulfillment_error(
             "Fulfillment operation conflicts with the current state",
             "state_conflict",
         ),
+        FulfillmentError::OwnerPort(cause) => {
+            return map_reconciliation_port_error(context, cause.clone());
+        }
         FulfillmentError::Database(_) => (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
             "commerce_admin_fulfillment_storage_unavailable",
@@ -562,6 +630,9 @@ fn map_reconciliation_orchestration_error(
         }
         error => {
             let (status, code, message, error_kind) = match &error {
+                FulfillmentOrchestrationError::Owner(cause) => {
+                    return map_reconciliation_port_error(context, cause.clone());
+                }
                 FulfillmentOrchestrationError::OrderNotFound(_) => (
                     axum::http::StatusCode::NOT_FOUND,
                     "commerce_admin_not_found",

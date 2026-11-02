@@ -1,3 +1,4 @@
+use crate::reservation_events::ReservationEventPlan;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
@@ -6,8 +7,8 @@ use rustok_commerce_foundation::entities::{
 };
 use rustok_commerce_foundation::error::CommerceError;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
     sea_query::{Expr, ExprTrait},
 };
 use serde::{Deserialize, Serialize};
@@ -16,14 +17,16 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 const MAX_RESERVATION_EXTERNAL_ID_LENGTH: usize = 191;
+const MAX_RESERVATION_CANDIDATE_LEVELS: usize = 4096;
 const INVENTORY_PORT_BOUNDARY: &str = "inventory_reservation_port";
 
 /// Transport-neutral owner boundary for checkout/storefront inventory availability and legacy
 /// quantity-based reservations.
 ///
 /// New reservation consumers must use [`InventoryReservationIdentityPort`]. The quantity-based
-/// mutation methods remain temporarily for compatibility and are unsafe when multiple consumers
-/// reserve the same variant because release has no durable reservation identity.
+/// mutation methods remain temporarily for the proved anonymous compatibility pool only. They
+/// refuse Cart/Order/line selectors and cannot mutate keyed allocations. These operations are
+/// non-idempotent: a transport key is not a durable receipt or permission for automatic replay.
 #[async_trait]
 pub trait InventoryReservationPort: Send + Sync {
     async fn check_availability(
@@ -50,6 +53,9 @@ pub trait InventoryReservationPort: Send + Sync {
 /// `reservation_id` and `external_id` together identify one logical reservation. Repeating the
 /// same reserve request returns the existing reservation. Reusing either identity for another
 /// variant, quantity, line item or location fails closed. Release only affects the exact row.
+/// Initial allocation honors the effective `PortContext.channel` visibility of stock locations.
+/// A matching replay returns its original allocation, not a new eligibility proof or a second
+/// allocation. In particular, release/replay never relocates stock after visibility changes.
 #[async_trait]
 pub trait InventoryReservationIdentityPort: Send + Sync {
     async fn reserve_inventory_by_identity(
@@ -63,6 +69,14 @@ pub trait InventoryReservationIdentityPort: Send + Sync {
         context: PortContext,
         request: InventoryIdentityReservationReleaseRequest,
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError>;
+
+    /// Atomically rebinds existing checkout allocations to their immutable Order lines.
+    /// This does not allocate, release, consume or relocate stock. Exact replay is a no-op.
+    async fn adopt_inventory_by_identity(
+        &self,
+        context: PortContext,
+        request: InventoryIdentityReservationAdoptionRequest,
+    ) -> Result<InventoryIdentityReservationAdoptionSnapshot, PortError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,7 +90,9 @@ pub struct InventoryAvailabilityRequest {
 pub struct InventoryReservationRequest {
     pub variant_id: Uuid,
     pub quantity: i32,
+    /// Nonempty identity selectors refuse; use InventoryReservationIdentityPort instead.
     pub cart_id: Option<Uuid>,
+    /// Nonempty identity selectors refuse; this command only targets the anonymous pool.
     pub line_item_id: Option<Uuid>,
 }
 
@@ -84,7 +100,9 @@ pub struct InventoryReservationRequest {
 pub struct InventoryReservationReleaseRequest {
     pub variant_id: Uuid,
     pub quantity: i32,
+    /// Nonempty identity selectors refuse; use InventoryReservationIdentityPort instead.
     pub order_id: Option<Uuid>,
+    /// Nonempty identity selectors refuse; no keyed allocation is released by quantity.
     pub line_item_id: Option<Uuid>,
 }
 
@@ -149,6 +167,38 @@ pub struct InventoryIdentityReservationReleaseSnapshot {
     pub in_stock: bool,
 }
 
+/// The owner-local adoption batch is bounded independently of any transport envelope.
+pub const MAX_RESERVATION_ADOPTION_ITEMS: usize = 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InventoryIdentityReservationAdoptionItem {
+    pub reservation_id: Uuid,
+    pub external_id: String,
+    pub variant_id: Uuid,
+    pub quantity: i32,
+    /// The saved allocation location, not a location selector or a relocation request.
+    pub location_id: Uuid,
+    pub cart_line_item_id: Uuid,
+    pub order_line_item_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InventoryIdentityReservationAdoptionRequest {
+    pub checkout_operation_id: Uuid,
+    pub cart_id: Uuid,
+    pub order_id: Uuid,
+    pub items: Vec<InventoryIdentityReservationAdoptionItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InventoryIdentityReservationAdoptionSnapshot {
+    pub checkout_operation_id: Uuid,
+    pub cart_id: Uuid,
+    pub order_id: Uuid,
+    /// Complete validated bindings, in request order, returned only after owner commit.
+    pub items: Vec<InventoryIdentityReservationAdoptionItem>,
+}
+
 #[derive(Clone)]
 pub struct PersistentInventoryReservationIdentityPort {
     db: DatabaseConnection,
@@ -171,9 +221,9 @@ impl InventoryReservationPort for crate::InventoryService {
         tracing::debug!(
             target: "rustok_inventory::ports",
             operation = owner_operation,
-            variant_id = %request.variant_id,
-            requested_quantity = request.requested_quantity,
-            channel_slug = ?request.channel_slug,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.requested_quantity < 0,
+            channel_present = request.channel_slug.is_some(),
             "check_availability port request received"
         );
         context.require_policy(PortCallPolicy::read())?;
@@ -190,7 +240,7 @@ impl InventoryReservationPort for crate::InventoryService {
                 tenant_id,
                 request.variant_id,
                 request.requested_quantity,
-                request.channel_slug.as_deref(),
+                inventory_request_channel(&context, request.channel_slug.as_deref())?.as_deref(),
             )
             .await
             .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
@@ -211,15 +261,15 @@ impl InventoryReservationPort for crate::InventoryService {
         tracing::debug!(
             target: "rustok_inventory::ports",
             operation = owner_operation,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
-            cart_id = ?request.cart_id,
-            line_item_id = ?request.line_item_id,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
+            cart_id_present = request.cart_id.is_some(),
+            line_item_id_present = request.line_item_id.is_some(),
             "reserve_inventory port request received"
         );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.variant_id, "variant_id")?;
         if let Some(cart_id) = request.cart_id
             && cart_id.is_nil()
@@ -243,8 +293,12 @@ impl InventoryReservationPort for crate::InventoryService {
                 "reservation quantity must be non-negative",
             ));
         }
+        require_anonymous_quantity_scope(
+            request.cart_id.is_some(),
+            request.line_item_id.is_some(),
+        )?;
         let result = self
-            .reserve(tenant_id, request.variant_id, request.quantity)
+            .reserve(&context, request.variant_id, request.quantity)
             .await
             .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
 
@@ -265,15 +319,15 @@ impl InventoryReservationPort for crate::InventoryService {
         tracing::debug!(
             target: "rustok_inventory::ports",
             operation = owner_operation,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
-            order_id = ?request.order_id,
-            line_item_id = ?request.line_item_id,
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
+            order_id_present = request.order_id.is_some(),
+            line_item_id_present = request.line_item_id.is_some(),
             "release_inventory_reservation port request received"
         );
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        parse_port_tenant_id(&context, owner_operation)?;
         validate_non_nil_uuid(request.variant_id, "variant_id")?;
         if let Some(order_id) = request.order_id
             && order_id.is_nil()
@@ -297,8 +351,12 @@ impl InventoryReservationPort for crate::InventoryService {
                 "reservation release quantity must be non-negative",
             ));
         }
+        require_anonymous_quantity_scope(
+            request.order_id.is_some(),
+            request.line_item_id.is_some(),
+        )?;
         let result = self
-            .release_reservation_quantity(tenant_id, request.variant_id, request.quantity)
+            .release_reservation_quantity(&context, request.variant_id, request.quantity)
             .await
             .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
 
@@ -311,8 +369,31 @@ impl InventoryReservationPort for crate::InventoryService {
     }
 }
 
+fn require_anonymous_quantity_scope(
+    parent_present: bool,
+    line_present: bool,
+) -> Result<(), PortError> {
+    if parent_present || line_present {
+        return Err(PortError::validation(
+            "inventory.reservation_identity_required",
+            "quantity-only reservations cannot carry Cart/Order/line selectors; use InventoryReservationIdentityPort",
+        ));
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentityPort {
+    async fn adopt_inventory_by_identity(
+        &self,
+        context: PortContext,
+        request: InventoryIdentityReservationAdoptionRequest,
+    ) -> Result<InventoryIdentityReservationAdoptionSnapshot, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
+        crate::reservation_adoption::adopt_inventory_by_identity(&self.db, context, request).await
+    }
+
     async fn reserve_inventory_by_identity(
         &self,
         context: PortContext,
@@ -322,11 +403,11 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         tracing::debug!(
             target: "rustok_inventory::ports",
             operation = owner_operation,
-            reservation_id = %request.reservation_id,
-            external_id = %request.external_id,
-            variant_id = %request.variant_id,
-            quantity = request.quantity,
-            line_item_id = ?request.line_item_id,
+            reservation_id_non_nil = !request.reservation_id.is_nil(),
+            external_id_length = request.external_id.chars().count(),
+            variant_id_non_nil = !request.variant_id.is_nil(),
+            quantity_negative = request.quantity < 0,
+            line_item_id_present = request.line_item_id.is_some(),
             "reserve_inventory_by_identity port request received"
         );
         context.require_policy(PortCallPolicy::write())?;
@@ -418,20 +499,42 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             return Ok(snapshot);
         }
 
+        let event_plan = ReservationEventPlan::prepare(&txn, &context, owner_operation, &variant)
+            .await
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
+
+        // Receipts above win over current presentation/visibility changes. Only a NEW
+        // allocation selects locations; it must never consume another channel's hidden stock.
+        let channel_slug = inventory_request_channel(&context, None)?;
+        let levels = inventory_level::Entity::find()
+            .filter(inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+            .limit((MAX_RESERVATION_CANDIDATE_LEVELS + 1) as u64)
+            .all(&txn)
+            .await
+            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
+        if levels.len() > MAX_RESERVATION_CANDIDATE_LEVELS {
+            return Err(PortError::conflict(
+                "inventory.reservation_level_limit",
+                "SKU inventory exceeds 4096 candidate levels; an inventory operator must narrow its allocation layout",
+            ));
+        }
         let active_location_ids = stock_location::Entity::find()
             .filter(stock_location::Column::TenantId.eq(tenant_id))
             .filter(stock_location::Column::DeletedAt.is_null())
+            .filter(stock_location::Column::Id.is_in(levels.iter().map(|level| level.location_id)))
             .all(&txn)
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
             .into_iter()
+            .filter(|location| {
+                crate::is_metadata_visible_for_public_channel(
+                    &location.metadata,
+                    channel_slug.as_deref(),
+                )
+            })
             .map(|location| location.id)
             .collect::<HashSet<_>>();
-        let mut levels = inventory_level::Entity::find()
-            .filter(inventory_level::Column::InventoryItemId.eq(inventory_item.id))
-            .all(&txn)
-            .await
-            .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?
+        let mut levels = levels
             .into_iter()
             .filter(|level| active_location_ids.contains(&level.location_id))
             .collect::<Vec<_>>();
@@ -444,16 +547,29 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
         let mut selected = None;
         for level in levels {
+            let new_reserved = level
+                .reserved_quantity
+                .checked_add(request.quantity)
+                .filter(|_| level.reserved_quantity >= 0 && level.incoming_quantity >= 0)
+                .ok_or_else(|| {
+                    PortError::invariant_violation(
+                        "inventory.reservation_quantity_unrepresentable",
+                        "reservation counters are inconsistent or exceed the supported range",
+                    )
+                })?;
             let mut update = inventory_level::Entity::update_many()
                 .col_expr(
                     inventory_level::Column::ReservedQuantity,
-                    Expr::col(inventory_level::Column::ReservedQuantity).add(request.quantity),
+                    Expr::value(new_reserved),
                 )
                 .col_expr(
                     inventory_level::Column::UpdatedAt,
                     Expr::current_timestamp(),
                 )
-                .filter(inventory_level::Column::Id.eq(level.id));
+                .filter(inventory_level::Column::Id.eq(level.id))
+                .filter(inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+                .filter(inventory_level::Column::LocationId.eq(level.location_id))
+                .filter(inventory_level::Column::ReservedQuantity.eq(level.reserved_quantity));
             if !allows_backorder {
                 update = update.filter(
                     Expr::col(inventory_level::Column::StockedQuantity)
@@ -484,13 +600,14 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             )
         })?;
         let now = Utc::now();
-        let metadata = reservation_metadata(
+        let mut metadata = reservation_metadata(
             request.metadata.clone(),
             request.reservation_id,
             request.external_id.as_str(),
             request.variant_id,
         );
-        let inserted = reservation_item::ActiveModel {
+        metadata["allocated_channel_slug"] = channel_slug.map(Value::String).unwrap_or(Value::Null);
+        let inserted = reservation_item::Entity::insert(reservation_item::ActiveModel {
             id: Set(request.reservation_id),
             inventory_item_id: Set(inventory_item.id),
             location_id: Set(selected.location_id),
@@ -502,9 +619,16 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
             deleted_at: Set(None),
-        }
-        .insert(&txn)
+        })
+        .exec_without_returning(&txn)
         .await;
+
+        if inserted.as_ref().is_ok_and(|affected| *affected != 1) {
+            return Err(PortError::invariant_violation(
+                "inventory.reservation_persistence_mismatch",
+                "reservation row was not persisted exactly once; the transaction is refused",
+            ));
+        }
 
         if let Err(error) = inserted {
             txn.rollback().await.map_err(|error| {
@@ -549,6 +673,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
 
         let available_quantity =
             available_quantity(&context, owner_operation, &txn, inventory_item.id).await?;
+        event_plan
+            .publish(&txn)
+            .await
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
         txn.commit()
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
@@ -572,8 +700,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         tracing::debug!(
             target: "rustok_inventory::ports",
             operation = owner_operation,
-            reservation_id = %request.reservation_id,
-            external_id = %request.external_id,
+            reservation_id_non_nil = !request.reservation_id.is_nil(),
+            external_id_length = request.external_id.chars().count(),
             "release_inventory_by_identity port request received"
         );
         context.require_policy(PortCallPolicy::write())?;
@@ -655,6 +783,15 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             });
         }
 
+        if reservation.quantity < 0 {
+            return Err(PortError::invariant_violation(
+                "inventory.reservation_ledger_inconsistent",
+                "reservation quantity is inconsistent; reconcile the original identity",
+            ));
+        }
+        let event_plan = ReservationEventPlan::prepare(&txn, &context, owner_operation, &variant)
+            .await
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
         let released_quantity = reservation.quantity;
         let level_update = inventory_level::Entity::update_many()
             .col_expr(
@@ -686,18 +823,34 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 Value::from(Utc::now().to_rfc3339()),
             );
         }
-        let mut active: reservation_item::ActiveModel = reservation.clone().into();
-        active.quantity = Set(0);
-        active.metadata = Set(metadata);
-        active.updated_at = Set(Utc::now().into());
-        active.deleted_at = Set(Some(Utc::now().into()));
-        active
-            .update(&txn)
+        let now = Utc::now();
+        let updated = reservation_item::Entity::update_many()
+            .col_expr(reservation_item::Column::Quantity, Expr::value(0))
+            .col_expr(reservation_item::Column::Metadata, Expr::value(metadata))
+            .col_expr(reservation_item::Column::UpdatedAt, Expr::value(now))
+            .col_expr(reservation_item::Column::DeletedAt, Expr::value(now))
+            .filter(reservation_item::Column::Id.eq(reservation.id))
+            .filter(reservation_item::Column::InventoryItemId.eq(item.id))
+            .filter(reservation_item::Column::LocationId.eq(reservation.location_id))
+            .filter(reservation_item::Column::ExternalId.eq(request.external_id.as_str()))
+            .filter(reservation_item::Column::Quantity.eq(released_quantity))
+            .filter(reservation_item::Column::DeletedAt.is_null())
+            .exec(&txn)
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
+        if updated.rows_affected != 1 {
+            return Err(PortError::invariant_violation(
+                "inventory.reservation_persistence_mismatch",
+                "reservation release was not persisted exactly once; the transaction is refused",
+            ));
+        }
 
         let available_quantity =
             available_quantity(&context, owner_operation, &txn, item.id).await?;
+        event_plan
+            .publish(&txn)
+            .await
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
         txn.commit()
             .await
             .map_err(|error| storage_unavailable_with_context(&context, owner_operation, error))?;
@@ -713,7 +866,34 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     }
 }
 
-async fn load_tenant_variant<C>(
+/// An explicit selector and trusted context must agree. Absence borrows the trusted
+/// context; a present blank must not downgrade a scoped request to global inventory.
+fn inventory_request_channel(
+    context: &PortContext,
+    selected: Option<&str>,
+) -> Result<Option<String>, PortError> {
+    let trusted = crate::normalize_public_channel_slug(context.channel.as_deref());
+    let selected_normalized = crate::normalize_public_channel_slug(selected);
+    if (context.channel.is_some() && trusted.is_none())
+        || (selected.is_some() && selected_normalized.is_none())
+    {
+        return Err(PortError::validation(
+            "inventory.channel_invalid",
+            "Inventory channel must not be blank",
+        ));
+    }
+    if let (Some(trusted), Some(selected)) = (&trusted, &selected_normalized)
+        && trusted != selected
+    {
+        return Err(PortError::validation(
+            "inventory.channel_mismatch",
+            "Inventory selector and request context must identify the same channel",
+        ));
+    }
+    Ok(selected_normalized.or(trusted))
+}
+
+pub(super) async fn load_tenant_variant<C>(
     context: &PortContext,
     owner_operation: &'static str,
     conn: &C,
@@ -744,7 +924,7 @@ where
         })
 }
 
-async fn load_inventory_item_for_update<C>(
+pub(super) async fn load_inventory_item_for_update<C>(
     context: &PortContext,
     owner_operation: &'static str,
     conn: &C,
@@ -753,19 +933,10 @@ async fn load_inventory_item_for_update<C>(
 where
     C: ConnectionTrait,
 {
-    let query =
-        || inventory_item::Entity::find().filter(inventory_item::Column::VariantId.eq(variant_id));
-    match conn.get_database_backend() {
-        DbBackend::Sqlite => query()
-            .one(conn)
-            .await
-            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
-        _ => query()
-            .lock_exclusive()
-            .one(conn)
-            .await
-            .map_err(|error| storage_unavailable_with_context(context, owner_operation, error)),
-    }
+    crate::services::inventory::inventory_item_write_query(conn, variant_id)
+        .one(conn)
+        .await
+        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))
 }
 
 async fn load_inventory_item_by_id_for_update<C>(
@@ -858,23 +1029,23 @@ where
 {
     let levels = inventory_level::Entity::find()
         .filter(inventory_level::Column::InventoryItemId.eq(inventory_item_id))
+        .order_by_asc(inventory_level::Column::Id)
+        .limit((MAX_RESERVATION_CANDIDATE_LEVELS + 1) as u64)
         .all(conn)
         .await
         .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?;
-    levels.into_iter().try_fold(0_i32, |total, level| {
-        total.checked_add(level_available(&level)).ok_or_else(|| {
-            PortError::invariant_violation(
-                "inventory.available_quantity_overflow",
-                "inventory available quantity is outside the supported range",
-            )
-        })
+    // The quantity and identity APIs use one checked signed evaluator. Per-level clamping
+    // could acknowledge an allocation whose real final availability is unrepresentable.
+    crate::services::inventory::checked_available_quantity(&levels).map_err(|_| {
+        PortError::invariant_violation(
+            "inventory.available_quantity_overflow",
+            "inventory available quantity or level layout is outside the supported range; reconcile saved state",
+        )
     })
 }
 
-fn level_available(level: &inventory_level::Model) -> i32 {
-    level
-        .stocked_quantity
-        .saturating_sub(level.reserved_quantity)
+fn level_available(level: &inventory_level::Model) -> i64 {
+    i64::from(level.stocked_quantity) - i64::from(level.reserved_quantity)
 }
 
 fn reservation_metadata(
@@ -900,7 +1071,7 @@ fn reservation_metadata(
     Value::Object(object)
 }
 
-fn normalize_external_id(value: String) -> Result<String, PortError> {
+pub(super) fn normalize_external_id(value: String) -> Result<String, PortError> {
     let value = value.trim().to_string();
     if value.is_empty() || value.chars().count() > MAX_RESERVATION_EXTERNAL_ID_LENGTH {
         return Err(PortError::validation(
@@ -1171,7 +1342,7 @@ fn log_inventory_tenant_parse_rejection(context: &PortContext, owner_operation: 
     );
 }
 
-fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> Result<(), PortError> {
+pub(super) fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> Result<(), PortError> {
     if id.is_nil() {
         return Err(PortError::validation(
             format!("inventory.{field_name}_nil"),
@@ -1181,7 +1352,7 @@ fn validate_non_nil_uuid(id: Uuid, field_name: &'static str) -> Result<(), PortE
     Ok(())
 }
 
-fn parse_port_tenant_id(
+pub(super) fn parse_port_tenant_id(
     context: &PortContext,
     owner_operation: &'static str,
 ) -> Result<Uuid, PortError> {
@@ -1202,7 +1373,7 @@ fn parse_port_tenant_id(
     Ok(tenant_id)
 }
 
-fn storage_unavailable_with_context(
+pub(super) fn storage_unavailable_with_context(
     context: &PortContext,
     owner_operation: &'static str,
     _error: sea_orm::DbErr,
@@ -1360,5 +1531,46 @@ mod tests {
         assert_eq!(err.code, "inventory.variant_id_nil");
 
         assert!(validate_non_nil_uuid(Uuid::new_v4(), "variant_id").is_ok());
+    }
+
+    #[test]
+    fn inventory_context_is_inherited_only_when_no_explicit_selector_conflicts() {
+        let context = PortContext::new(
+            Uuid::new_v4().to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "channel-test",
+        )
+        .with_channel(" WEB ");
+        assert_eq!(
+            inventory_request_channel(&context, None)
+                .unwrap()
+                .as_deref(),
+            Some("web")
+        );
+        assert_eq!(
+            inventory_request_channel(&context, Some("web"))
+                .unwrap()
+                .as_deref(),
+            Some("web")
+        );
+        assert_eq!(
+            inventory_request_channel(&context, Some("mobile"))
+                .unwrap_err()
+                .code,
+            "inventory.channel_mismatch"
+        );
+        assert!(inventory_request_channel(&context, Some(" ")).is_err());
+        let mut global = context;
+        global.channel = None;
+        assert!(inventory_request_channel(&global, None).unwrap().is_none());
+        assert_eq!(
+            inventory_request_channel(&global, Some("WEB"))
+                .unwrap()
+                .as_deref(),
+            Some("web")
+        );
+        global.channel = Some(String::new());
+        assert!(inventory_request_channel(&global, None).is_err());
     }
 }

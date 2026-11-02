@@ -26,12 +26,13 @@ with their owner; stable neutral API contracts remain in `rustok-api`.
    **Done when:** migrated controllers use `json_response`/`HttpError` without
    changing owner domain semantics or adding local response envelopes.
 
-2. **Add neutral PortError-to-HTTP mapping when a cutover needs it.** Design the
-   mapper from `rustok-api::PortError` only from real controller behavior,
-   preserving owner error codes and retryability.
-   **Depends on:** the first controller using a public port error path.
-   **Done when:** typed port errors map to stable HTTP status/body responses with
-   focused tests and no domain error classification in this crate.
+2. **Preserve neutral PortError-to-HTTP evidence.** The mapper already owns kind-to-status
+   mapping and infrastructure redaction. The 2026-10-30 source continuation extends the same
+   `HttpError` / `ErrorBody` with optional exact owner retry advice, not another envelope.
+   Unknown advice remains absent; present false is not omitted; malformed present wire values
+   are refused. See [CRATE_API.md](../CRATE_API.md) for the owning contract.
+   **Verification status:** implementation and source-only checks are recorded below; no test
+   execution or Rust compilation is implied.
 
 3. **Lock web-boundary behavior as migration broadens.** Add source guardrails
    and focused status/body tests for controller migrations that consume this
@@ -52,3 +53,28 @@ with their owner; stable neutral API contracts remain in `rustok-api`.
 2. Update local docs and server/module controller documentation with a changed
    web-boundary contract.
 3. Do not introduce runtime composition or UI dependencies here.
+
+## Canonical HTTP retry advice (2026-10-30; source only)
+
+- `HttpError` and `ErrorBody` carry `Option<bool>` advice. Ordinary constructors retain unknown;
+  the owner-aware builder and shared port mapper preserve both owner bits without classification.
+- The same DTO derives its OpenAPI schema; a present member is a non-nullable boolean. Missing
+  remains valid/unknown. Null, strings, numbers, arrays and objects are not an absent decision.
+- The host still delegates `Error::Http` directly. Commerce/Media typed-owner adapters forward
+  their already-known policy, including nested and staged-runtime errors. Stable status, code,
+  public copy and infrastructure redaction remain unchanged.
+- The live Next Admin registry REST helper consumes one typed shared HTTP projection. The reader
+  admits at most 16 KiB of UTF-8 payload and waits up to two seconds for metadata, cancels oversized
+  or unfinished reads, and releases its reader/timer. Failed or stalled cancellation is not
+  awaited as a new response prerequisite. These bounds are source policy, not measured runtime
+  timing or proof of upstream cancellation.
+- The client distinguishes owner false/true, absent and invalid evidence. It does not parse
+  HTML/raw/nested diagnostic bodies as public text, copy outcome/key claims, classify retryability
+  from status, send another request, or change immutable commands/journals/recovery.
+
+Five canonical HTTP, two host delegation and one host-composed OpenAPI regression functions
+plus eleven client regression functions are added, all **unrun**. The existing API-surface source guard covers the completed
+forwarding slice, canonical DTO/schema and actual client entrypoint. No Rust compilation,
+OpenAPI generation, tests, database, mounted/native/browser/remote execution or readiness
+promotion is claimed. The [Commerce continuation](../../../modules/rustok-commerce/docs/implementation-plan.md#canonical-http-retry-advice-2026-10-30)
+records the final scoped static evidence and remaining Product step-8 work.

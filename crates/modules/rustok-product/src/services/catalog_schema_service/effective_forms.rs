@@ -149,6 +149,10 @@ impl ProductCatalogSchemaService {
             existing_value_attribute_ids,
         )
         .map_err(map_schema_resolution_error)?;
+        for binding in &form.attributes {
+            let policy = super::policy::parse_stored_policy(&binding.variant_axis_policy)?;
+            super::policy::validate_policy_hint(policy, binding.default_variant_axis)?;
+        }
         load_effective_attribute_validation(db, tenant_id, &mut form).await?;
         Ok(form)
     }
@@ -229,7 +233,7 @@ impl ProductCatalogSchemaService {
         Ok(labels)
     }
 
-    async fn load_category_schema_map<C>(
+    pub(super) async fn load_category_schema_map<C>(
         db: &C,
         tenant_id: Uuid,
     ) -> CommerceResult<HashMap<Uuid, CatalogCategorySchema>>
@@ -308,10 +312,22 @@ impl ProductCatalogSchemaService {
                         "Product category is missing its Taxonomy hierarchy projection",
                     )
                 })?;
-            let clone_snapshot = row
-                .snapshot
-                .and_then(|value| serde_json::from_value(value).ok())
-                .unwrap_or_default();
+            let mode =
+                CategorySchemaMode::from_storage(&row.mode).map_err(map_schema_resolution_error)?;
+            let clone_snapshot = if mode == CategorySchemaMode::CloneFromCategory {
+                let snapshot = row.snapshot.ok_or_else(|| {
+                    CommerceError::Core(rustok_core::error::Error::Internal(
+                        "Category clone snapshot is missing".into(),
+                    ))
+                })?;
+                serde_json::from_value(snapshot).map_err(|_| {
+                    CommerceError::Core(rustok_core::error::Error::Internal(
+                        "Category clone snapshot is invalid".into(),
+                    ))
+                })?
+            } else {
+                Vec::new()
+            };
             categories.insert(
                 row.category_id,
                 CatalogCategorySchema {
@@ -319,8 +335,7 @@ impl ProductCatalogSchemaService {
                     parent_category_id,
                     kind: CatalogCategoryKind::from_storage(&row.kind)
                         .map_err(map_schema_resolution_error)?,
-                    mode: CategorySchemaMode::from_storage(&row.mode)
-                        .map_err(map_schema_resolution_error)?,
+                    mode,
                     schema_id: row.schema_id,
                     clone_snapshot,
                     local_attributes: local_by_category
@@ -333,7 +348,7 @@ impl ProductCatalogSchemaService {
         Ok(categories)
     }
 
-    async fn load_attribute_schema_map<C>(
+    pub(super) async fn load_attribute_schema_map<C>(
         db: &C,
         tenant_id: Uuid,
     ) -> CommerceResult<HashMap<Uuid, ProductAttributeSchema>>

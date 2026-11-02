@@ -9,7 +9,8 @@ operations:
 
 - `fetch_cart`;
 - `decrement_line_item`;
-- `remove_line_item`.
+- `remove_line_item`;
+- buyer `create_cart` and `add_variant`.
 
 The mounted SSR adapter already returns static public envelopes and keeps owner and
 framework causes in structured server diagnostics. The hydrate/client compatibility
@@ -21,7 +22,7 @@ after leaving the native adapter.
 ## Client boundary
 
 Each native closure now creates `NativeClientErrorContext` before calling the
-unchanged native adapter. The final native `ApiError` is mapped before transport
+selected native adapter. The final native `ApiError` is mapped before transport
 aggregation.
 
 `ApiError::Validation` is preserved unchanged because it carries the existing
@@ -29,7 +30,7 @@ Cart core validation contract. Technical native variants fail closed to:
 
 `Cart storefront request could not be completed`
 
-The original technical error is retained only in structured diagnostics with:
+Only bounded technical error kind and character length are retained in diagnostics with:
 
 - owner and owner operation;
 - per-call correlation ID;
@@ -43,10 +44,10 @@ contents, pricing data, customer data, or other request payload values.
 
 - Explicit native/GraphQL transport selection is unchanged.
 - No fallback is introduced.
-- The three GraphQL call contexts and error mappings are unchanged.
+- All five GraphQL operations retain their separate final public-safe mapper.
 - `CartTransportError` remains the `UiTransportError` alias.
 - Request and response DTOs are unchanged.
-- The default and SSR native adapters and mounted server functions are unchanged.
+- A single common authenticated native contract declares endpoints; SSR handlers live in their own server-only module.
 - Existing validation and transport-envelope test source is unchanged.
 
 ## Evidence boundary

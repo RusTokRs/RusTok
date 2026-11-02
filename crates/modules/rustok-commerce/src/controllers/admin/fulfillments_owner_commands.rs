@@ -4,8 +4,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use rustok_api::{
-    AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
-    TenantContext,
+    AuthContext, Permission, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
 };
 use rustok_fulfillment::{
     CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest,
@@ -105,62 +104,12 @@ fn admin_fulfillment_command_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
-    fulfillment_id: Uuid,
-    operation: &'static str,
     idempotency_key: String,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant.id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
-        request_context.locale.as_str(),
-        format!("commerce-admin-fulfillment-command:{operation}:{fulfillment_id}"),
+) -> HttpResult<PortContext> {
+    Ok(
+        admin_fulfillment_read_context(tenant, auth, request_context)?
+            .with_idempotency_key(idempotency_key),
     )
-    .with_idempotency_key(idempotency_key)
-    .with_deadline(std::time::Duration::from_secs(2));
-    match request_context.channel_slug.as_deref() {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    }
-}
-
-fn admin_fulfillment_create_read_context(
-    tenant: &TenantContext,
-    auth: &AuthContext,
-    request_context: &RequestContext,
-    order_id: Uuid,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant.id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
-        request_context.locale.as_str(),
-        format!("commerce-admin-fulfillment-create-read:{order_id}"),
-    )
-    .with_deadline(std::time::Duration::from_secs(2));
-    match request_context.channel_slug.as_deref() {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    }
-}
-
-fn admin_fulfillment_create_command_context(
-    tenant: &TenantContext,
-    auth: &AuthContext,
-    request_context: &RequestContext,
-    order_id: Uuid,
-    idempotency_key: String,
-) -> PortContext {
-    let context = PortContext::new(
-        tenant.id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
-        request_context.locale.as_str(),
-        format!("commerce-admin-fulfillment-create-command:{order_id}"),
-    )
-    .with_idempotency_key(idempotency_key)
-    .with_deadline(std::time::Duration::from_secs(2));
-    match request_context.channel_slug.as_deref() {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    }
 }
 
 fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentCommandHttpPolicy {
@@ -215,10 +164,10 @@ fn fulfillment_command_error_policy(error: &PortError) -> AdminFulfillmentComman
                 "unavailable",
             ),
             PortErrorKind::InvariantViolation => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "commerce_admin_fulfillment_failed",
-                "Fulfillment operation could not be completed safely",
-                "invariant_violation",
+                StatusCode::CONFLICT,
+                "commerce_admin_fulfillment_reconciliation_required",
+                "Fulfillment operation requires reconciliation",
+                "reconciliation_required",
             ),
         },
     }
@@ -248,7 +197,7 @@ fn map_fulfillment_command_error(
         boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
         "commerce admin fulfillment owner command failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn map_fulfillment_create_error(
@@ -274,28 +223,37 @@ fn map_fulfillment_create_error(
         boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
         "commerce admin fulfillment cross-owner create failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 fn admin_fulfillment_read_context(
     tenant: &TenantContext,
     auth: &AuthContext,
     request_context: &RequestContext,
-    fulfillment_id: Option<Uuid>,
-    operation: &'static str,
-) -> PortContext {
-    let resource_id = fulfillment_id.unwrap_or(tenant.id);
-    let context = PortContext::new(
+) -> HttpResult<PortContext> {
+    if tenant.id.is_nil() || auth.tenant_id != tenant.id || request_context.tenant_id != tenant.id {
+        return Err(HttpError::forbidden(
+            "commerce_admin_fulfillment_context_mismatch",
+            "Fulfillment request tenant, authenticated tenant and canonical request scope must agree".to_string(),
+        ));
+    }
+    let mut context = PortContext::new(
         tenant.id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
+        auth.port_actor(),
         request_context.locale.as_str(),
-        format!("commerce-admin-fulfillment:{operation}:{resource_id}"),
+        request_context.correlation_id.clone(),
     )
     .with_deadline(std::time::Duration::from_secs(2));
-    match request_context.channel_slug.as_deref() {
+    context.claims = auth
+        .permissions
+        .iter()
+        .map(ToString::to_string)
+        .chain(auth.scopes.iter().cloned())
+        .collect();
+    Ok(match request_context.channel_slug.as_deref() {
         Some(channel) => context.with_channel(channel),
         None => context,
-    }
+    })
 }
 
 fn map_fulfillment_read_error(
@@ -322,7 +280,7 @@ fn map_fulfillment_read_error(
         boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
         "commerce admin fulfillment owner read failed"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 /// List admin fulfillments
@@ -367,8 +325,7 @@ pub async fn list_fulfillments(
     );
 
     let pagination = params.pagination.unwrap_or_default();
-    let read_context =
-        admin_fulfillment_read_context(&tenant, &auth, &request_context, None, "list_fulfillments");
+    let read_context = admin_fulfillment_read_context(&tenant, &auth, &request_context)?;
     let page = runtime
         .fulfillment_read_port()
         .list_fulfillment_projections(
@@ -449,13 +406,7 @@ pub async fn show_fulfillment(
         },
     );
 
-    let read_context = admin_fulfillment_read_context(
-        &tenant,
-        &auth,
-        &request_context,
-        Some(id),
-        "get_fulfillment",
-    );
+    let read_context = admin_fulfillment_read_context(&tenant, &auth, &request_context)?;
     let fulfillment = runtime
         .fulfillment_read_port()
         .read_fulfillment_projection(
@@ -525,15 +476,9 @@ pub async fn create_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let read_context =
-        admin_fulfillment_create_read_context(&tenant, &auth, &request_context, order_id);
-    let write_context = admin_fulfillment_create_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        order_id,
-        idempotency_key,
-    );
+    let read_context = admin_fulfillment_read_context(&tenant, &auth, &request_context)?;
+    let write_context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let service = AdminManualFulfillmentOrchestrationService::new(
         runtime.order_read_port(),
         runtime.fulfillment_read_port(),
@@ -601,14 +546,8 @@ pub async fn ship_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_fulfillment_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "ship",
-        idempotency_key,
-    );
+    let context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .ship_fulfillment(
@@ -683,14 +622,8 @@ pub async fn deliver_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_fulfillment_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "deliver",
-        idempotency_key,
-    );
+    let context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .deliver_fulfillment(
@@ -765,14 +698,8 @@ pub async fn reopen_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_fulfillment_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "reopen",
-        idempotency_key,
-    );
+    let context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reopen_fulfillment(
@@ -847,14 +774,8 @@ pub async fn reship_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_fulfillment_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "reship",
-        idempotency_key,
-    );
+    let context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reship_fulfillment(
@@ -929,14 +850,8 @@ pub async fn cancel_fulfillment(
         },
     );
     let idempotency_key = require_idempotency_key(&headers)?;
-    let context = admin_fulfillment_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "cancel",
-        idempotency_key,
-    );
+    let context =
+        admin_fulfillment_command_context(&tenant, &auth, &request_context, idempotency_key)?;
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .cancel_fulfillment(
@@ -958,4 +873,82 @@ pub async fn cancel_fulfillment(
             )
         })?;
     Ok(Json(fulfillment))
+}
+
+#[cfg(test)]
+mod shipment_context_tests {
+    use super::*;
+
+    fn contexts() -> (TenantContext, AuthContext, RequestContext) {
+        let id = Uuid::new_v4();
+        let auth = AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: id,
+            permissions: vec![],
+            client_id: Some(Uuid::new_v4()),
+            scopes: vec!["fulfillments:update".into()],
+            grant_type: "client_credentials".into(),
+        };
+        let tenant = TenantContext {
+            id,
+            name: "tenant".into(),
+            slug: "tenant".into(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "fr".into(),
+            is_active: true,
+        };
+        let request = RequestContext {
+            tenant_id: id,
+            user_id: Some(auth.user_id),
+            channel_id: None,
+            channel_slug: Some("backoffice".into()),
+            channel_resolution_source: None,
+            locale: "fr".into(),
+            correlation_id: "canonical-request".into(),
+        };
+        (tenant, auth, request)
+    }
+
+    #[test]
+    fn shipment_http_context_preserves_canonical_actor_claims_scope_and_literal_key() {
+        let (tenant, auth, request) = contexts();
+        let context = admin_fulfillment_command_context(
+            &tenant,
+            &auth,
+            &request,
+            "legacy:literal:key".into(),
+        )
+        .expect("coherent context");
+        assert_eq!(context.tenant_id, tenant.id.to_string());
+        assert_eq!(context.actor, auth.port_actor());
+        assert_eq!(context.claims, auth.scopes);
+        assert!(context.roles.is_empty(), "never invent HTTP roles");
+        assert_eq!(context.channel.as_deref(), Some("backoffice"));
+        assert_eq!(context.correlation_id, request.correlation_id);
+        assert_eq!(context.locale, "fr");
+        assert_eq!(context.deadline_ms, Some(2_000));
+        assert_eq!(
+            context.idempotency_key.as_deref(),
+            Some("legacy:literal:key")
+        );
+    }
+
+    #[test]
+    fn shipment_http_context_rejects_disagreeing_or_nil_tenants_before_selected_calls() {
+        let (tenant, auth, request) = contexts();
+        let mut foreign_auth = auth.clone();
+        foreign_auth.tenant_id = Uuid::new_v4();
+        let mut foreign_request = request.clone();
+        foreign_request.tenant_id = Uuid::new_v4();
+        let mut nil_tenant = tenant.clone();
+        nil_tenant.id = Uuid::nil();
+        assert!(admin_fulfillment_read_context(&tenant, &foreign_auth, &request).is_err());
+        assert!(admin_fulfillment_read_context(&tenant, &auth, &foreign_request).is_err());
+        assert!(
+            admin_fulfillment_command_context(&nil_tenant, &auth, &request, "unchanged".into())
+                .is_err()
+        );
+    }
 }

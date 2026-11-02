@@ -1,4 +1,6 @@
-use sea_orm::{ActiveModelTrait, Set, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait, sea_query::Expr,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -25,10 +27,25 @@ pub mod category {
     pub const ALL: &[&str] = &[GENERAL, EMAIL, RATE_LIMIT, FEATURES, I18N, OAUTH, CACHE];
 }
 
+/// Redacted settings document together with the persisted CAS revision.
+///
+/// `schema_version == 0` means the category has no persisted row yet and the
+/// document is the deployment/default projection. A client-visible write must
+/// carry the revision it read; the service rejects stale expected revisions
+/// instead of silently overwriting a newer full-document replacement.
+#[derive(Debug, Clone)]
+pub struct SettingsSnapshot {
+    pub settings: Value,
+    pub schema_version: i32,
+}
+
 #[derive(Debug)]
 pub enum SettingsError {
     InvalidCategory(String),
     ValidationFailed(Vec<String>),
+    /// A concurrent writer changed the row while this full-document update
+    /// was being prepared. The caller must re-read and retry deliberately.
+    WriteConflict,
     Db(sea_orm::DbErr),
     Json(serde_json::Error),
 }
@@ -50,6 +67,10 @@ impl std::fmt::Display for SettingsError {
         match self {
             Self::InvalidCategory(c) => write!(f, "Invalid settings category: {c}"),
             Self::ValidationFailed(errs) => write!(f, "Validation failed: {}", errs.join("; ")),
+            Self::WriteConflict => write!(
+                f,
+                "Settings were changed concurrently; re-read the category and retry"
+            ),
             Self::Db(e) => write!(f, "Database error: {e}"),
             Self::Json(e) => write!(f, "JSON error: {e}"),
         }
@@ -232,6 +253,18 @@ impl SettingsService {
         tenant_id: Uuid,
         cat: &str,
     ) -> Result<Value, SettingsError> {
+        Ok(Self::get_snapshot(ctx, tenant_id, cat).await?.settings)
+    }
+
+    /// Read a category together with the revision a client must present to
+    /// `update_if_current`. Categories without a persisted row expose revision
+    /// zero. The cache document remains deployment-owned, but its persisted
+    /// revision still fences concurrent cache writes.
+    pub async fn get_snapshot(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+        cat: &str,
+    ) -> Result<SettingsSnapshot, SettingsError> {
         let cat = ensure_supported_category(cat)?;
 
         tracing::debug!(
@@ -249,21 +282,35 @@ impl SettingsService {
         // row would therefore describe a target the process does not use, so the deployment
         // document is the only truthful answer (see `prepare_cache_settings_for_write`).
         if cat == category::CACHE {
-            return Ok(redact_secrets(cat, Self::yaml_defaults_for(ctx, cat)));
+            let schema_version = Entity::find_by_category(ctx.db(), tenant_id, cat)
+                .await?
+                .map(|row| row.schema_version)
+                .unwrap_or(0);
+            return Ok(SettingsSnapshot {
+                settings: redact_secrets(cat, Self::yaml_defaults_for(ctx, cat)),
+                schema_version,
+            });
         }
 
         if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
-            return Ok(redact_secrets(cat, row.settings));
+            return Ok(SettingsSnapshot {
+                settings: redact_secrets(cat, row.settings),
+                schema_version: row.schema_version,
+            });
         }
 
         // 2. YAML
         let yaml_value = Self::yaml_defaults_for(ctx, cat);
-        if !yaml_value.is_null() {
-            return Ok(redact_secrets(cat, yaml_value));
-        }
-
-        // 3. Empty object default
-        Ok(serde_json::json!({}))
+        let settings = if !yaml_value.is_null() {
+            redact_secrets(cat, yaml_value)
+        } else {
+            // 3. Empty object default
+            serde_json::json!({})
+        };
+        Ok(SettingsSnapshot {
+            settings,
+            schema_version: 0,
+        })
     }
 
     /// List all supported generic categories for a tenant, filling gaps with fallbacks.
@@ -273,6 +320,18 @@ impl SettingsService {
         ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
     ) -> Result<Vec<(String, Value)>, SettingsError> {
+        Ok(Self::get_all_snapshots(ctx, tenant_id)
+            .await?
+            .into_iter()
+            .map(|(category, snapshot)| (category, snapshot.settings))
+            .collect())
+    }
+
+    /// Aggregate read with per-category CAS revisions.
+    pub async fn get_all_snapshots(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+    ) -> Result<Vec<(String, SettingsSnapshot)>, SettingsError> {
         tracing::debug!(
             service = "settings",
             tenant_id = %tenant_id,
@@ -280,13 +339,19 @@ impl SettingsService {
         );
 
         let db_rows = Entity::find_all_for_tenant(ctx.db(), tenant_id).await?;
-        let mut result: Vec<(String, Value)> = db_rows
+        let mut result: Vec<(String, SettingsSnapshot)> = db_rows
             .into_iter()
             .filter(|row| category::ALL.contains(&row.category.as_str()))
             .map(|row| {
                 let category = row.category;
                 let settings = redact_secrets(&category, row.settings);
-                (category, settings)
+                (
+                    category,
+                    SettingsSnapshot {
+                        settings,
+                        schema_version: row.schema_version,
+                    },
+                )
             })
             .collect();
 
@@ -302,7 +367,13 @@ impl SettingsService {
                 } else {
                     redact_secrets(cat, v)
                 };
-                result.push((cat.to_string(), settings));
+                result.push((
+                    cat.to_string(),
+                    SettingsSnapshot {
+                        settings,
+                        schema_version: 0,
+                    },
+                ));
             }
         }
 
@@ -310,7 +381,7 @@ impl SettingsService {
         // so a stored row must not be presented as the effective configuration.
         for entry in result.iter_mut() {
             if entry.0 == category::CACHE {
-                entry.1 = redact_secrets(
+                entry.1.settings = redact_secrets(
                     category::CACHE,
                     Self::yaml_defaults_for(ctx, category::CACHE),
                 );
@@ -334,6 +405,55 @@ impl SettingsService {
         actor_id: Option<Uuid>,
         validators: &ValidatorRegistry,
     ) -> Result<Value, SettingsError> {
+        Self::update_inner(
+            ctx, event_bus, tenant_id, cat, settings, actor_id, validators, None,
+        )
+        .await
+        .map(|snapshot| snapshot.settings)
+    }
+
+    /// Client-visible compare-and-set update. `expected_schema_version` must be
+    /// the revision returned by the corresponding read (`0` for a category with
+    /// no persisted row). A stale expectation is a `WriteConflict`, not an
+    /// internal retry that would overwrite another writer's document.
+    pub async fn update_if_current(
+        ctx: &ServerRuntimeContext,
+        event_bus: &TransactionalEventBus,
+        tenant_id: Uuid,
+        cat: &str,
+        settings: Value,
+        actor_id: Option<Uuid>,
+        validators: &ValidatorRegistry,
+        expected_schema_version: i32,
+    ) -> Result<SettingsSnapshot, SettingsError> {
+        if expected_schema_version < 0 {
+            return Err(SettingsError::ValidationFailed(vec![
+                "expected schema version must be non-negative".to_string(),
+            ]));
+        }
+        Self::update_inner(
+            ctx,
+            event_bus,
+            tenant_id,
+            cat,
+            settings,
+            actor_id,
+            validators,
+            Some(expected_schema_version),
+        )
+        .await
+    }
+
+    async fn update_inner(
+        ctx: &ServerRuntimeContext,
+        event_bus: &TransactionalEventBus,
+        tenant_id: Uuid,
+        cat: &str,
+        settings: Value,
+        actor_id: Option<Uuid>,
+        validators: &ValidatorRegistry,
+        expected_schema_version: Option<i32>,
+    ) -> Result<SettingsSnapshot, SettingsError> {
         let cat = ensure_supported_category(cat)?;
 
         if !settings.is_object() {
@@ -350,54 +470,107 @@ impl SettingsService {
             "Updating platform settings"
         );
 
-        let settings = preserve_secrets(ctx, tenant_id, cat, settings).await?;
-
-        validators
-            .validate(cat, &settings)
-            .map_err(SettingsError::ValidationFailed)?;
-
-        let settings = if cat == category::CACHE {
-            prepare_cache_settings_for_write(ctx, settings)?
-        } else {
-            settings
-        };
-
-        let tx = ctx.db().begin().await?;
-
-        match Entity::find_by_category(&tx, tenant_id, cat).await? {
-            Some(existing) => {
-                let next_version = existing.schema_version.saturating_add(1);
-                let mut active: platform_settings::ActiveModel = existing.into();
-                active.settings = Set(settings.clone());
-                active.updated_by = Set(actor_id);
-                active.schema_version = Set(next_version);
-                active.update(&tx).await?;
+        // Secret preservation and the version bump must observe the same row
+        // snapshot. A bounded CAS loop prevents a concurrent writer from
+        // silently restoring a stale secret or skipping the outbox event.
+        const MAX_WRITE_ATTEMPTS: usize = 8;
+        for attempt in 0..MAX_WRITE_ATTEMPTS {
+            let tx = ctx.db().begin().await?;
+            let existing = Entity::find_by_category(&tx, tenant_id, cat).await?;
+            if let Some(expected) = expected_schema_version {
+                let current = existing.as_ref().map(|row| row.schema_version).unwrap_or(0);
+                if current != expected {
+                    tx.rollback().await?;
+                    return Err(SettingsError::WriteConflict);
+                }
             }
-            None => {
-                ActiveModel::new(tenant_id, cat, settings.clone(), actor_id)
-                    .insert(&tx)
-                    .await?;
+            let settings = preserve_secrets_from_row(cat, existing.as_ref(), settings.clone());
+            validators
+                .validate(cat, &settings)
+                .map_err(SettingsError::ValidationFailed)?;
+            let settings = if cat == category::CACHE {
+                prepare_cache_settings_for_write(ctx, settings)?
+            } else {
+                settings
+            };
+
+            let next_schema_version = match existing.as_ref() {
+                Some(existing) => existing.schema_version.checked_add(1).ok_or_else(|| {
+                    SettingsError::ValidationFailed(vec![
+                        "settings schema_version overflow".to_string(),
+                    ])
+                })?,
+                None => 1,
+            };
+
+            let wrote = match existing.as_ref() {
+                Some(existing) => {
+                    let updated = Entity::update_many()
+                        .col_expr(platform_settings::Column::Settings, Expr::value(settings.clone()))
+                        .col_expr(platform_settings::Column::UpdatedBy, Expr::value(actor_id))
+                        .col_expr(
+                            platform_settings::Column::SchemaVersion,
+                            Expr::value(next_schema_version),
+                        )
+                        .col_expr(
+                            platform_settings::Column::UpdatedAt,
+                            Expr::value(chrono::Utc::now().fixed_offset()),
+                        )
+                        .filter(platform_settings::Column::Id.eq(existing.id))
+                        .filter(platform_settings::Column::TenantId.eq(tenant_id))
+                        .filter(platform_settings::Column::Category.eq(cat))
+                        .filter(
+                            platform_settings::Column::SchemaVersion.eq(existing.schema_version),
+                        )
+                        .exec(&tx)
+                        .await?;
+                    updated.rows_affected == 1
+                }
+                None => {
+                    match ActiveModel::new(tenant_id, cat, settings.clone(), actor_id)
+                        .insert(&tx)
+                        .await
+                    {
+                        Ok(_) => true,
+                        Err(error) if is_unique_violation(&error) => false,
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+            };
+
+            if !wrote {
+                tx.rollback().await?;
+                if attempt + 1 == MAX_WRITE_ATTEMPTS {
+                    return Err(SettingsError::WriteConflict);
+                }
+                continue;
             }
+
+            event_bus
+                .publish_in_tx(
+                    &tx,
+                    tenant_id,
+                    actor_id,
+                    DomainEvent::PlatformSettingsChanged {
+                        category: cat.to_string(),
+                        changed_by: actor_id.unwrap_or_default(),
+                    },
+                )
+                .await
+                .map_err(|e| {
+                    sea_orm::DbErr::Custom(format!(
+                        "Failed to publish settings event to outbox: {e}"
+                    ))
+                })?;
+
+            tx.commit().await?;
+            return Ok(SettingsSnapshot {
+                settings: redact_secrets(cat, settings),
+                schema_version: next_schema_version,
+            });
         }
 
-        event_bus
-            .publish_in_tx(
-                &tx,
-                tenant_id,
-                actor_id,
-                DomainEvent::PlatformSettingsChanged {
-                    category: cat.to_string(),
-                    changed_by: actor_id.unwrap_or_default(),
-                },
-            )
-            .await
-            .map_err(|e| {
-                sea_orm::DbErr::Custom(format!("Failed to publish settings event to outbox: {e}"))
-            })?;
-
-        tx.commit().await?;
-
-        Ok(redact_secrets(cat, settings))
+        Err(SettingsError::WriteConflict)
     }
 
     // ── Private helpers ────────────────────────────────────────────────────
@@ -459,25 +632,26 @@ fn redact_secrets(cat: &str, mut settings: Value) -> Value {
     settings
 }
 
-async fn preserve_secrets(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
+fn preserve_secrets_from_row(
     cat: &str,
+    existing: Option<&platform_settings::Model>,
     incoming: Value,
-) -> Result<Value, SettingsError> {
-    if cat != category::EMAIL && cat != category::CACHE {
-        return Ok(incoming);
-    }
-
-    let Some(existing) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? else {
-        return Ok(incoming);
+) -> Value {
+    let Some(existing) = existing else {
+        return incoming;
     };
-
     match cat {
-        category::EMAIL => Ok(preserve_email_secret_fields(existing.settings, incoming)),
-        category::CACHE => Ok(preserve_cache_secret_fields(existing.settings, incoming)),
-        _ => Ok(incoming),
+        category::EMAIL => preserve_email_secret_fields(existing.settings.clone(), incoming),
+        category::CACHE => preserve_cache_secret_fields(existing.settings.clone(), incoming),
+        _ => incoming,
     }
+}
+
+fn is_unique_violation(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 fn preserve_cache_secret_fields(existing: Value, mut incoming: Value) -> Value {
@@ -1128,5 +1302,160 @@ mod tests {
             !value.to_string().contains("deploy-secret"),
             "no field of a settings read may carry the deployment password: {value}"
         );
+    }
+
+    #[tokio::test]
+    async fn platform_settings_update_bumps_version_and_publishes_atomically() {
+        use rustok_migrations::SqliteTestMigrator as Migrator;
+        use rustok_outbox::OutboxTransport;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use std::sync::Arc;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let validators = ValidatorRegistry::default();
+        let tenant_id = Uuid::new_v4();
+
+        SettingsService::update(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "first" }),
+            None,
+            &validators,
+        )
+        .await
+        .expect("first settings write");
+        SettingsService::update(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "second" }),
+            None,
+            &validators,
+        )
+        .await
+        .expect("second settings write");
+
+        let row = Entity::find_by_category(&db, tenant_id, category::GENERAL)
+            .await
+            .expect("settings read")
+            .expect("settings row");
+        assert_eq!(row.schema_version, 2);
+        assert_eq!(row.settings["site_name"], json!("second"));
+    }
+
+    #[tokio::test]
+    async fn client_visible_cas_rejects_stale_expected_revision() {
+        use rustok_migrations::SqliteTestMigrator as Migrator;
+        use rustok_outbox::OutboxTransport;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use std::sync::Arc;
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let validators = ValidatorRegistry::default();
+        let tenant_id = Uuid::new_v4();
+
+        let initial = SettingsService::get_snapshot(&ctx, tenant_id, category::GENERAL)
+            .await
+            .expect("initial snapshot");
+        assert_eq!(initial.schema_version, 0);
+
+        let first = SettingsService::update_if_current(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "first" }),
+            None,
+            &validators,
+            0,
+        )
+        .await
+        .expect("create at revision zero");
+        assert_eq!(first.schema_version, 1);
+
+        let second = SettingsService::update_if_current(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "second" }),
+            None,
+            &validators,
+            first.schema_version,
+        )
+        .await
+        .expect("current revision write");
+        assert_eq!(second.schema_version, 2);
+
+        let stale = SettingsService::update_if_current(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "stale" }),
+            None,
+            &validators,
+            first.schema_version,
+        )
+        .await
+        .expect_err("stale revision must conflict");
+        assert!(matches!(stale, SettingsError::WriteConflict));
+
+        let stored = SettingsService::get_snapshot(&ctx, tenant_id, category::GENERAL)
+            .await
+            .expect("stored snapshot");
+        assert_eq!(stored.schema_version, 2);
+        assert_eq!(stored.settings["site_name"], json!("second"));
+
+        let negative = SettingsService::update_if_current(
+            &ctx,
+            &event_bus,
+            tenant_id,
+            category::GENERAL,
+            json!({ "site_name": "negative" }),
+            None,
+            &validators,
+            -1,
+        )
+        .await
+        .expect_err("negative revision is invalid");
+        assert!(matches!(negative, SettingsError::ValidationFailed(_)));
+    }
+
+    #[test]
+    fn secret_preservation_uses_the_transactional_row_snapshot() {
+        let existing = platform_settings::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            category: category::EMAIL.to_string(),
+            settings: json!({ "smtp_password": "stored-secret" }),
+            schema_version: 7,
+            updated_by: None,
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        };
+        let merged = preserve_secrets_from_row(
+            category::EMAIL,
+            Some(&existing),
+            json!({ "smtp_password": "" }),
+        );
+        assert_eq!(merged["smtp_password"], json!("stored-secret"));
+        assert_eq!(
+            preserve_secrets_from_row(category::EMAIL, None, json!({ "smtp_password": "" }))
+                ["smtp_password"],
+            json!("")
+        );
+    }
+
+    #[test]
+    fn write_conflict_is_a_deliberate_retry_signal() {
+        assert!(SettingsError::WriteConflict.to_string().contains("concurrently"));
     }
 }

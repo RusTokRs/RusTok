@@ -25,7 +25,7 @@ pricing-list-vendorFallback = Independent label
 pricing-selected-basePriceListFallback = base prices
 pricing-selected-catalog = catalog
 pricing-selected-channelLabel = channel
-pricing-selected-channelSwitcherSubtitle = Switch between global pricing and channel-scoped pricing without leaving the pricing module route.
+pricing-selected-channelSwitcherSubtitle = Use the current storefront channel or explicitly select another channel.
 pricing-selected-channelSwitcherTitle = channel
 pricing-selected-currencies = Currencies
 pricing-selected-currencyLabel = currency
@@ -33,7 +33,7 @@ pricing-selected-effectiveContext = effective context
 pricing-selected-effectiveLabel = effective
 pricing-selected-emptyBody = Open a published product through `?handle=` to inspect variant-level pricing coverage and sale markers.
 pricing-selected-emptyTitle = No pricing card selected
-pricing-selected-globalChannelFallback = global channel
+pricing-selected-currentChannelFallback = current channel
 pricing-selected-globalRegionFallback = global region
 pricing-selected-noDescription = No localized merchandising copy yet.
 pricing-selected-openProduct = Open product module

@@ -18,6 +18,8 @@ pub struct DeliveryGroupSnapshot {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CartLineItemPricingUpdate {
     pub line_item_id: Uuid,
+    /// Quantity for which Pricing supplied this unit-price/adjustment observation.
+    pub quantity: i32,
     pub unit_price: Decimal,
     pub pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
 }
@@ -43,4 +45,20 @@ pub struct CartPromotionPreview {
     pub base_amount: Decimal,
     pub adjustment_amount: Decimal,
     pub adjusted_amount: Decimal,
+}
+
+/// Complete target-context price observation. It never authorizes a Cart mutation by itself.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CartContextPricingPlan {
+    pub scope: crate::CartPricingScope,
+    pub updates: Vec<CartLineItemPricingUpdate>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CartContextPricing {
+    /// Owner checkout/materialization only; a nonempty Cart's unit-price basis must not change.
+    Preserve,
+    /// Buyer context changes require exact target scope and complete current-line coverage.
+    Reprice(CartContextPricingPlan),
 }

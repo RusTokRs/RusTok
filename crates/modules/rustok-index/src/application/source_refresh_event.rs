@@ -1,7 +1,7 @@
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{EntityKey, IndexMutation, SchemaRef, SchemaRegistry};
+use crate::{EntityKey, SchemaRef, SchemaRegistry};
 
 use super::{
     IndexMutationAcknowledgeFailure, IndexMutationEventAcknowledger, IndexReplayFailure,
@@ -120,9 +120,10 @@ impl IndexSourceRefreshEventProcessOutcome {
 /// Source-driven commit-before-ack orchestration for owner change notifications.
 ///
 /// The exact event route chooses one schema/source, the delivery chooses one entity key and minimum
-/// owner revision, and the immutable source registry supplies the canonical mutation. The broker
-/// event UUID replaces the replay-only mutation UUID so redelivery is deduplicated by the durable
-/// inbox. A newer source revision is accepted; an older or missing source result is not.
+/// owner revision, and the immutable source registry supplies the canonical mutation. The loaded
+/// owner's mutation UUID remains the durable inbox identity, even when an older notification loads
+/// a newer revision. Only after persistence is the original broker UUID/token acknowledged;
+/// an older or missing source result is not accepted.
 pub struct IndexSourceRefreshEventWorker<M, A> {
     mutation_sink: M,
     acknowledger: A,
@@ -147,88 +148,119 @@ where
         event_registry: &SharedIndexMutationEventRegistry,
         delivery: IndexSourceRefreshEventDelivery<A::Token>,
     ) -> Result<IndexSourceRefreshEventProcessOutcome, IndexSourceRefreshEventProcessError> {
-        let (event_domain, event_id, key, minimum_source_version, acknowledgement_token) =
-            delivery.into_parts();
-        let descriptor = event_registry.get(&event_domain).ok_or_else(|| {
-            IndexSourceRefreshEventProcessError::UnknownEventDomain(event_domain.clone())
-        })?;
-        let expected_schema = descriptor.schema().clone();
-        let expected_source_name = descriptor.source_name().to_owned();
-        if key.schema != expected_schema {
-            return Err(IndexSourceRefreshEventProcessError::EventSchemaMismatch {
-                event_domain,
-                expected: expected_schema,
-                actual: key.schema.clone(),
-            });
-        }
-
-        let source = source_registry
-            .source_for_schema(&key.schema)
-            .ok_or_else(
-                || IndexSourceRefreshEventProcessError::MissingReplaySource {
-                    schema: key.schema.clone(),
-                },
-            )?;
-        if source.source_name() != expected_source_name {
-            return Err(IndexSourceRefreshEventProcessError::ReplaySourceMismatch {
-                event_domain,
-                expected: expected_source_name,
-                actual: source.source_name().to_owned(),
-            });
-        }
-
-        let request = IndexSourceLoadRequest::new(vec![key.clone()])
-            .map_err(IndexSourceRefreshEventProcessError::Source)?;
-        let mut mutations = source_registry
-            .load(request)
-            .await
-            .map_err(IndexSourceRefreshEventProcessError::Source)?
-            .into_mutations();
-        let mutation = match mutations.len() {
-            0 => {
-                return Err(IndexSourceRefreshEventProcessError::MissingSourceMutation {
-                    event_domain,
-                    key,
-                });
-            }
-            1 => mutations.pop().expect("single source mutation"),
-            actual => {
-                return Err(
-                    IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
-                        event_domain,
-                        actual,
-                    },
-                );
-            }
-        };
-        let source_version = mutation.source_version();
-        if source_version < minimum_source_version {
-            return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
-                event_domain,
-                minimum: minimum_source_version,
-                actual: source_version,
-            });
-        }
-
-        let mutation = rebind_event_id(mutation, event_id);
-        let mutation_outcome = self
-            .mutation_sink
-            .apply_replay_mutation(schema_registry, &expected_source_name, &mutation)
-            .await
-            .map_err(IndexSourceRefreshEventProcessError::Mutation)?;
-
+        let outcome = persist_index_source_refresh(
+            &self.mutation_sink,
+            schema_registry,
+            source_registry,
+            event_registry,
+            &delivery,
+        )
+        .await?;
         self.acknowledger
-            .acknowledge(&acknowledgement_token)
+            .acknowledge(delivery.acknowledgement_token())
             .await
             .map_err(IndexSourceRefreshEventProcessError::Acknowledge)?;
-
-        Ok(IndexSourceRefreshEventProcessOutcome {
-            event_id,
-            source_name: expected_source_name,
-            source_version,
-            mutation_outcome,
-        })
+        Ok(outcome)
     }
+}
+
+/// Persists an exact authoritative refresh without acknowledging its enclosing transport.
+/// Module listeners return success only after awaiting this boundary; broker workers use the
+/// same boundary and then acknowledge their original opaque delivery token.
+pub async fn persist_index_source_refresh<M, T>(
+    mutation_sink: &M,
+    schema_registry: &SchemaRegistry,
+    source_registry: &SharedIndexSourceRegistry,
+    event_registry: &SharedIndexMutationEventRegistry,
+    delivery: &IndexSourceRefreshEventDelivery<T>,
+) -> Result<IndexSourceRefreshEventProcessOutcome, IndexSourceRefreshEventProcessError>
+where
+    M: IndexReplayMutationSink,
+    T: Sync,
+{
+    let event_domain = delivery.event_domain().to_owned();
+    let event_id = delivery.event_id();
+    let key = delivery.key().clone();
+    let minimum_source_version = delivery.minimum_source_version();
+    let descriptor = event_registry.get(&event_domain).ok_or_else(|| {
+        IndexSourceRefreshEventProcessError::UnknownEventDomain(event_domain.clone())
+    })?;
+    let expected_schema = descriptor.schema().clone();
+    let expected_source_name = descriptor.source_name().to_owned();
+    if key.schema != expected_schema {
+        return Err(IndexSourceRefreshEventProcessError::EventSchemaMismatch {
+            event_domain,
+            expected: expected_schema,
+            actual: key.schema.clone(),
+        });
+    }
+
+    let source = source_registry
+        .source_for_schema(&key.schema)
+        .ok_or_else(
+            || IndexSourceRefreshEventProcessError::MissingReplaySource {
+                schema: key.schema.clone(),
+            },
+        )?;
+    if source.source_name() != expected_source_name {
+        return Err(IndexSourceRefreshEventProcessError::ReplaySourceMismatch {
+            event_domain,
+            expected: expected_source_name,
+            actual: source.source_name().to_owned(),
+        });
+    }
+
+    let request = IndexSourceLoadRequest::new(vec![key.clone()])
+        .map_err(IndexSourceRefreshEventProcessError::Source)?;
+    let mut mutations = source_registry
+        .load(request)
+        .await
+        .map_err(IndexSourceRefreshEventProcessError::Source)?
+        .into_mutations();
+    let mutation = match mutations.len() {
+        0 => {
+            return Err(IndexSourceRefreshEventProcessError::MissingSourceMutation {
+                event_domain,
+                key,
+            });
+        }
+        // INVARIANT: this matched vector has exactly one element and is not modified before pop.
+        1 => mutations.pop().expect("single source mutation"),
+        actual => {
+            return Err(
+                IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
+                    event_domain,
+                    actual,
+                },
+            );
+        }
+    };
+    let source_version = mutation.source_version();
+    if source_version < minimum_source_version {
+        return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
+            event_domain,
+            minimum: minimum_source_version,
+            actual: source_version,
+        });
+    }
+
+    // The current owner may already have advanced beyond this notification. Preserve its
+    // immutable mutation UUID so a later refresh cannot reuse this notification's inbox ID
+    // for a different payload. The original envelope remains the transport ACK identity.
+    if mutation.event_id().is_nil() {
+        return Err(IndexSourceRefreshEventProcessError::NilSourceEventId);
+    }
+    let mutation_outcome = mutation_sink
+        .apply_replay_mutation(schema_registry, &expected_source_name, &mutation)
+        .await
+        .map_err(IndexSourceRefreshEventProcessError::Mutation)?;
+
+    Ok(IndexSourceRefreshEventProcessOutcome {
+        event_id,
+        source_name: expected_source_name,
+        source_version,
+        mutation_outcome,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -247,6 +279,8 @@ pub enum IndexSourceRefreshEventError {
 
 #[derive(Debug, Error)]
 pub enum IndexSourceRefreshEventProcessError {
+    #[error("Index source refresh returned a nil immutable source mutation UUID")]
+    NilSourceEventId,
     #[error("Unknown Index source refresh event domain: {0}")]
     UnknownEventDomain(String),
     #[error(
@@ -288,21 +322,6 @@ pub enum IndexSourceRefreshEventProcessError {
     Mutation(#[source] IndexReplayFailure),
     #[error("Index source refresh event acknowledgement failed after durable persistence")]
     Acknowledge(#[source] IndexMutationAcknowledgeFailure),
-}
-
-fn rebind_event_id(mutation: IndexMutation, event_id: Uuid) -> IndexMutation {
-    match mutation {
-        IndexMutation::Upsert { record, .. } => IndexMutation::Upsert { event_id, record },
-        IndexMutation::Delete {
-            key,
-            source_version,
-            ..
-        } => IndexMutation::Delete {
-            event_id,
-            key,
-            source_version,
-        },
-    }
 }
 
 fn valid_machine_name(value: &str, max_bytes: usize) -> bool {

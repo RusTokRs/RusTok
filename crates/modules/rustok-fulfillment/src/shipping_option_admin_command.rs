@@ -377,6 +377,9 @@ fn map_fulfillment_error(
             "fulfillment.invalid_transition",
             "fulfillment lifecycle conflicts with the requested operation",
         ),
+        error @ FulfillmentError::OwnerPort(_) => {
+            crate::error::map_fulfillment_error_without_context(error)
+        }
         FulfillmentError::Database(_) => PortError::unavailable(
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
@@ -392,7 +395,7 @@ fn map_fulfillment_error(
         locale_length = context.locale.chars().count(),
         deadline_ms = ?context.deadline_ms,
         error_variant,
-        public_code = %mapped.code,
+        public_code = if error_variant == "owner_port" { "fulfillment.shipment_stock_refused" } else { mapped.code.as_str() },
         retryable = mapped.retryable,
         boundary = SHIPPING_OPTION_ADMIN_COMMAND_BOUNDARY,
         "fulfillment shipping option admin command returned a bounded owner error"
@@ -410,6 +413,7 @@ fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
             "shipping_option_translation_revision_conflict"
         }
         FulfillmentError::InvalidTransition { .. } => "invalid_transition",
+        FulfillmentError::OwnerPort(_) => "owner_port",
         FulfillmentError::Database(_) => "database",
     }
 }

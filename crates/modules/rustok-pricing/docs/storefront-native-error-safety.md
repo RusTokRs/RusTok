@@ -26,27 +26,26 @@ Static public `ServerFnError` messages now cover:
 Internal causes remain only in SSR diagnostics with the available:
 
 - Pricing storefront owner and exact owner operation;
-- correlation id, tenant id, channel id, channel slug, and locale when optional `RequestContext` is available;
+- correlation id, tenant id, channel id, channel slug, and locale from the required trusted `RequestContext`;
 - stable internal code and native boundary;
 - original runtime, extraction, service, or projection error.
 
-`RequestContext` remains optional. Extraction failure is logged and still falls back to `None`.
+Trusted `RequestContext` is required. An extraction failure is logged as a closed
+context rejection and returns a static public error; it never widens into a `None`
+channel/default read.
 
 ## Preserved behavior
 
-This slice does not change:
+The 2026-10-29 quote continuation preserves:
 
 - the `pricing/storefront-data` endpoint;
-- `StorefrontPricingQuery`, `StorefrontPricingData`, or nested DTOs;
 - the external `ApiError::ServerFn` transport variant;
-- transport selection or GraphQL behavior;
+- build-profile-selected transport without runtime fallback;
 - explicit channel-id validation;
 - resolution-context validation;
 - locale fallback to the tenant default locale;
-- request-context channel id and channel slug fallback;
 - channel listing pagination at page `1`, per-page `250`;
 - product pricing pagination at page `1`, per-page `8`;
-- active price-list, product list, product detail, or effective-price operation payloads;
 - selected-handle fallback behavior.
 
 The two transport-validation errors intentionally remain user-facing. Runtime, context, owner-service, and internal projection errors use static envelopes.
@@ -57,22 +56,22 @@ The two transport-validation errors intentionally remain user-facing. Runtime, c
 
 - SSR tracing dependency composition;
 - the endpoint and external error variant;
-- optional request-context behavior and diagnostics;
+- required trusted request-context behavior and diagnostics;
 - static runtime, context, owner-service, and projection envelopes;
 - owner operation, correlation, tenant, channel, locale, stable code, and boundary logging;
 - preservation of exactly two transport-validation mappings;
-- unchanged locale/channel fallback, resolution context, pagination, service operations, and DTO result composition;
+- paired channel selection, owner read-port composition, snapshot/source/context/time DTOs and preserved pagination;
 - source-only validation flags.
 
 ## Remaining gaps
 
 Compile, mounted parity, native runtime, remote transport, and browser evidence remain open. The broader ecommerce mapper-cleanup task also remains open for other transports, compensation/execution adapters, and non-`PortError` public envelopes.
 
-This slice does not change Product/Pricing dependency topology or make marketplace financial integration an optional Commerce capability.
+Pricing now declares its existing Region owner collaboration as a runtime dependency; this does not move region lifecycle or taxes into Pricing.
 
 ## Suggested maintainer checks
 
-These commands were intentionally not run by the implementation agent:
+The focused native/aggregate source guards were run and passed for the quote continuation. Broader runtime checks below remain with the maintainer:
 
 ```bash
 node scripts/verify/verify-pricing-storefront-native-error-safety.mjs
@@ -80,3 +79,15 @@ node scripts/verify/verify-pricing-storefront-boundary.mjs
 node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs
 cargo check -p rustok-pricing-storefront --all-features
 ```
+
+
+## Owner quote continuation (2026-10-29)
+
+Channel options remain Channel-owned. Active lists, real atlas coverage, public detail
+and bounded effective-price batches now use the canonical Pricing read port. The
+native adapter retains the request correlation and effective locale; failure maps
+through static owner presentation. Explicit ID-only/slug-only selection is not mixed
+with the other half of a host channel. Native and GraphQL carry the actual price-row
+source, normalized context and one resolution time. No source check proves runtime
+execution, database isolation or mounted parity. No tests, Cargo commands, workflows
+or CI were run; non-test checks are recorded in the Pricing implementation plan.

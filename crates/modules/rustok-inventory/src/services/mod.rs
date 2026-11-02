@@ -2,10 +2,14 @@ pub mod bootstrap;
 pub mod inventory;
 mod policy;
 pub mod public_channel;
+mod quantity;
 pub mod stock_location_translation;
 mod translation_progress;
 
-pub use bootstrap::{BootstrapService, InitialInventory};
+pub use bootstrap::{
+    BootstrapService, CatalogDeletionBlocker, CatalogDeletionError, InitialInventory,
+    MAX_CATALOG_DELETE_VARIANTS,
+};
 pub use inventory::{
     InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
     InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,
@@ -26,3 +30,5 @@ pub use stock_location_translation::{
     StockLocationTranslationExactLocaleResult, StockLocationTranslationExactLocaleSnapshot,
     StockLocationTranslationService,
 };
+
+pub use quantity::{QuantityWriteBlocker, QuantityWriteError};

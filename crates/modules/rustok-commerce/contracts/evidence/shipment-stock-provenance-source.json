@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-01",
+  "status": "source_implemented_runtime_unvalidated",
+  "source_base_revision": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed_revision": "920c0e3f5c4bfb6698caedfbc683684f4c51fa0c",
+  "scope": "bounded native shipment/cancel/reopen provenance, selected owner composition and original-key local recovery",
+  "step8_complete": false,
+  "runtime_executed": false,
+  "owners": {
+    "fulfillment": "lifecycle, item counters, consumer-owned prepared stock protocol, provider journal and local recovery",
+    "inventory": "retained allocation, original location, physical arithmetic, native shipment provenance and return overlap exclusion",
+    "order": "immutable saved nullable Variant and Order-line quantities, without repricing or publication eligibility",
+    "commerce": "selected capability composition, bounded cancellation planning and transport context"
+  },
+  "contract": {
+    "max_shipment_items": 1024,
+    "positive_deadline_cap_ms": 30000,
+    "selected_order_preparation_before_fulfillment_write_transaction_and_carrier": true,
+    "all_variants_tenant_proved_before_tenantless_item_reads": true,
+    "complete_snapshot_correlation_under_parent_lock": true,
+    "native_stock_proof_fulfillment_and_provider_checkpoint_same_transaction": true,
+    "preparation_key_probes_rolled_back_without_stock_or_reservation_writes": true,
+    "global_proof_collision_refuses_without_foreign_proof_adoption": true,
+    "native_proof_table": "inventory_shipment_stock_proofs",
+    "additive_migration": "m20261101_000025_create_shipment_stock_proofs",
+    "migration_execution": "unexecuted",
+    "historical_migration_payloads_and_global_return_item_pk_unchanged": true,
+    "no_historical_backfill_from_counters_deletion_status_or_provider_metadata": true,
+    "no_allocation_reselection_or_warehouse_relocation": true,
+    "all_five_nonnull_terminal_markers_preserved_and_refused": true,
+    "returned_goods_and_outstanding_restoration_conservative_line_exclusion": true,
+    "exact_return_receipt_replay_before_new_shipment_dependency": true,
+    "explicit_noop_opt_out_only_unconfigured_fails_closed": true,
+    "header_only_fresh_ship_is_unknown_not_sku_less": true,
+    "pending_cancel_delivery_and_undo_delivery_have_no_stock_dependency": true,
+    "selected_fulfillment_read_command_pair_required": true,
+    "cancellation_page_size": 100,
+    "cancellation_max_fulfillments": 1024,
+    "cancellation_first_total_frozen_and_complete_pages_correlated": true,
+    "owner_pending_only_cancellation_not_full_cancel_fallback": true,
+    "local_recovery_owned_by_fulfillment_never_reinvokes_carrier": true,
+    "current_operator_context_and_literal_saved_key_retained": true,
+    "legacy_ambiguous_provider_error_fences_new_identity": true,
+    "deliver_reopen_kernel_response_receipt_same_transaction": true,
+    "five_graphql_lifecycle_caller_keys_1_to_191_bytes": true,
+    "in_memory_plan_not_durable_or_distributed_atomicity": true,
+    "deadline_phase_checks_not_database_statement_timeouts": true,
+    "provider_effect_admission_migration": "m20261101_000121_enforce_provider_effect_admission",
+    "provider_admission_migration_dependency": "m20261003_000120_create_checkout_identity_anchor",
+    "forward_only_provider_admission_without_row_rewrite": true,
+    "pending_claim_and_private_release_require_all_outcome_markers_absent": true,
+    "shared_unresolved_predicate_fences_malformed_pending_and_incomplete_committed": true,
+    "sqlite_writer_fence_before_claim_transaction_reads": true,
+    "explicit_operator_no_effect_resolution_requeues_same_identity_pending": true,
+    "success_resolution_preserves_and_cas_matches_retained_reference": true,
+    "recovery_worklist_requires_explicit_stale_execution_quarantine": true,
+    "local_recovery_and_native_wrappers_decrease_budget_across_journal_reads": true,
+    "http_create_and_lifecycle_caller_keys_1_to_191_bytes": true,
+    "retained_fulfillment_key_pins_provider_before_mutable_option": true,
+    "bounded_cross_provider_key_lookup_refuses_ambiguity": true,
+    "terminal_status_never_substitutes_key_payload_receipt": true,
+    "late_provider_success_retained_without_automatic_promotion": true,
+    "retained_provider_result_and_reference_are_monotonic": true,
+    "explicit_success_resolution_preserves_identical_retained_result_and_completion_time": true,
+    "native_elapsed_budget_rechecked_after_locks_before_writes_and_final_owner_commit": true,
+    "nullable_shipped_timestamp_not_active_value_wrapper_determines_reopened_status": true,
+    "literal_saved_key_never_trimmed_or_aliased_in_owner_recovery": true,
+    "defensive_http_and_graphql_request_tenant_agreement": true,
+    "provider_registry_preflight_before_claim_keeps_known_uninvoked_pending": true,
+    "provider_succeeded_alone_not_create_local_completion_receipt": true,
+    "stale_execution_quarantine_preserves_saved_completion_timestamp": true
+  },
+  "source_regressions": {
+    "executed": false,
+    "rust_files": [
+      "crates/modules/rustok-commerce/tests/shipment_stock_provenance.rs",
+      "crates/modules/rustok-fulfillment/tests/shipment_stock_owner_test.rs",
+      "crates/modules/rustok-commerce/src/services/order_cancellation/selected_fulfillment_tests.rs",
+      "crates/modules/rustok-commerce/src/services/fulfillment_reconciliation/tests.rs",
+      "crates/modules/rustok-inventory/src/shipment_stock/scope/tests.rs",
+      "crates/modules/rustok-fulfillment/src/services/provider_operation_recovery.rs",
+      "crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs"
+    ],
+    "coverage_intent": [
+      "ship two, deliver one, cancel and reopen on planned three without moving the original remaining reservation",
+      "missing history, zero/deleted audit rows, ambiguous allocation, archived original location, protected reservations and overflow",
+      "return overlap and exact committed return replay without shipment storage",
+      "global proof collision, rolled-back preparation probe, late F failure and provider-success local recovery",
+      "unknown header-only scope versus explicit Noop and movement-free delivery reopening",
+      "committed replay, distinct later intents, literal legacy key, real operator context and no carrier reinvocation",
+      "incomplete selected pair, changing totals, short pages, duplicate child identities and malformed counters",
+      "complete immutable native proof correlation, checked progress and retained terminal markers",
+      "current forward-only schema permits only known-uninvoked private release and explicit same-key no-effect requeue",
+      "retained legacy ERROR and contradictory provider references never authorize automatic execution or evidence deletion",
+      "terminal cancellation/reship status cannot bypass immutable original key and payload; pending-only committed replay remains read-only after a later shipment",
+      "mutable shipping-option provider changes cannot divert committed lifecycle replay or create another provider intent for the same literal key",
+      "late success stays quarantined, contradictory duplicate results refuse, explicit identical success resolution preserves retained completion time and SQL rejects evidence replacement",
+      "pending cancellation reopens Pending when actual nullable shipped_at and shipped quantities are absent",
+      "native lock/read time expires the admitted budget, final owner commit/receipt gates do not refresh it, and HTTP helper rejects contradictory tenant contexts",
+      "legacy literal saved keys including surrounding whitespace survive local recovery without aliasing or rotation",
+      "an unavailable/unsupported registry adapter is refused before claim and leaves the original intent Pending with no invented unknown external outcome",
+      "shared create-label ProviderSucceeded resumes native label persistence/checkpoint without another carrier, rather than acknowledging an uncommitted local projection"
+    ],
+    "rust_definition_count": 58,
+    "new_rust_definition_counts": {
+      "physical_commerce": 16,
+      "fulfillment_owner": 22,
+      "commerce_selected_recovery": 2,
+      "commerce_selected_pagination": 5,
+      "inventory_scope": 7,
+      "fulfillment_current_guard_private_release": 1,
+      "fulfillment_provider_outcome_review": 3,
+      "commerce_http_context_review": 2
+    },
+    "node_definition_count": 30,
+    "node_files": [
+      "scripts/verify/verify-commerce-shipment-stock-provenance.test.mjs"
+    ],
+    "node_executed": false,
+    "rust_definition_selection": {
+      "crates/modules/rustok-fulfillment/src/services/provider_operation_recovery.rs": [
+        "uninvoked_claim_release_uses_current_schema_and_cannot_reopen_unknown_outcomes",
+        "late_provider_success_is_retained_in_quarantine_and_promoted_only_explicitly",
+        "retained_fulfillment_key_refuses_cross_provider_admission_and_historical_ambiguity",
+        "duplicate_success_and_current_schema_cannot_erase_or_replace_retained_outcomes"
+      ],
+      "crates/modules/rustok-commerce/src/controllers/admin/fulfillments_owner_commands.rs": [
+        "shipment_http_context_preserves_canonical_actor_claims_scope_and_literal_key",
+        "shipment_http_context_rejects_disagreeing_or_nil_tenants_before_selected_calls"
+      ]
+    }
+  },
+  "read_only_checks": {
+    "source_guard": "scripts/verify/verify-commerce-shipment-stock-provenance.mjs",
+    "scope": "source, syntax and formatting only; not Rust typechecking or runtime evidence",
+    "recorded_results": {
+      "status": "passed_source_syntax_format_only",
+      "scope": "Targeted post-review source/syntax/format checks only; no tests, compilation, SQL, migrations, carrier or mounted/remote execution.",
+      "source_guards_passed": [
+        "scripts/verify/verify-commerce-shipment-stock-provenance.mjs",
+        "scripts/verify/verify-commerce-admin-fulfillment-create-owner-port-cutover.mjs",
+        "scripts/verify/verify-commerce-admin-fulfillment-owner-command-cutover.mjs",
+        "scripts/verify/verify-commerce-graphql-fulfillment-command-owner-port-cutover.mjs",
+        "scripts/verify/verify-commerce-return-restock-identity.mjs",
+        "scripts/verify/verify-commerce-checkout-inventory-adoption.mjs"
+      ],
+      "rust_syntax": {
+        "parser": "Tree-sitter Rust",
+        "files": 54,
+        "errors": 0,
+        "typechecking": false
+      },
+      "rust_format": {
+        "formatter": "Scalar WASM Rust formatter",
+        "files": 54,
+        "changed_on_final_check": 0
+      },
+      "node_syntax_checked": [
+        "scripts/verify/verify-commerce-shipment-stock-provenance.mjs",
+        "scripts/verify/verify-commerce-admin-fulfillment-create-owner-port-cutover.mjs",
+        "scripts/verify/verify-commerce-admin-fulfillment-owner-command-cutover.mjs",
+        "scripts/verify/verify-commerce-graphql-fulfillment-command-owner-port-cutover.mjs",
+        "scripts/verify/verify-commerce-return-restock-identity.mjs",
+        "scripts/verify/verify-commerce-checkout-inventory-adoption.mjs",
+        "scripts/verify/verify-commerce-shipment-stock-provenance.test.mjs"
+      ],
+      "prettier": "guard, companion, adjacent create/lifecycle source guards and evidence JSON checked",
+      "json_and_regression_definition_counts": {
+        "rust": 58,
+        "node": 30,
+        "tests_executed": false
+      },
+      "documentation": {
+        "files": 16,
+        "relative_link_targets": 211,
+        "missing_targets": 0,
+        "stale_count_or_filter_references": 0
+      },
+      "historical_migration_sha256_unchanged_from_source_base": {
+        "crates/modules/rustok-fulfillment/src/migrations/m20260713_000111_create_provider_operation_journal.rs": "e9d07164784b5ec2c933cca5e3cd8bd15276752fdd44dad4c258a5a120b036f3",
+        "crates/modules/rustok-fulfillment/src/migrations/m20260713_000113_allow_provider_execution_reconciliation.rs": "739d78b43ec17a01311f0aab5fe9d003ab918bc7ecb184fb4e2c4cf1a476d4e6",
+        "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750"
+      },
+      "git_diff_check": "passed",
+      "rust_compilation": "not performed; cargo/rustc unavailable",
+      "runtime": "unverified"
+    }
+  },
+  "unverified": {
+    "rust_compilation": true,
+    "rust_regressions": true,
+    "sql_postgresql_sqlite": true,
+    "driver_contention_rollback": true,
+    "external_carrier_outcomes": true,
+    "mounted_transports": true,
+    "remote_owner_convergence": true,
+    "full_events_outbox_index": true,
+    "unpaid_return_eligibility": true,
+    "partial_inspection_topups": true,
+    "source_guard_mutation_regressions": true,
+    "migration_execution": true
+  },
+  "native_stock_outbox_continuation": {
+    "evidence": "crates/modules/rustok-inventory/contracts/evidence/native-stock-outbox-source.json",
+    "additional_rust_definitions": 16,
+    "additional_node_definitions": 10,
+    "executed": false,
+    "note": "Separate native invalidation source packet; the original 58 Rust/30 Node definitions below remain unrun and are not recounted."
+  }
+}

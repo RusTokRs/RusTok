@@ -82,6 +82,7 @@ where
     let active_token_count = oauth_tokens::Entity::find()
         .filter(oauth_tokens::Column::AppId.eq(app.id))
         .filter(oauth_tokens::Column::TenantId.eq(context.tenant_id))
+        .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(oauth_tokens::Column::ExpiresAt.gt(chrono::Utc::now()))
         .count(db)
@@ -514,6 +515,7 @@ mod tests {
             last_login_at: None,
             failed_login_count: 0,
             locked_until: None,
+            password_changed_at: None,
             metadata: json!({"team": "platform"}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),

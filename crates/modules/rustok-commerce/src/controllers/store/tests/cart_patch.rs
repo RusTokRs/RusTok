@@ -122,7 +122,7 @@ fn cart_context_patch_keeps_existing_values_when_fields_are_omitted() {
             country_code: Some("DE".to_string()),
             locale: Some("de".to_string()),
             selected_shipping_option_id: Some(shipping_option_id),
-            shipping_selections: Vec::new(),
+            shipping_selections: None,
         }
     );
 }
@@ -154,7 +154,7 @@ fn cart_context_patch_applies_explicit_values() {
             country_code: Some("fr".to_string()),
             locale: Some("fr".to_string()),
             selected_shipping_option_id: Some(shipping_option_id),
-            shipping_selections: Vec::new(),
+            shipping_selections: None,
         }
     );
 }
@@ -187,7 +187,7 @@ fn cart_context_patch_clears_country_when_region_is_explicitly_cleared() {
             country_code: None,
             locale: Some("de".to_string()),
             selected_shipping_option_id: None,
-            shipping_selections: Vec::new(),
+            shipping_selections: None,
         }
     );
 }
@@ -223,7 +223,7 @@ fn cart_context_patch_can_clear_individual_fields_and_falls_back_to_request_loca
             country_code: None,
             locale: Some("en".to_string()),
             selected_shipping_option_id: None,
-            shipping_selections: Vec::new(),
+            shipping_selections: None,
         }
     );
 }
@@ -311,4 +311,31 @@ fn cart_context_metadata_embeds_storefront_context_for_payment_collection() {
             }
         })
     );
+}
+
+#[test]
+fn scalar_shipping_clear_does_not_resurrect_old_group_selection_and_group_clear_stays_explicit() {
+    let mut cart = sample_cart(None);
+    cart.selected_shipping_option_id = Some(Uuid::new_v4());
+    let patch = StoreCartContextPatch {
+        email: None,
+        region_id: None,
+        country_code: None,
+        locale: None,
+        selected_shipping_option_id: Some(None),
+        shipping_selections: None,
+    };
+    let requested = requested_cart_context(&cart, &sample_request_context("en"), patch);
+    assert_eq!(requested.selected_shipping_option_id, None);
+    assert_eq!(requested.shipping_selections, None);
+    let patch = StoreCartContextPatch {
+        email: None,
+        region_id: None,
+        country_code: None,
+        locale: None,
+        selected_shipping_option_id: None,
+        shipping_selections: Some(Vec::new()),
+    };
+    let requested = requested_cart_context(&cart, &sample_request_context("en"), patch);
+    assert_eq!(requested.shipping_selections, Some(Vec::new()));
 }

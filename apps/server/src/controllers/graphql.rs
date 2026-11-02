@@ -18,7 +18,8 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use rustok_api::{
-    Action, AuthPrincipalContext, PLATFORM_FALLBACK_LOCALE, Permission, PortActor, PortContext,
+    Action, AuthPrincipalContext, ChannelContext, OptionalChannel, PLATFORM_FALLBACK_LOCALE,
+    Permission, PortActor, PortContext,
 };
 
 use rustok_core::i18n::Locale;
@@ -43,6 +44,15 @@ const WS_INCOMING_QUEUE_CAPACITY: usize = 32;
 const WS_CONNECTION_INIT_TIMEOUT: Duration = Duration::from_secs(10);
 const WS_CONNECTION_INIT_TIMEOUT_CLOSE: u16 = 4408;
 const WS_CONNECTION_INIT_TIMEOUT_REASON: &str = "Connection initialisation timeout";
+const WS_MAX_ACTIVE_OPERATIONS: usize = 32;
+const WS_MAX_OPERATION_ID_LEN: usize = 128;
+const WS_AUTH_REVALIDATION_INTERVAL: Duration = Duration::from_secs(30);
+const WS_CLOSE_DUPLICATE_OPERATION: u16 = 4409;
+const WS_CLOSE_TOO_MANY_OPERATIONS: u16 = 4429;
+const WS_CLOSE_INVALID_OPERATION: u16 = 4400;
+const WS_DUPLICATE_OPERATION_REASON: &str = "Subscriber for this operation id already exists";
+const WS_TOO_MANY_OPERATIONS_REASON: &str = "Too many active GraphQL operations";
+const WS_INVALID_OPERATION_REASON: &str = "Invalid GraphQL operation id";
 
 /// Normalize canonical RBAC implications for GraphQL policies that inspect an
 /// immutable permission vector directly.
@@ -77,6 +87,7 @@ struct GraphqlWsAuthLease {
     tenant_id: uuid::Uuid,
     access_token: String,
     initial_scope: RbacRequestScope,
+    expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -87,6 +98,7 @@ async fn graphql_handler(
     tenant_ctx: TenantContext,
     request_context: RequestContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
+    OptionalChannel(channel): OptionalChannel,
     headers: HeaderMap,
     json_request: Result<Json<async_graphql::Request>, JsonRejection>,
 ) -> Response {
@@ -122,6 +134,9 @@ async fn graphql_handler(
         .data(headers)
         .data(registry)
         .data(locale);
+    if let Some(channel) = channel {
+        request = request.data(channel);
+    }
 
     let rbac_scope = current_user.as_ref().map(|current_user| {
         RbacRequestScope::new(
@@ -231,6 +246,7 @@ async fn graphql_ws_handler(
     State(auth_runtime): State<ServerAuthRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
+    OptionalChannel(channel): OptionalChannel,
 ) -> impl IntoResponse {
     let ws = ws
         .protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
@@ -260,6 +276,7 @@ async fn graphql_ws_handler(
             auth_runtime,
             registry,
             protocol,
+            channel,
         )
     })
 }
@@ -271,17 +288,22 @@ async fn handle_graphql_ws(
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     protocol: WebSocketProtocols,
+    channel: Option<ChannelContext>,
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) =
         tokio::sync::mpsc::channel::<String>(WS_INCOMING_QUEUE_CAPACITY);
     let auth_lease = Arc::new(OnceLock::<GraphqlWsAuthLease>::new());
     let connection_init_received = Arc::new(OnceLock::<()>::new());
+    let operations = Arc::new(tokio::sync::Mutex::new(WsOperationTracker::default()));
+    let (close_tx, mut close_rx) = tokio::sync::mpsc::channel::<WsCloseReason>(1);
+    let _close_tx_keepalive = close_tx.clone();
 
     let schema_for_stream = schema.as_ref().clone();
     let runtime_ctx_for_init = runtime_ctx.clone();
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
+    let channel_for_init = channel.clone();
     let auth_lease_for_init = Arc::clone(&auth_lease);
     let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
@@ -295,30 +317,38 @@ async fn handle_graphql_ws(
             runtime_ctx_for_init.clone(),
             auth_runtime_for_init.clone(),
             registry_for_init.clone(),
+            channel_for_init.clone(),
             Arc::clone(&auth_lease_for_init),
             payload,
         )
     });
 
+    let operations_for_incoming = Arc::clone(&operations);
     let forward_incoming = tokio::spawn(async move {
         while let Some(message) = source.next().await {
-            match message {
-                Ok(Message::Text(text)) => {
-                    if incoming_tx.send(text.to_string()).await.is_err() {
-                        break;
-                    }
-                }
+            let text = match message {
+                Ok(Message::Text(text)) => text.to_string(),
                 Ok(Message::Binary(bytes)) => {
                     let Ok(text) = String::from_utf8(bytes.to_vec()) else {
                         continue;
                     };
-                    if incoming_tx.send(text).await.is_err() {
-                        break;
-                    }
+                    text
                 }
                 Ok(Message::Close(_)) => break,
-                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {}
+                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,
                 Err(_) => break,
+            };
+
+            {
+                let mut operations = operations_for_incoming.lock().await;
+                if let Err(reason) = operations.observe_client_message(&text) {
+                    let _ = close_tx.send(reason).await;
+                    break;
+                }
+            }
+
+            if incoming_tx.send(text).await.is_err() {
+                break;
             }
         }
     });
@@ -327,6 +357,8 @@ async fn handle_graphql_ws(
     // the callback starts. `connection_init_received` is set at callback entry so a slow but
     // legitimately received initialization is not cancelled by the transport deadline.
     let mut connection_init_deadline = Box::pin(tokio::time::sleep(WS_CONNECTION_INIT_TIMEOUT));
+    let mut auth_revalidation = tokio::time::interval(WS_AUTH_REVALIDATION_INTERVAL);
+    auth_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         let scope_before_poll = match auth_lease.get() {
@@ -340,23 +372,34 @@ async fn handle_graphql_ws(
             None => None,
         };
 
-        let next_message = if auth_lease.get().is_none() {
-            tokio::select! {
-                _ = &mut connection_init_deadline,
-                    if connection_init_received.get().is_none() =>
+        let next_message = tokio::select! {
+            _ = &mut connection_init_deadline,
+                if auth_lease.get().is_none() && connection_init_received.get().is_none() =>
+            {
+                let _ = close_ws(
+                    &mut sink,
+                    WS_CONNECTION_INIT_TIMEOUT_CLOSE,
+                    WS_CONNECTION_INIT_TIMEOUT_REASON,
+                )
+                .await;
+                break;
+            }
+            reason = close_rx.recv() => {
+                if let Some(reason) = reason {
+                    let _ = close_ws(&mut sink, reason.code, reason.message).await;
+                }
+                break;
+            }
+            _ = auth_revalidation.tick(), if auth_lease.get().is_some() => {
+                if let Some(lease) = auth_lease.get()
+                    && revalidate_ws_auth(&auth_runtime, lease).await.is_err()
                 {
-                    let _ = close_ws(
-                        &mut sink,
-                        WS_CONNECTION_INIT_TIMEOUT_CLOSE,
-                        WS_CONNECTION_INIT_TIMEOUT_REASON,
-                    )
-                    .await;
+                    let _ = close_ws_for_auth_change(&mut sink).await;
                     break;
                 }
-                message = with_rbac_request_scope(None, graphql_stream.next()) => message,
+                continue;
             }
-        } else {
-            with_rbac_request_scope(scope_before_poll, graphql_stream.next()).await
+            message = with_rbac_request_scope(scope_before_poll, graphql_stream.next()) => message,
         };
         let Some(message) = next_message else {
             break;
@@ -370,7 +413,12 @@ async fn handle_graphql_ws(
         }
 
         let result = match message {
-            WsMessage::Text(text) => sink.send(Message::Text(text.into())).await,
+            WsMessage::Text(text) => {
+                if let Some(id) = ws_server_complete_id(&text) {
+                    operations.lock().await.release(&id);
+                }
+                sink.send(Message::Text(text.into())).await
+            }
             WsMessage::Close(code, reason) => {
                 sink.send(Message::Close(Some(CloseFrame {
                     code,
@@ -392,6 +440,9 @@ async fn revalidate_ws_auth(
     auth_runtime: &ServerAuthRuntime,
     lease: &GraphqlWsAuthLease,
 ) -> Result<RbacRequestScope, ()> {
+    if chrono::Utc::now() >= lease.expires_at {
+        return Err(());
+    }
     let current_user =
         resolve_current_user_from_access_token(auth_runtime, lease.tenant_id, &lease.access_token)
             .await
@@ -428,10 +479,71 @@ where
     close_ws(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await
 }
 
+#[derive(Clone, Copy, Debug)]
+struct WsCloseReason {
+    code: u16,
+    message: &'static str,
+}
+
+#[derive(Default)]
+struct WsOperationTracker {
+    active: std::collections::HashSet<String>,
+}
+
+impl WsOperationTracker {
+    fn observe_client_message(&mut self, text: &str) -> Result<(), WsCloseReason> {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+            return Ok(());
+        };
+        let message_type = value.get("type").and_then(serde_json::Value::as_str);
+        if !matches!(message_type, Some("start" | "subscribe")) {
+            return Ok(());
+        }
+        let id = value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| !id.is_empty() && id.len() <= WS_MAX_OPERATION_ID_LEN)
+            .ok_or(WsCloseReason {
+                code: WS_CLOSE_INVALID_OPERATION,
+                message: WS_INVALID_OPERATION_REASON,
+            })?;
+        if self.active.contains(id) {
+            return Err(WsCloseReason {
+                code: WS_CLOSE_DUPLICATE_OPERATION,
+                message: WS_DUPLICATE_OPERATION_REASON,
+            });
+        }
+        if self.active.len() >= WS_MAX_ACTIVE_OPERATIONS {
+            return Err(WsCloseReason {
+                code: WS_CLOSE_TOO_MANY_OPERATIONS,
+                message: WS_TOO_MANY_OPERATIONS_REASON,
+            });
+        }
+        self.active.insert(id.to_string());
+        Ok(())
+    }
+
+    fn release(&mut self, id: &str) {
+        self.active.remove(id);
+    }
+}
+
+fn ws_server_complete_id(text: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    if value.get("type").and_then(serde_json::Value::as_str) != Some("complete") {
+        return None;
+    }
+    value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
 async fn build_ws_connection_data(
     runtime_ctx: ServerRuntimeContext,
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
+    channel: Option<ChannelContext>,
     auth_lease: Arc<OnceLock<GraphqlWsAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
@@ -452,6 +564,7 @@ async fn build_ws_connection_data(
             tracing::warn!(error = %error, "GraphQL WebSocket tenant resolution failed");
             async_graphql::Error::new(error.client_message())
         })?;
+    ensure_ws_channel_tenant(channel.as_ref(), tenant_ctx.id)?;
     let access_token = token
         .trim()
         .strip_prefix("Bearer ")
@@ -477,6 +590,7 @@ async fn build_ws_connection_data(
             tenant_id: tenant_ctx.id,
             access_token,
             initial_scope: request_scope.clone(),
+            expires_at: current_user.access_token_expires_at,
         })
         .map_err(|_| async_graphql::Error::new("RBAC connection scope was already initialized"))?;
     let principal_context = AuthPrincipalContext::new(current_user.principal_kind);
@@ -493,9 +607,11 @@ async fn build_ws_connection_data(
     let request_context = RequestContext {
         tenant_id: tenant_ctx.id,
         user_id: Some(current_user.user.id),
-        channel_id: None,
-        channel_slug: None,
-        channel_resolution_source: None,
+        channel_id: channel.as_ref().map(|channel| channel.id),
+        channel_slug: channel.as_ref().map(|channel| channel.slug.clone()),
+        channel_resolution_source: channel
+            .as_ref()
+            .map(|channel| channel.resolution_source.clone()),
         locale: locale.to_string(),
         correlation_id: uuid::Uuid::new_v4().to_string(),
     };
@@ -509,7 +625,24 @@ async fn build_ws_connection_data(
     data.insert(auth_ctx);
     data.insert(principal_context);
     data.insert(request_scope);
+    if let Some(channel) = channel {
+        data.insert(channel);
+    }
     Ok(data)
+}
+
+fn ensure_ws_channel_tenant(
+    channel: Option<&ChannelContext>,
+    tenant_id: uuid::Uuid,
+) -> async_graphql::Result<()> {
+    if let Some(channel) = channel
+        && channel.tenant_id != tenant_id
+    {
+        return Err(async_graphql::Error::new(
+            "connection_init channel does not belong to the resolved tenant",
+        ));
+    }
+    Ok(())
 }
 
 async fn resolve_ws_locale(
@@ -669,6 +802,88 @@ mod tests {
         assert_eq!(WS_MAX_MESSAGE_SIZE, 256 * 1024);
         assert_eq!(WS_MAX_FRAME_SIZE, 256 * 1024);
         assert_eq!(WS_INCOMING_QUEUE_CAPACITY, 32);
+        assert_eq!(super::WS_MAX_ACTIVE_OPERATIONS, 32);
+        assert_eq!(super::WS_MAX_OPERATION_ID_LEN, 128);
+        assert_eq!(
+            super::WS_AUTH_REVALIDATION_INTERVAL,
+            std::time::Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn graphql_ws_operation_tracker_bounds_active_ids_and_rejects_duplicates() {
+        let mut tracker = super::WsOperationTracker::default();
+        for index in 0..super::WS_MAX_ACTIVE_OPERATIONS {
+            let message = serde_json::json!({ "type": "subscribe", "id": index.to_string() });
+            tracker
+                .observe_client_message(&message.to_string())
+                .expect("operation within cap");
+        }
+
+        let duplicate = serde_json::json!({ "type": "subscribe", "id": "0" }).to_string();
+        let error = tracker
+            .observe_client_message(&duplicate)
+            .expect_err("duplicate operation id must be rejected");
+        assert_eq!(error.code, super::WS_CLOSE_DUPLICATE_OPERATION);
+
+        let overflow = serde_json::json!({ "type": "start", "id": "overflow" }).to_string();
+        let error = tracker
+            .observe_client_message(&overflow)
+            .expect_err("operation cap must be enforced");
+        assert_eq!(error.code, super::WS_CLOSE_TOO_MANY_OPERATIONS);
+
+        tracker.release("0");
+        tracker
+            .observe_client_message(&overflow)
+            .expect("released slot is reusable");
+    }
+
+    #[test]
+    fn graphql_ws_operation_tracker_validates_ids_and_ignores_non_start_messages() {
+        let mut tracker = super::WsOperationTracker::default();
+        for message in [
+            serde_json::json!({ "type": "connection_init" }).to_string(),
+            serde_json::json!({ "type": "ping" }).to_string(),
+            "not json".to_string(),
+        ] {
+            tracker
+                .observe_client_message(&message)
+                .expect("non-start messages are forwarded to the protocol engine");
+        }
+
+        let missing_id = serde_json::json!({ "type": "subscribe" }).to_string();
+        assert_eq!(
+            tracker
+                .observe_client_message(&missing_id)
+                .expect_err("missing id")
+                .code,
+            super::WS_CLOSE_INVALID_OPERATION
+        );
+        let long_id = serde_json::json!({
+            "type": "start",
+            "id": "a".repeat(super::WS_MAX_OPERATION_ID_LEN + 1),
+        })
+        .to_string();
+        assert_eq!(
+            tracker.observe_client_message(&long_id).expect_err("long id").code,
+            super::WS_CLOSE_INVALID_OPERATION
+        );
+    }
+
+    #[test]
+    fn graphql_ws_server_complete_releases_operation_slot() {
+        let complete = serde_json::json!({ "type": "complete", "id": "op-1" }).to_string();
+        assert_eq!(super::ws_server_complete_id(&complete), Some("op-1".to_string()));
+        let next = serde_json::json!({ "type": "next", "id": "op-1" }).to_string();
+        assert_eq!(super::ws_server_complete_id(&next), None);
+
+        let mut tracker = super::WsOperationTracker::default();
+        let start = serde_json::json!({ "type": "subscribe", "id": "op-1" }).to_string();
+        tracker.observe_client_message(&start).expect("start");
+        if let Some(id) = super::ws_server_complete_id(&complete) {
+            tracker.release(&id);
+        }
+        tracker.observe_client_message(&start).expect("id is reusable after complete");
     }
 
     #[test]
@@ -854,6 +1069,28 @@ mod tests {
         assert_eq!(select(Some("en")), "en");
         assert_eq!(select(Some("de-DE")), "en");
         assert_eq!(select(Some("fr")), "en");
+    }
+
+    #[test]
+    fn websocket_channel_must_belong_to_the_resolved_tenant() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let mut channel = rustok_api::ChannelContext {
+            id: uuid::Uuid::new_v4(),
+            tenant_id,
+            slug: "web".to_string(),
+            name: "Web".to_string(),
+            is_active: true,
+            status: "active".to_string(),
+            target_type: None,
+            target_value: None,
+            settings: serde_json::json!({}),
+            resolution_source: rustok_api::ChannelResolutionSource::Default,
+            resolution_trace: Vec::new(),
+        };
+        assert!(super::ensure_ws_channel_tenant(Some(&channel), tenant_id).is_ok());
+        assert!(super::ensure_ws_channel_tenant(None, tenant_id).is_ok());
+        channel.tenant_id = uuid::Uuid::new_v4();
+        assert!(super::ensure_ws_channel_tenant(Some(&channel), tenant_id).is_err());
     }
 
     #[test]

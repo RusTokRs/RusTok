@@ -10,6 +10,7 @@ use rustok_cache::CacheService;
 use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
 };
+use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 use rustok_iggy::IggyTransport;
 use rustok_modules::{
     ArtifactEventDeliveryConfig, ArtifactEventProjectionTransport, ModuleControlPlane,
@@ -386,6 +387,40 @@ impl EventTransport for LocalDeliveryFanoutTransport {
         Ok(())
     }
 
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> rustok_core::Result<()> {
+        let payload = envelope
+            .payload()
+            .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+        let deliver_locally = matches!(payload, ContractEventPayload::Root(_))
+            || self.local.event_bus().has_contract_handler(&envelope)?;
+        if payload.requires_module_delivery() && !deliver_locally {
+            return Err(rustok_core::Error::External(
+                "Required sealed module delivery is unavailable; retain the original outbox identity".to_owned(),
+            ));
+        }
+        // The configured Iggy connector must accept the unchanged frame first. A required
+        // local projection failure retains this outbox identity for retry, even if that
+        // republishes the same frame remotely. Remote consumers must be idempotent.
+        self.primary.publish_contract(envelope.clone()).await?;
+        if deliver_locally {
+            let event_id = envelope.id();
+            let event_type = envelope.event_type().to_owned();
+            if let Err(error) = self.local.publish_contract(envelope).await {
+                EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+                rustok_telemetry::metrics::record_event_error(
+                    &event_type,
+                    "local_contract_delivery",
+                );
+                tracing::error!(
+                    %event_id, %event_type, code = "events.contract_local_delivery_failed",
+                    "Sealed local delivery failed; retain the same outbox identity for retry"
+                );
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     async fn acknowledge(&self, event_id: uuid::Uuid) -> rustok_core::Result<()> {
         self.primary.acknowledge(event_id).await
     }
@@ -462,5 +497,356 @@ mod tests {
         transport.publish(envelope.clone()).await.unwrap();
         assert_eq!(primary_receiver.recv().await.unwrap().id, envelope.id);
         assert!(event_local_delivery_metrics_snapshot().failure_total > before);
+    }
+}
+
+#[cfg(test)]
+mod contract_delivery_tests {
+    use super::*;
+    use rustok_core::events::{EventDispatcher, EventHandler, HandlerResult, RunningDispatcher};
+    use rustok_events::{
+        DomainEvent, InventoryReservationEvent, InventorySourceEvent, ProductIndexRefreshEvent,
+    };
+    use std::sync::{Mutex, atomic::AtomicBool};
+    use uuid::Uuid;
+
+    /// A transport contract double, not evidence of a running Iggy broker/cursor.
+    struct Primary {
+        accepted: Arc<Mutex<Vec<ContractEventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl EventTransport for Primary {
+        async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
+            Err(rustok_core::Error::Validation(
+                "no root fallback in this sealed regression".to_owned(),
+            ))
+        }
+        async fn publish_contract(
+            &self,
+            envelope: ContractEventEnvelope,
+        ) -> rustok_core::Result<()> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(rustok_core::Error::External(
+                    "primary unavailable".to_owned(),
+                ));
+            }
+            self.accepted.lock().unwrap().push(envelope);
+            Ok(())
+        }
+        fn reliability_level(&self) -> ReliabilityLevel {
+            ReliabilityLevel::Streaming
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    struct Listener {
+        handled: Arc<Mutex<Vec<ContractEventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl EventHandler for Listener {
+        fn name(&self) -> &'static str {
+            "sealed_local_delivery_regression"
+        }
+        fn handles(&self, _event: &DomainEvent) -> bool {
+            false
+        }
+        async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+            Err(rustok_core::Error::Validation(
+                "sealed facts are not root events".to_owned(),
+            ))
+        }
+        fn handles_contract(&self, payload: &ContractEventPayload) -> bool {
+            matches!(payload, ContractEventPayload::InventoryReservation(_))
+        }
+        async fn handle_contract(&self, envelope: &ContractEventEnvelope) -> HandlerResult {
+            self.handled.lock().unwrap().push(envelope.clone());
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(rustok_core::Error::External(
+                    "projection unavailable".to_owned(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    fn envelope() -> ContractEventEnvelope {
+        ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            InventoryReservationEvent::Changed {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap()
+    }
+
+    fn listen(
+        bus: EventBus,
+        handled: Arc<Mutex<Vec<ContractEventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    ) -> RunningDispatcher {
+        let mut dispatcher = EventDispatcher::new(bus);
+        dispatcher.register(Listener { handled, fail });
+        dispatcher.start_with_contract_delivery().unwrap()
+    }
+
+    #[tokio::test]
+    async fn outbox_memory_target_delivers_the_exact_sealed_envelope_to_its_listener_bus() {
+        let target = MemoryTransport::with_capacity(8);
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen(
+            target.event_bus(),
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let envelope = envelope();
+        target.publish_contract(envelope.clone()).await.unwrap();
+        assert_eq!(*handled.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn primary_refusal_precedes_local_sealed_delivery() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let handled = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(true)),
+            }),
+            8,
+        );
+        let running = listen(bus, handled.clone(), Arc::new(AtomicBool::new(false)));
+        assert!(target.publish_contract(envelope()).await.is_err());
+        assert!(accepted.lock().unwrap().is_empty());
+        assert!(handled.lock().unwrap().is_empty());
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn local_failure_retains_original_frame_for_at_least_once_primary_and_local_retry() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let handled = Arc::new(Mutex::new(vec![]));
+        let fail_local = Arc::new(AtomicBool::new(true));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let mut root = bus.subscribe();
+        let running = listen(bus, handled.clone(), fail_local.clone());
+        let envelope = envelope();
+        assert!(target.publish_contract(envelope.clone()).await.is_err());
+        fail_local.store(false, Ordering::SeqCst);
+        target.publish_contract(envelope.clone()).await.unwrap();
+        assert_eq!(
+            *accepted.lock().unwrap(),
+            vec![envelope.clone(), envelope.clone()]
+        );
+        assert_eq!(*handled.lock().unwrap(), vec![envelope.clone(), envelope]);
+        assert!(root.try_recv().is_err());
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn unregistered_or_stopped_listener_registry_cannot_silently_skip_inventory() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        assert!(target.publish_contract(envelope()).await.is_err());
+        let running = listen(
+            bus,
+            Arc::new(Mutex::new(vec![])),
+            Arc::new(AtomicBool::new(false)),
+        );
+        running.abort();
+        assert!(target.publish_contract(envelope()).await.is_err());
+        assert!(accepted.lock().unwrap().is_empty());
+    }
+
+    struct SourceListener(Listener);
+    #[async_trait]
+    impl EventHandler for SourceListener {
+        fn name(&self) -> &'static str {
+            "inventory_source_delivery_regression"
+        }
+        fn handles(&self, _event: &DomainEvent) -> bool {
+            false
+        }
+        async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+            Err(rustok_core::Error::Validation(
+                "source facts have no root fallback".into(),
+            ))
+        }
+        fn handles_contract(&self, payload: &ContractEventPayload) -> bool {
+            matches!(payload, ContractEventPayload::InventorySource(_))
+        }
+        async fn handle_contract(&self, envelope: &ContractEventEnvelope) -> HandlerResult {
+            self.0.handle_contract(envelope).await
+        }
+    }
+    fn source_envelope(activation: bool) -> ContractEventEnvelope {
+        let baseline_id = Uuid::new_v4();
+        let event = if activation {
+            InventorySourceEvent::BaselineActivated { baseline_id }
+        } else {
+            InventorySourceEvent::Changed {
+                baseline_id,
+                variant_id: Uuid::new_v4(),
+                source_version: 2,
+            }
+        };
+        let id = if activation {
+            baseline_id
+        } else {
+            Uuid::new_v4()
+        };
+        ContractEventEnvelope::new_with_envelope_id(id, Uuid::new_v4(), Some(Uuid::new_v4()), event)
+            .unwrap()
+    }
+    fn listen_source(
+        bus: EventBus,
+        handled: Arc<Mutex<Vec<ContractEventEnvelope>>>,
+        fail: Arc<AtomicBool>,
+    ) -> RunningDispatcher {
+        let mut dispatcher = EventDispatcher::new(bus);
+        dispatcher.register(SourceListener(Listener { handled, fail }));
+        dispatcher.start_with_contract_delivery().unwrap()
+    }
+
+    #[tokio::test]
+    async fn active_unmatched_registry_refuses_required_inventory_families_before_primary_acceptance()
+     {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = EventDispatcher::new(bus)
+            .start_with_contract_delivery()
+            .unwrap();
+        for frame in [envelope(), source_envelope(false), source_envelope(true)] {
+            assert!(target.publish_contract(frame).await.is_err());
+        }
+        assert!(accepted.lock().unwrap().is_empty());
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn source_family_cannot_be_acknowledged_by_a_running_reservation_only_listener() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let handled = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = listen(bus, handled.clone(), Arc::new(AtomicBool::new(false)));
+        assert!(
+            target
+                .publish_contract(source_envelope(false))
+                .await
+                .is_err()
+        );
+        assert!(
+            target
+                .publish_contract(source_envelope(true))
+                .await
+                .is_err()
+        );
+        assert!(accepted.lock().unwrap().is_empty());
+        assert!(handled.lock().unwrap().is_empty());
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn source_memory_profile_awaits_exact_registered_facts_and_refuses_after_shutdown() {
+        let target = MemoryTransport::with_capacity(8);
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_source(
+            target.event_bus(),
+            handled.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let frames = [source_envelope(false), source_envelope(true)];
+        for frame in &frames {
+            target.publish_contract(frame.clone()).await.unwrap();
+        }
+        assert_eq!(*handled.lock().unwrap(), frames.to_vec());
+        running.stop().await.expect("dispatcher stop");
+        assert!(target.publish_contract(frames[0].clone()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn source_fanout_listener_error_retains_the_same_frame_for_at_least_once_retry() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let handled = Arc::new(Mutex::new(vec![]));
+        let failing = Arc::new(AtomicBool::new(true));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = listen_source(bus, handled.clone(), failing.clone());
+        let frame = source_envelope(false);
+        assert!(target.publish_contract(frame.clone()).await.is_err());
+        failing.store(false, Ordering::SeqCst);
+        target.publish_contract(frame.clone()).await.unwrap();
+        assert_eq!(
+            *accepted.lock().unwrap(),
+            vec![frame.clone(), frame.clone()]
+        );
+        assert_eq!(*handled.lock().unwrap(), vec![frame.clone(), frame]);
+        running.stop().await.expect("dispatcher stop");
+    }
+
+    #[tokio::test]
+    async fn remote_only_family_uses_primary_without_being_reinterpreted_by_inventory_listener() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let handled = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = listen(bus, handled.clone(), Arc::new(AtomicBool::new(false)));
+        // This is only a transport-double frame, not a Product owner publication or ledger proof.
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+        target.publish_contract(envelope.clone()).await.unwrap();
+        assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
+        assert!(handled.lock().unwrap().is_empty());
+        running.stop().await.expect("dispatcher stop");
     }
 }

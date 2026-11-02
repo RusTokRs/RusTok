@@ -594,7 +594,7 @@ pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationEr
                 boundary = "commerce_admin_post_order_orchestration",
                 "post-order owner port operation failed"
             );
-            HttpError::new(status, code, message)
+            HttpError::new(status, code, message).with_retryable(error.retryable)
         }
         PostOrderOrchestrationError::Validation(_) => admin_public_error(
             "rustok_commerce",

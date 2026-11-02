@@ -344,3 +344,39 @@ Forum-replyingTo = Replying to: { $title }
 Forum-quotes = Quotes
 Forum-topic = Topic
 Blog-comments-readOnly = Comments are closed for new replies.
+
+Product-pricingUnavailable = Pricing could not be resolved. Check the price context or try again.
+Product-pricingUnpriced = No price is configured for this context.
+Pricing-currentChannel = Current channel
+Pricing-resetContext = Reset price context
+Pricing-invalidRequest = The price context in this link is invalid. Reset it before requesting prices.
+
+Product-buyerProjectionError = This catalog selection is inconsistent or exceeds the supported size. Ask the store to repair the product.
+Product-buyerRequestError = This selection link or request is invalid. Reset it before continuing.
+Product-buyerReset = Reset selection and price context
+Product-buyerInvalidQuantity = Enter a whole quantity from 1 to 2147483647.
+Product-buyerChooseAxes = Choose a value for every option to select a real SKU.
+Product-buyerMissingTuple = This combination does not exist. Change or clear an option; no other SKU was selected.
+Product-buyerChooseCurrency = Choose a currency to request a price.
+Product-buyerLoading = Requesting the current price for this SKU, quantity and context…
+Product-buyerPreview = Price-list preview only. Customer eligibility is not established, so this context cannot be added to a cart.
+Product-buyerStock = The requested quantity is not currently available. Stock is checked again when adding to cart.
+Product-buyerReady = Price is an observation, not a reservation. The cart will request its own price.
+Product-buyerNotSelected = Not selected
+Product-buyerCurrency = Price currency
+Product-buyerObservation = Price observed at
+Product-buyerCartRestore = The saved cart could not be read. Inspect it or explicitly forget its local reference before adding anything.
+Product-buyerCartContext = The cart has a different currency, region, channel or locale. Use its context and request a new quote before adding. A global cart may be incompatible with a channel-bound storefront.
+Product-buyerCartUnconfirmed = Adding could not be confirmed. Inspect and refresh the cart before trying again; the item may already have been added.
+Product-buyerInspectCart = Inspect and refresh cart
+Product-buyerResetCartReference = Forget local cart reference
+Product-buyerAdding = Adding…
+Product-buyerRetry = Request price again
+Product-buyerUseCartContext = Quote using cart context
+Product-buyerOrdinaryQuote = Request ordinary price
+Product-buyerSelectionLink = Link to this selection
+
+Product-buyerLinkError = The selection link could not be saved. Purchases are disabled; reload the page before continuing.
+Product-buyerCartLocale = The cart uses an unsupported or unverified locale. Inspect it or explicitly forget its local reference; no locale is silently substituted.
+
+Product-buyerAuthRefused = The browser session is unavailable or belongs to another tenant. Open this storefront with the correct session before changing the cart.

@@ -22,7 +22,7 @@ impl FlexQuery {
         entity_type: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<Vec<FieldDefinitionObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
@@ -46,7 +46,7 @@ impl FlexQuery {
         entity_type: Option<String>,
         id: Uuid,
     ) -> Result<Option<FieldDefinitionObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
@@ -70,7 +70,7 @@ impl FlexQuery {
         ctx: &Context<'_>,
         entity_type: Option<String>,
     ) -> Result<Vec<AttachedFieldPolicyObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
         let definitions = crate::list_field_definitions_with_cache(
@@ -116,7 +116,7 @@ impl FlexQuery {
         entity_id: Uuid,
         preferred_locale: String,
     ) -> Result<AttachedValuesObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
         let values = runtime
@@ -140,7 +140,7 @@ impl FlexQuery {
 
     /// List standalone Flex schemas for the authenticated tenant.
     async fn flex_schemas(&self, ctx: &Context<'_>) -> Result<Vec<FlexSchemaObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
         let service = runtime(ctx)?.standalone_service();
 
         crate::list_schemas(service.as_ref(), tenant.id)
@@ -151,7 +151,7 @@ impl FlexQuery {
 
     /// Find a single standalone Flex schema by id.
     async fn flex_schema(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<FlexSchemaObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ).await?;
         let service = runtime(ctx)?.standalone_service();
 
         crate::find_schema(service.as_ref(), tenant.id, id)
@@ -168,7 +168,7 @@ impl FlexQuery {
         ctx: &Context<'_>,
         schema_id: Uuid,
     ) -> Result<Vec<StandaloneFieldPolicyObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
         let runtime = runtime(ctx)?;
         let schema =
             crate::find_schema(runtime.standalone_service().as_ref(), tenant.id, schema_id)
@@ -209,7 +209,7 @@ impl FlexQuery {
         ctx: &Context<'_>,
         schema_id: Uuid,
     ) -> Result<Vec<FlexEntryObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_LIST)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_LIST).await?;
         let service = runtime(ctx)?.standalone_service();
 
         crate::list_entries(service.as_ref(), tenant.id, schema_id)
@@ -225,7 +225,7 @@ impl FlexQuery {
         schema_id: Uuid,
         id: Uuid,
     ) -> Result<Option<FlexEntryObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ).await?;
         let service = runtime(ctx)?.standalone_service();
 
         crate::find_entry(service.as_ref(), tenant.id, schema_id, id)

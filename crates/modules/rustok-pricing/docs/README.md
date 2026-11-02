@@ -66,9 +66,20 @@
   `storefrontProduct` should be treated only as a catalog snapshot
   contract, even if they still carry `variants.prices` for compatibility;
 
+## Selected Product identity (source continuation, 2026-10-30)
+
+Canonical Pricing read/write factories now take the host-selected full Product runtime.
+Embedded Product supplies the lean identity capability; external Product must register it
+explicitly. Missing or malformed identity refuses before money IO without a local catalog
+fallback. The same selection is retained through Commerce and native preparation/repricing.
+External SKU authoring/legacy preview remains explicitly unsupported because its current
+protocol locks local Product Variant rows. Read identity is not write CAS or eligibility.
+See the [API](../CRATE_API.md) and [implementation plan](implementation-plan.md) for bounds,
+context, source regressions and unexecuted release gates. This is not remote execution proof.
+
 ## Scope
 
-- runtime dependency: `product`;
+- runtime dependencies: `product`, `region`; channel identity is core-owned;
 - the module owns the pricing boundary and the operator UI surface for prices, including
   the base-price write path for variant pricing;
 - the module now also owns the public storefront read-side pricing surface,
@@ -138,3 +149,21 @@ presentation with fresh references; query failures retain owner retryability. Te
 logs no longer emit request payload. See the [current contract](pricing-owner-port-error-safety.md#nested-error-and-public-consumer-continuation-2026-10-18).
 This is source-only, unintegrated work; five new Rust scenarios are unrun, and compilation,
 mounted execution, and broader Pricing/Translation/price-list auditing remain open.
+
+
+## Authoritative quote contract (2026-10-29)
+
+The current canonical read contract is specified in [CRATE_API.md](../CRATE_API.md)
+and the [implementation plan](implementation-plan.md#authoritative-quote-continuation-2026-10-29).
+It adds bounded batch quotes and a Pricing-owned atlas projection, one Pricing
+snapshot/time, small Product-owned identity checks, Channel/Region owner validation,
+explicit unpriced items and source provenance. Percentage list sales do not stack or
+raise an existing sale; unknown rules, unsafe data and winning ties refuse resolution.
+Native/GraphQL atlas and quote DTOs are synchronized. Inspection rows never replace a
+missing contextual effective price. Missing selectors use the current host channel,
+not an implicit global override.
+
+The prior read-side summary above does not establish durable write receipts, price
+CAS, complete list-change events, tax/customer eligibility or runtime certification.
+Those gaps are explicit in the crate README and active plan. Tests, Rust compilation,
+PostgreSQL concurrency and mounted evidence are unrun for this continuation.

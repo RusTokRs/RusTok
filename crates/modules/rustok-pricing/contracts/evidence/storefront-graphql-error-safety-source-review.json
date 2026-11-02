@@ -37,7 +37,7 @@
     {
       "id": "pricing-transport-separation",
       "severity": "preservation",
-      "finding": "The private GraphQL documents, list/detail composition, validation messages, native adapter, selected transport, dependency shape, and no-fallback behavior remain unchanged."
+      "finding": "The selected transport and static error policy are preserved; the quote continuation deliberately replaces GraphQL catalog/detail composition and native owner reads without runtime fallback."
     }
   ],
   "implementation_review": {
@@ -49,9 +49,9 @@
     "pricing_operation_preserved": true,
     "per_call_correlation_id": true,
     "safe_query_shape_only": true,
-    "private_graphql_adapter_changed": false,
-    "native_path_changed": false,
-    "query_contract_changed": false,
+    "private_graphql_adapter_changed": true,
+    "native_path_changed": true,
+    "query_contract_changed": true,
     "transport_selection_changed": false,
     "runtime_evidence_claimed": false
   },
@@ -78,16 +78,29 @@
     "GraphQL/browser runtime and mounted parity evidence",
     "broad ecommerce correlation-safe mapper cleanup"
   ],
-  "execution": [],
+  "execution": [
+    {
+      "kind": "static_source_guard",
+      "command": "node scripts/verify/verify-pricing-storefront-graphql-error-safety.mjs",
+      "exit_code": 0
+    },
+    {
+      "kind": "source_format",
+      "tool": "@scalar/rust-fmt 0.3.0 WASM; edition/styleEdition 2024",
+      "scope": "39 scoped Rust files",
+      "rust_compilation": false
+    }
+  ],
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "verifiers_run": false,
+    "format_run": true,
+    "verifiers_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "graphql_runtime_proven": false,
     "browser_runtime_proven": false,
     "mounted_parity_proven": false
-  }
+  },
+  "quote_continuation": "2026-10-29: owner catalog projection replaces per-product waterfall; typed shared DTO retains effective price/source/context/time. Runtime unverified."
 }

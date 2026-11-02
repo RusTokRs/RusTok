@@ -15,7 +15,18 @@ pub struct Model {
     /// token carries its own id). NULL on pre-migration rows, which
     /// code coalesces to the row id.
     pub family_id: Option<Uuid>,
+    /// Authorization code that originally issued this delegated token
+    /// lineage. NULL on pre-migration rows and service-client tokens.
+    pub authorization_code_id: Option<Uuid>,
     pub grant_type: String,
+    /// Discriminates durable access-token registration rows (`access`)
+    /// from refresh-token lineage rows (`refresh`). Pre-migration rows
+    /// default to `refresh`.
+    pub token_kind: String,
+    /// Consent epoch captured when a delegated token was issued. A
+    /// consent revoke/re-grant changes `oauth_consents.granted_at`, so
+    /// older rows fail closed even if the consent row is active again.
+    pub consent_granted_at: Option<DateTimeWithTimeZone>,
     pub scopes: Json,
     pub expires_at: DateTimeWithTimeZone,
     pub revoked_at: Option<DateTimeWithTimeZone>,
@@ -34,7 +45,10 @@ impl std::fmt::Debug for Model {
             .field("tenant_id", &self.tenant_id)
             .field("token_hash", &"<redacted>")
             .field("family_id", &self.family_id)
+            .field("authorization_code_id", &self.authorization_code_id)
             .field("grant_type", &self.grant_type)
+            .field("token_kind", &self.token_kind)
+            .field("consent_granted_at", &self.consent_granted_at)
             .field("scopes", &self.scopes)
             .field("expires_at", &self.expires_at)
             .field("revoked_at", &self.revoked_at)

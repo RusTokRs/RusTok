@@ -239,7 +239,9 @@ fn tag_error_to_port_error(
         CommerceError::Validation(_) => "product.validation",
         CommerceError::ProductNotFound(_) => "product.product_not_found",
         CommerceError::Core(error) => crate::error::core_error_code(error),
-        CommerceError::Conflict(_) => "product.conflict",
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            "product.conflict"
+        }
         _ => "product.invariant_violation",
     };
     let context_facts = product_port_context_facts(context);
@@ -268,11 +270,19 @@ fn tag_error_to_port_error(
         CommerceError::ProductNotFound(_) => {
             PortError::not_found("product.product_not_found", "product was not found")
         }
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
-        CommerceError::Conflict(_) => PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        ),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            )
+        }
         _ => PortError::invariant_violation(
             "product.invariant_violation",
             "product tag projection could not be completed safely",

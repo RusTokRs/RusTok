@@ -452,57 +452,6 @@ pub(crate) async fn resolve_store_line_item_input(
     })
 }
 
-pub(crate) async fn validate_store_line_item_quantity(
-    db: &DatabaseConnection,
-    product_catalog_read_port: &dyn ProductCatalogReadPort,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    requested_quantity: i32,
-    public_channel_slug: Option<&str>,
-) -> HttpResult<()> {
-    let port_context =
-        storefront_product_port_context(tenant_id, "en", public_channel_slug, variant_id);
-    let product = product_catalog_read_port
-        .read_storefront_variant_product_projection(
-            port_context.clone(),
-            StorefrontVariantProductProjectionRequest {
-                variant_id,
-                locale: Some("en".to_string()),
-                fallback_locale: Some(rustok_api::PLATFORM_FALLBACK_LOCALE.to_string()),
-                public_channel_slug: public_channel_slug.map(str::to_owned),
-            },
-        )
-        .await
-        .map_err(|error| {
-            map_storefront_line_item_product_port_error(error, &port_context, variant_id)
-        })?
-        .ok_or(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ))?;
-
-    let variant = product
-        .variants
-        .iter()
-        .find(|variant| variant.id == variant_id)
-        .ok_or(HttpError::not_found(
-            "commerce_store_not_found",
-            "Commerce resource not found",
-        ))?;
-
-    validate_store_variant_inventory(
-        db,
-        tenant_id,
-        variant.id,
-        &variant.inventory_policy,
-        requested_quantity,
-        public_channel_slug,
-        None,
-        product.id,
-    )
-    .await
-}
-
 async fn validate_store_variant_inventory(
     db: &DatabaseConnection,
     tenant_id: Uuid,

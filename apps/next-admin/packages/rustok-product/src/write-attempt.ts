@@ -3,6 +3,17 @@
  * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
  * See the LICENSE file in the project root for full license terms.
  */
+import { isVariantCreateRefusalCode, isVariantId } from './variant-create.ts';
+import { isAxesDurableRefusalCode } from './axis-reconfiguration.ts';
+import {
+  isAttributeDefinitionResult,
+  isAttributeDefinitionRefusalCode,
+  attributeDefinitionRefusalCode
+} from './attribute-lifecycle.ts';
+import type {
+  AttributeDefinitionWriteRequest,
+  AttributeDefinitionResult
+} from './attribute-lifecycle';
 import type {
   ProductAttributeValuePatch,
   ProductTranslation
@@ -23,15 +34,10 @@ export type ProductSavePayload = {
   tags: string[];
   status?: string;
   revision?: number | null;
-  initialVariant?: {
-    sku: string;
-    barcode: string;
-    priceAmount: string;
-    currencyCode: string;
-    compareAtAmount?: string | null;
-    inventoryQuantity: number;
-    inventoryPolicy: string;
-  };
+  /** Persisted pre-axis editor requests remain replayable without changing their payload. */
+  initialVariant?: import('./variant-draft').InitialVariantScalars;
+  variantAxes?: import('./api/types').VariantAxisDraftInput[];
+  initialVariants?: import('./variant-draft').InitialVariantDraft[];
   attributePatches: ProductAttributeValuePatch[];
   activeLocale: string;
 };
@@ -39,13 +45,39 @@ export type ProductSavePayload = {
 export type ProductWriteAcknowledgement = {
   id: string;
   revision: number | null;
+  /** Only standalone creation supplies a stable Variant acknowledgement, not a revision. */
+  variantId?: string;
+  /** Dictionary receipt evidence; never a Product document revision. */
+  definition?: AttributeDefinitionResult;
 };
 export type ProductWriteOutcome =
   | { status: 'confirmed'; value: ProductWriteAcknowledgement }
-  | { status: 'rejected'; code: string; message: string }
+  | {
+      status: 'rejected';
+      code: string;
+      message: string;
+      definition?: AttributeDefinitionResult;
+    }
   | { status: 'unknown'; message: string };
 
+export type ProductAxesWriteRequest = {
+  locale: string;
+  id: string;
+  scope: ProductWriteScope;
+  input: import('./api/types').SetVariantAxesInput;
+};
+
+export type ProductVariantCreateRequest = {
+  locale: string;
+  id: string;
+  scope: ProductWriteScope;
+  input: import('./api/types').CreateVariantInput;
+};
+
 export type ProductWriteRequests = {
+  definition: AttributeDefinitionWriteRequest;
+  variant: ProductVariantCreateRequest;
+  axes: ProductAxesWriteRequest;
   save: ProductSavePayload;
   status: {
     id: string;
@@ -136,7 +168,13 @@ export class ProductWriteAttempt {
             JSON.stringify(this.cached) !== JSON.stringify(record)) ||
           (this.cached.phase === 'pending' &&
             record.phase === 'pending' &&
-            JSON.stringify(this.cached) !== JSON.stringify(record))
+            JSON.stringify(this.cached) !== JSON.stringify(record)) ||
+          (this.cached.phase === 'pending' &&
+            record.phase === 'settled' &&
+            (record.operation === 'variant' ||
+              record.operation === 'definition') &&
+            JSON.stringify(this.cached.attempt.request) !==
+              JSON.stringify(record.request))
         ) {
           throw new Error(UNKNOWN_PRODUCT_WRITE);
         }
@@ -150,17 +188,35 @@ export class ProductWriteAttempt {
     }
   }
 
-  async resume(handlers: ProductWriteHandlers) {
+  async resume(handlers: Partial<ProductWriteHandlers>) {
     const record = this.restore();
     if (record?.phase !== 'pending') return null;
     const attempt = record.attempt;
     switch (attempt.operation) {
+      case 'definition':
+        return handlers.definition
+          ? this.execute('definition', attempt.request, handlers.definition)
+          : null;
+      case 'variant':
+        return handlers.variant
+          ? this.execute('variant', attempt.request, handlers.variant)
+          : null;
+      case 'axes':
+        return handlers.axes
+          ? this.execute('axes', attempt.request, handlers.axes)
+          : null;
       case 'save':
-        return this.execute('save', attempt.request, handlers.save);
+        return handlers.save
+          ? this.execute('save', attempt.request, handlers.save)
+          : null;
       case 'status':
-        return this.execute('status', attempt.request, handlers.status);
+        return handlers.status
+          ? this.execute('status', attempt.request, handlers.status)
+          : null;
       case 'delete':
-        return this.execute('delete', attempt.request, handlers.delete);
+        return handlers.delete
+          ? this.execute('delete', attempt.request, handlers.delete)
+          : null;
     }
   }
 
@@ -193,14 +249,17 @@ export class ProductWriteAttempt {
           };
         }
         if (!record) {
-          record = this.journal.write({
-            phase: 'pending',
-            attempt: {
-              operation,
-              key: crypto.randomUUID(),
-              request: structuredClone(request)
-            } as ProductPendingAttempt
-          });
+          record = this.journal.write(
+            {
+              phase: 'pending',
+              attempt: {
+                operation,
+                key: crypto.randomUUID(),
+                request: structuredClone(request)
+              } as ProductPendingAttempt
+            },
+            null
+          );
           this.cached = freeze(record);
         }
         if (record.phase !== 'pending') return null;
@@ -221,7 +280,19 @@ export class ProductWriteAttempt {
             typeof value.id !== 'string' ||
             !value.id ||
             (!creating && value.id !== snapshot.id) ||
-            (operation === 'delete'
+            (operation === 'variant'
+              ? !isVariantId(value.variantId)
+              : value.variantId !== undefined) ||
+            (operation === 'definition'
+              ? !isAttributeDefinitionResult(
+                  value.definition,
+                  (snapshot as AttributeDefinitionWriteRequest).input
+                ) || !value.definition?.applied
+              : value.definition !== undefined) ||
+            (operation === 'delete' ||
+            operation === 'axes' ||
+            operation === 'variant' ||
+            operation === 'definition'
               ? value.revision !== null
               : !Number.isInteger(value.revision) ||
                 value.revision === null ||
@@ -234,7 +305,25 @@ export class ProductWriteAttempt {
           outcome?.status !== 'rejected' ||
           !outcome.code ||
           typeof outcome.code !== 'string' ||
-          typeof outcome.message !== 'string'
+          typeof outcome.message !== 'string' ||
+          (operation === 'axes' && !isAxesDurableRefusalCode(outcome.code)) ||
+          (operation === 'variant' &&
+            !isVariantCreateRefusalCode(outcome.code)) ||
+          (operation !== 'definition' && outcome.definition !== undefined) ||
+          (operation === 'definition' &&
+            (!isAttributeDefinitionRefusalCode(outcome.code) ||
+              (outcome.code === 'PRODUCT_VALIDATION'
+                ? outcome.definition !== undefined
+                : !isAttributeDefinitionResult(
+                    outcome.definition,
+                    (snapshot as AttributeDefinitionWriteRequest).input
+                  ) ||
+                  outcome.definition?.applied !== false ||
+                  outcome.definition.refusal === null ||
+                  outcome.code !==
+                    attributeDefinitionRefusalCode(
+                      outcome.definition.refusal
+                    ))))
         ) {
           outcome = { status: 'unknown', message: UNKNOWN_PRODUCT_WRITE };
         }
@@ -242,12 +331,18 @@ export class ProductWriteAttempt {
           // Keep a terminal tombstone for this URL intent; old tabs/history cannot
           // reinterpret an acknowledged create as permission for a new create.
           this.cached = freeze(
-            this.journal.write({
-              phase: 'settled',
-              operation,
-              key: attempt.key,
-              outcome
-            })
+            this.journal.write(
+              {
+                phase: 'settled',
+                operation,
+                key: attempt.key,
+                outcome,
+                ...(operation === 'variant' || operation === 'definition'
+                  ? { request: snapshot }
+                  : {})
+              } as ProductJournalRecord,
+              record
+            )
           );
         }
         return { operation, request: snapshot, outcome };

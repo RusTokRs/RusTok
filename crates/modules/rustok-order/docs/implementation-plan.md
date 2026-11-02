@@ -215,7 +215,7 @@ digital order creation or historical reads. The canonical matrix is in
   currently localized complete-order projection requests; retain resolved request
   locale as context for non-localized post-order reads.
 - [x] Require `PortCallPolicy::read()` and parse tenant identity from
-  `PortContext` for all six operations.
+  `PortContext` for all seven operations (including the saved inventory-binding batch).
 - [x] Map every current `OrderError` variant to stable `PortError` policy without
   owner-message control flow.
 - [x] Export the canonical `in_process_order_read_port` factory and all typed
@@ -356,7 +356,7 @@ digital order creation or historical reads. The canonical matrix is in
 - `cargo test -p rustok-order --test order_checkout_identity`
 - `cargo test -p rustok-order --test checkout_order_identity_port`
 - `cargo test -p rustok-order --test checkout_completion_port`
-- Targeted order read-port six-operation, locale fallback, context, error-policy,
+- Targeted order read-port seven-operation, locale fallback, context, error-policy,
   host-composition, admin, GraphQL, and storefront transport tests.
 - Targeted staged checkout completion/adoption/replay, unknown lifecycle,
   compensation, and payment settlement tests.
@@ -379,3 +379,28 @@ No verification command was executed in this source wave.
    provider facts during migration or adoption.
 5. Keep compatibility lookup owner-local and delete it immediately after every
    production consumer uses typed identity.
+
+## Saved inventory binding continuation (2026-10-31; source only)
+
+The [Commerce source handoff](../../rustok-commerce/docs/implementation-plan.md#return-restock-identity-source-evidence)
+and [accepted amendment](../../../../DECISIONS/2026-10-21-shipment-stock-port-and-return-restock.md#return-restock-identity-amendment-2026-10-31)
+record the bounded saved Order SKU/quantity read, tenant/Variant/allocation proof, exact
+existing-ledger replay and same-identity recovery. Native Inventory stock/receipt atomicity
+is not atomicity with Order completion or Commerce. No new schema/receipt or historical
+migration rewrite is introduced. Saved allocations are not reselected. Exact archived-location
+replay remains read-only; fresh writes need an unarchived saved receiving location under the
+existing storage guard, with sorted location locks before levels/receipts. Archived receiving
+refusals park same-identity reconciliation rather than a storage retry or implicit relocation.
+
+Source definitions cover request/owner/outcome scope, SKU-less versus missing tracking,
+allocation ambiguity, retained terminal facts, replay conflict, overflow, batch rollback and
+selected capability use. The task adds 33 Rust/23 MJS regression definitions across owners,
+all unrun; source syntax/guards/formatting do not establish Rust types, SQL or runtime.
+
+- [x] Publish and compose the mandatory saved-binding read and native restock identity contract.
+- [x] Preserve original projection semantics, immutable owner facts and bounded diagnostics.
+- [ ] Execute compilation, regressions, PostgreSQL/SQLite locking/rollback/restart and mounted/
+  remote evidence. No module readiness or Product step-8 completion is claimed.
+- [ ] Complete shipment/cancel/reopen tenant/allocation/history and stock event/outbox/Index
+  convergence; this return-identity slice does not prove historical unit movements or authorize
+  automatic backfill, compensation, identity rotation or metadata repair.

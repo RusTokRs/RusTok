@@ -11,6 +11,9 @@
 //! idempotency identity in `transport` and are re-exported here so the mounted
 //! surface has one import path.
 
+pub(crate) use crate::transport::attribute_lifecycle::{
+    read as read_attribute_lifecycle, update as update_attribute_definition,
+};
 use crate::transport::graphql_error_safety;
 pub(crate) use crate::transport::graphql_fallback_mutations::{
     bind_category_attribute, bind_schema_attribute, clear_detached_product_attribute_values,
@@ -478,7 +481,9 @@ pub(crate) async fn delete_product(
         .map_err(|mutation_error| context.map_error(mutation_error))
 }
 
-/// Image and variant writes keep their retry identity in the private gateway.
-pub(crate) use legacy::{
-    add_product_image, delete_product_image, set_variant_axes, update_product_variant,
-};
+/// Remaining image and variant update/delete writes use the private lifecycle gateway.
+pub(crate) use legacy::{add_product_image, delete_product_image, update_product_variant};
+
+pub(crate) use crate::transport::variant_axes::{preview_variant_axes, set_variant_axes};
+
+pub(crate) use crate::transport::variant_create::create_product_variant;

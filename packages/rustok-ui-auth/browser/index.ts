@@ -53,6 +53,6 @@ export function getCookieValue(name: string, cookieSource?: string) {
 export function getClientAuth(cookieSource?: string): AuthSession {
   return {
     token: getCookieValue(ADMIN_TOKEN_KEY, cookieSource) ?? "",
-    tenant: getCookieValue(ADMIN_TENANT_KEY, cookieSource) ?? "demo",
+    tenant: getCookieValue(ADMIN_TENANT_KEY, cookieSource) ?? "",
   };
 }

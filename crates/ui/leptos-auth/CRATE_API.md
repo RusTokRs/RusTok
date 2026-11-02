@@ -2,14 +2,12 @@
 
 Leptos authentication context, protected route wrappers, BFF cookie management, and reactive token refresh hooks.
 
-## 1. Public API Surface
-
-### Storage Keys & Constants
-- `ADMIN_TOKEN_KEY`: Local/session storage key for authentication access token (`"rustok_admin_token"`).
-- `ADMIN_TENANT_KEY`: Storage key for tenant slug context (`"rustok_admin_tenant"`).
-- `ADMIN_USER_KEY`: Storage key for cached authenticated user details (`"rustok_admin_user"`).
-- `ADMIN_SESSION_KEY`: Storage key for session metadata (`"rustok_admin_session"`).
-- `ADMIN_REFRESH_COOKIE`: HttpOnly cookie name (`"rustok-admin-refresh-v1"`) for BFF session refresh.
+### Constants
+- `ADMIN_TOKEN_KEY`: retired credential-storage key, purged by the canonical browser reader; tokens are memory-only.
+- `ADMIN_TENANT_KEY`: storage key for tenant slug context.
+- `ADMIN_USER_KEY`: retired persisted-user key, purged on browser access.
+- `ADMIN_SESSION_KEY`: retired persisted-session key, purged on browser access.
+- `ADMIN_REFRESH_COOKIE`: HttpOnly cookie name (`rustok-admin-refresh-v1`) for BFF session refresh.
 
 ### Cookie and Session Helpers
 - `refresh_cookie_value(tenant: &str, refresh_token: &str) -> String`: Encodes refresh cookie value as `{tenant}.{refresh_token}`.
@@ -20,25 +18,25 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting stable session UUID for CSRF protection.
 
 ### Components
-- `AuthProvider`: Top-level context provider managing authentication state and reactive signals.
-- `RequireAuth`: Component wrapper requiring an authenticated session before rendering children.
-- `ProtectedRoute`: Router wrapper protecting private route views.
-- `GuestRoute`: Router wrapper restricting views to unauthenticated guests.
+- `AuthProvider(children, tenant_slug?)`: canonical context provider. An optional resolved host tenant binds only missing public tenant metadata; foreign saved tenants refuse.
+- `RequireAuth`: component wrapper requiring an authenticated session before rendering children.
+- `ProtectedRoute`: router wrapper protecting private route views.
+- `GuestRoute`: router wrapper restricting views to unauthenticated guests.
 
 ### Reactive Hooks
-- `use_auth() -> AuthContext`: Retrieves the complete reactive authentication context.
-- `use_current_user() -> Signal<Option<AuthUser>>`: Retrieves signal of the authenticated user.
-- `use_is_authenticated() -> Signal<bool>`: Returns whether an active session is currently authenticated.
-- `use_is_loading() -> Signal<bool>`: Returns whether session restoration or login is in progress.
-- `use_is_token_valid() -> Signal<bool>`: Returns whether current access token is unexpired.
-- `use_token() -> Signal<Option<String>>`: Returns current access token string.
-- `use_tenant() -> Signal<Option<String>>`: Returns active tenant slug.
-- `use_session() -> Signal<Option<AuthSession>>`: Returns active session structure.
-- `use_auth_error() -> Signal<Option<AuthError>>`: Returns latest authentication error.
+- `use_auth() -> AuthContext`: retrieves the complete reactive authentication context.
+- `use_current_user() -> Signal<Option<AuthUser>>`: retrieves signal of the authenticated user.
+- `use_is_authenticated() -> Signal<bool>`: returns whether an active session is currently authenticated.
+- `use_is_loading() -> Signal<bool>`: returns whether session restoration or login is in progress.
+- `use_is_token_valid() -> Signal<bool>`: returns whether current access token is unexpired.
+- `use_token() -> Signal<Option<String>>`: returns current access token string.
+- `use_tenant() -> Signal<Option<String>>`: returns active tenant slug.
+- `use_session() -> Signal<Option<AuthSession>>`: returns active session structure.
+- `use_auth_error() -> Signal<Option<String>>`: returns latest authentication error.
 
 ## 2. Invariants & Business Rules
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
-- **SSR & Hydration Consistency**: Initial server auth snapshot (`ServerAuthSnapshot`) hydrates seamlessly into client reactive signals without auth flickering or premature redirection.
+- **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
 - **CSRF Protection**: Stable session ID derived from unverified access token payload serves as request secret across state-modifying requests.
 - **Tenant Context Preservation**: Tenant identity is strictly isolated and retained across session refreshes.
 

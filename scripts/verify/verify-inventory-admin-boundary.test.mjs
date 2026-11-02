@@ -7,7 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const scriptPath = path.resolve("scripts/verify/verify-inventory-admin-boundary.mjs");
+const scriptPath = path.resolve(
+  "scripts/verify/verify-inventory-admin-boundary.mjs",
+);
 
 function writeFixtureFile(root, relativePath, content) {
   const filePath = path.join(root, relativePath);
@@ -44,17 +46,12 @@ impl InventoryService {
         ))
     }
 
-    async fn adjust_inventory_update(&self) -> Result<InventoryQuantityUpdate, String> {
-        let variant = Variant { inventory_policy: "continue".to_string() };
-        let inventory_policy = variant.inventory_policy.clone();
-        Ok(InventoryQuantityUpdate {
-            quantity: 0,
-            inventory_policy,
-        })
+    async fn adjust_inventory_update(&self) -> Result<super::quantity::WriteOutcome, super::QuantityWriteError> {
+        self.execute_quantity_write(Change::Adjust).await
     }
 
     pub async fn set_variant_quantity(&self) -> Result<InventoryQuantityWriteResult, String> {
-        ${includePreRead ? 'let _variant = self.load_variant(&self.db).await?;' : ''}
+        ${includePreRead ? "let _variant = self.load_variant(&self.db).await?;" : ""}
         let update = self.set_inventory_update().await?;
         Ok(InventoryQuantityWriteResult::from_quantity_and_policy(
             update.quantity,
@@ -62,13 +59,14 @@ impl InventoryService {
         ))
     }
 
-    async fn set_inventory_update(&self) -> Result<InventoryQuantityUpdate, String> {
-        let variant = Variant { inventory_policy: "continue".to_string() };
-        let inventory_policy = variant.inventory_policy.clone();
-        Ok(InventoryQuantityUpdate {
-            quantity: 0,
-            inventory_policy,
-        })
+    async fn set_inventory_update(&self) -> Result<super::quantity::WriteOutcome, super::QuantityWriteError> {
+        self.execute_quantity_write(Change::Set).await
+    }
+
+    async fn execute_quantity_write(&self) -> Result<super::quantity::WriteOutcome, super::QuantityWriteError> {
+        let update = super::quantity::write_quantity().await?;
+        txn.commit().await?;
+        Ok(update)
     }
 }
 
@@ -77,10 +75,6 @@ fn quantity_write_result_honors_backorder_policy_for_native_write_facades() {}
 
 struct InventoryService;
 struct Variant { inventory_policy: String }
-struct InventoryQuantityUpdate {
-    quantity: i32,
-    inventory_policy: String,
-}
 `;
 }
 
@@ -160,7 +154,9 @@ const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
 `;
 }
 
-function commerceAvailabilityCallerSource({ includeDirectLookup = false } = {}) {
+function commerceAvailabilityCallerSource({
+  includeDirectLookup = false,
+} = {}) {
   if (includeDirectLookup) {
     return `
 use rustok_inventory::inventory_policy_allows_backorder;
@@ -180,7 +176,9 @@ async fn validate_storefront_variant_inventory() {
 `;
 }
 
-function checkoutAvailabilityCallerSource({ includeDirectLookup = false } = {}) {
+function checkoutAvailabilityCallerSource({
+  includeDirectLookup = false,
+} = {}) {
   if (includeDirectLookup) {
     return commerceAvailabilityCallerSource({ includeDirectLookup });
   }
@@ -196,7 +194,9 @@ async fn validate_storefront_variant_inventory(&self) {
 `;
 }
 
-function commerceStorefrontChannelSource({ includeDirectProjection = false } = {}) {
+function commerceStorefrontChannelSource({
+  includeDirectProjection = false,
+} = {}) {
   if (includeDirectProjection) {
     return `
 use rustok_inventory::{inventory_policy_allows_backorder, load_available_inventory_by_variant_for_public_channel};
@@ -216,7 +216,9 @@ async fn apply_public_channel_inventory_to_product() {
 `;
 }
 
-function storefrontLineItemResolutionSource({ includeDirectLookup = false } = {}) {
+function storefrontLineItemResolutionSource({
+  includeDirectLookup = false,
+} = {}) {
   if (includeDirectLookup) {
     return `
 use rustok_inventory::inventory_policy_allows_backorder;
@@ -238,28 +240,105 @@ async fn validate_storefront_variant_inventory() {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
-  writeFixtureFile(root, "crates/modules/rustok-inventory/src/services/inventory.rs", inventorySource(options));
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport/mod.rs", transportFacadeSource());
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/src/services/inventory.rs",
+    inventorySource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/src/services/quantity.rs",
+    "inventory_policy: variant.inventory_policy",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/transport/mod.rs",
+    transportFacadeSource(),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs",
+    nativeAdapterSource(options),
+  );
   if (options.includeTransportFile) {
-    writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/transport.rs", transportSource());
+    writeFixtureFile(
+      root,
+      "crates/modules/rustok-inventory/admin/src/transport.rs",
+      transportSource(),
+    );
   }
   if (options.includeLegacyApiFile) {
-    writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/api.rs", transportFacadeSource());
+    writeFixtureFile(
+      root,
+      "crates/modules/rustok-inventory/admin/src/api.rs",
+      transportFacadeSource(),
+    );
   }
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/lib.rs", "mod core;\nmod transport;\n");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/core.rs", "");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/model.rs", "");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/src/ui/leptos.rs", "native inventory facade");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/locales/en.ftl", "inventory-subtitle = native inventory facade\n");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/locales/ru.ftl", "inventory-subtitle = native inventory facade\n");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
-  writeFixtureFile(root, "crates/modules/rustok-inventory/docs/implementation-plan.md", "Inventory admin stock operations are owned by native/transport mutations.\n- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n");
-  writeFixtureFile(root, "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs", commerceAvailabilityCallerSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs", storefrontLineItemResolutionSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-commerce/src/controllers/store/mod.rs", commerceAvailabilityCallerSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-commerce/src/services/checkout.rs", checkoutAvailabilityCallerSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/lib.rs",
+    "mod core;\nmod transport;\n",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/core.rs",
+    "",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/model.rs",
+    "",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/src/ui/leptos.rs",
+    "native inventory facade",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/locales/en.ftl",
+    "inventory-subtitle = native inventory facade\n",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/locales/ru.ftl",
+    "inventory-subtitle = native inventory facade\n",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/admin/Cargo.toml",
+    '[package]\nname = "rustok-inventory-admin"\n',
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-inventory/docs/implementation-plan.md",
+    "Inventory admin stock operations are owned by native/transport mutations.\n- Next step: verification/CI evidence slice for inventory boundary.\n- [x] move current inventory admin UI stock operations to inventory-owned native/transport mutations\n",
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-commerce/src/graphql/mutations/helpers.rs",
+    commerceAvailabilityCallerSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-commerce/src/controllers/store/line_item_resolution.rs",
+    storefrontLineItemResolutionSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-commerce/src/controllers/store/mod.rs",
+    commerceAvailabilityCallerSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-commerce/src/services/checkout.rs",
+    checkoutAvailabilityCallerSource(options),
+  );
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-commerce/src/storefront_channel.rs",
+    commerceStorefrontChannelSource(options),
+  );
   return root;
 }
 
@@ -286,7 +365,11 @@ test("inventory admin boundary verifier rejects duplicate variant pre-read", () 
   const root = withFixture({ includePreRead: true });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected duplicate pre-read fixture to fail");
+    assert.notEqual(
+      result.status,
+      0,
+      "Expected duplicate pre-read fixture to fail",
+    );
     assert.match(result.stderr, /must not pre-read variant policy/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -297,13 +380,19 @@ test("inventory admin boundary verifier rejects leftover GraphQL transport file"
   const root = withFixture({ includeTransportFile: true });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected leftover transport fixture to fail");
-    assert.match(result.stderr, /removed GraphQL adapter file must stay absent/);
+    assert.notEqual(
+      result.status,
+      0,
+      "Expected leftover transport fixture to fail",
+    );
+    assert.match(
+      result.stderr,
+      /removed GraphQL adapter file must stay absent/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
-
 
 test("inventory admin boundary verifier rejects leftover pre-FFA api facade", () => {
   const root = withFixture({ includeLegacyApiFile: true });
@@ -320,22 +409,44 @@ test("inventory admin boundary verifier rejects removed GraphQL write fallback",
   const root = withFixture({ includeWriteFallback: true });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected removed GraphQL write fallback fixture to fail");
-    assert.match(result.stderr, /removed GraphQL fallback marker must stay absent/);
-    assert.match(result.stderr, /must not accept auth tokens for a GraphQL fallback path/);
+    assert.notEqual(
+      result.status,
+      0,
+      "Expected removed GraphQL write fallback fixture to fail",
+    );
+    assert.match(
+      result.stderr,
+      /removed GraphQL fallback marker must stay absent/,
+    );
+    assert.match(
+      result.stderr,
+      /must not accept auth tokens for a GraphQL fallback path/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-
 test("inventory admin boundary verifier rejects direct commerce public-channel availability lookup", () => {
-  const root = withFixture({ includeDirectLookup: true, includeDirectProjection: true });
+  const root = withFixture({
+    includeDirectLookup: true,
+    includeDirectProjection: true,
+  });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected direct commerce availability lookup fixture to fail");
-    assert.match(result.stderr, /must not call channel-visible inventory loaders directly/);
-    assert.match(result.stderr, /must not duplicate backorder policy branching/);
+    assert.notEqual(
+      result.status,
+      0,
+      "Expected direct commerce availability lookup fixture to fail",
+    );
+    assert.match(
+      result.stderr,
+      /must not call channel-visible inventory loaders directly/,
+    );
+    assert.match(
+      result.stderr,
+      /must not duplicate backorder policy branching/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

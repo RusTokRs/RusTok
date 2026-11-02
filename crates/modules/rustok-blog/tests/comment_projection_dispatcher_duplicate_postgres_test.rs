@@ -188,7 +188,7 @@ async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> 
     assert_eq!(count_delivery(&test_db.db, envelope.id).await?, 1);
     assert_eq!(count_outbox_events(&test_db.db).await?, 1);
 
-    running.stop();
+    running.stop().await.expect("dispatcher stop");
     test_db.cleanup().await
 }
 

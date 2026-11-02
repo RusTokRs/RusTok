@@ -96,10 +96,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 The current generic `SettingsService` and `platform_settings` table are live
 migration-target surfaces, not a reference owner model. They mix tenant categories
 whose semantic consumers belong to Email, Auth, tenant locale policy, and platform
-runtime components; validation is partial, `schema_version` is not an effective
-migration contract, and the generic settings-change event is currently published
-after persistence rather than atomically. New owner settings must not extend this
-bag. Follow the accepted
+runtime components, and validation is still partial. Writes now commit settings and
+the generic settings-change event in one transaction through `publish_in_tx`, and
+`schema_version` is a real optimistic-concurrency revision: GraphQL reads expose
+`schemaVersion`, admin updates must send `expectedSchemaVersion`, and stale writes
+fail with `CONFLICT` instead of silently overwriting another admin. Revision
+concurrency does not turn this generic bag into an owner-specific migration
+contract. New owner settings must not extend this bag. Follow the accepted
 [Settings and Configuration Architecture](../../../docs/architecture/settings.md)
 for the owner cutover, secret handles, activation state, and transactional event
 requirements.
@@ -138,6 +141,13 @@ HTTP 500 payloads contain no raw database/provider diagnostics. Wrapped
 `RichError` categories retain meaningful HTTP status codes, but only the
 explicitly declared safe `user_message` is returned to clients; internal
 message text and structured metadata remain private.
+
+The shared `rustok-web::ErrorBody` also carries optional exact owner `retryable` advice.
+`Error::Http` delegates that body/status unchanged, including explicit false; other host errors
+without a declared owner decision omit it rather than classify retryability from HTTP status.
+The canonical DTO derives its OpenAPI schema (optional non-nullable boolean); Commerce error
+references reuse it. Advice is not durable outcome or replay/key authority. Two new host
+error-delegation functions and one composed-OpenAPI regression function are unrun; see the [HTTP contract](../../../docs/architecture/api.md#http-error-retry-advice).
 
 `GET /api/users?search=...` matches user-supplied percent signs, underscores,
 and escape characters literally, rather than interpreting them as SQL LIKE
@@ -188,7 +198,7 @@ success while a refresh token could remain valid.
   constructed from explicit DB and `TransactionalEventBus`; conversion GraphQL resolvers read this handle from schema data,
   not through framework-owned application context.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`.
-Auth lifecycle GraphQL/native self-service operations consume the canonical `AuthPrincipalKind`; direct-session operations fail closed for delegated OAuth and service principals instead of inferring direct-user status from `session_id` presence.
+  Auth lifecycle GraphQL/native self-service operations consume the canonical `AuthPrincipalKind`; direct-session operations fail closed for delegated OAuth and service principals instead of inferring direct-user status from `session_id` presence.
 - AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, Alloy runtime handles, and owner-composed read ports such as checkout status and product catalog projection. The Leptos admin adapter remains a host-boundary point that assembles this runtime from neutral host state.
 - MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
@@ -233,12 +243,18 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   exposes no framework-specific composition adapter.
 - GraphQL HTTP and WebSocket handlers extract `ServerRuntimeContext`/`ServerAuthRuntime` as Axum
   substate and do not pass framework context into request/connection data.
-- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
+- GraphQL WebSocket transport requires explicit subprotocol negotiation, bounds frames/messages and its incoming queue, caps active operation ids (32, 128-byte ids; duplicate 4409, overflow 4429, invalid id 4400), releases slots on server `complete`, revalidates the connection lease every 30 seconds and at the signed access-token expiry, fails closed with a 10-second `connection_init` wait (close code 4408), and never logs the raw tenant slug from the initialization payload.
 
 - Users REST handlers also extract `ServerRuntimeContext` and use `rustok_web::json_response`
   for JSON response formatting.
 - Metrics handler and the entire metrics helper pipeline use `ServerRuntimeContext`; the mailer
   state is passed via a separate `ServerEmailRuntime`, and worker handles are read through a scoped shared API.
+- `settings.rustok.features.oauth_enabled` is a real composition gate. When it is false the host does
+  not mount `/api/oauth/*` or the OAuth discovery metadata, and OpenAPI prunes the OAuth paths. The
+  default is fail-closed; deployments that expose an authorization server must opt in explicitly.
+- Auth retention purges expired OAuth authorization codes on the same 120-day outer window as OAuth
+  token families, so a used code remains available as the replay anchor for the delegated lineage it
+  issued while still bounding storage.
 - Health readiness/runtime handlers use the same runtime contracts for DB, settings, cache,
   event transport, rate limits, worker lifecycle, and email backend state; JSON response formatting
   goes through `rustok_web::json_response`.
@@ -253,6 +269,13 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
 - OAuth discovery metadata also uses `ServerAuthRuntime` as the single source of auth config.
 - OAuth REST token, authorize/consent, browser-session, and revoke handlers extract `ServerAuthRuntime`
   or `ServerRuntimeContext`; host-wide context does not participate in OAuth request state.
+- OAuth access JWTs are registered credentials: issuance writes a `token_kind = access`
+  row whose id is the JWT `jti`, and the extractor requires that row to be active,
+  hash-bound, client/tenant/grant-scoped, and subject-bound. RFC 7009, app/consent
+  revocation, credential change, code replay, and refresh reuse revoke the whole
+  family, so an already-issued access JWT is fenced before its signed TTL. Delegated
+  rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
+  cannot resurrect older tokens.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
@@ -343,7 +366,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   transports share one server adapter, receive locale only from resolved
   request context, and omit unavailable exact-locale contributions. GraphQL
   `executeArtifactUiAction(installationId, contributionId, input,
-  idempotencyKey)` is the corresponding headless action path. It resolves the
+idempotencyKey)` is the corresponding headless action path. It resolves the
   contribution to its admitted Command binding before using the same effective
   policy, dynamic-RBAC, durable-idempotency, sandbox-dispatch, and audit path
   as REST; it cannot select a raw binding ID.
@@ -470,7 +493,7 @@ Auth lifecycle GraphQL/native self-service operations consume the canonical `Aut
   receipt, preflight and execution semantics to these shared crates; the web wizard
   must not become a separate bootstrap implementation. The server binary has
   no `install` parser. `rustok-installer-cli` owns `install plan`, `install
-  preflight`, `install apply`, `install status`, and `seed apply`; apply uses
+preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   the shared executor-port extraction rather than server code.
 - The HTTP adapter binds one portable instance root before preflight. Production
   requires host-selected `RUSTOK_INSTANCE_ROOT`; local storage and filesystem
@@ -616,7 +639,6 @@ resolution to `rustok-rbac`; that read alone is not a revocation or write fence.
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)
 - [Documentation map](../../../docs/index.md)
 
-
 ## Product Media release delivery
 
 The background-worker role starts Product Media delivery with `mod-product`, independently
@@ -648,6 +670,10 @@ for caller identity, bounded IO, operator permissions and unexecuted runtime gat
 - Refresh-token rotation verifies that the referenced user belongs to the
   same tenant as the selected refresh session, preventing a malformed
   cross-tenant reference from issuing a token with inconsistent authority.
+- Host shutdown requests a cooperative drain from the module event dispatcher
+  before joining it; already admitted dispatches and their handler tasks are
+  awaited, and the host five-second deadline aborts the dispatcher task only as
+  an emergency fallback.
 - Host shutdown now awaits the payment-provider, paid-order-label,
   marketplace-financial, notification intake/candidate/fanout, Forum search
   inbox, and Product media-release worker handles after broadcasting stop.
@@ -676,3 +702,35 @@ plus any applicable CI gates before integration.
 - The outbox relay supervisor handles both a panicked child task and an
   unexpected normal task exit before applying its bounded restart delay;
   it no longer assumes the join result must be an error.
+
+## Acknowledged sealed delivery (2026-11-01; source only)
+
+The existing EventRuntime/listener bus remains the single module delivery composition. Fallible
+module dispatcher startup binds explicit typed handlers before background relay delivery. The
+`outbox` Memory target awaits required sealed handlers; `outbox_iggy` forwards the unchanged
+frame to the configured primary first, then awaits matching local handlers. Unavailable registry
+or local failure propagates, retaining Outbox retry/DLQ and original event identity; remote send
+can repeat after partial local success. Families with no matching local handler remain remotely
+consumed, but an unbound registry is never interpreted as proof that no handler is required.
+Root fanout stays best-effort. Artifact intake and cache/generation wrappers forward typed frames
+through the existing chain. No extra bus, raw `sys_events` pipeline or host domain publisher.
+
+Five transport-double definitions are **uncompiled/unrun**; they do not certify a real Iggy
+connector, persistent receive/cursor ACK, relay/startup/restart/lag/crash windows, artifact worker
+or PostgreSQL Search ordering. See the [Core API](../../../crates/libs/rustok-core/CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
+and [Inventory packet](../../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+## Current service contexts for selected source work (2026-11-02; source only)
+
+`build_shared_runtime_extensions_with_host_providers` installs the Auth-owned worker context
+provider before native source factories. Deployment SecretRef resolution and the canonical current
+OAuth resolver/current module availability supply genuine service permissions; no grant set or
+actor is reconstructed from events/jobs. The port delegates actor identity to canonical
+`AuthContext::port_actor()` (the authenticated service `client_id`, distinct from the separately
+verified subject) and resolves credentials through the canonical Secrets cache-bypass operation
+on each invocation. The generic
+Index materializer owns replay work
+registration; existing background-worker role and ModuleWork lifecycle own polling/shutdown.
+[Actual configuration/contract](../../../crates/modules/rustok-distribution/docs/inventory-index.md).
+Current page failures park terminally; retry/original-job recovery, real credentials/backend/
+broker/restart/operator-client evidence remain open. No tests/build/SQL/runtime were executed.

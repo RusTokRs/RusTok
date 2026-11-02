@@ -496,6 +496,338 @@ export type AppMessageKey =
   | 'modules.toast.disabled'
   | 'modules-toast-enabled'
   | 'modules.toast.enabled'
+  | 'product-attributeLifecycle-active'
+  | 'product.attributeLifecycle.active'
+  | 'product-attributeLifecycle-archive'
+  | 'product.attributeLifecycle.archive'
+  | 'product-attributeLifecycle-archived'
+  | 'product.attributeLifecycle.archived'
+  | 'product-attributeLifecycle-attribute'
+  | 'product.attributeLifecycle.attribute'
+  | 'product-attributeLifecycle-choose'
+  | 'product.attributeLifecycle.choose'
+  | 'product-attributeLifecycle-confirmed'
+  | 'product.attributeLifecycle.confirmed'
+  | 'product-attributeLifecycle-directory'
+  | 'product.attributeLifecycle.directory'
+  | 'product-attributeLifecycle-fresh'
+  | 'product.attributeLifecycle.fresh'
+  | 'product-attributeLifecycle-help'
+  | 'product.attributeLifecycle.help'
+  | 'product-attributeLifecycle-impact'
+  | 'product.attributeLifecycle.impact'
+  | 'product-attributeLifecycle-inUse'
+  | 'product.attributeLifecycle.inUse'
+  | 'product-attributeLifecycle-invalid'
+  | 'product.attributeLifecycle.invalid'
+  | 'product-attributeLifecycle-limit'
+  | 'product.attributeLifecycle.limit'
+  | 'product-attributeLifecycle-loading'
+  | 'product.attributeLifecycle.loading'
+  | 'product-attributeLifecycle-locale'
+  | 'product.attributeLifecycle.locale'
+  | 'product-attributeLifecycle-more'
+  | 'product.attributeLifecycle.more'
+  | 'product-attributeLifecycle-notFound'
+  | 'product.attributeLifecycle.notFound'
+  | 'product-attributeLifecycle-parentArchived'
+  | 'product.attributeLifecycle.parentArchived'
+  | 'product-attributeLifecycle-patch'
+  | 'product.attributeLifecycle.patch'
+  | 'product-attributeLifecycle-patchHelp'
+  | 'product.attributeLifecycle.patchHelp'
+  | 'product-attributeLifecycle-recover'
+  | 'product.attributeLifecycle.recover'
+  | 'product-attributeLifecycle-recoverStorage'
+  | 'product.attributeLifecycle.recoverStorage'
+  | 'product-attributeLifecycle-refAllowedOption'
+  | 'product.attributeLifecycle.refAllowedOption'
+  | 'product-attributeLifecycle-refAttributeGroup'
+  | 'product.attributeLifecycle.refAttributeGroup'
+  | 'product-attributeLifecycle-refCategoryBinding'
+  | 'product.attributeLifecycle.refCategoryBinding'
+  | 'product-attributeLifecycle-refChannelSetting'
+  | 'product.attributeLifecycle.refChannelSetting'
+  | 'product-attributeLifecycle-refCloneSnapshot'
+  | 'product.attributeLifecycle.refCloneSnapshot'
+  | 'product-attributeLifecycle-refOptionRule'
+  | 'product.attributeLifecycle.refOptionRule'
+  | 'product-attributeLifecycle-refProductValue'
+  | 'product.attributeLifecycle.refProductValue'
+  | 'product-attributeLifecycle-refresh'
+  | 'product.attributeLifecycle.refresh'
+  | 'product-attributeLifecycle-refSchemaBinding'
+  | 'product.attributeLifecycle.refSchemaBinding'
+  | 'product-attributeLifecycle-refVariantAxis'
+  | 'product.attributeLifecycle.refVariantAxis'
+  | 'product-attributeLifecycle-refVariantValue'
+  | 'product.attributeLifecycle.refVariantValue'
+  | 'product-attributeLifecycle-refVirtualCategory'
+  | 'product.attributeLifecycle.refVirtualCategory'
+  | 'product-attributeLifecycle-restore'
+  | 'product.attributeLifecycle.restore'
+  | 'product-attributeLifecycle-selection'
+  | 'product.attributeLifecycle.selection'
+  | 'product-attributeLifecycle-stale'
+  | 'product.attributeLifecycle.stale'
+  | 'product-attributeLifecycle-storage'
+  | 'product.attributeLifecycle.storage'
+  | 'product-attributeLifecycle-stored'
+  | 'product.attributeLifecycle.stored'
+  | 'product-attributeLifecycle-target'
+  | 'product.attributeLifecycle.target'
+  | 'product-attributeLifecycle-title'
+  | 'product.attributeLifecycle.title'
+  | 'product-attributeLifecycle-unavailable'
+  | 'product.attributeLifecycle.unavailable'
+  | 'product-attributeLifecycle-unknown'
+  | 'product.attributeLifecycle.unknown'
+  | 'product-attributeLifecycle-update'
+  | 'product.attributeLifecycle.update'
+  | 'product-axes-add'
+  | 'product.axes.add'
+  | 'product-axes-allowed'
+  | 'product.axes.allowed'
+  | 'product-axes-apply'
+  | 'product.axes.apply'
+  | 'product-axes-applying'
+  | 'product.axes.applying'
+  | 'product-axes-attribute'
+  | 'product.axes.attribute'
+  | 'product-axes-blocked'
+  | 'product.axes.blocked'
+  | 'product-axes-bounds'
+  | 'product.axes.bounds'
+  | 'product-axes-confirm'
+  | 'product.axes.confirm'
+  | 'product-axes-conflict-duplicateAssignment'
+  | 'product.axes.conflict.duplicateAssignment'
+  | 'product-axes-conflict-duplicateCombination'
+  | 'product.axes.conflict.duplicateCombination'
+  | 'product-axes-conflict-missingAssignment'
+  | 'product.axes.conflict.missingAssignment'
+  | 'product-axes-conflict-multipleDefaultVariants'
+  | 'product.axes.conflict.multipleDefaultVariants'
+  | 'product-axes-conflict-unexpectedAssignment'
+  | 'product.axes.conflict.unexpectedAssignment'
+  | 'product-axes-conflict-unsupported'
+  | 'product.axes.conflict.unsupported'
+  | 'product-axes-conflict-valueNotAllowed'
+  | 'product.axes.conflict.valueNotAllowed'
+  | 'product-axes-conflicts'
+  | 'product.axes.conflicts'
+  | 'product-axes-correct'
+  | 'product.axes.correct'
+  | 'product-axes-current'
+  | 'product.axes.current'
+  | 'product-axes-default'
+  | 'product.axes.default'
+  | 'product-axes-description'
+  | 'product.axes.description'
+  | 'product-axes-dictionaryLimit'
+  | 'product.axes.dictionaryLimit'
+  | 'product-axes-down'
+  | 'product.axes.down'
+  | 'product-axes-editorLocked'
+  | 'product.axes.editorLocked'
+  | 'product-axes-empty'
+  | 'product.axes.empty'
+  | 'product-axes-failed'
+  | 'product.axes.failed'
+  | 'product-axes-fresh'
+  | 'product.axes.fresh'
+  | 'product-axes-moreConflicts'
+  | 'product.axes.moreConflicts'
+  | 'product-axes-moreVariants'
+  | 'product.axes.moreVariants'
+  | 'product-axes-next'
+  | 'product.axes.next'
+  | 'product-axes-noCandidates'
+  | 'product.axes.noCandidates'
+  | 'product-axes-noChanges'
+  | 'product.axes.noChanges'
+  | 'product-axes-pending'
+  | 'product.axes.pending'
+  | 'product-axes-preview'
+  | 'product.axes.preview'
+  | 'product-axes-previewing'
+  | 'product.axes.previewing'
+  | 'product-axes-previous'
+  | 'product.axes.previous'
+  | 'product-axes-proposed'
+  | 'product.axes.proposed'
+  | 'product-axes-ready'
+  | 'product.axes.ready'
+  | 'product-axes-remove'
+  | 'product.axes.remove'
+  | 'product-axes-reset'
+  | 'product.axes.reset'
+  | 'product-axes-restore'
+  | 'product.axes.restore'
+  | 'product-axes-retained'
+  | 'product.axes.retained'
+  | 'product-axes-retry'
+  | 'product.axes.retry'
+  | 'product-axes-saved'
+  | 'product.axes.saved'
+  | 'product-axes-savedRequest'
+  | 'product.axes.savedRequest'
+  | 'product-axes-stale'
+  | 'product.axes.stale'
+  | 'product-axes-storageUnavailable'
+  | 'product.axes.storageUnavailable'
+  | 'product-axes-title'
+  | 'product.axes.title'
+  | 'product-axes-tuples'
+  | 'product.axes.tuples'
+  | 'product-axes-tuplesHelp'
+  | 'product.axes.tuplesHelp'
+  | 'product-axes-unassigned'
+  | 'product.axes.unassigned'
+  | 'product-axes-unavailable'
+  | 'product.axes.unavailable'
+  | 'product-axes-unavailableValue'
+  | 'product.axes.unavailableValue'
+  | 'product-axes-unexpected'
+  | 'product.axes.unexpected'
+  | 'product-axes-up'
+  | 'product.axes.up'
+  | 'product-combinations-add'
+  | 'product.combinations.add'
+  | 'product-combinations-any'
+  | 'product.combinations.any'
+  | 'product-combinations-assignments'
+  | 'product.combinations.assignments'
+  | 'product-combinations-axes'
+  | 'product.combinations.axes'
+  | 'product-combinations-capacity'
+  | 'product.combinations.capacity'
+  | 'product-combinations-configuration'
+  | 'product.combinations.configuration'
+  | 'product-combinations-count'
+  | 'product.combinations.count'
+  | 'product-combinations-default'
+  | 'product.combinations.default'
+  | 'product-combinations-existing'
+  | 'product.combinations.existing'
+  | 'product-combinations-failed'
+  | 'product.combinations.failed'
+  | 'product-combinations-filters'
+  | 'product.combinations.filters'
+  | 'product-combinations-guidance'
+  | 'product.combinations.guidance'
+  | 'product-combinations-incomplete'
+  | 'product.combinations.incomplete'
+  | 'product-combinations-initialHelp'
+  | 'product.combinations.initialHelp'
+  | 'product-combinations-limit'
+  | 'product.combinations.limit'
+  | 'product-combinations-manual'
+  | 'product.combinations.manual'
+  | 'product-combinations-members'
+  | 'product.combinations.members'
+  | 'product-combinations-missing'
+  | 'product.combinations.missing'
+  | 'product-combinations-navigation'
+  | 'product.combinations.navigation'
+  | 'product-combinations-next'
+  | 'product.combinations.next'
+  | 'product-combinations-noPrice'
+  | 'product.combinations.noPrice'
+  | 'product-combinations-page'
+  | 'product.combinations.page'
+  | 'product-combinations-previous'
+  | 'product.combinations.previous'
+  | 'product-combinations-removePrice'
+  | 'product.combinations.removePrice'
+  | 'product-combinations-reset'
+  | 'product.combinations.reset'
+  | 'product-combinations-retainedAssignment'
+  | 'product.combinations.retainedAssignment'
+  | 'product-combinations-savedHelp'
+  | 'product.combinations.savedHelp'
+  | 'product-combinations-selected'
+  | 'product.combinations.selected'
+  | 'product-combinations-taken'
+  | 'product.combinations.taken'
+  | 'product-combinations-title'
+  | 'product.combinations.title'
+  | 'product-combinations-unassigned'
+  | 'product.combinations.unassigned'
+  | 'product-combinations-unavailable'
+  | 'product.combinations.unavailable'
+  | 'product-combinations-use'
+  | 'product.combinations.use'
+  | 'product-combinations-writeUnavailable'
+  | 'product.combinations.writeUnavailable'
+  | 'product-variantCreate-addPrice'
+  | 'product.variantCreate.addPrice'
+  | 'product-variantCreate-amount'
+  | 'product.variantCreate.amount'
+  | 'product-variantCreate-barcode'
+  | 'product.variantCreate.barcode'
+  | 'product-variantCreate-clearAssignments'
+  | 'product.variantCreate.clearAssignments'
+  | 'product-variantCreate-compareAt'
+  | 'product.variantCreate.compareAt'
+  | 'product-variantCreate-confirmed'
+  | 'product.variantCreate.confirmed'
+  | 'product-variantCreate-conflict'
+  | 'product.variantCreate.conflict'
+  | 'product-variantCreate-continue'
+  | 'product.variantCreate.continue'
+  | 'product-variantCreate-correct'
+  | 'product.variantCreate.correct'
+  | 'product-variantCreate-creationUnavailable'
+  | 'product.variantCreate.creationUnavailable'
+  | 'product-variantCreate-currency'
+  | 'product.variantCreate.currency'
+  | 'product-variantCreate-deny'
+  | 'product.variantCreate.deny'
+  | 'product-variantCreate-duplicateSku'
+  | 'product.variantCreate.duplicateSku'
+  | 'product-variantCreate-editorLocked'
+  | 'product.variantCreate.editorLocked'
+  | 'product-variantCreate-fresh'
+  | 'product.variantCreate.fresh'
+  | 'product-variantCreate-freshWarning'
+  | 'product.variantCreate.freshWarning'
+  | 'product-variantCreate-help'
+  | 'product.variantCreate.help'
+  | 'product-variantCreate-invalid'
+  | 'product.variantCreate.invalid'
+  | 'product-variantCreate-notFound'
+  | 'product.variantCreate.notFound'
+  | 'product-variantCreate-open'
+  | 'product.variantCreate.open'
+  | 'product-variantCreate-pending'
+  | 'product.variantCreate.pending'
+  | 'product-variantCreate-policy'
+  | 'product.variantCreate.policy'
+  | 'product-variantCreate-projectionUnavailable'
+  | 'product.variantCreate.projectionUnavailable'
+  | 'product-variantCreate-quantity'
+  | 'product.variantCreate.quantity'
+  | 'product-variantCreate-recover'
+  | 'product.variantCreate.recover'
+  | 'product-variantCreate-removePrice'
+  | 'product.variantCreate.removePrice'
+  | 'product-variantCreate-retry'
+  | 'product.variantCreate.retry'
+  | 'product-variantCreate-save'
+  | 'product.variantCreate.save'
+  | 'product-variantCreate-savedRequest'
+  | 'product.variantCreate.savedRequest'
+  | 'product-variantCreate-selectValue'
+  | 'product.variantCreate.selectValue'
+  | 'product-variantCreate-shippingProfile'
+  | 'product.variantCreate.shippingProfile'
+  | 'product-variantCreate-sku'
+  | 'product.variantCreate.sku'
+  | 'product-variantCreate-storage'
+  | 'product.variantCreate.storage'
+  | 'product-variantCreate-title'
+  | 'product.variantCreate.title'
   | 'profile-auditAction'
   | 'profile.auditAction'
   | 'profile-auditHint'
@@ -2160,6 +2492,338 @@ export interface AppMessageArgs {
   'modules-toast-disabled'?: Record<string, never>;
   'modules.toast.enabled'?: Record<string, never>;
   'modules-toast-enabled'?: Record<string, never>;
+  'product.attributeLifecycle.active'?: Record<string, never>;
+  'product-attributeLifecycle-active'?: Record<string, never>;
+  'product.attributeLifecycle.archive'?: Record<string, never>;
+  'product-attributeLifecycle-archive'?: Record<string, never>;
+  'product.attributeLifecycle.archived'?: Record<string, never>;
+  'product-attributeLifecycle-archived'?: Record<string, never>;
+  'product.attributeLifecycle.attribute'?: Record<string, never>;
+  'product-attributeLifecycle-attribute'?: Record<string, never>;
+  'product.attributeLifecycle.choose'?: Record<string, never>;
+  'product-attributeLifecycle-choose'?: Record<string, never>;
+  'product.attributeLifecycle.confirmed'?: Record<string, never>;
+  'product-attributeLifecycle-confirmed'?: Record<string, never>;
+  'product.attributeLifecycle.directory'?: Record<string, never>;
+  'product-attributeLifecycle-directory'?: Record<string, never>;
+  'product.attributeLifecycle.fresh'?: Record<string, never>;
+  'product-attributeLifecycle-fresh'?: Record<string, never>;
+  'product.attributeLifecycle.help'?: Record<string, never>;
+  'product-attributeLifecycle-help'?: Record<string, never>;
+  'product.attributeLifecycle.impact'?: Record<string, never>;
+  'product-attributeLifecycle-impact'?: Record<string, never>;
+  'product.attributeLifecycle.inUse'?: Record<string, never>;
+  'product-attributeLifecycle-inUse'?: Record<string, never>;
+  'product.attributeLifecycle.invalid'?: Record<string, never>;
+  'product-attributeLifecycle-invalid'?: Record<string, never>;
+  'product.attributeLifecycle.limit'?: Record<string, never>;
+  'product-attributeLifecycle-limit'?: Record<string, never>;
+  'product.attributeLifecycle.loading'?: Record<string, never>;
+  'product-attributeLifecycle-loading'?: Record<string, never>;
+  'product.attributeLifecycle.locale'?: Record<string, never>;
+  'product-attributeLifecycle-locale'?: Record<string, never>;
+  'product.attributeLifecycle.more'?: Record<string, never>;
+  'product-attributeLifecycle-more'?: Record<string, never>;
+  'product.attributeLifecycle.notFound'?: Record<string, never>;
+  'product-attributeLifecycle-notFound'?: Record<string, never>;
+  'product.attributeLifecycle.parentArchived'?: Record<string, never>;
+  'product-attributeLifecycle-parentArchived'?: Record<string, never>;
+  'product.attributeLifecycle.patch'?: Record<string, never>;
+  'product-attributeLifecycle-patch'?: Record<string, never>;
+  'product.attributeLifecycle.patchHelp'?: Record<string, never>;
+  'product-attributeLifecycle-patchHelp'?: Record<string, never>;
+  'product.attributeLifecycle.recover'?: Record<string, never>;
+  'product-attributeLifecycle-recover'?: Record<string, never>;
+  'product.attributeLifecycle.recoverStorage'?: Record<string, never>;
+  'product-attributeLifecycle-recoverStorage'?: Record<string, never>;
+  'product.attributeLifecycle.refAllowedOption'?: Record<string, never>;
+  'product-attributeLifecycle-refAllowedOption'?: Record<string, never>;
+  'product.attributeLifecycle.refAttributeGroup'?: Record<string, never>;
+  'product-attributeLifecycle-refAttributeGroup'?: Record<string, never>;
+  'product.attributeLifecycle.refCategoryBinding'?: Record<string, never>;
+  'product-attributeLifecycle-refCategoryBinding'?: Record<string, never>;
+  'product.attributeLifecycle.refChannelSetting'?: Record<string, never>;
+  'product-attributeLifecycle-refChannelSetting'?: Record<string, never>;
+  'product.attributeLifecycle.refCloneSnapshot'?: Record<string, never>;
+  'product-attributeLifecycle-refCloneSnapshot'?: Record<string, never>;
+  'product.attributeLifecycle.refOptionRule'?: Record<string, never>;
+  'product-attributeLifecycle-refOptionRule'?: Record<string, never>;
+  'product.attributeLifecycle.refProductValue'?: Record<string, never>;
+  'product-attributeLifecycle-refProductValue'?: Record<string, never>;
+  'product.attributeLifecycle.refresh'?: Record<string, never>;
+  'product-attributeLifecycle-refresh'?: Record<string, never>;
+  'product.attributeLifecycle.refSchemaBinding'?: Record<string, never>;
+  'product-attributeLifecycle-refSchemaBinding'?: Record<string, never>;
+  'product.attributeLifecycle.refVariantAxis'?: Record<string, never>;
+  'product-attributeLifecycle-refVariantAxis'?: Record<string, never>;
+  'product.attributeLifecycle.refVariantValue'?: Record<string, never>;
+  'product-attributeLifecycle-refVariantValue'?: Record<string, never>;
+  'product.attributeLifecycle.refVirtualCategory'?: Record<string, never>;
+  'product-attributeLifecycle-refVirtualCategory'?: Record<string, never>;
+  'product.attributeLifecycle.restore'?: Record<string, never>;
+  'product-attributeLifecycle-restore'?: Record<string, never>;
+  'product.attributeLifecycle.selection'?: Record<string, never>;
+  'product-attributeLifecycle-selection'?: Record<string, never>;
+  'product.attributeLifecycle.stale'?: Record<string, never>;
+  'product-attributeLifecycle-stale'?: Record<string, never>;
+  'product.attributeLifecycle.storage'?: Record<string, never>;
+  'product-attributeLifecycle-storage'?: Record<string, never>;
+  'product.attributeLifecycle.stored'?: Record<string, never>;
+  'product-attributeLifecycle-stored'?: Record<string, never>;
+  'product.attributeLifecycle.target'?: Record<string, never>;
+  'product-attributeLifecycle-target'?: Record<string, never>;
+  'product.attributeLifecycle.title'?: Record<string, never>;
+  'product-attributeLifecycle-title'?: Record<string, never>;
+  'product.attributeLifecycle.unavailable'?: Record<string, never>;
+  'product-attributeLifecycle-unavailable'?: Record<string, never>;
+  'product.attributeLifecycle.unknown'?: Record<string, never>;
+  'product-attributeLifecycle-unknown'?: Record<string, never>;
+  'product.attributeLifecycle.update'?: Record<string, never>;
+  'product-attributeLifecycle-update'?: Record<string, never>;
+  'product.axes.add'?: Record<string, never>;
+  'product-axes-add'?: Record<string, never>;
+  'product.axes.allowed'?: Record<string, never>;
+  'product-axes-allowed'?: Record<string, never>;
+  'product.axes.apply'?: Record<string, never>;
+  'product-axes-apply'?: Record<string, never>;
+  'product.axes.applying'?: Record<string, never>;
+  'product-axes-applying'?: Record<string, never>;
+  'product.axes.attribute'?: Record<string, never>;
+  'product-axes-attribute'?: Record<string, never>;
+  'product.axes.blocked'?: Record<string, never>;
+  'product-axes-blocked'?: Record<string, never>;
+  'product.axes.bounds'?: Record<string, never>;
+  'product-axes-bounds'?: Record<string, never>;
+  'product.axes.confirm'?: Record<string, never>;
+  'product-axes-confirm'?: Record<string, never>;
+  'product.axes.conflict.duplicateAssignment'?: Record<string, never>;
+  'product-axes-conflict-duplicateAssignment'?: Record<string, never>;
+  'product.axes.conflict.duplicateCombination'?: Record<string, never>;
+  'product-axes-conflict-duplicateCombination'?: Record<string, never>;
+  'product.axes.conflict.missingAssignment'?: Record<string, never>;
+  'product-axes-conflict-missingAssignment'?: Record<string, never>;
+  'product.axes.conflict.multipleDefaultVariants'?: Record<string, never>;
+  'product-axes-conflict-multipleDefaultVariants'?: Record<string, never>;
+  'product.axes.conflict.unexpectedAssignment'?: Record<string, never>;
+  'product-axes-conflict-unexpectedAssignment'?: Record<string, never>;
+  'product.axes.conflict.unsupported'?: Record<string, never>;
+  'product-axes-conflict-unsupported'?: Record<string, never>;
+  'product.axes.conflict.valueNotAllowed'?: Record<string, never>;
+  'product-axes-conflict-valueNotAllowed'?: Record<string, never>;
+  'product.axes.conflicts'?: Record<string, never>;
+  'product-axes-conflicts'?: Record<string, never>;
+  'product.axes.correct'?: Record<string, never>;
+  'product-axes-correct'?: Record<string, never>;
+  'product.axes.current'?: Record<string, never>;
+  'product-axes-current'?: Record<string, never>;
+  'product.axes.default'?: Record<string, never>;
+  'product-axes-default'?: Record<string, never>;
+  'product.axes.description'?: Record<string, never>;
+  'product-axes-description'?: Record<string, never>;
+  'product.axes.dictionaryLimit'?: Record<string, never>;
+  'product-axes-dictionaryLimit'?: Record<string, never>;
+  'product.axes.down'?: Record<string, never>;
+  'product-axes-down'?: Record<string, never>;
+  'product.axes.editorLocked'?: Record<string, never>;
+  'product-axes-editorLocked'?: Record<string, never>;
+  'product.axes.empty'?: Record<string, never>;
+  'product-axes-empty'?: Record<string, never>;
+  'product.axes.failed'?: Record<string, never>;
+  'product-axes-failed'?: Record<string, never>;
+  'product.axes.fresh'?: Record<string, never>;
+  'product-axes-fresh'?: Record<string, never>;
+  'product.axes.moreConflicts'?: Record<string, never>;
+  'product-axes-moreConflicts'?: Record<string, never>;
+  'product.axes.moreVariants'?: Record<string, never>;
+  'product-axes-moreVariants'?: Record<string, never>;
+  'product.axes.next'?: Record<string, never>;
+  'product-axes-next'?: Record<string, never>;
+  'product.axes.noCandidates'?: Record<string, never>;
+  'product-axes-noCandidates'?: Record<string, never>;
+  'product.axes.noChanges'?: Record<string, never>;
+  'product-axes-noChanges'?: Record<string, never>;
+  'product.axes.pending'?: Record<string, never>;
+  'product-axes-pending'?: Record<string, never>;
+  'product.axes.preview'?: Record<string, never>;
+  'product-axes-preview'?: Record<string, never>;
+  'product.axes.previewing'?: Record<string, never>;
+  'product-axes-previewing'?: Record<string, never>;
+  'product.axes.previous'?: Record<string, never>;
+  'product-axes-previous'?: Record<string, never>;
+  'product.axes.proposed'?: Record<string, never>;
+  'product-axes-proposed'?: Record<string, never>;
+  'product.axes.ready'?: Record<string, never>;
+  'product-axes-ready'?: Record<string, never>;
+  'product.axes.remove'?: Record<string, never>;
+  'product-axes-remove'?: Record<string, never>;
+  'product.axes.reset'?: Record<string, never>;
+  'product-axes-reset'?: Record<string, never>;
+  'product.axes.restore'?: Record<string, never>;
+  'product-axes-restore'?: Record<string, never>;
+  'product.axes.retained'?: Record<string, never>;
+  'product-axes-retained'?: Record<string, never>;
+  'product.axes.retry'?: Record<string, never>;
+  'product-axes-retry'?: Record<string, never>;
+  'product.axes.saved'?: Record<string, never>;
+  'product-axes-saved'?: Record<string, never>;
+  'product.axes.savedRequest'?: Record<string, never>;
+  'product-axes-savedRequest'?: Record<string, never>;
+  'product.axes.stale'?: Record<string, never>;
+  'product-axes-stale'?: Record<string, never>;
+  'product.axes.storageUnavailable'?: Record<string, never>;
+  'product-axes-storageUnavailable'?: Record<string, never>;
+  'product.axes.title'?: Record<string, never>;
+  'product-axes-title'?: Record<string, never>;
+  'product.axes.tuples'?: Record<string, never>;
+  'product-axes-tuples'?: Record<string, never>;
+  'product.axes.tuplesHelp'?: Record<string, never>;
+  'product-axes-tuplesHelp'?: Record<string, never>;
+  'product.axes.unassigned'?: Record<string, never>;
+  'product-axes-unassigned'?: Record<string, never>;
+  'product.axes.unavailable'?: Record<string, never>;
+  'product-axes-unavailable'?: Record<string, never>;
+  'product.axes.unavailableValue'?: Record<string, never>;
+  'product-axes-unavailableValue'?: Record<string, never>;
+  'product.axes.unexpected'?: Record<string, never>;
+  'product-axes-unexpected'?: Record<string, never>;
+  'product.axes.up'?: Record<string, never>;
+  'product-axes-up'?: Record<string, never>;
+  'product.combinations.add'?: Record<string, never>;
+  'product-combinations-add'?: Record<string, never>;
+  'product.combinations.any'?: Record<string, never>;
+  'product-combinations-any'?: Record<string, never>;
+  'product.combinations.assignments'?: Record<string, never>;
+  'product-combinations-assignments'?: Record<string, never>;
+  'product.combinations.axes'?: Record<string, never>;
+  'product-combinations-axes'?: Record<string, never>;
+  'product.combinations.capacity'?: Record<string, never>;
+  'product-combinations-capacity'?: Record<string, never>;
+  'product.combinations.configuration'?: Record<string, never>;
+  'product-combinations-configuration'?: Record<string, never>;
+  'product.combinations.count'?: Record<string, never>;
+  'product-combinations-count'?: Record<string, never>;
+  'product.combinations.default'?: Record<string, never>;
+  'product-combinations-default'?: Record<string, never>;
+  'product.combinations.existing'?: Record<string, never>;
+  'product-combinations-existing'?: Record<string, never>;
+  'product.combinations.failed'?: Record<string, never>;
+  'product-combinations-failed'?: Record<string, never>;
+  'product.combinations.filters'?: Record<string, never>;
+  'product-combinations-filters'?: Record<string, never>;
+  'product.combinations.guidance'?: Record<string, never>;
+  'product-combinations-guidance'?: Record<string, never>;
+  'product.combinations.incomplete'?: Record<string, never>;
+  'product-combinations-incomplete'?: Record<string, never>;
+  'product.combinations.initialHelp'?: Record<string, never>;
+  'product-combinations-initialHelp'?: Record<string, never>;
+  'product.combinations.limit'?: Record<string, never>;
+  'product-combinations-limit'?: Record<string, never>;
+  'product.combinations.manual'?: Record<string, never>;
+  'product-combinations-manual'?: Record<string, never>;
+  'product.combinations.members'?: Record<string, never>;
+  'product-combinations-members'?: Record<string, never>;
+  'product.combinations.missing'?: Record<string, never>;
+  'product-combinations-missing'?: Record<string, never>;
+  'product.combinations.navigation'?: Record<string, never>;
+  'product-combinations-navigation'?: Record<string, never>;
+  'product.combinations.next'?: Record<string, never>;
+  'product-combinations-next'?: Record<string, never>;
+  'product.combinations.noPrice'?: Record<string, never>;
+  'product-combinations-noPrice'?: Record<string, never>;
+  'product.combinations.page'?: Record<string, never>;
+  'product-combinations-page'?: Record<string, never>;
+  'product.combinations.previous'?: Record<string, never>;
+  'product-combinations-previous'?: Record<string, never>;
+  'product.combinations.removePrice'?: Record<string, never>;
+  'product-combinations-removePrice'?: Record<string, never>;
+  'product.combinations.reset'?: Record<string, never>;
+  'product-combinations-reset'?: Record<string, never>;
+  'product.combinations.retainedAssignment'?: Record<string, never>;
+  'product-combinations-retainedAssignment'?: Record<string, never>;
+  'product.combinations.savedHelp'?: Record<string, never>;
+  'product-combinations-savedHelp'?: Record<string, never>;
+  'product.combinations.selected'?: Record<string, never>;
+  'product-combinations-selected'?: Record<string, never>;
+  'product.combinations.taken'?: Record<string, never>;
+  'product-combinations-taken'?: Record<string, never>;
+  'product.combinations.title'?: Record<string, never>;
+  'product-combinations-title'?: Record<string, never>;
+  'product.combinations.unassigned'?: Record<string, never>;
+  'product-combinations-unassigned'?: Record<string, never>;
+  'product.combinations.unavailable'?: Record<string, never>;
+  'product-combinations-unavailable'?: Record<string, never>;
+  'product.combinations.use'?: Record<string, never>;
+  'product-combinations-use'?: Record<string, never>;
+  'product.combinations.writeUnavailable'?: Record<string, never>;
+  'product-combinations-writeUnavailable'?: Record<string, never>;
+  'product.variantCreate.addPrice'?: Record<string, never>;
+  'product-variantCreate-addPrice'?: Record<string, never>;
+  'product.variantCreate.amount'?: Record<string, never>;
+  'product-variantCreate-amount'?: Record<string, never>;
+  'product.variantCreate.barcode'?: Record<string, never>;
+  'product-variantCreate-barcode'?: Record<string, never>;
+  'product.variantCreate.clearAssignments'?: Record<string, never>;
+  'product-variantCreate-clearAssignments'?: Record<string, never>;
+  'product.variantCreate.compareAt'?: Record<string, never>;
+  'product-variantCreate-compareAt'?: Record<string, never>;
+  'product.variantCreate.confirmed'?: Record<string, never>;
+  'product-variantCreate-confirmed'?: Record<string, never>;
+  'product.variantCreate.conflict'?: Record<string, never>;
+  'product-variantCreate-conflict'?: Record<string, never>;
+  'product.variantCreate.continue'?: Record<string, never>;
+  'product-variantCreate-continue'?: Record<string, never>;
+  'product.variantCreate.correct'?: Record<string, never>;
+  'product-variantCreate-correct'?: Record<string, never>;
+  'product.variantCreate.creationUnavailable'?: Record<string, never>;
+  'product-variantCreate-creationUnavailable'?: Record<string, never>;
+  'product.variantCreate.currency'?: Record<string, never>;
+  'product-variantCreate-currency'?: Record<string, never>;
+  'product.variantCreate.deny'?: Record<string, never>;
+  'product-variantCreate-deny'?: Record<string, never>;
+  'product.variantCreate.duplicateSku'?: Record<string, never>;
+  'product-variantCreate-duplicateSku'?: Record<string, never>;
+  'product.variantCreate.editorLocked'?: Record<string, never>;
+  'product-variantCreate-editorLocked'?: Record<string, never>;
+  'product.variantCreate.fresh'?: Record<string, never>;
+  'product-variantCreate-fresh'?: Record<string, never>;
+  'product.variantCreate.freshWarning'?: Record<string, never>;
+  'product-variantCreate-freshWarning'?: Record<string, never>;
+  'product.variantCreate.help'?: Record<string, never>;
+  'product-variantCreate-help'?: Record<string, never>;
+  'product.variantCreate.invalid'?: Record<string, never>;
+  'product-variantCreate-invalid'?: Record<string, never>;
+  'product.variantCreate.notFound'?: Record<string, never>;
+  'product-variantCreate-notFound'?: Record<string, never>;
+  'product.variantCreate.open'?: Record<string, never>;
+  'product-variantCreate-open'?: Record<string, never>;
+  'product.variantCreate.pending'?: Record<string, never>;
+  'product-variantCreate-pending'?: Record<string, never>;
+  'product.variantCreate.policy'?: Record<string, never>;
+  'product-variantCreate-policy'?: Record<string, never>;
+  'product.variantCreate.projectionUnavailable'?: Record<string, never>;
+  'product-variantCreate-projectionUnavailable'?: Record<string, never>;
+  'product.variantCreate.quantity'?: Record<string, never>;
+  'product-variantCreate-quantity'?: Record<string, never>;
+  'product.variantCreate.recover'?: Record<string, never>;
+  'product-variantCreate-recover'?: Record<string, never>;
+  'product.variantCreate.removePrice'?: Record<string, never>;
+  'product-variantCreate-removePrice'?: Record<string, never>;
+  'product.variantCreate.retry'?: Record<string, never>;
+  'product-variantCreate-retry'?: Record<string, never>;
+  'product.variantCreate.save'?: Record<string, never>;
+  'product-variantCreate-save'?: Record<string, never>;
+  'product.variantCreate.savedRequest'?: Record<string, never>;
+  'product-variantCreate-savedRequest'?: Record<string, never>;
+  'product.variantCreate.selectValue'?: Record<string, never>;
+  'product-variantCreate-selectValue'?: Record<string, never>;
+  'product.variantCreate.shippingProfile'?: Record<string, never>;
+  'product-variantCreate-shippingProfile'?: Record<string, never>;
+  'product.variantCreate.sku'?: Record<string, never>;
+  'product-variantCreate-sku'?: Record<string, never>;
+  'product.variantCreate.storage'?: Record<string, never>;
+  'product-variantCreate-storage'?: Record<string, never>;
+  'product.variantCreate.title'?: Record<string, never>;
+  'product-variantCreate-title'?: Record<string, never>;
   'profile.auditAction'?: Record<string, never>;
   'profile-auditAction'?: Record<string, never>;
   'profile.auditHint'?: Record<string, never>;

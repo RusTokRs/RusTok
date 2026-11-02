@@ -18,6 +18,9 @@ pub struct Model {
     pub last_login_at: Option<DateTimeWithTimeZone>,
     pub failed_login_count: i32,
     pub locked_until: Option<DateTimeWithTimeZone>,
+    /// Delegated OAuth tokens issued at or before this instant are invalid.
+    /// First-party sessions use their own revocation lineage.
+    pub password_changed_at: Option<DateTimeWithTimeZone>,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -47,6 +50,7 @@ impl std::fmt::Debug for Model {
             .field("last_login_at", &self.last_login_at)
             .field("failed_login_count", &self.failed_login_count)
             .field("locked_until", &self.locked_until)
+            .field("password_changed_at", &self.password_changed_at)
             .field("metadata", &self.metadata)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)

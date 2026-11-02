@@ -247,3 +247,66 @@ async fn disable_tenant_locale(db: &DatabaseConnection, tenant_id: Uuid, locale:
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn explicit_region_preserves_country_choice_but_rejects_foreign_country_and_missing_region() {
+    let (db, service, regions) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = regions
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".into(),
+                    name: "Europe".into(),
+                }],
+                currency_code: "EUR".into(),
+                tax_provider_id: None,
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                country_tax_policies: None,
+                countries: vec!["DE".into(), "FR".into()],
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let request = ResolveStoreContextInput {
+        region_id: Some(region.id),
+        country_code: Some("fr".into()),
+        locale: Some("en".into()),
+        currency_code: Some("EUR".into()),
+    };
+    let resolved = service
+        .resolve_context(tenant_id, request.clone())
+        .await
+        .unwrap();
+    assert_eq!(resolved.region.unwrap().id, region.id);
+    assert!(matches!(
+        service
+            .resolve_context(
+                tenant_id,
+                ResolveStoreContextInput {
+                    country_code: Some("GB".into()),
+                    ..request.clone()
+                }
+            )
+            .await
+            .unwrap_err(),
+        rustok_commerce::StoreContextError::Validation(_)
+    ));
+    assert!(matches!(
+        service
+            .resolve_context(
+                tenant_id,
+                ResolveStoreContextInput {
+                    region_id: Some(Uuid::new_v4()),
+                    ..request
+                }
+            )
+            .await
+            .unwrap_err(),
+        rustok_commerce::StoreContextError::Validation(_)
+    ));
+}

@@ -17,6 +17,14 @@ const ORDER_READ_BOUNDARY: &str = "order_read_port";
 /// Transport-neutral order-owner boundary for complete order and post-order projection reads.
 #[async_trait]
 pub trait OrderReadPort: Send + Sync {
+    /// Saved SKU/quantity bindings only; the complete nonempty batch must belong to one
+    /// tenant-owned Order. There is no default implementation or embedded fallback.
+    async fn read_order_line_inventory_bindings(
+        &self,
+        context: PortContext,
+        request: ReadOrderLineInventoryBindingsRequest,
+    ) -> Result<OrderLineInventoryBindingsSnapshot, PortError>;
+
     async fn read_order_projection(
         &self,
         context: PortContext,
@@ -52,6 +60,39 @@ pub trait OrderReadPort: Send + Sync {
         context: PortContext,
         request: ListOrderChangeProjectionsRequest,
     ) -> Result<OrderChangeProjectionPage, PortError>;
+}
+
+/// Maximum number of distinct saved Order lines in one inventory-binding read.
+pub const MAX_ORDER_LINE_INVENTORY_BINDINGS: usize = 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReadOrderLineInventoryBindingsRequest {
+    pub order_id: Uuid,
+    pub order_line_item_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrderLineInventoryBinding {
+    pub order_line_item_id: Uuid,
+    /// Null explicitly means SKU-less. Omitting this field is an incomplete owner reply.
+    #[serde(deserialize_with = "deserialize_saved_variant_id")]
+    pub variant_id: Option<Uuid>,
+    pub quantity: i32,
+}
+
+fn deserialize_saved_variant_id<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Uuid>, D::Error> {
+    // A custom deserializer makes field presence mandatory while retaining explicit null.
+    // Serde's ordinary Option default would otherwise silently turn omission into SKU-less.
+    Option::<Uuid>::deserialize(deserializer)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrderLineInventoryBindingsSnapshot {
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub items: Vec<OrderLineInventoryBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,6 +180,41 @@ pub fn in_process_order_read_port(
 
 #[async_trait]
 impl OrderReadPort for InProcessOrderReadPort {
+    async fn read_order_line_inventory_bindings(
+        &self,
+        context: PortContext,
+        request: ReadOrderLineInventoryBindingsRequest,
+    ) -> Result<OrderLineInventoryBindingsSnapshot, PortError> {
+        const OPERATION: &str = "read_order_line_inventory_bindings";
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context, OPERATION)?;
+        validate_inventory_binding_request(&request)?;
+        tracing::debug!(
+            boundary = ORDER_READ_BOUNDARY,
+            operation = OPERATION,
+            requested_line_count = request.order_line_item_ids.len(),
+            "read saved order inventory bindings entered"
+        );
+        let order_id = request.order_id;
+        self.inner
+            .read_order_line_inventory_bindings(tenant_id, request)
+            .await
+            .map_err(|error| {
+                map_owner_error(
+                    &context,
+                    OPERATION,
+                    Some(order_id),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    error,
+                )
+            })
+    }
+
     async fn read_order_projection(
         &self,
         context: PortContext,
@@ -587,6 +663,31 @@ fn order_read_owner_error_facts(error: &OrderError) -> OrderReadOwnerErrorFacts 
     }
 }
 
+fn validate_inventory_binding_request(
+    request: &ReadOrderLineInventoryBindingsRequest,
+) -> Result<(), PortError> {
+    validate_non_nil_uuid(request.order_id, "order_id")?;
+    if request.order_line_item_ids.is_empty()
+        || request.order_line_item_ids.len() > MAX_ORDER_LINE_INVENTORY_BINDINGS
+    {
+        return Err(PortError::validation(
+            "order.inventory_binding_batch_invalid",
+            "inventory binding reads require between 1 and 1024 saved order lines",
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for line_id in &request.order_line_item_ids {
+        validate_non_nil_uuid(*line_id, "order_line_item_id")?;
+        if !seen.insert(*line_id) {
+            return Err(PortError::validation(
+                "order.inventory_binding_duplicate",
+                "inventory binding reads require distinct saved order lines",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_non_nil_uuid(id: Uuid, field: &'static str) -> Result<(), PortError> {
     if id.is_nil() {
         Err(PortError::validation(
@@ -873,4 +974,84 @@ fn map_owner_error(
         technical_failure,
     );
     PortError::new(kind, code, message, retryable)
+}
+
+#[cfg(test)]
+mod inventory_binding_tests {
+    use super::*;
+
+    #[test]
+    fn saved_inventory_binding_read_requires_distinct_bounded_non_nil_identities() {
+        let order_id = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        for request in [
+            ReadOrderLineInventoryBindingsRequest {
+                order_id,
+                order_line_item_ids: Vec::new(),
+            },
+            ReadOrderLineInventoryBindingsRequest {
+                order_id: Uuid::nil(),
+                order_line_item_ids: vec![id],
+            },
+            ReadOrderLineInventoryBindingsRequest {
+                order_id,
+                order_line_item_ids: vec![Uuid::nil()],
+            },
+            ReadOrderLineInventoryBindingsRequest {
+                order_id,
+                order_line_item_ids: vec![id, id],
+            },
+            ReadOrderLineInventoryBindingsRequest {
+                order_id,
+                order_line_item_ids: (0..=MAX_ORDER_LINE_INVENTORY_BINDINGS)
+                    .map(|_| Uuid::new_v4())
+                    .collect(),
+            },
+        ] {
+            assert!(validate_inventory_binding_request(&request).is_err());
+        }
+        validate_inventory_binding_request(&ReadOrderLineInventoryBindingsRequest {
+            order_id,
+            order_line_item_ids: (0..MAX_ORDER_LINE_INVENTORY_BINDINGS)
+                .map(|_| Uuid::new_v4())
+                .collect(),
+        })
+        .expect("bounded saved identities");
+    }
+
+    #[test]
+    fn stock_binding_projection_keeps_sku_less_distinct_from_absent_bindings_and_has_no_price() {
+        let snapshot = OrderLineInventoryBindingsSnapshot {
+            tenant_id: Uuid::new_v4(),
+            order_id: Uuid::new_v4(),
+            items: vec![OrderLineInventoryBinding {
+                order_line_item_id: Uuid::new_v4(),
+                variant_id: None,
+                quantity: 1,
+            }],
+        };
+        let value = serde_json::to_value(&snapshot).expect("serialize");
+        assert!(value["items"][0]["variant_id"].is_null());
+        assert_eq!(value["items"][0].as_object().expect("binding").len(), 3);
+        assert_eq!(
+            serde_json::from_value::<OrderLineInventoryBindingsSnapshot>(value)
+                .expect("round trip"),
+            snapshot
+        );
+    }
+    #[test]
+    fn sku_less_null_is_explicit_but_an_omitted_variant_is_not_a_saved_binding() {
+        let line_id = Uuid::new_v4();
+        let explicit =
+            serde_json::json!({"order_line_item_id": line_id, "variant_id": null, "quantity": 1});
+        let binding = serde_json::from_value::<OrderLineInventoryBinding>(explicit)
+            .expect("explicit SKU-less binding");
+        assert_eq!(binding.variant_id, None);
+        for incomplete in [
+            serde_json::json!({"order_line_item_id": line_id, "quantity": 1}),
+            serde_json::json!({"order_line_item_id": line_id, "variant_id": "unavailable", "quantity": 1}),
+        ] {
+            assert!(serde_json::from_value::<OrderLineInventoryBinding>(incomplete).is_err());
+        }
+    }
 }

@@ -59,14 +59,10 @@
   "stable_public_messages": {
     "tenant_context_unavailable": "Storefront tenant context is temporarily unavailable",
     "auth_context_unavailable": "Storefront authentication context is temporarily unavailable",
-    "runtime_unavailable": "Cart runtime is temporarily unavailable",
+    "customer_unavailable": "Customer information is temporarily unavailable",
     "invalid_cart_selection": "Invalid cart selection",
     "invalid_line_item_selection": "Invalid cart line item selection",
-    "customer_unavailable": "Customer information is temporarily unavailable",
-    "cart_unavailable": "Cart is temporarily unavailable",
-    "cart_not_found": "Cart was not found",
-    "line_item_not_found": "Cart line item was not found",
-    "missing_variant": "Cart line item could not be updated safely"
+    "owner_unconfirmed": "Cart operation could not be confirmed. Inspect the cart before trying again."
   },
   "suggested_execution": [
     "node scripts/verify/verify-cart-storefront-native-error-safety.mjs",
@@ -83,5 +79,23 @@
     "ci_run": false,
     "native_runtime_proven": false,
     "graphql_runtime_proven": false
-  }
+  },
+  "assertions": {
+    "ssr_safe_adapter_selected": true,
+    "client_server_function_contract_preserved": true,
+    "framework_context_error_type_only": true,
+    "customer_not_found_behavior_preserved": true,
+    "customer_identity_shape_only": true,
+    "guarded_owner_reads_and_writes": true,
+    "original_quantity_observation_preserved": true,
+    "shared_commerce_quantity_workflow": true,
+    "guest_projection_not_reauthorized_after_sanitization": true,
+    "owner_retryability_diagnostic_preserved": true,
+    "technical_severity_split": true,
+    "owner_payload_public": false,
+    "duplicate_native_price_math_removed": true,
+    "tests_executed": false,
+    "runtime_execution_proven": false
+  },
+  "source_continuation": "2026-10-30 priced Cart adoption; source-only, not new runtime evidence"
 }

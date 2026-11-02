@@ -10,6 +10,8 @@
       "owner": "pricing",
       "operations": [
         "resolve_product_price",
+        "resolve_product_prices",
+        "list_storefront_product_pricing",
         "read_price_list_projection",
         "list_active_price_list_projections",
         "read_admin_product_pricing_projection",
@@ -22,6 +24,8 @@
       "deadline_required": true,
       "read_operations": [
         "resolve_product_price",
+        "resolve_product_prices",
+        "list_storefront_product_pricing",
         "read_price_list_projection",
         "list_active_price_list_projections",
         "read_admin_product_pricing_projection",
@@ -80,7 +84,8 @@
   "in_process_provider_impl": {
     "service": "PricingService",
     "source": "crates/modules/rustok-pricing/src/ports.rs",
-    "status": "implemented"
+    "status": "implemented",
+    "quote_continuation": "2026-10-29: bounded owner SKU identities, normalized scope, one Pricing snapshot, explicit unpriced items and source provenance; runtime unverified"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -93,6 +98,28 @@
     "cases": [
       {
         "operation": "resolve_product_price",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_storefront_product_pricing",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "resolve_product_prices",
         "profiles": [
           "in_process",
           "remote_adapter_placeholder"

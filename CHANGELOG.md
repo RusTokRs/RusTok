@@ -173,6 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there is no backfill and existing baselines are untouched.
 
 ### Changed
+- Platform settings updates now require `expectedSchemaVersion` and return the persisted settings snapshot with its new version. Both admin hosts and the cache settings owner use compare-and-swap updates; stale writers receive a conflict instead of overwriting a concurrent change.
+- OAuth HTTP routes, discovery metadata, and OpenAPI operations now follow the `features.oauth_enabled` deployment gate. Disabled OAuth authorization codes are removed by the bounded auth-retention worker after 120 days.
 - Upgraded the embedded `rhai` scripting runtime from 1.26.1 to 1.27.0 (workspace requirement
   moved from `1.25.0` to `1.27.0`) and enabled the `compact_str` feature workspace-wide, so rhai
   identifiers and object-map keys use `CompactString` instead of `SmartString`. The public RusToK
@@ -212,6 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - _No unreleased removals yet._
 
 ### Security
+- Added server authentication and runtime hardening: invitation replay protection, password-change token invalidation, tenant/module authorization gates, OAuth authorization-code lineage and replay handling, registered access-token revocation and consent epochs, bounded GraphQL subscriptions, and cooperative dispatcher shutdown. Database migrations and deployment cutover notes are included in the owning component documentation and `DECISIONS/2026-11-01-oauth-access-token-revocation-fence.md`.
 - Registered a time-bounded exception for RUSTSEC-2026-0249 (`smartstring` unmaintained, archived
   2026-05-03). It is reached only through rhai; the `compact_str` feature moves the RusToK data
   plane off `SmartString`, and full removal is tracked with rhai 2.0. The waiver in `deny.toml` and

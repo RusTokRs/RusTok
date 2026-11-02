@@ -1,20 +1,22 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-01",
+  "generated_at": "2026-10-30",
   "status": "cart_storefront_graphql_error_safety_source_unvalidated",
   "scope": "cart-owned storefront GraphQL public and diagnostic read and line-item mutation transport",
   "covered_operations": [
     "fetch_cart",
     "decrement_line_item",
-    "remove_line_item"
+    "remove_line_item",
+    "create_cart",
+    "add_variant"
   ],
   "source_contract": {
     "public_consumer_boundary_sanitized": true,
-    "private_graphql_adapter_changed": false,
-    "graphql_documents_changed": false,
-    "request_response_dto_changed": false,
-    "validation_changed": false,
-    "native_server_functions_changed": false,
+    "private_graphql_adapter_changed": true,
+    "graphql_documents_changed": true,
+    "request_response_dto_changed": true,
+    "validation_changed": true,
+    "native_server_functions_changed": true,
     "transport_selection_changed": false,
     "native_to_graphql_fallback_added": false,
     "graphql_http_error_reparsed": true,
@@ -101,13 +103,21 @@
   "validation": {
     "tests_run": false,
     "cargo_run": false,
-    "format_run": false,
-    "verifiers_run": false,
+    "format_run": true,
+    "verifiers_run": true,
     "workflow_checks_run": false,
     "ci_run": false,
     "graphql_runtime_proven": false,
     "browser_runtime_proven": false,
     "mounted_parity_proven": false,
-    "production_proven": false
+    "production_proven": false,
+    "verification_scope": "Scoped source guards, syntax/format only; no tests, Rust compilation, database or mounted behavior. Registry resolution/install not certified."
+  },
+  "buyer_continuation": {
+    "operation_count": 5,
+    "source_scope": "Canonical-tenant bounded technical envelopes now also cover buyer create/add. Native/GraphQL selection and no fallback remain.",
+    "runtime_proven": false,
+    "base_main_sha": "16cb22206ca19de8218f47a1056d946105c7b09f",
+    "source_guard": "node scripts/verify/verify-cart-storefront-boundary.mjs"
   }
 }

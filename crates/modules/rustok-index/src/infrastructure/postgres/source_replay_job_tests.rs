@@ -9,8 +9,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    IndexReplayJobAcquireOutcome, IndexReplayJobError, IndexReplayJobLease,
-    IndexReplayJobLeaseRequest, PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore,
+    IndexReplayJobAcquireOutcome, IndexReplayJobEnqueueOutcome, IndexReplayJobEnqueueRequest,
+    IndexReplayJobError, IndexReplayJobLease, IndexReplayJobLeaseRequest,
+    PostgresIndexReplayCheckpointStore, PostgresIndexReplayJobStore,
 };
 use crate::{
     EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexReplayCheckpoint,
@@ -344,4 +345,343 @@ async fn replay_job_schema_source_and_stored_request_fail_closed() {
         active.jobs.acquire(&active.request("worker-b")).await,
         Err(IndexReplayJobError::InvalidStoredJob(_))
     ));
+}
+
+fn enqueue_request(fixture: &Fixture, job_id: Uuid) -> IndexReplayJobEnqueueRequest {
+    IndexReplayJobEnqueueRequest::new(
+        Uuid::parse_str(TENANT).unwrap(),
+        job_id,
+        fixture.schema.reference.clone(),
+        SOURCE,
+    )
+    .unwrap()
+}
+
+#[test]
+fn original_replay_enqueue_and_exact_run_fence_reject_nil_identities() {
+    let tenant = Uuid::parse_str(TENANT).unwrap();
+    assert!(
+        IndexReplayJobEnqueueRequest::new(tenant, Uuid::nil(), schema().reference, SOURCE).is_err()
+    );
+    assert!(
+        IndexReplayJobEnqueueRequest::new(
+            Uuid::nil(),
+            Uuid::from_u128(900),
+            schema().reference,
+            SOURCE
+        )
+        .is_err()
+    );
+    assert!(
+        IndexReplayJobLeaseRequest::new(
+            tenant,
+            schema().reference,
+            SOURCE,
+            "worker",
+            Duration::from_secs(60)
+        )
+        .unwrap()
+        .for_job(Uuid::nil())
+        .is_err()
+    );
+}
+
+#[tokio::test]
+async fn enqueue_is_durable_and_duplicate_does_not_acquire_or_increment_a_lease() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    let request = enqueue_request(&fixture, original);
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await.unwrap(),
+        IndexReplayJobEnqueueOutcome::Enqueued { job_id: original }
+    );
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await.unwrap(),
+        IndexReplayJobEnqueueOutcome::AlreadyRequested { job_id: original }
+    );
+    let row = fixture.db.query_one_raw(Statement::from_string(DbBackend::Sqlite, "SELECT COUNT(*) AS n, MIN(state) AS state, MIN(attempt_count) AS attempts, MIN(lease_owner) AS owner FROM index_jobs")).await.unwrap().unwrap();
+    assert_eq!(row.try_get::<i64>("", "n").unwrap(), 1);
+    assert_eq!(row.try_get::<String>("", "state").unwrap(), "pending");
+    assert_eq!(row.try_get::<i64>("", "attempts").unwrap(), 0);
+    assert_eq!(row.try_get::<Option<String>>("", "owner").unwrap(), None);
+}
+
+#[tokio::test]
+async fn duplicate_activation_retains_original_checkpoint_and_expired_job_attempt_fence() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    let request = enqueue_request(&fixture, original);
+    fixture.jobs.enqueue(&request).await.unwrap();
+    let lease = match fixture
+        .jobs
+        .acquire(&fixture.request("first").for_job(original).unwrap())
+        .await
+        .unwrap()
+    {
+        IndexReplayJobAcquireOutcome::Acquired(lease) => lease,
+        other => panic!("expected original lease, got {other:?}"),
+    };
+    let checkpoint = fixture.checkpoint(
+        Some(IndexSourceCursor::new(json!({"after": 7})).unwrap()),
+        7,
+    );
+    PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), lease.clone())
+        .commit_replay_checkpoint(&checkpoint)
+        .await
+        .unwrap();
+    expire(&fixture.db, &lease).await;
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await.unwrap(),
+        IndexReplayJobEnqueueOutcome::AlreadyRequested { job_id: original }
+    );
+    let resumed = match fixture
+        .jobs
+        .acquire(&fixture.request("resumed").for_job(original).unwrap())
+        .await
+        .unwrap()
+    {
+        IndexReplayJobAcquireOutcome::Acquired(lease) => lease,
+        other => panic!("expected original resume, got {other:?}"),
+    };
+    assert_eq!(resumed.job_id(), original);
+    assert_eq!(resumed.attempt_count(), 2);
+    assert_eq!(
+        PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), resumed)
+            .load_replay_checkpoint(checkpoint.key())
+            .await
+            .unwrap(),
+        Some(checkpoint)
+    );
+}
+
+#[tokio::test]
+async fn exact_job_fence_never_creates_missing_or_replaces_differently_enqueued_original() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    assert!(
+        matches!(fixture.jobs.acquire(&fixture.request("worker").for_job(original).unwrap()).await, Err(IndexReplayJobError::JobNotFound(job_id)) if job_id == original)
+    );
+    fixture
+        .jobs
+        .enqueue(&enqueue_request(&fixture, original))
+        .await
+        .unwrap();
+    assert!(matches!(
+        fixture
+            .jobs
+            .acquire(
+                &fixture
+                    .request("worker")
+                    .for_job(Uuid::from_u128(901))
+                    .unwrap()
+            )
+            .await,
+        Err(IndexReplayJobError::JobIdentityConflict { .. })
+    ));
+    assert!(matches!(
+        fixture
+            .jobs
+            .enqueue(&enqueue_request(&fixture, Uuid::from_u128(901)))
+            .await,
+        Err(IndexReplayJobError::JobIdentityConflict { .. })
+    ));
+}
+
+#[tokio::test]
+async fn cancelled_or_cancellation_requested_original_cannot_be_replaced_by_activation() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    let request = enqueue_request(&fixture, original);
+    fixture.jobs.enqueue(&request).await.unwrap();
+    fixture
+        .db
+        .execute_unprepared("UPDATE index_jobs SET cancel_requested=TRUE")
+        .await
+        .unwrap();
+    assert!(fixture.jobs.enqueue(&request).await.is_err());
+    fixture
+        .db
+        .execute_unprepared(
+            "UPDATE index_jobs SET state='cancelled', completed_at=CURRENT_TIMESTAMP",
+        )
+        .await
+        .unwrap();
+    assert!(fixture.jobs.enqueue(&request).await.is_err());
+    assert!(
+        fixture
+            .jobs
+            .enqueue(&enqueue_request(&fixture, Uuid::from_u128(901)))
+            .await
+            .is_err()
+    );
+    let row = fixture
+        .db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM index_jobs",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.try_get::<i64>("", "n").unwrap(), 1);
+}
+
+#[tokio::test]
+async fn succeeded_original_enqueue_requires_retained_exact_complete_checkpoint() {
+    let fixture = Fixture::new("active").await;
+    let original = Uuid::from_u128(900);
+    let request = enqueue_request(&fixture, original);
+    fixture.jobs.enqueue(&request).await.unwrap();
+    let lease = match fixture
+        .jobs
+        .acquire(&fixture.request("worker").for_job(original).unwrap())
+        .await
+        .unwrap()
+    {
+        IndexReplayJobAcquireOutcome::Acquired(lease) => lease,
+        other => panic!("expected original lease, got {other:?}"),
+    };
+    PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), lease.clone())
+        .commit_replay_checkpoint(&fixture.checkpoint(None, 1))
+        .await
+        .unwrap();
+    fixture.jobs.succeed(&lease).await.unwrap();
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await.unwrap(),
+        IndexReplayJobEnqueueOutcome::AlreadyComplete { job_id: original }
+    );
+    fixture
+        .db
+        .execute_unprepared("DELETE FROM index_checkpoints")
+        .await
+        .unwrap();
+    assert_eq!(
+        fixture.jobs.enqueue(&request).await,
+        Err(IndexReplayJobError::CheckpointMissing)
+    );
+}
+
+#[tokio::test]
+async fn pending_enqueue_storage_failure_never_returns_success_or_leaves_partial_job() {
+    let fixture = Fixture::new("active").await;
+    fixture.db.execute_unprepared("CREATE TRIGGER refuse_pending BEFORE INSERT ON index_jobs BEGIN SELECT RAISE(ABORT, 'fixture_storage_refused'); END").await.unwrap();
+    assert!(
+        fixture
+            .jobs
+            .enqueue(&enqueue_request(&fixture, Uuid::from_u128(900)))
+            .await
+            .is_err()
+    );
+    let row = fixture
+        .db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n FROM index_jobs",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.try_get::<i64>("", "n").unwrap(), 0);
+}
+
+#[tokio::test]
+async fn orphan_checkpoint_refuses_initial_enqueue_without_creating_job_or_resetting_cursor() {
+    for cursor in [serde_json::Value::Null, json!({"after": 7})] {
+        let fixture = Fixture::new("active").await;
+        fixture.db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO index_checkpoints (tenant_id, checkpoint_kind, source_name, module_name, entity_name, schema_version, locale_key, partition_key, cursor) VALUES (?1, 'rebuild', ?2, ?3, ?4, ?5, '', '', ?6)",
+            vec![
+                TENANT.to_owned().into(), SOURCE.to_owned().into(),
+                fixture.schema.reference.module.as_str().to_owned().into(),
+                fixture.schema.reference.entity.as_str().to_owned().into(),
+                i64::from(fixture.schema.reference.version.get()).into(),
+                SqlValue::Json(Some(Box::new(cursor.clone()))),
+            ],
+        )).await.unwrap();
+        let request = enqueue_request(&fixture, Uuid::from_u128(900));
+        assert_eq!(
+            fixture.jobs.enqueue(&request).await,
+            Err(IndexReplayJobError::CheckpointWithoutJob)
+        );
+        assert_eq!(
+            fixture.jobs.enqueue(&request).await,
+            Err(IndexReplayJobError::CheckpointWithoutJob)
+        );
+        let jobs = fixture
+            .db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS n FROM index_jobs",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(jobs.try_get::<i64>("", "n").unwrap(), 0);
+        let saved = fixture
+            .db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT cursor FROM index_checkpoints",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.try_get::<serde_json::Value>("", "cursor").unwrap(),
+            cursor
+        );
+    }
+}
+
+#[tokio::test]
+async fn succeeded_job_acquisition_requires_complete_checkpoint_for_scoped_and_exact_requests() {
+    for missing in [true, false] {
+        let fixture = Fixture::new("active").await;
+        let original = Uuid::from_u128(900);
+        fixture
+            .jobs
+            .enqueue(&enqueue_request(&fixture, original))
+            .await
+            .unwrap();
+        let lease = fixture.acquire("first").await;
+        assert_eq!(lease.job_id(), original);
+        PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), lease.clone())
+            .commit_replay_checkpoint(&fixture.checkpoint(None, 1))
+            .await
+            .unwrap();
+        fixture.jobs.succeed(&lease).await.unwrap();
+        let expected = if missing {
+            fixture
+                .db
+                .execute_unprepared("DELETE FROM index_checkpoints")
+                .await
+                .unwrap();
+            IndexReplayJobError::CheckpointMissing
+        } else {
+            fixture
+                .db
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "UPDATE index_checkpoints SET cursor = ?1",
+                    vec![SqlValue::Json(Some(Box::new(json!({"after": 7}))))],
+                ))
+                .await
+                .unwrap();
+            IndexReplayJobError::CheckpointIncomplete
+        };
+        for request in [
+            fixture.request("second"),
+            fixture.request("second").for_job(original).unwrap(),
+        ] {
+            assert_eq!(fixture.jobs.acquire(&request).await, Err(expected.clone()));
+        }
+        let saved = fixture.db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS n, MIN(state) AS state, MIN(attempt_count) AS attempts FROM index_jobs",
+        )).await.unwrap().unwrap();
+        assert_eq!(saved.try_get::<i64>("", "n").unwrap(), 1);
+        assert_eq!(saved.try_get::<String>("", "state").unwrap(), "succeeded");
+        assert_eq!(saved.try_get::<i64>("", "attempts").unwrap(), 1);
+    }
 }

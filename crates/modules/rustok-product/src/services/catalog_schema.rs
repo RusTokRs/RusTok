@@ -824,4 +824,71 @@ mod tests {
             SchemaResolutionError::NonStructuralPrimaryCategory(category_id)
         );
     }
+    #[test]
+    fn axis_policy_defaults_and_sources_follow_inheritance_overrides_and_clone_snapshots() {
+        let attribute_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+        let clone_id = Uuid::new_v4();
+        let mut axis = binding(attribute_id, 0);
+        axis.variant_axis_policy = "allowed".into();
+        axis.default_variant_axis = true;
+        let mut parent = structural_category(parent_id, None, CategorySchemaMode::UseSchema);
+        parent.schema_id = Some(schema_id);
+        let child = structural_category(child_id, Some(parent_id), CategorySchemaMode::Inherit);
+        let mut clone = structural_category(clone_id, None, CategorySchemaMode::CloneFromCategory);
+        clone.clone_snapshot = vec![axis.clone()];
+        let mut categories =
+            HashMap::from([(parent_id, parent), (child_id, child), (clone_id, clone)]);
+        let mut schemas = HashMap::from([(
+            schema_id,
+            ProductAttributeSchema {
+                id: schema_id,
+                code: "axes".into(),
+                attributes: vec![axis],
+            },
+        )]);
+        let inherited =
+            resolve_effective_product_form(child_id, &categories, &schemas, &[]).unwrap();
+        assert_eq!(inherited.attributes[0].variant_axis_policy, "allowed");
+        assert!(inherited.attributes[0].default_variant_axis);
+        assert_eq!(
+            inherited.attributes[0].source,
+            EffectiveAttributeSource::Inherited
+        );
+        categories
+            .get_mut(&child_id)
+            .unwrap()
+            .local_attributes
+            .push(CategoryAttributeBinding {
+                attribute_id,
+                group_code: None,
+                binding_kind: CategoryAttributeBindingKind::Override,
+                is_required: None,
+                is_disabled: false,
+                position: None,
+                visibility_overrides: Default::default(),
+                validation_overrides: Value::Object(Default::default()),
+                variant_axis_policy: Some("required".into()),
+                default_variant_axis: Some(false),
+            });
+        let overridden =
+            resolve_effective_product_form(child_id, &categories, &schemas, &[]).unwrap();
+        assert_eq!(overridden.attributes[0].variant_axis_policy, "required");
+        assert!(!overridden.attributes[0].default_variant_axis);
+        assert_eq!(
+            overridden.attributes[0].source,
+            EffectiveAttributeSource::CategoryLocal
+        );
+        schemas.get_mut(&schema_id).unwrap().attributes[0].variant_axis_policy = "forbidden".into();
+        let snapshot =
+            resolve_effective_product_form(clone_id, &categories, &schemas, &[]).unwrap();
+        assert_eq!(snapshot.attributes[0].variant_axis_policy, "allowed");
+        assert!(snapshot.attributes[0].default_variant_axis);
+        assert_eq!(
+            snapshot.attributes[0].source,
+            EffectiveAttributeSource::CloneSnapshot
+        );
+    }
 }

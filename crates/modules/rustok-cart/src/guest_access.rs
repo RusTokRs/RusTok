@@ -10,7 +10,7 @@ use crate::dto::CartResponse;
 
 pub const GUEST_CART_TOKEN_HEADER: &str = "x-cart-access-token";
 pub const GUEST_CART_TOKEN_COOKIE: &str = "rustok-cart-access-token";
-const GUEST_CART_TOKEN_HASH_METADATA_KEY: &str = "__rustok_guest_cart_token_sha256";
+pub(crate) const GUEST_CART_TOKEN_HASH_METADATA_KEY: &str = "__rustok_guest_cart_token_sha256";
 const GUEST_CART_TRANSIENT_TOKEN_METADATA_KEY: &str = "__rustok_guest_cart_access_token";
 const GUEST_CART_CLAIM_PREFIX: &str = "cart:guest:";
 

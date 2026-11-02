@@ -59,12 +59,12 @@
 
 ## Fulfillment capability gap
 
-Cart currently builds delivery groups from seller and shipping-profile snapshots. The
-target requires a typed per-line fulfillment requirement: digital lines participate in
-pricing/payment/order totals but not shipping selection or delivery groups; physical
-lines retain the exact profile/seller facts needed for Fulfillment. Missing
-Fulfillment must block only an operation containing physical lines, not Cart or a
-digital-only checkout. See
+Cart stores a typed per-line fulfillment requirement and builds delivery groups from the
+physical seller/profile snapshots only. Digital lines participate in price/payment/order
+totals without a synthetic shipping group. The quantity workflow verifies the retained kind
+and effective profile against Product; it does not recatalog line history. The remaining gap
+is runtime/profile evidence: missing Fulfillment must block only affected physical operations,
+not Cart or a digital-only checkout, and mixed/native/headless/remote behavior remains unverified. See
 [`docs/architecture/settings.md`](../../../docs/architecture/settings.md).
 
 ## Entry points
@@ -80,3 +80,42 @@ digital-only checkout. See
 - [CRATE_API](./CRATE_API.md)
 - [Module docs](./docs/README.md)
 
+
+## Known Limitations / Pending Implementation
+
+The 2026-10-30 source continuation implements bounded Cart-material-input adoption, not a
+monotonic whole-Cart revision or durable command receipt. Priced add/change/reprice operations
+capture the exact tenant/Cart, saved price/access scope and line identity/quantity/money/
+fulfillment observations, then compare under Cart's existing row lock. A current guest admission
+binds only authorized capability evidence, never a refreshed content snapshot. Priced processing
+is bounded to 1024 observed lines; insertion at capacity refuses. Read history is not truncated,
+and explicit removal uses a target-only observation so larger/corrupt-price carts are not stranded.
+
+Public storefront quantity writes cannot scale a saved price without a fresh owner quote.
+Commerce checks per-line tier quantity and aggregate replacement stock demand through selected
+owners; native, REST and GraphQL use the same workflow. Missing SKU identity refuses and explicit
+removal/reconciliation remains available. Bulk duplicate/unknown/stale updates refuse atomically.
+Both Marketplace Cart snapshot mutations also take that Cart lock before their reads/writes.
+Root/module factories expose one admitted storefront provider, not a raw CartService port bypass.
+The existing trusted CartService snapshot-materialization helpers are not public buyer transports
+or proof of Product/Pricing/stock eligibility.
+
+Price/stock reads still precede the Cart lock: this is not a cross-owner price/stock hold.
+Context patch and complete prepared repricing now commit in one Cart-owned transaction; selected
+Pricing observes the normalized target before the lock. A nonempty Cart cannot preserve prices
+across a changed unit-price basis; checkout recovery never reapplies context or quotes.
+Per-dispatch native keys and local recovery hints are not durable receipts; unknown outcomes must not create automatic retries/keys. CartService
+has no Cart-mutation outbox/receipt publication in this path; downstream convergence remains open.
+Remote Inventory/provider execution, mounted auth revocation, database/locking/concurrency and
+native/browser/runtime verification remain unvalidated. New regression sources are unrun; see the
+[owner plan](docs/implementation-plan.md#priced-quantity-adoption-2026-10-30).
+
+
+### Atomic context source continuation (2026-10-31)
+
+REST, GraphQL and native buyer context writes share `CartContextUpdateRequest` with original
+observation and a complete target price plan. Country choice/null, group clear and single-group
+scalar clear remain explicit; overlapping resolved groups refuse. Snapshot preparation delegates
+to atomic owner preparation, while locked/completed recovery only reads its frozen state.
+This is Cart-local database atomicity, not cross-owner IO atomicity or durable outcome evidence.
+New regression sources are unrun; see the [handoff](docs/implementation-plan.md#atomic-context-pricing-adoption-2026-10-31).

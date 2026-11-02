@@ -56,3 +56,22 @@ in [`docs/architecture/settings.md`](../../../../docs/architecture/settings.md).
 - [README crate](../README.md)
 - [README admin UI](../admin/README.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
+
+## Shipment source continuation
+
+The [prepared stock API](../CRATE_API.md#prepared-shipment-stock-and-recovery-2026-11-01-source-only)
+and [Commerce source handoff](../../rustok-commerce/docs/implementation-plan.md#shipment-stock-provenance-source-evidence)
+record F-owned lifecycle/counters, prepared consumer protocol, pending-only cancel and literal-key
+local recovery. Source implementation is uncompiled/unexecuted, with no new peer dependency or
+readiness promotion. The targeted recheck adds provider/key pinning, monotonic retained outcomes,
+actual nullable reopening status and final remaining-budget gates; see the same handoff.
+Native and transport/runtime regression execution stays with the maintainer.
+
+## Native stock invalidations
+
+I's native implementation now publishes the existing stock invalidation on F's supplied
+write transaction, without moving lifecycle or publisher ownership into the host/C. See the
+[Inventory API](../../rustok-inventory/CRATE_API.md#native-stock-outbox-2026-11-01-source-only)
+and [source evidence](../../rustok-inventory/contracts/evidence/native-stock-outbox-source.json).
+Preparation/no movement publish none; all added regression definitions remain unrun and no
+relay, Index or step-8 readiness is asserted.

@@ -873,8 +873,11 @@ async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orde
 
     // Executor A attempts create_pending_and_adopt with expired lease
     let event_bus = mock_transactional_event_bus();
-    let creation_executor =
-        rustok_commerce::services::CheckoutOrderCreationExecutor::new(db.clone(), event_bus);
+    let creation_executor = rustok_commerce::services::CheckoutOrderCreationExecutor::new(
+        db.clone(),
+        event_bus,
+        rustok_inventory::in_process_inventory_reservation_identity_port(db.clone()),
+    );
 
     let create_input = rustok_order::CreateOrderInput {
         customer_id: None,
@@ -912,4 +915,143 @@ async fn expired_lease_executor_is_fenced_from_order_creation_without_ghost_orde
         .await
         .expect("count orders");
     assert_eq!(orders_count, 0, "no ghost order must exist in orders table");
+}
+
+#[tokio::test]
+async fn unverified_handoff_can_park_without_compensation_or_losing_the_original_code() {
+    let (db, cart_service, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(
+        db,
+        mock_transactional_event_bus(),
+    );
+    let operation = journal
+        .begin(rustok_commerce::services::BeginCheckoutOperation {
+            tenant_id,
+            cart_id: cart.id,
+            idempotency_key: "original-adoption-handoff".to_string(),
+            request_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+            snapshot_hash: None,
+        })
+        .await
+        .unwrap();
+    journal
+        .claim_execution(tenant_id, operation.id, "adoption-executor", 60)
+        .await
+        .unwrap()
+        .unwrap();
+    let parked = journal
+        .mark_reconciliation_required(
+            tenant_id,
+            operation.id,
+            "adoption-executor",
+            "inventory.adoption_response_mismatch",
+            "Inventory handoff requires review of the existing checkout identity",
+        )
+        .await
+        .unwrap();
+    assert_eq!(parked.status, "reconciliation_required");
+    assert_eq!(parked.execution_admission, "settling");
+    assert_eq!(
+        parked.last_error_code.as_deref(),
+        Some("inventory.adoption_response_mismatch")
+    );
+    assert!(parked.completed_at.is_some());
+    assert!(parked.lease_owner.is_none());
+    assert_eq!(parked.id, operation.id);
+    assert_eq!(parked.idempotency_key, operation.idempotency_key);
+    assert!(
+        journal
+            .claim_compensation(tenant_id, operation.id, "must-not-auto-compensate", 60)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        journal
+            .claim_execution(tenant_id, operation.id, "must-not-rekey-or-replay", 60)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn unverified_handoff_parking_is_lease_and_tenant_fenced() {
+    let (db, cart_service, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale_code: None,
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let journal = rustok_commerce::services::CheckoutOperationJournal::new(
+        db,
+        mock_transactional_event_bus(),
+    );
+    let operation = journal
+        .begin(rustok_commerce::services::BeginCheckoutOperation {
+            tenant_id,
+            cart_id: cart.id,
+            idempotency_key: "fenced-adoption-handoff".to_string(),
+            request_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+            snapshot_hash: None,
+        })
+        .await
+        .unwrap();
+    journal
+        .claim_execution(tenant_id, operation.id, "current-executor", 60)
+        .await
+        .unwrap()
+        .unwrap();
+    for (tenant, executor) in [
+        (Uuid::new_v4(), "current-executor"),
+        (tenant_id, "stale-executor"),
+    ] {
+        assert!(
+            journal
+                .mark_reconciliation_required(
+                    tenant,
+                    operation.id,
+                    executor,
+                    "inventory.adoption_response_mismatch",
+                    "same identity requires review",
+                )
+                .await
+                .is_err()
+        );
+    }
+    let unchanged = journal.get(tenant_id, operation.id).await.unwrap();
+    assert_eq!(unchanged.status, "executing");
+    assert_eq!(unchanged.lease_owner.as_deref(), Some("current-executor"));
+    assert!(unchanged.last_error_code.is_none());
 }

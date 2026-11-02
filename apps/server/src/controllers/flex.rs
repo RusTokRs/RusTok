@@ -39,6 +39,9 @@ async fn list_schemas(
     RequireFlexSchemasList(_user): RequireFlexSchemasList,
 ) -> Result<Json<Vec<FlexSchemaResponse>>> {
     tracing::debug!(tenant_id = %tenant.id, "Handling list Flex schemas request");
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_schemas(&service, tenant.id)
         .await
@@ -72,6 +75,9 @@ async fn get_schema(
         schema_id = %schema_id,
         "Handling get Flex schema request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_schema(&service, tenant.id, schema_id)
         .await
@@ -103,6 +109,9 @@ async fn create_schema(
         slug = %input.slug,
         "Handling create Flex schema request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::create_schema(
         &service,
@@ -142,6 +151,9 @@ async fn update_schema(
         schema_id = %schema_id,
         "Handling update Flex schema request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::update_schema(
         &service,
@@ -180,6 +192,9 @@ async fn delete_schema(
         schema_id = %schema_id,
         "Handling delete Flex schema request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     flex::delete_schema(&service, tenant.id, Some(user.user.id), schema_id)
         .await
@@ -211,6 +226,9 @@ async fn list_entries(
         schema_id = %schema_id,
         "Handling list Flex entries request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_entries(&service, tenant.id, schema_id)
         .await
@@ -248,6 +266,9 @@ async fn get_entry(
         entry_id = %entry_id,
         "Handling get Flex entry request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_entry(&service, tenant.id, schema_id, entry_id)
         .await
@@ -281,6 +302,9 @@ async fn create_entry(
         schema_id = %schema_id,
         "Handling create Flex entry request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::create_entry(
         &service,
@@ -324,6 +348,9 @@ async fn update_entry(
         entry_id = %entry_id,
         "Handling update Flex entry request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::update_entry(
         &service,
@@ -367,6 +394,9 @@ async fn delete_entry(
         entry_id = %entry_id,
         "Handling delete Flex entry request"
     );
+    flex::rest::ensure_module_enabled(ctx.db(), tenant.id)
+        .await
+        .map_err(map_flex_module_availability_error)?;
     let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     flex::delete_entry(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
         .await
@@ -403,6 +433,24 @@ pub fn router() -> crate::routes::ServerRouter {
         )
 }
 
+fn map_flex_module_availability_error(
+    error: flex::rest::FlexModuleAvailabilityError,
+) -> crate::error::Error {
+    match error {
+        flex::rest::FlexModuleAvailabilityError::Disabled => {
+            crate::error::http_error(rustok_web::HttpError::new(
+                axum::http::StatusCode::FORBIDDEN,
+                "MODULE_NOT_ENABLED",
+                "Module 'flex' is not enabled for this tenant",
+            ))
+        }
+        flex::rest::FlexModuleAvailabilityError::Unavailable(error) => {
+            tracing::error!(%error, "Flex module availability lookup failed");
+            crate::error::Error::InternalServerError
+        }
+    }
+}
+
 fn map_flex_config_parse_error(
     error: flex::FieldDefinitionsConfigParseError,
 ) -> crate::error::Error {
@@ -423,7 +471,7 @@ mod tests {
     use super::*;
     use crate::context::TenantContext;
     use crate::extractors::auth::CurrentUser;
-    use crate::models::{flex_entries, flex_schemas, tenants, users};
+    use crate::models::{flex_entries, flex_schemas, tenant_modules, tenants, users};
     use rustok_api::Permission;
     use rustok_core::{
         UserRole, UserStatus,
@@ -437,6 +485,21 @@ mod tests {
 
     fn test_runtime_context(db: sea_orm::DatabaseConnection) -> ServerRuntimeContext {
         ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default())
+    }
+
+    async fn enable_flex_module(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
+        tenant_modules::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            module_slug: Set("flex".to_string()),
+            enabled: Set(Some(true)),
+            settings: Set(json!({})),
+            created_at: Set(chrono::Utc::now().into()),
+            updated_at: Set(chrono::Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .expect("enable flex module for tenant");
     }
 
     fn tenant_context(model: &tenants::Model) -> TenantContext {
@@ -464,6 +527,7 @@ mod tests {
                 last_login_at: None,
                 failed_login_count: 0,
                 locked_until: None,
+                password_changed_at: None,
                 metadata: json!({}),
                 created_at: chrono::Utc::now().into(),
                 updated_at: chrono::Utc::now().into(),
@@ -487,6 +551,7 @@ mod tests {
             client_id: None,
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
+            access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         }
     }
 
@@ -506,6 +571,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rest_handlers_reject_disabled_flex_module() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = test_runtime_context(db.clone());
+        let tenant = tenants::ActiveModel::new("Disabled Flex Tenant", "flex-rest-disabled")
+            .insert(&db)
+            .await
+            .expect("tenant should insert");
+        let tenant_ctx = tenant_context(&tenant);
+
+        let error = list_schemas(
+            State(ctx),
+            CurrentTenant(tenant_ctx),
+            RequireFlexSchemasList(current_user(tenant.id)),
+        )
+        .await
+        .expect_err("disabled flex module must reject REST access");
+
+        match error {
+            crate::error::Error::Http(http) => {
+                assert_eq!(http.status, axum::http::StatusCode::FORBIDDEN);
+                assert_eq!(http.code, "MODULE_NOT_ENABLED");
+            }
+            other => panic!("expected MODULE_NOT_ENABLED HTTP error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn rest_handlers_roundtrip_standalone_schema_and_entry() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = test_runtime_context(db.clone());
@@ -518,6 +610,7 @@ mod tests {
             .expect("tenant should insert for flex rest tests");
         let tenant_ctx = tenant_context(&tenant);
         let user = current_user(tenant.id);
+        enable_flex_module(&db, tenant.id).await;
 
         let Json(created_schema) = create_schema(
             State(ctx.clone()),
@@ -678,6 +771,7 @@ mod tests {
             .insert(&db)
             .await
             .expect("tenant should insert for invalid payload test");
+        enable_flex_module(&db, tenant.id).await;
 
         let error = create_schema(
             State(ctx),

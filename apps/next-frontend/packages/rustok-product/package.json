@@ -9,7 +9,10 @@
   "dependencies": {
     "@rustok/cart-frontend": "file:../rustok-cart",
     "@rustok/ui-grid": "file:../../../../packages/rustok-ui-grid",
-    "lucide-react": "^1.48.0"
+    "lucide-react": "^1.48.0",
+    "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
+    "@rustok/pricing-frontend": "file:../rustok-pricing",
+    "@rustok/ui-controls": "file:../../../../packages/rustok-ui-controls"
   },
   "peerDependencies": {
     "react": "^19.0.0",

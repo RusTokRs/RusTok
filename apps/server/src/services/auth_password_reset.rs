@@ -60,6 +60,7 @@ impl AuthLifecycleService {
 
         let updated = users::Entity::update_many()
             .col_expr(users::Column::PasswordHash, Expr::value(new_hash))
+            .col_expr(users::Column::PasswordChangedAt, Expr::value(now))
             .col_expr(users::Column::UpdatedAt, Expr::value(now))
             .filter(users::Column::Id.eq(user.id))
             .filter(users::Column::TenantId.eq(tenant_id))
@@ -79,6 +80,16 @@ impl AuthLifecycleService {
             .filter(sessions::Column::UserId.eq(user.id))
             .filter(sessions::Column::RevokedAt.is_null())
             .exec(&tx)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+
+        let _revoked_oauth_tokens =
+            crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
+                &tx,
+                tenant_id,
+                user.id,
+                now,
+            )
             .await
             .map_err(AuthLifecycleError::from)?;
 

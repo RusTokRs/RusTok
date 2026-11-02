@@ -43,16 +43,17 @@ impl TempWorkspace {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         for _ in 0..100 {
             let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-            let root = std::env::temp_dir().join(format!(
-                "rustok-scaffold-plan-{}-{id}",
-                std::process::id()
-            ));
+            let root = std::env::temp_dir()
+                .join(format!("rustok-scaffold-plan-{}-{id}", std::process::id()));
             match fs::create_dir(&root) {
                 Ok(()) => return Ok(Self { root }),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => {
                     return Err(error).with_context(|| {
-                        format!("Failed to create scaffold planning directory {}", root.display())
+                        format!(
+                            "Failed to create scaffold planning directory {}",
+                            root.display()
+                        )
                     });
                 }
             }
@@ -77,30 +78,42 @@ pub(crate) fn plan_module_registration(
     let temporary = TempWorkspace::new()?;
 
     for target in &targets {
-        let metadata = fs::symlink_metadata(target)
-            .with_context(|| format!("Required registration file is missing: {}", target.display()))?;
+        let metadata = fs::symlink_metadata(target).with_context(|| {
+            format!(
+                "Required registration file is missing: {}",
+                target.display()
+            )
+        })?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
-            anyhow::bail!("Registration target must be a regular file: {}", target.display());
+            anyhow::bail!(
+                "Registration target must be a regular file: {}",
+                target.display()
+            );
         }
-        let relative = target
-            .strip_prefix(root)
-            .with_context(|| format!("Registration target escapes workspace: {}", target.display()))?;
+        let relative = target.strip_prefix(root).with_context(|| {
+            format!(
+                "Registration target escapes workspace: {}",
+                target.display()
+            )
+        })?;
         let copy = temporary.root.join(relative);
         if let Some(parent) = copy.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::copy(target, &copy).with_context(|| {
-            format!("Failed to stage registration file {}", target.display())
-        })?;
+        fs::copy(target, &copy)
+            .with_context(|| format!("Failed to stage registration file {}", target.display()))?;
     }
 
     apply_registration_mutations(&temporary.root, opts, pascal, snake)?;
 
     let mut changes = Vec::new();
     for target in targets {
-        let relative = target
-            .strip_prefix(root)
-            .with_context(|| format!("Registration target escapes workspace: {}", target.display()))?;
+        let relative = target.strip_prefix(root).with_context(|| {
+            format!(
+                "Registration target escapes workspace: {}",
+                target.display()
+            )
+        })?;
         let staged = fs::read_to_string(temporary.root.join(relative))?;
         let original = fs::read_to_string(&target)?;
         if staged != original {
@@ -243,9 +256,21 @@ fn register_in_modules_toml(root: &Path, slug: &str, crate_name: &str) -> Result
 /// A created UI package is not a published surface or FFA readiness evidence.
 fn draft_readiness(ui: ScaffoldUi) -> (&'static str, &'static str, &'static str) {
     match ui {
-        ScaffoldUi::Dual => ("admin + storefront (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
-        ScaffoldUi::Admin => ("admin (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
-        ScaffoldUi::Storefront => ("storefront (draft, unmounted)", "`not_started`", "`core_transport_ui`"),
+        ScaffoldUi::Dual => (
+            "admin + storefront (draft, unmounted)",
+            "`not_started`",
+            "`core_transport_ui`",
+        ),
+        ScaffoldUi::Admin => (
+            "admin (draft, unmounted)",
+            "`not_started`",
+            "`core_transport_ui`",
+        ),
+        ScaffoldUi::Storefront => (
+            "storefront (draft, unmounted)",
+            "`not_started`",
+            "`core_transport_ui`",
+        ),
         ScaffoldUi::None => ("none", "`not_started`", "`no_ui_boundary`"),
     }
 }
@@ -838,8 +863,13 @@ mod scaffold_registration_tests {
         fs::write(
             root.join("Cargo.toml"),
             "[workspace]\nmembers = [\n]\n[workspace.dependencies]\n",
-        ).unwrap();
-        fs::write(root.join("modules.toml"), "[modules]\n# Capability extensions\n").unwrap();
+        )
+        .unwrap();
+        fs::write(
+            root.join("modules.toml"),
+            "[modules]\n# Capability extensions\n",
+        )
+        .unwrap();
         fs::create_dir_all(root.join("docs/modules")).unwrap();
         fs::write(
             root.join("docs/modules/registry.md"),
@@ -856,9 +886,17 @@ mod scaffold_registration_tests {
         let before_index = fs::read_to_string(root.join("docs/modules/_index.md")).unwrap();
 
         let changes = plan_module_registration(&root, &options(), "Example", "example").unwrap();
-        let changed_paths = changes.iter().map(|change| {
-            change.path.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/")
-        }).collect::<Vec<_>>();
+        let changed_paths = changes
+            .iter()
+            .map(|change| {
+                change
+                    .path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect::<Vec<_>>();
 
         assert_eq!(changes.len(), 4);
         for expected in [
@@ -867,13 +905,30 @@ mod scaffold_registration_tests {
             "docs/modules/registry.md",
             "docs/modules/_index.md",
         ] {
-            assert!(changed_paths.iter().any(|path| path == expected), "missing planned update: {expected}");
+            assert!(
+                changed_paths.iter().any(|path| path == expected),
+                "missing planned update: {expected}"
+            );
         }
-        assert!(changes.iter().any(|change| change.content.contains("example = { crate = \"rustok-example\"")));
-        assert_eq!(fs::read_to_string(root.join("Cargo.toml")).unwrap(), before_cargo);
-        assert_eq!(fs::read_to_string(root.join("modules.toml")).unwrap(), before_modules);
-        assert_eq!(fs::read_to_string(root.join("docs/modules/registry.md")).unwrap(), before_registry);
-        assert_eq!(fs::read_to_string(root.join("docs/modules/_index.md")).unwrap(), before_index);
+        assert!(changes.iter().any(|change| change
+            .content
+            .contains("example = { crate = \"rustok-example\"")));
+        assert_eq!(
+            fs::read_to_string(root.join("Cargo.toml")).unwrap(),
+            before_cargo
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("modules.toml")).unwrap(),
+            before_modules
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("docs/modules/registry.md")).unwrap(),
+            before_registry
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("docs/modules/_index.md")).unwrap(),
+            before_index
+        );
 
         fs::remove_dir_all(root).unwrap();
     }

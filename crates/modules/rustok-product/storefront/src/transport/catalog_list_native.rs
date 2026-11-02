@@ -9,47 +9,10 @@ use crate::model::{ProductList, StorefrontProductsData};
 use super::native_server_adapter::{self, ApiError};
 
 #[cfg(feature = "ssr")]
-const PRODUCT_STOREFRONT_CATALOG_OWNER: &str = "rustok_product.storefront";
-#[cfg(feature = "ssr")]
 const PRODUCT_STOREFRONT_CATALOG_OPERATION: &str = "storefront_catalog_list";
-#[cfg(feature = "ssr")]
-const PRODUCT_STOREFRONT_CATALOG_BOUNDARY: &str = "product_storefront_catalog_list_native";
-
-#[cfg(feature = "ssr")]
-fn map_runtime_dependency_error(dependency: &'static str) -> ServerFnError {
-    tracing::error!(
-        owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
-        owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-        dependency,
-        code = "product.storefront_catalog_runtime_unavailable",
-        boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-        "product storefront catalog runtime dependency is unavailable"
-    );
-    ServerFnError::new("Product catalog is temporarily unavailable")
-}
-
-#[cfg(feature = "ssr")]
-fn map_tenant_context_error(request_context: &rustok_api::RequestContext) -> ServerFnError {
-    tracing::error!(
-        owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
-        owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-        request_context_present = true,
-        correlation_id_length = request_context.correlation_id.chars().count(),
-        channel_id_present = request_context.channel_id.is_some(),
-        channel_slug_length = request_context
-            .channel_slug
-            .as_deref()
-            .map_or(0, |value| value.chars().count()),
-        locale_length = request_context.locale.chars().count(),
-        code = "product.storefront_catalog_tenant_context_unavailable",
-        boundary = PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-        "product storefront tenant context extraction failed"
-    );
-    ServerFnError::new("Product catalog context is unavailable")
-}
 
 pub async fn fetch_products(
-    mut request: FetchRequest,
+    request: FetchRequest,
     controls: CatalogListInput,
 ) -> Result<StorefrontProductsData, ApiError> {
     let products = storefront_catalog_list_native(
@@ -76,17 +39,16 @@ pub async fn fetch_products(
                 .map(|item| item.handle.clone())
                 .filter(|value| !value.is_empty())
         });
-    request.selected_handle = resolved_handle.clone();
-
-    let mut data = native_server_adapter::fetch_products(request).await?;
-    data.products = products;
-    data.selected_handle = resolved_handle.clone();
-    if resolved_handle.is_none() {
-        data.selected_product = None;
-        data.selected_pricing = None;
-        data.resolution_context = None;
-    }
-    Ok(data)
+    let selected_product = if let Some(handle) = resolved_handle.as_ref() {
+        native_server_adapter::fetch_product_detail(handle.clone(), request.locale).await?
+    } else {
+        None
+    };
+    Ok(StorefrontProductsData {
+        products,
+        selected_product,
+        selected_handle: resolved_handle,
+    })
 }
 
 #[cfg(feature = "ssr")]
@@ -132,15 +94,7 @@ fn map_product_list(value: rustok_product::StorefrontProductList) -> ProductList
     }
 }
 
-#[cfg(feature = "ssr")]
-fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
-#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list")]
+#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list", client = leptos_auth::AuthorizedBrowserClient)]
 async fn storefront_catalog_list_native(
     locale: Option<String>,
     search: Option<String>,
@@ -152,31 +106,17 @@ async fn storefront_catalog_list_native(
 ) -> Result<ProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::use_context;
-        use rustok_api::HostRuntimeContext;
-        use rustok_outbox::TransactionalEventBus;
-        use rustok_product::{CatalogService, StorefrontProductListQuery};
+        use rustok_product::StorefrontProductListQuery;
 
-        let runtime_ctx = use_context::<HostRuntimeContext>()
-            .ok_or_else(|| map_runtime_dependency_error("HostRuntimeContext"))?;
-        let event_bus = runtime_ctx
-            .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| map_runtime_dependency_error("TransactionalEventBus"))?;
-        let request_context = super::native_server_adapter::require_request_context(
-            PRODUCT_STOREFRONT_CATALOG_OPERATION,
-            PRODUCT_STOREFRONT_CATALOG_BOUNDARY,
-        )
-        .await?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(|_| map_tenant_context_error(&request_context))?;
+        let scope =
+            native_server_adapter::product_buyer_scope(PRODUCT_STOREFRONT_CATALOG_OPERATION)
+                .await?;
         let requested_locale = crate::core::resolve_requested_locale(
             locale,
-            Some(request_context.locale.as_str()),
-            tenant.default_locale.as_str(),
+            Some(&scope.request.locale),
+            &scope.tenant.default_locale,
         );
-        let public_channel_slug =
-            normalize_public_channel_slug(request_context.channel_slug.as_deref());
+        let public_channel_slug = scope.request.channel_slug.clone();
         let list_query = StorefrontProductListQuery::try_from_transport_with_attribute_filters(
             search,
             category_id,
@@ -188,16 +128,24 @@ async fn storefront_catalog_list_native(
         .with_pagination(1, 12)
         .with_currency_code(currency_code)
         .map_err(|error| map_product_service_error(error, "storefront_catalog_list_input"))?;
-        let products = CatalogService::new(runtime_ctx.db_clone(), event_bus)
-            .list_published_products_with_query(
-                tenant.id,
-                requested_locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-                public_channel_slug.as_deref(),
-                list_query,
-            )
-            .await
-            .map_err(|error| map_product_service_error(error, "storefront_catalog_list"))?;
+        let products = native_server_adapter::product_read_call(
+            &scope,
+            native_server_adapter::product_read_port(&scope).list_filtered_published_products(
+                native_server_adapter::product_read_context(
+                    &scope,
+                    requested_locale.clone(),
+                    public_channel_slug.clone(),
+                ),
+                rustok_product::FilteredPublishedProductsRequest {
+                    locale: Some(requested_locale),
+                    fallback_locale: Some(scope.tenant.default_locale.clone()),
+                    public_channel_slug,
+                    query: list_query,
+                },
+            ),
+        )
+        .await
+        .map_err(native_server_adapter::map_product_port_error)?;
 
         Ok(map_product_list(products))
     }

@@ -1,11 +1,10 @@
+mod buyer_native;
 mod graphql_adapter;
 mod graphql_error_safety;
 mod native_client_error_safety;
-#[cfg(not(feature = "ssr"))]
 mod native_server_adapter;
 #[cfg(feature = "ssr")]
-#[path = "native_server_adapter_ssr.rs"]
-mod native_server_adapter;
+mod native_server_adapter_ssr;
 #[cfg(feature = "ssr")]
 mod native_server_mapping;
 
@@ -95,6 +94,64 @@ pub async fn remove_line_item(request: CartLineItemMutationRequest) -> Transport
         },
     )
     .await
+}
+
+/// Buyer writes stay on the selected path. Unknown outcomes are not auto-retried.
+pub async fn create_cart(
+    request: crate::core::CartCreateRequest,
+) -> TransportResult<crate::model::StorefrontCart> {
+    crate::core::validate_cart_create(&request).map_err(|error| buyer_input_error(error))?;
+    let native = request.clone();
+    execute_selected_transport(
+        "cart",
+        selected_transport_path(),
+        move || async move {
+            let context =
+                native_client_error_safety::NativeClientErrorContext::create_cart(&native);
+            buyer_native::create_cart(native)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::create_cart(&request);
+            graphql_adapter::create_cart(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+    )
+    .await
+}
+
+pub async fn add_variant(
+    request: crate::core::CartAddVariantRequest,
+) -> TransportResult<crate::model::StorefrontCart> {
+    crate::core::validate_cart_add(&request).map_err(|error| buyer_input_error(error))?;
+    let native = request.clone();
+    execute_selected_transport(
+        "cart",
+        selected_transport_path(),
+        move || async move {
+            let context =
+                native_client_error_safety::NativeClientErrorContext::add_variant(&native);
+            buyer_native::add_variant(native)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+        move || async move {
+            let context = graphql_error_safety::GraphqlCallContext::add_variant(&request);
+            graphql_adapter::add_variant(request)
+                .await
+                .map_err(|error| context.map_error(error))
+        },
+    )
+    .await
+}
+
+fn buyer_input_error(error: crate::core::CartCoreError) -> CartTransportError {
+    match selected_transport_path() {
+        UiTransportPath::NativeServer => CartTransportError::native("cart", error),
+        UiTransportPath::Graphql => CartTransportError::graphql("cart", error),
+    }
 }
 
 #[cfg(test)]

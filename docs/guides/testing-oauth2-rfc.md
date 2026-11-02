@@ -24,6 +24,13 @@ A set of unit tests verifying our OAuth2 implementation compliance with RFC stan
 
 **Total: 49 tests**
 
+## Deployment Gate
+
+The OAuth protocol surface is composition-gated by `settings.rustok.features.oauth_enabled`.
+When the gate is false, `/api/oauth/*` and the OAuth discovery metadata are not mounted and
+OpenAPI omits the OAuth paths. RFC tests exercise the handlers/services directly; end-to-end
+HTTP verification must use a configuration with the gate explicitly enabled.
+
 ## Running Tests
 
 ```bash
@@ -95,6 +102,10 @@ cargo test -p rustok-server --lib
 
 - Revocation endpoint always returns 200 OK (§2.2)
 - `token_type_hint` accepts only `access_token` or `refresh_token`
+- Access JWTs are registered (`jti` → `oauth_tokens.token_kind = access`); revoking
+  an access or refresh hash fences the whole family before the signed TTL
+- Delegated token rows capture the consent epoch; consent revoke/re-grant does not
+  resurrect older access/refresh credentials
 
 ### RFC 8414 — Authorization Server Metadata
 

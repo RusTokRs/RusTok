@@ -99,6 +99,7 @@ query ProductAdminCategoryEffectiveForm(
       code
       label
       valueType
+      scope
       isLocalized
       options {
         id
@@ -273,6 +274,12 @@ export async function bindCategoryAttribute(
   const input = {
     categoryId: payload.categoryId,
     attributeId: payload.attributeId,
+    ...(payload.variantAxisPolicy !== undefined
+      ? { variantAxisPolicy: payload.variantAxisPolicy }
+      : {}),
+    ...(payload.defaultVariantAxis !== undefined
+      ? { defaultVariantAxis: payload.defaultVariantAxis }
+      : {}),
     groupCode: payload.groupCode || null,
     bindingKind: payload.bindingKind,
     isRequired: payload.isRequired ?? null,

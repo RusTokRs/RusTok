@@ -20,3 +20,6 @@ pub use model::{
 pub use transport::{fetch_catalog_facets, fetch_catalog_search_options};
 pub use ui::leptos::CatalogFacetFilters;
 pub use ui::leptos::ProductView;
+
+#[cfg(target_arch = "wasm32")]
+pub use ui::buyer::mount_product_buyer;

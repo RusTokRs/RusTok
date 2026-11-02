@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { containsMarker } from './lib/source-text.mjs';
 
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
@@ -32,10 +33,10 @@ const plan = read(paths.plan);
 const document = read(paths.document);
 
 const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!containsMarker(source, value)) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+  if (containsMarker(source, value)) failures.push(`${label}: forbidden ${value}`);
 };
 const sliceBetween = (source, start, end) => {
   const from = source.indexOf(start);
@@ -60,10 +61,12 @@ for (const marker of [
   '.cancel_fulfillment(',
   'Permission::FULFILLMENTS_CREATE',
   'Permission::FULFILLMENTS_UPDATE',
-  'PortActor::user(auth.user_id.to_string())',
+  'auth.port_actor()',
+  'require_fulfillment_tenant_scope(ctx, tenant_id, auth)?;',
   '.with_deadline(std::time::Duration::from_secs(2))',
   'request.channel_slug.as_deref()',
-  'graphql-fulfillment:{fulfillment_id}:{operation}',
+  '.with_idempotency_key(caller_key)',
+  'caller_key.len() > 191',
   'graphql-fulfillment:create:{}:{first:016x}{second:016x}',
 ]) requireText(providerOperations, marker, `${paths.providerOperations}: mounted Fulfillment owner command contract`);
 
@@ -76,6 +79,8 @@ for (const [start, end, label] of [
 ]) {
   const method = sliceBetween(providerOperations, start, end);
   requireText(method, 'fulfillment_command_runtime_from_context', `${paths.providerOperations}: ${label} owner runtime`);
+  requireText(method, 'idempotency_key: String', `${paths.providerOperations}: ${label} caller-owned intent`);
+  requireText(method, `"${label}", idempotency_key`, `${paths.providerOperations}: ${label} forwards original caller key`);
   requireText(method, '.lifecycle_command_port()', `${paths.providerOperations}: ${label} owner command port`);
   forbidText(method, 'fulfillment_orchestration_from_context', `${paths.providerOperations}: ${label} concrete orchestration`);
 }
@@ -131,7 +136,7 @@ for (const marker of [
   'fulfillment_command_runtime: CommerceFulfillmentCommandRuntime',
   'pub fn fulfillment_command_runtime(&self) -> CommerceFulfillmentCommandRuntime',
   '.shared_get::<CommerceFulfillmentCommandRuntime>()',
-  'CommerceFulfillmentCommandRuntime::from_graphql_inputs(inputs)',
+  'CommerceFulfillmentCommandRuntime::from_graphql_inputs( inputs, order_read_runtime.order_read_port(), )',
   'pub(crate) fn fulfillment_command_runtime_from_context(',
   '.map(CommerceGraphqlRuntimeData::fulfillment_command_runtime)',
   'pub(crate) fn manual_fulfillment_owner_orchestration_from_context(',
@@ -151,25 +156,36 @@ for (const marker of [
   'FulfillmentAdminCommandRuntime::in_process_with_shipment_stock(',
   'FulfillmentAdminCreateCommandRuntime::in_process(',
   '.shared_get::<FulfillmentProviderRegistry>()',
+  'crate::fulfillment_admin_command_runtime(',
+  'order_reads: Arc<dyn rustok_order::OrderReadPort>',
   'pub fn lifecycle_command_port(&self) -> Arc<dyn FulfillmentAdminCommandPort>',
   'pub fn create_command_port(&self) -> Arc<dyn FulfillmentAdminCreateCommandPort>',
 ]) requireText(fulfillmentCommands, marker, `${paths.fulfillmentCommands}: host-selected Fulfillment owner commands`);
 
 for (const marker of [
   'FulfillmentProviderOperationJournal',
-  'stable_operation_key(fulfillment_id, operation, &immutable_payload)',
-  '"fulfillment:{fulfillment_id}:{operation}:{first:016x}{second:016x}"',
+  'let idempotency_key = context',
+  'idempotency_key: Some(idempotency_key.to_string())',
+  'fulfillment.provider_idempotency_key_missing',
+  'fulfillment.provider_idempotency_key_invalid',
   'mark_reconciliation_required(',
   'FulfillmentProviderRegistry',
 ]) requireText(lifecycleOwner, marker, `${paths.lifecycleOwner}: durable lifecycle provider identity`);
 
 for (const marker of [
   'FulfillmentProviderOperationJournal',
-  'format!("fulfillment:{}:create_label", fulfillment.id)',
+  'idempotency_key: idempotency_key.to_string()',
   'operation: "create_label".to_string()',
   'mark_reconciliation_required(',
   'FulfillmentProviderRegistry',
 ]) requireText(createOwner, marker, `${paths.createOwner}: durable create-label provider identity`);
+
+const lifecycleContext = sliceBetween(providerOperations, 'fn fulfillment_command_context(', 'fn fulfillment_create_read_context(');
+for (const marker of ['auth.port_actor()', 'request.correlation_id.clone()', 'auth.scopes.iter().cloned()', 'require_fulfillment_tenant_scope(ctx, tenant_id, auth)?;'])
+  requireText(lifecycleContext, marker, `${paths.providerOperations}: canonical Fulfillment request context`);
+for (const forbidden of ['PortActor::user(', 'graphql-fulfillment:{fulfillment_id}:{operation}'])
+  forbidText(lifecycleContext, forbidden, `${paths.providerOperations}: no reconstructed actor or per-resource intent`);
+forbidText(lifecycleOwner, 'stable_operation_key(', `${paths.lifecycleOwner}: no regenerated provider identity`);
 
 for (const marker of [
   'OrderReadPort',
@@ -197,7 +213,9 @@ for (const marker of [
   '`FulfillmentAdminCommandPort`',
   '`FulfillmentAdminCreateCommandPort`',
   'The broad canonical topology item remains open.',
-  'No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, CI, runtime calls, provider execution, lost-response scenarios, restart scenarios, or remote-adapter scenarios were executed for this slice.',
+  'Source guards, syntax parsing and formatting are not compilation or runtime evidence.',
+  'Tests remain unrun and with the maintainer.',
+  'caller-owned `idempotencyKey`',
 ]) requireText(document, marker, `${paths.document}: truthful source record`);
 
 if (failures.length > 0) {

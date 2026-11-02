@@ -21,3 +21,8 @@ must not fork the auth/session vocabulary.
 ```ts
 import { getClientAuth, type AuthSession } from "@rustok/ui-auth/browser";
 ```
+
+An absent tenant cookie is an empty value, never an invented `demo` identity. The host resolves
+its tenant and must reject a foreign browser-session tenant rather than replace that scope.
+The Next storefront observes this reader in its host-owned auth binding, and checks a fresh
+snapshot before mutation continuations. Access tokens are not passed through RSC props.

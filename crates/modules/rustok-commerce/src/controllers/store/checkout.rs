@@ -162,10 +162,10 @@ fn storefront_payment_collection_port_context(
     request_body = StoreCreatePaymentCollectionInput,
     responses(
         (status = 201, description = "Payment collection created", body = PaymentCollectionResponse),
-        (status = 400, description = "Cart is completed and cannot create payment collection"),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart not found")
+        (status = 400, description = "Cart is completed and cannot create payment collection", body = rustok_web::ErrorBody),
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart not found", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn create_payment_collection(
@@ -222,6 +222,7 @@ pub async fn create_payment_collection(
     let cart = super::reprice_storefront_cart_line_items_for_db(
         runtime.db(),
         runtime.event_bus(),
+        runtime.product_catalog_read_runtime(),
         tenant.id,
         &request_context,
         cart_storefront_port.as_ref(),
@@ -320,10 +321,10 @@ pub async fn create_payment_collection(
     request_body = StoreCompleteCartInput,
     responses(
         (status = 200, description = "Checkout completed", body = CompleteCheckoutResponse),
-        (status = 400, description = "Checkout request is invalid"),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 404, description = "Cart not found"),
-        (status = 409, description = "Checkout key, pricing or domain conflict")
+        (status = 400, description = "Checkout request is invalid", body = rustok_web::ErrorBody),
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart not found", body = rustok_web::ErrorBody),
+        (status = 409, description = "Checkout key, pricing or domain conflict", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn complete_cart_checkout(
@@ -381,11 +382,12 @@ pub async fn complete_cart_checkout(
     let storefront_runtime = crate::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
         runtime.db_clone(),
         runtime.event_bus(),
-    );
-    let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input_with_product_port(
+    )
+    .with_product_catalog_read_runtime(runtime.product_catalog_read_runtime());
+    let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input_with_product_runtime(
         &storefront_runtime,
         runtime.payment_provider_registry(),
-        runtime.product_catalog_read_port(),
+        runtime.product_catalog_read_runtime(),
         tenant.id,
         &request_context,
         auth.0,
@@ -550,7 +552,7 @@ fn storefront_checkout_http_error(
         boundary = STOREFRONT_CHECKOUT_BOUNDARY,
         "storefront checkout request failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable())
 }
 
 fn payment_collection_error_policy(error: &PortError) -> StorefrontPaymentCollectionHttpPolicy {
@@ -652,5 +654,5 @@ fn payment_collection_http_error(
         boundary = STOREFRONT_PAYMENT_COLLECTION_BOUNDARY,
         "storefront payment collection owner call failed with bounded diagnostics"
     );
-    HttpError::new(status, code, message)
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }

@@ -1,0 +1,171 @@
+{
+  "packet": "inventory-source-history-source",
+  "status": "source_only_uncompiled_unrun",
+  "scope": "Explicit paged current-state baseline, Inventory-owned per-SKU revisions, retained deletion, owner journal and reads; not canonical versioned delivery or selected generic Index cutover",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#inventory-source-history-2026-11-01-source-continuation",
+  "guard": "scripts/verify/verify-inventory-source-history.mjs",
+  "task_entry": {
+    "branch": "arena/71cd6d1f-rustok",
+    "head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+    "main_observed": "a418bbbed64e53cdf841b87dada7ae5799770cd2"
+  },
+  "bounds": {
+    "variants_per_page": 128,
+    "complete_levels_per_page": 4096,
+    "overflow_sentinel": 4097,
+    "source_version_max": "9223372036854775807",
+    "level_rows_per_rejected_page_max": 4097,
+    "context_budget_ms": [1, 30000]
+  },
+  "regressions": {
+    "rust_definitions": 18,
+    "node_definitions": 8,
+    "executed": false,
+    "rust": {
+      "crates/modules/rustok-inventory/src/source_history/tests.rs": [
+        "source_context_requires_current_permission_positive_scope_and_bounded_deadline",
+        "source_revisions_never_start_from_zero_wrap_or_substitute_product_revision",
+        "source_snapshot_preserves_wide_signed_availability_without_saturation",
+        "source_snapshot_requires_complete_positive_unique_bindings_and_each_counter",
+        "source_binding_digest_is_order_independent_but_detects_replaced_identity",
+        "source_page_limits_and_error_envelopes_do_not_leak_provider_payload"
+      ],
+      "crates/modules/rustok-commerce/tests/inventory_source_history.rs": [
+        "source_history_never_automatically_baselines_existing_inventory",
+        "source_history_paged_baseline_fences_changes_and_replays_original_page_receipts",
+        "source_history_empty_baseline_is_explicit_and_unknown_load_is_never_tombstone",
+        "source_history_native_and_product_changes_advance_but_stock_noops_do_not",
+        "source_history_canonical_outbox_failure_rolls_back_stock_revision_and_journal",
+        "source_history_ignored_revision_or_journal_effect_refuses_entire_domain_write",
+        "source_history_guarded_product_delete_retains_higher_version_original_tombstone",
+        "source_history_fresh_product_creation_after_activation_starts_new_owner_identity_only",
+        "source_history_missing_active_revision_is_not_silently_recreated",
+        "source_history_ignored_page_checkpoint_or_receipt_keeps_building_without_partial_copy",
+        "source_history_anonymous_reservation_and_release_advance_once_per_actual_effect"
+      ],
+      "crates/modules/rustok-inventory/src/source_history/physical_tests.rs": [
+        "source_physical_multi_location_equal_availability_advances_once_and_preparation_does_not"
+      ]
+    },
+    "node": "scripts/verify/verify-inventory-source-history.test.mjs"
+  },
+  "preserved_hashes": {
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000025_create_shipment_stock_proofs.rs": "73cbb83b716736a04ce517b73f417f735d266fea88f25440fbf1660ed567f4c6",
+    "crates/modules/rustok-inventory/src/migrations/m20261101_000026_index_catalog_deletion_history.rs": "e2a53e95afc6c03a540d4cc1f8f8af0dcdf498708008fcfc8b7dffc1408b0fcd",
+    "crates/modules/rustok-inventory/src/migrations/m20250130_000016_create_commerce_inventory.rs": "ac238912c4f4e512547ffc1f3e275281f0170d6f6dcc8f96ee4bfc81835be1a2",
+    "crates/modules/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs": "5d120ac7eff5798586d181c77b52ebcc8803540983233598e98928eba9f6b45a",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000017_enforce_reservation_identity.rs": "3393678e292949edf35ba2233ee58b3996b58005730269baad2018108cf572f7",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000018_enforce_inventory_state_invariants.rs": "589070c5ee20be7d9bca73778d60658d47d0d1dfd2691441d2487c69d069de84",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000019_reserve_checkout_order_inventory.rs": "5aeefc5d7a351ee22264cd25febc9e9d0969efa55be78c625043088bf0620989",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000020_remove_duplicate_checkout_reservation.rs": "7a64fcf4321dcd26a7b2b77999a6e171025dcf50af5ba9886e82a03695feb375",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d",
+    "crates/modules/rustok-inventory/src/migrations/m20260912_000023_add_stock_location_translation_change_journal.rs": "c5ab68d3b61f201eafc106b6f163638b5bfda2ae82d8f686d0dd16f9d52f823b",
+    "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+    "crates/modules/rustok-inventory/src/migrations/shared.rs": "80e89f26200fa065163621b62c73068cf73fdac7be4fc1ee2966a0c03a872d28",
+    "crates/libs/rustok-events/contracts/event-contract-digests.json": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121"
+  },
+  "owner_history_source_wired": true,
+  "compiled": false,
+  "tests_executed": false,
+  "sql_executed": false,
+  "migrations_executed": false,
+  "runtime_verified": false,
+  "installation_baseline_initialized": false,
+  "canonical_versioned_publication_wired": false,
+  "distribution_selected": false,
+  "index_ready": false,
+  "step8_complete": false,
+  "static_checks": {
+    "status": "completed_source_checks_only",
+    "read_only_source_verifiers": 24,
+    "passed": 19,
+    "entry_equivalent_failures": [
+      {
+        "path": "scripts/verify/verify-inventory-availability-quantity-context.mjs",
+        "entry_exit_code": 2,
+        "entry_output_sha256": "d4a04fb411e4b5b128a2fb46f0fa919d1de9780c434ca5fd1a30ad6db8183d8b",
+        "identical": true
+      },
+      {
+        "path": "scripts/verify/verify-inventory-port-diagnostic-safety.mjs",
+        "entry_exit_code": 2,
+        "entry_output_sha256": "59677b4d630413fff847f8c291f36b5b0b08c02516e71cc593ebd5e2a63bbb27",
+        "identical": true
+      },
+      {
+        "path": "scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs",
+        "entry_exit_code": 9,
+        "entry_output_sha256": "2ec0ff1c437ef3012c3ccdd80677aa9b7f2019f13072ba1c58a8b18c5eee5ff8",
+        "identical": true
+      },
+      {
+        "path": "scripts/verify/verify-product-catalog-receipts.mjs",
+        "entry_exit_code": 1,
+        "entry_output_sha256": "d0acf5822771e05bc9aafb87429cf69372e4e10ff1ad2a3ee62fd92daee66215",
+        "identical": true
+      },
+      {
+        "path": "scripts/verify/verify-commerce-checkout-inventory-boundary-context.mjs",
+        "entry_exit_code": 3,
+        "entry_output_sha256": "e171df9f3a1a38ae12bf7ebfa0d0e1f5eeaa0ca590e24b429627a4aea7b4491c",
+        "identical": true
+      }
+    ],
+    "comparison_scope": "Hash-proven dirty task entry; not clean main",
+    "entry_hash_verified_files": 13146,
+    "rust_formatter": {
+      "tool": "Scalar 0.3.0",
+      "edition": "2024",
+      "style_edition": "2024",
+      "files": 19,
+      "post_write_changes": 0
+    },
+    "syntax_only": {
+      "rust_tree_sitter_files": 19,
+      "mjs_node_check_files": 4,
+      "json_files": 5
+    },
+    "prettier": {
+      "version": "3.7.4",
+      "files": 9
+    },
+    "historical_preservation": {
+      "entry_migration_directory_rust_files": 668,
+      "unchanged_files": 667,
+      "only_additive_registry_changed": [
+        "crates/modules/rustok-inventory/src/migrations/mod.rs"
+      ],
+      "new_migration": "crates/modules/rustok-inventory/src/migrations/m20261101_000027_create_inventory_source_history.rs",
+      "historical_payloads_modified": false,
+      "dependency_lock_changed_from_entry": false,
+      "event_digest_sha256": "c3abbe85f19d278611359881b1b696ecdd1288e7fb26d566f5df582e1ef05121"
+    },
+    "tests_executed": false,
+    "compiler_or_backend_proof": false
+  },
+  "open_gates": [
+    "Cargo/rustc unavailable; no typing/build/clippy proof",
+    "18 Rust and 8 Node new definitions plus migrated fixtures unrun",
+    "I027 source only; real migration, PostgreSQL advisory/current isolation, SQLite contention, interruption/rollback and downgrade evidence unrun",
+    "Baseline commands are native owner APIs only, creator-actor bound, and use the canonical resilience timeout with awaited rollback; actual timeout/commit-uncertainty evidence remains unrun",
+    "Building baseline pauses actual Inventory writes; no reset/automatic abort/history adoption",
+    "Native existing error envelopes conservatively classify source provenance failures as nonterminal storage/infrastructure; actionable cross-client recovery remains incomplete",
+    "Canonical versioned publication using the committed source version/change UUID, selected Distribution domain-to-generic source/event/worker, stale fence and persist-before-ACK remain open",
+    "No current installation baseline/history/backfill has been executed or inferred; no Index/step8 readiness",
+    "Operational cutover requires maintainer preflight/recovery for unsupported or oversized SKU state and unavailable creator authority before a live baseline is started; this native owner slice exposes no reset or repair workflow"
+  ],
+  "writer_paths": {
+    "quantity": "Inventory quantity kernel actual-change branch",
+    "reservation": "Shared reservation fact plan: native anonymous and identity reserve/release",
+    "physical": "Common stock plan: shipment/restore/reconsume/cancel/reopen/return; one binding per Variant across locations",
+    "creation": "Fresh Product Bootstrap in the concrete caller transaction",
+    "deletion": "Full original parent/item/level/location and retained head proof before the first DELETE; prepared proof borrows the same caller transaction; exact physical effects precede retained tombstone CAS"
+  },
+  "read_semantics": {
+    "targeted_load": "Every requested key is required; missing is unverified, never absence",
+    "scan": "Live bounded keyset; includes retained tombstones, not a repeatable global snapshot or absence certificate",
+    "changes": "Per-SKU bounded journal; no global sequence/commit-order cursor",
+    "deadlines": "Native APIs use core timeout; baseline error rollback awaited; commit timeout unknown"
+  }
+}

@@ -744,7 +744,7 @@ async fn validate_authorize_request(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_security_by_client_id(ctx.db(), client_id)
         .await
         .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
@@ -1166,7 +1166,7 @@ async fn revoke_handler_inner(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_security_by_client_id(ctx.db(), client_id)
         .await
         .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
@@ -1207,13 +1207,12 @@ async fn revoke_handler_inner(
         }
     }
 
-    // 2. Hash the token and try to revoke it
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(req.token.as_bytes());
-    let token_hash = hex::encode(hasher.finalize());
+    // 2. Hash the token and try to revoke it. The canonical helper is
+    // shared with refresh/access registration so RFC 7009 matches the
+    // stored hash for either token kind.
+    let token_hash = crate::auth::hash_refresh_token(&req.token);
 
-    OAuthAppService::revoke_token_by_hash(ctx.db(), &token_hash, app.id)
+    OAuthAppService::revoke_token_by_hash(ctx.db(), &token_hash, app.id, tenant_ctx.id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "server_error".to_string(),

@@ -13,14 +13,11 @@ use super::{
 };
 use crate::dto::CartResponse;
 use rustok_cart::{
-    CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
-    CartStorefrontLineItemPricingRequest, CartStorefrontLineItemQuantityRequest,
-    CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
+    CartStorefrontCreateRequest, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
     in_process_cart_storefront_port,
 };
-use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
+use rustok_pricing::in_process_pricing_read_port;
 
-use super::line_item_resolution;
 mod shipping_owner_reads;
 
 fn log_storefront_cart_route_entry(
@@ -103,7 +100,7 @@ fn map_cart_port_error(
     request_body = StoreCreateCartInput,
     responses(
         (status = 201, description = "Cart created", body = StoreCartResponse),
-        (status = 400, description = "Invalid request")
+        (status = 400, description = "Invalid request", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn create_cart(
@@ -198,9 +195,9 @@ pub async fn create_cart(
     params(("id" = Uuid, Path, description = "Cart ID")),
     responses(
         (status = 200, description = "Cart details", body = CartResponse),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart not found")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart not found", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn get_cart(
@@ -266,9 +263,9 @@ pub async fn get_cart(
     request_body = StoreUpdateCartInput,
     responses(
         (status = 200, description = "Updated cart context", body = StoreCartResponse),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart not found")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart not found", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn update_cart_context(
@@ -319,6 +316,7 @@ pub async fn update_cart_context(
     let updated = shipping_owner_reads::apply_cart_context_patch(
         runtime.db(),
         runtime.event_bus(),
+        runtime.product_catalog_read_runtime(),
         shipping_option_read_port.as_ref(),
         tenant.id,
         &request_context,
@@ -353,9 +351,9 @@ pub async fn update_cart_context(
     request_body = StoreAddCartLineItemInput,
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart not found")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart not found", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn add_cart_line_item(
@@ -384,51 +382,21 @@ pub async fn add_cart_line_item(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
-    let storefront_port = in_process_cart_storefront_port(runtime.db_clone());
-    let existing = storefront_port
-        .read_storefront_cart(
-            super::storefront_cart_port_context(
-                tenant.id,
-                &request_context,
-                auth.0.as_ref(),
-                id,
-                "read",
-                false,
-            ),
-            CartStorefrontReadRequest { cart_id: id },
-        )
-        .await
-        .map_err(|error| {
-            map_cart_port_error(error, "add_cart_line_item_read", tenant.id, Some(id))
-        })?;
-    super::ensure_store_cart_access(&existing, customer_id, auth.0.as_ref())?;
-    let event_bus = runtime.event_bus();
-    let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus.clone());
-    let pricing_context =
-        super::build_store_pricing_context(&existing, &request_context, input.quantity);
-    let public_channel_slug =
-        super::storefront_public_channel_slug_for_cart(&existing, &request_context);
-    let product_catalog_read_port = runtime.product_catalog_read_port();
-    let resolved_input = line_item_resolution::resolve_store_line_item_input(
-        runtime.db(),
-        tenant.id,
-        super::StoreLineItemResolution {
-            product_catalog_read_port: product_catalog_read_port.as_ref(),
-            pricing_read_port: pricing_read_port.as_ref(),
-            pricing_context: &pricing_context,
-            locale: existing
-                .locale_code
-                .as_deref()
-                .unwrap_or(request_context.locale.as_str()),
-            default_locale: tenant.default_locale.as_str(),
-            public_channel_slug: public_channel_slug.as_deref(),
-            input,
-        },
-    )
-    .await?;
-
-    let cart = storefront_port
-        .add_storefront_line_item(
+    let workflow = crate::storefront_cart_runtime::StorefrontCartRuntime::new(
+        runtime.product_catalog_read_port(),
+        in_process_pricing_read_port(
+            runtime.db_clone(),
+            runtime.event_bus(),
+            runtime.product_catalog_read_runtime(),
+        ),
+        in_process_cart_storefront_port(runtime.db_clone()),
+        rustok_inventory::in_process_inventory_reservation_port(
+            runtime.db_clone(),
+            runtime.event_bus(),
+        ),
+    );
+    let cart = workflow
+        .add_line_item(
             super::storefront_cart_port_context(
                 tenant.id,
                 &request_context,
@@ -437,10 +405,15 @@ pub async fn add_cart_line_item(
                 "add-line-item",
                 true,
             ),
-            CartStorefrontAddLineItemRequest {
+            customer_id,
+            tenant.default_locale.as_str(),
+            crate::storefront_cart_runtime::StorefrontCartAddCommand {
                 cart_id: id,
-                input: resolved_input.add_line_item,
-                pricing_adjustment: resolved_input.pricing_adjustment,
+                variant_id: input.variant_id,
+                quantity: input.quantity,
+                expected_context: input.expected_context.map(Into::into),
+                expected_locale: input.expected_locale,
+                metadata: input.metadata,
             },
         )
         .await
@@ -471,9 +444,13 @@ pub async fn add_cart_line_item(
     request_body = StoreUpdateCartLineItemInput,
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart or line item not found")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart or line item not found", body = rustok_web::ErrorBody),
+        (status = 400, description = "Invalid quantity, snapshot or original SKU", body = rustok_web::ErrorBody),
+        (status = 409, description = "Cart inputs, fulfillment snapshot or stock availability changed; inspect before retrying", body = rustok_web::ErrorBody),
+        (status = 503, description = "Required owner capability is unavailable", body = rustok_web::ErrorBody),
+        (status = 504, description = "Owner observation exceeded its deadline", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn update_cart_line_item(
@@ -526,99 +503,39 @@ pub async fn update_cart_line_item(
             map_cart_port_error(error, "update_cart_line_item_read", tenant.id, Some(id))
         })?;
     super::ensure_store_cart_access(&existing, customer_id, auth.0.as_ref())?;
-    let event_bus = runtime.event_bus();
-    if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id)
-        && let Some(variant_id) = existing_line_item.variant_id
-    {
-        let product_catalog_read_port = runtime.product_catalog_read_port();
-        line_item_resolution::validate_store_line_item_quantity(
-            runtime.db(),
-            product_catalog_read_port.as_ref(),
-            tenant.id,
-            variant_id,
+    let workflow = crate::storefront_cart_runtime::StorefrontCartRuntime::new(
+        runtime.product_catalog_read_port(),
+        in_process_pricing_read_port(
+            runtime.db_clone(),
+            runtime.event_bus(),
+            runtime.product_catalog_read_runtime(),
+        ),
+        storefront_port,
+        rustok_inventory::in_process_inventory_reservation_port(
+            runtime.db_clone(),
+            runtime.event_bus(),
+        ),
+    );
+    let cart = workflow
+        .update_line_item_quantity(
+            super::storefront_cart_port_context(
+                tenant.id,
+                &request_context,
+                auth.0.as_ref(),
+                id,
+                "update-line-item",
+                true,
+            ),
+            customer_id,
+            tenant.default_locale.as_str(),
+            existing,
+            line_id,
             input.quantity,
-            super::storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
         )
-        .await?;
-    }
-
-    let cart = if let Some(variant_id) = existing
-        .line_items
-        .iter()
-        .find(|item| item.id == line_id)
-        .and_then(|item| item.variant_id)
-    {
-        let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus);
-        let pricing_context =
-            super::build_store_pricing_context(&existing, &request_context, input.quantity);
-        let resolved_price: rustok_pricing::ResolvedPrice = pricing_read_port
-            .resolve_product_price(
-                super::storefront_pricing_port_context(tenant.id, &request_context, id, line_id),
-                ResolveProductPriceRequest {
-                    product_id: existing
-                        .line_items
-                        .iter()
-                        .find(|item| item.id == line_id)
-                        .and_then(|item| item.product_id),
-                    variant_id,
-                    region_id: pricing_context.region_id,
-                    channel_id: pricing_context.channel_id,
-                    channel_slug: pricing_context.channel_slug,
-                    price_list_id: pricing_context.price_list_id,
-                    quantity: pricing_context.quantity,
-                    currency_code: pricing_context.currency_code,
-                },
-            )
-            .await
-            .map_err(port_error_to_http_error)?
-            .into();
-
-        let pricing_update =
-            super::storefront_cart_pricing_update(line_id, input.quantity, &resolved_price);
-        storefront_port
-            .update_storefront_line_item_pricing(
-                super::storefront_cart_port_context(
-                    tenant.id,
-                    &request_context,
-                    auth.0.as_ref(),
-                    id,
-                    "update-line-item",
-                    true,
-                ),
-                CartStorefrontLineItemPricingRequest {
-                    cart_id: id,
-                    line_item_id: line_id,
-                    quantity: input.quantity,
-                    unit_price: pricing_update.unit_price,
-                    pricing_adjustment: pricing_update.pricing_adjustment,
-                },
-            )
-            .await
-            .map_err(|error| {
-                map_cart_port_error(error, "update_cart_line_item_pricing", tenant.id, Some(id))
-            })?
-    } else {
-        storefront_port
-            .update_storefront_line_item_quantity(
-                super::storefront_cart_port_context(
-                    tenant.id,
-                    &request_context,
-                    auth.0.as_ref(),
-                    id,
-                    "update-line-item",
-                    true,
-                ),
-                CartStorefrontLineItemQuantityRequest {
-                    cart_id: id,
-                    line_item_id: line_id,
-                    quantity: input.quantity,
-                },
-            )
-            .await
-            .map_err(|error| {
-                map_cart_port_error(error, "update_cart_line_item_quantity", tenant.id, Some(id))
-            })?
-    };
+        .await
+        .map_err(|error| {
+            map_cart_port_error(error, "update_cart_line_item", tenant.id, Some(id))
+        })?;
     let shipping_option_read_port = runtime.shipping_option_read_port();
     Ok(Json(
         shipping_owner_reads::enrich_storefront_cart(
@@ -644,9 +561,9 @@ pub async fn update_cart_line_item(
     ),
     responses(
         (status = 200, description = "Updated cart", body = CartResponse),
-        (status = 401, description = "Authentication required for customer-owned carts"),
-        (status = 403, description = "Cart access denied: guest capability or customer ownership"),
-        (status = 404, description = "Cart or line item not found")
+        (status = 401, description = "Authentication required for customer-owned carts", body = rustok_web::ErrorBody),
+        (status = 403, description = "Cart access denied: guest capability or customer ownership", body = rustok_web::ErrorBody),
+        (status = 404, description = "Cart or line item not found", body = rustok_web::ErrorBody)
     )
 )]
 pub async fn remove_cart_line_item(
@@ -712,6 +629,10 @@ pub async fn remove_cart_line_item(
             CartStorefrontRemoveLineItemRequest {
                 cart_id: id,
                 line_item_id: line_id,
+                pricing_context: rustok_cart::CartPricingContextGuard::capture_removal(
+                    &existing, line_id,
+                )
+                .map_err(port_error_to_http_error)?,
             },
         )
         .await

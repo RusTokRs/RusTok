@@ -277,7 +277,7 @@ async fn create_ship_and_deliver_fulfillment() {
 
     let shipped = service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "dhl".to_string(),
@@ -328,7 +328,7 @@ async fn cancel_pending_fulfillment() {
         .unwrap();
     let cancelled = service
         .cancel_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             CancelFulfillmentInput {
                 reason: Some("buyer-requested".to_string()),
@@ -492,7 +492,7 @@ async fn ship_and_deliver_fulfillment_support_partial_item_progress_and_audit() 
 
     let shipped = service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -593,7 +593,7 @@ async fn deliver_fulfillment_rejects_quantity_beyond_shipped_progress() {
 
     service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -660,7 +660,7 @@ async fn reopen_delivered_fulfillment_restores_shipped_progress_and_audit() {
 
     let delivered = service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -695,7 +695,7 @@ async fn reopen_delivered_fulfillment_restores_shipped_progress_and_audit() {
 
     let reopened = service
         .reopen_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ReopenFulfillmentInput {
                 items: Some(vec![FulfillmentItemQuantityInput {
@@ -751,7 +751,7 @@ async fn reship_delivered_fulfillment_reopens_delivery_with_new_tracking() {
 
     service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -842,7 +842,7 @@ async fn reopen_cancelled_fulfillment_restores_pending_or_shipped_state() {
 
     service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -858,7 +858,7 @@ async fn reopen_cancelled_fulfillment_restores_pending_or_shipped_state() {
         .expect("fulfillment should ship");
     let cancelled = service
         .cancel_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             CancelFulfillmentInput {
                 reason: Some("manual".to_string()),
@@ -871,7 +871,7 @@ async fn reopen_cancelled_fulfillment_restores_pending_or_shipped_state() {
 
     let reopened = service
         .reopen_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ReopenFulfillmentInput {
                 items: None,

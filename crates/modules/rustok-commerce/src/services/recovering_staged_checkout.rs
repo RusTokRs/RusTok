@@ -26,6 +26,20 @@ pub enum RecoveringStagedCheckoutError {
     },
 }
 
+impl RecoveringStagedCheckoutError {
+    pub(crate) fn inventory_adoption_failure(
+        &self,
+    ) -> Option<&super::CheckoutInventoryOrderAdoptionError> {
+        match self {
+            Self::Staged(error) => error.inventory_adoption_failure(),
+            Self::StagedAndJournal { staged, .. } | Self::StagedAndCompensation { staged, .. } => {
+                staged.inventory_adoption_failure()
+            }
+            Self::Journal(_) => None,
+        }
+    }
+}
+
 pub type RecoveringStagedCheckoutResult<T> = Result<T, RecoveringStagedCheckoutError>;
 
 pub struct RecoveringStagedCheckoutService {
@@ -67,6 +81,14 @@ impl RecoveringStagedCheckoutService {
         {
             Ok(response) => Ok(response),
             Err(staged) => {
+                // The staged owner journal already attempted retry/parking. Do not erase its
+                // bounded cause after a successful park, or turn failed recovery lookup into
+                // compensation authority for an unverified same-identity adoption.
+                if staged.inventory_adoption_failure().is_some_and(
+                    super::CheckoutInventoryOrderAdoptionError::requires_owner_recovery,
+                ) {
+                    return Err(staged.into());
+                }
                 let operation = match self
                     .staged
                     .operation_journal()

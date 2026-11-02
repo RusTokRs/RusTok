@@ -1,11 +1,16 @@
 {
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "es2022"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es2022"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -14,17 +19,45 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"],
-      "@iu/*": ["../../UI/next/components/*"],
-      "@rustok/ui-grid": ["../../packages/rustok-ui-grid/src/index.ts"],
-      "@rustok/ui-grid/*": ["../../packages/rustok-ui-grid/src/*"],
-      "@rustok/forms-admin": ["./packages/forms/src/index.ts"],
-      "@rustok/media-admin": ["./packages/media/src/index.ts"],
-      "@rustok/pages-admin": ["./packages/pages/src/index.ts"],
-      "@/shared/*": ["./src/shared/*"],
-      "@/entities/*": ["./src/entities/*"],
-      "@/widgets/*": ["./src/widgets/*"],
-      "~/*": ["./public/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@iu/*": [
+        "../../UI/next/components/*"
+      ],
+      "@rustok/ui-grid": [
+        "../../packages/rustok-ui-grid/src/index.ts"
+      ],
+      "@rustok/ui-grid/*": [
+        "../../packages/rustok-ui-grid/src/*"
+      ],
+      "@rustok/forms-admin": [
+        "./packages/forms/src/index.ts"
+      ],
+      "@rustok/media-admin": [
+        "./packages/media/src/index.ts"
+      ],
+      "@rustok/pages-admin": [
+        "./packages/pages/src/index.ts"
+      ],
+      "@/shared/*": [
+        "./src/shared/*"
+      ],
+      "@/entities/*": [
+        "./src/entities/*"
+      ],
+      "@/widgets/*": [
+        "./src/widgets/*"
+      ],
+      "~/*": [
+        "./public/*"
+      ],
+      "@rustok/ui-controls/*": [
+        "../../packages/rustok-ui-controls/src/*"
+      ],
+      "@rustok/ui-controls": [
+        "../../packages/rustok-ui-controls/src/index.ts"
+      ]
     },
     "incremental": true,
     "plugins": [
@@ -41,5 +74,9 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "__CLEANUP__", "tests"]
+  "exclude": [
+    "node_modules",
+    "__CLEANUP__",
+    "tests"
+  ]
 }

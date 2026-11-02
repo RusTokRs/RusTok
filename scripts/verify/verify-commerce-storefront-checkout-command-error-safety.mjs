@@ -191,7 +191,7 @@ for (const marker of [
   "storefront_order_complete_checkout_native(request)",
   'ServerFnError::new("Checkout request is invalid")',
   '"Checkout transport is temporarily unavailable"',
-  "complete_storefront_checkout_with_product_port",
+  "complete_storefront_checkout_with_product_runtime",
 ]) requireText(orderNative, marker, `${orderNativePath}: owner native contract`);
 
 if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version must be 1`);

@@ -1,0 +1,164 @@
+=== Cargo.toml ===
+[package]
+name = "rustok-example-{surface}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "{Surface} FFA adapter for rustok-example (owner API pending)"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+csr = ["leptos/csr"]
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr"]
+
+[dependencies]
+leptos.workspace = true
+rustok-ui-i18n.workspace = true
+rustok-ui-transport.workspace = true
+=== README.md ===
+# rustok-example-{surface}
+
+Draft Leptos {surface} UI adapter for the example native module.
+
+## Responsibility
+- Keep UI rendering and bindings in src/ui/leptos.rs.
+- Keep pure, framework-independent presentation state in src/core/mod.rs.
+- Keep all future backend calls behind src/transport/mod.rs.
+- Do not claim that CRUD, GraphQL, or native server transport exists.
+
+## Current state
+This is an **unmounted development package**, not a registered functional route.
+There is no owner operation to read or mutate. The transport facade fails
+closed until a genuine backend API and its transport-specific adapters exist.
+No business data, permissions, tenant context or mutation outcomes are invented.
+
+The scaffold command writes this development package into the Cargo workspace
+without mounting it in a Leptos host or advertising a live UI in rustok-module.toml.
+After the module owner implements business operations, complete and verify the
+native and GraphQL adapters, then add Leptos host composition and live UI
+manifest metadata in a separate feature change before promoting readiness.
+Next.js applications own separate classic packages in their hosts; they are
+not generated as FFA adapters. Before promoting a surface to live, add its
+`next_package` under the corresponding Next host, register it in the host
+module registry and import it from the declared route. `cargo xtask module lint`
+checks that structural package/route wiring.
+
+## Known Limitations / Pending Implementation
+- No owner business operation or usable native/GraphQL adapter exists yet.
+- This Leptos package has no host route and advertises no live UI capability.
+- Client parity and real transport behavior remain pending owner implementation.
+- Track subsequent implementation in the module's docs/implementation-plan.md.
+
+## Reference
+- [Blog's production Leptos package](../../rustok-blog/{surface}/README.md)
+- [FFA implementation guide](../../../../docs/UI/module-package-implementation.md)
+
+## Verification
+- cargo check -p rustok-example-{surface}
+- cargo test -p rustok-example-{surface}
+- cargo xtask module lint example
+=== CRATE_API.md ===
+# rustok-example-{surface} / CRATE_API
+
+## Role
+Draft {surface} Leptos adapter for example. Not published as a working FFA surface.
+
+## Public surface
+- {Page} renders an explicit unavailability message.
+- Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
+
+## Platform Capability Bindings
+- Transport selection uses rustok-ui-transport; both owner-specific adapters explicitly reject calls until implemented.
+
+## Domain Collaborations
+- None; an owner API and context invariants must be specified first.
+
+## Minimum Contract Set
+
+### Input DTOs/Commands
+- None. No CRUD or owner business operation is available.
+
+### Domain Invariants
+- Missing transport is always reported as unavailable.
+
+### Events / Outbox Side Effects
+- None. The UI never simulates successful mutations.
+
+### Errors / Failure Codes
+- MissingOwnerContract is a typed unavailable result for each adapter, not an empty success.
+=== src/lib.rs ===
+//! Draft FFA {surface} package for example.
+
+mod core;
+mod i18n;
+mod model;
+mod transport;
+mod ui;
+
+pub use ui::{Page};
+
+#[cfg(test)]
+mod tests;
+=== src/transport/mod.rs ===
+//! Leptos/Dioxus-neutral owner transport facade.
+//! Neither adapter implements a business operation until the owner API exists.
+
+mod graphql_adapter;
+mod native_server_adapter;
+
+use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+
+pub type ApiError = UiTransportError;
+
+pub fn selected_transport_path() -> UiTransportPath {
+    #[cfg(any(feature = "ssr", feature = "hydrate"))]
+    {
+        UiTransportPath::NativeServer
+    }
+    #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+    {
+        UiTransportPath::Graphql
+    }
+}
+
+/// Explicit path injection makes the facade usable by future Dioxus bindings
+/// without coupling the pure model or core to a Leptos build profile.
+pub async fn fetch_owner_capability_for(
+    path: UiTransportPath,
+) -> Result<(), ApiError> {
+    execute_selected_transport(
+        "example/{surface}",
+        path,
+        native_server_adapter::fetch_owner_capability,
+        graphql_adapter::fetch_owner_capability,
+    )
+    .await
+}
+
+pub async fn fetch_owner_capability() -> Result<(), ApiError> {
+    fetch_owner_capability_for(selected_transport_path()).await
+}
+=== src/ui/leptos.rs ===
+use leptos::prelude::*;
+use crate::{core, i18n::t};
+
+/// Render-only adapter. Future Dioxus UI binds the same core/transport.
+#[component]
+pub fn {Page}() -> impl IntoView {
+    let _state = core::owner_capability_state();
+    view! {
+        <section class="p-6 space-y-3" aria-live="polite">
+            <h1 class="text-2xl font-semibold">"Example"</h1>
+            <p class="text-muted-foreground">"A native example module without business logic"</p>
+            <p role="status">
+                {t(None, "example-{surface}-unavailable", "This module's UI is not available until its owner API is implemented.")}
+            </p>
+        </section>
+    }
+}

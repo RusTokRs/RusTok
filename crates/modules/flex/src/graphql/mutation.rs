@@ -33,7 +33,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: CreateFieldDefinitionInput,
     ) -> Result<FieldDefinitionObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_CREATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_CREATE).await?;
         let runtime = runtime(ctx)?;
 
         let field_type: FieldType =
@@ -94,7 +94,7 @@ impl FlexMutation {
         id: Uuid,
         input: UpdateFieldDefinitionInput,
     ) -> Result<FieldDefinitionObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
 
         let label = input
@@ -156,7 +156,7 @@ impl FlexMutation {
         entity_type: Option<String>,
         id: Uuid,
     ) -> Result<DeleteFieldDefinitionPayload> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_DELETE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_DELETE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
@@ -184,7 +184,7 @@ impl FlexMutation {
         entity_type: Option<String>,
         ids: Vec<Uuid>,
     ) -> Result<Vec<FieldDefinitionObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
@@ -209,7 +209,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: SetAttachedFieldPolicyInput,
     ) -> Result<AttachedFieldPolicyObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(input.entity_type)?;
         ensure_attached_policy_field_exists(runtime, tenant.id, &entity_type, &input.field_key)
@@ -245,7 +245,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: ResetAttachedFieldPolicyInput,
     ) -> Result<AttachedFieldPolicyObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(input.entity_type)?;
         ensure_attached_policy_field_exists(runtime, tenant.id, &entity_type, &input.field_key)
@@ -273,7 +273,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: SetStandaloneFieldPolicyInput,
     ) -> Result<StandaloneFieldPolicyObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
         ensure_standalone_policy_field_exists(
             runtime,
@@ -313,7 +313,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: ResetStandaloneFieldPolicyInput,
     ) -> Result<StandaloneFieldPolicyObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let runtime = runtime(ctx)?;
         ensure_standalone_policy_field_exists(
             runtime,
@@ -345,7 +345,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: UpdateAttachedValuesInput,
     ) -> Result<AttachedValuesObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(input.entity_type)?;
         let values = runtime
@@ -374,7 +374,7 @@ impl FlexMutation {
         entity_type: Option<String>,
         entity_id: Uuid,
     ) -> Result<DeleteFlexPayload> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE)?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
@@ -393,7 +393,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: CreateFlexSchemaInput,
     ) -> Result<FlexSchemaObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_CREATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_CREATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let (view, event) = crate::create_schema_with_event(
@@ -423,7 +423,7 @@ impl FlexMutation {
         id: Uuid,
         input: UpdateFlexSchemaInput,
     ) -> Result<FlexSchemaObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let (view, event) = crate::update_schema_with_event(
@@ -448,7 +448,7 @@ impl FlexMutation {
 
     /// Delete a standalone Flex schema.
     async fn delete_flex_schema(&self, ctx: &Context<'_>, id: Uuid) -> Result<DeleteFlexPayload> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_DELETE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_DELETE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let event =
@@ -466,7 +466,7 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: CreateFlexEntryInput,
     ) -> Result<FlexEntryObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_CREATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_CREATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let (view, event) = crate::create_entry_with_event(
@@ -496,7 +496,7 @@ impl FlexMutation {
         id: Uuid,
         input: UpdateFlexEntryInput,
     ) -> Result<FlexEntryObject> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let (view, event) = crate::update_entry_with_event(
@@ -524,7 +524,7 @@ impl FlexMutation {
         schema_id: Uuid,
         id: Uuid,
     ) -> Result<DeleteFlexPayload> {
-        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE)?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
         let service = runtime(ctx)?.standalone_service();
 
         let event = crate::delete_entry_with_event(

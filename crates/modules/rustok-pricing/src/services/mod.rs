@@ -11,9 +11,10 @@ pub use pricing::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
     AdminPricingProductListItem, AdminPricingProductTranslation, AdminPricingVariant,
     PriceAdjustmentKind, PriceAdjustmentPreview, PriceListRule, PriceListRuleKind,
-    PriceResolutionContext, PricingService, ResolvedPrice, StorefrontPricingPrice,
-    StorefrontPricingProductDetail, StorefrontPricingProductList, StorefrontPricingProductListItem,
-    StorefrontPricingProductTranslation, StorefrontPricingVariant,
+    PriceResolutionContext, PriceResolutionSource, PricingService, ResolvedPrice,
+    StorefrontPricingPrice, StorefrontPricingProductDetail, StorefrontPricingProductList,
+    StorefrontPricingProductListItem, StorefrontPricingProductTranslation,
+    StorefrontPricingVariant,
 };
 pub use translation::{
     PriceListTranslationExactLocaleApply, PriceListTranslationExactLocaleApplyReceipt,

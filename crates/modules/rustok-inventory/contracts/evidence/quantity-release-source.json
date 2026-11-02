@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "module": "inventory",
+  "packet": "anonymous-quantity-release-source",
+  "recorded_date": "2026-11-01",
+  "status": "passed_source_syntax_format_only",
+  "scope": "Anonymous reserve/release provenance and exact original-location counter reductions; prerequisite only, no reservation notification publisher",
+  "base_branch": "arena/71cd6d1f-rustok",
+  "base_head": "16cb22206ca19de8218f47a1056d946105c7b09f",
+  "main_observed": "0aaf455a45556f4e39a5ed66b8a1184369e5e93f",
+  "owner_contract": "crates/modules/rustok-inventory/CRATE_API.md#anonymous-quantity-reservations-2026-11-01-source-only",
+  "decision": "DECISIONS/2026-03-25-commerce-module-split-product-pricing-inventory.md#anonymous-quantity-reservation-release-2026-11-01",
+  "guard": "scripts/verify/verify-inventory-quantity-release.mjs",
+  "compiled": false,
+  "sql_executed": false,
+  "runtime_certified": false,
+  "notification_delivery_certified": false,
+  "step8_complete": false,
+  "event_schema_changed": false,
+  "migration_added_or_rewritten": false,
+  "durable_quantity_receipt_added": false,
+  "source_regressions": {
+    "rust_definition_count": 27,
+    "rust_executed": 0,
+    "rust_compiled": 0,
+    "node_definition_count": 10,
+    "node_executed": 0,
+    "rust_sources": [
+      "crates/modules/rustok-inventory/src/services/inventory/reservation_release/tests.rs",
+      "crates/modules/rustok-commerce/tests/inventory_quantity_release.rs"
+    ],
+    "node_source": "scripts/verify/verify-inventory-quantity-release.test.mjs",
+    "maintainer_commands": [
+      "cargo test --locked -p rustok-inventory --lib services::inventory::reservation_release::tests",
+      "cargo test --locked -p rustok-commerce --test inventory_service_test quantity_release",
+      "node scripts/verify/verify-inventory-quantity-release.test.mjs"
+    ],
+    "sqlite_fault_fixture_only": [
+      "suppressed_exact_level_update_cannot_acknowledge_or_retain_a_partial_release",
+      "suppressed_anonymous_row_insert_rolls_back_reserved_counter_without_fake_success"
+    ]
+  },
+  "checks": {
+    "source_guard": "passed_source_only",
+    "related_source_guards": {
+      "status": "passed_source_only",
+      "count": 10,
+      "commands": [
+        "node scripts/verify/verify-inventory-quantity-release.mjs",
+        "node scripts/verify/verify-inventory-stock-events.mjs",
+        "node scripts/verify/verify-commerce-shipment-stock-provenance.mjs",
+        "node scripts/verify/verify-commerce-return-restock-identity.mjs",
+        "node scripts/verify/verify-commerce-checkout-inventory-adoption.mjs",
+        "node scripts/verify/verify-inventory-reservation-owner-context.mjs",
+        "node scripts/verify/verify-inventory-reservation-local-context.mjs",
+        "node scripts/verify/verify-inventory-admin-boundary.mjs",
+        "node scripts/verify/verify-ecommerce-fba-registries.mjs",
+        "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs"
+      ]
+    },
+    "rust_format": {
+      "tool": "@scalar/rust-fmt@0.3.0",
+      "edition": "2024",
+      "files": 7,
+      "changed_on_last_pass": 0,
+      "failed": 0,
+      "compilation": false
+    },
+    "rust_syntax": {
+      "tool": "tree-sitter 0.25.2 / tree-sitter-rust 0.24.0",
+      "clean_files": 6,
+      "new_errors": 0,
+      "unchanged_ui_grammar_limitation": "ui/leptos.rs contains the same baseline &raw argument grammar error; Scalar/rustfmt parses all seven files. This is not compilation."
+    },
+    "ast_call_shapes": {
+      "symbols": 7,
+      "calls": 13,
+      "failures": 0,
+      "limitation": "AST calls only; macros and type resolution are not checked"
+    },
+    "node_syntax_and_prettier": {
+      "new_node_files_syntax_only": 2,
+      "prettier_files": 6,
+      "tests_executed": 0
+    },
+    "markdown_inline_links": {
+      "documents": 13,
+      "checked": 381,
+      "failures": []
+    },
+    "fluent_keys": "en/ru existing key catalogs unchanged and equal; no UI rendering executed",
+    "historical_migration_bytes": {
+      "count": 10,
+      "changed": 0
+    },
+    "diff_check": "passed",
+    "architecture_gate": {
+      "status": "blocked_missing_cargo",
+      "diff_invariants": "passed",
+      "compilation_or_tests_executed": false,
+      "reason": "--skip-cargo does not skip architecture cargo metadata; FileNotFoundError for cargo"
+    }
+  },
+  "unchanged_historical_migration_sha256": {
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000018_enforce_inventory_state_invariants.rs": "589070c5ee20be7d9bca73778d60658d47d0d1dfd2691441d2487c69d069de84",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000019_reserve_checkout_order_inventory.rs": "5aeefc5d7a351ee22264cd25febc9e9d0969efa55be78c625043088bf0620989",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000020_remove_duplicate_checkout_reservation.rs": "7a64fcf4321dcd26a7b2b77999a6e171025dcf50af5ba9886e82a03695feb375",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000021_bound_reservation_metadata_and_inactive_locations.rs": "59d2bc72eb8c780b0a2a4f10db77e615ff12e693b8c1ca4557a62bfe96382591",
+    "crates/modules/rustok-inventory/src/migrations/m20260713_000022_repair_oversized_reservation_metadata.rs": "eddee40c6dee5d39133a4379e7f812a4c0a712f4fb8c8ee1033c3a757641bd9d",
+    "crates/modules/rustok-inventory/src/migrations/m20261021_000024_create_inventory_return_restocks.rs": "fbc3a5ca3754eefde9e7408262666a9a5e22d8e1a9626a05fb9a35b25cd3f750",
+    "crates/modules/rustok-commerce/src/migrations/m20260713_000005_reserve_inventory_on_order_confirmation.rs": "8e11cc8bf71e9307fab759c1088980eddf0473b89833a07dffd0e0428106948a",
+    "crates/modules/rustok-commerce/src/migrations/m20260713_000006_consume_inventory_on_order_delivery.rs": "b455534ed52918a49e8863f427aca2be2b493d3f9b8a6e4108f397e059e867d1",
+    "crates/modules/rustok-commerce/src/migrations/m20260713_000007_consume_inventory_on_fulfillment_shipping.rs": "7c6779d3b4188fee5109033e17add69aea00eb1668193bf81d74a0076bbdfdbe",
+    "crates/modules/rustok-commerce/src/migrations/m20260713_000013_cutover_checkout_inventory_lifecycle.rs": "d0eebfd3a5150cd8b4629680a0412496e54d04cfb4b251f28a0b823a5dcd61b5"
+  },
+  "remaining": [
+    "Compile and execute all new and prior regressions; no tests were authorized in this continuation",
+    "Postgres/SQLite SQL, lock ordering, rollback, contention and native/mounted/remote evidence remain unexecuted; MySQL aggregate cast is unexecuted source only",
+    "Quantity-only commands remain non-idempotent; a transport key/retry hint is not a durable outcome receipt",
+    "Oversized or unverifiable historical anonymous pools require explicit owner reconciliation, not identity guesses, compaction or automatic repair",
+    "Reservation writes still need quantity-free Inventory-owned sealed facts, current-actor/context propagation, canonical Rust-generated digests and actual typed delivery/consumer wiring",
+    "MemoryTransport currently lacks bounded typed publication; existing Product refresh facts are Product-owned, not an Inventory substitute",
+    "Search refetch, generic Index refresh, relay/restart/lag and complete Product step-8 convergence are not certified"
+  ]
+}

@@ -24,8 +24,9 @@ use crate::services::{
     PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_EXECUTING,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
-use crate::shipment_stock::ShipmentStockPort;
-use crate::status::FulfillmentStatusKind;
+use crate::shipment_stock::{PreparedFulfillmentStock, ShipmentStockAction, ShipmentStockPort};
+
+mod recovery;
 
 const ADMIN_COMMAND_BOUNDARY: &str = "fulfillment_admin_command_port";
 
@@ -60,6 +61,32 @@ pub trait FulfillmentAdminCommandPort: Send + Sync {
         context: PortContext,
         request: CancelAdminFulfillmentRequest,
     ) -> Result<FulfillmentResponse, PortError>;
+
+    /// Optional selected capability, never emulated by a full cancellation or a native fallback.
+    async fn cancel_pending_fulfillment(
+        &self,
+        _context: PortContext,
+        _request: CancelAdminFulfillmentRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        Err(PortError::unavailable(
+            "fulfillment.pending_cancellation_not_configured",
+            "selected Fulfillment owner does not support conditional pending cancellation",
+        )
+        .with_retryable(false))
+    }
+
+    /// Recovery stays with the owner of the durable journal/progress, not the composing caller.
+    async fn retry_local_persistence(
+        &self,
+        _context: PortContext,
+        _request: RetryLocalFulfillmentPersistenceRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        Err(PortError::unavailable(
+            "fulfillment.local_recovery_not_configured",
+            "selected Fulfillment owner does not support local provider-result recovery",
+        )
+        .with_retryable(false))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +117,11 @@ pub struct ReshipAdminFulfillmentRequest {
 pub struct CancelAdminFulfillmentRequest {
     pub fulfillment_id: Uuid,
     pub input: CancelFulfillmentInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryLocalFulfillmentPersistenceRequest {
+    pub operation_id: Uuid,
 }
 
 pub struct InProcessFulfillmentAdminCommandPort {
@@ -170,6 +202,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         request: ShipAdminFulfillmentRequest,
     ) -> Result<FulfillmentResponse, PortError> {
         const OPERATION: &str = "ship_admin_fulfillment";
+        let started = std::time::Instant::now();
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
@@ -198,20 +231,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if !matches!(
-            current.status_kind(),
-            FulfillmentStatusKind::Pending | FulfillmentStatusKind::Shipped
-        ) {
-            return Err(map_fulfillment_error(
-                &context,
-                OPERATION,
-                FulfillmentError::InvalidTransition {
-                    from: current.status,
-                    to: "shipped".to_string(),
-                },
-            ));
-        }
-
         let provider_id = self
             .provider_id_for_fulfillment(&context, OPERATION, tenant_id, &current)
             .await?;
@@ -237,38 +256,62 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                 }),
             )?,
         )?;
+        let execution_context = crate::shipment_stock::remaining_stock_context(&context, started)?;
         let journaled = self
             .execute_provider_operation(
-                &context,
+                &execution_context,
                 OPERATION,
                 provider_id.as_str(),
                 "ship",
                 provider_request,
+                Some((ShipmentStockAction::Ship, items.clone())),
+                None,
             )
             .await?;
         if journaled.committed {
-            return Ok(current);
+            // The initial projection may predate a concurrent owner commit. Journal replay
+            // acknowledges retained effects, not that earlier potentially Pending snapshot.
+            crate::shipment_stock::remaining_stock_context(&context, started)?;
+            return self
+                .service
+                .get_fulfillment(tenant_id, request.fulfillment_id)
+                .await
+                .map_err(|error| map_fulfillment_error(&context, OPERATION, error));
         }
 
-        let updated = self
-            .service
-            .ship_fulfillment_with_provider_result(
-                tenant_id,
-                request.fulfillment_id,
-                ShipFulfillmentInput {
-                    carrier,
-                    tracking_number: journaled
-                        .result
-                        .tracking_number
-                        .clone()
-                        .unwrap_or(tracking_number),
-                    items,
-                    metadata,
-                },
-                journaled.result.metadata.clone(),
-                journaled.operation_id,
-            )
-            .await;
+        let input = ShipFulfillmentInput {
+            carrier,
+            tracking_number: journaled
+                .result
+                .tracking_number
+                .clone()
+                .unwrap_or(tracking_number),
+            items,
+            metadata,
+        };
+        let updated = match journaled.prepared_stock {
+            Some(prepared) => {
+                self.service
+                    .ship_fulfillment_with_prepared_provider_result(
+                        prepared,
+                        input,
+                        journaled.result.metadata.clone(),
+                        journaled.operation_id,
+                    )
+                    .await
+            }
+            None => {
+                self.service
+                    .ship_fulfillment_with_provider_result(
+                        crate::shipment_stock::remaining_stock_context(&context, started)?,
+                        request.fulfillment_id,
+                        input,
+                        journaled.result.metadata.clone(),
+                        journaled.operation_id,
+                    )
+                    .await
+            }
+        };
         match updated {
             Ok(updated) => {
                 self.ensure_committed(
@@ -290,7 +333,11 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                     "ship",
                 )
                 .await;
-                Err(reconciliation_error(&context, OPERATION, "ship", &error))
+                if matches!(&error, FulfillmentError::OwnerPort(_)) {
+                    Err(map_fulfillment_error(&context, OPERATION, error).with_retryable(false))
+                } else {
+                    Err(reconciliation_error(&context, OPERATION, "ship", &error))
+                }
             }
         }
     }
@@ -323,10 +370,8 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                 "fulfillment delivery request is invalid",
             )
         })?;
-        self.service
-            .deliver_fulfillment(tenant_id, request.fulfillment_id, request.input)
+        self.execute_progress_command(&context, tenant_id, ProgressCommand::Deliver(request))
             .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
     }
 
     async fn reopen_fulfillment(
@@ -351,10 +396,8 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             boundary = ADMIN_COMMAND_BOUNDARY,
             "executing reopen fulfillment command"
         );
-        self.service
-            .reopen_fulfillment(tenant_id, request.fulfillment_id, request.input)
+        self.execute_progress_command(&context, tenant_id, ProgressCommand::Reopen(request))
             .await
-            .map_err(|error| map_fulfillment_error(&context, OPERATION, error))
     }
 
     async fn reship_fulfillment(
@@ -363,6 +406,7 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         request: ReshipAdminFulfillmentRequest,
     ) -> Result<FulfillmentResponse, PortError> {
         const OPERATION: &str = "reship_admin_fulfillment";
+        let started = std::time::Instant::now();
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
@@ -391,27 +435,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if current.status_kind() == FulfillmentStatusKind::Shipped
-            && current
-                .metadata
-                .get("provider_operation")
-                .and_then(|value| value.get("operation"))
-                .and_then(Value::as_str)
-                == Some("reship")
-        {
-            return Ok(current);
-        }
-        if current.status_kind() != FulfillmentStatusKind::Delivered {
-            return Err(map_fulfillment_error(
-                &context,
-                OPERATION,
-                FulfillmentError::InvalidTransition {
-                    from: current.status,
-                    to: "shipped".to_string(),
-                },
-            ));
-        }
-
         let provider_id = self
             .provider_id_for_fulfillment(&context, OPERATION, tenant_id, &current)
             .await?;
@@ -437,38 +460,56 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                 }),
             )?,
         )?;
+        let execution_context = crate::shipment_stock::remaining_stock_context(&context, started)?;
         let journaled = self
             .execute_provider_operation(
-                &context,
+                &execution_context,
                 OPERATION,
                 provider_id.as_str(),
                 "reship",
                 provider_request,
+                Some((ShipmentStockAction::Reconsume, None)),
+                Some("delivered"),
             )
             .await?;
         if journaled.committed {
-            return Ok(current);
+            // The initial projection may predate a concurrent owner commit. Journal replay
+            // acknowledges retained effects, not that earlier potentially Pending snapshot.
+            crate::shipment_stock::remaining_stock_context(&context, started)?;
+            return self
+                .service
+                .get_fulfillment(tenant_id, request.fulfillment_id)
+                .await
+                .map_err(|error| map_fulfillment_error(&context, OPERATION, error));
         }
 
-        let updated = self
-            .service
-            .reship_fulfillment_with_provider_result(
-                tenant_id,
-                request.fulfillment_id,
-                ReshipFulfillmentInput {
-                    carrier,
-                    tracking_number: journaled
-                        .result
-                        .tracking_number
-                        .clone()
-                        .unwrap_or(tracking_number),
-                    items,
-                    metadata,
-                },
-                journaled.result.metadata.clone(),
-                journaled.operation_id,
-            )
-            .await;
+        let updated = async {
+            let apply_context = match journaled.prepared_stock.as_ref() {
+                Some(prepared) => prepared.remaining_context(),
+                None => crate::shipment_stock::remaining_stock_context(&context, started),
+            }
+            .map_err(FulfillmentError::OwnerPort)?;
+            self.service
+                .reship_fulfillment_with_prepared_provider_result(
+                    apply_context,
+                    journaled.prepared_stock,
+                    request.fulfillment_id,
+                    ReshipFulfillmentInput {
+                        carrier,
+                        tracking_number: journaled
+                            .result
+                            .tracking_number
+                            .clone()
+                            .unwrap_or(tracking_number),
+                        items,
+                        metadata,
+                    },
+                    journaled.result.metadata.clone(),
+                    journaled.operation_id,
+                )
+                .await
+        }
+        .await;
         match updated {
             Ok(updated) => {
                 self.ensure_committed(
@@ -500,7 +541,35 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
         context: PortContext,
         request: CancelAdminFulfillmentRequest,
     ) -> Result<FulfillmentResponse, PortError> {
+        self.cancel_fulfillment_command(context, request, false)
+            .await
+    }
+    async fn cancel_pending_fulfillment(
+        &self,
+        context: PortContext,
+        request: CancelAdminFulfillmentRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        self.cancel_fulfillment_command(context, request, true)
+            .await
+    }
+    async fn retry_local_persistence(
+        &self,
+        context: PortContext,
+        request: RetryLocalFulfillmentPersistenceRequest,
+    ) -> Result<FulfillmentResponse, PortError> {
+        self.retry_local_persistence_impl(context, request).await
+    }
+}
+
+impl InProcessFulfillmentAdminCommandPort {
+    async fn cancel_fulfillment_command(
+        &self,
+        context: PortContext,
+        request: CancelAdminFulfillmentRequest,
+        require_pending: bool,
+    ) -> Result<FulfillmentResponse, PortError> {
         const OPERATION: &str = "cancel_admin_fulfillment";
+        let started = std::time::Instant::now();
         require_write_admission(&context, OPERATION)?;
         let tenant_id = parse_tenant_id(&context, OPERATION)?;
         if request.fulfillment_id.is_nil() {
@@ -528,20 +597,6 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
             .get_fulfillment(tenant_id, request.fulfillment_id)
             .await
             .map_err(|error| map_fulfillment_error(&context, OPERATION, error))?;
-        if current.status_kind() == FulfillmentStatusKind::Cancelled {
-            return Ok(current);
-        }
-        if current.status_kind() == FulfillmentStatusKind::Delivered {
-            return Err(map_fulfillment_error(
-                &context,
-                OPERATION,
-                FulfillmentError::InvalidTransition {
-                    from: current.status,
-                    to: "cancelled".to_string(),
-                },
-            ));
-        }
-
         let provider_id = self
             .provider_id_for_fulfillment(&context, OPERATION, tenant_id, &current)
             .await?;
@@ -555,34 +610,59 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                 serde_json::json!({
                     "commerce_orchestration": {
                         "operation": "cancel",
+                        "required_status": require_pending.then_some("pending"),
                         "reason": reason
                     }
                 }),
             )?,
         )?;
+        let execution_context = crate::shipment_stock::remaining_stock_context(&context, started)?;
         let journaled = self
             .execute_provider_operation(
-                &context,
+                &execution_context,
                 OPERATION,
                 provider_id.as_str(),
                 "cancel",
                 provider_request,
+                Some((ShipmentStockAction::Restore, None)),
+                require_pending.then_some("pending"),
             )
             .await?;
         if journaled.committed {
-            return Ok(current);
+            // The initial projection may predate a concurrent owner commit. Journal replay
+            // acknowledges retained effects, not that earlier potentially Pending snapshot.
+            crate::shipment_stock::remaining_stock_context(&context, started)?;
+            return self
+                .service
+                .get_fulfillment(tenant_id, request.fulfillment_id)
+                .await
+                .map_err(|error| map_fulfillment_error(&context, OPERATION, error));
         }
 
-        let updated = self
-            .service
-            .cancel_fulfillment_with_provider_result(
-                tenant_id,
-                request.fulfillment_id,
-                CancelFulfillmentInput { reason, metadata },
-                journaled.result.metadata.clone(),
-                journaled.operation_id,
-            )
-            .await;
+        let input = CancelFulfillmentInput { reason, metadata };
+        let updated = match journaled.prepared_stock {
+            Some(prepared) => {
+                self.service
+                    .cancel_fulfillment_with_prepared_provider_result(
+                        prepared,
+                        input,
+                        journaled.result.metadata.clone(),
+                        journaled.operation_id,
+                    )
+                    .await
+            }
+            None => {
+                self.service
+                    .cancel_fulfillment_with_provider_result(
+                        crate::shipment_stock::remaining_stock_context(&context, started)?,
+                        request.fulfillment_id,
+                        input,
+                        journaled.result.metadata.clone(),
+                        journaled.operation_id,
+                    )
+                    .await
+            }
+        };
         match updated {
             Ok(updated) => {
                 self.ensure_committed(
@@ -604,19 +684,133 @@ impl FulfillmentAdminCommandPort for InProcessFulfillmentAdminCommandPort {
                     "cancel",
                 )
                 .await;
-                Err(reconciliation_error(&context, OPERATION, "cancel", &error))
+                if matches!(&error, FulfillmentError::OwnerPort(_)) {
+                    Err(map_fulfillment_error(&context, OPERATION, error).with_retryable(false))
+                } else {
+                    Err(reconciliation_error(&context, OPERATION, "cancel", &error))
+                }
             }
         }
     }
+}
+
+#[derive(Serialize)]
+enum ProgressCommand {
+    Deliver(DeliverAdminFulfillmentRequest),
+    Reopen(ReopenAdminFulfillmentRequest),
 }
 
 struct JournaledProviderResult {
     operation_id: Uuid,
     result: FulfillmentProviderOperationResult,
     committed: bool,
+    prepared_stock: Option<PreparedFulfillmentStock>,
 }
 
 impl InProcessFulfillmentAdminCommandPort {
+    async fn execute_progress_command(
+        &self,
+        context: &PortContext,
+        tenant_id: Uuid,
+        command: ProgressCommand,
+    ) -> Result<FulfillmentResponse, PortError> {
+        let started = std::time::Instant::now();
+        use rustok_outbox::idempotency::{self, Admission, OwnerOperationScope};
+        let operation = match &command {
+            ProgressCommand::Deliver(_) => "deliver_admin_fulfillment",
+            ProgressCommand::Reopen(_) => "reopen_admin_fulfillment",
+        };
+        let key = context.idempotency_key.as_deref().ok_or_else(|| {
+            PortError::validation(
+                "fulfillment.idempotency_key_missing",
+                "fulfillment progress requires immutable caller identity",
+            )
+        })?;
+        let lease = match idempotency::admit(
+            self.service.database(),
+            OwnerOperationScope::Tenant(tenant_id),
+            "fulfillment",
+            key,
+            operation,
+            &command,
+        )
+        .await?
+        {
+            Admission::Run(lease) => lease,
+            Admission::Replay(response) => {
+                return serde_json::from_value(response).map_err(|_| {
+                    PortError::invariant_violation(
+                        "fulfillment.progress_receipt_invalid",
+                        "stored fulfillment progress response is invalid",
+                    )
+                });
+            }
+            Admission::ReplayError(error) => return Err(error),
+        };
+        let remaining = crate::shipment_stock::remaining_stock_context(context, started)
+            .map_err(FulfillmentError::OwnerPort);
+        let result = match remaining {
+            Err(error) => Err(error),
+            Ok(remaining) => match command {
+                ProgressCommand::Deliver(request) => {
+                    self.service
+                        .deliver_fulfillment_with_receipt(
+                            remaining,
+                            request.fulfillment_id,
+                            request.input,
+                            lease,
+                        )
+                        .await
+                }
+                ProgressCommand::Reopen(request) => {
+                    self.service
+                        .reopen_fulfillment_with_receipt(
+                            remaining,
+                            request.fulfillment_id,
+                            request.input,
+                            lease,
+                        )
+                        .await
+                }
+            },
+        }
+        .map_err(|error| map_fulfillment_error(context, operation, error));
+        if let Err(error) = &result {
+            let checkpoint = if error.retryable {
+                idempotency::release_retryable(self.service.database(), lease, error).await
+            } else {
+                let code = if !error.code.is_empty()
+                    && error.code.len() <= 191
+                    && error
+                        .code
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
+                {
+                    error.code.as_str()
+                } else {
+                    "fulfillment.owner_boundary_refused"
+                };
+                let retained = PortError::new(
+                    error.kind.clone(),
+                    code,
+                    "fulfillment progress requires owner reconciliation",
+                    false,
+                );
+                idempotency::fail(self.service.database(), lease, &retained).await
+            };
+            if checkpoint.is_err() {
+                tracing::error!(
+                    owner = "rustok_fulfillment",
+                    operation,
+                    receipt_checkpoint_failed = true,
+                    boundary = ADMIN_COMMAND_BOUNDARY,
+                    "fulfillment progress receipt disposition requires reconciliation"
+                );
+            }
+        }
+        result
+    }
+
     async fn execute_provider_operation(
         &self,
         context: &PortContext,
@@ -624,12 +818,17 @@ impl InProcessFulfillmentAdminCommandPort {
         provider_id: &str,
         operation: &'static str,
         request: FulfillmentProviderOperationRequest,
+        stock_request: Option<(
+            ShipmentStockAction,
+            Option<Vec<crate::dto::FulfillmentItemQuantityInput>>,
+        )>,
+        required_status: Option<&'static str>,
     ) -> Result<JournaledProviderResult, PortError> {
+        let started = std::time::Instant::now();
         let idempotency_key = request
             .idempotency_key
             .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
                 PortError::validation(
                     "fulfillment.provider_idempotency_key_missing",
@@ -673,7 +872,15 @@ impl InProcessFulfillmentAdminCommandPort {
                 operation_id: journal_operation.id,
                 result,
                 committed: journal_operation.status == PROVIDER_OPERATION_COMMITTED,
+                prepared_stock: None,
             });
+        }
+        if journal_operation.status == crate::services::provider_operation::PROVIDER_OPERATION_ERROR
+        {
+            return Err(PortError::conflict(
+                "fulfillment.reconciliation_required",
+                "legacy provider error does not prove a known-not-invoked outcome; reconcile the original operation",
+            ));
         }
         if journal_operation.status == PROVIDER_OPERATION_EXECUTING {
             return Err(PortError::conflict(
@@ -682,9 +889,41 @@ impl InProcessFulfillmentAdminCommandPort {
             ));
         }
 
+        let preparation_context = crate::shipment_stock::remaining_stock_context(context, started)?;
+        // This owner registry snapshot is immutable for the call. Missing/unsupported/
+        // unavailable adapters are known-uninvoked, not ambiguous external outcomes.
+        self.provider_registry
+            .executable_provider(
+                provider_id,
+                if operation == "reship" {
+                    "ship"
+                } else {
+                    operation
+                },
+            )
+            .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
+        let prepared_stock = match stock_request {
+            Some((action, items)) => Some(
+                self.service
+                    .prepare_shipment_stock_with_status(
+                        preparation_context,
+                        request.fulfillment_id,
+                        action,
+                        items.as_deref(),
+                        required_status,
+                    )
+                    .await
+                    .map_err(|error| map_fulfillment_error(context, owner_operation, error))?,
+            ),
+            None => None,
+        };
         if self
             .operation_journal
-            .claim_execution(request.tenant_id, journal_operation.id)
+            .claim_execution_with_stock_scope(
+                request.tenant_id,
+                journal_operation.id,
+                prepared_stock.as_ref().map(|prepared| &prepared.scope),
+            )
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?
             .is_none()
@@ -711,6 +950,7 @@ impl InProcessFulfillmentAdminCommandPort {
                     operation_id: current.id,
                     result,
                     committed: current.status == PROVIDER_OPERATION_COMMITTED,
+                    prepared_stock: None,
                 });
             }
             return Err(PortError::conflict(
@@ -719,8 +959,32 @@ impl InProcessFulfillmentAdminCommandPort {
             ));
         }
 
+        // Claim may have waited on the parent lock. A pre-claim budget is not authority
+        // to invoke a carrier later. This branch is the only known-not-invoked release.
+        let provider_context = match prepared_stock
+            .as_ref()
+            .map(|prepared| prepared.remaining_context())
+            .unwrap_or_else(|| crate::shipment_stock::remaining_stock_context(context, started))
+        {
+            Ok(context) => context,
+            Err(error) => {
+                if self
+                    .operation_journal
+                    .release_uninvoked_claim(request.tenant_id, journal_operation.id)
+                    .await
+                    .is_err()
+                {
+                    return Err(PortError::conflict(
+                        "fulfillment.reconciliation_required",
+                        "provider was not invoked, but its claim release needs owner reconciliation",
+                    ));
+                }
+                return Err(error);
+            }
+        };
+
         let tenant_id = request.tenant_id;
-        let deadline = Duration::from_millis(context.deadline_ms.unwrap_or_default());
+        let deadline = Duration::from_millis(provider_context.deadline_ms.unwrap_or_default());
         let provider_result = match operation {
             "ship" | "reship" => {
                 tokio::time::timeout(
@@ -846,7 +1110,8 @@ impl InProcessFulfillmentAdminCommandPort {
                 "fulfillment provider result could not be normalized",
             )
         })?;
-        self.operation_journal
+        let checkpoint = self
+            .operation_journal
             .mark_provider_succeeded(
                 tenant_id,
                 journal_operation.id,
@@ -856,10 +1121,17 @@ impl InProcessFulfillmentAdminCommandPort {
             .await
             .map_err(|error| map_fulfillment_error(context, owner_operation, error))?;
 
+        if checkpoint.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(PortError::conflict(
+                "fulfillment.reconciliation_required",
+                "provider outcome is retained after quarantine; explicitly reconcile local persistence",
+            ).with_retryable(false));
+        }
         Ok(JournaledProviderResult {
             operation_id: journal_operation.id,
             result: provider_result,
-            committed: false,
+            committed: checkpoint.status == PROVIDER_OPERATION_COMMITTED,
+            prepared_stock,
         })
     }
 
@@ -870,6 +1142,20 @@ impl InProcessFulfillmentAdminCommandPort {
         tenant_id: Uuid,
         fulfillment: &FulfillmentResponse,
     ) -> Result<String, PortError> {
+        let key = context.idempotency_key.as_deref().ok_or_else(|| {
+            PortError::validation(
+                "fulfillment.idempotency_key_missing",
+                "lifecycle caller identity is required",
+            )
+        })?;
+        if let Some(saved) = self
+            .operation_journal
+            .find_fulfillment_key(tenant_id, fulfillment.id, key)
+            .await
+            .map_err(|error| map_fulfillment_error(context, owner_operation, error))?
+        {
+            return Ok(saved.provider_id);
+        }
         match fulfillment.shipping_option_id {
             Some(shipping_option_id) => self
                 .service
@@ -1031,6 +1317,7 @@ fn map_fulfillment_error(
             "fulfillment.shipping_option_translation_revision_conflict",
             "shipping option translation revision conflicts with the current state",
         ),
+        error @ FulfillmentError::OwnerPort(_) => map_fulfillment_error_without_context(error),
         FulfillmentError::Database(_) => PortError::unavailable(
             "fulfillment.database_unavailable",
             "fulfillment storage is temporarily unavailable",
@@ -1046,7 +1333,7 @@ fn map_fulfillment_error(
         locale_length = context.locale.chars().count(),
         deadline_ms = ?context.deadline_ms,
         error_variant,
-        public_code = %mapped.code,
+        public_code = if error_variant == "owner_port" { "fulfillment.owner_boundary_refused" } else { mapped.code.as_str() },
         retryable = mapped.retryable,
         boundary = ADMIN_COMMAND_BOUNDARY,
         "fulfillment admin command returned a bounded owner error"
@@ -1085,6 +1372,7 @@ fn fulfillment_error_variant(error: &FulfillmentError) -> &'static str {
             "shipping_option_translation_revision_conflict"
         }
         FulfillmentError::InvalidTransition { .. } => "invalid_transition",
+        FulfillmentError::OwnerPort(_) => "owner_port",
         FulfillmentError::Database(_) => "database",
     }
 }
@@ -1123,8 +1411,7 @@ fn operation_request(
     let idempotency_key = context
         .idempotency_key
         .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| {
             PortError::validation(
                 "fulfillment.provider_idempotency_key_missing",
@@ -1154,6 +1441,17 @@ fn deserialize_provider_result(
         PortError::invariant_violation(
             "fulfillment.provider_result_missing",
             "fulfillment provider operation has no persisted provider result",
+        )
+    })?;
+    crate::services::provider_operation::validate_provider_result_for_operation(
+        operation,
+        operation.provider_reference.clone(),
+        &value,
+    )
+    .map_err(|_| {
+        PortError::invariant_violation(
+            "fulfillment.provider_result_invalid",
+            "retained provider result contradicts its owner identity or safety contract",
         )
     })?;
     serde_json::from_value(value).map_err(|_| {

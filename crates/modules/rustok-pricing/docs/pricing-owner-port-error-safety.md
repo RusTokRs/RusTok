@@ -11,10 +11,15 @@ gaps across the complete canonical boundary:
 - canonical read `crates/modules/rustok-pricing/src/read_context.rs`;
 - canonical write `crates/modules/rustok-pricing/src/write_context.rs`.
 
-The six `PricingReadPort` operations and four `PricingWritePort` operations remain
-unchanged. Request and response DTOs, policy and write-semantics checks, service
-delegation, price resolution, discount application, price-list scope/rule behavior,
-event publication, and persistence behavior are unchanged.
+The original payload-cleanup snapshot covered six reads and four writes. The current
+canonical contract has eight reads (including exact batch quotes and bounded inspection
+pages) and four writes. Single quotes delegate to the shared batch admission; Product/SKU
+mismatch is now an owner identity refusal rather than a local catalog lookup. Both root and
+module-path factories carry the host-selected Product runtime through the same wrappers.
+The original mapper-preservation evidence describes diagnostic cleanup, not the entire
+Product/Pricing continuation or runtime readiness. The
+[implementation plan](implementation-plan.md) records selected-capability refusals,
+mandatory tenant-correlated identity responses, caller budgets and unexecuted gates.
 
 ## Owner outcomes
 

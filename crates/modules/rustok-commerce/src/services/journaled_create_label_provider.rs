@@ -87,11 +87,18 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
             })
             .await?;
 
+        if operation.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(FulfillmentError::OwnerPort(
+                rustok_api::PortError::conflict(
+                    "fulfillment.reconciliation_required",
+                    "create-label outcome requires explicit owner reconciliation",
+                )
+                .with_retryable(false),
+            ));
+        }
         if matches!(
             operation.status.as_str(),
-            PROVIDER_OPERATION_COMMITTED
-                | PROVIDER_OPERATION_SUCCEEDED
-                | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            PROVIDER_OPERATION_COMMITTED | PROVIDER_OPERATION_SUCCEEDED
         ) {
             let result = deserialize_result(&operation)?;
             if operation.status != PROVIDER_OPERATION_COMMITTED {
@@ -108,11 +115,18 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
             .is_none()
         {
             let current = journal.get(operation.tenant_id, operation.id).await?;
+            if current.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+                return Err(FulfillmentError::OwnerPort(
+                    rustok_api::PortError::conflict(
+                        "fulfillment.reconciliation_required",
+                        "create-label outcome requires explicit owner reconciliation",
+                    )
+                    .with_retryable(false),
+                ));
+            }
             if matches!(
                 current.status.as_str(),
-                PROVIDER_OPERATION_COMMITTED
-                    | PROVIDER_OPERATION_SUCCEEDED
-                    | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+                PROVIDER_OPERATION_COMMITTED | PROVIDER_OPERATION_SUCCEEDED
             ) {
                 let result = deserialize_result(&current)?;
                 if current.status != PROVIDER_OPERATION_COMMITTED {
@@ -147,7 +161,7 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
                 "failed to serialize create_label provider result: {error}"
             ))
         })?;
-        journal
+        let checkpoint = journal
             .mark_provider_succeeded(
                 operation.tenant_id,
                 operation.id,
@@ -161,6 +175,10 @@ impl FulfillmentProvider for JournaledCreateLabelProvider {
                     operation.id
                 ))
             })?;
+        if checkpoint.status == PROVIDER_OPERATION_RECONCILIATION_REQUIRED {
+            return Err(FulfillmentError::OwnerPort(rustok_api::PortError::conflict(
+                "fulfillment.reconciliation_required", "create-label outcome is retained after quarantine; explicitly reconcile local persistence").with_retryable(false)));
+        }
         commit_create_label(&journal, operation.tenant_id, operation.id).await?;
         Ok(result)
     }

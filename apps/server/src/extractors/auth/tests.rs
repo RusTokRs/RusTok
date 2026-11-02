@@ -6,7 +6,7 @@ use crate::auth::{
     AuthConfig, AuthSettingsOverrides, Claims, encode_access_token, encode_oauth_access_token,
 };
 use crate::common::settings::RustokSettings;
-use crate::models::{oauth_apps, sessions, tenants, users};
+use crate::models::{oauth_apps, oauth_consents, oauth_tokens, sessions, tenants, users};
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use chrono::{Duration, Utc};
@@ -66,6 +66,7 @@ fn claims(grant_type: &str, client_id: Option<Uuid>, session_id: Uuid) -> Claims
         client_id,
         scopes: Vec::new(),
         grant_type: grant_type.to_string(),
+        jti: None,
     }
 }
 
@@ -172,6 +173,7 @@ fn service_current_user_builds_service_security_context() {
         client_id: Some(Uuid::new_v4()),
         scopes: Vec::new(),
         grant_type: "client_credentials".to_string(),
+        access_token_expires_at: Utc::now() + Duration::hours(1),
     };
 
     assert_eq!(
@@ -190,8 +192,9 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
         .expect("create tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
+    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     let (permissions, inferred_role) = resolve_service_token_permissions(
-        &db,
+        &runtime_ctx,
         tenant.id,
         app.id,
         app.client_id,
@@ -225,8 +228,9 @@ async fn oauth_service_token_authentication_does_not_depend_on_translation_stora
         .await
         .expect("drop translation table to isolate authentication lookup");
 
+    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     let (permissions, inferred_role) = resolve_service_token_permissions(
-        &db,
+        &runtime_ctx,
         tenant.id,
         app.id,
         app.client_id,
@@ -256,8 +260,9 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     .expect("create tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
+    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     let (permissions, _) = resolve_service_token_permissions(
-        &db,
+        &runtime_ctx,
         tenant.id,
         app.id,
         app.client_id,
@@ -268,6 +273,34 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
     .expect("resolve service token permissions");
 
     assert!(permissions.is_empty());
+}
+
+#[test]
+fn service_permission_snapshot_drops_grants_owned_by_disabled_modules() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let ownership = BTreeMap::from([
+        (
+            "forum_topics:list".to_string(),
+            "forum".to_string(),
+        ),
+        (
+            "modules:list".to_string(),
+            "modules".to_string(),
+        ),
+    ]);
+    let availability = rustok_rbac::PermissionAvailability::new(
+        ownership,
+        BTreeSet::from(["modules".to_string()]),
+    );
+    let permissions = vec![
+        Permission::from_str("forum_topics:list").expect("forum permission"),
+        Permission::MODULES_LIST,
+    ];
+
+    let active = super::filter_available_permissions(permissions, Some(availability));
+
+    assert_eq!(active, vec![Permission::MODULES_LIST]);
 }
 
 #[tokio::test]
@@ -283,13 +316,16 @@ async fn oauth_service_token_rejects_subject_that_is_not_the_app_id() {
     .expect("create tenant");
     let app = insert_oauth_app(&db, tenant.id, "service", &["client_credentials"], true).await;
 
+    let runtime_ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
     let error = resolve_service_token_permissions(
-        &db,
+        &runtime_ctx,
         tenant.id,
         Uuid::new_v4(),
         app.client_id,
         UserRole::Customer,
         &["forum:*".to_string()],
+        "",
+        None,
     )
     .await
     .expect_err("service token subject must equal app id");
@@ -333,6 +369,7 @@ async fn authorization_code_token_rejects_inactive_oauth_app() {
         &[],
         "authorization_code",
         900,
+        Uuid::new_v4(),
     )
     .expect("encode oauth access token");
 
@@ -371,6 +408,7 @@ async fn authorization_code_token_rejects_scope_removed_from_oauth_app() {
         &removed_scopes,
         "authorization_code",
         900,
+        Uuid::new_v4(),
     )
     .expect("encode oauth access token");
 
@@ -383,6 +421,202 @@ async fn authorization_code_token_rejects_scope_removed_from_oauth_app() {
         (
             axum::http::StatusCode::UNAUTHORIZED,
             "OAuth token scopes are no longer allowed",
+        )
+    );
+}
+
+async fn insert_access_registration(
+    db: &DatabaseConnection,
+    app: &oauth_apps::Model,
+    user_id: Uuid,
+    token_id: Uuid,
+    token_hash: String,
+    revoked: bool,
+) {
+    let now = Utc::now();
+    oauth_tokens::ActiveModel {
+        id: Set(token_id),
+        app_id: Set(app.id),
+        user_id: Set(Some(user_id)),
+        tenant_id: Set(app.tenant_id),
+        token_hash: Set(token_hash),
+        family_id: Set(Some(token_id)),
+        authorization_code_id: Set(None),
+        grant_type: Set("authorization_code".to_string()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(None),
+        scopes: Set(serde_json::json!([])),
+        expires_at: Set((now + Duration::minutes(15)).into()),
+        revoked_at: Set(if revoked { Some(now.into()) } else { None }),
+        last_used_at: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .expect("insert access registration");
+}
+
+#[tokio::test]
+async fn oauth_access_token_without_registration_is_rejected() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Unregistered OAuth tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
+    let token = encode_oauth_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        app.client_id,
+        &[],
+        "authorization_code",
+        900,
+        Uuid::new_v4(),
+    )
+    .expect("encode oauth access token");
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("unregistered OAuth access JWT must fail closed");
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth access token revoked or unknown",
+        )
+    );
+}
+
+#[tokio::test]
+async fn revoked_oauth_access_registration_is_rejected() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Revoked OAuth tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
+    let token_id = Uuid::new_v4();
+    let token = encode_oauth_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        app.client_id,
+        &[],
+        "authorization_code",
+        900,
+        token_id,
+    )
+    .expect("encode oauth access token");
+    insert_access_registration(
+        &db,
+        &app,
+        user.id,
+        token_id,
+        crate::auth::hash_refresh_token(&token),
+        true,
+    )
+    .await;
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("revoked OAuth access registration must fail closed");
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth access token revoked or unknown",
+        )
+    );
+}
+
+#[tokio::test]
+async fn oauth_access_token_with_stale_consent_epoch_is_rejected() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    ensure_oauth_apps_table(&db).await;
+    let auth_runtime = test_auth_runtime(db.clone());
+    let tenant = tenants::ActiveModel::new(
+        "Consent epoch tenant",
+        &format!("tenant-{}", Uuid::new_v4()),
+    )
+    .insert(&db)
+    .await
+    .expect("create tenant");
+    let (user, _) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
+    let app = insert_oauth_app(&db, tenant.id, "third_party", &["authorization_code"], true).await;
+    let now = Utc::now();
+    oauth_consents::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        app_id: Set(app.id),
+        user_id: Set(user.id),
+        tenant_id: Set(tenant.id),
+        scopes: Set(serde_json::json!([])),
+        granted_at: Set(now.into()),
+        revoked_at: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert active consent");
+
+    let token_id = Uuid::new_v4();
+    let token = encode_oauth_access_token(
+        &test_auth_config(),
+        user.id,
+        tenant.id,
+        UserRole::Customer,
+        app.client_id,
+        &[],
+        "authorization_code",
+        900,
+        token_id,
+    )
+    .expect("encode oauth access token");
+    let stale_epoch = now - Duration::minutes(5);
+    oauth_tokens::ActiveModel {
+        id: Set(token_id),
+        app_id: Set(app.id),
+        user_id: Set(Some(user.id)),
+        tenant_id: Set(app.tenant_id),
+        token_hash: Set(crate::auth::hash_refresh_token(&token)),
+        family_id: Set(Some(token_id)),
+        authorization_code_id: Set(None),
+        grant_type: Set("authorization_code".to_string()),
+        token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+        consent_granted_at: Set(Some(stale_epoch.into())),
+        scopes: Set(serde_json::json!([])),
+        expires_at: Set((now + Duration::minutes(15)).into()),
+        revoked_at: Set(None),
+        last_used_at: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(&db)
+    .await
+    .expect("insert stale-epoch access registration");
+
+    let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
+        .await
+        .expect_err("stale consent epoch must fail closed");
+    assert_eq!(
+        error,
+        (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "OAuth token predates the current consent epoch",
         )
     );
 }

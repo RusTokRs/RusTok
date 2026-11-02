@@ -1,6 +1,8 @@
-use rustok_fulfillment::FulfillmentStatusKind;
+use rustok_api::PortContext;
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+use rustok_fulfillment::{FulfillmentAdminCommandPort, FulfillmentService, ShipmentStockPort};
 use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::dto::{
@@ -45,7 +47,8 @@ impl FulfillmentOrchestrationService {
         let (legacy, create_label_registry_error) =
             legacy_with_journaled_labels(self.db.clone(), fulfillment_provider_registry.clone());
         self.legacy = legacy;
-        self.journaled = JournaledFulfillmentOrchestrationService::new(self.db.clone())
+        self.journaled = self
+            .journaled
             .with_provider_registry(fulfillment_provider_registry);
         self.create_label_registry_error = create_label_registry_error;
         self
@@ -77,30 +80,29 @@ impl FulfillmentOrchestrationService {
             .await
     }
 
+    pub fn with_shipment_stock_port(mut self, port: Arc<dyn ShipmentStockPort>) -> Self {
+        self.journaled = self.journaled.with_shipment_stock_port(port);
+        self
+    }
+    pub fn with_order_read_port(self, port: Arc<dyn rustok_order::OrderReadPort>) -> Self {
+        let stock = super::shipment_stock::inventory_shipment_stock_port(self.db.clone(), port);
+        self.with_shipment_stock_port(stock)
+    }
+    pub fn with_fulfillment_admin_command_port(
+        mut self,
+        port: Arc<dyn FulfillmentAdminCommandPort>,
+    ) -> Self {
+        self.journaled = self.journaled.with_fulfillment_admin_command_port(port);
+        self
+    }
     pub async fn ship_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: ShipFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
-        if tenant_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
-        }
-        if fulfillment_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "fulfillment_id must not be nil".to_string(),
-            ));
-        }
-        tracing::debug!(
-            boundary = "commerce_fulfillment_orchestration_facade",
-            %tenant_id,
-            %fulfillment_id,
-            "facade ship_fulfillment"
-        );
         self.journaled
-            .ship_fulfillment(tenant_id, fulfillment_id, input)
+            .ship_fulfillment(context, fulfillment_id, input)
             .await
     }
 
@@ -126,7 +128,7 @@ impl FulfillmentOrchestrationService {
             %fulfillment_id,
             "facade deliver_fulfillment"
         );
-        super::shipment_stock::fulfillment_service(self.db.clone())
+        FulfillmentService::new(self.db.clone())
             .deliver_fulfillment(tenant_id, fulfillment_id, input)
             .await
             .map_err(Into::into)
@@ -134,96 +136,32 @@ impl FulfillmentOrchestrationService {
 
     pub async fn reopen_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: ReopenFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
-        if tenant_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
-        }
-        if fulfillment_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "fulfillment_id must not be nil".to_string(),
-            ));
-        }
-        tracing::debug!(
-            boundary = "commerce_fulfillment_orchestration_facade",
-            %tenant_id,
-            %fulfillment_id,
-            "facade reopen_fulfillment"
-        );
-        super::shipment_stock::fulfillment_service(self.db.clone())
-            .reopen_fulfillment(tenant_id, fulfillment_id, input)
+        self.journaled
+            .reopen_fulfillment(context, fulfillment_id, input)
             .await
-            .map_err(Into::into)
     }
-
     pub async fn reship_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: ReshipFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
-        if tenant_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
-        }
-        if fulfillment_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "fulfillment_id must not be nil".to_string(),
-            ));
-        }
-        tracing::debug!(
-            boundary = "commerce_fulfillment_orchestration_facade",
-            %tenant_id,
-            %fulfillment_id,
-            "facade reship_fulfillment"
-        );
-        let current = super::shipment_stock::fulfillment_service(self.db.clone())
-            .get_fulfillment(tenant_id, fulfillment_id)
-            .await?;
-        if current.status_kind() == FulfillmentStatusKind::Shipped
-            && current
-                .metadata
-                .get("provider_operation")
-                .and_then(|value| value.get("operation"))
-                .and_then(serde_json::Value::as_str)
-                == Some("reship")
-        {
-            return Ok(current);
-        }
         self.journaled
-            .reship_fulfillment(tenant_id, fulfillment_id, input)
+            .reship_fulfillment(context, fulfillment_id, input)
             .await
     }
-
     pub async fn cancel_fulfillment(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         fulfillment_id: Uuid,
         input: CancelFulfillmentInput,
     ) -> FulfillmentOrchestrationResult<FulfillmentResponse> {
-        if tenant_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "tenant_id must not be nil".to_string(),
-            ));
-        }
-        if fulfillment_id.is_nil() {
-            return Err(FulfillmentOrchestrationError::Validation(
-                "fulfillment_id must not be nil".to_string(),
-            ));
-        }
-        tracing::debug!(
-            boundary = "commerce_fulfillment_orchestration_facade",
-            %tenant_id,
-            %fulfillment_id,
-            "facade cancel_fulfillment"
-        );
         self.journaled
-            .cancel_fulfillment(tenant_id, fulfillment_id, input)
+            .cancel_fulfillment(context, fulfillment_id, input)
             .await
     }
 }
@@ -276,7 +214,7 @@ mod tests {
 
         let err = service
             .ship_fulfillment(
-                Uuid::nil(),
+                crate::services::shipment_stock::test_shipment_context(Uuid::nil()),
                 Uuid::new_v4(),
                 ShipFulfillmentInput {
                     carrier: "carrier".to_string(),
@@ -293,7 +231,7 @@ mod tests {
 
         let err = service
             .ship_fulfillment(
-                Uuid::new_v4(),
+                crate::services::shipment_stock::test_shipment_context(Uuid::new_v4()),
                 Uuid::nil(),
                 ShipFulfillmentInput {
                     carrier: "carrier".to_string(),

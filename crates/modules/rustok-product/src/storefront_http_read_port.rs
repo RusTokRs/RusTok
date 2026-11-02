@@ -305,10 +305,12 @@ fn map_product_error(context: &PortContext, error: CommerceError) -> PortError {
     let error_facts = product_owner_error_facts(&error);
     let classified = match &error {
         CommerceError::Core(error) => Some(crate::error::core_port_error(error)),
-        CommerceError::Conflict(_) => Some(PortError::conflict(
-            "product.conflict",
-            "product request conflicts with the current state",
-        )),
+        CommerceError::Conflict(_) | CommerceError::VariantAxisPolicyConflict(_) => {
+            Some(PortError::conflict(
+                "product.conflict",
+                "product request conflicts with the current state",
+            ))
+        }
         _ => None,
     };
     if let Some(port) = classified {

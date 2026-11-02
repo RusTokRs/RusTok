@@ -3217,3 +3217,11 @@ are still open. The default server check passed before the coordinator API
 replacement; the fresh default server check and its request permission-ceiling
 test now pass. Updated secret/data fixtures pass in the full owner library.
 FFA remains not_started; FBA remains boundary_ready.
+
+## Sealed artifact subscription intake (2026-11-01; source only)
+
+The canonical subscription projector/transport now validates registered sealed frames, shares
+durable source projection, retains original identity and awaits queue insertion before forwarding.
+Root payload representation and queue ownership remain unchanged. Two scoped definitions are
+**uncompiled/unrun**. Remaining: compile, actual backend exact/wildcard admission/dedupe,
+worker/restart and Outbox/Iggy failure recovery. See the [API](../CRATE_API.md#sealed-artifact-subscription-intake-2026-11-01-source-only).

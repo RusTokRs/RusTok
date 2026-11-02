@@ -12,17 +12,33 @@ inventory reservation wrapper:
 - tenant UUID validation;
 - stable post-delegation local outcomes.
 
-The covered public operations remain:
+The original diagnostic slice covered reserve and release. The current public operations are:
 
 - `InventoryReservationIdentityPort::reserve_inventory_by_identity`;
-- `InventoryReservationIdentityPort::release_inventory_by_identity`.
+- `InventoryReservationIdentityPort::release_inventory_by_identity`;
+- `InventoryReservationIdentityPort::adopt_inventory_by_identity` (2026-10-31 source continuation).
 
-The public facade, factory names, request/response DTOs, operation ordering,
-persistent-owner delegation, and returned `PortError` values are unchanged.
+The original reserve/release facade, factory names, request/response DTOs, ordering,
+persistent-owner delegation, and returned `PortError` values remain unchanged. Adoption adds
+one explicit bounded request/response on the same identity capability, not an alternate provider.
+See the [owner adoption contract](./implementation-plan.md#reservation-adoption-into-order-2026-10-31-source-work).
+
+## Canonical public paths (2026-10-30)
+
+Both crate-root and `ports` factory/concrete-wrapper paths now expose the same admitted
+wrapper. `ports.rs` is compiled privately as `ports_impl`; its persistence implementation
+is constructed only inside that wrapper, not publicly re-exported. DTO and trait identities
+remain unchanged. Entry diagnostics in the touched owner paths also use boolean/length
+facts rather than request UUIDs, channel/external-ID text or exact quantities.
+
+Selected-channel candidate filtering and new-only `allocated_channel_slug` provenance
+are described in the [implementation plan](./implementation-plan.md). Exact receipt replay
+and release stay before/independent of current location visibility. These source changes do
+not certify database concurrency, outbox/projection completeness or mounted behavior.
 
 ## Preserved ordering
 
-Both operations still perform:
+Reserve/release retain this order; adoption uses the same admitted order:
 
 1. write-policy admission;
 2. write-semantics admission;
@@ -110,3 +126,19 @@ cargo check -p rustok-commerce --lib
 ```
 
 The broader ecommerce correlation-safe mapper cleanup remains open.
+
+
+## Adoption diagnostic continuation (2026-10-31)
+
+The same wrapper admits the batch before delegation and records only binding count and bounded
+shape facts. Shape probes inspect at most 1025 bindings and cap an external-ID preview length
+at 192 characters; no UUID, exact quantity or external-ID text is recorded. Owner-local adoption
+validation and ledger failures use stable exact code/message classifications and return the same
+`PortError`. The consuming Commerce boundary separately bounds public code/message and keeps
+exact retry advice; advice does not authorize compensation or key rotation.
+
+The new source guard is `scripts/verify/verify-commerce-checkout-inventory-adoption.mjs`.
+The existing diagnostic packet's adoption continuation remains source-ready/uncompiled with tests,
+SQL, concurrency and mounted/remote execution unproven; original diagnostic status is not promoted.
+Metadata-capacity/size-proof/backend refusals also use exact static classifications without raw
+saved metadata. Both public factory/concrete paths retain canonical positive-deadline admission.

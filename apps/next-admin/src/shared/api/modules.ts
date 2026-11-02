@@ -1,4 +1,5 @@
 import { graphqlRequest, type GqlOpts } from './graphql';
+import { readHttpError } from './http';
 export type { GqlOpts };
 
 export interface ModuleInfo {
@@ -1279,16 +1280,10 @@ async function governanceRestRequest<B, T>(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    let message = `Registry request failed with status ${response.status}`;
-    try {
-      const parsed = JSON.parse(errorText);
-      if (parsed.message) message = parsed.message;
-      else if (parsed.error) message = parsed.error;
-    } catch {
-      if (errorText) message = errorText;
-    }
-    throw new Error(message);
+    throw await readHttpError(
+      response,
+      `Registry request failed with status ${response.status}`
+    );
   }
 
   return response.json() as Promise<T>;

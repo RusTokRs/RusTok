@@ -39,7 +39,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
             Err(error) => {
                 tracing::warn!(
                     error = %error,
-                    claim_token = %claim_token,
+                    request_id = %claim.request_id,
                     "Comments schedule audit retry-aware claim commit acknowledgement was ambiguous"
                 );
                 self.reconcile_claim(claim_token).await.map(Some)

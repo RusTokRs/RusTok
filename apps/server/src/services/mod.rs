@@ -3,8 +3,6 @@ pub mod alloy_translation_target;
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
-#[cfg(feature = "mod-blog")]
-mod blog_search_result_eligibility;
 pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
@@ -18,6 +16,8 @@ pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
 pub mod auth_retention;
+#[cfg(feature = "mod-blog")]
+mod blog_search_result_eligibility;
 pub mod build_control;
 pub mod build_event_hub;
 pub mod build_executor;
@@ -121,7 +121,7 @@ pub mod module_event_dispatcher {
     };
 
     pub use super::module_event_dispatcher_base::{
-        build_module_event_dispatcher, build_shared_runtime_extensions,
+        ModuleEventDispatcherHandle, build_module_event_dispatcher, build_shared_runtime_extensions,
         spawn_module_event_dispatcher,
     };
 
@@ -220,7 +220,11 @@ pub mod module_event_dispatcher {
 
         #[cfg(feature = "mod-blog")]
         audience_registry
-            .register(super::blog_search_result_eligibility::ServerBlogSearchResultEligibilityPort::new(db.clone()))
+            .register(
+                super::blog_search_result_eligibility::ServerBlogSearchResultEligibilityPort::new(
+                    db.clone(),
+                ),
+            )
             .map_err(|error| {
                 Error::BadRequest(format!(
                     "Search audience registry rejected the Blog visibility owner policy: {error}"
@@ -677,6 +681,7 @@ pub mod tenant_locale_generation;
 pub mod topic_field_service;
 pub mod user_admin_guard;
 pub mod user_field_service;
+mod worker_service_context;
 
 pub mod field_definition_cache;
 pub mod field_definition_registry_bootstrap;

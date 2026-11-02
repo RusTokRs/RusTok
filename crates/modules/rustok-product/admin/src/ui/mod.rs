@@ -1,11 +1,16 @@
+mod attribute_lifecycle;
 pub mod attributes;
 pub mod catalog_admin;
 pub mod catalog_facets;
 pub mod categories;
+mod combinations;
+mod initial_variants;
 pub mod leptos;
 pub mod product_editor;
 pub mod product_grid;
 pub mod root;
+mod variant_axes;
+mod variant_create;
 
 pub use attributes::AttributesPage;
 pub use catalog_facets::AdminCatalogFacetPanel;

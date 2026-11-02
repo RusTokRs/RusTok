@@ -7,6 +7,7 @@
 use std::{any::Any, collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
+use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, QueryResult, Statement, TransactionTrait,
     Value as SqlValue,
@@ -197,33 +198,74 @@ impl SeaOrmArtifactEventSubscriptionProjector {
         &self,
         envelope: &EventEnvelope,
     ) -> Result<usize, ArtifactEventDeliveryError> {
-        // Global platform events do not have a tenant artifact composition and
-        // therefore cannot produce a tenant-scoped artifact delivery record.
-        if envelope.tenant_id.is_nil() {
-            return Ok(0);
-        }
-        if !valid_delivered_event_type(&envelope.event_type) {
-            return Err(ArtifactEventDeliveryError::InvalidSourceEvent);
-        }
         let payload = serde_json::to_value(&envelope.event)
             .map_err(|error| ArtifactEventDeliveryError::Storage(error.to_string()))?;
+        self.project_source(
+            envelope.tenant_id,
+            ArtifactEventDeliverySource {
+                event_id: envelope.id,
+                event_type: envelope.event_type.clone(),
+                schema_version: envelope.schema_version,
+                payload,
+            },
+        )
+        .await
+    }
+
+    /// Materializes bounded-family subscriptions without reinterpreting them as root events.
+    /// Guest payloads preserve the sealed family wrapper; dedupe uses the original envelope ID.
+    pub async fn project_contract(
+        &self,
+        envelope: &ContractEventEnvelope,
+    ) -> Result<usize, ArtifactEventDeliveryError> {
+        let payload = envelope
+            .payload()
+            .map_err(|_| ArtifactEventDeliveryError::InvalidSourceEvent)?;
+        if matches!(payload, ContractEventPayload::Root(_)) {
+            let root = envelope
+                .clone()
+                .into_root_envelope()
+                .map_err(|_| ArtifactEventDeliveryError::InvalidSourceEvent)?;
+            return self.project(&root).await;
+        }
+        let payload = serde_json::to_value(payload)
+            .map_err(|error| ArtifactEventDeliveryError::Storage(error.to_string()))?;
+        self.project_source(
+            envelope.tenant_id(),
+            ArtifactEventDeliverySource {
+                event_id: envelope.id(),
+                event_type: envelope.event_type().to_owned(),
+                schema_version: envelope.schema_version(),
+                payload,
+            },
+        )
+        .await
+    }
+
+    async fn project_source(
+        &self,
+        tenant_id: Uuid,
+        source: ArtifactEventDeliverySource,
+    ) -> Result<usize, ArtifactEventDeliveryError> {
+        // Global platform events have no tenant artifact composition.
+        if tenant_id.is_nil() {
+            return Ok(0);
+        }
+        if !valid_delivered_event_type(&source.event_type) {
+            return Err(ArtifactEventDeliveryError::InvalidSourceEvent);
+        }
         let subscriptions = self
-            .effective_subscriptions(envelope.tenant_id, &envelope.event_type)
+            .effective_subscriptions(tenant_id, &source.event_type)
             .await?;
         let mut projected = 0;
         for subscription in subscriptions {
             let receipt = self
                 .deliveries
                 .enqueue(ArtifactEventDeliveryRequest {
-                    tenant_id: envelope.tenant_id,
+                    tenant_id,
                     installation_id: subscription.installation_id,
                     binding_id: subscription.binding_id,
-                    source: ArtifactEventDeliverySource {
-                        event_id: envelope.id,
-                        event_type: envelope.event_type.clone(),
-                        schema_version: envelope.schema_version,
-                        payload: payload.clone(),
-                    },
+                    source: source.clone(),
                 })
                 .await?;
             if receipt.created {
@@ -356,6 +398,29 @@ impl EventTransport for ArtifactEventProjectionTransport {
             rustok_core::Error::External(format!("artifact event projection failed: {error}"))
         })?;
         self.downstream.publish(envelope).await
+    }
+
+    async fn publish_contract(&self, envelope: ContractEventEnvelope) -> rustok_core::Result<()> {
+        if matches!(
+            envelope
+                .payload()
+                .map_err(|error| rustok_core::Error::Validation(error.to_string()))?,
+            ContractEventPayload::Root(_)
+        ) {
+            let root = envelope
+                .into_root_envelope()
+                .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+            return self.publish(root).await;
+        }
+        self.projector
+            .project_contract(&envelope)
+            .await
+            .map_err(|error| {
+                rustok_core::Error::External(format!(
+                    "artifact contract event projection failed: {error}"
+                ))
+            })?;
+        self.downstream.publish_contract(envelope).await
     }
 
     async fn acknowledge(&self, event_id: Uuid) -> rustok_core::Result<()> {
@@ -1527,4 +1592,56 @@ pub enum ArtifactEventDeliveryError {
     ClaimLost,
     #[error("artifact event-delivery storage failed: {0}")]
     Storage(String),
+}
+
+#[cfg(test)]
+mod contract_projection_tests {
+    use super::*;
+    use rustok_events::InventoryReservationEvent;
+    use sea_orm::Database;
+
+    fn envelope() -> ContractEventEnvelope {
+        ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            InventoryReservationEvent::Changed {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn artifact_contract_projection_validates_scope_before_subscription_storage() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            db,
+            ArtifactEventDeliveryConfig::default(),
+        )
+        .unwrap();
+        let mut wire = serde_json::to_value(envelope()).unwrap();
+        wire["tenant_id"] = serde_json::json!(Uuid::nil());
+        let invalid: ContractEventEnvelope = serde_json::from_value(wire).unwrap();
+        assert!(matches!(
+            projector.project_contract(&invalid).await,
+            Err(ArtifactEventDeliveryError::InvalidSourceEvent)
+        ));
+    }
+
+    #[tokio::test]
+    async fn bounded_fact_does_not_skip_the_durable_artifact_subscription_projection() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let projector = SeaOrmArtifactEventSubscriptionProjector::new(
+            db,
+            ArtifactEventDeliveryConfig::default(),
+        )
+        .unwrap();
+        // No artifact tables exist: the real subscription read must refuse, not acknowledge
+        // an unwired bounded family by returning zero subscriptions without a read.
+        assert!(matches!(
+            projector.project_contract(&envelope()).await,
+            Err(ArtifactEventDeliveryError::Storage(_))
+        ));
+    }
 }

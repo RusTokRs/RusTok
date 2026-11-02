@@ -1,14 +1,17 @@
 # rustok-outbox / CRATE_API
 
 ## Public Modules
+
 `entity`, `migration`, `ports`, `relay`, `retention`, `transactional`, `transport`.
 
 ## Primary Public Types and Signatures
+
 - `pub struct TransactionalEventBus`
 - `pub async fn TransactionalEventBus::publish_root_in_tx(...)`
 - `pub async fn TransactionalEventBus::publish_root_in_tx_with_envelope_id(...) -> Result<Uuid>`
 - `pub async fn TransactionalEventBus::publish_in_tx(...)`
 - `pub async fn TransactionalEventBus::publish_contract_in_tx<C, E>(...) where E: EventContract`
+- `pub async fn TransactionalEventBus::publish_contract_direct_in_tx<C, E>(...) -> Result<()> where C: ConnectionTrait, E: EventContract`
 - `pub async fn TransactionalEventBus::publish_contract_in_tx_with_causation<C, E>(...) where E: EventContract`
 - `pub async fn TransactionalEventBus::publish_contract_in_tx_with_causation_and_envelope_id<C, E>(...) -> Result<Uuid> where E: EventContract`
 - `pub async fn TransactionalEventBus::publish_contract_direct_in_tx_with_causation_and_envelope_id<C, E>(...) -> Result<Uuid> where E: EventContract`
@@ -29,6 +32,7 @@
 - `pub use entity::{Entity as SysEvents, Model as SysEvent}`
 
 ## Events
+
 - Persists established root `EventEnvelope` records and sealed `ContractEventEnvelope` records in `sys_events`.
 - Supports transaction-only sealed-contract write-once boundaries keyed by an exact caller-owned envelope UUID, with optional exact predecessor causation.
 - Relays root events through `EventTransport::publish`.
@@ -50,6 +54,7 @@
 - All domain modules emitting transactional events or storing durable command idempotency receipts via `TransactionalEventBus`
 
 ## Common AI Mistakes
+
 - Publishes an event directly to a transport instead of the transactional bus inside the owner transaction.
 - Calls non-transactional `publish` from an owner command.
 - Constructs `OutboxTransport` inside a domain operation instead of using a canonical transactional API.
@@ -70,6 +75,7 @@
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
+
 - Root events use `publish_in_tx` or the static `publish_root_in_tx` owner helper.
 - Owners that must durably bind audit state to the exact root envelope use
   `publish_root_in_tx_with_envelope_id`; the returned UUID is the ID of the
@@ -92,6 +98,9 @@
   not publish a second envelope or reconstruct an ID after persistence.
 
 ### Domain Invariants
+
+- Unconditional root/typed publication requires exactly one affected insert row. A suppressed
+  zero-row insert is persistence failure, never owner success or proof of write-once replay.
 - State, owner timeline, root envelope, caused typed envelope, and command receipt commit or roll back together when one owner transaction publishes them.
 - Write-once insertion uses the `sys_events.id` primary key with `ON CONFLICT DO NOTHING`, then reads the winning row through the same transaction.
 - Exact replay requires matching envelope ID, correlation ID, causation ID, tenant ID, actor ID, event type, schema version, and validated typed payload.
@@ -104,6 +113,7 @@
 - Claim ownership must be retained before dispatch completion or retry mutation.
 
 ### Events / Outbox Side Effects
+
 - The write-once APIs insert only into canonical `sys_events`; they do not send directly to a broker or transport.
 - `OutboxRelay` supports both the established root envelope and the sealed typed-family envelope.
 - The target transport receives the matching `publish` or `publish_contract` call.
@@ -111,7 +121,39 @@
 - Exact identity and causation-aware publication change envelope construction or metadata only; they do not alter an event family's payload schema or committed event-contract digests.
 
 ### Errors / Failure Codes
+
 - `ContractEventWriteOnceError::Conflict` means the requested exact envelope UUID already belongs to different canonical scope, causation, or typed facts.
 - `ContractEventWriteOnceError::Unavailable` covers validation, serialization, database, missing-row, corrupt-row, or unreadable-state failure without exposing infrastructure details to the owner.
 - Validation, serialization, lost-claim, retry, and DLQ outcomes must remain distinguishable in logs and durable row state.
 - Infrastructure details must not leak into domain-facing owner errors.
+
+## Fresh sealed facts and local acknowledgement (2026-11-01; source only)
+
+`publish_contract_direct_in_tx(txn, tenant_id, actor_id, event)` constructs and validates a
+fresh canonical sealed envelope and writes it through `OutboxTransport` on the caller's live
+owner transaction. No direct broker send, alternate table, receipt or synthetic predecessor is
+introduced. Inventory calls it only for fresh positive reservation movement; replay/noop needs
+no Outbox insertion. Write/admission failure must abort the owner transaction.
+
+Relay retains matching root/typed transport dispatch and existing retry/DLQ. The configured
+server target now awaits explicit sealed local handlers on `outbox`; on `outbox_iggy`, primary
+acceptance precedes required local acknowledgement. Local failure leaves the same event identity
+retryable, even if Iggy already accepted it. This is at-least-once; remote durable receive/cursor
+ACK and crash/restart behavior are not proved by local acknowledgement or source guards.
+See the [Inventory packet](../rustok-inventory/contracts/evidence/reservation-events-source.json).
+
+## Inventory source canonical continuation (2026-11-02; uncompiled)
+
+Inventory uses `publish_contract_once_direct_in_tx_with_envelope_id` on the actual caller
+`DatabaseTransaction`: retained change UUID for Changed, globally unique original baseline UUID
+for fresh final BaselineActivated. Current actors are checked before the shared helper can
+filter nil. Building seeds, no-op/replay and observation do not publish. Journal is not outbox,
+receipt or global cursor. The existing typed canonical relay handles the registered family;
+four new storage/relay definitions remain uncompiled/unrun, not live broker evidence.
+
+Required Inventory facts without a matching active local handler now refuse **before** Iggy
+primary acceptance. Matched local failures still propagate **after** primary acceptance and
+retain the same frame for at-least-once retry. Remote-only Product primary/cursor routing is
+preserved. No production Inventory source listener is selected; current source authority,
+durable initial replay and generic Index persist-before-ACK remain pending.
+[Source packet](../rustok-inventory/contracts/evidence/source-delivery-source.json).

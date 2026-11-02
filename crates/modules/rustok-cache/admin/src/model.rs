@@ -21,6 +21,8 @@ pub struct GraphqlCacheHealthResponse {
 pub struct PlatformSettingsData {
     pub category: String,
     pub settings: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -34,6 +36,8 @@ pub struct UpdatePlatformSettingsPayload {
     pub success: bool,
     pub category: String,
     pub settings: String,
+    #[serde(rename = "schemaVersion")]
+    pub schema_version: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

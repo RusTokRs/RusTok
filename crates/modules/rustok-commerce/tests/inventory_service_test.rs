@@ -271,7 +271,7 @@ async fn test_adjust_inventory_nonexistent_variant() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        CommerceError::VariantNotFound(_) => {}
+        rustok_inventory::QuantityWriteError::VariantNotFound(_) => {}
         _ => panic!("Expected VariantNotFound error"),
     }
 }
@@ -361,7 +361,7 @@ async fn test_set_inventory_nonexistent_variant() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        CommerceError::VariantNotFound(_) => {}
+        rustok_inventory::QuantityWriteError::VariantNotFound(_) => {}
         _ => panic!("Expected VariantNotFound error"),
     }
 }
@@ -539,7 +539,13 @@ async fn test_reserve_sufficient_stock() {
         .await
         .unwrap();
 
-    let result = service.reserve(tenant_id, variant_id, 10).await;
+    let result = service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            10,
+        )
+        .await;
 
     assert!(result.is_ok());
 }
@@ -556,7 +562,13 @@ async fn test_reserve_insufficient_stock() {
         .await
         .unwrap();
 
-    let result = service.reserve(tenant_id, variant_id, 10).await;
+    let result = service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            10,
+        )
+        .await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -583,7 +595,13 @@ async fn test_reserve_exact_stock() {
         .await
         .unwrap();
 
-    let result = service.reserve(tenant_id, variant_id, 10).await;
+    let result = service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            10,
+        )
+        .await;
 
     assert!(result.is_ok());
 }
@@ -600,7 +618,13 @@ async fn test_reserve_zero_quantity() {
         .await
         .unwrap();
 
-    let result = service.reserve(tenant_id, variant_id, 0).await;
+    let result = service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            0,
+        )
+        .await;
 
     assert!(result.is_ok());
 }
@@ -611,7 +635,13 @@ async fn test_reserve_nonexistent_variant() {
     let tenant_id = Uuid::new_v4();
     let fake_variant_id = Uuid::new_v4();
 
-    let result = service.reserve(tenant_id, fake_variant_id, 5).await;
+    let result = service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            fake_variant_id,
+            5,
+        )
+        .await;
 
     assert!(result.is_err());
 }
@@ -638,7 +668,14 @@ async fn test_inventory_workflow() {
         .unwrap();
     assert!(available);
 
-    service.reserve(tenant_id, variant_id, 10).await.unwrap();
+    service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            10,
+        )
+        .await
+        .unwrap();
 
     let input = AdjustInventoryInput {
         variant_id,
@@ -829,7 +866,14 @@ async fn test_reserve_creates_reservation_and_syncs_available_shadow() {
         .set_inventory(tenant_id, actor_id, variant_id, 20)
         .await
         .unwrap();
-    service.reserve(tenant_id, variant_id, 7).await.unwrap();
+    service
+        .reserve(
+            &inventory_port_context(tenant_id, "native-quantity-reserve", true),
+            variant_id,
+            7,
+        )
+        .await
+        .unwrap();
 
     let inventory_item = entities::inventory_item::Entity::find()
         .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
@@ -865,3 +909,15 @@ async fn test_reserve_creates_reservation_and_syncs_available_shadow() {
             .unwrap()
     );
 }
+
+#[path = "inventory_reservation_channel.rs"]
+mod channel_reservations;
+
+#[path = "inventory_reservation_order_adoption.rs"]
+mod order_adoption;
+
+#[path = "inventory_quantity_release.rs"]
+mod quantity_release;
+
+#[path = "inventory_reservation_events.rs"]
+mod reservation_events;

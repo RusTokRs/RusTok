@@ -24,45 +24,45 @@ Select JSONB entity rows as the canonical generic Index storage. JSONB is the si
 
 ## Storage and maintenance evidence
 
-| Prototype | 100k schema | 1m schema | Growth | EAV fields 100k / 1m | Churn growth 100k / 1m | VACUUM 100k / 1m |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| jsonb | 449.72 MiB | 4.25 GiB | 9.67x | n/a / n/a | 1.57% / 0.19% | 943 ms / 3124 ms |
-| typed_eav | 832.13 MiB | 8.14 GiB | 10.01x | 1,400,160 / 14,000,320 | 1.29% / 0.17% | 804 ms / 16490 ms |
-| hot_projection | 361.54 MiB | 3.53 GiB | 9.99x | n/a / n/a | 1.37% / 0.17% | 672 ms / 2043 ms |
+| Prototype      | 100k schema | 1m schema | Growth |   EAV fields 100k / 1m | Churn growth 100k / 1m |  VACUUM 100k / 1m |
+| -------------- | ----------: | --------: | -----: | ---------------------: | ---------------------: | ----------------: |
+| jsonb          |  449.72 MiB |  4.25 GiB |  9.67x |              n/a / n/a |          1.57% / 0.19% |  943 ms / 3124 ms |
+| typed_eav      |  832.13 MiB |  8.14 GiB | 10.01x | 1,400,160 / 14,000,320 |          1.29% / 0.17% | 804 ms / 16490 ms |
+| hot_projection |  361.54 MiB |  3.53 GiB |  9.99x |              n/a / n/a |          1.37% / 0.17% |  672 ms / 2043 ms |
 
 ## Read/query evidence
 
-| Prototype | Workload | Warm median 100k | Warm median 1m | Growth | Plan shapes 100k / 1m |
-| --- | --- | ---: | ---: | ---: | ---: |
-| jsonb | status_equality | 2.25 ms | 0.06 ms | 0.03x | 1 / 1 |
-| jsonb | price_range_sort | 1.63 ms | 0.08 ms | 0.05x | 1 / 1 |
-| jsonb | multi_value_tag | 1.54 ms | 11.61 ms | 7.56x | 1 / 1 |
-| jsonb | two_hop_channel_filter | 32.02 ms | 255.55 ms | 7.98x | 1 / 1 |
-| jsonb | keyset_page | 0.06 ms | 0.08 ms | 1.42x | 1 / 1 |
-| jsonb | exact_count | 1.94 ms | 10.68 ms | 5.51x | 1 / 1 |
-| typed_eav | status_equality | 0.45 ms | 0.48 ms | 1.08x | 1 / 1 |
-| typed_eav | price_range_sort | 0.48 ms | 0.53 ms | 1.11x | 1 / 1 |
-| typed_eav | multi_value_tag | 0.48 ms | 0.53 ms | 1.09x | 1 / 1 |
-| typed_eav | two_hop_channel_filter | 31.81 ms | 251.46 ms | 7.90x | 1 / 1 |
-| typed_eav | keyset_page | 18.54 ms | 152.45 ms | 8.22x | 1 / 1 |
-| typed_eav | exact_count | 11.46 ms | 100.72 ms | 8.79x | 1 / 1 |
-| hot_projection | status_equality | 0.07 ms | 0.08 ms | 1.06x | 1 / 1 |
-| hot_projection | price_range_sort | 0.10 ms | 0.07 ms | 0.74x | 1 / 1 |
-| hot_projection | multi_value_tag | 1.30 ms | 0.59 ms | 0.45x | 1 / 1 |
-| hot_projection | two_hop_channel_filter | 26.65 ms | 231.83 ms | 8.70x | 1 / 1 |
-| hot_projection | keyset_page | 0.08 ms | 0.08 ms | 0.97x | 1 / 1 |
-| hot_projection | exact_count | 1.86 ms | 10.14 ms | 5.44x | 1 / 1 |
+| Prototype      | Workload               | Warm median 100k | Warm median 1m | Growth | Plan shapes 100k / 1m |
+| -------------- | ---------------------- | ---------------: | -------------: | -----: | --------------------: |
+| jsonb          | status_equality        |          2.25 ms |        0.06 ms |  0.03x |                 1 / 1 |
+| jsonb          | price_range_sort       |          1.63 ms |        0.08 ms |  0.05x |                 1 / 1 |
+| jsonb          | multi_value_tag        |          1.54 ms |       11.61 ms |  7.56x |                 1 / 1 |
+| jsonb          | two_hop_channel_filter |         32.02 ms |      255.55 ms |  7.98x |                 1 / 1 |
+| jsonb          | keyset_page            |          0.06 ms |        0.08 ms |  1.42x |                 1 / 1 |
+| jsonb          | exact_count            |          1.94 ms |       10.68 ms |  5.51x |                 1 / 1 |
+| typed_eav      | status_equality        |          0.45 ms |        0.48 ms |  1.08x |                 1 / 1 |
+| typed_eav      | price_range_sort       |          0.48 ms |        0.53 ms |  1.11x |                 1 / 1 |
+| typed_eav      | multi_value_tag        |          0.48 ms |        0.53 ms |  1.09x |                 1 / 1 |
+| typed_eav      | two_hop_channel_filter |         31.81 ms |      251.46 ms |  7.90x |                 1 / 1 |
+| typed_eav      | keyset_page            |         18.54 ms |      152.45 ms |  8.22x |                 1 / 1 |
+| typed_eav      | exact_count            |         11.46 ms |      100.72 ms |  8.79x |                 1 / 1 |
+| hot_projection | status_equality        |          0.07 ms |        0.08 ms |  1.06x |                 1 / 1 |
+| hot_projection | price_range_sort       |          0.10 ms |        0.07 ms |  0.74x |                 1 / 1 |
+| hot_projection | multi_value_tag        |          1.30 ms |        0.59 ms |  0.45x |                 1 / 1 |
+| hot_projection | two_hop_channel_filter |         26.65 ms |      231.83 ms |  8.70x |                 1 / 1 |
+| hot_projection | keyset_page            |          0.08 ms |        0.08 ms |  0.97x |                 1 / 1 |
+| hot_projection | exact_count            |          1.86 ms |       10.14 ms |  5.44x |                 1 / 1 |
 
 ## Mutation and WAL evidence
 
-| Prototype | Workload | Median execution 100k / 1m | Growth | Median WAL 100k / 1m | WAL growth |
-| --- | --- | ---: | ---: | ---: | ---: |
-| jsonb | update_product_batch | 42.59 ms / 149.59 ms | 3.51x | 1.02 MiB / 1005.02 KiB | 0.97x |
-| jsonb | delete_product_batch | 21.69 ms / 132.95 ms | 6.13x | 158.20 KiB / 158.20 KiB | 1.00x |
-| typed_eav | update_product_batch | 74.22 ms / 188.79 ms | 2.54x | 1.26 MiB / 1.28 MiB | 1.02x |
-| typed_eav | delete_product_batch | 55.41 ms / 169.76 ms | 3.06x | 580.08 KiB / 580.08 KiB | 1.00x |
-| hot_projection | update_product_batch | 36.48 ms / 142.32 ms | 3.90x | 815.22 KiB / 791.67 KiB | 0.97x |
-| hot_projection | delete_product_batch | 19.52 ms / 133.10 ms | 6.82x | 158.20 KiB / 158.20 KiB | 1.00x |
+| Prototype      | Workload             | Median execution 100k / 1m | Growth |    Median WAL 100k / 1m | WAL growth |
+| -------------- | -------------------- | -------------------------: | -----: | ----------------------: | ---------: |
+| jsonb          | update_product_batch |       42.59 ms / 149.59 ms |  3.51x |  1.02 MiB / 1005.02 KiB |      0.97x |
+| jsonb          | delete_product_batch |       21.69 ms / 132.95 ms |  6.13x | 158.20 KiB / 158.20 KiB |      1.00x |
+| typed_eav      | update_product_batch |       74.22 ms / 188.79 ms |  2.54x |     1.26 MiB / 1.28 MiB |      1.02x |
+| typed_eav      | delete_product_batch |       55.41 ms / 169.76 ms |  3.06x | 580.08 KiB / 580.08 KiB |      1.00x |
+| hot_projection | update_product_batch |       36.48 ms / 142.32 ms |  3.90x | 815.22 KiB / 791.67 KiB |      0.97x |
+| hot_projection | delete_product_batch |       19.52 ms / 133.10 ms |  6.82x | 158.20 KiB / 158.20 KiB |      1.00x |
 
 ## Rejected alternatives
 
@@ -92,3 +92,31 @@ There is no production Index persistence to preserve before M3, so the first rol
 - The benchmark evidence does not replace production observability, migration rehearsal, or failure-mode testing.
 - This ADR records a manual decision; the renderer does not infer or rank a winning prototype.
 
+## Source refresh and replay identity clarification (2026-11-02)
+
+Inbox identity binds one immutable source mutation, not a notification whose later authoritative
+load can observe a newer revision. Refresh persists the loaded source's stable event UUID and
+keeps the incoming envelope UUID for delivery/ACK. Minimum-version admission still applies.
+Rebinding a newly loaded revision to an older notification UUID creates a payload-hash conflict
+on legitimate retry and is therefore forbidden. Source replay and incremental refresh share
+this same immutable mutation identity and generic stale-version fence.
+
+An owner activation may request initial replay through the canonical Index job store with an
+original durable job UUID. Enqueue is atomic and idempotent, not a worker lease or completion
+claim. The existing source-factory catalog contributes selected listeners and the generic
+module-work lifecycle resumes bounded replay with exact job/attempt/checkpoint ownership.
+Current source authority is resolved outside the engine from real authenticated context;
+event/job/baseline metadata never grants permission. No domain tables or special schema DDL
+enter Index core, and no live scan becomes an absence/global-watermark contract.
+
+The canonical Index replay materializer owns generic ModuleWork registration and the adapter
+uses its single shared replay runtime. Discovery filters the immutable selected source/schema
+bindings; removed sources retain their history without starving selected sources. Busy is held,
+bounded page yield is resumable, and completed work requires the retained exact job and null
+checkpoint proof. An invocation token labels the runner lease owner; it never grants owner-read
+authority. Page failures currently park terminally: automatic backoff/original-job operator
+recovery is deliberately pending. Lease attempts also count normal yields, not only failures.
+No recovery or deployment-readiness claim follows from this source continuation.
+A retained checkpoint without its original job cannot certify a newly enqueued initial replay;
+that inconsistent scope refuses without clearing history. Already-complete acquisition also
+verifies the durable exact-scope null cursor instead of trusting only the job's status label.

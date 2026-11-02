@@ -32,7 +32,7 @@ function fixture(options = {}) {
   );
   const handlerCall = options.embeddedHandler
     ? "complete_storefront_checkout_input("
-    : "complete_storefront_checkout_input_with_product_port(runtime.product_catalog_read_port(),";
+    : "complete_storefront_checkout_input_with_product_runtime(runtime.product_catalog_read_port(),";
   write(
     root,
     "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",
@@ -42,8 +42,8 @@ function fixture(options = {}) {
     root,
     "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     options.composedCatalog
-      ? "pub async fn complete_storefront_checkout_input_with_product_port() { CatalogService::new; }"
-      : "pub async fn complete_storefront_checkout_input_with_product_port() { product_catalog_read_port; }",
+      ? "pub async fn complete_storefront_checkout_input_with_product_runtime() { CatalogService::new; }"
+      : "pub async fn complete_storefront_checkout_input_with_product_runtime() { product_catalog_read_port; }",
   );
   const complete = options.registryPending
     ? ["ai-product", "marketplace-listing", "order-storefront-native"]

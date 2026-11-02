@@ -128,7 +128,7 @@ does not create a package-local locale fallback.
    new `POST /api/auth/session/{login,register,refresh,logout}` endpoints
    keep the refresh token in an HttpOnly cookie for browser-direct mode,
    SSR/BFF hosts hold it in their own HttpOnly cookie via native server
-   functions, access tokens live in memory only, and the admin's
+   functions, OAuth access tokens are registered in `oauth_tokens` and revoked by family, and the admin's
    LocalStorage-to-cookie JS bootstrap is replaced by a server-to-server
    verified snapshot exchange; RBAC permission checks are snapshot-first
    with authoritative fall-through (OAuth scope narrowing honored);
@@ -180,3 +180,12 @@ does not create a package-local locale fallback.
 - Evidence: `source inspection confirms tenant-qualified OAuth client, consent and admin lookups; authorization-code and refresh-token replacements use transactional compare-and-set; oauth_app_translations uses VARCHAR(32), tenant-composite FK and unique tenant/app/locale identity; auth CLI no longer imports rustok-tenant or rustok-api, requires --tenant-id before OAuth credential writes and contains explicit missing/invalid/valid UUID unit cases; tenant FBA guard forbids read_default_active_tenant in the credential path; connector-only local execution remains unavailable because github.com DNS resolution fails and is classified as an environment limitation`
 - Next action: `run the targeted rustok-auth-cli regressions and canonical auth module checks; remove implicit refresh grant expansion with explicit producer updates; rerun PostgreSQL migration smoke; then revisit this blocked item during closing gates`
 - Resume command: `cargo test -p rustok-auth-cli oauth_create_app -- --nocapture && cargo test -p rustok-auth-cli development_app_uses_current_translation_schema && cargo xtask module validate auth && cargo xtask module test auth`
+
+
+## P8 — OAuth access-token revocation fence
+
+OAuth access JWTs carry a `jti` bound to a durable `oauth_tokens` access row.
+The host extractor fails closed unless that row is active and matches the
+presented hash, client, tenant, grant, and subject. RFC 7009 and security
+revocation paths revoke access and refresh rows together. Delegated rows store
+the consent epoch so revoke/re-grant cannot resurrect older credentials.

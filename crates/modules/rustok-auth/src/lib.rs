@@ -30,6 +30,7 @@ pub mod module;
 pub mod oauth_app_translation;
 pub mod rest;
 pub mod validation;
+pub mod worker_context;
 
 #[cfg(test)]
 mod contract_tests;
@@ -80,6 +81,10 @@ pub use rest::{
     SessionsResponse, TokenErrorResponse, TokenRequest, TokenResponse, UpdateProfileParams,
     UserInfo, UserItem, UserResponse, UsersListParams, UsersResponse, VerificationRequestResponse,
 };
+pub use worker_context::{
+    WorkerServiceContextPort, WorkerServiceContextRequest, WorkerServiceContextRuntime,
+};
+
 pub use validation::{
     MAX_DISPLAY_NAME_CHARS, MAX_EMAIL_LENGTH_CHARS, normalize_display_name, normalize_email,
 };

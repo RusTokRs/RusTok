@@ -620,6 +620,7 @@ async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, suffix: &str) -> 
         updated_at: Set(Utc::now().into()),
         failed_login_count: Set(0),
         locked_until: Set(None),
+        password_changed_at: Set(None),
     })
     .exec(db)
     .await?;

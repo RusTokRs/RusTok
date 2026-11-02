@@ -88,6 +88,7 @@ mod marketplace_financial;
     ),
     components(
         schemas(
+            rustok_web::ErrorBody,
             rustok_product::ProductMediaAuditIssue,
             rustok_product::ProductMediaAuditPage,
             rustok_product::ProductMediaBackfillPage,

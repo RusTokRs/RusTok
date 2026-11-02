@@ -35,6 +35,19 @@ impl RusToKModule for IndexModule {
         ModuleKind::Core
     }
 
+    fn register_event_listeners(
+        &self,
+        registry: &mut rustok_core::ModuleEventListenerRegistry,
+        context: &rustok_core::ModuleEventListenerContext<'_>,
+    ) {
+        if let Some(factories) = context
+            .extensions
+            .get::<PostgresIndexSourceFactoryCatalog>()
+        {
+            factories.register_event_listeners(registry, context);
+        }
+    }
+
     fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,

@@ -79,7 +79,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
 
     let shipped = service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -163,7 +163,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
 
     let shipped_second = service
         .ship_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -206,7 +206,7 @@ async fn partial_progress_is_allowed_but_stale_item_writes_are_rejected() {
 
     let reopened = service
         .reopen_fulfillment(
-            tenant_id,
+            support::shipment_context(tenant_id),
             created.id,
             ReopenFulfillmentInput {
                 items: Some(vec![FulfillmentItemQuantityInput {

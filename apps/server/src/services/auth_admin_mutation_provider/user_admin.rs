@@ -339,12 +339,22 @@ async fn revoke_active_sessions<C>(
 where
     C: ConnectionTrait,
 {
+    let now = Utc::now();
     sessions::Entity::update_many()
-        .col_expr(sessions::Column::RevokedAt, Expr::value(Utc::now()))
+        .col_expr(sessions::Column::RevokedAt, Expr::value(now))
         .filter(sessions::Column::TenantId.eq(tenant_id))
         .filter(sessions::Column::UserId.eq(user_id))
         .filter(sessions::Column::RevokedAt.is_null())
         .exec(db)
+        .await
+        .map_err(super::internal_admin_error)?;
+    let _revoked_oauth_tokens =
+        crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
+            db,
+            tenant_id,
+            user_id,
+            now,
+        )
         .await
         .map_err(super::internal_admin_error)?;
     Ok(())
@@ -718,6 +728,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         }
         if let Some(password_hash) = new_password_hash {
             active.password_hash = Set(password_hash);
+            active.password_changed_at = Set(Some(Utc::now().into()));
         }
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);

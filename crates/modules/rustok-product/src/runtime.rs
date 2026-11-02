@@ -8,7 +8,7 @@ use crate::{
     CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort,
     ProductCatalogSchemaReadPort, ProductCatalogSchemaService, ProductCatalogSchemaWritePort,
     ProductMediaMaintenancePort, ProductMediaReferencePolicy, ProductMediaReferencePort,
-    ProductStorefrontHttpReadPort, ProductStorefrontTagReadPort,
+    ProductStorefrontHttpReadPort, ProductStorefrontTagReadPort, ProductVariantIdentityReadPort,
 };
 
 /// Host-selected execution profile for the Product catalog read boundary.
@@ -35,6 +35,7 @@ impl ProductCatalogReadProfile {
 #[derive(Clone)]
 pub struct ProductCatalogReadRuntime {
     read_port: Arc<dyn ProductCatalogReadPort>,
+    variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>,
     schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>,
     storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>,
     storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>,
@@ -48,6 +49,7 @@ impl ProductCatalogReadRuntime {
     ) -> Self {
         Self {
             read_port,
+            variant_identity_read_port: None,
             schema_read_port: None,
             storefront_http_read_port: None,
             storefront_tag_read_port: None,
@@ -60,11 +62,26 @@ impl ProductCatalogReadRuntime {
         Self::new(catalog.clone(), ProductCatalogReadProfile::EmbeddedNative)
             .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
             .with_storefront_http_read_port(catalog.clone())
-            .with_storefront_tag_read_port(catalog)
+            .with_storefront_tag_read_port(catalog.clone())
+            .with_variant_identity_read_port(catalog)
     }
 
     pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {
         Self::new(read_port, ProductCatalogReadProfile::External)
+    }
+
+    /// The identity provider belongs to the same selected Product owner. Absence is an
+    /// unsupported capability, never permission for a consumer to query local Product data.
+    pub fn with_variant_identity_read_port(
+        mut self,
+        port: Arc<dyn ProductVariantIdentityReadPort>,
+    ) -> Self {
+        self.variant_identity_read_port = Some(port);
+        self
+    }
+
+    pub fn variant_identity_read_port(&self) -> Option<Arc<dyn ProductVariantIdentityReadPort>> {
+        self.variant_identity_read_port.clone()
     }
 
     pub fn with_schema_read_port(

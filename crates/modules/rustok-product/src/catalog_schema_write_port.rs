@@ -8,12 +8,13 @@ use uuid::Uuid;
 
 use crate::CommerceError;
 use crate::services::{
-    BindCategoryAttributeInput, BindSchemaAttributeInput, CatalogCategoryRecord,
-    CreateCatalogCategoryInput, CreateCategoryAttributeGroupInput, CreateProductAttributeInput,
-    CreateProductAttributeOptionInput, CreateProductAttributeSchemaGroupInput,
-    CreateProductAttributeSchemaInput, ProductAttributeGroupRecord, ProductAttributeOptionRecord,
-    ProductAttributeRecord, ProductAttributeSchemaRecord, ProductAttributeValuePatch,
-    ProductAttributeValueRecord, ProductCatalogSchemaService, SetCategorySchemaModeInput,
+    AttributeDefinitionResult, BindCategoryAttributeInput, BindSchemaAttributeInput,
+    CatalogCategoryRecord, CreateCatalogCategoryInput, CreateCategoryAttributeGroupInput,
+    CreateProductAttributeInput, CreateProductAttributeOptionInput,
+    CreateProductAttributeSchemaGroupInput, CreateProductAttributeSchemaInput,
+    ProductAttributeGroupRecord, ProductAttributeOptionRecord, ProductAttributeRecord,
+    ProductAttributeSchemaRecord, ProductAttributeValuePatch, ProductAttributeValueRecord,
+    ProductCatalogSchemaService, SetCategorySchemaModeInput, UpdateAttributeDefinitionInput,
     is_terminal_product_failure, with_product_operation_receipt,
 };
 
@@ -59,13 +60,20 @@ pub fn scoped_caller_idempotency_key(
 /// idempotency identity and deadline. Consumers must receive this capability from host
 /// composition rather than constructing `ProductCatalogSchemaService` directly.
 ///
-/// The embedded adapter durably binds all thirteen mounted Product schema writes to the
+/// The embedded adapter durably binds all fourteen mounted Product schema writes to the
 /// shared owner-operation receipt ledger. Receipt completion is committed in the same
 /// Product transaction as schema/EAV rows and outbox publication using the actual result
 /// recorded by the owner write method. Attribute-value writes capture their exact
 /// completed projection from that active owner transaction before commit.
 #[async_trait]
 pub trait ProductCatalogSchemaWritePort: Send + Sync {
+    /// Presentation update / reversible archive / restore of a canonical dictionary row.
+    async fn update_attribute_definition(
+        &self,
+        context: PortContext,
+        input: UpdateAttributeDefinitionInput,
+    ) -> Result<AttributeDefinitionResult, PortError>;
+
     async fn create_attribute(
         &self,
         context: PortContext,
@@ -165,6 +173,41 @@ pub trait ProductCatalogSchemaWritePort: Send + Sync {
 
 #[async_trait]
 impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService {
+    async fn update_attribute_definition(
+        &self,
+        context: PortContext,
+        input: UpdateAttributeDefinitionInput,
+    ) -> Result<AttributeDefinitionResult, PortError> {
+        let operation = "update_attribute_definition";
+        let (tenant_id, actor_id) = schema_write_scope(&context, operation)?;
+        if context.locale != input.locale {
+            return Err(schema_context_error(
+                &context,
+                operation,
+                PortError::validation(
+                    "product.schema_locale_mismatch",
+                    "Frozen definition locale does not match its call context",
+                ),
+            ));
+        }
+        // Locale belongs to the immutable dictionary command, not the current browser header.
+        let request = serde_json::json!({ "actor": &context.actor, "input": &input });
+        let lease =
+            match admit_schema_operation(self, &context, tenant_id, operation, &request).await? {
+                idempotency::Admission::Run(lease) => lease,
+                idempotency::Admission::Replay(value) => {
+                    return decode_schema_receipt(&context, operation, value);
+                }
+                idempotency::Admission::ReplayError(error) => return Err(error),
+            };
+        let result = with_product_operation_receipt(
+            lease,
+            self.update_attribute_definition(tenant_id, actor_id, input),
+        )
+        .await;
+        finish_receipted_schema_write(self, &context, operation, lease, result).await
+    }
+
     async fn create_attribute(
         &self,
         context: PortContext,
@@ -755,7 +798,16 @@ fn schema_write_error(
             "product.lifecycle_conflict",
             "product operation conflicts with the current state",
         ),
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_port_error(&blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_port_error(&blocker)
+        }
         CommerceError::Core(error) => crate::error::core_port_error(&error),
+        CommerceError::VariantAxisPolicyConflict(conflict) => {
+            PortError::conflict("product.variant_axis_policy_conflict", conflict.to_string())
+        }
         CommerceError::Conflict(_) => PortError::conflict(
             "product.conflict",
             "product request conflicts with the current state",
@@ -775,7 +827,10 @@ fn schema_error_kind(error: &CommerceError) -> &'static str {
         CommerceError::NoVariants => "no_variants",
         CommerceError::CannotDeleteOnlyVariant => "cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "lifecycle_conflict",
+        CommerceError::InventoryDeletionBlocked(_) => "inventory_deletion_blocked",
+        CommerceError::InventoryQuantityBlocked(_) => "inventory_quantity_blocked",
         CommerceError::Core(_) => "core",
+        CommerceError::VariantAxisPolicyConflict(_) => "variant_axis_policy_conflict",
         CommerceError::Conflict(_) => "conflict",
     }
 }
@@ -792,7 +847,14 @@ fn schema_error_code(error: &CommerceError) -> &'static str {
         CommerceError::NoVariants => "product.no_variants",
         CommerceError::CannotDeleteOnlyVariant => "product.cannot_delete_only_variant",
         CommerceError::CannotDeletePublished => "product.lifecycle_conflict",
+        CommerceError::InventoryDeletionBlocked(blocker) => {
+            crate::error::inventory_deletion_error_code(blocker)
+        }
+        CommerceError::InventoryQuantityBlocked(blocker) => {
+            crate::error::inventory_quantity_error_code(blocker)
+        }
         CommerceError::Core(error) => crate::error::core_error_code(error),
+        CommerceError::VariantAxisPolicyConflict(_) => "product.variant_axis_policy_conflict",
         CommerceError::Conflict(_) => "product.conflict",
     }
 }

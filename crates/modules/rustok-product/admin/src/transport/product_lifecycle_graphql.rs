@@ -12,9 +12,7 @@ const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could 
 
 const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
 const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt revision translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } variantAxes { id attributeId code name position allowedValues { optionId value position } } images { id mediaId url altText position } } }";
-const SET_VARIANT_AXES_MUTATION: &str = "mutation ProductAdminSetVariantAxes($idempotencyKey: String!, $productId: UUID!, $input: SetVariantAxesInput!) { setProductVariantAxes(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id attributeId code name position allowedValues { optionId value position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($idempotencyKey: String!, $id: UUID!) { deleteProduct(idempotencyKey: $idempotencyKey, id: $id) }";
-const CREATE_VARIANT_MUTATION: &str = "mutation ProductAdminCreateVariant($idempotencyKey: String!, $productId: UUID!, $input: CreateVariantInput!) { createProductVariant(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
 const UPDATE_VARIANT_MUTATION: &str = "mutation ProductAdminUpdateVariant($idempotencyKey: String!, $id: UUID!, $input: UpdateVariantInput!) { updateProductVariant(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id sku barcode shippingProfileSlug title combinationIdentity axisValues { attributeId optionId code label } inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } }";
 const DELETE_VARIANT_MUTATION: &str = "mutation ProductAdminDeleteVariant($idempotencyKey: String!, $id: UUID!) { deleteProductVariant(idempotencyKey: $idempotencyKey, id: $id) }";
 const ADD_PRODUCT_IMAGE_MUTATION: &str = "mutation ProductAdminAddImage($idempotencyKey: String!, $productId: UUID!, $input: AddProductImageInput!) { addProductImage(idempotencyKey: $idempotencyKey, productId: $productId, input: $input) { id mediaId url altText position } }";
@@ -35,21 +33,9 @@ struct UpdateProductResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct SetVariantAxesResponse {
-    #[serde(rename = "setProductVariantAxes")]
-    set_product_variant_axes: Vec<crate::model::VariantAxisConfig>,
-}
-
-#[derive(Debug, Deserialize)]
 struct DeleteProductResponse {
     #[serde(rename = "deleteProduct")]
     delete_product: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateVariantResponse {
-    #[serde(rename = "createProductVariant")]
-    create_product_variant: crate::model::ProductVariant,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,24 +94,6 @@ struct DeleteProductVariables {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
     id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct SetVariantAxesVariables {
-    #[serde(rename = "idempotencyKey")]
-    idempotency_key: String,
-    #[serde(rename = "productId")]
-    product_id: String,
-    input: crate::model::SetVariantAxesDraft,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateVariantVariables {
-    #[serde(rename = "idempotencyKey")]
-    idempotency_key: String,
-    #[serde(rename = "productId")]
-    product_id: String,
-    input: CreateVariantInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -604,38 +572,6 @@ pub(crate) async fn change_product_status(
     Ok(response.update_product)
 }
 
-pub(crate) async fn set_variant_axes(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    actor_id: String,
-    product_id: String,
-    idempotency_key: String,
-    draft: crate::model::SetVariantAxesDraft,
-) -> Result<Vec<crate::model::VariantAxisConfig>, GraphqlHttpError> {
-    let context = MutationErrorContext::new(
-        "set_variant_axes",
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        &tenant_id,
-        &actor_id,
-    )
-    .with_resource(&product_id);
-    let response: SetVariantAxesResponse = request(
-        SET_VARIANT_AXES_MUTATION,
-        SetVariantAxesVariables {
-            idempotency_key,
-            product_id,
-            input: draft,
-        },
-        token,
-        tenant_slug,
-    )
-    .await
-    .map_err(|error| context.map_error(error))?;
-    Ok(response.set_product_variant_axes)
-}
-
 pub(crate) async fn delete_product(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -664,74 +600,6 @@ pub(crate) async fn delete_product(
     .await
     .map_err(|error| context.map_error(error))?;
     Ok(response.delete_product)
-}
-
-pub(crate) async fn create_product_variant(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    actor_id: String,
-    product_id: String,
-    idempotency_key: String,
-    draft: crate::model::VariantDraft,
-) -> Result<crate::model::ProductVariant, GraphqlHttpError> {
-    let context = MutationErrorContext::new(
-        "create_product_variant",
-        token.as_deref(),
-        tenant_slug.as_deref(),
-        &tenant_id,
-        &actor_id,
-    )
-    .with_product(&product_id);
-
-    let input = CreateVariantInput {
-        sku: draft.sku.as_deref().and_then(optional_text),
-        barcode: draft.barcode.as_deref().and_then(optional_text),
-        shipping_profile_slug: draft
-            .shipping_profile_slug
-            .as_deref()
-            .and_then(optional_text),
-        axis_values: if draft.axis_values.is_empty() {
-            None
-        } else {
-            Some(
-                draft
-                    .axis_values
-                    .into_iter()
-                    .map(|av| VariantAxisValueInput {
-                        attribute_id: av.attribute_id,
-                        option_id: av.option_id,
-                    })
-                    .collect(),
-            )
-        },
-        prices: draft
-            .prices
-            .into_iter()
-            .map(|p| PriceInput {
-                currency_code: p.currency_code,
-                amount: p.amount,
-                compare_at_amount: p.compare_at_amount.as_deref().and_then(optional_text),
-            })
-            .collect(),
-        inventory_quantity: draft.inventory_quantity,
-        inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
-    };
-
-    let response: CreateVariantResponse = request(
-        CREATE_VARIANT_MUTATION,
-        CreateVariantVariables {
-            idempotency_key,
-            product_id,
-            input,
-        },
-        token,
-        tenant_slug,
-    )
-    .await
-    .map_err(|error| context.map_error(error))?;
-
-    Ok(response.create_product_variant)
 }
 
 pub(crate) async fn update_product_variant(
@@ -990,34 +858,95 @@ pub(crate) async fn reorder_product_images(
     Ok(response.reorder_product_images)
 }
 
+fn build_create_variant_input(draft: crate::model::VariantDraft) -> CreateVariantInput {
+    CreateVariantInput {
+        sku: draft.sku.as_deref().and_then(optional_text),
+        barcode: draft.barcode.as_deref().and_then(optional_text),
+        shipping_profile_slug: draft
+            .shipping_profile_slug
+            .as_deref()
+            .and_then(optional_text),
+        axis_values: if draft.axis_values.is_empty() {
+            None
+        } else {
+            Some(
+                draft
+                    .axis_values
+                    .into_iter()
+                    .map(|av| VariantAxisValueInput {
+                        attribute_id: av.attribute_id,
+                        option_id: av.option_id,
+                    })
+                    .collect(),
+            )
+        },
+        prices: draft
+            .prices
+            .into_iter()
+            .map(|p| PriceInput {
+                currency_code: p.currency_code,
+                amount: p.amount,
+                compare_at_amount: p.compare_at_amount.as_deref().and_then(optional_text),
+            })
+            .collect(),
+        inventory_quantity: draft.inventory_quantity,
+        inventory_policy: draft.inventory_policy.as_deref().and_then(optional_text),
+    }
+}
+
 fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
     CreateProductInput {
         attribute_values: crate::product_schema_graphql::normalize_product_attribute_batches(
             draft.attribute_values.clone(),
         ),
         translations: vec![build_translation_input(&draft)],
-        variant_axes: None,
-        variants: vec![CreateVariantInput {
-            sku: optional_text(draft.sku.as_str()),
-            barcode: optional_text(draft.barcode.as_str()),
-            shipping_profile_slug: None,
-            axis_values: None,
-            prices: vec![PriceInput {
-                currency_code: if draft.currency_code.trim().is_empty() {
-                    "USD".to_string()
-                } else {
-                    draft.currency_code.trim().to_uppercase()
-                },
-                amount: if draft.amount.trim().is_empty() {
-                    "0.00".to_string()
-                } else {
-                    draft.amount.trim().to_string()
-                },
-                compare_at_amount: optional_text(draft.compare_at_amount.as_str()),
-            }],
-            inventory_quantity: Some(draft.inventory_quantity),
-            inventory_policy: Some(draft.inventory_policy.trim().to_ascii_lowercase()),
-        }],
+        variant_axes: if draft.variant_axes.is_empty() {
+            None
+        } else {
+            Some(
+                draft
+                    .variant_axes
+                    .iter()
+                    .map(|axis| VariantAxisInput {
+                        attribute_id: axis.attribute_id.clone(),
+                        position: axis.position,
+                        allowed_option_ids: Some(axis.allowed_option_ids.clone()),
+                    })
+                    .collect(),
+            )
+        },
+        variants: draft
+            .initial_variants
+            .clone()
+            .map(|variants| {
+                variants
+                    .into_iter()
+                    .map(build_create_variant_input)
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                vec![CreateVariantInput {
+                    sku: optional_text(draft.sku.as_str()),
+                    barcode: optional_text(draft.barcode.as_str()),
+                    shipping_profile_slug: None,
+                    axis_values: None,
+                    prices: vec![PriceInput {
+                        currency_code: if draft.currency_code.trim().is_empty() {
+                            "USD".to_string()
+                        } else {
+                            draft.currency_code.trim().to_uppercase()
+                        },
+                        amount: if draft.amount.trim().is_empty() {
+                            "0.00".to_string()
+                        } else {
+                            draft.amount.trim().to_string()
+                        },
+                        compare_at_amount: optional_text(draft.compare_at_amount.as_str()),
+                    }],
+                    inventory_quantity: Some(draft.inventory_quantity),
+                    inventory_policy: Some(draft.inventory_policy.trim().to_ascii_lowercase()),
+                }]
+            }),
         seller_id: optional_text(draft.seller_id.as_str()),
         vendor: optional_text(draft.vendor.as_str()),
         product_type: optional_text(draft.product_type.as_str()),

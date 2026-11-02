@@ -30,7 +30,7 @@ async fn test_set_price_list_tier_resolves_active_price_list_override() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -158,6 +158,7 @@ async fn test_set_price_list_tier_with_channel_inherits_price_list_scope() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -205,7 +206,7 @@ async fn test_set_price_list_tier_with_channel_inherits_price_list_scope() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
@@ -231,6 +232,7 @@ async fn test_set_price_list_tier_with_channel_rejects_scope_mismatch() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let web_channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, web_channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list_with_channel(
         &db,
@@ -274,6 +276,7 @@ async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
+    seed_pricing_channel(&db, tenant_id, channel_id, "web-store").await;
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
     let price_list_id = create_price_list(&db, tenant_id, "active", None, None).await;
 
@@ -347,7 +350,7 @@ async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
 
     let resolved = service
         .resolve_variant_price(
-            tenant_id,
+            pricing_read_context(tenant_id),
             variant_id,
             rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),

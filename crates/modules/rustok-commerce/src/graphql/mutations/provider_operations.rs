@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
-    graphql::require_module_enabled,
+    TenantContext, graphql::require_module_enabled,
 };
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::{
@@ -127,6 +127,12 @@ fn fulfillment_error_envelope(error: &FulfillmentError) -> (&'static str, &'stat
             "FULFILLMENT_STATE_CONFLICT",
             false,
         ),
+        FulfillmentError::OwnerPort(stock) => {
+            let (message, code, retryable, _) = fulfillment_command_error_envelope(
+                &rustok_fulfillment::error::owner_port_error(stock),
+            );
+            (message, code, retryable)
+        }
         FulfillmentError::Database(_) => (
             "Fulfillment service is temporarily unavailable",
             "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
@@ -139,6 +145,10 @@ fn fulfillment_orchestration_error_envelope(
     error: &FulfillmentOrchestrationError,
 ) -> (&'static str, &'static str, bool) {
     match error {
+        FulfillmentOrchestrationError::Owner(cause) => {
+            let (message, code, retryable, _) = fulfillment_command_error_envelope(cause);
+            (message, code, retryable)
+        }
         FulfillmentOrchestrationError::OrderNotFound(_) => (
             "Order resource was not found",
             "ORDER_RESOURCE_NOT_FOUND",
@@ -183,7 +193,7 @@ fn fulfillment_command_error_envelope(
         "fulfillment.database_unavailable" | "order.database_unavailable" => (
             "Fulfillment service is temporarily unavailable",
             "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
-            true,
+            error.retryable,
             "temporarily_unavailable",
         ),
         "fulfillment.invalid_transition" => (
@@ -214,7 +224,7 @@ fn fulfillment_command_error_envelope(
             PortErrorKind::Unavailable | PortErrorKind::Timeout => (
                 "Fulfillment service is temporarily unavailable",
                 "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
-                true,
+                error.retryable,
                 "temporarily_unavailable",
             ),
             PortErrorKind::InvariantViolation => (
@@ -389,26 +399,68 @@ fn payment_refund_transition_context(
     )
 }
 
+fn require_fulfillment_tenant_scope(
+    ctx: &Context<'_>,
+    tenant_id: Uuid,
+    auth: &AuthContext,
+) -> Result<()> {
+    let tenant = ctx.data::<TenantContext>()?;
+    if tenant_id.is_nil()
+        || tenant_id != tenant.id
+        || auth.tenant_id != tenant.id
+        || ctx
+            .data_opt::<RequestContext>()
+            .is_some_and(|request| request.tenant_id != tenant.id)
+    {
+        return Err(public_provider_graphql_error(
+            "Fulfillment tenant scope does not match the authenticated request",
+            "FULFILLMENT_TENANT_SCOPE_INVALID",
+            false,
+        ));
+    }
+    Ok(())
+}
+
 fn fulfillment_command_context(
     ctx: &Context<'_>,
     tenant_id: Uuid,
     fulfillment_id: Uuid,
     operation: &'static str,
+    idempotency_key: String,
 ) -> Result<PortContext> {
+    let caller_key = idempotency_key.trim();
+    if caller_key.is_empty() || caller_key.len() > 191 {
+        return Err(public_provider_graphql_error(
+            "Fulfillment mutation requires a caller idempotency key of 1 to 191 bytes",
+            "FULFILLMENT_IDEMPOTENCY_KEY_INVALID",
+            false,
+        ));
+    }
     let auth = ctx.data::<AuthContext>()?;
+    require_fulfillment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
         .filter(|locale| !locale.trim().is_empty())
         .unwrap_or("und");
-    let context = PortContext::new(
+    let mut context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
+        auth.port_actor(),
         locale,
-        format!("commerce-graphql-fulfillment-command:{operation}:{fulfillment_id}"),
+        request
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| {
+                format!("commerce-graphql-fulfillment-command:{operation}:{fulfillment_id}")
+            }),
     )
-    .with_idempotency_key(format!("graphql-fulfillment:{fulfillment_id}:{operation}"))
+    .with_idempotency_key(caller_key)
     .with_deadline(std::time::Duration::from_secs(2));
+    context.claims = auth
+        .permissions
+        .iter()
+        .map(ToString::to_string)
+        .chain(auth.scopes.iter().cloned())
+        .collect();
     Ok(
         match request.and_then(|request| request.channel_slug.as_deref()) {
             Some(channel) => context.with_channel(channel),
@@ -423,18 +475,27 @@ fn fulfillment_create_read_context(
     order_id: Uuid,
 ) -> Result<PortContext> {
     let auth = ctx.data::<AuthContext>()?;
+    require_fulfillment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
         .filter(|locale| !locale.trim().is_empty())
         .unwrap_or("und");
-    let context = PortContext::new(
+    let mut context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
+        auth.port_actor(),
         locale,
-        format!("commerce-graphql-fulfillment-create-read:{order_id}"),
+        request
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| format!("commerce-graphql-fulfillment-create-read:{order_id}")),
     )
     .with_deadline(std::time::Duration::from_secs(2));
+    context.claims = auth
+        .permissions
+        .iter()
+        .map(ToString::to_string)
+        .chain(auth.scopes.iter().cloned())
+        .collect();
     Ok(
         match request.and_then(|request| request.channel_slug.as_deref()) {
             Some(channel) => context.with_channel(channel),
@@ -449,6 +510,7 @@ fn fulfillment_create_command_context(
     input: &crate::dto::CreateFulfillmentInput,
 ) -> Result<PortContext> {
     let auth = ctx.data::<AuthContext>()?;
+    require_fulfillment_tenant_scope(ctx, tenant_id, auth)?;
     let request = ctx.data_opt::<RequestContext>();
     let locale = request
         .map(|request| request.locale.as_str())
@@ -463,20 +525,30 @@ fn fulfillment_create_command_context(
     })?;
     let first = fnv1a64(&payload, 0xcbf29ce484222325);
     let second = fnv1a64(&payload, 0x84222325cbf29ce4);
-    let context = PortContext::new(
+    let mut context = PortContext::new(
         tenant_id.to_string(),
-        PortActor::user(auth.user_id.to_string()),
+        auth.port_actor(),
         locale,
-        format!(
-            "commerce-graphql-fulfillment-create-command:{}",
-            input.order_id
-        ),
+        request
+            .map(|request| request.correlation_id.clone())
+            .unwrap_or_else(|| {
+                format!(
+                    "commerce-graphql-fulfillment-create-command:{}",
+                    input.order_id
+                )
+            }),
     )
     .with_idempotency_key(format!(
         "graphql-fulfillment:create:{}:{first:016x}{second:016x}",
         input.order_id
     ))
     .with_deadline(std::time::Duration::from_secs(2));
+    context.claims = auth
+        .permissions
+        .iter()
+        .map(ToString::to_string)
+        .chain(auth.scopes.iter().cloned())
+        .collect();
     Ok(
         match request.and_then(|request| request.channel_slug.as_deref()) {
             Some(channel) => context.with_channel(channel),
@@ -817,6 +889,7 @@ impl CommerceProviderMutation {
         tenant_id: Uuid,
         id: Uuid,
         input: ShipFulfillmentInputObject,
+        idempotency_key: String,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -826,7 +899,7 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
-        let context = fulfillment_command_context(ctx, tenant_id, id, "ship")?;
+        let context = fulfillment_command_context(ctx, tenant_id, id, "ship", idempotency_key)?;
         let fulfillment = runtime
             .lifecycle_command_port()
             .ship_fulfillment(
@@ -862,6 +935,7 @@ impl CommerceProviderMutation {
         tenant_id: Uuid,
         id: Uuid,
         input: DeliverFulfillmentInputObject,
+        idempotency_key: String,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -871,7 +945,7 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
-        let context = fulfillment_command_context(ctx, tenant_id, id, "deliver")?;
+        let context = fulfillment_command_context(ctx, tenant_id, id, "deliver", idempotency_key)?;
         let fulfillment = runtime
             .lifecycle_command_port()
             .deliver_fulfillment(
@@ -912,6 +986,7 @@ impl CommerceProviderMutation {
         tenant_id: Uuid,
         id: Uuid,
         input: ReopenFulfillmentInputObject,
+        idempotency_key: String,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -921,7 +996,7 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
-        let context = fulfillment_command_context(ctx, tenant_id, id, "reopen")?;
+        let context = fulfillment_command_context(ctx, tenant_id, id, "reopen", idempotency_key)?;
         let fulfillment = runtime
             .lifecycle_command_port()
             .reopen_fulfillment(
@@ -961,6 +1036,7 @@ impl CommerceProviderMutation {
         tenant_id: Uuid,
         id: Uuid,
         input: ReshipFulfillmentInputObject,
+        idempotency_key: String,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -970,7 +1046,7 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
-        let context = fulfillment_command_context(ctx, tenant_id, id, "reship")?;
+        let context = fulfillment_command_context(ctx, tenant_id, id, "reship", idempotency_key)?;
         let fulfillment = runtime
             .lifecycle_command_port()
             .reship_fulfillment(
@@ -1012,6 +1088,7 @@ impl CommerceProviderMutation {
         tenant_id: Uuid,
         id: Uuid,
         input: CancelFulfillmentInputObject,
+        idempotency_key: String,
     ) -> Result<GqlFulfillment> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_commerce_permission(
@@ -1021,7 +1098,7 @@ impl CommerceProviderMutation {
         )?;
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let runtime = fulfillment_command_runtime_from_context(ctx, db.clone());
-        let context = fulfillment_command_context(ctx, tenant_id, id, "cancel")?;
+        let context = fulfillment_command_context(ctx, tenant_id, id, "cancel", idempotency_key)?;
         let fulfillment = runtime
             .lifecycle_command_port()
             .cancel_fulfillment(

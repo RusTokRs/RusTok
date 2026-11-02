@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-01](./2026-11-01-oauth-access-token-revocation-fence.md) | OAuth access-token revocation fence | Accepted | In progress | — |
 | [2026-10-28](./2026-10-28-forum-write-acknowledgements.md) | Forum owner-write acknowledgements do not re-read hidden content | Accepted | In progress | Extends [Forum anonymous discovery and category counts](./2026-10-15-forum-anonymous-discovery-and-category-counts.md) |
 | [2026-10-28](./2026-10-28-forum-first-publication-event-lifecycle.md) | Forum first-publication event lifecycle uses its immutable owner journal | Accepted | In progress | Extends [Forum pre-moderation](./2026-10-09-forum-topic-pre-moderation.md) |
 | [2026-10-28](./2026-10-28-forum-default-topic-order.md) | Forum topic list default ordering uses the tenant setting | Accepted | In progress | Extends [Forum list page-size defaults](./2026-10-09-forum-list-page-size-from-settings.md) |
@@ -117,7 +118,7 @@ Non-ADR plans and research documents do not belong in this registry.
 | [2026-09-22](./2026-09-22-comments-blog-public-snapshot-invalidation.md) | Comments-to-Blog Public Snapshot Invalidation | Accepted | Implemented | Extends [Comments-to-Blog Reply Count Projection](./2026-07-16-comments-blog-event-projection.md) |
 | [2026-09-22](./2026-09-22-comments-blog-monotonic-snapshot-cursor.md) | Comments-to-Blog Monotonic Snapshot Cursor | Accepted | Implemented | Extends [Comments-to-Blog Public Snapshot Invalidation](./2026-09-22-comments-blog-public-snapshot-invalidation.md) |
 | [2026-09-22](./2026-09-22-blog-tag-bounded-pagination.md) | Bounded Blog tag pagination through a derived usage projection | Accepted | Implemented | — |
-| [2026-09-18](./2026-09-18-unified-variant-axis-architecture.md) | Unified variant axis architecture | Accepted | Not started | Extends [Product category-bound attribute schemas](./2026-07-01-product-category-bound-attribute-schemas.md), [Product storage integrity](./2026-07-11-product-storage-integrity-and-request-trust.md), and [Channel binding policy](./2026-07-22-channel-binding-policy-boundary.md) |
+| [2026-09-18](./2026-09-18-unified-variant-axis-architecture.md) | Unified variant axis architecture | Accepted | In progress | Extends [Product category-bound attribute schemas](./2026-07-01-product-category-bound-attribute-schemas.md), [Product storage integrity](./2026-07-11-product-storage-integrity-and-request-trust.md), and [Channel binding policy](./2026-07-22-channel-binding-policy-boundary.md) |
 | [2026-09-18](./2026-09-18-canonical-native-module-source-layout.md) | Canonical native module source layout | Accepted | In progress | Extends [Categorized workspace layout for crates](./2026-09-06-crates-workspace-layout-split.md) |
 | [2026-09-18](./2026-09-18-canonical-native-module-reference-contract.md) | Canonical native module reference contract | Accepted | In progress | Extends [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md) |
 | [2026-09-06](./2026-09-06-crates-workspace-layout-split.md) | Categorized workspace layout for crates | Accepted | Not tracked | — |

@@ -283,7 +283,7 @@ impl PostgresMutationStore {
         let stored_module: String = existing.try_get("", "module_name").map_err(storage_error)?;
         let stored_entity: String = existing.try_get("", "entity_name").map_err(storage_error)?;
         let stored_schema_version: i64 = existing
-            .try_get("", "schema_version")
+            .try_get("", "schema_version_value")
             .map_err(storage_error)?;
         let stored_entity_id = stored_uuid(&existing, "entity_id", backend)?;
         let stored_locale: String = existing.try_get("", "locale_key").map_err(storage_error)?;
@@ -640,7 +640,7 @@ fn insert_inbox_sql(backend: DbBackend) -> String {
 fn select_inbox_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "SELECT mutation_kind, module_name, entity_name, schema_version, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = {prefix}1 AND source_name = {prefix}2 AND delivery_id = {prefix}3 LIMIT 1"
+        "SELECT mutation_kind, module_name, entity_name, CAST(schema_version AS BIGINT) AS schema_version_value, entity_id, locale_key, CAST(source_version AS TEXT) AS source_version_text, payload_hash, state FROM index_inbox WHERE tenant_id = {prefix}1 AND source_name = {prefix}2 AND delivery_id = {prefix}3 LIMIT 1"
     )
 }
 

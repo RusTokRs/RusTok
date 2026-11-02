@@ -7,8 +7,11 @@ use uuid::Uuid;
 
 pub use super::_entities::oauth_tokens::{ActiveModel, Column, Entity, Model, Relation};
 
+pub const TOKEN_KIND_ACCESS: &str = "access";
+pub const TOKEN_KIND_REFRESH: &str = "refresh";
+
 impl Entity {
-    /// Atomically reserve an active token for one-shot refresh or revocation.
+    /// Atomically reserve an active refresh token for one-shot rotation.
     ///
     /// A conditional UPDATE guarantees that concurrent refresh attempts cannot
     /// both observe the same token as active and mint multiple replacement
@@ -28,6 +31,7 @@ impl Entity {
                 Condition::all()
                     .add(Column::TokenHash.eq(token_hash))
                     .add(Column::AppId.eq(app_id))
+                    .add(Column::TokenKind.eq(TOKEN_KIND_REFRESH))
                     .add(Column::RevokedAt.is_null())
                     .add(Column::ExpiresAt.gt(now)),
             )
@@ -59,6 +63,7 @@ impl Entity {
                 Condition::all()
                     .add(Column::AppId.eq(app_id))
                     .add(Column::TenantId.eq(tenant_id))
+                    .add(Column::TokenKind.eq(TOKEN_KIND_REFRESH))
                     .add(Column::RevokedAt.is_null())
                     .add(Column::ExpiresAt.gt(chrono::Utc::now())),
             )
@@ -71,6 +76,7 @@ impl Entity {
             .filter(
                 Condition::all()
                     .add(Column::AppId.eq(app_id))
+                    .add(Column::TokenKind.eq(TOKEN_KIND_REFRESH))
                     .add(Column::RevokedAt.is_null())
                     .add(Column::ExpiresAt.gt(chrono::Utc::now())),
             )

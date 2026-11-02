@@ -406,6 +406,7 @@ async fn complete_checkout_snapshots_pricing_reprice_adjustments_into_order() {
             cart.id,
             vec![rustok_cart::services::cart::CartLineItemPricingUpdate {
                 line_item_id,
+                quantity: cart.line_items[0].quantity,
                 unit_price: Decimal::from_str("30.00").expect("valid decimal"),
                 pricing_adjustment: Some(
                     rustok_cart::services::cart::CartPricingAdjustmentUpdate {
@@ -419,6 +420,7 @@ async fn complete_checkout_snapshots_pricing_reprice_adjustments_into_order() {
                     },
                 ),
             }],
+            rustok_cart::CartPricingContextGuard::capture(&cart).unwrap(),
         )
         .await
         .unwrap();
