@@ -139,6 +139,25 @@ The module can be registered by the platform runtime; it contributes no
 business transport, active UI routes, migrations, outbox producers or external capability adapters.
 {ui_summary}
 
+### Connecting a capability
+
+Start in the owner command or query. When it needs a platform capability:
+
+1. Use the [platform integration guide](../../../../docs/backend/module-backend-implementation.md#connecting-platform-capabilities)
+   to select the canonical library, owner contract and file. It covers cache,
+   RBAC, relational Index, Search, Media, outbox, i18n and Page Builder / Fly.
+2. Keep pure invariants in `src/domain/` and the use case in `src/services/`.
+   Put any required provider adapter in `src/integrations/<provider>.rs` and its
+   module-local registration in `src/module.rs`. Update `Cargo.toml`,
+   `rustok-module.toml` and the selected runtime composition when required by
+   that contract.
+3. Document the operation, typed context, authority, transaction boundary and
+   failure behavior in [the implementation plan](./implementation-plan.md).
+   Keep a short source comment where the binding or ordering needs explanation.
+4. Verify the owner operation through the selected provider and exercise the
+   relevant denial, rollback, invalidation or retry paths. Retain exact commands
+   and results for the applicable reference gates.
+
 ## Verification
 - `cargo xtask module lint {slug}` — static source architecture
 - `cargo xtask module validate {slug}` — publish metadata and composition
@@ -193,6 +212,9 @@ Establish native ownership before implementing a business capability.
 - [ ] Verify runtime, FBA/FFA evidence, registration and release readiness.
 
 ## Reference verification
+
+Use the [integration steps](./README.md#connecting-a-capability) to record
+how each implemented owner operation binds to a platform capability.
 
 Use the [file placement rules](../../../../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
 and the [storage and Page Builder reference variants](../../../../docs/backend/module-backend-implementation.md#storage-and-page-builder-reference-variants)
@@ -308,12 +330,16 @@ impl RusToKModule for {module_type} {{
     }}
 
     fn dependencies(&self) -> &[&'static str] {{
+        // Declare required runtime modules when an owner operation consumes
+        // them. See docs/README.md for provider wiring and verification.
         &[]
     }}
 }}
 
 impl MigrationSource for {module_type} {{
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {{
+        // Export real owner migrations from src/migrations/mod.rs once the
+        // schema and its ordering and safety contracts have been defined.
         Vec::new()
     }}
 }}

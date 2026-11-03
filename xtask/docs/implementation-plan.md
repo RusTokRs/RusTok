@@ -347,6 +347,9 @@ Prerequisites: owner service/context/error contracts before transports or live U
 - [ ] Add only required platform capability bindings. If persistence is needed,
   specify the actual schema, tenant constraints, transaction/outbox/cache effects,
   migration safety and release/recovery tests before generating persistence code.
+  Follow the [platform integration guide](../../docs/backend/module-backend-implementation.md#connecting-platform-capabilities)
+  to record the owner operation, canonical provider, binding and failure tests.
+  Put binding-specific ordering and authority comments beside the real code.
 - [ ] Implement native/GraphQL owner adapters and verify equivalent authorization,
   nullability, pagination, errors and mutations through the real entrypoints.
 - [ ] Before publishing UI, bind the canonical effective locale and implement

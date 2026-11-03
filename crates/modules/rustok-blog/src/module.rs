@@ -92,6 +92,8 @@ impl RusToKModule for BlogModule {
                     "blog Taxonomy translation owner registration failed: {error}"
                 ))
             })?;
+        // Search reads current Blog-owned visibility and localized content
+        // through this factory. The selected runtime supplies the source.
         rustok_core::search_projection::register_search_projection_source(
             extensions,
             crate::search_projection::BlogSearchProjectionSourceFactory,

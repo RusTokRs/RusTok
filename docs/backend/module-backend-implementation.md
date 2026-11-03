@@ -314,6 +314,33 @@ An independent widget can operate without authoring or persistence. A module
 without builder participation omits its manifest descriptor, builder bindings,
 and builder dependencies.
 
+### Connecting platform capabilities
+
+Start with the owner command or query and the observable behavior it requires.
+Use `src/integrations/<provider>.rs` for an adapter to another capability and
+`src/module.rs` for module-local registration when the provider requires it.
+Resolve the existing public contract before adding dependencies to `Cargo.toml`,
+manifest declarations, or distribution composition. The selected host composes
+the binding. Owner services retain authorization and transaction decisions.
+
+| Need | Implementation and registration | Verify |
+| --- | --- | --- |
+| Cache a repeatable read | Use `rustok-cache` and `CacheKeyBuilder` in `src/integrations/cache.rs` when a distinct adapter is needed. Include tenant and every dimension that changes the result, such as locale, channel, visibility scope or revision. Connect invalidation to committed owner changes using the documented cache contract. | Cross-scope isolation, invalidation after commit, no invalidation on rollback, and the documented behavior when the backend or invalidation fails. [Cache contract](../../crates/modules/rustok-cache/README.md) |
+| Authorize an owner action | Check the canonical `rustok-api` permission and typed `rustok-core` security context at the owner service. Use `src/services/<capability>/commands.rs` or `queries.rs`; factor shared owner scope checks into `src/services/rbac.rs` when needed. Follow `rustok-rbac` for authoritative permission resolution. Transport guards can reject early. | Cross-tenant denial, own versus all scope, and equivalent decisions through native and headless entrypoints. [RBAC contract](../../crates/modules/rustok-rbac/CRATE_API.md) |
+| Materialize structured records for filtering and sorting | Implement the applicable `rustok-index` schema, mutation and `IndexSource` contracts in `src/integrations/index.rs`. Compose the source and its replay path through the selected runtime. Keep owner data and writes with the source module. | Tenant isolation, stale revisions and deletions, deterministic pages, and replay convergence. Use the Index runtime's supported database profile. [Index contract](../../crates/modules/rustok-index/CRATE_API.md) |
+| Make owner content searchable | Put the `rustok-core` `SearchProjectionSource` adapter in `src/integrations/search.rs` for new work and register its factory through the runtime extensions in `src/module.rs`. Read current owner state under the required visibility rules. Use the Search query port for consumers. Connect committed changes to the applicable reindex contract. | Publish, hide, delete and locale changes converge in Search. Public queries respect tenant, locale, channel and visibility. [Search contract](../../crates/modules/rustok-search/CRATE_API.md) · [Blog registration](../../crates/modules/rustok-blog/src/module.rs) · [Blog owner commands](../../crates/modules/rustok-blog/src/services/post/commands.rs) |
+| Attach or display a media asset | Use the `rustok-media` public read/write ports through `src/integrations/media.rs` when an adapter is needed. Store the asset reference in owner state. Where references must retain the asset, define admission, retain/release ordering and retry behavior with the Media owner. | Cross-tenant and wrong-scope assets are refused. A retained asset cannot be deleted. Replace/delete failure and retries preserve or recover the reference correctly. [Media contract](../../crates/modules/rustok-media/CRATE_API.md) · [Product example](../../crates/modules/rustok-product/docs/media-reference-retention.md) |
+| Publish a durable effect | Define the event in its canonical owner and use `rustok-events` with `rustok-outbox::TransactionalEventBus` from the owner command. Publish on the same transaction as the owner mutation. Register actual listeners in `src/module.rs` when applicable. | Rollback exposes neither state nor its event. Delivery, retry, and restart preserve the owner invariant. [Outbox contract](../../crates/modules/rustok-outbox/CRATE_API.md) |
+| Add a localized UI or localized content | Bind UI to the host effective locale through `rustok-ui-i18n`, `src/i18n.rs` and `locales/*.ftl` in the Leptos package. Keep localized content and its read/write provenance in owner contracts and storage. | Interface catalog keys and variables match. Read fallback preserves provenance and cannot silently become a write locale. [i18n contract](../architecture/i18n.md) · [FFA files](../UI/module-package-implementation.md#required-file-structure) |
+| Contribute to Page Builder / Fly | Use the [builder consumer file placement](#storage-and-page-builder-reference-variants) and the manifest's `[fba.builder_consumer]` contract. Bind actual owner operations and record the disabled-provider behavior. | Preview and each declared edit or publish operation exercise the real binding. Verify the documented behavior when the provider is disabled. [Builder contract](../../crates/modules/rustok-page-builder/docs/README.md) |
+
+Put reusable integration instructions in this guide. In module source, add short
+comments at the real binding or transaction that explain owner-specific ordering,
+authority or failure constraints. Record the actual operation, provider, binding,
+expected failure and verification result in the module's implementation plan.
+Use the [reference evidence matrix](./module-backend-verification.md#applicable-reference-evidence)
+for applicable tests and compile/run evidence.
+
 ## Static native architecture verification
 
 The supported static entrypoint for a registered local native module is

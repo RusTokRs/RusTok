@@ -459,6 +459,8 @@ impl PostService {
         )
         .await?;
 
+        // Commit the unpublish event with the draft transition so Search
+        // can withdraw the post. Rollback preserves its previous state.
         self.event_bus
             .publish_in_tx(
                 &txn,
