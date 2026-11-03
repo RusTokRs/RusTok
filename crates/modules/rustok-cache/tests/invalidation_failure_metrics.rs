@@ -1,6 +1,6 @@
 #![cfg(feature = "redis-cache")]
 
-use rustok_cache::{CacheInvalidationMessage, CacheService};
+use rustok_cache::{CacheInvalidationError, CacheInvalidationMessage, CacheService};
 
 #[cfg(feature = "redis-cache")]
 #[tokio::test]
@@ -14,21 +14,28 @@ async fn unavailable_redis_counts_one_publish_failure_without_losing_local_deliv
     let invalidations = service.invalidations();
     let mut local = invalidations.subscribe_local_channel("cache.failure.metrics");
 
-    let outcome = invalidations
+    let error = invalidations
         .publish(CacheInvalidationMessage::new(
             "cache.failure.metrics",
             "product:42",
         ))
         .await
-        .expect("publish should return outcome");
+        .expect_err("publish to unavailable Redis should return SharedTransport error");
+
+    match error {
+        CacheInvalidationError::SharedTransport {
+            local_subscribers, ..
+        } => {
+            assert_eq!(local_subscribers, 1);
+        }
+        other => panic!("expected SharedTransport error, got: {other:?}"),
+    }
 
     let delivered = tokio::time::timeout(std::time::Duration::from_secs(1), local.recv())
         .await
         .expect("local invalidation should not wait for Redis recovery")
         .expect("local invalidation channel should remain open");
     assert_eq!(delivered.key, "product:42");
-    assert_eq!(outcome.local_subscribers, 1);
-    assert!(!outcome.redis_published);
 
     let stats = invalidations.stats();
     assert_eq!(stats.local_published_total, 1);

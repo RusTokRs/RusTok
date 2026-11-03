@@ -279,10 +279,10 @@
       "path": "crates/modules/rustok-cache",
       "category": "modules",
       "files": 51,
-      "loc": 18743,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 18750,
+      "completed": true,
+      "completed_at": "2026-11-03 05:29",
+      "notes": "Fixed invalidation failure test contract assertion to expect SharedTransport on unavailable Redis while verifying local delivery and failure metrics; standardized Cargo.toml; 239 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved"
     },
     "crates/modules/rustok-cart": {
       "name": "rustok-cart",

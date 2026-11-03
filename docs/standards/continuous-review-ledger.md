@@ -834,7 +834,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 20 | 4,020 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
 | [x] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 25 | 3,998 | 2026-11-03 03:48 | Verified BrandModule, BrandService, SQLite integration tests, 12 tests passed, clippy clean with -D warnings on all targets, gatekeeper approved |
 | [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,215 | 2026-11-03 04:26 | Verified Leptos FFA admin package, core validation, i18n, dual-path transport, 15 tests passed under default and ssr features, clippy clean with -D warnings on all targets, gatekeeper approved |
-| [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,743 | None |  |
+| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,750 | 2026-11-03 05:29 | Fixed invalidation failure test contract assertion to expect SharedTransport on unavailable Redis while verifying local delivery and failure metrics; standardized Cargo.toml; 239 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
 | [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 8 | 1,243 | None |  |
 | [ ] | [rustok-calendar](../../crates/modules/rustok-calendar) | `modules` | 24 | 1,111 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-calendar/admin) | `modules` | 6 | 325 | None |  |
