@@ -9,7 +9,7 @@ use crate::common::settings::EmailProvider;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle,
+    RuntimeWorkerLifecycleState, StopHandle, additional_runtime_worker_snapshots,
 };
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRelaySupervisorMetricsSnapshot, outbox_relay_supervisor_metrics_snapshot,
@@ -461,15 +461,18 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
 
 fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
+    let local_workers = settings.runtime.runs_background_workers();
     let event_runtime = ctx.shared_get::<Arc<EventRuntime>>();
-    let relay_required = event_runtime
-        .as_ref()
-        .and_then(|runtime| runtime.relay_config.clone())
-        .is_some();
-    let retention_required = event_runtime
-        .as_ref()
-        .and_then(|runtime| runtime.outbox_retention.clone())
-        .is_some();
+    let relay_required = local_workers
+        && event_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.relay_config.clone())
+            .is_some();
+    let retention_required = local_workers
+        && event_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.outbox_retention.clone())
+            .is_some();
     let stop_requested = ctx
         .shared_map::<StopHandle, _>(StopHandle::is_stopping)
         .unwrap_or(false);
@@ -489,10 +492,18 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     ));
     payload.push_str(&format_runtime_worker_state(
         "remote_executor_reaper",
-        settings.registry.remote_executor.enabled,
+        local_workers && settings.registry.remote_executor.enabled,
         ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
         stop_requested,
     ));
+    for worker in additional_runtime_worker_snapshots(ctx) {
+        payload.push_str(&format_runtime_worker_state(
+            worker.name,
+            worker.required,
+            worker.finished,
+            stop_requested,
+        ));
+    }
     payload.push_str(&format_runtime_worker_restart_metrics(
         outbox_relay_supervisor_metrics_snapshot(),
     ));
@@ -509,19 +520,25 @@ fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let seo_worker_finished: Option<bool> = None;
     payload.push_str(&format_runtime_worker_state(
         "seo_bulk",
-        settings.runtime.background_workers.seo_bulk_enabled,
+        local_workers
+            && cfg!(feature = "mod-seo")
+            && settings.runtime.background_workers.seo_bulk_enabled,
         seo_worker_finished,
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "seo_sitemap",
-        settings.runtime.background_workers.seo_sitemap_enabled,
+        local_workers
+            && cfg!(feature = "mod-seo")
+            && settings.runtime.background_workers.seo_sitemap_enabled,
         seo_worker_finished,
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "seo_index_repair",
-        settings.runtime.background_workers.seo_index_repair_enabled,
+        local_workers
+            && cfg!(feature = "mod-seo")
+            && settings.runtime.background_workers.seo_index_repair_enabled,
         seo_worker_finished,
         stop_requested,
     ));
@@ -698,6 +715,8 @@ fn search_metrics_unavailable_payload() -> String {
 fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Sqlite => {
+            // SQLite parses timestamps at millisecond precision. Integer
+            // milliseconds avoid julianday floating-point errors at half seconds.
             r#"
             WITH source_tenants AS (
                 SELECT tenant_id FROM nodes WHERE deleted_at IS NULL
@@ -706,15 +725,20 @@ fn search_metrics_snapshot_query(backend: DbBackend) -> &'static str {
             )
             SELECT
                 CAST(COUNT(*) AS INTEGER) AS total_documents,
-                CAST(SUM(CASE WHEN is_public THEN 1 ELSE 0 END) AS INTEGER) AS public_documents,
-                CAST(SUM(CASE WHEN indexed_at < updated_at THEN 1 ELSE 0 END) AS INTEGER) AS stale_documents,
+                CAST(COALESCE(SUM(CASE WHEN is_public THEN 1 ELSE 0 END), 0) AS INTEGER) AS public_documents,
+                CAST(COALESCE(SUM(CASE WHEN julianday(indexed_at) < julianday(updated_at) THEN 1 ELSE 0 END), 0) AS INTEGER) AS stale_documents,
                 CAST(COUNT(DISTINCT tenant_id) AS INTEGER) AS tenants_with_documents,
-                CAST(COUNT(DISTINCT CASE WHEN indexed_at < updated_at THEN tenant_id END) AS INTEGER) AS lagging_tenants,
+                CAST(COUNT(DISTINCT CASE WHEN julianday(indexed_at) < julianday(updated_at) THEN tenant_id END) AS INTEGER) AS lagging_tenants,
                 CAST(
                     COALESCE(
                         MAX(
                             CASE
-                                WHEN updated_at > indexed_at THEN CAST((julianday(updated_at) - julianday(indexed_at)) * 86400 AS INTEGER)
+                                WHEN julianday(updated_at) > julianday(indexed_at) THEN (
+                                    (CAST(strftime('%s', updated_at) AS INTEGER) - CAST(strftime('%s', indexed_at) AS INTEGER)) * 1000
+                                    + CAST(substr(strftime('%f', updated_at), 4, 3) AS INTEGER)
+                                    - CAST(substr(strftime('%f', indexed_at), 4, 3) AS INTEGER)
+                                    + 500
+                                ) / 1000
                                 ELSE 0
                             END
                         ),
@@ -868,6 +892,7 @@ mod tests {
         RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
         RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
+    use crate::services::server_runtime_context::ServerRuntimeContext;
     use axum::{
         http::{StatusCode, header::CONTENT_TYPE},
         response::IntoResponse,
@@ -903,6 +928,94 @@ mod tests {
         assert!(
             has_exact_line,
             "labeled metric line `{prefix}` not found in payload: {payload}"
+        );
+    }
+
+    #[tokio::test]
+    async fn additional_worker_metrics_follow_host_mode_and_listener_registration() {
+        use crate::common::settings::{RuntimeHostMode, RustokSettings};
+        use crate::services::app_lifecycle::ModuleWorkSchedulerRequirement;
+        use crate::services::module_event_dispatcher::ModuleEventDispatcherRequirement;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let missing = super::render_runtime_worker_metrics(&ctx);
+        assert!(
+            missing
+                .contains("rustok_runtime_worker_state{worker=\"module_event_dispatcher\"} -1\n")
+        );
+        assert!(
+            missing.contains("rustok_runtime_worker_state{worker=\"module_work_scheduler\"} -1\n")
+        );
+        ctx.shared_insert(ModuleEventDispatcherRequirement(false));
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(false));
+        let empty = super::render_runtime_worker_metrics(&ctx);
+        assert!(
+            empty.contains("rustok_runtime_worker_state{worker=\"module_event_dispatcher\"} 0\n")
+        );
+        assert!(
+            empty.contains("rustok_runtime_worker_state{worker=\"module_work_scheduler\"} 0\n")
+        );
+        #[cfg(feature = "mod-payment")]
+        assert!(empty.contains(
+            "rustok_runtime_worker_state{worker=\"payment_provider_event_recovery\"} -1\n"
+        ));
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Api;
+        settings.registry.remote_executor.enabled = true;
+        let api = ServerRuntimeContext::new(db, settings);
+        let disabled = super::render_runtime_worker_metrics(&api);
+        assert!(
+            disabled.contains("rustok_runtime_worker_state{worker=\"remote_executor_reaper\"} 0\n")
+        );
+        assert!(disabled.contains("rustok_runtime_worker_state{worker=\"seo_bulk\"} 0\n"));
+        assert!(
+            disabled.contains("rustok_runtime_worker_state{worker=\"module_work_scheduler\"} 0\n")
+        );
+        assert!(
+            disabled
+                .contains("rustok_runtime_worker_state{worker=\"module_event_dispatcher\"} 0\n")
+        );
+        #[cfg(feature = "mod-payment")]
+        assert!(disabled.contains(
+            "rustok_runtime_worker_state{worker=\"payment_provider_event_recovery\"} 0\n"
+        ));
+    }
+
+    #[tokio::test]
+    async fn module_work_scheduler_metrics_track_task_exit() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerRequirement,
+        };
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(true));
+        let task = tokio::spawn(std::future::pending::<()>());
+        let abort = task.abort_handle();
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(task));
+        assert!(
+            super::render_runtime_worker_metrics(&ctx)
+                .contains("rustok_runtime_worker_state{worker=\"module_work_scheduler\"} 1\n")
+        );
+        abort.abort();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ctx
+                .shared_map::<ModuleWorkSchedulerHandle, _>(ModuleWorkSchedulerHandle::is_finished)
+                != Some(true)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            super::render_runtime_worker_metrics(&ctx)
+                .contains("rustok_runtime_worker_state{worker=\"module_work_scheduler\"} 2\n")
         );
     }
 
@@ -1207,6 +1320,149 @@ mod tests {
         assert!(payload.contains("rustok_outbox_backlog_size 3"));
         assert!(payload.contains("rustok_outbox_dlq_total NaN"));
         assert!(payload.contains("rustok_outbox_pending_lag_seconds NaN"));
+    }
+
+    async fn sqlite_search_metrics_fixture() -> ServerRuntimeContext {
+        use sea_orm::ConnectionTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite test database");
+        for statement in [
+            "CREATE TABLE nodes (tenant_id TEXT, deleted_at TEXT)",
+            "CREATE TABLE products (tenant_id TEXT)",
+            "CREATE TABLE search_documents (tenant_id TEXT, is_public BOOLEAN, indexed_at TEXT, updated_at TEXT)",
+        ] {
+            db.execute_unprepared(statement).await.expect("test schema");
+        }
+        ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default())
+    }
+
+    #[tokio::test]
+    async fn sqlite_empty_search_index_reports_zero_counts() {
+        let ctx = sqlite_search_metrics_fixture().await;
+        let payload = super::render_search_metrics(&ctx).await;
+        for metric in [
+            "rustok_search_documents_total",
+            "rustok_search_public_documents_total",
+            "rustok_search_stale_documents_total",
+            "rustok_search_tenants_with_documents_total",
+            "rustok_search_lagging_tenants_total",
+            "rustok_search_bootstrap_pending_tenants_total",
+            "rustok_search_max_lag_seconds",
+        ] {
+            assert!(payload.contains(&format!("{metric} 0\n")), "{payload}");
+        }
+        assert!(payload.contains("rustok_search_metrics_collection_status 1\n"));
+        assert!(!payload.contains("NaN"));
+    }
+
+    #[tokio::test]
+    async fn sqlite_empty_index_with_source_reports_bootstrap_pending() {
+        use sea_orm::ConnectionTrait;
+
+        let ctx = sqlite_search_metrics_fixture().await;
+        ctx.db()
+            .execute_unprepared(
+                "INSERT INTO nodes (tenant_id, deleted_at) VALUES ('bootstrap', NULL)",
+            )
+            .await
+            .unwrap();
+        let payload = super::render_search_metrics(&ctx).await;
+        assert!(payload.contains("rustok_search_metrics_collection_status 1\n"));
+        assert!(payload.contains("rustok_search_documents_total 0\n"));
+        assert!(payload.contains("rustok_search_bootstrap_pending_tenants_total 1\n"));
+        assert!(!payload.contains("NaN"));
+    }
+
+    #[tokio::test]
+    async fn sqlite_search_metrics_distinguish_indexed_and_bootstrap_tenants() {
+        use sea_orm::ConnectionTrait;
+
+        let ctx = sqlite_search_metrics_fixture().await;
+        ctx.db().execute_unprepared(
+            "INSERT INTO nodes (tenant_id, deleted_at) VALUES ('indexed', NULL), ('bootstrap', NULL)",
+        ).await.unwrap();
+        ctx.db().execute_unprepared(
+            "INSERT INTO search_documents (tenant_id, is_public, indexed_at, updated_at) VALUES \
+             ('indexed', 1, '2024-01-01 00:00:00', '2024-01-01 00:00:10'), \
+             ('indexed', 0, '2024-01-01 00:00:10', '2024-01-01 00:00:10')",
+        ).await.unwrap();
+        let payload = super::render_search_metrics(&ctx).await;
+        for expected in [
+            "rustok_search_metrics_collection_status 1\n",
+            "rustok_search_documents_total 2\n",
+            "rustok_search_public_documents_total 1\n",
+            "rustok_search_stale_documents_total 1\n",
+            "rustok_search_tenants_with_documents_total 1\n",
+            "rustok_search_lagging_tenants_total 1\n",
+            "rustok_search_bootstrap_pending_tenants_total 1\n",
+            "rustok_search_max_lag_seconds 10\n",
+        ] {
+            assert!(payload.contains(expected), "{payload}");
+        }
+        assert!(!payload.contains("NaN"));
+    }
+
+    #[tokio::test]
+    async fn sqlite_search_metrics_round_half_second_boundaries() {
+        use sea_orm::ConnectionTrait;
+
+        let ctx = sqlite_search_metrics_fixture().await;
+        for (indexed, updated, expected, stale) in [
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:04.499", 0, 1),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:04.500", 1, 1),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:05.499", 1, 1),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:05.500", 2, 1),
+            ("2024-01-01 00:00:59.900", "2024-01-01 00:01:00.400", 1, 1),
+            ("1969-12-31 23:59:59.750", "1970-01-01 00:00:00.250", 1, 1),
+            (
+                "2024-01-01 01:00:00.000+01:00",
+                "2024-01-01 00:00:01.000+00:00",
+                1,
+                1,
+            ),
+            (
+                "2024-01-01 00:00:01.000+00:00",
+                "2024-01-01 01:00:00.000+01:00",
+                0,
+                0,
+            ),
+        ] {
+            ctx.db()
+                .execute_unprepared("DELETE FROM search_documents")
+                .await
+                .unwrap();
+            ctx.db()
+                .execute_unprepared(&format!(
+                    "INSERT INTO search_documents VALUES ('tenant', 1, '{indexed}', '{updated}')"
+                ))
+                .await
+                .unwrap();
+            let payload = super::render_search_metrics(&ctx).await;
+            assert!(payload.contains("rustok_search_metrics_collection_status 1\n"));
+            assert!(
+                payload.contains(&format!("rustok_search_stale_documents_total {stale}\n")),
+                "{indexed} -> {updated}: {payload}"
+            );
+            assert!(
+                payload.contains(&format!("rustok_search_lagging_tenants_total {stale}\n")),
+                "{indexed} -> {updated}: {payload}"
+            );
+            assert!(
+                payload.contains(&format!("rustok_search_max_lag_seconds {expected}\n")),
+                "{indexed} -> {updated}: {payload}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn sqlite_search_metrics_missing_tables_remain_unavailable() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default());
+        let payload = super::render_search_metrics(&ctx).await;
+        assert!(payload.contains("rustok_search_metrics_collection_status 0\n"));
+        assert!(payload.contains("rustok_search_documents_total NaN\n"));
     }
 
     #[test]

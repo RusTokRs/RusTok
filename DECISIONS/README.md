@@ -52,6 +52,9 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-02](./2026-11-02-rbac-graphql-grant-invalidation.md) | Durable invalidation for GraphQL role-grant edits | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
+| [2026-11-02](./2026-11-02-rbac-cache-resolution-consistency.md) | RBAC cache-resolution consistency failures | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
+| [2026-11-02](./2026-11-02-invalidated-rbac-request-scope.md) | Invalidated RBAC request snapshots fail closed | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
 | [2026-11-02](./2026-11-02-forum-remove-unwired-closing-and-digest-settings.md) | Forum removes the unwired `allow_user_topic_closing` setting and rejects digest selections it cannot deliver | Accepted | Implemented | Extends [Forum removes module settings that no runtime code reads](./2026-10-09-forum-remove-unwired-module-settings.md) |
 | [2026-11-01](./2026-11-01-oauth-access-token-revocation-fence.md) | OAuth access-token revocation fence | Accepted | In progress | — |
 | [2026-10-28](./2026-10-28-forum-write-acknowledgements.md) | Forum owner-write acknowledgements do not re-read hidden content | Accepted | In progress | Extends [Forum anonymous discovery and category counts](./2026-10-15-forum-anonymous-discovery-and-category-counts.md) |

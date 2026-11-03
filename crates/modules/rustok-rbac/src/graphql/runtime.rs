@@ -55,6 +55,20 @@ pub trait RbacGraphqlRoleWriter: Send + Sync {
         let _ = (tenant_id, role_id);
         Ok(())
     }
+
+    /// Notify the host after a role-grant replacement and its durable generation commit.
+    ///
+    /// The generation is a global recovery watermark, not a per-role event.
+    /// The compatibility default invokes the older membership hook; hosts with
+    /// distributed caches should also reconcile or publish the committed marker.
+    async fn role_permissions_committed(
+        &self,
+        tenant_id: &Uuid,
+        role_id: &Uuid,
+        _generation: u64,
+    ) -> Result<(), RbacGraphqlRoleWriteError> {
+        self.invalidate_role_users(tenant_id, role_id).await
+    }
 }
 
 #[derive(Clone)]

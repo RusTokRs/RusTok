@@ -216,7 +216,7 @@ fn control_plane_lifecycle_docs_capture_final_parity_contract() {
     }
 
     for required in [
-        "validated/running/committed/failed",
+        "validated/running/committed_hook_pending/committed/committed_hook_failed/failed/orphaned",
         "GraphQL maps canonical lifecycle/recovery facts",
         "module_operations",
         "admin/SSR clients must not remap",
@@ -303,8 +303,8 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
 
     for surface in [queries.as_str(), mutations.as_str()] {
         assert!(
-            surface.contains("ModuleOperationRecoveryPlan::from("),
-            "GraphQL recovery read/write surface must map service recovery plans through the typed GraphQL plan"
+            surface.contains("ModuleOperationRecoveryPlan::try_from("),
+            "GraphQL recovery read/write surface must validate the owner view before projecting it"
         );
     }
 

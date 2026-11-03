@@ -2,12 +2,13 @@
 
 ## 1. Architectural Purpose & Boundaries
 
-`rustok-build` defines the platform build and release persistence contracts for RusToK. It manages build entities, tracks build lifecycle execution plans, normalizes module manifest contributions, and publishes transactional build events.
+`rustok-build` defines the platform build and release persistence contracts for RusToK. It manages build entities, tracks build lifecycle execution plans, normalizes module manifest contributions, and publishes build events after persistence commits.
 
 Key responsibilities:
 - Persists and tracks platform build states (`BuildStage`, `BuildStatus`, `DeploymentProfile`).
 - Coordinates immutable build execution plans (`BuildExecutionPlan`, `FrontendBuildPlan`, `RoleBuildPlan`) for server and frontend compilation targets.
 - Provides atomic queued build claiming and execution dispatching through `BuildService` and `BuildExecutionService`.
+- Returns the inserted build model on fresh enqueue, including its saved reason and execution metadata; prior immutable receipt results are not rewritten.
 - Exposes neutral API projections (`PlatformBuildSnapshot`) and read-only host query ports (`BuildControl`, `SharedBuildControl`).
 - Normalizes and validates module manifest contributions (`NormalizedModuleContributionManifest`) preventing hand-authored privilege escalation.
 - Publishes build lifecycle domain events (`BuildEvent`) with explicit scope separation (`BuildEventScope::Platform` vs `BuildEventScope::Tenant`).
@@ -25,9 +26,9 @@ Key responsibilities:
    - Frontend plans specify Trunk/Cargo toolchains, workspace paths, and output artifact paths (`FrontendBuildPlan`).
    - `BuildCommandSpec` translates plan data into sandboxed OS command executions (`run_build_command`) passing `RUSTOK_MODULES_MANIFEST` environments.
 
-## 3. Transactional Event Publishing & Scopes
+## 3. Event Publishing & Scopes
 
-- `BuildEventPublisher`: Port trait decoupling the build service from transport implementations.
+- `BuildEventPublisher`: Port trait decoupling the build service from transport implementations. Publication happens after commit and is not atomic with build persistence; failure can leave state changed without a delivered event.
 - `EventBusBuildEventPublisher`: Publishes domain events to `rustok_core::EventBus` with non-nil actor and correlation identities.
 - `BuildEventScope`:
   - `Platform`: Global composition changes are published with a nil tenant UUID (`Uuid::nil()`) to prevent accidental tenant misattribution.
@@ -50,11 +51,10 @@ Key responsibilities:
    - Trace IDs bounded between 1 and 512 bytes; actor and correlation IDs must be non-nil.
    - Contribution manifests reject undeclared builder capabilities and malformed component types.
 2. **Branch Completeness & Anti-Swallowing**:
-   - Build step failures in `run_build_command` immediately record the error message and transition build status to `Failed`.
-   - Manifest snapshot serialization errors propagate explicitly without leaving orphaned builds.
+   - Observed execution errors and start-notification failure after a claim trigger a failure-recording attempt. Database or event publication errors are returned and can leave an ambiguous outcome; crash-safe recovery is not implemented.
 3. **State Transition Integrity**:
-   - Mutually exclusive build claiming (`update_many` with `Status.eq(Queued)`) prevents split-brain execution across multiple workers.
-   - Terminal builds cannot be re-executed or modified.
+   - A status compare-and-swap (`update_many` with `Status.eq(Queued)`) permits at most one claim of a given queued build; it is not a global execution lock or crash-recovery lease.
+   - Status updates reject missing, terminal, invalid or concurrently changed states and compare the observed status at write time; same-status updates are not version-fenced, and no worker lease or global execution lock is provided.
 4. **Side-Effect Completeness**:
    - Materializes temporary manifest snapshots to isolated build-specific directory paths (`build_manifest_snapshot_path(build_id)`).
    - Cleans null values from manifest snapshots prior to TOML serialization.
@@ -63,4 +63,5 @@ Key responsibilities:
    - Progress calculation: `15 + (((index + 1) * 75) / total_steps)`.
 6. **Order of Operations & Concurrency**:
    - Builds claimed atomically inside transactions before spawning child processes.
-   - Events published only after transaction commits or state transitions succeed.
+   - Events are published after the database commit, without an atomic outbox; retries or failures can duplicate or lose notifications.
+   - Dry-run previews do not claim, write, publish or start a process; they are non-reserving read snapshots.

@@ -84,6 +84,14 @@ impl RbacCacheInvalidationRuntime {
 pub struct RbacCacheInvalidationListenerHandle(Arc<RbacCacheInvalidationRuntime>);
 
 impl RbacCacheInvalidationListenerHandle {
+    #[cfg(test)]
+    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
+        let local = tokio::spawn(std::future::pending());
+        let reconcile = tokio::spawn(std::future::pending());
+        let tasks = vec![local.abort_handle(), reconcile.abort_handle()];
+        (Self::new(local, None, reconcile), tasks)
+    }
+
     fn new(
         local: JoinHandle<()>,
         redis: Option<JoinHandle<()>>,
@@ -100,7 +108,7 @@ impl RbacCacheInvalidationListenerHandle {
         self.0.is_running()
     }
 
-    fn abort(&self) {
+    pub(crate) fn abort(&self) {
         self.0.abort();
     }
 

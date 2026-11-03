@@ -470,10 +470,8 @@ impl RbacMutation {
             reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)?;
         }
 
-        // Resolve the invalidation writer up front (when the host registered
-        // one) so post-commit invalidation never has to discover the runtime.
-        // Hosts that register no writer run without a permission cache, so
-        // there is nothing to invalidate.
+        // Resolve the optional host notifier before the transaction. The durable
+        // generation remains mandatory even when no fast-path notifier exists.
         let role_writer = if validated_update_permissions.is_some() {
             ctx.data_opt::<RbacGraphqlRoleWriterHandle>()
                 .map(|handle| handle.0.clone())
@@ -625,28 +623,40 @@ impl RbacMutation {
             }
         }
 
+        // Reserve the recovery watermark in the grant transaction. Supplying
+        // an identical replacement still conservatively advances the generation.
+        let committed_generation = if permissions_updated {
+            Some(
+                crate::reserve_permission_invalidation_generation(&tx)
+                    .await
+                    .map_err(|e| internal_db_error("rbac role invalidation generation", e))?,
+            )
+        } else {
+            None
+        };
+
         tx.commit()
             .await
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
-        // The grant change is already committed at this point, so an
-        // invalidation failure must not rewrite the mutation outcome into
-        // an error the client would retry as if nothing happened. Retry
-        // once, then log loudly: any remaining staleness is bounded by
-        // the permission-cache TTL.
-        if permissions_updated
-            && let Some(writer) = role_writer.as_ref()
+        // The grant change is already committed, so a fast-path failure must
+        // not make the client believe it rolled back. Durable-generation
+        // watchers can recover if both notification attempts fail or are skipped.
+        if let (Some(generation), Some(writer)) = (committed_generation, role_writer.as_ref())
             && writer
-                .invalidate_role_users(&tenant.id, &role_id)
+                .role_permissions_committed(&tenant.id, &role_id, generation)
                 .await
                 .is_err()
-            && let Err(error) = writer.invalidate_role_users(&tenant.id, &role_id).await
+            && let Err(error) = writer
+                .role_permissions_committed(&tenant.id, &role_id, generation)
+                .await
         {
             tracing::error!(
                 %error,
                 tenant_id = %tenant.id,
                 role_id = %role_id,
-                "RBAC role permission change committed but cache invalidation failed; stale snapshots expire with the permission-cache TTL"
+                generation,
+                "RBAC role permission change committed but fast invalidation failed; durable generation reconciliation must recover"
             );
         }
 

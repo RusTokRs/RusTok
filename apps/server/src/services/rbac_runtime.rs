@@ -23,6 +23,19 @@ use rustok_rbac::{
 pub(crate) type ServerRuntimePermissionResolver =
     RuntimePermissionResolver<SeaOrmRelationPermissionStore, MokaPermissionCache, Error>;
 
+// Preserve storage failures while treating exhausted cache consistency checks
+// as unavailable authority, never as a successful empty permission decision.
+impl From<rustok_rbac::PermissionCacheResolutionError<sea_orm::DbErr>> for Error {
+    fn from(error: rustok_rbac::PermissionCacheResolutionError<sea_orm::DbErr>) -> Self {
+        match error {
+            rustok_rbac::PermissionCacheResolutionError::Store(error) => Error::Database(error),
+            rustok_rbac::PermissionCacheResolutionError::Invalidated => {
+                Error::Cache("permission resolution invalidated during every attempt".to_string())
+            }
+        }
+    }
+}
+
 /// Feed authenticated request evidence to the canonical owner policy engine.
 /// A matching snapshot preserves the caller's permission ceiling.
 struct RequestPermissionResolver {
@@ -44,6 +57,7 @@ impl PermissionResolver for RequestPermissionResolver {
                 cache_hit: false,
             });
         }
+        super::rbac_request_scope::ensure_scope_not_invalidated(tenant_id, user_id)?;
         self.runtime.resolve_permissions(tenant_id, user_id).await
     }
 }
@@ -193,6 +207,7 @@ pub(crate) async fn invalidate_user_permissions_cache(
 }
 
 pub(crate) async fn invalidate_all_user_permissions_cache() {
+    super::rbac_request_scope::invalidate_current_rbac_request_scope_for_all();
     advance_permission_cache_global_epoch();
     USER_PERMISSION_CACHE.invalidate_all();
     USER_PERMISSION_CACHE.run_pending_tasks().await;
@@ -439,6 +454,30 @@ mod tests {
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use sea_orm::{ConnectionTrait, Set};
     use serial_test::serial;
+
+    #[tokio::test]
+    async fn invalidated_permission_resolution_maps_to_safe_error() {
+        use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+        use rustok_rbac::PermissionCacheResolutionError;
+
+        let failure: PermissionCacheResolutionError<sea_orm::DbErr> =
+            PermissionCacheResolutionError::Invalidated;
+        let error = Error::from(failure);
+        assert!(matches!(&error, Error::Cache(_)));
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let payload = std::str::from_utf8(&body).unwrap();
+        assert!(payload.contains("internal_error"));
+        assert!(!payload.contains("invalidated"));
+        assert!(!payload.contains("cache"));
+
+        let error = Error::from(PermissionCacheResolutionError::Store(
+            sea_orm::DbErr::Custom("original storage failure".into()),
+        ));
+        assert!(matches!(error, Error::Database(sea_orm::DbErr::Custom(message))
+            if message == "original storage failure"));
+    }
 
     async fn insert_tenant_and_user(
         db: &impl ConnectionTrait,

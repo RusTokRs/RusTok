@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
-    Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
+    Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest, NextResolve,
+    ResolveInfo,
 };
 use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
-use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
+use async_graphql::{FieldError, PathSegment, Pos, Request, Response, ServerResult, Value};
 use rustok_api::Permission;
 
 use crate::context::AuthContext;
@@ -200,6 +201,38 @@ struct GraphqlSecurityPolicyExtension;
 
 #[async_trait::async_trait]
 impl Extension for GraphqlSecurityPolicyExtension {
+    async fn resolve(
+        &self,
+        ctx: &ExtensionContext<'_>,
+        info: ResolveInfo<'_>,
+        next: NextResolve<'_>,
+    ) -> ServerResult<Option<Value>> {
+        // Mutation roots execute serially. Do not begin another root resolver
+        // with an invalidated task-local snapshot, even if it reads AuthContext
+        // directly. Nested payload fields of an already admitted root continue
+        // so a committed mutation's receipt is not suppressed by this hook.
+        if info.path_node.parent.is_none()
+            && let Some(auth) = ctx.data_opt::<AuthContext>()
+            && crate::services::rbac_request_scope::ensure_scope_not_invalidated(
+                &auth.tenant_id,
+                &auth.user_id,
+            )
+            .is_err()
+        {
+            let mut error = <FieldError as GraphQLError>::internal_error(
+                "Request authority is temporarily unavailable",
+            )
+            .into_server_error(Pos::default());
+            // ResolveInfo exposes the response path, but not its source position.
+            error.locations.clear();
+            error
+                .path
+                .push(PathSegment::Field(info.path_node.field_name().to_owned()));
+            return Err(error);
+        }
+        next.run(ctx, info).await
+    }
+
     async fn prepare_request(
         &self,
         ctx: &ExtensionContext<'_>,
@@ -243,9 +276,19 @@ mod tests {
         classify_sensitive_graphql_document, sensitive_graphql_fields,
     };
     use crate::context::AuthContext;
-    use async_graphql::{EmptySubscription, Object, Request, Schema, SimpleObject};
+    use crate::services::rbac_request_scope::{
+        RbacRequestScope, invalidate_current_rbac_request_scope, with_rbac_request_scope,
+    };
+    use async_graphql::{
+        Context, EmptySubscription, Object, PathSegment, Request, Schema, SimpleObject,
+    };
     use rustok_api::Permission;
+    use rustok_core::UserRole;
     use serde_json::json;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
     use uuid::Uuid;
 
     struct QueryRoot;
@@ -280,10 +323,39 @@ mod tests {
 
     struct MutationRoot;
 
+    #[derive(SimpleObject)]
+    struct MutationReceipt {
+        committed: bool,
+    }
+
     #[Object]
     impl MutationRoot {
         async fn create_user(&self) -> bool {
             true
+        }
+
+        async fn change_own_authority(&self, ctx: &Context<'_>) -> MutationReceipt {
+            let auth = ctx.data_unchecked::<AuthContext>();
+            invalidate_current_rbac_request_scope(&auth.tenant_id, &auth.user_id);
+            MutationReceipt { committed: true }
+        }
+
+        async fn change_other_authority(&self, ctx: &Context<'_>) -> MutationReceipt {
+            let auth = ctx.data_unchecked::<AuthContext>();
+            invalidate_current_rbac_request_scope(&auth.tenant_id, &Uuid::new_v4());
+            MutationReceipt { committed: true }
+        }
+
+        async fn use_original_authority(&self, ctx: &Context<'_>) -> bool {
+            let auth = ctx.data_unchecked::<AuthContext>();
+            // Simulate an owner resolver that checks only its immutable auth data.
+            if rustok_api::has_effective_permission(&auth.permissions, &Permission::USERS_MANAGE) {
+                ctx.data_unchecked::<Arc<AtomicUsize>>()
+                    .fetch_add(1, Ordering::SeqCst);
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -297,6 +369,86 @@ mod tests {
             scopes: Vec::new(),
             grant_type: "password".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn invalidated_scope_blocks_later_root_but_keeps_committed_receipt() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let auth = auth_context(vec![Permission::USERS_MANAGE]);
+        let scope = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            auth.permissions.clone(),
+            UserRole::Admin,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let request = Request::new(
+            "mutation { first: changeOwnAuthority { committed } ...Next } fragment Next on MutationRoot { second: useOriginalAuthority }",
+        ).data(auth).data(calls.clone());
+        let response = with_rbac_request_scope(Some(scope), schema.execute(request)).await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(
+            response.errors[0].path,
+            vec![PathSegment::Field("second".to_string())]
+        );
+        let error = serde_json::to_value(&response.errors[0]).unwrap();
+        assert_eq!(error["extensions"]["code"], "INTERNAL_ERROR");
+        assert!(!response.errors[0].message.contains("invalidat"));
+        let data = response.data.into_json().unwrap();
+        assert_eq!(data["first"], json!({"committed": true}));
+    }
+
+    #[tokio::test]
+    async fn unrelated_invalidation_does_not_block_later_root() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let auth = auth_context(vec![Permission::USERS_MANAGE]);
+        let scope = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            auth.permissions.clone(),
+            UserRole::Admin,
+        );
+        let calls = Arc::new(AtomicUsize::new(0));
+        let request =
+            Request::new("mutation { changeOtherAuthority { committed } useOriginalAuthority }")
+                .data(auth)
+                .data(calls.clone());
+        let response = with_rbac_request_scope(Some(scope), schema.execute(request)).await;
+        assert!(response.errors.is_empty(), "{:?}", response.errors);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn invalidated_scope_blocks_new_query_root_but_not_unscoped_requests() {
+        let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+            .extension(GraphqlSecurityPolicy)
+            .finish();
+        let auth = auth_context(vec![]);
+        let scope = RbacRequestScope::new(
+            auth.tenant_id,
+            auth.user_id,
+            auth.permissions.clone(),
+            UserRole::Admin,
+        );
+        let request = Request::new("{ ping }").data(auth.clone());
+        let response = with_rbac_request_scope(Some(scope), async {
+            invalidate_current_rbac_request_scope(&auth.tenant_id, &auth.user_id);
+            schema.execute(request).await
+        })
+        .await;
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(
+            response.errors[0].path,
+            vec![PathSegment::Field("ping".to_string())]
+        );
+        let unscoped = schema.execute(Request::new("{ ping }").data(auth)).await;
+        assert!(unscoped.errors.is_empty());
     }
 
     #[test]

@@ -279,8 +279,9 @@ pub trait RelationPermissionStore {
 /// Cache lookup result carrying an opaque token for conditional publication.
 ///
 /// Cache adapters that do not need race protection can use token `0` through the default trait
-/// methods. Generation-aware adapters override `lookup` and `insert_if_current` so a value loaded
-/// before an invalidation cannot be published or returned after that invalidation completes.
+/// methods. Generation-aware adapters override `lookup` and `insert_if_current` to reject a value
+/// when invalidation is observed before conditional publication. This is not a fence against
+/// invalidation after validation, at commit, or in another replica.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionCacheLookup {
     permissions: Option<Vec<Permission>>,
@@ -316,8 +317,9 @@ pub trait PermissionCache {
 
     /// Publish a cache fill only if the lookup token still represents the current generation.
     ///
-    /// Returns `true` when the resolved permissions are safe to return to the caller. The default
-    /// implementation preserves compatibility for adapters without generation tracking.
+    /// Returns `true` when the adapter accepts the fill under its validation policy. This does not
+    /// prove current authority after that validation point. The default implementation preserves
+    /// compatibility for adapters without generation tracking.
     async fn insert_if_current(
         &self,
         tenant_id: &uuid::Uuid,
@@ -362,12 +364,21 @@ pub async fn resolve_permissions_from_relations<S: RelationPermissionStore>(
     Ok(normalize_permissions(permissions))
 }
 
+/// Failure to resolve a permission set suitable for a cached authorization decision.
+#[derive(Debug, thiserror::Error)]
+pub enum PermissionCacheResolutionError<E> {
+    #[error("permission relation read failed: {0}")]
+    Store(E),
+    #[error("permission resolution invalidated during every attempt")]
+    Invalidated,
+}
+
 pub async fn resolve_permissions_with_cache<S, C>(
     store: &S,
     cache: &C,
     tenant_id: &uuid::Uuid,
     user_id: &uuid::Uuid,
-) -> Result<crate::PermissionResolution, S::Error>
+) -> Result<crate::PermissionResolution, PermissionCacheResolutionError<S::Error>>
 where
     S: RelationPermissionStore,
     C: PermissionCache + Sync,
@@ -383,7 +394,6 @@ where
         user_id = %user_id,
         "Resolving permissions with cache"
     );
-    let mut last_resolved: Option<Vec<Permission>> = None;
     for _ in 0..MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
         let (cached_permissions, token) = cache.lookup(tenant_id, user_id).await.into_parts();
         if let Some(cached_permissions) = cached_permissions {
@@ -393,8 +403,9 @@ where
             });
         }
 
-        let resolved_permissions =
-            resolve_permissions_from_relations(store, tenant_id, user_id).await?;
+        let resolved_permissions = resolve_permissions_from_relations(store, tenant_id, user_id)
+            .await
+            .map_err(PermissionCacheResolutionError::Store)?;
         if cache
             .insert_if_current(tenant_id, user_id, token, resolved_permissions.clone())
             .await
@@ -404,17 +415,11 @@ where
                 cache_hit: false,
             });
         }
-        last_resolved = Some(resolved_permissions);
     }
 
-    // Continuous invalidation means the snapshot cannot be *cached* as proven
-    // current, but it was just read from the authoritative relation graph.
-    // Return it uncached instead of fabricating an empty (deny-all) snapshot:
-    // cache churn must not become an availability outage.
-    Ok(crate::PermissionResolution {
-        permissions: last_resolved.unwrap_or_default(),
-        cache_hit: false,
-    })
+    // Every read was superseded before conditional publication. It is neither a
+    // verified grant set nor evidence of an empty set; make no decision from it.
+    Err(PermissionCacheResolutionError::Invalidated)
 }
 
 pub async fn invalidate_cached_permissions<C: PermissionCache + Sync>(
@@ -436,8 +441,9 @@ pub async fn invalidate_cached_permissions<C: PermissionCache + Sync>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PermissionCache, PermissionCacheLookup, RelationPermissionStore,
-        resolve_permissions_from_relations, resolve_permissions_with_cache,
+        PermissionCache, PermissionCacheLookup, PermissionCacheResolutionError,
+        RelationPermissionStore, resolve_permissions_from_relations,
+        resolve_permissions_with_cache,
     };
     use async_trait::async_trait;
     use rustok_api::Permission;
@@ -715,7 +721,10 @@ mod tests {
         }
     }
 
-    struct AlwaysSupersededCache;
+    #[derive(Default)]
+    struct AlwaysSupersededCache {
+        attempts: AtomicUsize,
+    }
 
     #[async_trait]
     impl PermissionCache for AlwaysSupersededCache {
@@ -753,6 +762,7 @@ mod tests {
             _token: u64,
             _permissions: Vec<Permission>,
         ) -> bool {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
             false
         }
     }
@@ -909,25 +919,132 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn continuous_invalidation_returns_uncached_authoritative_snapshot() {
+    async fn continuous_invalidation_fails_closed_with_typed_error() {
         let role_id = uuid::Uuid::new_v4();
         let store = StubStore {
             role_ids: vec![role_id],
             tenant_role_ids: vec![role_id],
             permissions: vec![Permission::USERS_MANAGE],
         };
-
+        let cache = AlwaysSupersededCache::default();
         let result = resolve_permissions_with_cache(
             &store,
-            &AlwaysSupersededCache,
+            &cache,
             &uuid::Uuid::new_v4(),
             &uuid::Uuid::new_v4(),
         )
-        .await
-        .unwrap();
+        .await;
+        assert!(matches!(
+            result,
+            Err(PermissionCacheResolutionError::Invalidated)
+        ));
+        assert_eq!(
+            cache.attempts.load(Ordering::SeqCst),
+            super::MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS
+        );
+    }
 
-        assert_eq!(result.permissions, vec![Permission::USERS_MANAGE]);
-        assert!(!result.cache_hit);
+    #[tokio::test]
+    async fn revoked_final_read_is_not_returned_when_publication_is_rejected() {
+        use tokio::sync::Notify;
+
+        struct MutableStore {
+            role: uuid::Uuid,
+            grants: Arc<Mutex<Vec<Permission>>>,
+        }
+        #[async_trait]
+        impl RelationPermissionStore for MutableStore {
+            type Error = String;
+            async fn load_user_role_ids(&self, _: &uuid::Uuid) -> Result<Vec<uuid::Uuid>, String> {
+                Ok(vec![self.role])
+            }
+            async fn load_tenant_role_ids(
+                &self,
+                _: &uuid::Uuid,
+                _: &[uuid::Uuid],
+            ) -> Result<Vec<uuid::Uuid>, String> {
+                Ok(vec![self.role])
+            }
+            async fn load_permissions_for_roles(
+                &self,
+                _: &uuid::Uuid,
+                _: &[uuid::Uuid],
+            ) -> Result<Vec<Permission>, String> {
+                Ok(self.grants.lock().await.clone())
+            }
+        }
+        struct RevocationCache {
+            attempts: AtomicUsize,
+            final_read: Notify,
+            resume: Notify,
+        }
+        #[async_trait]
+        impl PermissionCache for RevocationCache {
+            async fn get(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> Option<Vec<Permission>> {
+                None
+            }
+            async fn insert(&self, _: &uuid::Uuid, _: &uuid::Uuid, _: Vec<Permission>) {
+                panic!("conditional publication required");
+            }
+            async fn invalidate(&self, _: &uuid::Uuid, _: &uuid::Uuid) {}
+            async fn lookup(&self, _: &uuid::Uuid, _: &uuid::Uuid) -> PermissionCacheLookup {
+                PermissionCacheLookup::new(None, 1)
+            }
+            async fn insert_if_current(
+                &self,
+                _: &uuid::Uuid,
+                _: &uuid::Uuid,
+                _: u64,
+                permissions: Vec<Permission>,
+            ) -> bool {
+                let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                if attempt == super::MAX_PERMISSION_CACHE_RESOLUTION_ATTEMPTS {
+                    assert_eq!(permissions, vec![Permission::USERS_MANAGE]);
+                    self.final_read.notify_one();
+                    self.resume.notified().await;
+                }
+                false
+            }
+        }
+
+        let grants = Arc::new(Mutex::new(vec![Permission::USERS_MANAGE]));
+        let store = MutableStore {
+            role: uuid::Uuid::new_v4(),
+            grants: grants.clone(),
+        };
+        let cache = Arc::new(RevocationCache {
+            attempts: AtomicUsize::new(0),
+            final_read: Notify::new(),
+            resume: Notify::new(),
+        });
+        let resolving_cache = cache.clone();
+        let task = tokio::spawn(async move {
+            resolve_permissions_with_cache(
+                &store,
+                resolving_cache.as_ref(),
+                &uuid::Uuid::new_v4(),
+                &uuid::Uuid::new_v4(),
+            )
+            .await
+        });
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            cache.final_read.notified(),
+        )
+        .await
+        .expect("final relation read must reach publication");
+        // Model a committed revocation and its rejected cache-fill generation.
+        grants.lock().await.clear();
+        cache.resume.notify_one();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            result,
+            Err(PermissionCacheResolutionError::Invalidated)
+        ));
+        assert!(grants.lock().await.is_empty());
     }
 
     #[tokio::test]

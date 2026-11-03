@@ -59,6 +59,94 @@ impl CurrentUser {
     }
 }
 
+/// Authenticated WebSocket authority, retained only for the connection lifetime.
+/// Every revalidation re-resolves the signed credential against current storage
+/// and compares the effective authority with the original request snapshot.
+#[derive(Clone)]
+pub(crate) struct WebSocketAuthLease {
+    tenant_id: uuid::Uuid,
+    access_token: String,
+    initial_scope: crate::services::rbac_request_scope::RbacRequestScope,
+    expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum WebSocketAuthLeaseError {
+    Expired,
+    ResolutionFailed,
+    TimedOut,
+    AuthorityChanged,
+}
+
+impl WebSocketAuthLease {
+    pub(crate) fn new(access_token: String, current_user: &CurrentUser) -> Self {
+        Self {
+            tenant_id: current_user.user.tenant_id,
+            access_token,
+            initial_scope: crate::services::rbac_request_scope::RbacRequestScope::new(
+                current_user.user.tenant_id,
+                current_user.user.id,
+                current_user.permissions.clone(),
+                current_user.inferred_role.clone(),
+            ),
+            expires_at: current_user.access_token_expires_at,
+        }
+    }
+
+    /// Time remaining until expiry; zero means no further data may be sent.
+    pub(crate) fn remaining(&self) -> std::time::Duration {
+        (self.expires_at - chrono::Utc::now())
+            .to_std()
+            .unwrap_or(std::time::Duration::ZERO)
+    }
+
+    pub(crate) async fn revalidate(
+        &self,
+        auth_runtime: &ServerAuthRuntime,
+    ) -> Result<crate::services::rbac_request_scope::RbacRequestScope, WebSocketAuthLeaseError>
+    {
+        let remaining = self.remaining();
+        if remaining.is_zero() {
+            return Err(WebSocketAuthLeaseError::Expired);
+        }
+        let lookup_timeout = remaining.min(std::time::Duration::from_secs(5));
+        let user = tokio::time::timeout(lookup_timeout, async {
+            let tenant = crate::models::tenants::Entity::find_by_id(self.tenant_id)
+                .one(auth_runtime.runtime_ctx().db())
+                .await
+                .map_err(|_| ())?
+                .filter(|tenant| tenant.is_active)
+                .ok_or(())?;
+            resolve_current_user_from_access_token(auth_runtime, tenant.id, &self.access_token)
+                .await
+                .map_err(|_| ())
+        })
+        .await
+        .map_err(|_| {
+            if self.remaining().is_zero() {
+                WebSocketAuthLeaseError::Expired
+            } else {
+                WebSocketAuthLeaseError::TimedOut
+            }
+        })?
+        .map_err(|_| WebSocketAuthLeaseError::ResolutionFailed)?;
+        // A slow authority lookup must not extend the signed token lifetime.
+        if chrono::Utc::now() >= self.expires_at {
+            return Err(WebSocketAuthLeaseError::Expired);
+        }
+        let scope = crate::services::rbac_request_scope::RbacRequestScope::new(
+            user.user.tenant_id,
+            user.user.id,
+            user.permissions,
+            user.inferred_role,
+        );
+        if scope != self.initial_scope {
+            return Err(WebSocketAuthLeaseError::AuthorityChanged);
+        }
+        Ok(scope)
+    }
+}
+
 fn classify_access_token_claims(
     claims: &crate::auth::Claims,
 ) -> Result<AuthPrincipalKind, (StatusCode, &'static str)> {

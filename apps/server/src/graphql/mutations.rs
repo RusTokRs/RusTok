@@ -1700,8 +1700,8 @@ impl RootMutation {
         .await
         .map_err(map_module_operation_recovery_error)?;
 
-        Ok(ModuleOperationRecoveryPlan::from(
-            rustok_api::ModuleOperationRecoveryPlanView::from(plan),
+        ModuleOperationRecoveryPlan::try_from(rustok_api::ModuleOperationRecoveryPlanView::from(
+            plan,
         ))
     }
 

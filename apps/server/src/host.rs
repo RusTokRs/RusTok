@@ -84,35 +84,51 @@ pub async fn run() -> Result<()> {
     )?;
     validate_auth_deployment(&auth_config, production)?;
 
-    initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
+    let result = with_runtime_shutdown(&runtime_ctx, async {
+        initialize_server_context(&runtime_ctx, &config.auth.jwt.secret, &database_uri).await?;
 
-    let router = application_router(rustok_settings.runtime.host_mode, &rustok_settings)
-        .with_state(ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()));
-    let router = bootstrap_application_router(
-        router,
-        runtime_ctx.clone(),
-        auth_config,
-        config.settings,
-        rustok_settings,
-    )
-    .await?;
+        let router =
+            application_router(rustok_settings.runtime.host_mode, &rustok_settings).with_state(
+                ServerAuthRuntime::new(runtime_ctx.clone(), auth_config.clone()),
+            );
+        let router = bootstrap_application_router(
+            router,
+            runtime_ctx.clone(),
+            auth_config,
+            config.settings,
+            rustok_settings,
+        )
+        .await?;
 
-    let (binding, port) = resolve_server_endpoint(&config.server)?;
-    let listener = tokio::net::TcpListener::bind((binding.as_str(), port)).await?;
-    let address = listener.local_addr()?;
-    tracing::info!(%address, "RusTok Axum host listening");
+        let (binding, port) = resolve_server_endpoint(&config.server)?;
+        let listener = tokio::net::TcpListener::bind((binding.as_str(), port)).await?;
+        let address = listener.local_addr()?;
+        tracing::info!(%address, "RusTok Axum host listening");
 
-    let serve_result = axum::serve(
-        listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(wait_for_shutdown_signal())
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(wait_for_shutdown_signal())
+        .await
+        .map_err(Error::Io)
+    })
     .await;
+    if result.is_ok() {
+        tracing::info!("RusTok Axum host shut down cleanly");
+    }
+    result
+}
 
-    shutdown_runtime_workers(&runtime_ctx).await;
-    tracing::info!("RusTok Axum host shut down cleanly");
-
-    serve_result.map_err(Error::Io)
+// Once initialization can spawn work, every ordinary result path must drain
+// tracked workers without replacing the original bootstrap, bind, or serve error.
+async fn with_runtime_shutdown<T>(
+    ctx: &ServerRuntimeContext,
+    run: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    let result = run.await;
+    shutdown_runtime_workers(ctx).await;
+    result
 }
 
 async fn migrate_database_if_enabled(
@@ -402,6 +418,72 @@ mod tests {
         validate_https_deployment,
     };
     use crate::common::settings::RuntimeHostMode;
+
+    #[tokio::test]
+    async fn host_shutdown_runs_after_success_and_preserves_startup_error() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        for fail in [false, true] {
+            let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+            let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+            let result = super::with_runtime_shutdown(&ctx, async {
+                let mut stop = StopHandle::ensure(&ctx).subscribe();
+                let task = tokio::spawn(async move {
+                    stop.changed().await.unwrap();
+                    let _ = finished_tx.send(());
+                });
+                ctx.shared_insert(ModuleWorkSchedulerHandle::new(task));
+                if fail {
+                    Err(crate::error::Error::Message(
+                        "original startup failure".into(),
+                    ))
+                } else {
+                    Ok(42)
+                }
+            })
+            .await;
+            finished_rx.await.expect("tracked worker must be drained");
+            assert!(StopHandle::ensure(&ctx).is_stopping());
+            assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+            match (fail, result) {
+                (false, Ok(value)) => assert_eq!(value, 42),
+                (true, Err(crate::error::Error::Message(message))) => {
+                    assert_eq!(message, "original startup failure")
+                }
+                _ => panic!("host result was not preserved"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn host_shutdown_runs_when_listener_bind_fails() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let occupied = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = occupied.local_addr().unwrap();
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let result = super::with_runtime_shutdown(&ctx, async {
+            let mut stop = StopHandle::ensure(&ctx).subscribe();
+            ctx.shared_insert(ModuleWorkSchedulerHandle::new(tokio::spawn(async move {
+                stop.changed().await.unwrap();
+                let _ = finished_tx.send(());
+            })));
+            let _listener = tokio::net::TcpListener::bind(address).await?;
+            Ok(())
+        })
+        .await;
+        assert!(matches!(result, Err(crate::error::Error::Io(error))
+            if error.kind() == std::io::ErrorKind::AddrInUse));
+        finished_rx.await.expect("tracked worker must be drained");
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
 
     #[test]
     fn registry_only_router_is_composable_without_domain_routes() {

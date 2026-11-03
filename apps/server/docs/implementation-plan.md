@@ -49,8 +49,19 @@ six-dimension audit. The reviewed baseline was
 - **Email:** replace detached password-reset/verification send tasks
   with confidential, durable, idempotent delivery and retry evidence
   without enabling user enumeration.
-- **GraphQL:** convert fallible string UUID owner-view projections
-  into typed/fallible mappings rather than panicking on malformed data.
+- **GraphQL:** owner-view UUID projection now fails with a sanitized GraphQL
+  error rather than panicking. The added conversion and transport tests still
+  need execution with the project toolchain.
+- **Build execution:** dry-run no longer claims a build. A live executor now
+  attempts to record observed post-claim errors as failures and uses guarded
+  status writes, but failed recording, process loss or task cancellation can
+  still strand it. Implement durable fenced recovery, global admission and
+  transactional notification delivery before claiming crash-safe execution or
+  progress streams; the added Rust tests still require execution.
+  New build receipts now preserve the inserted execution plan and reason;
+  historical receipts retain their original response. Successful-build reuse
+  across composition revisions and repeated `BuildRequested` notifications
+  still require a coherent owner/event reconciliation design.
 
 Required scoped verification before accepting these changes:
 `cargo fmt --all -- --check`,
@@ -59,6 +70,143 @@ Required scoped verification before accepting these changes:
 `cargo test -p rustok-migrations --lib`, and targeted PostgreSQL
 schema/admission and OAuth failure-injection tests. None is claimed
 passed without execution evidence.
+
+## Search metrics empty-index correction (2026-11-02)
+
+The SQLite search metrics query now normalizes empty-set public and stale
+counts to zero, matching the existing PostgreSQL aggregate behavior. Previously
+both values were `NULL`, causing a successful empty-index query to be reported
+as a failed metrics collection. SQLite search lag calculations now round
+integer millisecond differences instead of floating-point Julian-day arithmetic,
+which avoids off-by-one results at whole and half-second boundaries. SQLite's
+date parser has millisecond precision, unlike PostgreSQL's microseconds; the
+readiness and Prometheus queries use the same calculation and compare parsed
+instants rather than timestamp text. Search and outbox readiness also compare
+signed lag against the full `u64` configuration range without wrapping large thresholds.
+Focused Rust tests cover the changed branches but require execution with the
+workspace's Rust toolchain and dependencies. This correction does not make the
+existing lag or bootstrap metrics proof of source freshness or completeness;
+that requires owner-backed reconciliation or durable checkpoints.
+
+## WebSocket Authority Continuation (2026-11-02)
+
+The build WebSocket now shares the GraphQL connection's live authority lease:
+initial bearer identity is re-resolved against tenant, credential and current
+RBAC state periodically and before event delivery, with a bounded lookup and an
+expiry deadline. Outbound writes are bounded to avoid a stalled peer holding
+an expired connection indefinitely. The process-local build hub uses atomic
+singleton admission. The GraphQL init-receipt deadline is rechecked after it
+fires so it does not interrupt an already received initialization; the separate
+validation phase has a 15-second bound.
+The global build-visibility decision and durable multi-process progress remain
+open; this change does not resolve those boundaries. SQLite lease and socket
+regression tests and a concurrent hub test are included but require execution
+in a Rust-capable environment, alongside GraphQL WebSocket and multi-replica
+integration verification.
+
+### Module-work scheduler liveness (verification pending)
+
+Readiness and runtime-worker metrics now include the shared module-work scheduler
+when module composition registers scheduled work. Until registrations are inspected,
+worker hosts treat the task as required; a confirmed empty set is optional. Surface
+hosts do not require a local scheduler. These checks cover only task liveness, not
+work progress or backlog. Module-work startup is serialized per runtime context;
+concurrent initializers cannot register and spawn duplicate tracked schedulers.
+An error or cancellation releases the initialization lock so a later attempt may
+retry. Shutdown publishes a stop signal even if startup has not created it yet,
+prevents startup after registration completes, and waits up to its shared drain
+deadline for an ongoing initialization. This is process-local, not fleet-wide
+ownership; registration callbacks retried after error or cancellation must handle
+any external side effects they performed before failing. A stuck callback can
+outlive the drain deadline. This does not serialize the whole bootstrap or other
+worker/dispatcher startup against shutdown. Concurrency, error/cancellation retry,
+liveness and shutdown tests are added but require execution with the project toolchain.
+
+### Axum startup failure cleanup (verification pending)
+
+The Axum host now invokes its bounded worker shutdown for ordinary initialization,
+router composition, endpoint resolution, listener bind, and serving errors as well
+as successful serving, preserving the original result. Shutdown also explicitly
+aborts the channel/RBAC invalidation listeners, RBAC generation watchdog, and
+in-memory event forwarder even if other handle clones remain. Aborts are requested,
+not joined. This is not cancellation- or panic-safe, and not every detached or
+stop-signal-only task is tracked and drained (including rate-limit cleanup and the
+Comments TCP listener); an expired drain deadline can leave other work running.
+Direct users of the lower-level bootstrap APIs remain responsible for shutdown.
+The new host and supervisor regression tests have not been compiled or executed.
+
+The pre-existing RBAC source-guard mismatch exposed a rejected-read fallback in
+the owner resolver. The owner now returns a typed consistency error after
+bounded retries and the server maps it to a generic internal error rather than
+using a potentially superseded grant or fabricating a denial. A deterministic
+interleaving test and adapter tests are added but have not run. This is a local
+cache-fill check, not a transaction or cross-replica revocation fence. See the
+[owner decision](../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
+After a matching request-snapshot invalidation, `RbacService` single/any/all,
+permission-list and role lookups and the owner-policy adapter now fail unavailable
+rather than fall back to unscoped persisted grants. Full-cache invalidation also
+expires a snapshot in the calling task. This is an intentional availability
+tradeoff, and a preceding mutation may have committed; clients must not blindly
+replay it. The added unit and database regression tests have not been compiled or
+executed. See the [request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
+
+The GraphQL security extension now rejects new normal root resolvers when the
+matching task-local snapshot is invalid, even when the owner reads the original
+`AuthContext`. After a grant commit the generation-aware role writer clears
+the whole local cache and expires the calling snapshot, including for an
+unrelated role; the retained legacy hook expires it before a fallible membership
+lookup. Added GraphQL sequencing and failed-lookup regression tests are not yet
+compiled or run. The hook permits nested fields within a root already admitted, cannot stop
+already-started fields, and does not reject a missing task-local scope. State does
+not automatically follow spawned tasks or invalidate other requests/replicas.
+Actual async-graphql 7.2.1 execution and transport behavior require integration
+verification before claiming this boundary is protected end to end.
+
+The owner GraphQL `update_role` now reserves the durable RBAC invalidation
+generation in the same transaction as a supplied grant replacement. After commit
+the server clears the local cache and attempts namespace-wide generation fan-out;
+watchdogs can reconcile a missed fast notification. Added owner and server tests
+have not been compiled or run. The durable marker is not an outbox or an immediate
+revocation fence, and cancellation, unhealthy watchers and active request
+snapshots remain limitations. PostgreSQL and multi-replica verification are open.
+See the [grant-invalidation decision](../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
+
+### GraphQL operation admission ordering (verification pending)
+
+Previously, the incoming-socket task tracked new operations before the GraphQL
+protocol stream consumed cancellations, so rapidly cancelled subscriptions or
+reused ids could be rejected as duplicates or overflow. Admission now occurs
+when the protocol stream consumes each queued message; the host handles an
+engine `complete` before polling the engine again. Slots are not eagerly
+released by incoming cancellation, so an old completion cannot release a new
+operation with the same id under that protocol ordering. On review, forwarding
+the engine's cancellation acknowledgement was found unsafe for immediate ID
+reuse on `graphql-transport-ws`: a client could treat it as the completion of
+the new operation. That acknowledgement is now suppressed for the modern
+protocol, but forwarded for legacy `graphql-ws`, whose documented flow expects
+it. This cannot retract messages already in flight before cancellation; legacy
+clients in particular must not assume an old completion identifies a reused ID's
+new operation.
+
+Regression tests exercise both supported subprotocols, queued cancellations,
+natural completion, id reuse, duplicate ids, and the 32-operation limit. They
+have not been compiled or run here. The fix depends on the locked async-graphql
+protocol engine yielding a server `complete` for an active cancellation before
+consuming a subsequent operation: the public upstream source near the 7.2.1
+release shows this behavior, but the exact locked crate was not available for
+verification. Run the tests against that crate and re-run them when upgrading it;
+also test end-to-end over the actual socket with delayed writes and revocation.
+Lease revalidation before polling and output is not a transaction fence for an
+already running GraphQL operation: a mutation may commit after its authority
+changes but before its result is revalidated and suppressed. Security-sensitive
+mutations requiring immediate revocation must recheck authority at their own
+commit boundary; the WebSocket transport alone cannot provide that guarantee.
+`cargo test -p rustok-server --lib graphql_ws_admission --locked --offline`
+could not reach compilation because the pinned Athanor git dependency was not
+cached. A standalone Rust harness using the actual admission adapter with mocked
+stream/channel/tracker types passed two ordering and overflow checks; it is not
+an integration test or a type-check of the server against its real dependencies.
 
 ## Server P1 Security and Readiness Remediation (2026-11-01)
 
@@ -88,10 +236,27 @@ logic review, not completion of the exhaustive FS-01 audit.
   `worker` host modes. API/SSR surface modes emit a non-critical worker-host
   mode check instead of failing readiness for workers they do not run.
 
+### Worker liveness follow-up (partial)
+
+Readiness and worker metrics now share local task snapshots for auth retention,
+module dispatch and lifecycle maintenance, and feature-gated payment, commerce,
+product and workflow workers. Dispatcher composition explicitly records whether
+it has listeners, so an uninitialized registration fails closed while a confirmed
+empty listener set does not require a task. Host modes without local workers do
+not require these handles. These are liveness checks, not proof of successful
+processing; progress/backlog observability and coverage of other background
+workers remain open. Rust compilation and the added tests require a toolchain.
+
 ### Verification status
 
-The sandbox has no Rust toolchain, PostgreSQL, Redis, or Docker. The diff
-invariant gate and `git diff --check` were run; Rust compilation, crate tests,
+The sandbox has no project-compatible Rust toolchain, PostgreSQL, Redis, or Docker.
+A temporary Rust/Cargo 1.88 was obtained for metadata and formatting inspection,
+but the workspace requires Rust 1.96. Offline server checking stops before
+compilation because the Athanor git dependency is not cached; registry access is
+also restricted. `git diff --check` and diff invariants pass. The architecture
+snapshot guard currently reports the existing `rustok-server -> flex` dependency
+against its allow-list; the relevant manifests and guard rules are unchanged by
+this patch. Rust compilation, crate tests,
 migration smoke, and infrastructure-backed tests remain required before merge:
 `cargo fmt --all -- --check`,
 `cargo check -p rustok-server --lib`,
@@ -384,13 +549,12 @@ Redis, or a running host in this environment.
   storefront SSR, and registry-only profiles still compose module runtime
   extensions and individually gated helper workers, but do not start the local
   dispatcher receive loop.
-- Dispatcher startup is idempotent through a host-owned
-  `ModuleEventDispatcherHandle` stored in `ServerRuntimeContext`. The previous
-  detached logging task is replaced by a handle that shutdown can abort and
-  join. `shutdown_runtime_workers` drains it alongside the other module workers.
-- The core `RunningDispatcher` still has no cooperative stop signal; shutdown
-  aborts the receive loop and joins it with the existing bounded module-worker
-  timeout. In-flight detached handler tasks remain a core dispatcher limitation.
+- Sequential dispatcher startup checks for a host-owned
+  `ModuleEventDispatcherHandle` in `ServerRuntimeContext`; this check is not
+  atomic against concurrent bootstrap. `shutdown_runtime_workers` requests a
+  cooperative stop and joins the dispatcher with a bounded timeout, falling back
+  to abort if the drain exceeds that deadline. This does not establish durable
+  delivery or prevent a concurrent startup/shutdown race.
 
 ### Platform settings write serialization
 
@@ -478,8 +642,8 @@ cooperative dispatcher drain; those remain separate follow-ups.
   translation hydration cannot decide credential validity. SQLite regression
   tests cover unknown-token success, whole-family idempotent revocation, and
   cross-client/cross-tenant isolation.
-- GraphQL WebSocket hosts now admit operations before forwarding them to the
-  protocol engine: at most 32 active ids, ids must be non-empty and at most
+- GraphQL WebSocket hosts admit operations as the protocol engine consumes
+  queued input: at most 32 active ids, ids must be non-empty and at most
   128 bytes, duplicate ids close with 4409, overflow with 4429, and invalid
   ids with 4400. Slots are released when the server emits `complete`.
   `CurrentUser` carries the signed access-token expiry; the WS lease closes

@@ -128,7 +128,10 @@ impl BuildService {
             updated_at: Set(build.updated_at),
         };
 
-        active_model.insert(db).await?;
+        // Return the persisted model, including the execution metadata and
+        // reason populated above. Composition receipts and transport snapshots
+        // serialize this result, so the pre-insert placeholder is incomplete.
+        let build = active_model.insert(db).await?;
 
         Ok((build, true))
     }
@@ -200,13 +203,30 @@ impl BuildService {
             .map_err(|e| anyhow::anyhow!(format!("Failed to claim build {build_id}: {e}")))?;
 
         if let Some(build) = claimed.as_ref() {
-            self.event_publisher
+            if let Err(error) = self
+                .event_publisher
                 .publish(BuildEvent::BuildStarted {
                     build_id: build.id,
                     stage: build.stage.clone(),
                     progress: build.progress,
                 })
-                .await?;
+                .await
+            {
+                // The claim has committed and execution has not started. Try to
+                // record the notification failure rather than strand the claim.
+                let cause = error.context(format!(
+                    "build {build_id} was claimed but its start notification failed"
+                ));
+                if let Err(record_error) = self
+                    .fail_build(build_id, "Build start notification failed".to_string())
+                    .await
+                {
+                    return Err(cause.context(format!(
+                        "could not reliably record or notify build failure: {record_error:#}"
+                    )));
+                }
+                return Err(cause);
+            }
         }
 
         Ok(claimed)
@@ -255,74 +275,117 @@ impl BuildService {
     ) -> anyhow::Result<()> {
         let updated = self
             .db
-            .transaction::<_, Option<(BuildStatus, Build)>, sea_orm::DbErr>(|txn| {
+            .transaction::<_, (BuildStatus, Build), sea_orm::DbErr>(|txn| {
                 let status = status.clone();
                 let stage = stage.clone();
                 Box::pin(async move {
-                    let build = BuildEntity::find_by_id(build_id).one(txn).await?;
-                    let Some(build) = build else {
-                        return Ok(None);
-                    };
-
+                    let build = BuildEntity::find_by_id(build_id)
+                        .one(txn)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom(format!("build {build_id} not found"))
+                        })?;
                     if build.is_final() {
-                        return Ok(None);
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} is already final"
+                        )));
+                    }
+                    if !matches!(
+                        (&build.status, &status),
+                        (
+                            BuildStatus::Queued,
+                            BuildStatus::Running | BuildStatus::Cancelled
+                        ) | (
+                            BuildStatus::Running,
+                            BuildStatus::Running | BuildStatus::Success | BuildStatus::Cancelled
+                        )
+                    ) {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "invalid status transition for build {build_id}"
+                        )));
                     }
 
                     let now = Utc::now();
                     let previous_status = build.status.clone();
-                    let started_at_is_none = build.started_at.is_none();
-                    let mut active_model: BuildActiveModel = build.into();
-                    active_model.status = Set(status.clone());
-
+                    let mut update = BuildEntity::update_many()
+                        .col_expr(
+                            crate::build::Column::Status,
+                            sea_orm::sea_query::Expr::value(status.clone()),
+                        )
+                        .col_expr(
+                            crate::build::Column::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(now),
+                        )
+                        .filter(crate::build::Column::Id.eq(build_id))
+                        // A concurrent terminal transition must never be overwritten.
+                        .filter(crate::build::Column::Status.eq(previous_status.clone()));
                     if let Some(stage) = stage {
-                        active_model.stage = Set(stage);
+                        update = update.col_expr(
+                            crate::build::Column::Stage,
+                            sea_orm::sea_query::Expr::value(stage),
+                        );
                     }
                     if let Some(progress) = progress {
-                        active_model.progress = Set(progress);
+                        update = update.col_expr(
+                            crate::build::Column::Progress,
+                            sea_orm::sea_query::Expr::value(progress),
+                        );
                     }
-
-                    active_model.updated_at = Set(now);
-
-                    if status == BuildStatus::Running && started_at_is_none {
-                        active_model.started_at = Set(Some(now));
+                    if status == BuildStatus::Running && build.started_at.is_none() {
+                        update = update.col_expr(
+                            crate::build::Column::StartedAt,
+                            sea_orm::sea_query::Expr::value(Some(now)),
+                        );
                     }
-
                     if status.is_final() {
-                        active_model.finished_at = Set(Some(now));
+                        update = update.col_expr(
+                            crate::build::Column::FinishedAt,
+                            sea_orm::sea_query::Expr::value(Some(now)),
+                        );
                     }
-
-                    let updated = active_model.update(txn).await?;
-                    Ok(Some((previous_status, updated)))
+                    if update.exec(txn).await?.rows_affected != 1 {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} changed during status update"
+                        )));
+                    }
+                    let updated = BuildEntity::find_by_id(build_id)
+                        .one(txn)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom(format!(
+                                "build {build_id} disappeared during status update"
+                            ))
+                        })?;
+                    Ok((previous_status, updated))
                 })
             })
             .await
             .map_err(|e| anyhow::anyhow!("Failed to update build status: {e}"))?;
 
-        if let Some((previous_status, updated)) = updated {
-            let event = match status {
-                BuildStatus::Running if previous_status != BuildStatus::Running => {
-                    BuildEvent::BuildStarted {
-                        build_id,
-                        stage: updated.stage.clone(),
-                        progress: updated.progress,
-                    }
+        let (previous_status, updated) = updated;
+        let event = match status {
+            BuildStatus::Running if previous_status != BuildStatus::Running => {
+                BuildEvent::BuildStarted {
+                    build_id,
+                    stage: updated.stage.clone(),
+                    progress: updated.progress,
                 }
-                BuildStatus::Running => BuildEvent::BuildProgress {
-                    build_id,
-                    stage: updated.stage.clone(),
-                    progress: updated.progress,
-                },
-                BuildStatus::Success => BuildEvent::BuildCompleted { build_id },
-                BuildStatus::Cancelled => BuildEvent::BuildCancelled {
-                    build_id,
-                    stage: updated.stage.clone(),
-                    progress: updated.progress,
-                },
-                BuildStatus::Queued | BuildStatus::Failed => return Ok(()),
-            };
+            }
+            BuildStatus::Running => BuildEvent::BuildProgress {
+                build_id,
+                stage: updated.stage.clone(),
+                progress: updated.progress,
+            },
+            BuildStatus::Success => BuildEvent::BuildCompleted { build_id },
+            BuildStatus::Cancelled => BuildEvent::BuildCancelled {
+                build_id,
+                stage: updated.stage.clone(),
+                progress: updated.progress,
+            },
+            BuildStatus::Queued | BuildStatus::Failed => return Ok(()),
+        };
 
-            self.event_publisher.publish(event).await?;
-        }
+        self.event_publisher.publish(event).await?;
 
         Ok(())
     }
@@ -333,22 +396,50 @@ impl BuildService {
             .transaction::<_, Option<Build>, sea_orm::DbErr>(|txn| {
                 let err_msg = err_msg.clone();
                 Box::pin(async move {
-                    let build = BuildEntity::find_by_id(build_id).one(txn).await?;
-                    let Some(build) = build else {
-                        return Ok(None);
-                    };
+                    let build = BuildEntity::find_by_id(build_id)
+                        .one(txn)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom(format!("build {build_id} not found"))
+                        })?;
 
                     if build.is_final() {
                         return Ok(None);
                     }
 
                     let now = Utc::now();
-                    let mut active_model: BuildActiveModel = build.into();
-                    active_model.status = Set(BuildStatus::Failed);
-                    active_model.error_message = Set(Some(err_msg));
-                    active_model.finished_at = Set(Some(now));
-                    active_model.updated_at = Set(now);
-                    let updated = active_model.update(txn).await?;
+                    let update = BuildEntity::update_many()
+                        .col_expr(
+                            crate::build::Column::Status,
+                            sea_orm::sea_query::Expr::value(BuildStatus::Failed),
+                        )
+                        .col_expr(
+                            crate::build::Column::ErrorMessage,
+                            sea_orm::sea_query::Expr::value(Some(err_msg)),
+                        )
+                        .col_expr(
+                            crate::build::Column::FinishedAt,
+                            sea_orm::sea_query::Expr::value(Some(now)),
+                        )
+                        .col_expr(
+                            crate::build::Column::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(now),
+                        )
+                        .filter(crate::build::Column::Id.eq(build_id))
+                        .filter(crate::build::Column::Status.eq(build.status));
+                    if update.exec(txn).await?.rows_affected != 1 {
+                        return Err(sea_orm::DbErr::Custom(format!(
+                            "build {build_id} changed during failure recording"
+                        )));
+                    }
+                    let updated = BuildEntity::find_by_id(build_id)
+                        .one(txn)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom(format!(
+                                "build {build_id} disappeared during failure recording"
+                            ))
+                        })?;
                     Ok(Some(updated))
                 })
             })
@@ -364,9 +455,9 @@ impl BuildService {
                     error: err_msg,
                 })
                 .await?;
+            error!(build_id = %build_id, "Build failed");
         }
 
-        error!(build_id = %build_id, "Build failed");
         Ok(())
     }
 }
@@ -426,6 +517,68 @@ mod tests {
         assert_ne!(
             compute_build_request_hash(&request(BuildRuntimeMode::Api)),
             compute_build_request_hash(&request(BuildRuntimeMode::Worker)),
+        );
+    }
+
+    #[tokio::test]
+    async fn new_build_result_matches_the_persisted_model_and_projection() {
+        use sea_orm::{ConnectionTrait, Database, EntityTrait, Schema};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(crate::build::Entity)))
+            .await
+            .expect("create builds table");
+        let request = BuildRequest {
+            manifest_ref: "platform_state:7".to_string(),
+            manifest_revision: 7,
+            manifest_snapshot: serde_json::json!({"modules": {}}),
+            artifact_identity: "distribution".to_string(),
+            requested_by: "operator".to_string(),
+            reason: Some("install module".to_string()),
+            modules_delta: "add catalog".to_string(),
+            modules: HashMap::new(),
+            profile: DeploymentProfile::HeadlessApi,
+            execution_plan: BuildExecutionPlan {
+                runtime_mode: BuildRuntimeMode::Api,
+                cargo_package: "rustok-server".to_string(),
+                cargo_profile: "release".to_string(),
+                cargo_target: Some("x86_64-unknown-linux-gnu".to_string()),
+                cargo_features: vec!["mod-catalog".to_string()],
+                cargo_command: "cargo build -p rustok-server --release".to_string(),
+                admin_build: None,
+                storefront_build: None,
+            },
+        };
+        let (created, is_new) =
+            super::BuildService::request_build_on_connection(&db, request.clone())
+                .await
+                .expect("enqueue build");
+        assert!(is_new);
+        let stored = crate::build::Entity::find_by_id(created.id)
+            .one(&db)
+            .await
+            .expect("read build")
+            .expect("build exists");
+        assert_eq!(created, stored);
+        assert_eq!(created.reason, request.reason);
+        let plan = crate::parse_execution_plan(created.id, created.modules_delta.as_ref())
+            .expect("returned build has its execution plan");
+        assert_eq!(plan, request.execution_plan);
+        let snapshot = crate::build_snapshot(&created);
+        assert_eq!(snapshot.reason.as_deref(), Some("install module"));
+        assert_eq!(snapshot.modules_delta, "add catalog");
+        assert_eq!(
+            snapshot.build_command.as_deref(),
+            Some("cargo build -p rustok-server --release")
+        );
+        assert_eq!(snapshot.build_features, vec!["mod-catalog".to_string()]);
+        assert_eq!(
+            snapshot.build_target.as_deref(),
+            Some("x86_64-unknown-linux-gnu")
         );
     }
 

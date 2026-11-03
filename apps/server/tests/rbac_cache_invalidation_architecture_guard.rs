@@ -198,8 +198,9 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
         ") -> bool {",
         "cache.lookup(tenant_id, user_id).await.into_parts()",
         "resolver_retries_generation_checked_cache_publication",
-        "continuous_invalidation_fails_closed",
-        "permissions: Vec::new()",
+        "continuous_invalidation_fails_closed_with_typed_error",
+        "revoked_final_read_is_not_returned_when_publication_is_rejected",
+        "Err(PermissionCacheResolutionError::Invalidated)",
     ] {
         assert!(
             core.contains(required),
@@ -267,4 +268,156 @@ fn rbac_permission_cache_rejects_fills_superseded_by_invalidation() {
     assert!(conditional_insert.contains("current_permission_cache_token(&key) != Some(token)"));
     assert!(conditional_insert.contains("return false;"));
     assert!(conditional_insert.contains("true\n    }"));
+}
+
+#[test]
+fn invalidated_request_scope_blocks_unscoped_fallbacks() {
+    let scope = source("apps/server/src/services/rbac_request_scope.rs");
+    let runtime = source("apps/server/src/services/rbac_runtime.rs");
+    let service = source("apps/server/src/services/rbac_service.rs");
+
+    assert!(scope.contains("state.scope.matches(tenant_id, actor_id) && !state.valid.load"));
+    assert!(scope.contains("invalidate_current_rbac_request_scope_for_all"));
+    let full = runtime
+        .split("pub(crate) async fn invalidate_all_user_permissions_cache()")
+        .nth(1)
+        .expect("full invalidation");
+    assert!(
+        full.find("invalidate_current_rbac_request_scope_for_all()")
+            .unwrap()
+            < full
+                .find("advance_permission_cache_global_epoch()")
+                .unwrap()
+    );
+    let request_resolver = runtime
+        .split("impl PermissionResolver for RequestPermissionResolver")
+        .nth(1)
+        .unwrap()
+        .split("#[derive(Clone, Copy)]")
+        .next()
+        .unwrap();
+    assert!(
+        request_resolver
+            .find("ensure_scope_not_invalidated")
+            .unwrap()
+            < request_resolver
+                .find("self.runtime.resolve_permissions")
+                .unwrap()
+    );
+    for (method, next, fallback) in [
+        (
+            "pub async fn get_user_permissions(",
+            "pub async fn get_user_role(",
+            "Self::resolver(db)",
+        ),
+        (
+            "pub async fn get_user_role(",
+            "pub async fn get_user_ids_for_role(",
+            "Self::get_user_role_authoritative",
+        ),
+    ] {
+        let body = service
+            .split(method)
+            .nth(1)
+            .unwrap()
+            .split(next)
+            .next()
+            .unwrap();
+        assert!(body.find("ensure_scope_not_invalidated").unwrap() < body.find(fallback).unwrap());
+    }
+    assert!(service.contains("invalidated_request_scope_never_falls_back_to_unscoped_grants"));
+}
+
+#[test]
+fn graphql_root_authority_gate_precedes_followup_resolvers_and_membership_lookup() {
+    let security = source("apps/server/src/graphql/security.rs");
+    let schema = source("apps/server/src/graphql/schema.rs");
+    let host = source("apps/server/src/graphql/rbac_runtime.rs");
+    let owner = source("crates/modules/rustok-rbac/src/graphql/mutation.rs");
+
+    assert!(schema.contains(".extension(GraphqlSecurityPolicy)"));
+    assert!(schema.contains(".data(rbac_role_writer)"));
+    let resolve = security
+        .split("    async fn resolve(")
+        .nth(1)
+        .unwrap()
+        .split("    async fn prepare_request(")
+        .next()
+        .unwrap();
+    assert!(resolve.contains("info.path_node.parent.is_none()"));
+    assert!(
+        resolve.find("ensure_scope_not_invalidated").unwrap()
+            < resolve.find("next.run(ctx, info).await").unwrap()
+    );
+    assert!(resolve.contains("info.path_node.field_name()"));
+    assert!(security.contains("invalidated_scope_blocks_later_root_but_keeps_committed_receipt"));
+    assert!(security.contains("unrelated_invalidation_does_not_block_later_root"));
+    let invalidation = host
+        .split("    async fn invalidate_role_users(")
+        .nth(1)
+        .unwrap()
+        .split("fn map_auth_admin_error")
+        .next()
+        .unwrap();
+    assert!(
+        invalidation
+            .find("invalidate_current_rbac_request_scope_for_all()")
+            .unwrap()
+            < invalidation.find("self.db.get_database_backend()").unwrap()
+    );
+    assert!(host.contains("role_membership_lookup_failure_still_invalidates_current_scope"));
+    assert!(owner.contains("role_permissions_committed(&tenant.id, &role_id, generation)"));
+}
+
+#[test]
+fn graphql_grant_replacement_reserves_generation_before_commit_and_notifies_after() {
+    let owner = source("crates/modules/rustok-rbac/src/graphql/mutation.rs");
+    let runtime = source("crates/modules/rustok-rbac/src/graphql/runtime.rs");
+    let host = source("apps/server/src/graphql/rbac_runtime.rs");
+    let tests = source("crates/modules/rustok-rbac/tests/role_crud_invariants.rs");
+    let update = owner
+        .split("    async fn update_role(")
+        .nth(1)
+        .unwrap()
+        .split("    /// Delete a role.")
+        .next()
+        .unwrap();
+    let grant_write = update
+        .find("DELETE FROM role_permissions WHERE role_id = ?")
+        .unwrap();
+    let reserve = update
+        .find("crate::reserve_permission_invalidation_generation(&tx)")
+        .unwrap();
+    let commit = update.find("tx.commit()").unwrap();
+    let notify = update
+        .find(".role_permissions_committed(&tenant.id, &role_id, generation)")
+        .unwrap();
+    assert!(grant_write < reserve && reserve < commit && commit < notify);
+    assert!(update.contains("if permissions_updated"));
+    assert!(runtime.contains("self.invalidate_role_users(tenant_id, role_id).await"));
+    let notify_host = host
+        .split("    async fn role_permissions_committed(")
+        .nth(1)
+        .unwrap()
+        .split("    async fn invalidate_role_users(")
+        .next()
+        .unwrap();
+    assert!(
+        notify_host
+            .find("invalidate_all_user_permissions_cache().await")
+            .unwrap()
+            < notify_host
+                .find("publish_all_rbac_invalidation(generation)")
+                .unwrap()
+    );
+    for required in [
+        "role_grant_edit_commits_generation_and_notifies_after_commit",
+        "role_grant_edit_rolls_back_if_generation_is_missing_or_exhausted",
+        "role_grant_write_failure_rolls_back_without_advancing_generation",
+        "role_grant_edit_callback_failure_does_not_undo_commit",
+        "generation_callback_defaults_to_legacy_membership_hook",
+    ] {
+        assert!(tests.contains(required));
+    }
+    assert!(host.contains("committed_grant_notification_clears_cache_and_calling_scope"));
 }

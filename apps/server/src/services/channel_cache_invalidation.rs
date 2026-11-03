@@ -101,6 +101,22 @@ impl ChannelCacheInvalidationRuntime {
 pub struct ChannelCacheInvalidationListenerHandle(Arc<ChannelCacheInvalidationRuntime>);
 
 impl ChannelCacheInvalidationListenerHandle {
+    #[cfg(test)]
+    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
+        let local = tokio::spawn(std::future::pending());
+        let reconcile = tokio::spawn(std::future::pending());
+        let tasks = vec![local.abort_handle(), reconcile.abort_handle()];
+        (
+            Self::new(
+                local,
+                None,
+                reconcile,
+                Arc::new(ChannelCacheInvalidationHealth::default()),
+            ),
+            tasks,
+        )
+    }
+
     fn new(
         local: JoinHandle<()>,
         redis: Option<JoinHandle<()>>,
@@ -123,7 +139,7 @@ impl ChannelCacheInvalidationListenerHandle {
         self.0.is_ready()
     }
 
-    fn abort(&self) {
+    pub(crate) fn abort(&self) {
         self.0.abort();
     }
 }
