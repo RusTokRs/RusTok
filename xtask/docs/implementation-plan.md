@@ -60,13 +60,14 @@ requirements. Empty layers and passing placeholder tests remain forbidden.
 
 The bounded reference recheck on 2026-11-03 found:
 
-- Default Blog source-layout verification passes; its generic verifier fixture
-  suite passes 54 tests with two Windows symlink-privilege skips.
-- Blog admin/storefront boundary verifiers pass.
-- `verify-module-reference-contract.mjs` and `verify-blog-fba.mjs` fail on stale
-  one-argument `BlogCommentProjectionHandler::new` markers. The actual module and
-  restart harness pass the shared transactional event bus explicitly. These are
-  source-verifier drift failures, not evidence of a missing runtime handler.
+- Both Blog layout entrypoints run the same generic lint and strict reference
+  profile. The generic lint recognizes the public root composed in `ui/mod.rs`.
+  Its fixture suite passed 55 tests with two Windows symlink-privilege skips.
+- The reference and FBA verifiers share the Comments projection wiring check.
+  It verifies that registration injects the transactional outbox bus and that
+  restart and replay create a bus against the correct connection. This replaced
+  stale markers for the one-argument constructor. `verify:module-reference-contract`
+  and the `verify:blog:fba` static chain passed.
 - Some Blog PostgreSQL tests return without exercising PostgreSQL when
   `RUSTOK_BLOG_TEST_DATABASE_URL` is absent. Green ordinary test output must not
   be recorded as configured database/concurrency/restart execution evidence.
@@ -79,10 +80,20 @@ The bounded reference recheck on 2026-11-03 found:
   determine whether saving can relabel fallback text; this review did not
   reproduce a database/browser failure and does not treat the risk as proven.
 
-No Blog Rust, database or browser suite was executed in this comparison. No
-Blog runtime or verifier implementation was changed. The failures above are
-prerequisites for treating Blog as a verified propagation reference, owned by
-the Blog/reference-tooling boundary rather than the native renderer.
+This comparison records static checks and verifier fixtures. The Blog and
+reference-tooling owners track execution of the Rust, database and browser
+suites and the remaining semantic gaps.
+
+The same source-layout lint was run against the existing `pages` module.
+Publish metadata validation passed. Layout lint reported 41 diagnostics,
+including follow-on errors from missing files. The main gaps were exposed
+SeaORM entities consumed by `rustok-starter`, noncanonical backend source slots,
+Leptos admin composition in the crate facade, legacy contract test wiring, and
+missing `next_package` declarations for existing Next.js packages. The Pages
+owner's locale, revision and restart harnesses provide a second use case for
+the planned capability-based semantic checks. The Next.js owner suites passed
+nine admin tests and eight storefront tests. Database and browser evidence
+remain separate verification gates.
 
 ### Native generator implementation
 

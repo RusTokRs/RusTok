@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hasBlogProjectionRegistration } from "./blog-comment-projection-wiring.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const failures = [];
@@ -509,8 +510,10 @@ requireAll("crates/modules/rustok-blog/src/module.rs", [
   "register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)",
   "register_reaction_subject_provider_factory(",
   "reaction_subject::BlogReactionSubjectProviderFactory,",
-  "registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));",
 ],);
+if (!hasBlogProjectionRegistration(read("crates/modules/rustok-blog/src/module.rs"))) {
+  fail("crates/modules/rustok-blog/src/module.rs: register_event_listeners must inject the transactional outbox bus into the Blog projection handler");
+}
 requireAll("crates/modules/rustok-blog/src/module.rs", [
   "rustok_core::Error::Internal(format!(",
   "blog SEO target registration failed: {error}",

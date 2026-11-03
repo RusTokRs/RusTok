@@ -28,20 +28,22 @@ node scripts/verify/verify-module-source-layout.mjs --module <slug>
 ```
 
 The direct Node invocation is the same runner for local debugging. The default
-Blog reference gate remains separate:
+Blog reference gate runs the shared lint and Blog-specific layout checks.
 
 ```bash
 npm run verify:module-source-layout
 ```
 
-That default run adds Blog-owned strict reference checks (including
-retired-path evidence). The shared lint checks canonical file responsibility and module wiring,
+Both Blog entrypoints include the strict Blog profile and its retired-path
+evidence. The shared lint checks canonical file responsibility and module wiring,
 thin crate facades, optional `runtime.rs` / `error.rs` wiring, private
 entities, source size, transport-neutral DTO/port contracts, persistence and
 service dependency direction, framework-independent FFA model/core, transport
 facade boundaries, support-sub-crate identity, declaration-to-package
-alignment, symlink safety, and suspicious scaffold placeholders. Test-only
-dependency exemptions apply only to test directories or Rust modules proven
+alignment, symlink safety, and suspicious scaffold placeholders. The crate facade
+can export a public Leptos component composed in `ui/mod.rs` or an adapter
+component wired through `ui::leptos`. Test-only dependency exemptions apply only
+to test directories or Rust modules proven
 to be declared under `#[cfg(test)]`; a filename suffix alone is not enough.
 It also checks structural Next.js package identity, host-module registration,
 and route-page imports for live UI surfaces. It cannot prove functional

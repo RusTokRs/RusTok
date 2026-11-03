@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { blogProjectionRestartWiringFailures, hasBlogProjectionRegistration } from './blog-comment-projection-wiring.mjs';
 
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -326,11 +327,8 @@ for (const marker of [
   'async fn restarted_connection(&self)',
   'SET search_path TO "{schema_name}"',
   'async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()',
-  'let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());',
   'first_handler.handle(&envelope).await?;',
   'drop(first_handler);',
-  'let restarted_db = test_db.restarted_connection().await?;',
-  'let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());',
   'restarted_handler.handle(&envelope).await?;',
   'load_post_state(&restarted_db, tenant_id, post_id).await?',
   'count_delivery(&restarted_db, envelope.id).await?, 1',
@@ -354,6 +352,9 @@ for (const marker of [
   'CREATE TABLE sys_events',
 ]) {
   requireMarker(restartHarness, marker, restartHarnessPath);
+}
+for (const failure of blogProjectionRestartWiringFailures(restartHarness)) {
+  failures.push(`${restartHarnessPath}: ${failure}`);
 }
 const processParentStart = restartHarness.indexOf(
   'async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter()',
@@ -412,8 +413,6 @@ for (const marker of [
 requireMarker(serviceExport, 'pub use comment_projection::BlogCommentProjectionHandler;', serviceExportPath);
 
 for (const marker of [
-  'fn register_event_listeners(',
-  'registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));',
   '#[tokio::test]',
   'async fn module_registers_comment_projection_handler_with_host_routing()',
   'let mut registry = ModuleEventListenerRegistry::new();',
@@ -429,6 +428,9 @@ for (const marker of [
   'assert!(!handler.handles(&forum_created));',
 ]) {
   requireMarker(moduleSource, marker, modulePath);
+}
+if (!hasBlogProjectionRegistration(moduleSource)) {
+  failures.push(`${modulePath}: register_event_listeners must inject the transactional outbox bus into the Blog projection handler`);
 }
 requireNoMarker(moduleSource, 'handler.handle(&', `${modulePath}: host registration harness`);
 

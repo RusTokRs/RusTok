@@ -44,7 +44,7 @@ function maskRange(chars, start, end) {
 }
 
 /** Mask Rust comments and string literals before source-pattern checks. */
-function maskRustNonCode(source) {
+export function maskRustNonCode(source) {
   const chars = source.split("");
   let index = 0;
   while (index < source.length) {
@@ -560,9 +560,19 @@ function checkUi(root, moduleRoot, side, manifest, diagnostics) {
   }
   const uiReexportsLeptos = /\bpub\s+use\s+(?:self::)?leptos::/.test(uiModuleCode);
   const libReexportsLeptosDirectly = /\bpub\s+use\s+(?:crate::)?ui::leptos::/.test(libCode);
-  if (!uiReexportsLeptos && !libReexportsLeptosDirectly) {
+  const composedComponents = new Set(Array.from(uiModuleCode.matchAll(
+    /#\s*\[\s*component\s*\]\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g,
+  ), ([, name]) => name));
+  const composedExports = libCode.matchAll(/\bpub\s+use\s+(?:crate\s*::\s*)?ui\s*::\s*(\{[^{};]*\}|[^{};]+)\s*;/g);
+  const libReexportsComposedComponent = Array.from(composedExports).some(([, exports]) =>
+    exports.replace(/^\{|\}$/g, "").split(",").some((item) => {
+      const [name, alias] = item.trim().split(/\s+as\s+/);
+      return alias !== "_" && composedComponents.has(name);
+    }),
+  );
+  if (!uiReexportsLeptos && !libReexportsLeptosDirectly && !libReexportsComposedComponent) {
     diagnostics.push(relative(root, uiModulePath) +
-      ": Leptos component must be re-exported through ui/mod.rs or directly from lib.rs");
+      ": Leptos root component must be re-exported from lib.rs through ui/mod.rs or ui::leptos");
   }
   if (libReexportsLeptosDirectly &&
       !/\bpub\s+mod\s+leptos\s*;/.test(uiModuleCode)) {

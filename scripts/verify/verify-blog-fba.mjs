@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { collectBlogFbaVerificationChainFailures } from './blog-fba-verification-chain.mjs';
+import { blogProjectionRestartWiringFailures, hasBlogProjectionRegistration } from './blog-comment-projection-wiring.mjs';
 
 function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
@@ -328,24 +329,30 @@ hasAll(projectionRestartHarness, [
   'database_url: String',
   'async fn restarted_connection(&self)',
   'async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()',
-  'let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());',
   'drop(first_handler);',
-  'let restarted_db = test_db.restarted_connection().await?;',
-  'let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());',
   'restarted_handler.handle(&envelope).await?;',
   'count_delivery(&restarted_db, envelope.id).await?, 1',
   'count_outbox_events(&restarted_db).await?, 1',
 ], 'blog comment projection restart target');
+for (const failure of blogProjectionRestartWiringFailures(projectionRestartHarness)) {
+  fail(`blog comment projection restart target: ${failure}`);
+}
 hasNone(projectionRestartHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection restart target');
 const migration = readMigration(blogInitialMigrationPath);
 hasAll(migration, ['BlogCommentProjectionDeliveries', 'EventId', 'TenantId', 'PostId'], 'blog comment projection migration');
 const moduleSource = read('crates/modules/rustok-blog/src/module.rs');
-hasAll(moduleSource, ['fn register_event_listeners(', 'BlogCommentProjectionHandler::new(ctx.db.clone())'], 'blog event-listener registration');
+if (!hasBlogProjectionRegistration(moduleSource)) {
+  fail('register_event_listeners must inject the transactional outbox bus into the Blog projection handler');
+}
 
 const plan = read('crates/modules/rustok-blog/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'blog-fba-registry.json', commentsEventProjectionPath, categorySearchReindexPath, graphqlRateLimitPath, aiRichtextBoundaryPath, 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, 'verify:blog:comments-port-boundary', 'test:verify:blog:comments-port-boundary', 'verify:blog:comments-event-projection', 'test:verify:blog:comments-event-projection', 'services::comment_projection::tests', 'comment_projection_postgres_test', 'comment_projection_restart_postgres_test', 'RUSTOK_BLOG_TEST_DATABASE_URL', 'registry schema v16', 'degraded UI modes remain planned'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `blog` |', 'crates/modules/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `boundary_ready`'], 'central registry');
+const centralBlogRow = central.split('\n').filter((line) => line.startsWith('|'))
+  .map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()))
+  .find(([slug, , ffa, fba]) => slug === '`blog`' && ffa === '`in_progress`' && fba === '`boundary_ready`');
+if (!centralBlogRow) fail('central registry missing the Blog FFA/FBA readiness row');
+hasAll(centralBlogRow.join(' '), [registryPath, runtimeSmokePath, consumerRuntimeOrderSmokePath], 'central Blog readiness row');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 

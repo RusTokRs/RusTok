@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { hasBlogProjectionReplay } from './blog-comment-projection-wiring.mjs';
 
 const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
@@ -55,8 +56,6 @@ for (const marker of [
   'load_post_state(&test_db.db, tenant_id, post_id).await?',
   'count_delivery(&test_db.db, envelope.id).await?, 1',
   'count_outbox_events(&test_db.db).await?, 1',
-  'BlogCommentProjectionHandler::new(replay_db)',
-  '.handle(&envelope)',
   'FROM pg_stat_activity',
   "application_name IN ('{WORKER_A_APPLICATION_NAME}', '{WORKER_B_APPLICATION_NAME}')",
   "wait_event_type = 'Lock'",
@@ -68,6 +67,9 @@ for (const marker of [
   'SET search_path TO "{schema_name}"',
 ]) {
   requireMarker(harness, marker, harnessPath);
+}
+if (!hasBlogProjectionReplay(harness)) {
+  failures.push(`${harnessPath}: replay must handle the envelope with an outbox bus built from the replay connection`);
 }
 requireNoMarker(harness, '#[ignore]', harnessPath);
 requireNoMarker(harness, 'runtime_verified', harnessPath);

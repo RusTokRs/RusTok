@@ -638,6 +638,29 @@ test("FFA crate facade must re-export the root UI component", () => {
   });
 });
 
+test("FFA crate facade accepts a public composed root defined in ui/mod.rs", () => {
+  fixture((ctx) => {
+    ctx.write("rustok-module.toml",
+      '[module]\nslug = "sample"\nui_classification = "future_ui"\n[crate]\nentry_type = "SampleModule"\n');
+    writeFfaSurface(ctx, "admin");
+    ctx.write("admin/src/ui/mod.rs",
+      "mod leptos;\nuse leptos::Surface as Editor;\n#[component]\npub fn Surface() { view! { <Editor /> } }\n");
+    assert.deepEqual(lint(ctx), []);
+
+    const facade = "mod core;\nmod model;\nmod i18n;\nmod transport;\nmod ui;\n#[cfg(test)]\nmod tests;\n";
+    ctx.write("admin/src/lib.rs", facade + "pub use crate::ui::{\nSurface as Admin,\n};\n");
+    assert.deepEqual(lint(ctx), []);
+    ctx.write("admin/src/lib.rs", facade + "// pub use ui::Surface;\npub use ui::Unrelated;\n");
+    assert.match(lint(ctx).join("\n"), /Leptos root component must be re-exported/);
+    ctx.write("admin/src/lib.rs", facade + "pub use ui::Surface as _;\n");
+    assert.match(lint(ctx).join("\n"), /Leptos root component must be re-exported/);
+
+    ctx.write("admin/src/lib.rs", facade + "pub use ui::Surface;\n");
+    ctx.write("admin/src/ui/mod.rs", "mod leptos;\n/* #[component]\npub fn Surface() {} */\n");
+    assert.match(lint(ctx).join("\n"), /Leptos root component must be re-exported/);
+  });
+});
+
 test("empty FFA i18n, locale catalogs and contract tests are rejected", () => {
   fixture((ctx) => {
     ctx.write("rustok-module.toml",

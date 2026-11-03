@@ -20,6 +20,7 @@ function write(root, relativePath, content) {
 function fixture({
   missingBlockedWorkerObservation = false,
   missingReplay = false,
+  wrongReplayBus = false,
   statusDrift = false,
   publicSearchPathFallback = false,
 } = {}) {
@@ -50,7 +51,8 @@ assert_eq!(
 load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)
 count_delivery(&test_db.db, envelope.id).await?, 1
 count_outbox_events(&test_db.db).await?, 1
-${missingReplay ? '' : `BlogCommentProjectionHandler::new(replay_db)
+${missingReplay ? '' : `let replay_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(replay_db.clone())));
+BlogCommentProjectionHandler::new(replay_db, ${wrongReplayBus ? 'worker_bus' : 'replay_bus'})
 .handle(&envelope)`}
 FROM pg_stat_activity
 application_name IN ('{WORKER_A_APPLICATION_NAME}', '{WORKER_B_APPLICATION_NAME}')
@@ -138,7 +140,11 @@ test('rejects a race without blocked-worker observation', () => {
 });
 
 test('rejects a race without clean same-envelope replay', () => {
-  expectRejected({ missingReplay: true }, /missing BlogCommentProjectionHandler::new/);
+  expectRejected({ missingReplay: true }, /replay must handle the envelope with an outbox bus/);
+});
+
+test('rejects replay on another connection’s outbox bus', () => {
+  expectRejected({ wrongReplayBus: true }, /outbox bus built from the replay connection/);
 });
 
 test('rejects a race harness that can fall back to public tables', () => {

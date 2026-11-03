@@ -23,6 +23,8 @@ function fixture({
   missingStateDelta = false,
   missingOutbox = false,
   missingRegistration = false,
+  legacyRegistration = false,
+  commentedRegistration = false,
   missingHostHarness = false,
   missingDispatcherCase = false,
   missingDispatcherWait = false,
@@ -33,6 +35,7 @@ function fixture({
   missingPostgresRegistration = false,
   missingRestartHarness = false,
   missingRestartConnection = false,
+  wrongRestartBus = false,
   missingRestartRegistration = false,
   missingProcessRestartCase = false,
   missingProcessWorker = false,
@@ -220,11 +223,15 @@ database_url: String
 async fn restarted_connection(&self)
 SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter()
-let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone());
+let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(test_db.db.clone())));
+let first_handler = BlogCommentProjectionHandler::new(test_db.db.clone(), event_bus.clone());
 first_handler.handle(&envelope).await?;
 drop(first_handler);
 ${missingRestartConnection ? '' : 'let restarted_db = test_db.restarted_connection().await?;'}
-let restarted_handler = BlogCommentProjectionHandler::new(restarted_db.clone());
+let restarted_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(restarted_db.clone())));
+let restarted_handler = BlogCommentProjectionHandler::new(
+  restarted_db.clone(), ${wrongRestartBus ? 'event_bus' : 'restarted_bus'},
+);
 restarted_handler.handle(&envelope).await?;
 load_post_state(&restarted_db, tenant_id, post_id).await?, (1, 2)
 count_delivery(&restarted_db, envelope.id).await?, 1
@@ -266,10 +273,14 @@ pub mod m20261029_000001_create_blog_schema;
 Box::new(m20261029_000001_create_blog_schema::Migration)
 `);
 
-  const registrationSource = missingRegistration
-    ? ''
-    : `fn register_event_listeners(
-registry.register(services::BlogCommentProjectionHandler::new(ctx.db.clone()));`;
+  const registerProjection = `registry.register(services::BlogCommentProjectionHandler::new(
+    ctx.db.clone(), ${legacyRegistration ? '' : 'event_bus.clone(),'}
+  ));`;
+  const registrationSource = missingRegistration ? '' : `
+fn register_event_listeners(&mut self, registry: &mut Registry, ctx: &Context) {
+  let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(ctx.db.clone())));
+  ${commentedRegistration ? `/* ${registerProjection} */` : registerProjection}
+}`;
   const hostHarnessSource = missingHostHarness
     ? ''
     : `
@@ -546,6 +557,14 @@ test('rejects missing module event-listener registration', () => {
   expectRejected({ missingRegistration: true }, /register_event_listeners/);
 });
 
+test('rejects the former projection constructor without an outbox bus', () => {
+  expectRejected({ legacyRegistration: true }, /must inject the transactional outbox bus/);
+});
+
+test('rejects registration text inside a comment', () => {
+  expectRejected({ commentedRegistration: true }, /must inject the transactional outbox bus/);
+});
+
 test('rejects missing module registration and routing harness', () => {
   expectRejected(
     { missingHostHarness: true },
@@ -610,8 +629,12 @@ test('rejects a missing restart harness source', () => {
 test('rejects restart coverage that reuses the original connection', () => {
   expectRejected(
     { missingRestartConnection: true },
-    /missing let restarted_db = test_db.restarted_connection\(\).await\?;/,
+    /fresh outbox bus built from the restarted database connection/,
   );
+});
+
+test('rejects a restarted handler using the original outbox bus', () => {
+  expectRejected({ wrongRestartBus: true }, /fresh outbox bus built from the restarted database connection/);
 });
 
 test('rejects a missing process restart parent case', () => {
