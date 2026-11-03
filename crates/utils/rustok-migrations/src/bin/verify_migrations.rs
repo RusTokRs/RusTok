@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let command = args.next().ok_or("use fresh or compare; --help shows arguments")?;
     if command == "--help" || command == "-h" {
-        println!("verify-migrations fresh --admin-url-env ENV --reference-runner FILE --candidate-runner FILE --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE");
+        println!("verify-migrations fresh --admin-url-env ENV --reference-runner FILE --candidate-runner FILE --reference-root DIR --candidate-root DIR --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE");
         println!("verify-migrations compare --reference-url-env ENV --candidate-url-env ENV --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE --quiescent");
         return Ok(());
     }
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
             quiescent = true;
         } else {
             let allowed = match command.as_str() {
-                "fresh" => ["--admin-url-env", "--reference-runner", "--candidate-runner", "--reference-plan", "--candidate-plan", "--pg-dump", "--output"].as_slice(),
+                "fresh" => ["--admin-url-env", "--reference-runner", "--candidate-runner", "--reference-root", "--candidate-root", "--reference-plan", "--candidate-plan", "--pg-dump", "--output"].as_slice(),
                 _ => ["--reference-url-env", "--candidate-url-env", "--reference-plan", "--candidate-plan", "--pg-dump", "--output"].as_slice(),
             };
             if !allowed.contains(&arg.as_str()) { return Err(format!("unknown argument {arg}").into()); }
@@ -38,12 +38,20 @@ async fn main() -> Result<()> {
     let get = |name: &str| options.get(name).map(String::as_str).ok_or_else(|| format!("{name} is required"));
     let output = Path::new(get("--output")?);
     if output.exists() { return Err("output already exists; choose a new report path".into()); }
-    let reference_plan = read_plan(Path::new(get("--reference-plan")?))?;
-    let candidate_plan = read_plan(Path::new(get("--candidate-plan")?))?;
+    let reference_bytes = fs::read(get("--reference-plan")?)?;
+    let candidate_bytes = fs::read(get("--candidate-plan")?)?;
+    let reference_plan = read_plan(&reference_bytes)?;
+    let candidate_plan = read_plan(&candidate_bytes)?;
     let pg_dump = Path::new(get("--pg-dump")?);
+    let mut provenance = BTreeMap::new();
+    for name in ["--reference-runner", "--candidate-runner", "--pg-dump"] {
+        if let Some(path) = options.get(name) { provenance.insert(name.trim_start_matches("--").to_string(), file_digest(Path::new(path))?); }
+    }
+    provenance.insert("reference-plan".into(), hex::encode(Sha256::digest(&reference_bytes)));
+    provenance.insert("candidate-plan".into(), hex::encode(Sha256::digest(&candidate_bytes)));
     let mut report = if command == "fresh" {
         let admin_url = std::env::var(get("--admin-url-env")?).map_err(|_| "admin URL environment variable is missing")?;
-        fresh(&admin_url, Path::new(get("--reference-runner")?), Path::new(get("--candidate-runner")?), &reference_plan, &candidate_plan, pg_dump).await?
+        fresh(&admin_url, Path::new(get("--reference-runner")?), Path::new(get("--candidate-runner")?), Path::new(get("--reference-root")?), Path::new(get("--candidate-root")?), &reference_plan, &candidate_plan, pg_dump).await?
     } else {
         if !quiescent { return Err("compare requires --quiescent: stop all fixture writers before observation".into()); }
         let reference_url = std::env::var(get("--reference-url-env")?).map_err(|_| "reference URL environment variable is missing")?;
@@ -51,10 +59,11 @@ async fn main() -> Result<()> {
         compare_urls(&reference_url, &candidate_url, &reference_plan, &candidate_plan, pg_dump).await?
     };
     if command == "fresh" { report.scope = "fresh-install-equivalence".into(); }
-    let mut provenance = BTreeMap::new();
-    for name in ["--reference-plan", "--candidate-plan", "--reference-runner", "--candidate-runner"] {
+    for name in ["--reference-plan", "--candidate-plan", "--reference-runner", "--candidate-runner", "--pg-dump"] {
         if let Some(path) = options.get(name) {
-            provenance.insert(name.trim_start_matches("--").to_string(), hex::encode(Sha256::digest(fs::read(path)?)));
+            if provenance[name.trim_start_matches("--")] != file_digest(Path::new(path))? {
+                return Err(format!("{name} changed during verification; evidence is stale").into());
+            }
         }
     }
     let artifact = serde_json::json!({ "schema_version": 1, "report": report, "input_sha256": provenance });
@@ -68,8 +77,8 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn read_plan(path: &Path) -> Result<Vec<String>> {
-    let value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+fn read_plan(bytes: &[u8]) -> Result<Vec<String>> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)?;
     if value.get("schema_version").and_then(|v| v.as_u64()) != Some(1) { return Err("unsupported migration plan version".into()); }
     let migrations: Vec<String> = serde_json::from_value(value.get("migrations").ok_or("plan migrations missing")?.clone())?;
     rustok_migrations::verification::validate_journal(&migrations, &migrations)?;
@@ -91,7 +100,8 @@ async fn compare_urls(reference_url: &str, candidate_url: &str, reference_plan: 
     result
 }
 
-async fn fresh(admin_url: &str, reference_runner: &Path, candidate_runner: &Path, reference_plan: &[String], candidate_plan: &[String], pg_dump: &Path) -> Result<ComparisonReport> {
+#[allow(clippy::too_many_arguments)]
+async fn fresh(admin_url: &str, reference_runner: &Path, candidate_runner: &Path, reference_root: &Path, candidate_root: &Path, reference_plan: &[String], candidate_plan: &[String], pg_dump: &Path) -> Result<ComparisonReport> {
     let admin = Database::connect(admin_url).await.map_err(|_| "cannot connect to verification administrator")?;
     let id = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("rustok_verify_{id}");
@@ -99,35 +109,33 @@ async fn fresh(admin_url: &str, reference_runner: &Path, candidate_runner: &Path
     let names = [format!("rustok_original_{id}"), format!("rustok_candidate_{id}")];
     // All interpolated identifiers and the password are generated UUIDs. No
     // caller-controlled database name is ever accepted for deletion.
-    admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
-    let mut created = Vec::new();
     let result = async {
+        admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
         for name in &names {
             admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'")).await?;
-            created.push(name.clone());
             admin.execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC")).await?;
         }
         let reference_url = fixture_url(admin_url, &role, &password, &names[0])?;
         let candidate_url = fixture_url(admin_url, &role, &password, &names[1])?;
-        run_migrator(reference_runner, &reference_url)?;
+        run_migrator(reference_runner, reference_root, &reference_url)?;
         // Capture before candidate code can change cluster-wide role state or
         // the other fixture database owned by the same isolated fixture role.
         let reference = Database::connect(&reference_url).await?;
         let original_result = observe_database(&reference, &reference_url, pg_dump).await;
         reference.close().await?;
         let original = original_result?;
-        run_migrator(candidate_runner, &candidate_url)?;
+        run_migrator(candidate_runner, candidate_root, &candidate_url)?;
         let candidate = Database::connect(&candidate_url).await?;
         let proposed_result = observe_database(&candidate, &candidate_url, pg_dump).await;
         candidate.close().await?;
         let proposed = proposed_result?;
         Ok(compare(&original, &proposed, reference_plan, candidate_plan)?)
     }.await;
-    let cleanup = cleanup(&admin, &created, &role).await;
+    let cleanup = cleanup(&admin, &names, &role).await;
     let close = admin.close().await;
     match (result, cleanup, close) {
-        (_, Err(error), _) => Err(format!("verification cleanup failed: {error}").into()),
-        (_, _, Err(error)) => Err(error.into()),
+        (result, Err(error), close) => Err(format!("verification result: {result:?}; cleanup failed: {error}; administrator close: {close:?}").into()),
+        (result, _, Err(error)) => Err(format!("verification result: {result:?}; administrator close: {error}").into()),
         (result, Ok(()), Ok(())) => result,
     }
 }
@@ -135,11 +143,11 @@ async fn fresh(admin_url: &str, reference_runner: &Path, candidate_runner: &Path
 async fn cleanup(admin: &DatabaseConnection, names: &[String], role: &str) -> Result<()> {
     let mut failures = Vec::new();
     for name in names {
-        if let Err(error) = admin.execute_unprepared(&format!("DROP DATABASE {name} WITH (FORCE)")).await {
+        if let Err(error) = admin.execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)")).await {
             failures.push(format!("{name}: {error}"));
         }
     }
-    if let Err(error) = admin.execute_unprepared(&format!("DROP ROLE {role}")).await { failures.push(format!("{role}: {error}")); }
+    if let Err(error) = admin.execute_unprepared(&format!("DROP ROLE IF EXISTS {role}")).await { failures.push(format!("{role}: {error}")); }
     if failures.is_empty() { Ok(()) } else { Err(failures.join("; ").into()) }
 }
 
@@ -154,10 +162,19 @@ fn fixture_url(admin_url: &str, role: &str, password: &str, database: &str) -> R
     Ok(url.into())
 }
 
-fn run_migrator(binary: &Path, database_url: &str) -> Result<()> {
+fn file_digest(path: &Path) -> Result<String> {
+    use std::io::Read;
+    let mut file = fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop { let count = file.read(&mut buffer)?; if count == 0 { break; } digest.update(&buffer[..count]); }
+    Ok(hex::encode(digest.finalize()))
+}
+
+fn run_migrator(binary: &Path, source_root: &Path, database_url: &str) -> Result<()> {
     for operation in ["up", "status"] {
         let mut command = Command::new(binary);
-        command.arg(operation).env_clear().env("DATABASE_URL", database_url)
+        command.arg(operation).current_dir(source_root).env_clear().env("DATABASE_URL", database_url)
             .stdin(Stdio::null());
         for key in ["PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"] {
             if let Some(value) = std::env::var_os(key) { command.env(key, value); }

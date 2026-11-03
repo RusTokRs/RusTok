@@ -144,7 +144,9 @@ fn statement(sql: impl Into<String>) -> Statement {
 
 async fn strings(tx: &DatabaseTransaction, sql: impl Into<String>) -> Result<Vec<String>> {
     let rows = tx.query_all_raw(statement(sql)).await?;
-    rows.into_iter().map(|row| row.try_get("", "item").map_err(Into::into)).collect()
+    let mut values = rows.into_iter().map(|row| row.try_get("", "item").map_err(VerificationError::from)).collect::<Result<Vec<String>>>()?;
+    values.sort();
+    Ok(values)
 }
 
 /// Observe a disposable, quiescent fixture database. The caller must stop every
@@ -179,7 +181,7 @@ pub async fn observe_database(
         return Err(VerificationError::Incomplete("pg_dump major 16 is required".into()));
     }
     let mut environment = strings(&tx, "SELECT jsonb_build_array(current_setting('server_version_num'), pg_encoding_to_char(encoding), datcollate, datctype, datlocprovider, daticulocale, pg_get_userbyid(datdba), datacl::text, datallowconn, datconnlimit, obj_description(oid,'pg_database'))::text AS item FROM pg_database WHERE datname = current_database()").await?;
-    environment.extend(strings(&tx, "SELECT jsonb_build_array('database-role-settings', setdatabase=0, CASE WHEN setrole=0 THEN 'PUBLIC' ELSE pg_get_userbyid(setrole) END, setconfig)::text AS item FROM pg_db_role_setting WHERE setdatabase=0 OR setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) ORDER BY item COLLATE \"C\"").await?);
+    environment.extend(strings(&tx, "SELECT jsonb_build_array('database-role-settings', setdatabase=0, CASE WHEN setrole=0 THEN 'PUBLIC' ELSE pg_get_userbyid(setrole) END, setconfig)::text AS item FROM pg_db_role_setting WHERE setdatabase=0 OR setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database()) ORDER BY 1").await?);
     environment.push(tool_version.trim().into());
     // pg_dump covers schema objects, ACLs, default privileges, comments, security
     // labels, routines, types and global database objects. Do not strip owners,
@@ -193,20 +195,20 @@ pub async fn observe_database(
     // member definitions are observed below; unknown classes fail closed.
     let mut enforcement = Vec::new();
     let queries = [
-        format!("SELECT jsonb_build_array('trigger', n.nspname, c.relname, CASE WHEN t.tgisinternal THEN NULL ELSE t.tgname END, t.tgisinternal, t.tgenabled, t.tgtype, t.tgdeferrable, t.tginitdeferred, t.tgfoid::regprocedure::text, con.conname, cn.nspname, cc.relname, encode(t.tgargs, 'hex'), t.tgoldtable, t.tgnewtable)::text AS item FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_constraint con ON con.oid=t.tgconstraint LEFT JOIN pg_class cc ON cc.oid=con.conrelid LEFT JOIN pg_namespace cn ON cn.oid=cc.relnamespace WHERE {APPLICATION_SCHEMA} ORDER BY item COLLATE \"C\""),
-        format!("SELECT jsonb_build_array('index', n.nspname, c.relname, pg_get_indexdef(i.indexrelid), i.indisvalid, i.indisready, i.indislive, i.indisreplident)::text AS item FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE {APPLICATION_SCHEMA} ORDER BY item COLLATE \"C\""),
-        "SELECT jsonb_build_array('extension', e.extname, e.extversion, pg_get_userbyid(e.extowner), n.nspname, e.extrelocatable)::text AS item FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('role', rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil, rolconfig)::text AS item FROM pg_roles ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('membership', pg_get_userbyid(roleid), pg_get_userbyid(member), pg_get_userbyid(grantor), admin_option, inherit_option, set_option)::text AS item FROM pg_auth_members ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-member', e.extname, x.type, x.schema, x.name, x.identity)::text AS item FROM pg_depend d JOIN pg_extension e ON d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid CROSS JOIN LATERAL pg_identify_object(d.classid,d.objid,d.objsubid) x WHERE d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-routine', e.extname, n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_functiondef(p.oid), p.proacl::text, pg_get_userbyid(p.proowner))::text AS item FROM pg_depend d JOIN pg_extension e ON d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid JOIN pg_proc p ON d.classid='pg_proc'::regclass AND d.objid=p.oid JOIN pg_namespace n ON n.oid=p.pronamespace WHERE d.deptype='e' AND p.prokind IN ('f','p') ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-language', l.lanname, pg_get_userbyid(l.lanowner), l.lanispl, l.lanpltrusted, l.lanplcallfoid::regprocedure::text, l.laninline::regprocedure::text, l.lanvalidator::regprocedure::text, l.lanacl::text)::text AS item FROM pg_language l JOIN pg_depend d ON d.classid='pg_language'::regclass AND d.objid=l.oid AND d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-operator', n.nspname, o.oprname, pg_get_userbyid(o.oprowner), o.oprkind, o.oprcanmerge, o.oprcanhash, o.oprleft::regtype::text, o.oprright::regtype::text, o.oprresult::regtype::text, o.oprcom::regoperator::text, o.oprnegate::regoperator::text, o.oprcode::regprocedure::text, o.oprrest::regprocedure::text, o.oprjoin::regprocedure::text)::text AS item FROM pg_operator o JOIN pg_namespace n ON n.oid=o.oprnamespace JOIN pg_depend d ON d.classid='pg_operator'::regclass AND d.objid=o.oid AND d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-opclass', n.nspname, c.opcname, pg_get_userbyid(c.opcowner), am.amname, fn.nspname, f.opfname, c.opcintype::regtype::text, c.opcdefault, c.opckeytype::regtype::text)::text AS item FROM pg_opclass c JOIN pg_namespace n ON n.oid=c.opcnamespace JOIN pg_am am ON am.oid=c.opcmethod JOIN pg_opfamily f ON f.oid=c.opcfamily JOIN pg_namespace fn ON fn.oid=f.opfnamespace JOIN pg_depend d ON d.classid='pg_opclass'::regclass AND d.objid=c.oid AND d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-opfamily', n.nspname, f.opfname, pg_get_userbyid(f.opfowner), am.amname)::text AS item FROM pg_opfamily f JOIN pg_namespace n ON n.oid=f.opfnamespace JOIN pg_am am ON am.oid=f.opfmethod JOIN pg_depend d ON d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-amop', n.nspname, f.opfname, a.amoplefttype::regtype::text, a.amoprighttype::regtype::text, a.amopstrategy, a.amoppurpose, a.amopopr::regoperator::text, am.amname, sn.nspname, sf.opfname)::text AS item FROM pg_amop a JOIN pg_opfamily f ON f.oid=a.amopfamily JOIN pg_namespace n ON n.oid=f.opfnamespace JOIN pg_am am ON am.oid=a.amopmethod LEFT JOIN pg_opfamily sf ON sf.oid=a.amopsortfamily LEFT JOIN pg_namespace sn ON sn.oid=sf.opfnamespace WHERE EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e') ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-amproc', n.nspname, f.opfname, a.amproclefttype::regtype::text, a.amprocrighttype::regtype::text, a.amprocnum, a.amproc::regprocedure::text)::text AS item FROM pg_amproc a JOIN pg_opfamily f ON f.oid=a.amprocfamily JOIN pg_namespace n ON n.oid=f.opfnamespace WHERE EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e') ORDER BY item COLLATE \"C\"".into(),
-        "SELECT jsonb_build_array('extension-type', n.nspname, t.typname, pg_get_userbyid(t.typowner), t.typlen, t.typbyval, t.typtype, t.typcategory, t.typispreferred, t.typisdefined, t.typdelim, t.typelem::regtype::text, t.typarray::regtype::text, t.typinput::regprocedure::text, t.typoutput::regprocedure::text, t.typreceive::regprocedure::text, t.typsend::regprocedure::text, t.typmodin::regprocedure::text, t.typmodout::regprocedure::text, t.typanalyze::regprocedure::text, t.typalign, t.typstorage, t.typnotnull, t.typbasetype::regtype::text, t.typtypmod, t.typndims, t.typdefault, t.typacl::text)::text AS item FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace JOIN pg_depend d ON d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e' ORDER BY item COLLATE \"C\"".into(),
+        format!("SELECT jsonb_build_array('trigger', n.nspname, c.relname, CASE WHEN t.tgisinternal THEN NULL ELSE t.tgname END, t.tgisinternal, t.tgenabled, t.tgtype, t.tgdeferrable, t.tginitdeferred, t.tgfoid::regprocedure::text, con.conname, cn.nspname, cc.relname, encode(t.tgargs, 'hex'), t.tgoldtable, t.tgnewtable)::text AS item FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_constraint con ON con.oid=t.tgconstraint LEFT JOIN pg_class cc ON cc.oid=con.conrelid LEFT JOIN pg_namespace cn ON cn.oid=cc.relnamespace WHERE {APPLICATION_SCHEMA} ORDER BY 1"),
+        format!("SELECT jsonb_build_array('index', n.nspname, c.relname, pg_get_indexdef(i.indexrelid), i.indisvalid, i.indisready, i.indislive, i.indisreplident)::text AS item FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE {APPLICATION_SCHEMA} ORDER BY 1"),
+        "SELECT jsonb_build_array('extension', e.extname, e.extversion, pg_get_userbyid(e.extowner), n.nspname, e.extrelocatable)::text AS item FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace ORDER BY 1".into(),
+        "SELECT jsonb_build_array('role', rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil, rolconfig)::text AS item FROM pg_roles ORDER BY 1".into(),
+        "SELECT jsonb_build_array('membership', pg_get_userbyid(roleid), pg_get_userbyid(member), pg_get_userbyid(grantor), admin_option, inherit_option, set_option)::text AS item FROM pg_auth_members ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-member', e.extname, x.type, x.schema, x.name, x.identity)::text AS item FROM pg_depend d JOIN pg_extension e ON d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid CROSS JOIN LATERAL pg_identify_object(d.classid,d.objid,d.objsubid) x WHERE d.deptype='e' ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-routine', e.extname, n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_functiondef(p.oid), p.proacl::text, pg_get_userbyid(p.proowner))::text AS item FROM pg_depend d JOIN pg_extension e ON d.refclassid='pg_extension'::regclass AND d.refobjid=e.oid JOIN pg_proc p ON d.classid='pg_proc'::regclass AND d.objid=p.oid JOIN pg_namespace n ON n.oid=p.pronamespace WHERE d.deptype='e' AND p.prokind IN ('f','p') ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-language', l.lanname, pg_get_userbyid(l.lanowner), l.lanispl, l.lanpltrusted, l.lanplcallfoid::regprocedure::text, l.laninline::regprocedure::text, l.lanvalidator::regprocedure::text, l.lanacl::text)::text AS item FROM pg_language l JOIN pg_depend d ON d.classid='pg_language'::regclass AND d.objid=l.oid AND d.deptype='e' ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-operator', n.nspname, o.oprname, pg_get_userbyid(o.oprowner), o.oprkind, o.oprcanmerge, o.oprcanhash, o.oprleft::regtype::text, o.oprright::regtype::text, o.oprresult::regtype::text, o.oprcom::regoperator::text, o.oprnegate::regoperator::text, o.oprcode::regprocedure::text, o.oprrest::regprocedure::text, o.oprjoin::regprocedure::text)::text AS item FROM pg_operator o JOIN pg_namespace n ON n.oid=o.oprnamespace JOIN pg_depend d ON d.classid='pg_operator'::regclass AND d.objid=o.oid AND d.deptype='e' ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-opclass', n.nspname, c.opcname, pg_get_userbyid(c.opcowner), am.amname, fn.nspname, f.opfname, c.opcintype::regtype::text, c.opcdefault, c.opckeytype::regtype::text)::text AS item FROM pg_opclass c JOIN pg_namespace n ON n.oid=c.opcnamespace JOIN pg_am am ON am.oid=c.opcmethod JOIN pg_opfamily f ON f.oid=c.opcfamily JOIN pg_namespace fn ON fn.oid=f.opfnamespace JOIN pg_depend d ON d.classid='pg_opclass'::regclass AND d.objid=c.oid AND d.deptype='e' ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-opfamily', n.nspname, f.opfname, pg_get_userbyid(f.opfowner), am.amname)::text AS item FROM pg_opfamily f JOIN pg_namespace n ON n.oid=f.opfnamespace JOIN pg_am am ON am.oid=f.opfmethod JOIN pg_depend d ON d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e' ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-amop', n.nspname, f.opfname, a.amoplefttype::regtype::text, a.amoprighttype::regtype::text, a.amopstrategy, a.amoppurpose, a.amopopr::regoperator::text, am.amname, sn.nspname, sf.opfname)::text AS item FROM pg_amop a JOIN pg_opfamily f ON f.oid=a.amopfamily JOIN pg_namespace n ON n.oid=f.opfnamespace JOIN pg_am am ON am.oid=a.amopmethod LEFT JOIN pg_opfamily sf ON sf.oid=a.amopsortfamily LEFT JOIN pg_namespace sn ON sn.oid=sf.opfnamespace WHERE EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e') ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-amproc', n.nspname, f.opfname, a.amproclefttype::regtype::text, a.amprocrighttype::regtype::text, a.amprocnum, a.amproc::regprocedure::text)::text AS item FROM pg_amproc a JOIN pg_opfamily f ON f.oid=a.amprocfamily JOIN pg_namespace n ON n.oid=f.opfnamespace WHERE EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_opfamily'::regclass AND d.objid=f.oid AND d.deptype='e') ORDER BY 1".into(),
+        "SELECT jsonb_build_array('extension-type', n.nspname, t.typname, pg_get_userbyid(t.typowner), t.typlen, t.typbyval, t.typtype, t.typcategory, t.typispreferred, t.typisdefined, t.typdelim, t.typelem::regtype::text, t.typarray::regtype::text, t.typinput::regprocedure::text, t.typoutput::regprocedure::text, t.typreceive::regprocedure::text, t.typsend::regprocedure::text, t.typmodin::regprocedure::text, t.typmodout::regprocedure::text, t.typanalyze::regprocedure::text, t.typalign, t.typstorage, t.typnotnull, t.typbasetype::regtype::text, t.typtypmod, t.typndims, t.typdefault, t.typacl::text)::text AS item FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace JOIN pg_depend d ON d.classid='pg_type'::regclass AND d.objid=t.oid AND d.deptype='e' ORDER BY 1".into(),
     ];
     for sql in queries { enforcement.extend(strings(&tx, sql).await?); }
     let invalid = strings(&tx, format!("SELECT c.relname AS item FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE {APPLICATION_SCHEMA} AND (NOT i.indisvalid OR NOT i.indisready OR NOT i.indislive)")).await?;
@@ -320,9 +322,16 @@ fn run_pg_dump(binary: &Path, arguments: &[&str], database_url: Option<&str>, li
         }
     };
     let output = stdout.join().map_err(|_| VerificationError::Tool("pg_dump reader failed".into()))??;
-    stderr.join().map_err(|_| VerificationError::Tool("pg_dump error reader failed".into()))??;
+    let stderr = stderr.join().map_err(|_| VerificationError::Tool("pg_dump error reader failed".into()))??;
     if !status.success() || exceeded.load(Ordering::SeqCst) {
-        return Err(VerificationError::Tool("pg_dump failed; verify access, supported tooling and fixture limits".into()));
+        let mut detail = String::from_utf8_lossy(&stderr).into_owned();
+        if let Some(database_url) = database_url {
+            detail = detail.replace(database_url, "[fixture URL]");
+            if let Ok(url) = url::Url::parse(database_url) {
+                if let Some(password) = url.password().filter(|password| !password.is_empty()) { detail = detail.replace(password, "[redacted]"); }
+            }
+        }
+        return Err(VerificationError::Tool(format!("pg_dump failed: {}", detail.trim())));
     }
     Ok(output)
 }
@@ -395,5 +404,69 @@ mod tests {
     #[test]
     fn identifiers_cannot_inject_sql() {
         assert_eq!(quote("a\"; DROP TABLE x;--"), "\"a\"\"; DROP TABLE x;--\"");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires isolated PostgreSQL 16 and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL / RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP"]
+    async fn postgres_detects_schema_data_privilege_and_enforcement_changes() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use sea_orm_migration::sea_orm::Database;
+        let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
+        let pg_dump = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP")?;
+        let admin = Database::connect(&admin_url).await?;
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let names = [format!("rustok_observe_a_{id}"), format!("rustok_observe_b_{id}")];
+        let test = async {
+            for name in &names { admin.execute_unprepared(&format!("CREATE DATABASE {name} TEMPLATE template0")).await?; }
+            let mut a_url = url::Url::parse(&admin_url)?;
+            a_url.set_path(&format!("/{}", names[0]));
+            let mut b_url = url::Url::parse(&admin_url)?;
+            b_url.set_path(&format!("/{}", names[1]));
+            let a = Database::connect(a_url.as_str()).await?;
+            let b = Database::connect(b_url.as_str()).await?;
+            let body = async {
+                for (db, version, old_column) in [(&a, "original", true), (&b, "baseline", false)] {
+                    db.execute_unprepared("CREATE EXTENSION pg_trgm").await?;
+                    db.execute_unprepared("CREATE TABLE public.seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL)").await?;
+                    db.execute_unprepared(&format!("INSERT INTO public.seaql_migrations VALUES ('{version}', 1)")).await?;
+                    db.execute_unprepared(&format!("CREATE TABLE records (id integer, {} amount numeric(38,18), payload json, raw text)", if old_column { "obsolete text," } else { "" })).await?;
+                    if old_column { db.execute_unprepared("ALTER TABLE records DROP COLUMN obsolete").await?; }
+                    db.execute_unprepared("INSERT INTO records VALUES (1, 9007199254740993.123456789012345678, '{\"a\":1,\"a\":2}', NULL), (1, 9007199254740993.123456789012345678, '{\"a\":1,\"a\":2}', NULL)").await?;
+                    db.execute_unprepared("CREATE TABLE parent (id integer PRIMARY KEY); CREATE TABLE child (id integer REFERENCES parent(id)); INSERT INTO parent VALUES (1); INSERT INTO child VALUES (1); CREATE SEQUENCE record_sequence").await?;
+                }
+                let original = observe_database(&a, a_url.as_str(), Path::new(&pg_dump)).await?;
+                let reference_plan = vec!["original".into()];
+                let candidate_plan = vec!["baseline".into()];
+                let candidate = observe_database(&b, b_url.as_str(), Path::new(&pg_dump)).await?;
+                let report = compare(&original, &candidate, &reference_plan, &candidate_plan)?;
+                assert!(report.equivalent, "{:?}", report.differences);
+                for (change, restore, expected) in [
+                    ("UPDATE records SET amount=9007199254740993.123456789012345679", "UPDATE records SET amount=9007199254740993.123456789012345678", "table"),
+                    ("UPDATE records SET payload='{\"a\":2}'", "UPDATE records SET payload='{\"a\":1,\"a\":2}'", "table"),
+                    ("ALTER TABLE records ALTER COLUMN raw SET DEFAULT 'changed'", "ALTER TABLE records ALTER COLUMN raw DROP DEFAULT", "schema"),
+                    ("ALTER TABLE child DISABLE TRIGGER ALL", "ALTER TABLE child ENABLE TRIGGER ALL", "enforcement"),
+                    ("SELECT nextval('record_sequence')", "SELECT setval('record_sequence', 1, false)", "sequence"),
+                ] {
+                    b.execute_unprepared(change).await?;
+                    let changed = observe_database(&b, b_url.as_str(), Path::new(&pg_dump)).await?;
+                    let report = compare(&original, &changed, &reference_plan, &candidate_plan)?;
+                    assert!(!report.equivalent, "missed {expected}");
+                    b.execute_unprepared(restore).await?;
+                }
+                b.execute_unprepared(&format!("ALTER DATABASE {} SET default_transaction_read_only=on", names[1])).await?;
+                let changed = observe_database(&b, b_url.as_str(), Path::new(&pg_dump)).await?;
+                assert!(!compare(&original, &changed, &reference_plan, &candidate_plan)?.equivalent);
+                Ok::<_, Box<dyn std::error::Error>>(())
+            }.await;
+            a.close().await?;
+            b.close().await?;
+            body
+        }.await;
+        let mut cleanup = Vec::new();
+        for name in &names {
+            if let Err(error) = admin.execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)")).await { cleanup.push(error.to_string()); }
+        }
+        admin.close().await?;
+        if !cleanup.is_empty() { return Err(format!("test: {test:?}; cleanup: {cleanup:?}").into()); }
+        test
     }
 }

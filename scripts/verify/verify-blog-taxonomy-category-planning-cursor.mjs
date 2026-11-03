@@ -31,7 +31,7 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const currentCursorPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
+const currentCursorPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const crateReadmePath = 'crates/modules/rustok-blog/README.md';
 const docsReadmePath = 'crates/modules/rustok-blog/docs/README.md';
 const entitiesPath = 'crates/modules/rustok-blog/src/entities/mod.rs';
@@ -41,7 +41,6 @@ for (const path of [
   crateReadmePath,
   docsReadmePath,
   entitiesPath,
-  'crates/modules/rustok-blog/docs/implementation-plan-slice-98.md',
   'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs',
   'crates/modules/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
 ]) {

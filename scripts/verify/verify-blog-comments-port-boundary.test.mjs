@@ -50,7 +50,6 @@ const files = {
   serverBuild: 'apps/server/build.rs',
   serverSchema: 'apps/server/src/graphql/schema.rs',
   plan: 'crates/modules/rustok-blog/docs/implementation-plan.md',
-  slice99: 'crates/modules/rustok-blog/docs/implementation-plan-slice-99.md',
 };
 
 function copy(root, relativePath) {
@@ -208,6 +207,6 @@ test('rejects runtime status promotion without execution', () => {
 });
 
 test('rejects cached snapshot plan drift', () => {
-  const result = rejects((root) => writeFileSync(path.join(root, files.slice99), ''));
+  const result = rejects((root) => writeFileSync(path.join(root, files.plan), ''));
   assert.notEqual(result.status, 0);
 });

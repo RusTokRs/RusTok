@@ -450,7 +450,7 @@ forbid("crates/modules/rustok-blog/src/services/comment_projection.rs", [
 ]);
 
 requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
-  "implementation-plan-current.md",
+  "crates/modules/rustok-blog/docs/implementation-plan.md",
   "lock_exclusive()",
   "projection_applied_delta(",
   "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
@@ -459,7 +459,7 @@ requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
   "projection_delta_tracks_comment_state_not_delivery_order()",
 ]);
 requireAll("scripts/verify/verify-blog-comments-event-projection.mjs", [
-  "implementation-plan-current.md",
+  "crates/modules/rustok-blog/docs/implementation-plan.md",
   "lock_exclusive()",
   "projection_applied_delta(",
   "order_by_desc(blog_comment_projection_delivery::Column::EventId)",
@@ -1047,7 +1047,7 @@ requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
   "max_length = 1000",
 ]);
 
-requireAll("crates/modules/rustok-blog/docs/implementation-plan-current.md", [
+requireAll("crates/modules/rustok-blog/docs/implementation-plan.md", [
   "comment_form_policy = source_verified_hide_on_provider_absence",
   "active storefront writes only when Comments is available",
   "the active storefront hides the comment write surface",

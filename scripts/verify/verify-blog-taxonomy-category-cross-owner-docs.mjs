@@ -15,7 +15,7 @@ const rejectMarker = (source, marker, label = marker) => {
 const platformPlanPath = 'docs/architecture/taxonomy-flex-category-platform-plan.md';
 const databasePath = 'docs/architecture/database.md';
 const adrPath = 'DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md';
-const blogCursorPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
+const blogCursorPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const taxonomyPlanPath = 'crates/modules/rustok-taxonomy/docs/implementation-plan.md';
 
 for (const path of [platformPlanPath, databasePath, adrPath, blogCursorPath, taxonomyPlanPath]) {

@@ -279,9 +279,9 @@ cargo xtask module test <slug>
 - Contacts registry HTTP endpoints only for live operator commands when `--dry-run` is not used.
 - Live registry operator commands target the clean V2 contract only: bearer auth via `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, `new_owner_user_id` for owner transfer, owner-issued digest/crate identity for remote runner claims, and no legacy actor/publisher header path.
 
-## Planned migration consolidation commands
+## Migration consolidation commands
 
-The [migration consolidation proposal](../DECISIONS/2026-11-03-migration-consolidation.md)
+The [migration consolidation decision](../DECISIONS/2026-11-03-migration-consolidation.md)
 uses Rust with `cargo xtask migrations` as the repository workflow entrypoint.
 Command parsing, source snapshots, candidate previews, orchestration and reports
 belong to `xtask`. Database observation, canonical migration execution and
@@ -290,8 +290,42 @@ owner tools as processes so ordinary tooling does not acquire all domain-module
 dependencies.
 
 Candidate changes are prepared in the current working branch. Reference builds
-use disposable source snapshots without creating branches. CI uses the same Rust
-entrypoint. These commands are planned and are not registered in the binary yet.
+use disposable source snapshots without creating branches.
+
+```powershell
+cargo build --locked -p rustok-migrations --no-default-features --bin verify-migrations
+cargo xtask migrations plan --reference <original-commit> --output target/migrations/review
+$env:RUSTOK_MIGRATION_VERIFY_ADMIN_URL = 'postgres://verifier@localhost:5432/postgres'
+cargo xtask migrations verify-fresh --plan target/migrations/review/plan.json --verifier target/debug/verify-migrations.exe --pg-dump 'C:/Program Files/PostgreSQL/16/bin/pg_dump.exe' --admin-url-env RUSTOK_MIGRATION_VERIFY_ADMIN_URL
+```
+
+On Unix, omit the verifier's `.exe` suffix and provide the installed `pg_dump`
+file path. The administrator must create/drop fixture roles and databases.
+Use a dedicated disposable PostgreSQL 16 cluster. Source builds run reviewed
+Rust code on the local machine; this command is not an untrusted-code sandbox.
+
+`plan` copies the exact Git blobs of the original chain and all current tracked
+and nonignored untracked candidate files, including nested helpers and SQL.
+It binds paths, file modes, deletions and bytes. Symlinks, reparse points,
+submodules and unresolved index conflicts fail. The original reference is a
+local comparison input, not a trusted release boundary.
+
+`verify-fresh` validates the snapshots against Git and current files, builds
+both canonical migration runners/exporters with `--locked --offline`, and runs
+them on new fixture databases. Build sources are copied outside the active Git
+and Cargo ancestor tree. Global/ancestor Cargo configuration is rejected;
+ambient build variables and credentials are cleared. The command records actual
+Cargo/Rust versions, executable artifact paths, source/plan/tool/binary digests
+and the observed database result. Build caches still come from the local Cargo
+home. Reports become stale when an input changes. Failed runs retain a failure
+record; temporary build sources, fixture databases and roles are cleaned up.
+
+The implemented scope is **fresh-install equivalence**. A matching result keeps
+`replacement_admission` blocked. Release seals, supported-predecessor fixtures,
+installer/activation and recovery checks are required before replacing history.
+Existing CI append-only admission remains in force. These commands do not
+automatically rewrite or remove migration files.
+
 The [canonical guide](../docs/guides/safe-database-migrations-and-squashing.md)
 owns the implementation sequence and acceptance gates.
 

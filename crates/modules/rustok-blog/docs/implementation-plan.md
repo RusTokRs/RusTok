@@ -1467,6 +1467,7 @@ Runtime, build, browser, gatekeeper, and automated tests remain maintainer-owned
 ### Comments Integration & Storefront Fallback Contract
 
 - Blog FBA registry schema v16 and Comments projection evidence schema v7 are consistent with derived Comments counters that preserve Blog business logic at the architecture/source level. Runtime/remote evidence is still pending.
+- `storefront_comment_form_active_source_verified`: Blog owns the public comment write surface; `hide_comment_form` when provider is unavailable.
 - `comment_form_policy = source_verified_hide_on_provider_absence`; active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and the active storefront hides the comment write surface.
 - `storefront_cached_public_comments_snapshot_source_ready_maintainer_execution_pending`: one Blog snapshot policy for both storefront transports (`comments_owner_only`, TTL 900 seconds, maximum 10,000 keys, `cachedSnapshot`).
 - `fallback_vocabulary_for_active_storefront_write_surface`: `comment_form_fallback = planned`, cached public read snapshot, comment-form fallback is still a separate unfinished result. No tests, Cargo commands, Node verifiers were run.

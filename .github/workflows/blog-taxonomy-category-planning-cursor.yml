@@ -5,8 +5,7 @@ on:
     paths:
       - "crates/modules/rustok-blog/README.md"
       - "crates/modules/rustok-blog/docs/README.md"
-      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/modules/rustok-blog/docs/implementation-plan-slice-98.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan.md"
       - "crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json"
       - "crates/modules/rustok-blog/src/entities/mod.rs"
       - "crates/modules/rustok-blog/src/entities/blog_category_translation.rs"
@@ -27,8 +26,7 @@ on:
     paths:
       - "crates/modules/rustok-blog/README.md"
       - "crates/modules/rustok-blog/docs/README.md"
-      - "crates/modules/rustok-blog/docs/implementation-plan-current.md"
-      - "crates/modules/rustok-blog/docs/implementation-plan-slice-98.md"
+      - "crates/modules/rustok-blog/docs/implementation-plan.md"
       - "crates/modules/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json"
       - "crates/modules/rustok-blog/src/entities/mod.rs"
       - "crates/modules/rustok-blog/src/entities/blog_category_translation.rs"

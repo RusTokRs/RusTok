@@ -745,7 +745,7 @@ Postgres-gated runtime observation of the new migration (L-5).
 - [Blog engineering audit, 2026-10-15](./rustok-blog-engineering-audit-2026-10-15.md) — the
   previous audit of this module; the H-1…H-7 / M-1…M-13 / L-1…L-7 findings it recorded were
   re-checked and are remediated in the current source, so they are **not** repeated here.
-- [`crates/modules/rustok-blog/docs/implementation-plan-current.md`](../../crates/modules/rustok-blog/docs/implementation-plan-current.md)
+- [`crates/modules/rustok-blog/docs/implementation-plan.md`](../../crates/modules/rustok-blog/docs/implementation-plan.md)
   — the module's open backlog.
 - [`crates/modules/rustok-blog/README.md`](../../crates/modules/rustok-blog/README.md) —
   the module contract, including the "Known Limitations / Pending Implementation" section.

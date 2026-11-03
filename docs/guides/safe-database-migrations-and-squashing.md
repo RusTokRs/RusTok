@@ -11,9 +11,11 @@ language: markdown
 # Safe Database Migrations and Squashing Guide
 
 This guide owns the migration consolidation protocol and implementation sequence.
-The [technical ADR](../../DECISIONS/2026-11-03-migration-consolidation.md) is a
-proposal. Database equivalence verification and release-bound admission remain
-unimplemented. Existing CI continues to require append-only PR migration plans.
+The [technical ADR](../../DECISIONS/2026-11-03-migration-consolidation.md) is
+accepted and implementation is in progress. Rust source planning, PostgreSQL
+observation and fresh-install comparison are implemented. Release-bound
+replacement admission remains blocked. Existing CI continues to require
+append-only PR migration plans.
 
 ## Stable-release policy
 
@@ -42,30 +44,34 @@ ordering.
 
 ## Current implementation and evidence
 
-The following is source/test evidence at
-`main@4aeefe99ef4eaa59b9731c5d51702789a9cadc7b` on 2026-11-03.
+The initial assessment used
+`main@4aeefe99ef4eaa59b9731c5d51702789a9cadc7b` on 2026-11-03. The table records
+the current implementation after the first Rust tooling changes.
 
 | Component | Existing behavior | Verification limit |
 |---|---|---|
-| [Source scanner](../../scripts/dev/safe-migration-squash.mjs) | Recognizes some entity/DDL shapes, registry entries and references | Shallow regex parsing, incomplete coverage and warning-only cases |
+| [Source scanner](../../scripts/dev/safe-migration-squash.mjs) | Recursively inspects recognized entity/DDL shapes, file/directory entrypoints and dated references; rejects empty coverage | Regex parsing still has incomplete syntax/type coverage and warning-only cases; explicitly diagnostic |
 | [Plan exporter](../../crates/utils/rustok-migrations/src/bin/export_migration_plan.rs) | Exports ordered runtime migration names | No migration source hashes, stable seal or independent profile selection |
 | [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Requires the PR base name list to remain an exact prefix | Unchanged names can conceal changed bodies/helpers |
-| [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade | PR base is not the previous stable release, export command is currently incorrect |
+| [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
+| [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
+| [PostgreSQL observer](../../crates/utils/rustok-migrations/src/verification.rs) | Compares real schema, privileges, enforcement, sequences, row multisets and each plan's journal | PostgreSQL 16, supported fixture limits and extensions; requires quiescent writers and complete read privileges |
 | [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Runs declared setup and strict boolean assertions | One case per migration, all setup precedes the pending range |
 | [Schema summaries](../../crates/utils/rustok-migrations/src/schema_diff.rs) | Classifies supplied operations and computes summary/plan digests | No actual PostgreSQL catalog observation |
 | [Release workflow](../../.github/workflows/release.yml) | Validates signed tags, immutable releases and artifact provenance | No sealed migration manifest or exact-release migration evidence gate |
 
-The scanner's seven tests produced six passes and one failure. Blog's nine
-entities are reported missing because DDL lives in nested Rust files. The
-scanner also overlooks directory `mod.rs` entrypoints and field SQL types,
-constraint/index/trigger/RLS equivalence, and unsupported syntax. Its obsolete
-reference regex expects a four-digit year before `_`, so it misses actual
-eight-digit migration dates. A success message cannot certify complete parity.
+The initial scanner run produced six passes and one failure. Blog's nine
+entities were reported missing because DDL lives in nested Rust files. Recursive
+source inspection, directory `mod.rs` entries and eight-digit date matching are
+now handled. Empty inventories fail. Runtime output describes recognized source
+diagnostics and never claims complete schema parity. Field SQL types,
+constraint/index/trigger/RLS equivalence and arbitrary Rust/SQL syntax still
+require execution-based verification.
 
-The workflow invokes `--bin export_migration_plan`, while the Cargo manifest
-declares `export-migration-plan`. Metadata confirms the declared target. The
-workflow structure check passes despite that mismatch. Comparator and backfill
-self-tests pass, but no PostgreSQL execution was obtained for this assessment.
+The workflow's incorrect `--bin export_migration_plan` calls were changed to
+`export-migration-plan`. The contract guard now checks both calls against the
+Cargo target and forbids the previous spelling. This structural regression
+check supplements actual execution evidence.
 
 These limitations must be resolved before source diagnostics or CI results can
 admit a consolidation. The checks below remain useful for bounded investigation.
@@ -80,16 +86,18 @@ The current `--all` scanner visits only module directories with both
 `src/entities` and `src/migrations`. It omits other layouts and platform-owned
 migrations. Empty scans are not schema coverage.
 
-## Proposed verification workflow
+## Verification workflow
 
 ### Rust entrypoint and ownership
 
-The planned repository command group is `cargo xtask migrations`, shared by
-local development and CI. `xtask` orchestrates inventory/planning, source
+The repository command group is `cargo xtask migrations`. `xtask` orchestrates inventory/planning, source
 snapshots, candidate previews, scoped owner processes and reports.
 `rustok-migrations` implements actual PostgreSQL observation, migration execution
 and typed schema/data comparisons. PostgreSQL dump/restore tools run as pinned
-subprocesses. Command capabilities are not implemented yet.
+subprocesses. The implemented commands are `plan` and `verify-fresh`; see the
+[xtask command contract](../../xtask/README.md#migration-consolidation-commands)
+for arguments and the [owner tool contract](../../crates/utils/rustok-migrations/README.md#verification-tool)
+for limits and explicit PostgreSQL regression invocation.
 
 The owner process boundary keeps the complete domain migration dependency tree
 out of ordinary `xtask` compilation. Candidate source edits use the current
@@ -202,8 +210,7 @@ reservation and never returns its migrations to draft status.
 
 ## Implementation gates
 
-The technical design requires review before implementation. This is the single
-ordered consolidation work plan. Each gate needs executable evidence before the
+This is the single ordered consolidation work plan. Each gate needs executable evidence before the
 next admission capability becomes available.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
@@ -241,8 +248,11 @@ next admission capability becomes available.
    expand to dependent owners. Blog can exercise fresh-baseline nested-source
    handling, but a post-release upgrade pilot also needs a real predecessor.
 
-Current status is design only. No gate is complete and no migration is
-consolidated by this documentation change. A production prerelease prohibition
+Current status is implementation in progress. Existing-check corrections, Rust
+source planning and the bounded fresh-install observer/runner are implemented.
+Gate 1 still needs a full composed PostgreSQL smoke result; gate 3 still needs
+released-prefix replay and installer coverage. Gates 2, 4 and 5 remain pending.
+No migration history is removed by the tooling change. A production prerelease prohibition
 also requires enforcement at the installer/update admission boundary. Release
 workflow prerelease labels by themselves do not enforce it.
 

@@ -497,7 +497,7 @@ assert!(!handler.handles(&forum_created));
 }
 
 function planPath() {
-  return 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
+  return 'crates/modules/rustok-blog/docs/implementation-plan.md';
 }
 
 function run(root) {

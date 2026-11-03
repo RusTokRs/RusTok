@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Safe Migration Squashing & Schema Parity Engine for RusTok modules.
+ * Migration source diagnostics for RusTok modules.
  *
  * Capabilities:
  *  1. Parses SeaORM models in `crates/modules/<module>/src/entities/*.rs`.
  *  2. Parses SeaQuery & SQL migration files in `crates/modules/<module>/src/migrations/*.rs`.
- *  3. Verifies 100% schema parity:
+ *  3. Checks the recognized subset of source syntax:
  *     - Every entity table exists in migrations.
  *     - Every entity column exists in the migration table.
  *     - Nullability match: non-Option<T> must be NOT NULL, Option<T> must be NULLable.
@@ -15,7 +15,9 @@
  *     - All files on disk are registered.
  *     - No dangling/missing migration registrations.
  *  5. Scans `scripts/verify/` and `tests/` for obsolete/deleted migration references.
- *  6. Reports inventory and flags any regressions before or after squashing.
+ *  6. Reports source inventory. It does not execute or consolidate migrations,
+ *     compare SQL types, observe PostgreSQL, or authorize history replacement.
+ *     Use cargo xtask migrations for execution-based equivalence evidence.
  *
  * Usage:
  *   node scripts/dev/safe-migration-squash.mjs --module blog
@@ -30,6 +32,13 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
+
+function rustSourceFiles(directory) {
+  return fs.readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.rs'))
+    .map((entry) => path.relative(directory, path.join(entry.parentPath, entry.name)))
+    .sort();
+}
 
 // Helper to convert snake_case to PascalCase (e.g. blog_posts -> BlogPosts)
 function toPascalCase(str) {
@@ -78,7 +87,7 @@ function parseEntities(moduleDir) {
     return { tables: new Map(), errors: [] };
   }
 
-  const files = fs.readdirSync(entitiesDir).filter((f) => f.endsWith('.rs') && f !== 'mod.rs');
+  const files = rustSourceFiles(entitiesDir);
   const tables = new Map();
   const errors = [];
 
@@ -150,13 +159,10 @@ function parseEntities(moduleDir) {
 function parseMigrations(moduleDir) {
   const migrationsDir = path.join(moduleDir, 'src', 'migrations');
   if (!fs.existsSync(migrationsDir)) {
-    return { migrations: [], tables: new Map(), rawSqlTables: new Set(), errors: [] };
+    return { files: [], tables: new Map(), rawSqlTables: new Set(), errors: [] };
   }
 
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.rs') && f !== 'mod.rs')
-    .sort();
+  const files = rustSourceFiles(migrationsDir);
 
   const tables = new Map();
   const rawSqlTables = new Set();
@@ -427,17 +433,19 @@ function checkMigrationRegistry(moduleDir) {
 
   const modContent = fs.readFileSync(modPath, 'utf8');
   const migrationsDir = path.join(moduleDir, 'src', 'migrations');
-  const filesOnDisk = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.rs') && f !== 'mod.rs' && /^m[0-9]{4}/.test(f));
+  const filesOnDisk = fs.readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => /^m[0-9]{8}_/.test(entry.name) &&
+      ((entry.isFile() && entry.name.endsWith('.rs')) ||
+       (entry.isDirectory() && fs.existsSync(path.join(migrationsDir, entry.name, 'mod.rs')))))
+    .map((entry) => entry.name.replace(/\.rs$/, ''));
 
   const declaredMods = [...modContent.matchAll(/(?:pub\s+)?mod\s+([a-zA-Z0-9_]+);/g)]
     .map((m) => m[1])
     .filter((mod) => /^m[0-9]{4}/.test(mod));
   const registeredInFn = [...modContent.matchAll(/Box::new\(([a-zA-Z0-9_]+)::Migration\)/g)].map((m) => m[1]);
 
-  const missingFiles = declaredMods.filter((mod) => !filesOnDisk.includes(`${mod}.rs`));
-  const unregFiles = filesOnDisk.map((f) => f.replace('.rs', '')).filter((f) => !declaredMods.includes(f));
+  const missingFiles = declaredMods.filter((mod) => !filesOnDisk.includes(mod));
+  const unregFiles = filesOnDisk.filter((f) => !declaredMods.includes(f));
   const unregisteredInVector = declaredMods.filter((mod) => !registeredInFn.includes(mod));
 
   return {
@@ -454,7 +462,8 @@ function checkMigrationRegistry(moduleDir) {
  * Scan scripts/verify and tests for obsolete migration references
  */
 function scanObsoleteReferences(moduleDir, activeMigrationFiles) {
-  const activeSet = new Set(activeMigrationFiles.map((f) => f.replace('.rs', '')));
+  const activeSet = new Set(activeMigrationFiles.map((file) =>
+    path.basename(file) === 'mod.rs' ? path.basename(path.dirname(file)) : path.basename(file, '.rs')));
   const warnings = [];
 
   const dirsToScan = [
@@ -462,7 +471,7 @@ function scanObsoleteReferences(moduleDir, activeMigrationFiles) {
     path.join(moduleDir, 'tests'),
   ];
 
-  const migrationRegex = /m202[0-9]_[0-9]{6}_[a-zA-Z0-9_]+/g;
+  const migrationRegex = /m[0-9]{8}_[0-9]{6}_[a-zA-Z0-9_]+/g;
 
   for (const dir of dirsToScan) {
     if (!fs.existsSync(dir)) continue;
@@ -513,7 +522,8 @@ function verifyModuleSchemaParity(moduleInput) {
 
   const moduleName = path.basename(moduleDir);
   console.log(`\n======================================================`);
-  console.log(`🔍 Checking Schema Parity: ${moduleName}`);
+  console.log(`🔍 Checking migration source diagnostics: ${moduleName}`);
+  console.log('Database equivalence and replacement admission are not evaluated by this source scan.');
   console.log(`📁 Directory: ${moduleDir}`);
   console.log(`======================================================`);
 
@@ -523,6 +533,9 @@ function verifyModuleSchemaParity(moduleInput) {
 
   const failures = [];
   const warnings = [];
+  if (entityTables.size === 0 || migrationFiles.length === 0 || migrationTables.size === 0) {
+    failures.push('Source inventory is empty or incomplete; no parity conclusion is available.');
+  }
 
   // 1. Entity errors
   for (const err of entityErrors) failures.push(`Entity Parse Error: ${err}`);
@@ -530,6 +543,7 @@ function verifyModuleSchemaParity(moduleInput) {
 
   // 2. Migration Registry checks
   if (!registryStatus.ok) {
+    if (registryStatus.error) failures.push(registryStatus.error);
     if (registryStatus.missingFiles?.length > 0) {
       failures.push(`mod.rs declares migrations not present on disk: ${registryStatus.missingFiles.join(', ')}`);
     }
@@ -614,9 +628,9 @@ function verifyModuleSchemaParity(moduleInput) {
   // Print Results
   console.log(`\n------------------------------------------------------`);
   if (failures.length === 0 && warnings.length === 0) {
-    console.log(`✅ PARITY PERFECT! All ${entityTables.size} tables and columns strictly verified.`);
-    console.log(`✅ Migration registry matches 100% of physical files.`);
-    console.log(`✅ Zero obsolete migration references detected.`);
+    console.log(`Source diagnostics completed for ${entityTables.size} entity tables; no issues detected in recognized syntax.`);
+    console.log('Migration registry entries match the inspected files.');
+    console.log('No obsolete references detected by the source heuristic.');
     return true;
   }
 
@@ -628,13 +642,14 @@ function verifyModuleSchemaParity(moduleInput) {
   }
 
   if (failures.length > 0) {
-    console.error(`\n❌ ${failures.length} CRITICAL SCHEMA PARITY FAILURES:`);
+    console.error(`\n❌ ${failures.length} SOURCE DIAGNOSTIC FAILURES:`);
     for (const f of failures) {
       console.error(`   ✖ ${f}`);
     }
     return false;
   }
 
+  console.log(`Source diagnostics completed for ${entityTables.size} entity tables; review the warnings above.`);
   return true;
 }
 
@@ -646,10 +661,22 @@ let allFlag = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--module' || args[i] === '-m') {
     moduleArg = args[i + 1];
+    if (!moduleArg || moduleArg.startsWith('-')) {
+      console.error('--module requires a module name');
+      process.exit(1);
+    }
     i++;
   } else if (args[i] === '--all') {
     allFlag = true;
+  } else if (args[i] !== '--check') {
+    console.error(`Unknown argument: ${args[i]}`);
+    process.exit(1);
   }
+}
+
+if (moduleArg && allFlag) {
+  console.error('Choose either --module or --all');
+  process.exit(1);
 }
 
 if (!moduleArg && !allFlag) {

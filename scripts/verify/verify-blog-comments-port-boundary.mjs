@@ -61,7 +61,6 @@ const hostRuntimeCompositionPath = 'apps/server/src/services/module_event_dispat
 const providerRegistryPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
 const consumerRegistryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
-const slice99Path = 'crates/modules/rustok-blog/docs/implementation-plan-slice-99.md';
 const injectionConstructor = 'CommentService::from_runtime_capabilities';
 const injectionSignature = 'fn(DatabaseConnection, Option<Arc<dyn CommentsThreadPort>>, Option<SharedStaticModuleSettingsReader>) -> CommentService';
 const injectionTest = 'test_blog_comment_surface_policy_preserves_comment_data';
@@ -95,7 +94,6 @@ const storefrontUi = read(storefrontUiPath) + '\n' + read(storefrontCommentsList
 const hostSnapshotAdapter = read(hostSnapshotAdapterPath);
 const hostRuntimeComposition = read(hostRuntimeCompositionPath);
 const plan = read(planPath);
-const slice99 = read(slice99Path);
 
 if (evidence) {
   if (evidence.schema_version !== 3) failures.push(`${evidencePath}: schema_version drift`);
@@ -424,7 +422,7 @@ for (const marker of [
   'cachedSnapshot',
   'comment-form fallback is still a separate unfinished result',
   'No tests, Cargo commands, Node verifiers',
-]) requireMarker(slice99, marker, slice99Path);
+]) requireMarker(plan, marker, planPath);
 
 if (failures.length > 0) {
   console.error('Blog Comments port boundary verification failed:');

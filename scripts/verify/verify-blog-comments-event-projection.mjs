@@ -59,7 +59,7 @@ const migrationRegistryPath = 'crates/modules/rustok-blog/src/migrations/mod.rs'
 const modulePath = 'crates/modules/rustok-blog/src/module.rs';
 const targetTypePath = 'crates/modules/rustok-blog/src/services/post/routes.rs';
 const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.json';
-const planPath = 'crates/modules/rustok-blog/docs/implementation-plan-current.md';
+const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing';
 const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';

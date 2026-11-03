@@ -51,7 +51,9 @@ Domain migration contents and assertions remain owner-owned.
 The same Rust workflow runs locally and in CI. Once the verified Rust workflow
 is operational, replace the current JavaScript source-squash entrypoint and
 update its callers in the same cutover. Existing release publication policy
-retains its owner. These command capabilities are currently unimplemented.
+retains its owner. Source snapshots, fresh-install execution and PostgreSQL
+observation are implemented. Full release/range/recovery admission remains
+unfinished and blocked by the gates in the canonical guide.
 
 ### Release boundary and provenance
 
