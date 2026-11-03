@@ -2,10 +2,8 @@ use std::collections::BTreeSet;
 
 use rustok_api::locale_tags_match;
 use rustok_ui_core::apply_ui_query_pairs;
-#[cfg(not(feature = "ssr"))]
-use rustok_ui_core::normalize_ui_text;
 #[cfg(feature = "ssr")]
-use rustok_ui_core::{normalize_optional_ui_text, normalize_ui_text};
+use rustok_ui_core::normalize_optional_ui_text;
 
 use crate::i18n::t;
 use crate::model::{
@@ -75,10 +73,6 @@ pub fn parse_pricing_route_quantity(
                 .ok_or(StorefrontPricingQueryError::InvalidQuantity)
         })
         .transpose()
-}
-
-pub(crate) fn text_or_none(value: String) -> Option<String> {
-    normalize_ui_text(value.as_str())
 }
 
 pub fn parse_optional_currency_code(

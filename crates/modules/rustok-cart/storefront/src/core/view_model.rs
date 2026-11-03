@@ -166,6 +166,7 @@ mod tests {
             adjustment_total: "1".to_string(),
             shipping_total: "2".to_string(),
             total_amount: "11".to_string(),
+            channel_id: None,
             channel_slug: None,
             email: Some(" shopper@example.test ".to_string()),
             customer_id: None,

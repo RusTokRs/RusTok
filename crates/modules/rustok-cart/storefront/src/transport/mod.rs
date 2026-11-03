@@ -100,7 +100,7 @@ pub async fn remove_line_item(request: CartLineItemMutationRequest) -> Transport
 pub async fn create_cart(
     request: crate::core::CartCreateRequest,
 ) -> TransportResult<crate::model::StorefrontCart> {
-    crate::core::validate_cart_create(&request).map_err(|error| buyer_input_error(error))?;
+    crate::core::validate_cart_create(&request).map_err(buyer_input_error)?;
     let native = request.clone();
     execute_selected_transport(
         "cart",
@@ -125,7 +125,7 @@ pub async fn create_cart(
 pub async fn add_variant(
     request: crate::core::CartAddVariantRequest,
 ) -> TransportResult<crate::model::StorefrontCart> {
-    crate::core::validate_cart_add(&request).map_err(|error| buyer_input_error(error))?;
+    crate::core::validate_cart_add(&request).map_err(buyer_input_error)?;
     let native = request.clone();
     execute_selected_transport(
         "cart",

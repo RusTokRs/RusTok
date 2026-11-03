@@ -289,7 +289,7 @@
       "path": "crates/modules/rustok-cart",
       "category": "modules",
       "files": 66,
-      "loc": 20103,
+      "loc": 20105,
       "completed": true,
       "completed_at": "2026-11-03 05:54",
       "notes": "Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved"
@@ -299,10 +299,10 @@
       "path": "crates/modules/rustok-cart/storefront",
       "category": "modules",
       "files": 23,
-      "loc": 4891,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 4893,
+      "completed": true,
+      "completed_at": "2026-11-03 06:30",
+      "notes": "Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved"
     },
     "crates/modules/rustok-channel": {
       "name": "rustok-channel",
@@ -1049,7 +1049,7 @@
       "path": "crates/modules/rustok-pricing",
       "category": "modules",
       "files": 55,
-      "loc": 23293,
+      "loc": 23287,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1069,7 +1069,7 @@
       "path": "crates/modules/rustok-pricing/storefront",
       "category": "modules",
       "files": 11,
-      "loc": 2782,
+      "loc": 2776,
       "completed": false,
       "completed_at": null,
       "notes": ""

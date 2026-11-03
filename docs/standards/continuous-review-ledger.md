@@ -842,8 +842,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,103 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 322 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 123 | None |  |
-| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 66 | 20,103 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
-| [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,891 | None |  |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 66 | 20,105 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
+| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,893 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 11,858 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,231 | None |  |
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 10,932 | None |  |
@@ -936,10 +936,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-party/admin) | `modules` | 6 | 322 | None |  |
 | [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,530 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,394 | None |  |
-| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 55 | 23,293 | None |  |
+| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 55 | 23,287 | None |  |
 | [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 623 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 15 | 8,374 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 11 | 2,782 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 11 | 2,776 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 231 | 99,782 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,119 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,958 | None |  |
