@@ -4,6 +4,12 @@
 //! chain, the SQLite test migrator, installer-owned schema application, and
 //! the schema-diff safety classifier shared by operator tooling.
 
+pub mod verification;
+
+#[cfg(feature = "composition")]
+#[path = "."]
+mod composition {
+
 use sea_orm_migration::prelude::{ConnectionTrait, DbErr, MigrationTrait, MigratorTrait, SchemaManager};
 
 // Platform-core migrations — tables that are always present regardless of which
@@ -1431,3 +1437,8 @@ mod tests {
         }
     }
 }
+
+}
+
+#[cfg(feature = "composition")]
+pub use composition::*;

@@ -192,7 +192,9 @@ repository interfaces or a database-provider registry without a real consumer.
 
 ## Database Schema and Migration Parity Verification
 
-When creating, altering, or squashing database migrations in a module, verify 100% schema parity between SeaORM entities (`src/entities/*.rs`) and migrations (`src/migrations/*.rs`):
+When creating, altering, or consolidating module migrations, use the existing
+source scanner as a bounded diagnostic alongside scoped Rust and PostgreSQL
+verification.
 
 ```bash
 # Verify schema parity for a specific module:
@@ -205,7 +207,14 @@ npm run verify:schema-parity:all
 npm run test:verify:schema-parity
 ```
 
-This guard verifies table existence, column parity, nullability (`Option<T>` vs `NOT NULL`), primary keys, migration registry consistency (`mod.rs`), and detects obsolete migration references in `scripts/verify/`. See the [Safe Database Migrations and Squashing Guide](../guides/safe-database-migrations-and-squashing.md) for full instructions.
+The scanner recognizes only a subset of table/column/nullability declarations
+and registry/reference patterns. It misses nested layouts and several schema
+properties. A successful scan does not certify complete parity or data safety.
+Published stable migrations remain immutable. Consolidating unpublished steps
+requires real schema/data comparison and preservation of dependency, activation
+and recovery boundaries. The proposed admission mechanism is unimplemented.
+See the [canonical guide](../guides/safe-database-migrations-and-squashing.md)
+for current defects, the required protocol and implementation gates.
 
 ## Module Validation
 

@@ -7,11 +7,9 @@ contracts.
 
 ## Planning cursor
 
-Use [Current Implementation Cursor](./implementation-plan-current.md) for the
-live Blog source status and next autonomous cursor. The long
-[Implementation Plan](./implementation-plan.md) and standalone slice files are
-historical implementation records; they must not override the current cursor
-when later bounded migrations retire an earlier design.
+[The implementation plan](./implementation-plan.md) is the single source of truth
+for Blog task status, architecture contracts, and roadmap.
+
 
 ## Purpose
 

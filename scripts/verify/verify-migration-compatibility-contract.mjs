@@ -208,7 +208,7 @@ requireMarkers(workflow, [
   "timeout-minutes: 25",
   "Export base migration plan",
   "Export head migration plan",
-  "--bin export_migration_plan",
+  "--bin export-migration-plan",
   "migration-plans/base.json",
   "migration-plans/head.json",
   "Compare migration plans with base policy",
@@ -259,6 +259,20 @@ for (const action of ["actions/upload-artifact", "actions/download-artifact"]) {
   if (problem) failures.push(`${workflow}: ${problem}`);
 }
 requireOccurrenceCount(workflow, "Create bounded migration test role", 2);
+requireOccurrenceCount(workflow, "--bin export-migration-plan", 2);
+forbidMarkers(workflow, ["--bin export_migration_plan"]);
+const migrationManifest = "crates/utils/rustok-migrations/Cargo.toml";
+const exporterBlocks = read(migrationManifest)
+  .split(/^\s*\[\[bin\]\]\s*$/m)
+  .slice(1)
+  .map((block) => block.split(/^\s*\[/m)[0])
+  .filter((block) => /^\s*name\s*=\s*"export-migration-plan"\s*$/m.test(block));
+if (
+  exporterBlocks.length !== 1 ||
+  !/^\s*path\s*=\s*"src\/bin\/export_migration_plan\.rs"\s*$/m.test(exporterBlocks[0])
+) {
+  failures.push(`${migrationManifest}: export-migration-plan must declare src/bin/export_migration_plan.rs`);
+}
 requireOccurrenceCount(
   workflow,
   "CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8",

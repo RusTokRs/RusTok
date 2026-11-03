@@ -19,6 +19,7 @@ mod i18n_api_inventory;
 mod install_dev;
 mod manifest_io;
 mod manifest_validation;
+mod migrations;
 mod module_boundary_contracts;
 mod module_cli_args;
 mod module_commands;
@@ -140,6 +141,7 @@ fn main() -> Result<()> {
         "i18n-api-inventory" => i18n_api_inventory(&args[2..])?,
         "scaffold" => scaffold_command(&args[2..])?,
         "module" => module_command(&args[2..])?,
+        "migrations" => migrations::run(&args[2..])?,
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             print_usage();
@@ -158,6 +160,7 @@ fn print_usage() {
     println!("  validate-manifest   Validate modules.toml and rustok-module.toml files");
     println!("  install-dev         Bootstrap local non-Docker development install");
     println!("  list-modules        List all configured modules");
+    println!("  migrations          Snapshot and verify migration consolidation on PostgreSQL");
     println!(
         "  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs"
     );

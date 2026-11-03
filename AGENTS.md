@@ -370,7 +370,9 @@ The platform separates relational integrity from domain business logic:
 Database schema, migrations, ORM/entity definitions, typed DTOs, and generated schema artifacts MUST describe one canonical model.
 
 - When a table or column changes, update its owning entity/model and affected typed contracts atomically.
-- For unreleased schema work, amend the canonical pending migration instead of adding a compatibility fixup solely to preserve repository history.
+- For unpublished schema work, amend the canonical pending migration instead of adding a compatibility fixup solely to preserve repository history.
+- Every stable release, including a patch release or an independently published native module, freezes its published migration identities, source inputs and execution contracts. Consolidate only unpublished migrations between releases, with verified schema, data and execution effects under the [migration consolidation guide](docs/guides/safe-database-migrations-and-squashing.md). Preserve necessary dependency, activation and recovery boundaries.
+- Prereleases run only on disposable development/test databases. Valuable persisted state requires an explicit preservation/transfer plan regardless of the installation's release label. Consolidation never authorizes silent data loss.
 - Do not manually edit files marked `@generated`, `DO NOT EDIT`, or equivalent. Change the owning schema/source and run the canonical generator.
 
 ### Atomicity
@@ -542,7 +544,7 @@ Implement the canonical target architecture directly.
 - Do not create internal numbered/version-family routes, types, modules, GraphQL fields, storage envelopes, or package exports to avoid completing a cutover. The surviving internal implementation uses the canonical unversioned name.
 - Existing legacy encountered inside the task boundary must be removed cleanly, not extended or hidden behind another facade.
 - Phased execution of large refactorings: when a systemic change spans across dozens of modules and frontends, decompose the work into sequential, reviewable vertical phases (tracked in the audit ledger/plan). Each phase MUST leave the codebase compiling and valid, completely eliminating legacy within its completed slice, without postponing cleanup to an untracked future.
-- For unreleased schema work, amend or consolidate pending migrations instead of stacking corrective migrations solely to preserve repository history.
+- For unpublished schema work, amend or consolidate pending migrations instead of stacking corrective migrations solely to preserve repository history. Published stable migration history remains immutable under §7.
 - Before declaring completion, search for removed names and verify that remaining occurrences are explicitly preserved historical evidence rather than executable code or current guidance.
 
 Zero-legacy does not authorize silent data loss.

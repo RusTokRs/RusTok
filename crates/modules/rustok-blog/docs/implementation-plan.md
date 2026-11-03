@@ -1448,3 +1448,26 @@ A fresh storefront transport audit found that the native `blog/storefront-data` 
 The Blog storefront native adapter now accepts a fallback tenant only when it exactly matches the configured host tenant. A direct server-function caller therefore cannot select another tenant by changing `tenant_slug`, while the middleware-resolved `TenantContext` remains authoritative when present. The existing storefront boundary verifier and self-test now require the owner-side fallback guard.
 
 Runtime, build, browser, gatekeeper, and automated tests remain maintainer-owned and unrun by the agent.
+
+## Canonical Reference and Architecture Certification
+
+- Status: `canonical_reference_v1_source_certified_execution_evidence_pending`.
+- `blog_category_taxonomy_cutover = source_complete_through_cat12`.
+- `blog_category_documentation_cursor = owner_scoped_actualized_through_cat17`.
+  - CAT-13: actualize the canonical Blog planning cursor
+  - CAT-14: actualize cross-owner Taxonomy/Flex planning
+  - CAT-15: actualize central/module Translation plans
+  - CAT-16: actualize the central module registry
+  - CAT-17: align the long-form Blog plan
+- `blog_category_translation_provider = retired`.
+- `blog_category_translation_postgres_evidence = superseded_by_taxonomy_cutover`.
+- There is **no** remaining execution item for the retired Blog Category Translation provider.
+- There is no predeclared Blog Category Translation cleanup slice after CAT-17.
+
+### Comments Integration & Storefront Fallback Contract
+
+- Blog FBA registry schema v16 and Comments projection evidence schema v7 are consistent with derived Comments counters that preserve Blog business logic at the architecture/source level. Runtime/remote evidence is still pending.
+- `comment_form_policy = source_verified_hide_on_provider_absence`; active storefront writes only when Comments is available, while unavailable/timeout states preserve explicit read availability and the active storefront hides the comment write surface.
+- `storefront_cached_public_comments_snapshot_source_ready_maintainer_execution_pending`: one Blog snapshot policy for both storefront transports (`comments_owner_only`, TTL 900 seconds, maximum 10,000 keys, `cachedSnapshot`).
+- `fallback_vocabulary_for_active_storefront_write_surface`: `comment_form_fallback = planned`, cached public read snapshot, comment-form fallback is still a separate unfinished result. No tests, Cargo commands, Node verifiers were run.
+

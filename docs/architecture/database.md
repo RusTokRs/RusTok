@@ -29,6 +29,21 @@ This document is only needed as a central summary layer.
 - JSONB is allowed for settings, config and flexible payloads, but not as the final
   canonical form for localized business text
 
+## Migration release boundary
+
+Every stable release freezes its published migration history, including patch
+and independently published native-module releases. Only unpublished changes
+may be consolidated, with preservation of schema, canonical data, dependency
+ordering, installer bootstrap and execution/recovery phases. Prereleases use
+disposable development/test databases.
+
+The [canonical guide](../guides/safe-database-migrations-and-squashing.md) records
+current tooling limits and the implementation gates for observed PostgreSQL
+schema/data comparison. The [technical ADR](../../DECISIONS/2026-11-03-migration-consolidation.md)
+is proposed. Release sealing and controlled consolidation admission remain
+unimplemented. Existing operation-summary digests are insufficient evidence of
+an actual database's schema.
+
 ## Multilingual Storage Contract
 
 The current target platform pattern:

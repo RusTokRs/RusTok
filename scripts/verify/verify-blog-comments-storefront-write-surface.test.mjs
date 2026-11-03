@@ -28,7 +28,7 @@ const files = [
   'crates/modules/rustok-blog/storefront/src/model.rs',
   'crates/modules/rustok-blog/src/services/comment.rs',
   'crates/modules/rustok-blog/src/services/comment/commands.rs',
-  'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
+  'crates/modules/rustok-blog/docs/implementation-plan.md',
 ];
 
 function copy(root, relativePath) {
@@ -231,10 +231,10 @@ test('rejects runtime or browser execution claims', () => {
   assert.notEqual(result.status, 0);
 });
 
-test('rejects slice-100 planning drift', () => {
+test('rejects implementation planning drift', () => {
   const result = rejects((root) =>
     writeFileSync(
-      path.join(root, 'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md'),
+      path.join(root, 'crates/modules/rustok-blog/docs/implementation-plan.md'),
       '',
     ),
   );

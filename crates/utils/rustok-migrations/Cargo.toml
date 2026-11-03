@@ -15,13 +15,71 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[bin]]
 name = "rustok-migrate"
 path = "src/bin/rustok_migrate.rs"
+required-features = ["composition"]
 
 [[bin]]
 name = "export-migration-plan"
 path = "src/bin/export_migration_plan.rs"
+required-features = ["composition"]
+
+[[bin]]
+name = "verify-migrations"
+path = "src/bin/verify_migrations.rs"
+
+[features]
+default = ["composition"]
+composition = [
+    "dep:rustok-api",
+    "dep:async-trait",
+    "dep:rustok-core",
+    "dep:rustok-modules",
+    "dep:rustok-tenant",
+    "dep:alloy",
+    "dep:flex",
+    "dep:rustok-auth",
+    "dep:rustok-rbac",
+    "dep:rustok-channel",
+    "dep:rustok-navigation",
+    "dep:rustok-cart",
+    "dep:rustok-customer",
+    "dep:rustok-product",
+    "dep:rustok-product-bundles",
+    "dep:rustok-product-relations",
+    "dep:rustok-region",
+    "dep:rustok-pricing",
+    "dep:rustok-inventory",
+    "dep:rustok-order",
+    "dep:rustok-payment",
+    "dep:rustok-fulfillment",
+    "dep:rustok-commerce",
+    "dep:rustok-marketplace-seller",
+    "dep:rustok-marketplace-listing",
+    "dep:rustok-marketplace-allocation",
+    "dep:rustok-marketplace-commission",
+    "dep:rustok-marketplace-balance",
+    "dep:rustok-marketplace-payout",
+    "dep:rustok-moderation",
+    "dep:rustok-content",
+    "dep:rustok-blog",
+    "dep:rustok-comments",
+    "dep:rustok-pages",
+    "dep:rustok-seo",
+    "dep:rustok-forum",
+    "dep:rustok-index",
+    "dep:rustok-search",
+    "dep:rustok-taxonomy",
+    "dep:rustok-workflow",
+    "dep:rustok-media",
+    "dep:rustok-profiles",
+    "dep:rustok-social-graph",
+    "dep:rustok-translation",
+    "dep:rustok-ai",
+    "dep:rustok-outbox",
+    "dep:rustok-iggy-connector",
+]
 
 [dependencies]
-rustok-api.workspace = true
+rustok-api = { workspace = true, optional = true }
 sea-orm-migration.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
@@ -30,54 +88,56 @@ serde.workspace = true
 sha2.workspace = true
 hex.workspace = true
 thiserror.workspace = true
-async-trait.workspace = true
+url.workspace = true
+async-trait = { workspace = true, optional = true }
 # Platform-core dependencies
-rustok-core.workspace = true
-rustok-modules.workspace = true
-rustok-tenant.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-modules = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
 # Module crates — each owns its own migration files
-alloy.workspace = true
-flex.workspace = true
-rustok-auth.workspace = true
-rustok-rbac.workspace = true
-rustok-channel.workspace = true
-rustok-navigation.workspace = true
-rustok-cart.workspace = true
-rustok-customer.workspace = true
-rustok-product.workspace = true
-rustok-product-bundles.workspace = true
-rustok-product-relations.workspace = true
-rustok-region.workspace = true
-rustok-pricing.workspace = true
-rustok-inventory.workspace = true
-rustok-order.workspace = true
-rustok-payment.workspace = true
-rustok-fulfillment.workspace = true
-rustok-commerce.workspace = true
-rustok-marketplace-seller.workspace = true
-rustok-marketplace-listing.workspace = true
-rustok-marketplace-allocation.workspace = true
-rustok-marketplace-commission.workspace = true
-rustok-marketplace-balance.workspace = true
-rustok-marketplace-payout.workspace = true
-rustok-moderation = { workspace = true, features = ["server"] }
-rustok-content.workspace = true
-rustok-blog.workspace = true
-rustok-comments = { workspace = true, features = ["server"] }
-rustok-pages.workspace = true
-rustok-seo.workspace = true
-rustok-forum.workspace = true
-rustok-index.workspace = true
-rustok-search.workspace = true
-rustok-taxonomy.workspace = true
-rustok-workflow.workspace = true
-rustok-media.workspace = true
-rustok-profiles = { workspace = true, features = ["server"] }
-rustok-social-graph.workspace = true
-rustok-translation.workspace = true
-rustok-ai = { workspace = true, features = ["server"] }
-rustok-outbox.workspace = true
-rustok-iggy-connector = { workspace = true, features = ["migrations"] }
+alloy = { workspace = true, optional = true }
+flex = { workspace = true, optional = true }
+rustok-auth = { workspace = true, optional = true }
+rustok-rbac = { workspace = true, optional = true }
+rustok-channel = { workspace = true, optional = true }
+rustok-navigation = { workspace = true, optional = true }
+rustok-cart = { workspace = true, optional = true }
+rustok-customer = { workspace = true, optional = true }
+rustok-product = { workspace = true, optional = true }
+rustok-product-bundles = { workspace = true, optional = true }
+rustok-product-relations = { workspace = true, optional = true }
+rustok-region = { workspace = true, optional = true }
+rustok-pricing = { workspace = true, optional = true }
+rustok-inventory = { workspace = true, optional = true }
+rustok-order = { workspace = true, optional = true }
+rustok-payment = { workspace = true, optional = true }
+rustok-fulfillment = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
+rustok-marketplace-seller = { workspace = true, optional = true }
+rustok-marketplace-listing = { workspace = true, optional = true }
+rustok-marketplace-allocation = { workspace = true, optional = true }
+rustok-marketplace-commission = { workspace = true, optional = true }
+rustok-marketplace-balance = { workspace = true, optional = true }
+rustok-marketplace-payout = { workspace = true, optional = true }
+rustok-moderation = { workspace = true, optional = true, features = ["server"] }
+rustok-content = { workspace = true, optional = true }
+rustok-blog = { workspace = true, optional = true }
+rustok-comments = { workspace = true, optional = true, features = ["server"] }
+rustok-pages = { workspace = true, optional = true }
+rustok-seo = { workspace = true, optional = true }
+rustok-forum = { workspace = true, optional = true }
+rustok-index = { workspace = true, optional = true }
+rustok-search = { workspace = true, optional = true }
+rustok-taxonomy = { workspace = true, optional = true }
+rustok-workflow = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
+rustok-profiles = { workspace = true, optional = true, features = ["server"] }
+rustok-social-graph = { workspace = true, optional = true }
+rustok-translation = { workspace = true, optional = true }
+rustok-ai = { workspace = true, optional = true, features = ["server"] }
+rustok-outbox = { workspace = true, optional = true }
+rustok-iggy-connector = { workspace = true, optional = true, features = ["migrations"] }
+
 
 [dev-dependencies]
 async-trait.workspace = true

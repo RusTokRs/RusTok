@@ -64,5 +64,30 @@ against the exact migration identity before any retry.
 
 - `rustok_migrations::Migrator`
 
+## Migration consolidation design
+
+The [consolidation proposal](../../../DECISIONS/2026-11-03-migration-consolidation.md)
+extends this crate's existing composition and execution responsibility with
+PostgreSQL catalog observation and isolated reference/candidate verification.
+Domain owners retain migration code, data transformations and independent
+invariant assertions. Release tooling owns immutable publication evidence.
+
+The developer workflow is implemented in Rust behind `cargo xtask migrations`.
+`xtask` orchestrates source snapshots, candidate files and reports, while this
+crate owns database observation, schema/data comparison and migration execution.
+Use scoped owner tools through a process boundary to keep `xtask` independent
+from this crate's complete domain-module dependency set.
+
+The [canonical guide](../../../docs/guides/safe-database-migrations-and-squashing.md)
+records the agreed stable-release policy, current tooling limitations and the
+ordered implementation gates. The proposed verifier and release seal are not
+implemented. Existing `schema_diff` operation summaries and projected target
+digests do not observe a PostgreSQL database or certify consolidation safety.
+
+Implementation must reuse the real `Migrator`, installer bootstrap entrypoints,
+`MigrationSource` dependency/safety metadata and PostgreSQL fixture harness.
+The current composed exporter covers the crate's compiled module set. Separate
+distribution/profile selection needs executable wiring and its own evidence.
+
 See [the database architecture](../../../docs/architecture/database.md) and the
 [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).

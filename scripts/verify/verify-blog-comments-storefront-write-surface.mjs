@@ -19,7 +19,7 @@ const files = {
   native: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   facade: 'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
   model: 'crates/modules/rustok-blog/storefront/src/model.rs',
-  plan: 'crates/modules/rustok-blog/docs/implementation-plan-slice-100.md',
+  plan: 'crates/modules/rustok-blog/docs/implementation-plan.md',
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);

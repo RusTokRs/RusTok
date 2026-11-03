@@ -279,6 +279,22 @@ cargo xtask module test <slug>
 - Contacts registry HTTP endpoints only for live operator commands when `--dry-run` is not used.
 - Live registry operator commands target the clean V2 contract only: bearer auth via `--auth-token` / `RUSTOK_MODULE_AUTH_TOKEN`, `new_owner_user_id` for owner transfer, owner-issued digest/crate identity for remote runner claims, and no legacy actor/publisher header path.
 
+## Planned migration consolidation commands
+
+The [migration consolidation proposal](../DECISIONS/2026-11-03-migration-consolidation.md)
+uses Rust with `cargo xtask migrations` as the repository workflow entrypoint.
+Command parsing, source snapshots, candidate previews, orchestration and reports
+belong to `xtask`. Database observation, canonical migration execution and
+schema/data comparison belong to `rustok-migrations`. `xtask` invokes the scoped
+owner tools as processes so ordinary tooling does not acquire all domain-module
+dependencies.
+
+Candidate changes are prepared in the current working branch. Reference builds
+use disposable source snapshots without creating branches. CI uses the same Rust
+entrypoint. These commands are planned and are not registered in the binary yet.
+The [canonical guide](../docs/guides/safe-database-migrations-and-squashing.md)
+owns the implementation sequence and acceptance gates.
+
 ## Verification
 
 Use targeted checks when editing `xtask`:

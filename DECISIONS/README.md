@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | [2026-11-03](./2026-11-03-native-scaffold-recovery.md) | Native scaffold workspace locking and recoverable writes | Accepted | Implemented | Extends [native source layout](./2026-09-18-canonical-native-module-source-layout.md) |
+| [2026-11-03](./2026-11-03-migration-consolidation.md) | Release-bound migration consolidation | Accepted | In progress | Extends [migration ordering](./2026-05-18-control-plane-lifecycle-and-migration-contracts.md), [operations boundary](./2026-07-02-axum-runtime-and-ops-cli-boundary.md), [release safety](./2026-08-06-module-release-rollback-safety.md) |
 | [2026-11-02](./2026-11-02-rbac-graphql-grant-invalidation.md) | Durable invalidation for GraphQL role-grant edits | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
 | [2026-11-02](./2026-11-02-rbac-cache-resolution-consistency.md) | RBAC cache-resolution consistency failures | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |
 | [2026-11-02](./2026-11-02-invalidated-rbac-request-scope.md) | Invalidated RBAC request snapshots fail closed | Accepted | In progress | Extends [RBAC source of truth](./2026-02-26-rbac-relation-source-of-truth-cutover.md) |

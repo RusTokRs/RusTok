@@ -98,8 +98,8 @@ Short list of typical mistakes before making code changes.
 
 ## Migrations
 
-- In pre-stable development, squashing multiple migrations into a single baseline is permitted, but MUST follow the [Safe Database Migrations and Squashing Guide](../guides/safe-database-migrations-and-squashing.md).
-- Always verify 100% schema parity before and after squashing with `npm run verify:schema-parity -- --module <slug>`.
+- Published stable migration history is immutable, including patch and native-module releases. Only unpublished steps may be consolidated under the [canonical guide](../guides/safe-database-migrations-and-squashing.md).
+- `npm run verify:schema-parity -- --module <slug>` provides partial source diagnostics. Its success cannot establish complete schema parity or preservation of data, constraints, triggers and RLS. Real PostgreSQL comparison and owner assertions are required for consolidation, and the proposed admission mechanism remains unimplemented.
 - Never delete or drop columns without verifying entity models and updating dependent verification scripts.
 - Do not create migrations outside `RusToKModule::migrations()` — use the standard mechanism.
 - Do not forget to add a migration for every new entity.

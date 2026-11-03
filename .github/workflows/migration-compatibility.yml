@@ -126,7 +126,7 @@ jobs:
           cargo run
           --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
           -p rustok-migrations
-          --bin export_migration_plan
+          --bin export-migration-plan
           --
           --output "$GITHUB_WORKSPACE/migration-plans/base.json"
 
@@ -138,7 +138,7 @@ jobs:
           --locked
           --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
           -p rustok-migrations
-          --bin export_migration_plan
+          --bin export-migration-plan
           --
           --output "$GITHUB_WORKSPACE/migration-plans/head.json"
 
