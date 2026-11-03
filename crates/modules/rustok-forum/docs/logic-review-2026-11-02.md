@@ -662,3 +662,12 @@ change owned by the moderation/eventing track.
   `main` baseline (Formatting, Cargo Deny, Cargo Check, Documentation
   fail on a clean `main` run), so they are not used as the gate here;
   the scoped evidence above is.
+
+**Fixture follow-up:** the two `reply_update_window` archive tests
+were triaged as a fixture defect, not a product regression, and the
+fixture is now repaired in-tree: `seed_topic` applies the same
+`topic_count + 1` category adjustment that `TopicService` performs
+on create, so the seeded category counters reflect the seeded topic
+and archiving can apply its `-1` delta. The fail-closed counter
+guard is unchanged. A local Rust test run remains the confirmation
+step for these two tests.
