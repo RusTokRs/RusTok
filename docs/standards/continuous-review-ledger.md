@@ -842,7 +842,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,103 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 322 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 123 | None |  |
-| [ ] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 66 | 20,048 | None |  |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 66 | 20,103 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
 | [ ] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,891 | None |  |
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 11,858 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,231 | None |  |

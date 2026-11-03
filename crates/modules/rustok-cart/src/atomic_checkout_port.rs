@@ -60,7 +60,7 @@ pub trait AtomicCartCheckoutPricingResolver: Send + Sync {
 /// protocol while deferring persistence until the durable orchestration claim.
 pub struct AtomicCartCheckoutPort {
     service: Arc<CartService>,
-    snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
+    _snapshot_port: Arc<dyn CartCheckoutSnapshotPort>,
     prepare_request: PrepareCartCheckoutSnapshotRequest,
     pricing_resolver: Option<Arc<dyn AtomicCartCheckoutPricingResolver>>,
     prepared_state: PreparedState,
@@ -90,7 +90,7 @@ impl AtomicCartCheckoutPort {
     ) -> Self {
         let service = Arc::new(CartService::new(db));
         Self {
-            snapshot_port: in_process_cart_checkout_snapshot_port((*service).clone()),
+            _snapshot_port: in_process_cart_checkout_snapshot_port((*service).clone()),
             service,
             prepare_request,
             pricing_resolver: None,
@@ -235,7 +235,7 @@ fn bind_atomic_cart_checkout(
     let prepared_state = Arc::new(Mutex::new(None));
     let port = Arc::new(AtomicCartCheckoutPort {
         service: service.clone(),
-        snapshot_port: snapshot_port.clone(),
+        _snapshot_port: snapshot_port.clone(),
         prepare_request: prepare_request.clone(),
         pricing_resolver: pricing_resolver.clone(),
         prepared_state: prepared_state.clone(),

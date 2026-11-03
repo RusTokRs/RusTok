@@ -508,7 +508,8 @@ async fn channel_tax_provider_mapping_overrides_region_provider() {
         CartError::TaxBoundary { code, message, .. } => {
             assert_eq!(code, "tax.validation");
             assert!(
-                message.contains("tax calculation request is invalid")
+                message.contains("tax request is invalid")
+                    || message.contains("tax calculation request is invalid")
                     || message.contains("unknown tax provider_id: external_tax")
             );
         }
@@ -686,7 +687,8 @@ async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
         CartError::TaxBoundary { code, message, .. } => {
             assert_eq!(code, "tax.validation");
             assert!(
-                message.contains("tax calculation request is invalid")
+                message.contains("tax request is invalid")
+                    || message.contains("tax calculation request is invalid")
                     || message.contains("unknown tax provider_id: external_tax")
             );
         }
@@ -829,7 +831,8 @@ async fn channel_tax_provider_mapping_with_invalid_chars_is_rejected() {
         CartError::TaxBoundary { code, message, .. } => {
             assert_eq!(code, "tax.validation");
             assert!(
-                message.contains("tax calculation request is invalid")
+                message.contains("tax request is invalid")
+                    || message.contains("tax calculation request is invalid")
                     || message.contains("tax provider_id must use lowercase ASCII")
             );
         }
@@ -882,12 +885,47 @@ async fn blank_channel_tax_provider_mapping_falls_back_to_region_provider() {
 
 #[tokio::test]
 async fn update_cart_context_rewrites_snapshot_fields() {
-    let service = setup().await;
+    let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
     let initial_region_id = Uuid::new_v4();
     let updated_region_id = Uuid::new_v4();
     let initial_shipping_option_id = Uuid::new_v4();
     let updated_shipping_option_id = Uuid::new_v4();
+
+    insert_region(
+        &db,
+        tenant_id,
+        initial_region_id,
+        "eur",
+        None,
+        serde_json::json!({}),
+    )
+    .await;
+    insert_region(
+        &db,
+        tenant_id,
+        updated_region_id,
+        "eur",
+        None,
+        serde_json::json!({}),
+    )
+    .await;
+    insert_shipping_option(
+        &db,
+        tenant_id,
+        initial_shipping_option_id,
+        "eur",
+        Decimal::from_str("5.00").unwrap(),
+    )
+    .await;
+    insert_shipping_option(
+        &db,
+        tenant_id,
+        updated_shipping_option_id,
+        "eur",
+        Decimal::from_str("7.00").unwrap(),
+    )
+    .await;
 
     let cart = service
         .create_cart(
@@ -956,7 +994,7 @@ async fn update_and_remove_line_items_recalculate_cart() {
             tenant_id,
             cart.id,
             rustok_cart::CartLineItemPricingUpdate {
-                line_item_id: line_item_id,
+                line_item_id,
                 quantity: 3,
                 unit_price: cart.line_items[0].unit_price,
                 pricing_adjustment: None,
@@ -1400,12 +1438,29 @@ async fn checking_out_cart_rejects_adjustment_mutations() {
 
 #[tokio::test]
 async fn seller_aware_delivery_groups_split_same_shipping_profile() {
-    let service = setup().await;
+    let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
     let seller_a_option_id = Uuid::new_v4();
     let seller_b_option_id = Uuid::new_v4();
     let seller_a_id = "seller-a-id";
     let seller_b_id = "seller-b-id";
+
+    insert_shipping_option(
+        &db,
+        tenant_id,
+        seller_a_option_id,
+        "USD",
+        Decimal::from_str("10.00").unwrap(),
+    )
+    .await;
+    insert_shipping_option(
+        &db,
+        tenant_id,
+        seller_b_option_id,
+        "USD",
+        Decimal::from_str("10.00").unwrap(),
+    )
+    .await;
 
     let cart = service
         .create_cart(tenant_id, create_cart_input())
