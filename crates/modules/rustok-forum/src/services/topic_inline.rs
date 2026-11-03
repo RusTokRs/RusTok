@@ -300,17 +300,37 @@ impl TopicService {
             };
 
         let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let claimed_updated_at =
             Self::claim_topic_update_in_tx(&txn, tenant_id, topic_id, expected_updated_at).await?;
-        // A content edit in a pre-moderated tenant re-enters moderation:
-        // otherwise an author could publish a benign topic and rewrite it
-        // into unreviewed content that stays `Open`. Metadata/tag-only
-        // edits do not re-pend. Pending topics already count toward
-        // category/user totals, so no counter changes are needed, and the
-        // publication journal prevents a duplicate `ForumTopicCreated`
-        // when the topic is approved again.
+        // A content edit in a pre-moderated tenant re-enters moderation only when
+        // normalized title or body actually changes: otherwise no-op saves (or metadata/tag-only edits)
+        // would falsely de-publish an already approved topic.
+        let existing_translation = forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+            .filter(forum_topic_translation::Column::Locale.eq(&locale))
+            .one(&txn)
+            .await?;
+        let title_changed = match (&input.title, &existing_translation) {
+            (Some(new_title), Some(existing)) => new_title.trim() != existing.title.trim(),
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+        let body_changed = match (&prepared_relation_body, &existing_translation) {
+            (Some(new_body), Some(existing)) => {
+                let existing_doc = crate::richtext::project_stored_discussion(&existing.body)
+                    .map(|p| p.view.document)
+                    .ok();
+                existing_doc.as_ref() != Some(new_body)
+            }
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+        let content_changed = title_changed || body_changed;
+
         let repend_for_moderation = topic.status == TopicStatus::Open
-            && (input.title.is_some() || input.body.is_some())
+            && content_changed
             && self
                 .settings
                 .module_settings_in_tx(&txn, tenant_id)

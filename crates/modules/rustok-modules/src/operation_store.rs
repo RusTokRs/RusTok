@@ -229,27 +229,33 @@ impl ModuleOperationJournal {
         operation_id: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let operation_keys = crate::backend::sqlite_uuid_keys("?2", "?1");
+        let tenant_keys = crate::backend::sqlite_uuid_keys(
+            "candidate.tenant_canonical",
+            "candidate.tenant_native",
+        );
         let sql = match backend {
             SupportedBackend::Postgres => format!("{} WHERE id = $1", operation_select_sql()),
-            SupportedBackend::Sqlite => "WITH selected AS (SELECT * FROM module_operations WHERE id IN (?1, ?2) LIMIT 2), \
-                candidate AS (SELECT selected.*, CASE \
-                  WHEN typeof(tenant_id) = 'blob' AND length(tenant_id) = 16 THEN \
-                    lower(substr(hex(tenant_id), 1, 8) || '-' || substr(hex(tenant_id), 9, 4) || '-' || \
-                          substr(hex(tenant_id), 13, 4) || '-' || substr(hex(tenant_id), 17, 4) || '-' || substr(hex(tenant_id), 21, 12)) \
-                  WHEN typeof(tenant_id) = 'text' THEN unhex(replace(tenant_id, '-', '')) \
-                  ELSE NULL END AS tenant_alternate FROM selected) \
+            SupportedBackend::Sqlite => format!(
+                "WITH selected AS (SELECT * FROM module_operations WHERE id COLLATE NOCASE IN ({operation_keys}) LIMIT 2), \
+                decoded AS (SELECT selected.*, CASE \
+                  WHEN typeof(tenant_id) = 'blob' AND length(tenant_id) = 16 THEN tenant_id \
+                  WHEN typeof(tenant_id) = 'text' THEN unhex(replace(replace(replace(replace(lower(tenant_id), 'urn:uuid:', ''), '{{', ''), '}}', ''), '-', '')) \
+                  ELSE NULL END AS tenant_native FROM selected), \
+                candidate AS (SELECT decoded.*, lower(substr(hex(tenant_native), 1, 8) || '-' || substr(hex(tenant_native), 9, 4) || '-' || \
+                  substr(hex(tenant_native), 13, 4) || '-' || substr(hex(tenant_native), 17, 4) || '-' || substr(hex(tenant_native), 21, 12)) AS tenant_canonical FROM decoded) \
                 SELECT candidate.*, candidate.module_slug AS matched_module, \
-                (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN (candidate.tenant_id, candidate.tenant_alternate)) AS parent_count, \
-                (candidate.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (candidate.tenant_id, candidate.tenant_alternate) LIMIT 1)) AS matches_parent, \
-                (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_id) AND \
-                 EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_alternate)) AS mixed_identity, \
-                ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_id) AND \
-                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = candidate.tenant_id)) OR \
-                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_alternate) AND \
-                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = candidate.tenant_alternate))) AS orphaned_identity, \
-                typeof(candidate.tenant_id) AS tenant_id_storage, typeof(candidate.tenant_alternate) AS alternate_storage, \
-                length(candidate.tenant_alternate) AS alternate_length, typeof(candidate.id) AS operation_id_storage, \
-                typeof(candidate.idempotency_key) AS idempotency_key_storage FROM candidate".to_string(),
+                (SELECT COUNT(*) FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) AS parent_count, \
+                (candidate.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = candidate.tenant_native) AND \
+                 EXISTS(SELECT 1 FROM module_operations WHERE typeof(tenant_id) = 'text' AND tenant_id COLLATE NOCASE IN ({tenant_keys}))) AS mixed_identity, \
+                EXISTS(SELECT 1 FROM module_operations orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity, \
+                (candidate.tenant_id COLLATE NOCASE IN ({tenant_keys})) AS tenant_supported, \
+                typeof(candidate.tenant_native) AS native_storage, length(candidate.tenant_native) AS native_length, \
+                typeof(candidate.id) AS operation_id_storage, \
+                typeof(candidate.idempotency_key) AS idempotency_key_storage FROM candidate"
+            ),
         };
         let mut values = vec![operation_id.into()];
         if matches!(backend, SupportedBackend::Sqlite) {
@@ -273,11 +279,14 @@ impl ModuleOperationJournal {
             if !validate_sqlite_journal_identity(&row)? {
                 return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
             }
-            let tenant_storage: String = row.try_get("", "tenant_id_storage").map_err(database_error)?;
-            let alternate_storage: String = row.try_get("", "alternate_storage").map_err(database_error)?;
-            let alternate_length: Option<i64> = row.try_get("", "alternate_length").map_err(database_error)?;
-            if !matches!((tenant_storage.as_str(), alternate_storage.as_str(), alternate_length),
-                ("blob", "text", Some(36)) | ("text", "blob", Some(16))) {
+            let supported: Option<bool> = row
+                .try_get("", "tenant_supported")
+                .map_err(database_error)?;
+            let native_storage: String =
+                row.try_get("", "native_storage").map_err(database_error)?;
+            let native_length: Option<i64> =
+                row.try_get("", "native_length").map_err(database_error)?;
+            if supported != Some(true) || native_storage != "blob" || native_length != Some(16) {
                 return Err(ModuleOperationStoreError::UnverifiableSqliteIdentity);
             }
             let storage: String = row
@@ -313,15 +322,16 @@ impl ModuleOperationJournal {
             ModuleOperationStatus::Orphaned.as_str()
         );
         if matches!(backend, SupportedBackend::Sqlite) {
+            let tenant_keys = crate::backend::sqlite_uuid_keys("?2", "?1");
             let sql = format!(
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)), \
-                 matched AS (SELECT * FROM module_operations WHERE tenant_id IN (?1, ?2) AND {statuses} \
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})), \
+                 matched AS (SELECT * FROM module_operations WHERE tenant_id COLLATE NOCASE IN ({tenant_keys}) AND {statuses} \
                  AND (?3 IS NULL OR module_slug = ?3) ORDER BY created_at DESC, id DESC LIMIT {MAX_FAILED_OPERATIONS_FOR_TENANT}) \
                  SELECT matched.*, matched.module_slug AS matched_module, identity.parent_count, \
-                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2)) AS mixed_identity, \
-                 ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
-                  (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity, \
+                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?2)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM module_operations orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity, \
                  typeof(matched.id) AS operation_id_storage, typeof(matched.idempotency_key) AS idempotency_key_storage \
                  FROM identity LEFT JOIN matched ON TRUE ORDER BY matched.created_at DESC, matched.id DESC"
             );
@@ -477,14 +487,19 @@ impl ModuleOperationJournal {
                     "module lifecycle expected revision exceeds storage range".to_string(),
                 )
             })?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?13", "?2");
         let sql = match backend {
             SupportedBackend::Postgres => render_parameters(
-                "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, NULL)", backend),
-            SupportedBackend::Sqlite => "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) \
+                "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, NULL)",
+                backend,
+            ),
+            SupportedBackend::Sqlite => format!(
+                "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, recovery_source_id, error_message) \
                 SELECT ?1, parent.id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL \
-                FROM tenant_identity_keys parent WHERE parent.id IN (?2, ?13) \
-                AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN (?2, ?13)) = 1 \
-                AND NOT EXISTS (SELECT 1 FROM module_operations o WHERE o.tenant_id IN (?2, ?13) AND o.tenant_id != parent.id)".to_string(),
+                FROM tenant_identity_keys parent WHERE parent.id COLLATE NOCASE IN ({tenant_keys}) \
+                AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) = 1 \
+                AND NOT EXISTS (SELECT 1 FROM module_operations o WHERE o.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND o.tenant_id != parent.id)"
+            ),
         };
         let mut values = vec![
             id.into(),
@@ -562,22 +577,34 @@ impl ModuleOperationJournal {
         idempotency_key: Uuid,
     ) -> Result<Option<ModuleOperationSnapshot>, ModuleOperationStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?3", "?1");
+        let idempotency_keys = crate::backend::sqlite_uuid_keys("?4", "?2");
         let (sql, values) = match backend {
             SupportedBackend::Postgres => (
-                format!("{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1", operation_select_sql()),
+                format!(
+                    "{} WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1",
+                    operation_select_sql()
+                ),
                 vec![tenant_id.into(), idempotency_key.into()],
             ),
             SupportedBackend::Sqlite => (
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)), \
-                 matched AS (SELECT * FROM module_operations WHERE tenant_id IN (?1, ?3) AND idempotency_key IN (?2, ?4)) \
+                format!(
+                    "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})), \
+                 matched AS (SELECT * FROM module_operations WHERE tenant_id COLLATE NOCASE IN ({tenant_keys}) AND idempotency_key COLLATE NOCASE IN ({idempotency_keys})) \
                  SELECT matched.*, matched.module_slug AS matched_module, identity.parent_count, \
-                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?3)) AS mixed_identity, \
-                 ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
-                  (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?3) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?3))) AS orphaned_identity, \
+                 (matched.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM module_operations orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity, \
                  typeof(matched.id) AS operation_id_storage, typeof(matched.idempotency_key) AS idempotency_key_storage \
-                 FROM identity LEFT JOIN matched ON TRUE LIMIT 2".to_string(),
-                vec![tenant_id.into(), idempotency_key.into(), tenant_id.to_string().into(), idempotency_key.to_string().into()],
+                 FROM identity LEFT JOIN matched ON TRUE LIMIT 2"
+                ),
+                vec![
+                    tenant_id.into(),
+                    idempotency_key.into(),
+                    tenant_id.to_string().into(),
+                    idempotency_key.to_string().into(),
+                ],
             ),
         };
         let mut rows = db
@@ -1139,24 +1166,23 @@ impl StaticTenantLifecycleStore {
             })
             .collect::<Vec<_>>()
             .join(", ");
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?2");
         let sql = match backend {
             SupportedBackend::Postgres => format!(
                 "SELECT module_slug, revision, active_idempotency_key FROM module_static_tenant_lifecycle \
                  WHERE tenant_id = $1 AND module_slug IN ({placeholders})"
             ),
             SupportedBackend::Sqlite => format!(
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)) \
+                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.module_slug, t.revision, t.active_idempotency_key, \
                  identity.parent_count, \
-                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?1) AND \
-                  EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?2)) AS mixed_identity, \
-                 ((EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?1) AND \
-                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
-                  (EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id = ?2) AND \
-                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id COLLATE NOCASE = ?1) AND \
+                  EXISTS(SELECT 1 FROM module_static_tenant_lifecycle WHERE tenant_id COLLATE NOCASE = ?2)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM module_static_tenant_lifecycle orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
                  FROM identity LEFT JOIN module_static_tenant_lifecycle t \
-                 ON t.tenant_id IN (?1, ?2) AND t.module_slug IN ({placeholders})"
+                 ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND t.module_slug IN ({placeholders})"
             ),
         };
         let rows = db
@@ -1222,6 +1248,7 @@ impl StaticTenantLifecycleStore {
             SupportedBackend::Postgres => " FOR UPDATE",
             SupportedBackend::Sqlite => "",
         };
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?3");
         let sql = match backend {
             SupportedBackend::Postgres => format!(
                 "SELECT active_idempotency_key, \
@@ -1237,7 +1264,7 @@ impl StaticTenantLifecycleStore {
                  (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds')) \
                  THEN 'expired' ELSE 'active' END AS claim_expiry \
                  FROM module_static_tenant_lifecycle \
-                 WHERE tenant_id IN (?1, ?3) AND module_slug = ?2 LIMIT 1{lock_clause}"
+                 WHERE tenant_id COLLATE NOCASE IN ({tenant_keys}) AND module_slug = ?2 LIMIT 1{lock_clause}"
             ),
         };
         let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
@@ -1281,6 +1308,8 @@ impl StaticTenantLifecycleStore {
     ) -> Result<bool, StaticTenantLifecycleStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?4");
+        let claim_keys = crate::backend::sqlite_uuid_keys("?3", "?5");
         let sql = match backend {
             SupportedBackend::Postgres => format!(
                 "UPDATE module_static_tenant_lifecycle \
@@ -1291,7 +1320,7 @@ impl StaticTenantLifecycleStore {
             SupportedBackend::Sqlite => format!(
                 "UPDATE module_static_tenant_lifecycle \
                  SET active_idempotency_key = NULL, active_claimed_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') \
-                 WHERE tenant_id IN (?1, ?4) AND module_slug = ?2 AND active_idempotency_key IN (?3, ?5) \
+                 WHERE tenant_id COLLATE NOCASE IN ({tenant_keys}) AND module_slug = ?2 AND active_idempotency_key COLLATE NOCASE IN ({claim_keys}) \
                    AND (active_claimed_at IS NULL OR datetime(active_claimed_at) <= datetime('now', '-{STATIC_LIFECYCLE_CLAIM_LEASE_SECONDS} seconds'))"
             ),
         };
@@ -1908,13 +1937,14 @@ async fn validate_sqlite_journal_tenant<C: ConnectionTrait>(
     db: &C,
     tenant_id: Uuid,
 ) -> Result<(), ModuleOperationStoreError> {
+    let tenant_keys = crate::backend::sqlite_uuid_keys("?2", "?1");
     let row = db.query_one_raw(Statement::from_sql_and_values(
         sea_orm::DbBackend::Sqlite,
-        "SELECT COUNT(*) AS parent_count, NULL AS matched_module, NULL AS matches_parent, \
-         (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2)) AS mixed_identity, \
-         ((EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?1) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
-          (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id = ?2) AND NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?2))) AS orphaned_identity \
-         FROM tenant_identity_keys WHERE id IN (?1, ?2)",
+        format!("SELECT COUNT(*) AS parent_count, NULL AS matched_module, NULL AS matches_parent, \
+         (EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?1) AND EXISTS(SELECT 1 FROM module_operations WHERE tenant_id COLLATE NOCASE = ?2)) AS mixed_identity, \
+         EXISTS(SELECT 1 FROM module_operations orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
+         FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})"),
         vec![tenant_id.into(), tenant_id.to_string().into()],
     )).await.map_err(database_error)?.ok_or_else(|| database_error("tenant identity query returned no aggregate"))?;
     validate_sqlite_journal_identity(&row)?;
@@ -1928,22 +1958,21 @@ impl TenantModuleStateStore {
         module_slug: &str,
     ) -> Result<Option<TenantModuleStateRecord>, ModuleOperationStoreError> {
         let backend = SupportedBackend::new(db.get_database_backend()).map_err(database_error)?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?3");
         let sql = match backend {
             SupportedBackend::Postgres => {
-                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+                "SELECT id, enabled FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1".to_string()
             }
             SupportedBackend::Sqlite => {
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                format!("WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.id, t.enabled, identity.parent_count, \
-                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity, \
-                 ((EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?1)) OR \
-                  (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3) AND \
-                   NOT EXISTS(SELECT 1 FROM tenant_identity_keys WHERE id = ?3))) AS orphaned_identity \
-                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?3) \
-                 AND t.module_slug = ?2 LIMIT 2"
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
+                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) \
+                 AND t.module_slug = ?2 LIMIT 2")
             }
         };
         let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
@@ -2214,11 +2243,12 @@ fn static_tenant_key_sql(
         StaticTenantRows::Lifecycle => "module_static_tenant_lifecycle",
         StaticTenantRows::Overrides => "tenant_modules",
     };
+    let keys = crate::backend::sqlite_uuid_keys(&text, &native);
     format!(
-        "(SELECT parent.id FROM tenant_identity_keys parent WHERE parent.id IN ({text}, {native}) \
-         AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id IN ({text}, {native})) = 1 \
+        "(SELECT parent.id FROM tenant_identity_keys parent WHERE parent.id COLLATE NOCASE IN ({keys}) \
+         AND (SELECT COUNT(*) FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({keys})) = 1 \
          AND NOT EXISTS (SELECT 1 FROM {table} existing \
-         WHERE existing.tenant_id IN ({text}, {native}) AND existing.tenant_id != parent.id))"
+         WHERE existing.tenant_id COLLATE NOCASE IN ({keys}) AND existing.tenant_id != parent.id))"
     )
 }
 
@@ -2234,14 +2264,12 @@ fn lifecycle_claim_key_sql(
         return format!("active_idempotency_key = {text}");
     }
     values.push(key.into());
-    format!(
-        "active_idempotency_key IN ({text}, {})",
-        backend.placeholder(values.len())
-    )
+    let keys = crate::backend::sqlite_uuid_keys(&text, &backend.placeholder(values.len()));
+    format!("active_idempotency_key COLLATE NOCASE IN ({keys})")
 }
 
-/// Restrict the CAS update to the same physical override row even if an old
-/// SQLite row stored its UUID as canonical text instead of a native blob.
+/// Restrict the CAS update to the same logical override ID even if an old
+/// SQLite row stored its UUID as text instead of a native blob.
 fn static_override_id_sql(
     backend: SupportedBackend,
     position: usize,
@@ -2253,7 +2281,8 @@ fn static_override_id_sql(
         return format!("id = {native}");
     }
     values.push(id.to_string().into());
-    format!("id IN ({native}, {})", backend.placeholder(values.len()))
+    let keys = crate::backend::sqlite_uuid_keys(&backend.placeholder(values.len()), &native);
+    format!("id COLLATE NOCASE IN ({keys})")
 }
 
 /// Executes a statement that must affect exactly one row.
@@ -2388,7 +2417,12 @@ mod tests {
         }
         let native = Uuid::new_v4();
         let text = Uuid::new_v4();
-        for parent in [native.into(), text.to_string().into()] {
+        let uppercase = Uuid::new_v4();
+        for parent in [
+            native.into(),
+            text.to_string().into(),
+            uppercase.to_string().to_uppercase().into(),
+        ] {
             db.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO tenants (id) VALUES (?1)",
@@ -2397,7 +2431,7 @@ mod tests {
             .await
             .unwrap();
         }
-        for tenant in [native, text] {
+        for tenant in [native, text, uppercase] {
             let created = TenantModuleStateStore::persist_settings(
                 &db,
                 TenantModuleSettingsRequest {
@@ -2470,7 +2504,7 @@ mod tests {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?1)",
-            vec![native.to_string().into()],
+            vec![native.to_string().to_uppercase().into()],
         ))
         .await
         .unwrap();
@@ -2500,7 +2534,7 @@ mod tests {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM tenants WHERE id = ?1",
-            vec![native.to_string().into()],
+            vec![native.to_string().to_uppercase().into()],
         ))
         .await
         .unwrap();
@@ -3298,7 +3332,7 @@ mod tests {
                 .execute_raw(Statement::from_sql_and_values(
                     DbBackend::Sqlite,
                     format!("UPDATE module_operations SET {column} = ?1 WHERE id = ?2"),
-                    vec![legacy.to_string().into(), recorded.id.into()],
+                    vec![legacy.to_string().to_uppercase().into(), recorded.id.into()],
                 ))
                 .await
                 .unwrap();
@@ -3353,14 +3387,22 @@ mod tests {
         let database = operation_database().await;
         let tenant_id = Uuid::new_v4();
         let operation_id = Uuid::new_v4();
-        let unsupported_parent = format!("urn:uuid:{tenant_id}");
-        database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "INSERT INTO tenants (id) VALUES (?1)", vec![unsupported_parent.clone().into()])).await.unwrap();
+        let unsupported_parent = format!("invalid:uuid:{tenant_id}");
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![unsupported_parent.clone().into()],
+            ))
+            .await
+            .unwrap();
         database.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
             "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, idempotency_key, expected_revision) VALUES (?1, ?2, 'journal', TRUE, FALSE, 'validated', ?3, 0)",
             vec![operation_id.into(), unsupported_parent.into(), Uuid::new_v4().into()])).await.unwrap();
-        assert!(matches!(ModuleOperationJournal::find(&database, operation_id).await,
-            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)));
+        assert!(matches!(
+            ModuleOperationJournal::find(&database, operation_id).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
     }
 
     #[tokio::test]

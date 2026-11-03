@@ -52,7 +52,10 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
 - `ModuleEffectivePolicy` and `SharedModuleEffectivePolicyReader` provide the
   owner-issued, redacted availability decision.
 - `DatabaseStaticModuleSettingsReader` accepts either native or text tenant
-  UUID storage on SQLite, including transactional reads. It rejects ambiguous
+  UUID storage on SQLite, including transactional reads. All four UUID text
+  forms accepted by the Rust UUID parser are matched without regard to letter
+  case; the exact stored parent key is
+  still required for child rows. It rejects ambiguous
   parent identities through the tenant-owned SQLite key projection, mixed
   representations, and orphaned matching rows.
 - The lifecycle policy and its transaction-bound consumer share one bounded
@@ -66,11 +69,18 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   watchdog reconciliation uses the same transaction snapshot. Override writes
   match the prior row and enablement intent before applying an update.
 - SQLite journal insertion and idempotency lookup validate the unique tenant
-  parent in the same statement. Native and canonical text tenant keys can be
+  parent in the same statement. Native and supported text tenant keys can be
   replayed when operation and idempotency keys are native; unsupported key
   encodings or conflicting identities fail closed. After migration, the
   normalized SQLite index prevents native/canonical-text duplicates, including from
   older concurrent writers. Existing duplicate receipts block that migration.
+- SQLite owner lookups use tenant-owned and module-owned
+  indexes installed by migrations `m20261103_000003_tenant_identity_index`
+  and `m20261103_000091_tenant_identity_indexes` respectively. The latter also
+  prevents logically duplicate journal idempotency keys and policy revision
+  cursors across UUID forms; existing collisions block migration and require
+  reconciliation. Cursor reads and updates preserve the existing physical
+  tenant key and fail if multiple representations exist for one consumer.
 - `ModuleLifecycleDbWriter::with_static_settings_schema` supplies the active
   host-resolved schema for one static module. Enables with this schema validate
   retained settings under the lifecycle claim and persist the normalized value

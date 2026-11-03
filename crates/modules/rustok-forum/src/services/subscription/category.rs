@@ -150,10 +150,11 @@ impl SubscriptionService {
         }
         enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let user_id = require_authenticated_user(&security)?;
-        self.require_category_visible(tenant_id, category_id, &security, context)
-            .await?;
         let preferences = resolve_preferences(&input)?;
         let txn = self.db.begin().await?;
+        crate::services::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
+        self.require_category_visible(tenant_id, category_id, &security, context)
+            .await?;
         let existing = forum_category_subscription::Entity::find()
             .filter(forum_category_subscription::Column::TenantId.eq(tenant_id))
             .filter(forum_category_subscription::Column::CategoryId.eq(category_id))

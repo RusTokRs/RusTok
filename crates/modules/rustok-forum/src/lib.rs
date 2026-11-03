@@ -98,6 +98,7 @@ pub use dto::{
     UpdateReplyInput, UpdateTopicCommandInput, UpdateTopicInput, ValidateForumWidgetPropsInput,
     bounded_forum_read_limit, deserialize_forum_read_limit,
 };
+pub use entities::*;
 pub use entities::{
     ForumAttachmentRelation, ForumAttachmentRelationHead, ForumCategory,
     ForumCategoryAudiencePolicyEntity, ForumCategoryLifecycle,

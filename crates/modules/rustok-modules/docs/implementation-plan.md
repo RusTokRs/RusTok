@@ -15,7 +15,7 @@ The cross-component sequence and completion rules are defined by the
 - Runtime kind: `Core`
 - Rollback unit: `Platform`
 - Data boundary owner: `module_transition_checkpoints`, `module_retention_holds`, `module_artifact_admission_commands`, `module_executor_readiness_receipts`, `module_source_object_receipts`, `module_source_object_retention_holds`, `module_operations_tool_releases`, `module_operations_tool_maintenance_operations`, `module_operations_tool_assignments`
-- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`, `m20261102_000090_journal_uuid_uniqueness`
+- Native migrations: `m20260903_000047_artifact_data_copy_operations`, `m20260903_000048_artifact_data_object_copy_operations`, `m20260904_000051_static_localized_settings`, `m20260904_000052_static_settings_change_cursor`, `m20260904_000053_static_settings_source_locale`, `m20261022_000057_admitted_oci_releases`, `m20261022_000058_module_source_objects`, `m20261022_000059_module_operations_tool`, `m20261029_000088_scoped_admission`, `m20261030_000089_lifecycle_hook_settings`, `m20261102_000090_journal_uuid_uniqueness`, `m20261103_000091_tenant_identity_indexes`
 - Supported migration policy: `AdditiveOnly`
 - Predecessor standby strategy: `Standby DB + CAS Holds`
 - Rollback eligibility: `AutomaticSingleAttempt`
@@ -102,12 +102,33 @@ Existing rows with a valid text tenant key and native operation and idempotency
 keys can replay; text-encoded operation or idempotency keys and multiple matching
 rows fail closed and require reconciliation. The new normalized unique index
 prevents mixed-encoding journal duplicates after migration; existing collisions
-block migration and require operator reconciliation. This is not a complete
-UUID cutover: operation lookup by ID and other SQLite control-plane readers
-remain unresolved. Legacy text-encoded journal operation and idempotency keys
+block migration and require operator reconciliation. SQLite static lifecycle
+owner reads and writes recognize simple, hyphenated, URN and braced UUID text
+case-insensitively, retain exact physical
+foreign-key matching, and reject orphaned rows even outside a requested module.
+Journal lookup by ID applies the same parent and orphan checks; unsupported
+text operation and idempotency keys are rejected. The tenant and module owner
+indexes in `m20261103_000003_tenant_identity_index` and
+`m20261103_000091_tenant_identity_indexes` support those comparisons. This is
+not a complete UUID cutover: other SQLite control-plane readers remain
+unresolved. Legacy
+text-encoded journal operation and idempotency keys
 still require explicit reconciliation. Host-level execution using the full
 production migration chain, concurrent processes, and crash/restart recovery
 remains unverified; fixture evidence below does not establish those guarantees.
+
+On 2026-11-03, in-memory SQLite execution identified that simple, URN and
+braced text UUIDs could make an explicit disabled setting appear absent. The
+static lifecycle owner now includes all formats accepted by the Rust UUID
+parser in its indexed lookups and checks each child against the exact physical
+parent key. The module-owned migration adds a normalized unique journal index
+covering all supported UUID forms: existing collisions fail the migration and
+require reconciliation rather than automatic data rewriting.
+The policy revision cursor also recognizes those tenant UUID forms on reads,
+insertion and sequence-checked updates. A normalized unique index prevents
+distinct physical keys from creating separate cursors for the same logical
+tenant and consumer. Existing conflicting cursors stop migration and require
+operator reconciliation; they are never merged automatically.
 
 The owner boundary has a standalone dependency profile: `rustok-modules` does
 not directly import or depend on AI, product, commerce, MCP, Alloy, Leptos,
@@ -128,6 +149,20 @@ this rule. This paragraph records implementation state, not a new compile or
 test claim.
 
 ## Current verification evidence
+
+On 2026-11-03, the scoped `rustok-modules` library suite passed 423 tests
+with two ignored before the cursor change, and the `rustok-tenant` SQLite index migration test passed.
+After the cursor change, the `policy_commit_guard_sqlite` target passed 10 SQLite tests with one ignored,
+and the transition/retention target passed 7 tests. The ignored PostgreSQL
+policy-read test and the PostgreSQL post-hook recovery test passed separately
+against the configured test database. These include UUID representations,
+duplicate and orphan rejection, index use, settings and journal replay, and
+claim fencing with real SQLite foreign keys in scoped fixtures. They do not
+establish full server migration, multi-process or production recovery evidence.
+Existing conflicting cursor identities were also exercised with the migration
+SQL in an in-memory SQLite transaction: index creation failed, retained both
+rows and rolled back the created indexes. The full library suite must be rerun
+after the cursor change.
 
 On 2026-11-02, `cargo test -p rustok-modules --lib -j 2` passed 417
 tests with 2 ignored. The scoped `policy_commit_guard_sqlite` integration

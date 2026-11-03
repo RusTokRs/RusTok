@@ -1029,20 +1029,23 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         }
         let backend =
             SupportedBackend::new(self.db.get_database_backend()).map_err(database_error)?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?3", "?1");
         let sql = match backend {
             SupportedBackend::Postgres => {
                 "SELECT module_slug, enabled, settings, COUNT(*) OVER (PARTITION BY module_slug) AS identity_rows FROM tenant_modules \
-                 WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2"
+                 WHERE tenant_id = $1 ORDER BY module_slug ASC LIMIT $2".to_string()
             }
             SupportedBackend::Sqlite => {
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                format!("WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.module_slug AS module_slug, t.enabled, t.settings, \
                  COUNT(t.module_slug) OVER (PARTITION BY t.module_slug) AS identity_rows, identity.parent_count, \
-                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
-                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?3) \
-                 ORDER BY t.module_slug ASC LIMIT ?2"
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
+                 FROM identity LEFT JOIN tenant_modules t ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) \
+                 ORDER BY t.module_slug ASC LIMIT ?2")
             }
         };
         let mut values = vec![tenant_id.into(), i64::from(limit).into()];

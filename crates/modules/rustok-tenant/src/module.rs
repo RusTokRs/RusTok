@@ -22,6 +22,10 @@ impl MigrationSource for TenantModule {
                 "m20261102_000002_tenant_identity_keys",
                 vec!["m20250101_000001_create_tenants"],
             ),
+            MigrationDependencyDescriptor::new(
+                "m20261103_000003_tenant_identity_index",
+                vec!["m20261102_000002_tenant_identity_keys"],
+            ),
         ]
     }
 }

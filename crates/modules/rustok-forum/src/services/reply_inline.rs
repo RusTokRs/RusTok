@@ -170,12 +170,19 @@ impl ReplyService {
 
         let initial_topic_id = existing.topic_id;
         let txn = self.db.begin().await?;
+        super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
         let locked_topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
             &txn,
             tenant_id,
             initial_topic_id,
         )
         .await?;
+        if locked_topic.status == crate::state_machine::TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
+        if locked_topic.is_locked {
+            return Err(ForumError::TopicLocked);
+        }
         super::relation_quote_input::lock_source_and_assert_latest_in_tx(
             &txn,
             tenant_id,
@@ -198,8 +205,26 @@ impl ReplyService {
             existing.author_id,
         )?;
         let topic_id = existing.topic_id;
+
+        let existing_body_row = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+            .filter(forum_reply_body::Column::Locale.eq(&locale))
+            .one(&txn)
+            .await?;
+        let body_changed = match (&document, &existing_body_row) {
+            (Some(new_doc), Some(existing_row)) => {
+                let existing_doc = crate::richtext::project_stored_discussion(&existing_row.body)
+                    .map(|p| p.view.document)
+                    .ok();
+                existing_doc.as_ref() != Some(new_doc)
+            }
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+
         let mut repended_for_moderation = false;
-        if stored_body.is_some() && existing.status == ReplyStatus::Approved {
+        if body_changed && existing.status == ReplyStatus::Approved {
             // A content edit of a public reply in a moderated category (or
             // a pre-moderated tenant) re-enters moderation, mirroring the
             // reply status owner's counter and solution effects: otherwise
@@ -257,9 +282,11 @@ impl ReplyService {
                 }
             }
         }
-        if let Some(stored_body) = stored_body {
-            self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
-                .await?;
+        if body_changed {
+            if let Some(stored_body) = stored_body {
+                self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
+                    .await?;
+            }
         }
         relation_service
             .persist_in_tx(&txn, prepared_relations)

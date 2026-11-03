@@ -85,6 +85,7 @@ mod m20261027_000087_executor_pools;
 mod m20261029_000088_scoped_admission;
 mod m20261030_000089_lifecycle_hook_settings;
 mod m20261102_000090_journal_uuid_uniqueness;
+mod m20261103_000091_tenant_identity_indexes;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -177,6 +178,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261029_000088_scoped_admission::Migration),
         Box::new(m20261030_000089_lifecycle_hook_settings::Migration),
         Box::new(m20261102_000090_journal_uuid_uniqueness::Migration),
+        Box::new(m20261103_000091_tenant_identity_indexes::Migration),
     ]
 }
 

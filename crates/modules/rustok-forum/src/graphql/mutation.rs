@@ -89,7 +89,7 @@ impl ForumContentMutation {
             topic.author_id,
             topic.effective_locale.as_str(),
         )
-        .await?;
+        .await;
 
         Ok(map_topic(topic, author_profile))
     }
@@ -139,7 +139,7 @@ impl ForumContentMutation {
             topic.author_id,
             topic.effective_locale.as_str(),
         )
-        .await?;
+        .await;
 
         Ok(map_topic(topic, author_profile))
     }
@@ -755,7 +755,7 @@ impl ForumContentMutation {
             reply.author_id,
             reply.effective_locale.as_str(),
         )
-        .await?;
+        .await;
 
         Ok(GqlForumReply {
             id: reply.id,
@@ -1275,7 +1275,7 @@ async fn subscription_topic_response(
         topic.author_id,
         topic.effective_locale.as_str(),
     )
-    .await?;
+    .await;
     Ok(map_topic(topic, author_profile))
 }
 
@@ -1285,29 +1285,29 @@ async fn load_author_profile(
     tenant_id: Uuid,
     author_id: Option<Uuid>,
     requested_locale: &str,
-) -> Result<Option<GqlProfileSummary>> {
-    let Some(author_id) = author_id else {
-        return Ok(None);
-    };
+) -> Option<GqlProfileSummary> {
+    let author_id = author_id?;
 
     if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
-        let profile = loader
+        if let Ok(profile) = loader
             .load_one(ProfileSummaryLoaderKey {
                 tenant_id,
                 user_id: author_id,
                 requested_locale: Some(requested_locale.to_string()),
                 tenant_default_locale: None,
             })
-            .await?;
-        return Ok(profile.map(Into::into));
+            .await
+        {
+            return profile.map(Into::into);
+        }
     }
 
-    let profile = ProfileService::new(db.clone())
+    ProfileService::new(db.clone())
         .find_profile_summary(tenant_id, author_id, Some(requested_locale), None)
         .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-    Ok(profile.map(Into::into))
+        .ok()
+        .flatten()
+        .map(Into::into)
 }
 
 fn map_category(category: CategoryResponse) -> GqlForumCategory {

@@ -113,6 +113,21 @@ export function ForumTopicEditor({
     }
   }
 
+  async function handleApproveTopic() {
+    if (!initialData) return;
+    setModerationBusy(true);
+    try {
+      await reopenForumTopic(initialData.id, gqlOpts);
+      setTopicStatus('open');
+      toast.success('Topic approved');
+      router.refresh();
+    } catch {
+      toast.error('Failed to approve topic');
+    } finally {
+      setModerationBusy(false);
+    }
+  }
+
   async function handleToggleClose() {
     if (!initialData) return;
     setModerationBusy(true);
@@ -276,15 +291,27 @@ export function ForumTopicEditor({
               >
                 {isLocked ? 'Unlock topic' : 'Lock topic'}
               </Button>
-              <Button
-                type='button'
-                variant='outline'
-                size='sm'
-                disabled={moderationBusy}
-                onClick={handleToggleClose}
-              >
-                {topicStatus === 'closed' ? 'Reopen topic' : 'Close topic'}
-              </Button>
+              {topicStatus === 'pending' ? (
+                <Button
+                  type='button'
+                  variant='default'
+                  size='sm'
+                  disabled={moderationBusy}
+                  onClick={handleApproveTopic}
+                >
+                  Approve topic
+                </Button>
+              ) : (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  disabled={moderationBusy}
+                  onClick={handleToggleClose}
+                >
+                  {topicStatus === 'closed' ? 'Reopen topic' : 'Close topic'}
+                </Button>
+              )}
               <Button
                 type='button'
                 variant={isDeleted ? 'outline' : 'destructive'}

@@ -32,7 +32,10 @@ domain contract and must not dissolve into middleware or host-specific logic.
   for transactionally matching a stored tenant key without exposing tenant
   attributes. It preserves the exact storage class and does not grant authority
   or replace `TenantReadPort`. The static module owner uses it to reject
-  ambiguous or orphaned module state in the same SQLite snapshot.
+  ambiguous or orphaned module state in the same SQLite snapshot. A separate
+  SQLite `NOCASE` index supports case-insensitive lookup of supported UUID
+  text forms without changing the exact key required by foreign keys. Applying
+  `m20261103_000003_tenant_identity_index` installs this index.
 
 - `apps/server` owns only the middleware resolution entry point, cache infrastructure and runtime bootstrap around the tenant resolver path;
 - tenant context is resolved by `uuid`, `slug` or `host` before entering business logic; the module-owned `TenantReadPort` covers read projection lookup by id/slug/domain for host resolver/provisioning consumers; `apps/server` resolver uses this port on the cache-miss path instead of raw entity lookup, and installer provisioning/verification uses slug projection before create-candidate decisions and verify step;

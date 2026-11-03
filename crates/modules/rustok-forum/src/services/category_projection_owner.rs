@@ -115,6 +115,7 @@ impl CategoryProjectionOwnerService {
         let requested_slug = input.slug.clone();
         let requested_description = input.description.clone();
         let txn = self.db.begin().await?;
+        super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
         let category =
             CategoryService::find_category_for_update_in_tx(&txn, tenant_id, category_id).await?;
 

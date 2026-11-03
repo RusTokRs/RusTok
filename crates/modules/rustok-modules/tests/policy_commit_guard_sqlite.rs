@@ -61,7 +61,12 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
     }
     let native = Uuid::new_v4();
     let text = Uuid::new_v4();
-    for parent in [native.into(), text.to_string().into()] {
+    let uppercase = Uuid::new_v4();
+    for parent in [
+        native.into(),
+        text.to_string().into(),
+        uppercase.to_string().to_uppercase().into(),
+    ] {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?1)",
@@ -70,7 +75,7 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         .await
         .unwrap();
     }
-    for tenant in [native, text] {
+    for tenant in [native, text, uppercase] {
         let first = Uuid::new_v4();
         assert!(matches!(
             StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, first)
@@ -129,8 +134,16 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
         );
         // Legacy active claim keys can also be native UUID blobs.
         db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1 WHERE module_slug = 'notifications' AND tenant_id IN (?2, ?3)",
+            "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1 WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
             vec![first.into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
+        assert!(
+            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
+                .await
+                .unwrap()
+        );
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1 WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
+            vec![first.to_string().to_uppercase().into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
         assert!(
             StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, first)
                 .await
@@ -156,7 +169,7 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
             .await
             .unwrap();
         db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-            "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1, active_claimed_at = '2000-01-01T00:00:00Z' WHERE module_slug = 'notifications' AND tenant_id IN (?2, ?3)",
+            "UPDATE module_static_tenant_lifecycle SET active_idempotency_key = ?1, active_claimed_at = '2000-01-01T00:00:00Z' WHERE module_slug = 'notifications' AND tenant_id COLLATE NOCASE IN (?2, ?3)",
             vec![old.into(), tenant.into(), tenant.to_string().into()])).await.unwrap();
         assert!(matches!(
             StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 1, replacement)
@@ -191,6 +204,54 @@ async fn sqlite_aggregate_writes_follow_parent_uuid_and_fence_claims() {
             2
         );
     }
+    for form in 0..3 {
+        let tenant = Uuid::new_v4();
+        let stored = match form {
+            0 => tenant.simple().to_string(),
+            1 => format!("URN:UUID:{tenant}"),
+            _ => format!("{{{tenant}}}"),
+        };
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![stored.into()],
+        ))
+        .await
+        .unwrap();
+        let claim = Uuid::new_v4();
+        assert!(matches!(
+            StaticTenantLifecycleStore::claim(&db, tenant, "notifications", 0, claim)
+                .await
+                .unwrap(),
+            StaticTenantLifecycleClaim::Acquired(_)
+        ));
+        assert!(
+            StaticTenantLifecycleStore::heartbeat(&db, tenant, "notifications", 0, claim)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            StaticTenantLifecycleStore::advance(&db, tenant, "notifications", 0, claim)
+                .await
+                .unwrap(),
+            1
+        );
+        StaticTenantLifecycleStore::release(&db, tenant, "notifications", claim)
+            .await
+            .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant.into()],
+        ))
+        .await
+        .unwrap();
+        assert!(
+            StaticTenantLifecycleStore::claim(&db, tenant, "other", 0, Uuid::new_v4())
+                .await
+                .is_err()
+        );
+    }
     let absent = Uuid::new_v4();
     assert!(matches!(
         StaticTenantLifecycleStore::claim(&db, absent, "notifications", 0, Uuid::new_v4()).await,
@@ -221,6 +282,9 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
     for sql in [
         "PRAGMA foreign_keys = ON",
         "CREATE TABLE tenants (id BLOB PRIMARY KEY NOT NULL); CREATE VIEW tenant_identity_keys AS SELECT id FROM tenants",
+        "CREATE TABLE tenant_modules (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
+        "CREATE TABLE module_static_tenant_lifecycle (tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, FOREIGN KEY (tenant_id) REFERENCES tenants(id))",
+        "CREATE TABLE module_policy_revision_cursors (tenant_id BLOB NOT NULL, consumer_key TEXT NOT NULL)",
         "CREATE TABLE module_operations (id BLOB PRIMARY KEY NOT NULL, tenant_id BLOB NOT NULL, module_slug TEXT NOT NULL, \
          requested_enabled BOOLEAN NOT NULL, previous_effective_enabled BOOLEAN NOT NULL, status TEXT NOT NULL, \
          requested_by TEXT, trace_id TEXT, correlation_id TEXT, idempotency_key BLOB, expected_revision INTEGER, \
@@ -232,7 +296,7 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
     }
     let native = Uuid::new_v4();
     let legacy = Uuid::new_v4();
-    for value in [native.into(), legacy.to_string().into()] {
+    for value in [native.into(), legacy.to_string().to_uppercase().into()] {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO tenants (id) VALUES (?1)",
@@ -253,6 +317,54 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         recovery_source_id: None,
         expected_revision: Some(0),
     };
+    for form in 0..3 {
+        let tenant = Uuid::new_v4();
+        let stored = match form {
+            0 => tenant.simple().to_string(),
+            1 => format!("URN:UUID:{tenant}"),
+            _ => format!("{{{tenant}}}"),
+        };
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![stored.into()],
+        ))
+        .await
+        .unwrap();
+        let command = request(tenant, Uuid::new_v4());
+        let first = ModuleOperationJournal::record_idempotent(&db, command.clone())
+            .await
+            .unwrap();
+        let replay = ModuleOperationJournal::record_idempotent(&db, command)
+            .await
+            .unwrap();
+        let id = match (first, replay) {
+            (
+                ModuleOperationRecordOutcome::Recorded(first),
+                ModuleOperationRecordOutcome::Replayed(replay),
+            ) if first.id == replay.id => first.id,
+            _ => panic!("text UUID parent must preserve journal replay"),
+        };
+        assert_eq!(
+            ModuleOperationJournal::find(&db, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .tenant_id,
+            tenant
+        );
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant.into()],
+        ))
+        .await
+        .unwrap();
+        assert!(matches!(
+            ModuleOperationJournal::find(&db, id).await,
+            Err(ModuleOperationStoreError::UnverifiableSqliteIdentity)
+        ));
+    }
     let missing_tenant = request(Uuid::new_v4(), Uuid::new_v4());
     assert!(matches!(
         ModuleOperationJournal::record_idempotent(&db, missing_tenant.clone()).await,
@@ -288,7 +400,7 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, idempotency_key, expected_revision) VALUES (?1, ?2, 'notifications', TRUE, FALSE, 'validated', ?3, 0)",
-        vec![Uuid::new_v4().into(), legacy.to_string().into(), legacy_key.into()],
+        vec![Uuid::new_v4().into(), legacy.to_string().to_uppercase().into(), legacy_key.into()],
     )).await.unwrap();
     assert!(matches!(
         ModuleOperationJournal::record_idempotent(&db, request(legacy, legacy_key))
@@ -299,7 +411,7 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS count FROM module_operations WHERE tenant_id = ?1",
+            "SELECT COUNT(*) AS count FROM module_operations WHERE tenant_id COLLATE NOCASE = ?1",
             vec![legacy.to_string().into()],
         ))
         .await
@@ -351,6 +463,21 @@ async fn sqlite_journal_detects_legacy_identity_with_real_foreign_keys() {
         .up(&sea_orm_migration::SchemaManager::new(&db))
         .await
         .unwrap();
+    let representations = ModulesModule
+        .migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261103_000091_tenant_identity_indexes")
+        .unwrap();
+    representations
+        .up(&sea_orm_migration::SchemaManager::new(&db))
+        .await
+        .unwrap();
+    let collision = db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, idempotency_key, expected_revision) VALUES (?1, ?2, 'notifications', TRUE, FALSE, 'validated', ?3, 0)",
+        vec![Uuid::new_v4().into(), legacy.to_string().to_uppercase().into(), format!("{{{legacy_key}}}").into()],
+    )).await.expect_err("all supported text representations must collide");
+    assert!(collision.to_string().to_lowercase().contains("unique"));
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO tenants (id) VALUES (?1)",
@@ -537,6 +664,86 @@ async fn static_policy_reads_native_uuid_and_rejects_duplicate_identity() {
         .await;
     assert!(result.is_err(), "ambiguous tenant state must fail closed");
     transaction.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn sqlite_policy_honors_uppercase_tenant_key_and_rejects_duplicate_parent() {
+    let db = setup().await;
+    let tenant_id = Uuid::parse_str("abcdefab-cdef-4abc-8def-abcdefabcdef").unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES (?1, 'notifications', FALSE)",
+        vec![tenant_id.to_string().to_uppercase().into()],
+    )).await.unwrap();
+    let registry = ModuleRegistry::new().register(NotificationsTestModule);
+    let consumer = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+    let tx = db.begin().await.unwrap();
+    let policy = consumer
+        .lock_and_resolve_static_policy_in_transaction(
+            &tx,
+            tenant_id,
+            "module.lifecycle",
+            &registry,
+            vec!["notifications".into()],
+        )
+        .await
+        .unwrap();
+    assert!(!policy.contains("notifications"));
+    tx.rollback().await.unwrap();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO tenants (id) VALUES (?1)",
+        vec![tenant_id.into()],
+    ))
+    .await
+    .unwrap();
+    let tx = db.begin().await.unwrap();
+    assert!(
+        consumer
+            .lock_and_resolve_static_policy_in_transaction(
+                &tx,
+                tenant_id,
+                "module.lifecycle",
+                &registry,
+                vec!["notifications".into()],
+            )
+            .await
+            .is_err()
+    );
+    tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn sqlite_policy_honors_all_supported_tenant_uuid_forms() {
+    for form in 0..3 {
+        let db = setup().await;
+        let tenant_id = Uuid::new_v4();
+        let stored = match form {
+            0 => tenant_id.simple().to_string(),
+            1 => format!("URN:UUID:{tenant_id}"),
+            _ => format!("{{{tenant_id}}}"),
+        };
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled) VALUES (?1, 'notifications', FALSE)",
+            vec![stored.into()],
+        )).await.unwrap();
+        let registry = ModuleRegistry::new().register(NotificationsTestModule);
+        let consumer = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+        let tx = db.begin().await.unwrap();
+        let policy = consumer
+            .lock_and_resolve_static_policy_in_transaction(
+                &tx,
+                tenant_id,
+                "module.lifecycle",
+                &registry,
+                vec!["notifications".into()],
+            )
+            .await
+            .unwrap();
+        assert!(!policy.contains("notifications"));
+        tx.rollback().await.unwrap();
+    }
 }
 
 #[tokio::test]
@@ -1003,6 +1210,70 @@ async fn lifecycle_cursor_sequences_exact_successors_and_requires_explicit_resyn
             current_sequence: 4,
         }
     );
+}
+
+#[tokio::test]
+async fn sqlite_cursor_preserves_revision_across_uuid_encodings_and_rejects_duplicates() {
+    for form in 0..5 {
+        let db = setup().await;
+        let tenant_id = Uuid::new_v4();
+        let stored: sea_orm::Value = match form {
+            0 => tenant_id.into(),
+            1 => tenant_id.to_string().to_uppercase().into(),
+            2 => tenant_id.simple().to_string().into(),
+            3 => format!("URN:UUID:{tenant_id}").into(),
+            _ => format!("{{{tenant_id}}}").into(),
+        };
+        let original = format!("sha256:{}", "a".repeat(64));
+        let next = format!("sha256:{}", "b".repeat(64));
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO module_policy_revision_cursors (tenant_id, consumer_key, current_revision, current_sequence) VALUES (?1, 'worker', ?2, 5)",
+            vec![stored, original.clone().into()])).await.unwrap();
+        let consumer = SeaOrmModulePolicyRevisionConsumer::new(db.clone());
+        assert_eq!(
+            consumer.cursor_state(tenant_id, "worker").await.unwrap(),
+            ModulePolicyRevisionCursorState {
+                current_revision: Some(original.clone()),
+                current_sequence: 5
+            }
+        );
+        assert_eq!(
+            consumer
+                .apply(
+                    tenant_id,
+                    "worker",
+                    &ModulePolicyRevisionTransition {
+                        previous_revision: Some(original),
+                        next_revision: next.clone(),
+                    }
+                )
+                .await
+                .unwrap(),
+            ModulePolicyRevisionApplyOutcome::Applied
+        );
+        assert_eq!(
+            consumer.cursor_state(tenant_id, "worker").await.unwrap(),
+            ModulePolicyRevisionCursorState {
+                current_revision: Some(next),
+                current_sequence: 6
+            }
+        );
+        let count = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM module_policy_revision_cursors",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<i64>("", "count")
+            .unwrap();
+        assert_eq!(count, 1);
+        db.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "INSERT INTO module_policy_revision_cursors (tenant_id, consumer_key, current_revision, current_sequence) VALUES (?1, 'worker', NULL, 0)",
+            vec![if form == 0 { tenant_id.to_string().into() } else { tenant_id.into() }])).await.unwrap();
+        assert!(consumer.cursor_state(tenant_id, "worker").await.is_err());
+    }
 }
 
 async fn setup() -> DatabaseConnection {

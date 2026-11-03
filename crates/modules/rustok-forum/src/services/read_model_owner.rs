@@ -184,7 +184,8 @@ impl ForumReadModelService {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = normalized_locale(query.locale.as_deref())?;
         let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
-        let (topics, next_cursor, has_more) = self.load_topic_rows(tenant_id, &query, None).await?;
+        let (topics, next_cursor, has_more) =
+            self.load_topic_rows(tenant_id, &security, &query, None).await?;
         let items = self
             .materialize_topic_read_models(
                 tenant_id,
@@ -219,7 +220,7 @@ impl ForumReadModelService {
         let topic_query = query.topic_query();
         let unread_filter = query.unread_only.then(|| unread_topic_condition(user_id));
         let (topics, next_cursor, has_more) = self
-            .load_topic_rows(tenant_id, &topic_query, unread_filter)
+            .load_topic_rows(tenant_id, &security, &topic_query, unread_filter)
             .await?;
         let topic_ids = topics.iter().map(|topic| topic.id).collect::<Vec<_>>();
         let topic_models = self
@@ -400,17 +401,68 @@ impl ForumReadModelService {
     async fn load_topic_rows(
         &self,
         tenant_id: Uuid,
+        security: &SecurityContext,
         query: &TopicCursorQuery,
         extra_filter: Option<Condition>,
     ) -> ForumResult<(Vec<forum_topic::Model>, Option<String>, bool)> {
         let limit = bounded_forum_read_limit(query.limit);
-        let mut select =
-            forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
+        let mut select = forum_topic::Entity::find()
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic::Column::DeletedAt.is_null());
+
+        let hidden_category_ids = crate::services::category_visibility::CategoryVisibilityService::new(self.db.clone())
+            .hidden_category_ids_for_viewer(tenant_id, security.user_id.is_some())
+            .await?;
+        if !hidden_category_ids.is_empty() {
+            select = select.filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids));
+        }
+
+        let is_operator = security.has_permission(&rustok_api::Permission::FORUM_TOPICS_MANAGE.to_string())
+            || security.has_permission(&rustok_api::Permission::FORUM_MODERATION_MANAGE.to_string())
+            || security.has_role("admin")
+            || security.has_role("moderator");
+
+        if is_operator {
+            if let Some(status) = query.status {
+                select = select.filter(forum_topic::Column::Status.eq(status));
+            }
+        } else {
+            match query.status {
+                Some(TopicStatus::Open) | None => {
+                    if let Some(user_id) = security.user_id {
+                        select = select.filter(
+                            Condition::any()
+                                .add(forum_topic::Column::Status.eq(TopicStatus::Open))
+                                .add(
+                                    Condition::all()
+                                        .add(forum_topic::Column::Status.eq(TopicStatus::Pending))
+                                        .add(forum_topic::Column::AuthorId.eq(user_id)),
+                                ),
+                        );
+                    } else {
+                        select = select.filter(forum_topic::Column::Status.eq(TopicStatus::Open));
+                    }
+                }
+                Some(TopicStatus::Pending) => {
+                    if let Some(user_id) = security.user_id {
+                        select = select
+                            .filter(forum_topic::Column::Status.eq(TopicStatus::Pending))
+                            .filter(forum_topic::Column::AuthorId.eq(user_id));
+                    } else {
+                        return Ok((Vec::new(), None, false));
+                    }
+                }
+                Some(TopicStatus::Closed) => {
+                    select = select.filter(forum_topic::Column::Status.eq(TopicStatus::Closed));
+                }
+                Some(TopicStatus::Archived) => {
+                    return Ok((Vec::new(), None, false));
+                }
+            }
+        }
+
         if let Some(category_id) = query.category_id {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
-        }
-        if let Some(status) = query.status {
-            select = select.filter(forum_topic::Column::Status.eq(status));
         }
         if let Some(extra_filter) = extra_filter {
             select = select.filter(extra_filter);

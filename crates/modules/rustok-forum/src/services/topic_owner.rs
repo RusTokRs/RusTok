@@ -152,6 +152,9 @@ impl TopicService {
             return Err(ForumError::Validation("topic_id must not be nil".into()));
         }
         let existing = self.inner.find_topic(tenant_id, topic_id).await?;
+        if existing.status == TopicStatus::Archived {
+            return Err(ForumError::TopicArchived);
+        }
         enforce_owned_scope(
             &security,
             Resource::ForumTopics,
@@ -160,6 +163,7 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let result =
             ForumTopicRouteService::rename_topic_slug_in_tx(&txn, tenant_id, topic_id, &input)
                 .await?;

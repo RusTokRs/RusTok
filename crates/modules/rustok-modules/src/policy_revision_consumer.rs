@@ -291,6 +291,32 @@ async fn ensure_cursor_row<C: ConnectionTrait>(
     tenant_id: Uuid,
     consumer_key: &str,
 ) -> Result<(), ModulePolicyRevisionConsumerError> {
+    if backend == SupportedBackend::Sqlite {
+        let keys = crate::backend::sqlite_uuid_keys("?1", "?5");
+        connection
+            .execute_raw(Statement::from_sql_and_values(
+                backend.db_backend(),
+                format!(
+                    "INSERT INTO module_policy_revision_cursors \
+                (tenant_id, consumer_key, current_revision, current_sequence, updated_at) \
+                SELECT ?1, ?2, ?3, ?4, {} \
+                WHERE NOT EXISTS (SELECT 1 FROM module_policy_revision_cursors \
+                    WHERE tenant_id COLLATE NOCASE IN ({keys}) AND consumer_key = ?2) \
+                ON CONFLICT (tenant_id, consumer_key) DO NOTHING",
+                    backend.now_sql()
+                ),
+                vec![
+                    backend.uuid_value(tenant_id),
+                    consumer_key.to_string().into(),
+                    SqlValue::String(None),
+                    0_i64.into(),
+                    tenant_id.into(),
+                ],
+            ))
+            .await
+            .map_err(storage_error)?;
+        return Ok(());
+    }
     connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
@@ -328,23 +354,39 @@ async fn load_cursor_state<C: ConnectionTrait>(
     } else {
         ""
     };
-    let row = connection
-        .query_one_raw(Statement::from_sql_and_values(
+    let mut values = vec![
+        backend.uuid_value(tenant_id),
+        consumer_key.to_string().into(),
+    ];
+    let predicate = if backend == SupportedBackend::Sqlite {
+        values.push(tenant_id.into());
+        format!(
+            "tenant_id COLLATE NOCASE IN ({})",
+            crate::backend::sqlite_uuid_keys("?1", "?3")
+        )
+    } else {
+        "tenant_id = $1".to_string()
+    };
+    let mut rows = connection
+        .query_all_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "SELECT current_revision, current_sequence \
                  FROM module_policy_revision_cursors \
-                 WHERE tenant_id = {} AND consumer_key = {}{lock}",
-                backend.placeholder(1),
+                 WHERE {predicate} AND consumer_key = {}{lock}",
                 backend.placeholder(2),
             ),
-            vec![
-                backend.uuid_value(tenant_id),
-                consumer_key.to_string().into(),
-            ],
+            values,
         ))
         .await
-        .map_err(storage_error)?
+        .map_err(storage_error)?;
+    if rows.len() != 1 {
+        return Err(ModulePolicyRevisionConsumerError::Storage(
+            "policy revision cursor has missing or conflicting tenant identities".to_string(),
+        ));
+    }
+    let row = rows
+        .pop()
         .ok_or(ModulePolicyRevisionConsumerError::CursorLost)?;
     let current_revision: Option<String> =
         row.try_get("", "current_revision").map_err(storage_error)?;
@@ -391,27 +433,38 @@ async fn persist_cursor_state<C: ConnectionTrait>(
             "policy revision cursor sequence exceeds durable range: {next_sequence}"
         ))
     })?;
+    let mut values = vec![
+        next_revision.to_string().into(),
+        next_sequence_i64.into(),
+        backend.uuid_value(tenant_id),
+        consumer_key.to_string().into(),
+        expected_sequence_i64.into(),
+    ];
+    let predicate = if backend == SupportedBackend::Sqlite {
+        values.push(tenant_id.into());
+        let keys = crate::backend::sqlite_uuid_keys("?3", "?6");
+        format!(
+            "tenant_id COLLATE NOCASE IN ({keys}) AND \
+            (SELECT COUNT(*) FROM module_policy_revision_cursors \
+             WHERE tenant_id COLLATE NOCASE IN ({keys}) AND consumer_key = ?4) = 1"
+        )
+    } else {
+        "tenant_id = $3".to_string()
+    };
     let updated = connection
         .execute_raw(Statement::from_sql_and_values(
             backend.db_backend(),
             format!(
                 "UPDATE module_policy_revision_cursors \
                  SET current_revision = {}, current_sequence = {}, updated_at = {} \
-                 WHERE tenant_id = {} AND consumer_key = {} AND current_sequence = {}",
+                 WHERE {predicate} AND consumer_key = {} AND current_sequence = {}",
                 backend.placeholder(1),
                 backend.placeholder(2),
                 backend.now_sql(),
-                backend.placeholder(3),
                 backend.placeholder(4),
                 backend.placeholder(5),
             ),
-            vec![
-                next_revision.to_string().into(),
-                next_sequence_i64.into(),
-                backend.uuid_value(tenant_id),
-                consumer_key.to_string().into(),
-                expected_sequence_i64.into(),
-            ],
+            values,
         ))
         .await
         .map_err(storage_error)?;
@@ -431,17 +484,20 @@ pub(crate) async fn load_tenant_overrides<C: ConnectionTrait>(
     let backend = SupportedBackend::new(connection.get_database_backend())
         .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?;
     let limit = crate::lifecycle_writer::MAX_TENANT_MODULE_OVERRIDES + 1;
+    let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?2");
     let sql = match backend {
         SupportedBackend::Postgres => format!(
             "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1 LIMIT {limit}"
         ),
         SupportedBackend::Sqlite => format!(
-            "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?2)) \
+            "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
              SELECT t.module_slug AS matched_module, t.module_slug AS module_slug, t.enabled, identity.parent_count, \
-             (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?2) LIMIT 1)) AS matches_parent, \
-             (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-              EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?2)) AS mixed_identity \
-             FROM identity LEFT JOIN tenant_modules t ON t.tenant_id IN (?1, ?2) LIMIT {limit}"
+             (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+             (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?1) AND \
+              EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?2)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
+             FROM identity LEFT JOIN tenant_modules t ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) LIMIT {limit}"
         ),
     };
     let mut values = vec![backend.uuid_value(tenant_id)];

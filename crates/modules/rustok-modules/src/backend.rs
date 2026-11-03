@@ -29,6 +29,15 @@ pub(crate) enum SupportedBackend {
 )]
 pub(crate) struct UnsupportedBackend(pub DbBackend);
 
+/// SQL values covering every textual UUID form accepted by `Uuid::parse_str`
+/// and the native SQLite UUID blob. Both inputs are SQL expressions supplied
+/// by the owner, not user-provided SQL. `text` must be a hyphenated UUID.
+pub(crate) fn sqlite_uuid_keys(text: &str, native: &str) -> String {
+    format!(
+        "{text}, {native}, replace({text}, '-', ''), 'urn:uuid:' || {text}, '{{' || {text} || '}}'"
+    )
+}
+
 impl From<UnsupportedBackend> for DbErr {
     fn from(error: UnsupportedBackend) -> Self {
         DbErr::Custom(error.to_string())
@@ -273,9 +282,11 @@ pub(crate) fn sqlite_tenant_module_identity(row: &QueryResult) -> Result<bool, D
     let parent_count: i64 = row.try_get("", "parent_count")?;
     let matched: Option<String> = row.try_get("", "matched_module")?;
     let mixed: bool = row.try_get("", "mixed_identity")?;
+    let orphaned: bool = row.try_get("", "orphaned_identity")?;
     let matches_parent: Option<bool> = row.try_get("", "matches_parent")?;
     if parent_count > 1
         || mixed
+        || orphaned
         || (matched.is_some() && (parent_count != 1 || matches_parent != Some(true)))
     {
         return Err(DbErr::Custom(

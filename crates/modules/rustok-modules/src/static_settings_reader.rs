@@ -42,19 +42,22 @@ impl StaticModuleSettingsReader for DatabaseStaticModuleSettingsReader {
                 "Static module settings are temporarily unavailable",
             )
         })?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?3");
         let query = match backend {
             SupportedBackend::Sqlite => {
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                format!("WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.enabled, CAST(t.settings AS TEXT) AS settings_json, \
                  identity.parent_count, \
-                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
                  FROM identity LEFT JOIN tenant_modules t \
-                 ON t.tenant_id IN (?1, ?3) AND t.module_slug = ?2 LIMIT 2"
+                 ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND t.module_slug = ?2 LIMIT 2")
             }
             SupportedBackend::Postgres => {
-                "SELECT enabled, settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 2"
+                "SELECT enabled, settings::text AS settings_json FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 2".to_string()
             }
         };
 
@@ -140,21 +143,25 @@ impl StaticModuleSettingsTransactionReader for DatabaseStaticModuleSettingsReade
                 "Static module settings are temporarily unavailable",
             )
         })?;
+        let tenant_keys = crate::backend::sqlite_uuid_keys("?1", "?3");
         let query = match backend {
             SupportedBackend::Sqlite => {
-                "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id IN (?1, ?3)) \
+                format!(
+                    "WITH identity AS (SELECT COUNT(*) AS parent_count FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys})) \
                  SELECT t.module_slug AS matched_module, t.enabled, CAST(t.settings AS TEXT) AS settings_json, \
                  identity.parent_count, \
-                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id IN (?1, ?3) LIMIT 1)) AS matches_parent, \
-                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?1) AND \
-                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id = ?3)) AS mixed_identity \
+                 (t.tenant_id = (SELECT id FROM tenant_identity_keys WHERE id COLLATE NOCASE IN ({tenant_keys}) LIMIT 1)) AS matches_parent, \
+                 (EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?1) AND \
+                  EXISTS(SELECT 1 FROM tenant_modules WHERE tenant_id COLLATE NOCASE = ?3)) AS mixed_identity, \
+                 EXISTS(SELECT 1 FROM tenant_modules orphan WHERE orphan.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND \
+                  NOT EXISTS(SELECT 1 FROM tenant_identity_keys parent WHERE parent.id = orphan.tenant_id)) AS orphaned_identity \
                  FROM identity LEFT JOIN tenant_modules t \
-                 ON t.tenant_id IN (?1, ?3) AND t.module_slug = ?2 LIMIT 2"
+                 ON t.tenant_id COLLATE NOCASE IN ({tenant_keys}) AND t.module_slug = ?2 LIMIT 2"
+                )
             }
-            SupportedBackend::Postgres => {
-                "SELECT enabled, settings::text AS settings_json \
+            SupportedBackend::Postgres => "SELECT enabled, settings::text AS settings_json \
                  FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 2 FOR SHARE"
-            }
+                .to_string(),
         };
 
         let mut values = vec![backend.uuid_value(tenant_id), module_slug.into()];
@@ -298,6 +305,132 @@ mod tests {
                 .expect("missing read")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn readers_handle_uuid_case_and_reject_orphans_and_duplicate_parents() {
+        use sea_orm::TransactionTrait;
+
+        let db = db().await;
+        let tenant_id = Uuid::parse_str("abcdefab-cdef-4abc-8def-abcdefabcdef").unwrap();
+        let uppercase = tenant_id.to_string().to_uppercase();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, 'seo', 0, '{}')",
+            vec![uppercase.clone().into()],
+        )).await.unwrap();
+        let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+        assert_eq!(
+            reader
+                .settings(tenant_id, "seo")
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled,
+            Some(false)
+        );
+        let txn = db.begin().await.unwrap();
+        assert_eq!(
+            reader
+                .settings_in_tx(&txn, tenant_id, "seo")
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled,
+            Some(false)
+        );
+        txn.rollback().await.unwrap();
+
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenants (id) VALUES (?1)",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .unwrap();
+        assert_eq!(
+            reader.settings(tenant_id, "seo").await.unwrap_err().code,
+            "modules.static_settings_ambiguous"
+        );
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "DELETE FROM tenants WHERE id = ?1",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .unwrap();
+
+        db.execute_unprepared("DROP TRIGGER fixture_tenant")
+            .await
+            .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, 'other', 1, '{}')",
+            vec![tenant_id.to_string().into()],
+        )).await.unwrap();
+        assert_eq!(
+            reader.settings(tenant_id, "seo").await.unwrap_err().code,
+            "modules.static_settings_ambiguous"
+        );
+        assert_eq!(
+            reader
+                .settings(tenant_id, "missing")
+                .await
+                .unwrap_err()
+                .code,
+            "modules.static_settings_ambiguous"
+        );
+    }
+
+    #[tokio::test]
+    async fn readers_find_all_supported_text_uuid_forms() {
+        use sea_orm::TransactionTrait;
+
+        let tenant_id = Uuid::parse_str("abcdefab-cdef-4abc-8def-abcdefabcdef").unwrap();
+        for stored in [
+            tenant_id.simple().to_string(),
+            format!("URN:UUID:{tenant_id}"),
+            format!("{{{tenant_id}}}"),
+        ] {
+            let db = db().await;
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenant_modules (tenant_id, module_slug, enabled, settings) VALUES (?1, 'seo', 0, '{}')",
+                vec![stored.into()],
+            )).await.unwrap();
+            let reader = DatabaseStaticModuleSettingsReader::new(db.clone());
+            assert_eq!(
+                reader
+                    .settings(tenant_id, "seo")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .enabled,
+                Some(false)
+            );
+            let txn = db.begin().await.unwrap();
+            assert_eq!(
+                reader
+                    .settings_in_tx(&txn, tenant_id, "seo")
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .enabled,
+                Some(false)
+            );
+            txn.rollback().await.unwrap();
+            db.execute_raw(Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO tenants (id) VALUES (?1)",
+                vec![tenant_id.into()],
+            ))
+            .await
+            .unwrap();
+            assert_eq!(
+                reader.settings(tenant_id, "seo").await.unwrap_err().code,
+                "modules.static_settings_ambiguous"
+            );
+        }
     }
 
     #[tokio::test]

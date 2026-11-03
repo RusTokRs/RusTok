@@ -6,7 +6,7 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 use crate::{
-    migrations, ArtifactEventDeliveryWorkRegistration, ArtifactScheduleDeliveryWorkRegistration,
+    ArtifactEventDeliveryWorkRegistration, ArtifactScheduleDeliveryWorkRegistration, migrations,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.
@@ -34,6 +34,14 @@ impl MigrationSource for ModulesModule {
             MigrationDependencyDescriptor::new(
                 "m20260727_000041_registry_release_artifact_contracts",
                 vec!["m20260717_000017_create_registry_publish_build_staging"],
+            ),
+            MigrationDependencyDescriptor::new(
+                "m20261103_000091_tenant_identity_indexes",
+                vec![
+                    "m20250101_000060_create_tenant_modules",
+                    "m20260501_000076_create_module_operations",
+                    "m20261103_000003_tenant_identity_index",
+                ],
             ),
         ]
     }

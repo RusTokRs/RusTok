@@ -135,6 +135,7 @@ impl ForumQuoteCommandService {
             .prepare(tenant_id, target, &locale, &document, &security, quotes)
             .await?;
         let txn = self.db.begin().await?;
+        crate::services::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?;
         let result = relations.persist_in_tx(&txn, prepared).await?;
         let response = load_snapshot_in_tx(
             &txn,

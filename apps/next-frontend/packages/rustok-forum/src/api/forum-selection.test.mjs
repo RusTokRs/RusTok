@@ -90,14 +90,14 @@ for (const [name, constant, resultKey] of [
     if (name.includes('Unread'))
       assert.match(calls[0].query, /unreadOnly: true/);
   });
-  test(`${name}: omitted selectors mean latest, not a client-specific default`, async () => {
+  test(`${name}: omitted selectors leave order undefined so backend applies tenant default`, async () => {
     let variables;
     const load = gateway(name, constant, async (request) => {
       variables = request.variables;
       return { data: { [resultKey]: { items: [], nextCursor: null } } };
     });
     await load({ token: 'signed' });
-    assert.equal(variables.order, 'LATEST');
+    assert.equal(variables.order, undefined);
     assert.equal(variables.solvedOnly, false);
     assert.equal(variables.search, undefined);
   });

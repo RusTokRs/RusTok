@@ -325,38 +325,35 @@ impl ForumPostingPolicyEvaluator {
             }
         }
 
-        if let Some(maximum) = rules
-            .maximum_links
-            .filter(|&max| input.candidate.link_count > max)
-        {
-            return count_denial(
-                ForumPostingPolicyDecisionReason::LinkLimit,
-                u32::from(input.candidate.link_count),
-                u32::from(maximum),
-                None,
-            );
+        if let Some(maximum) = rules.maximum_links {
+            if input.candidate.link_count > maximum {
+                return count_denial(
+                    ForumPostingPolicyDecisionReason::LinkLimit,
+                    u32::from(input.candidate.link_count),
+                    u32::from(maximum),
+                    None,
+                );
+            }
         }
-        if let Some(maximum) = rules
-            .maximum_mentions
-            .filter(|&max| input.candidate.mention_count > max)
-        {
-            return count_denial(
-                ForumPostingPolicyDecisionReason::MentionLimit,
-                u32::from(input.candidate.mention_count),
-                u32::from(maximum),
-                None,
-            );
+        if let Some(maximum) = rules.maximum_mentions {
+            if input.candidate.mention_count > maximum {
+                return count_denial(
+                    ForumPostingPolicyDecisionReason::MentionLimit,
+                    u32::from(input.candidate.mention_count),
+                    u32::from(maximum),
+                    None,
+                );
+            }
         }
-        if let Some(maximum) = rules
-            .maximum_attachments
-            .filter(|&max| input.candidate.attachment_count > max)
-        {
-            return count_denial(
-                ForumPostingPolicyDecisionReason::AttachmentLimit,
-                u32::from(input.candidate.attachment_count),
-                u32::from(maximum),
-                None,
-            );
+        if let Some(maximum) = rules.maximum_attachments {
+            if input.candidate.attachment_count > maximum {
+                return count_denial(
+                    ForumPostingPolicyDecisionReason::AttachmentLimit,
+                    u32::from(input.candidate.attachment_count),
+                    u32::from(maximum),
+                    None,
+                );
+            }
         }
 
         Ok(ForumPostingPolicyDecision::allowed())

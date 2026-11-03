@@ -2292,10 +2292,17 @@ fn TopicsPage(
                                         disabled=is_busy
                                         on:click={
                                             let id = item_id.clone();
-                                            move |_| on_close_reopen.run((id.clone(), !is_closed))
+                                            let is_pending = topic.status == "pending";
+                                            move |_| {
+                                                if is_pending {
+                                                    on_close_reopen.run((id.clone(), false))
+                                                } else {
+                                                    on_close_reopen.run((id.clone(), !is_closed))
+                                                }
+                                            }
                                         }
                                     >
-                                        {if is_closed { "Reopen topic" } else { "Close topic" }}
+                                        {if topic.status == "pending" { "Approve topic" } else if is_closed { "Reopen topic" } else { "Close topic" }}
                                     </button>
                                     <button
                                         type="button"
@@ -2701,6 +2708,7 @@ fn render_topic_feed(
     let unlock_label = t(locale.as_deref(), "forum.render.unlock", "Unlock");
     let close_label = t(locale.as_deref(), "forum.render.close", "Close");
     let reopen_label = t(locale.as_deref(), "forum.render.reopen", "Reopen");
+    let approve_label = t(locale.as_deref(), "forum.render.approve", "Approve");
     let topic_labels = ForumAdminTopicRenderLabels {
         opened: t(locale.as_deref(), "forum.render.opened", "Opened"),
         open_thread: t(locale.as_deref(), "forum.render.openThread", "Open thread"),
@@ -2792,10 +2800,21 @@ fn render_topic_feed(
                                         <button
                                             type="button"
                                             class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
-                                            on:click={ let item_id = item_id.clone(); let is_closed = item.status == "closed"; move |_| on_close_reopen.run((item_id.clone(), !is_closed)) }
+                                            on:click={
+                                                let item_id = item_id.clone();
+                                                let is_closed = item.status == "closed";
+                                                let is_pending = item.status == "pending";
+                                                move |_| {
+                                                    if is_pending {
+                                                        on_close_reopen.run((item_id.clone(), false))
+                                                    } else {
+                                                        on_close_reopen.run((item_id.clone(), !is_closed))
+                                                    }
+                                                }
+                                            }
                                             disabled=vm.is_busy
                                         >
-                                            {if item.status == "closed" { reopen_label.clone() } else { close_label.clone() }}
+                                            {if item.status == "pending" { approve_label.clone() } else if item.status == "closed" { reopen_label.clone() } else { close_label.clone() }}
                                         </button>
                                         <button
                                             type="button"
