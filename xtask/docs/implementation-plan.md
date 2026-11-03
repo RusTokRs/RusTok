@@ -103,7 +103,7 @@ remain separate verification gates.
 | Backend | Minimal `RusToKModule`/`MigrationSource`, contract tests and owner docs; no invented domain operations | Generated source and selected composition must compile in isolated verification |
 | Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
-| Planning | All source/registration edits prepared before writing; exact TOML module key lookup; required registration postconditions | Text-based insertion still depends on current formatting; preview lists paths rather than complete content changes |
+| Planning | Prepare all edits before writing, check exact module keys and required registration, and show unified diffs with apply preconditions in dry-run | Text-based insertion still depends on current formatting |
 | Apply | Workspace-wide lock, versioned journal, original backups before apply, and no-clobber source writes. Recovery verified on Windows and Linux. | External writers can still race |
 | Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
@@ -164,8 +164,12 @@ Owner: platform tooling with server/distribution composition owners.
 - [ ] Replace fragile formatting anchors using the existing manifest/document
   ownership contracts. Support valid whitespace, quoted keys, section ordering,
   EOF tables and comments without whole-file reformat churn or substring matches.
-- [ ] Preview actual content changes and preconditions so a developer can review
-  edits before apply; test repeated preview stability and byte-for-byte immutability.
+- [x] Preview actual content changes and preconditions. Verify repeated preview
+  stability and byte-for-byte workspace immutability.
+- Windows evidence for preview. All 207 `xtask` tests passed. Repeated headless
+  and dual CLI previews produced identical bytes and passed `git apply --check`.
+  Each reported SHA-256 matched its current registration file. The preview
+  left source files and scaffold control state untouched.
 - [ ] Extend negative tests to every registration surface, name/path collision,
   malformed input, requested UI mode and `--skip-server-wire` behavior.
 

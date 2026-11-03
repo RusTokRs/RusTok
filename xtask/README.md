@@ -84,8 +84,11 @@ The command:
 - After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure returns a non-zero result and starts recovery.
 
 **Verification and remaining limitations:** The generator builds a complete
-source/registration plan before writing, and `--dry-run` lists every planned
-path without mutating the workspace. Required registration postconditions run
+source/registration plan before writing. `--dry-run` prints unified diffs for
+all planned files, including complete content for newly created files. Updates
+show the SHA-256 of the original bytes and creates require an absent path.
+The preview leaves workspace source and registration files untouched.
+Required registration postconditions run
 even with `--skip-validate`. A live run holds one workspace lock from recovery
 and planning through validation and commit. It saves original registration bytes
 and complete payloads before publishing any workspace changes. Recovery can
@@ -130,7 +133,7 @@ for state transitions and filesystem requirements.
 Recovery covers process termination by cooperating writers on supported local
 filesystems. Power loss, network mounts and concurrent external edits fall
 outside that contract. Registration still uses textual
-insertion anchors, and dry-run does not show full content diffs. The existing
+insertion anchors. The existing
 Bash matrix requires a disposable checkout and does not test selected
 distribution composition. Generated facade tests exercise typed unavailability
 for explicit and feature-selected paths; dual-package native CSR/hydrate/SSR tests

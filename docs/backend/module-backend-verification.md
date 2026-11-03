@@ -72,8 +72,10 @@ module is verified.
 
 `--skip-validate` is an explicit development escape hatch: registration may
 still have been written, but the command reports `REGISTERED BUT UNVERIFIED`
-and prints the two checks the owner must run. `--dry-run` previews all planned
-source and registration edits without writing or running validation.
+and prints the two checks the owner must run. `--dry-run` shows unified diffs
+for all planned source and registration edits and lists their apply
+preconditions. It leaves workspace files untouched and runs the same plan
+preflight before skipping post-apply validation.
 
 The generator retains originals before apply and restores them after validation
 failure or uncommitted process interruption when recovery finds no conflicts.

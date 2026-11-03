@@ -1095,7 +1095,7 @@ fn test_scaffold_dry_run() {
         skip_validate: true,
     };
 
-    assert!(scaffold(&opts).is_ok());
+    assert!(scaffold(&opts, std::io::sink()).is_ok());
 }
 
 #[test]
@@ -1113,7 +1113,7 @@ fn test_scaffold_no_ui_dry_run() {
         skip_validate: true,
     };
 
-    assert!(scaffold(&opts).is_ok());
+    assert!(scaffold(&opts, std::io::sink()).is_ok());
 }
 
 #[test]
@@ -1174,7 +1174,7 @@ fn test_scaffold_dual_ui_dry_run_without_server_wire() {
         skip_validate: true,
     };
 
-    assert!(scaffold(&opts).is_ok());
+    assert!(scaffold(&opts, std::io::sink()).is_ok());
 }
 
 #[test]

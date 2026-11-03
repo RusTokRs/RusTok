@@ -79,8 +79,9 @@ implemented business operations, FBA `boundary_ready` /
 `transport_verified` or FFA `parity_verified`. Record actual readiness in
 the owner implementation plan and only project evidenced states into the
 registry. Known gaps must be declared in the owner README/plan. The current
-generator preflights source and registration edits, previews the complete plan
-in dry-run, and holds one workspace lock from planning through recoverable apply.
+generator preflights source and registration edits, shows their unified diffs
+and apply preconditions in dry-run, and holds one workspace lock from planning
+through recoverable apply.
 Architecture lint runs before publish-metadata validation. Golden file-tree snapshots cover all four UI modes, with
 renderer snapshots for the native manifest and both Leptos package variants.
 The dedicated `Native Scaffold Matrix` workflow runs `cargo test -p xtask`,

@@ -180,11 +180,12 @@ fn process_worker() {
         if mode == "contender" {
             options.slug = "contender".into();
         }
-        let error = super::super::scaffold_in_workspace(&root, &options, |_, _| {
-            checkpoint("validation");
-            bail!("injected validation failure")
-        })
-        .unwrap_err();
+        let error =
+            super::super::scaffold_in_workspace(&root, &options, std::io::sink(), |_, _| {
+                checkpoint("validation");
+                bail!("injected validation failure")
+            })
+            .unwrap_err();
         let expected = if mode == "contender" {
             "workspace is busy"
         } else {

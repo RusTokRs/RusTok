@@ -38,9 +38,9 @@ lock file to unlock or infer ownership from a PID. Process termination releases
 the OS lock. Other tools/editors must not mutate the workspace concurrently.
 
 Dry-run creates no control files and performs no recovery. It shared-locks an
-existing lock file when present and refuses pending recovery. Without an existing
-control directory it remains a read-only preview, not a reserved apply plan;
-every live invocation builds and checks a fresh plan under the exclusive lock.
+existing lock file when present and refuses pending recovery. It releases the
+shared lock after capturing the plan and renders diffs from that snapshot.
+Every live invocation builds and checks a fresh plan under the exclusive lock.
 
 ## Data, transaction, and concurrency boundary
 

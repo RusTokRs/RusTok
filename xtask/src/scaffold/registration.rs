@@ -137,7 +137,10 @@ pub(crate) fn plan_module_registration(
                 target.display()
             )
         })?;
-        let staged = fs::read_to_string(temporary.root.join(relative))?;
+        let staged = preserve_line_endings(
+            &original,
+            fs::read_to_string(temporary.root.join(relative))?,
+        );
         if staged != original {
             changes.push(RegistrationChange {
                 path: target,
@@ -147,6 +150,23 @@ pub(crate) fn plan_module_registration(
         }
     }
     Ok(changes)
+}
+
+fn preserve_line_endings(original: &str, mut staged: String) -> String {
+    // Text-based registration editors may rebuild lines with LF. Retain a
+    // uniform CRLF file's style so unchanged lines remain byte-identical.
+    if original.contains("\r\n")
+        && original
+            .split_inclusive('\n')
+            .all(|line| !line.ends_with('\n') || line.ends_with("\r\n"))
+    {
+        staged = staged.replace("\r\n", "\n").replace('\n', "\r\n");
+    }
+    if !original.ends_with('\n') && staged.ends_with('\n') {
+        let terminator_bytes = if staged.ends_with("\r\n") { 2 } else { 1 };
+        staged.truncate(staged.len() - terminator_bytes);
+    }
+    staged
 }
 
 fn apply_registration_mutations(

@@ -4,10 +4,12 @@ use crate::module_commands::module_lint_command;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 mod backend;
 mod options;
+mod preview;
 pub(crate) mod registration;
 mod transaction;
 mod ui;
@@ -37,7 +39,7 @@ pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
         None => return Ok(()),
     };
 
-    scaffold(&options)
+    scaffold(&options, std::io::stdout())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,13 +234,19 @@ fn print_scaffold_plan(root: &Path, plan: &[PlannedFile]) {
     }
 }
 
-pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
-    scaffold_in_workspace(&workspace_root(), options, validate_scaffold)
+pub fn scaffold(options: &ScaffoldOptions, preview_output: impl Write) -> Result<()> {
+    scaffold_in_workspace(
+        &workspace_root(),
+        options,
+        preview_output,
+        validate_scaffold,
+    )
 }
 
 fn scaffold_in_workspace(
     root: &Path,
     options: &ScaffoldOptions,
+    mut preview_output: impl Write,
     validate: impl FnOnce(&str, bool) -> Result<ScaffoldValidation>,
 ) -> Result<()> {
     // This renderer has native-only composition semantics. Never allow a
@@ -258,7 +266,7 @@ fn scaffold_in_workspace(
         println!("  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD");
     }
 
-    let _preview = if options.dry_run {
+    let preview_guard = if options.dry_run {
         ScaffoldWorkspace::preview(root)?
     } else {
         None
@@ -280,8 +288,10 @@ fn scaffold_in_workspace(
     let plan = build_scaffold_plan(root, &module_dir, options, &pascal_name, &snake_name)?;
 
     if options.dry_run {
+        drop(preview_guard);
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
-        print_scaffold_plan(root, &plan);
+        preview::write_preview(&mut preview_output, root, &plan)?;
+        preview_output.flush()?;
         println!("\n  [DRY-RUN] Preview includes source files and every registration manifest; no files were changed.");
         return Ok(());
     }
@@ -401,6 +411,56 @@ mod tests {
             })
             .collect::<Vec<_>>();
         paths.join("\n") + "\n"
+    }
+
+    #[test]
+    fn dry_run_previews_the_same_content_twice_without_touching_workspace_bytes() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let options = options();
+        let module_dir = root.join("crates/modules").join(options.crate_name());
+        let index = root.join("docs/modules/_index.md");
+        let crlf = fs::read_to_string(&index).unwrap().replace("\r\n", "\n");
+        fs::write(&index, crlf.trim_end_matches('\n').replace('\n', "\r\n")).unwrap();
+        let inputs: Vec<_> = super::registration::registration_target_paths(&root, &options)
+            .into_iter()
+            .map(|path| {
+                let bytes = fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+        let plan = build_scaffold_plan(&root, &module_dir, &options, "Example", "example").unwrap();
+        let index_change = plan.iter().find(|file| file.path == index).unwrap();
+        assert!(!index_change.content.ends_with('\n'));
+        assert!(index_change.content.contains("\r\n"));
+        assert!(index_change
+            .content
+            .split_inclusive('\n')
+            .all(|line| !line.ends_with('\n') || line.ends_with("\r\n")));
+        let render = || {
+            let mut output = Vec::new();
+            super::scaffold_in_workspace(&root, &options, &mut output, |_, _| {
+                panic!("dry-run must not run post-apply validation")
+            })
+            .unwrap();
+            let output = String::from_utf8(output).unwrap();
+            assert_eq!(
+                output
+                    .lines()
+                    .filter(|line| line.starts_with("+++ b/"))
+                    .count(),
+                plan.len()
+            );
+            assert!(output.contains("+example = { crate = \"rustok-example\""));
+            output
+        };
+        assert_eq!(render(), render());
+        for (path, bytes) in inputs {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+        }
+        assert!(!root.join(".rustok").exists());
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -770,7 +830,7 @@ mod tests {
     fn database_requests_fail_even_in_preview_mode() {
         let mut request = options();
         request.with_db = true;
-        assert!(scaffold(&request)
+        assert!(scaffold(&request, std::io::sink())
             .unwrap_err()
             .to_string()
             .contains("--with-db"));
@@ -787,7 +847,7 @@ mod tests {
                 .iter()
                 .any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
             assert!(
-                scaffold(&request).is_ok(),
+                scaffold(&request, std::io::sink()).is_ok(),
                 "dry-run must preview every UI mode"
             );
         }

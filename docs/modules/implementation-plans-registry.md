@@ -12,7 +12,7 @@ This index contains one entry for each live local plan. Local plans own the curr
 
 | Module/Crate | Local plan | Status | Nearest priority |
 | --- | --- | --- | --- |
-| `xtask` | [plan](../../xtask/docs/implementation-plan.md) | `in_progress` | Complete reviewable native registration and preview, then transfer Blog's applicable semantic, localization and test contracts. |
+| `xtask` | [plan](../../xtask/docs/implementation-plan.md) | `in_progress` | Complete formatting-independent native registration and extend shared semantic checks for generated and existing modules. |
 | `alloy` | [plan](../../crates/modules/alloy/docs/implementation-plan.md) | `in_progress` | Move Alloy execution through the neutral sandbox, then package source revisions as immutable module artifacts. |
 | `flex` | [plan](../../crates/modules/flex/docs/implementation-plan.md) | `in_progress` | Execute the source-complete SQLite owner matrix, PostgreSQL transaction/concurrency/replay and two-replica outage/regression recovery evidence, then finish owner transport extraction. |
 | `leptos-auth` | [plan](../../crates/ui/leptos-auth/docs/implementation-plan.md) | `not_started` | Remove the legacy `api` compatibility re-export after migrating callers. |
