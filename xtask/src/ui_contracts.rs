@@ -66,6 +66,8 @@ pub(crate) fn validate_module_docs_navigation_contract(
         .with_context(|| format!("Failed to read {}", module_index_path.display()))?;
     let ui_index = fs::read_to_string(&ui_index_path)
         .with_context(|| format!("Failed to read {}", ui_index_path.display()))?;
+    let module_index = crate::docs_markdown::Document::parse(&module_index);
+    let ui_index = crate::docs_markdown::Document::parse(&ui_index);
     let module_path = spec
         .path
         .as_deref()
@@ -73,14 +75,14 @@ pub(crate) fn validate_module_docs_navigation_contract(
 
     let docs_link = format!("../../{module_path}/docs/README.md");
     let plan_link = format!("../../{module_path}/docs/implementation-plan.md");
-    if !module_index.contains(&docs_link) {
+    if !module_index.links_to(&docs_link) {
         anyhow::bail!(
             "Module '{slug}' is missing docs navigation link '{}' in {}",
             docs_link,
             module_index_path.display()
         );
     }
-    if !module_index.contains(&plan_link) {
+    if !module_index.links_to(&plan_link) {
         anyhow::bail!(
             "Module '{slug}' is missing implementation plan link '{}' in {}",
             plan_link,
@@ -90,7 +92,7 @@ pub(crate) fn validate_module_docs_navigation_contract(
 
     if admin_ui_crate.is_some() {
         let admin_link = format!("../../{module_path}/admin/README.md");
-        if !ui_index.contains(&admin_link) {
+        if !ui_index.links_to(&admin_link) {
             anyhow::bail!(
                 "Module '{slug}' declares admin UI, but {} is missing '{}'",
                 ui_index_path.display(),
@@ -101,7 +103,7 @@ pub(crate) fn validate_module_docs_navigation_contract(
 
     if storefront_ui_crate.is_some() {
         let storefront_link = format!("../../{module_path}/storefront/README.md");
-        if !ui_index.contains(&storefront_link) {
+        if !ui_index.links_to(&storefront_link) {
             anyhow::bail!(
                 "Module '{slug}' declares storefront UI, but {} is missing '{}'",
                 ui_index_path.display(),
@@ -112,7 +114,7 @@ pub(crate) fn validate_module_docs_navigation_contract(
 
     if admin_support_crate.is_some() {
         let admin_support_link = format!("../../{module_path}/admin/README.md");
-        if !ui_index.contains(&admin_support_link) {
+        if !ui_index.links_to(&admin_support_link) {
             anyhow::bail!(
                 "Module '{slug}' declares an admin support crate, but {} is missing '{}'",
                 ui_index_path.display(),
@@ -123,7 +125,7 @@ pub(crate) fn validate_module_docs_navigation_contract(
 
     if storefront_support_crate.is_some() {
         let storefront_support_link = format!("../../{module_path}/storefront/README.md");
-        if !ui_index.contains(&storefront_support_link) {
+        if !ui_index.links_to(&storefront_support_link) {
             anyhow::bail!(
                 "Module '{slug}' declares a storefront support crate, but {} is missing '{}'",
                 ui_index_path.display(),
@@ -141,10 +143,12 @@ pub(crate) fn validate_module_docs_navigation_contract(
             .iter()
             .map(|package| format!("apps/next-admin/packages/{package}/"))
             .collect::<Vec<_>>();
-        if !next_admin_path_fragments
-            .iter()
-            .any(|fragment| ui_index.contains(fragment))
-        {
+        if !ui_index.code.iter().chain(&ui_index.links).any(|path| {
+            let path = path.trim_start_matches("../../");
+            next_admin_path_fragments.iter().any(|fragment| {
+                path == fragment.trim_end_matches('/') || path.starts_with(fragment)
+            })
+        }) {
             anyhow::bail!(
                 "Module '{slug}' declares showcase_admin_surfaces=['next-admin'], but {} is missing one of {:?}",
                 ui_index_path.display(),

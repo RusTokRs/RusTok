@@ -91,6 +91,10 @@ The preview leaves workspace source and registration files untouched.
 TOML edits resolve exact keys and preserve existing comments, order, whitespace
 and line endings. Planning rejects occupied dependency and feature keys,
 conflicting module identities and excluded workspace paths.
+Markdown entries go into the parsed tables and lists for their owning sections.
+The distribution entry is placed before the parsed promotion call in
+`build_registry`. Planning checks occupied identities and verifies each entry
+after insertion while preserving the existing file bytes.
 Required registration postconditions run
 even with `--skip-validate`. A live run holds one workspace lock from recovery
 and planning through validation and commit. It saves original registration bytes
@@ -137,8 +141,7 @@ for state transitions and filesystem requirements.
 
 Recovery covers process termination by cooperating writers on supported local
 filesystems. Power loss, network mounts and concurrent external edits fall
-outside that contract. Markdown projections and the distribution Rust registry
-still use textual insertion anchors. The existing
+outside that contract. The existing
 Bash matrix requires a disposable checkout and does not test selected
 distribution composition. Generated facade tests exercise typed unavailability
 for explicit and feature-selected paths; dual-package native CSR/hydrate/SSR tests

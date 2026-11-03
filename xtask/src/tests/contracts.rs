@@ -2845,8 +2845,11 @@ fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link()
             "| `rustok-demo` | [docs](../../crates/modules/rustok-demo/docs/README.md) | [plan](../../crates/modules/rustok-demo/docs/implementation-plan.md) |\n",
         )
         .expect("temporary _index.md should be writable");
-    std::fs::write(docs_modules_dir.join("UI_PACKAGES_INDEX.md"), "# ui\n")
-        .expect("temporary UI index should be writable");
+    std::fs::write(
+        docs_modules_dir.join("UI_PACKAGES_INDEX.md"),
+        "# ui\n\n<!-- [README](../../crates/modules/rustok-demo/admin/README.md) -->\n",
+    )
+    .expect("temporary UI index should be writable");
     let manifest_path = base.join("modules.toml");
     std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
         .expect("temporary modules.toml should be writable");
@@ -3013,7 +3016,7 @@ fn validate_module_registry_docs_contract_rejects_missing_row() {
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n",
+        "### Core Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");
@@ -3051,7 +3054,7 @@ fn validate_module_registry_docs_contract_rejects_dependency_drift() {
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | `content` | demo |\n",
+        "### Core Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | `content` | demo |\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");
@@ -3092,7 +3095,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | — | demo |\n| `ghost` | `rustok-ghost` | — | ghost |\n",
+        "### Core Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional Modules\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | — | demo |\n| `ghost` | `rustok-ghost` | — | ghost |\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");

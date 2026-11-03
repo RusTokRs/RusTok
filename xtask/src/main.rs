@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use toml::Value as TomlValue;
 
+mod docs_markdown;
 mod docs_registry_contracts;
 mod i18n_api_inventory;
 mod install_dev;

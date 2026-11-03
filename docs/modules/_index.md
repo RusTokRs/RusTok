@@ -146,7 +146,6 @@ Module local documentation lives inside the crates themselves at
 | `rustok-translation-admin` | [admin UI package](../../crates/modules/rustok-translation/admin/README.md) | [owner plan](../../crates/modules/rustok-translation/docs/implementation-plan.md) |
 | `rustok-docs` | [docs](../../crates/modules/rustok-docs/docs/README.md) | [plan](../../crates/modules/rustok-docs/docs/implementation-plan.md) |
 | `rustok-messenger` | [docs](../../crates/modules/rustok-messenger/docs/README.md) | [plan](../../crates/modules/rustok-messenger/docs/implementation-plan.md) |
-
 | `rustok-party` | [docs](../../crates/modules/rustok-party/docs/README.md) | [plan](../../crates/modules/rustok-party/docs/implementation-plan.md) |
 | `rustok-deal` | [docs](../../crates/modules/rustok-deal/docs/README.md) | [plan](../../crates/modules/rustok-deal/docs/implementation-plan.md) |
 | `rustok-billing` | [docs](../../crates/modules/rustok-billing/docs/README.md) | [plan](../../crates/modules/rustok-billing/docs/implementation-plan.md) |
@@ -154,6 +153,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-calls` | [docs](../../crates/modules/rustok-calls/docs/README.md) | [plan](../../crates/modules/rustok-calls/docs/implementation-plan.md) |
 | `rustok-calendar` | [docs](../../crates/modules/rustok-calendar/docs/README.md) | [plan](../../crates/modules/rustok-calendar/docs/implementation-plan.md) |
 | `rustok-tasks` | [docs](../../crates/modules/rustok-tasks/docs/README.md) | [plan](../../crates/modules/rustok-tasks/docs/implementation-plan.md) |
+
 ## Module UI Packages
 
 ### Optional/Admin Surfaces

@@ -109,6 +109,8 @@ separately from generated identity/structure checks.
 
 Planning inserts entries at parsed TOML keys, preserves existing source bytes,
 and rejects conflicting identities, occupied keys and excluded workspace paths.
+It also verifies each Markdown entry in its owning table or list and checks the
+feature-gated Rust registration in `rustok-distribution::build_registry`.
 Required registration postconditions run even when later validation is skipped.
 Apply rejects changed originals,
 stages complete files and original backups, and claims its module directory and

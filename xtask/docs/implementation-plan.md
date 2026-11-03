@@ -103,7 +103,7 @@ remain separate verification gates.
 | Backend | Minimal `RusToKModule`/`MigrationSource`, contract tests and owner docs; no invented domain operations | Generated source and selected composition must compile in isolated verification |
 | Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
-| Planning | Prepare all edits before writing, insert by parsed TOML key without rewriting existing bytes, check required registration, and show unified diffs with apply preconditions in dry-run | Markdown and Rust registry insertion still depends on current formatting |
+| Planning | Parse TOML keys, Markdown sections and Rust registry syntax before inserting only new bytes. Verify required entries and show unified diffs with apply preconditions in dry-run | Extend negative coverage for remaining input boundaries |
 | Apply | Workspace-wide lock, versioned journal, original backups before apply, and no-clobber source writes. Recovery verified on Windows and Linux. | External writers can still race |
 | Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
@@ -175,8 +175,20 @@ Owner: platform tooling with server/distribution composition owners.
   Headless and dual CLI previews were repeatable, matched the original file
   hashes and passed `git apply --check`. Tests and CLI used cached locked
   dependencies because a concurrent Cargo run held the shared build lock.
-- [ ] Replace fragile insertion anchors in the Markdown projections and the
-  distribution Rust registry using their owning contracts.
+- [x] Locate Markdown tables by section and column names and UI entries by
+  section and link identity. Use the same GFM parser for inventory and
+  navigation checks. Find the distribution registry function and promotion
+  tail in Rust syntax and verify the feature-gated statement before apply.
+- Windows Markdown and Rust evidence. `cargo test -p xtask --locked --offline`
+  passed 213 tests with the subprocess entrypoint ignored by the top-level
+  runner. Regression fixtures cover fenced examples, HTML comments, duplicate
+  sections and identities, mixed line endings, BOM and shebang prefixes, and
+  a multiline promotion call. The existing rollback and recovery tests passed.
+  The central registry and domain index now render the formerly detached rows
+  inside their tables. `validate-manifest` passed for all
+  65 modules, and `module validate blog` passed with the shared parser.
+  Headless and dual previews passed `git apply --check` and matched the
+  original file hashes.
 - [x] Preview actual content changes and preconditions. Verify repeated preview
   stability and byte-for-byte workspace immutability.
 - Windows evidence for preview. All 207 `xtask` tests passed. Repeated headless

@@ -11,6 +11,8 @@ mod backend;
 mod options;
 mod preview;
 pub(crate) mod registration;
+mod registration_docs;
+mod registration_rust;
 mod registration_toml;
 mod transaction;
 mod ui;
@@ -132,7 +134,6 @@ fn build_scaffold_plan(
     module_dir: &Path,
     options: &ScaffoldOptions,
     pascal_name: &str,
-    snake_name: &str,
 ) -> Result<Vec<PlannedFile>> {
     match fs::symlink_metadata(module_dir) {
         Ok(_) => anyhow::bail!(
@@ -158,7 +159,7 @@ fn build_scaffold_plan(
         });
     }
 
-    for change in registration::plan_module_registration(root, options, pascal_name, snake_name)? {
+    for change in registration::plan_module_registration(root, options, pascal_name)? {
         plan.push(PlannedFile {
             path: change.path,
             content: change.content,
@@ -265,12 +266,11 @@ fn scaffold_in_workspace(
     };
     let slug = &options.slug;
     let pascal_name = to_pascal_case(slug);
-    let snake_name = slug.clone();
     let crate_name = options.crate_name();
     let module_dir = root.join("crates").join("modules").join(&crate_name);
 
     println!("Scaffolding module '{}' ({})...", slug, crate_name);
-    let plan = build_scaffold_plan(root, &module_dir, options, &pascal_name, &snake_name)?;
+    let plan = build_scaffold_plan(root, &module_dir, options, &pascal_name)?;
 
     if options.dry_run {
         drop(preview_guard);
@@ -414,7 +414,7 @@ mod tests {
                 (path, bytes)
             })
             .collect();
-        let plan = build_scaffold_plan(&root, &module_dir, &options, "Example", "example").unwrap();
+        let plan = build_scaffold_plan(&root, &module_dir, &options, "Example").unwrap();
         let index_change = plan.iter().find(|file| file.path == index).unwrap();
         assert!(!index_change.content.ends_with('\n'));
         assert!(index_change.content.contains("\r\n"));
@@ -486,7 +486,7 @@ mod tests {
 
             let module_dir = root.join("crates/modules").join(request.crate_name());
             let pascal = crate::manifest_validation::to_pascal_case(slug);
-            let plan = build_scaffold_plan(&root, &module_dir, &request, &pascal, slug)
+            let plan = build_scaffold_plan(&root, &module_dir, &request, &pascal)
                 .unwrap_or_else(|error| panic!("failed to build {slug} plan: {error}"));
             let actual = plan_path_snapshot(&root, &plan);
 
@@ -603,8 +603,7 @@ mod tests {
         let root = temp_root();
         copy_scaffold_inputs(&root);
         let module_dir = root.join("crates/modules/rustok-example");
-        let plan =
-            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        let plan = build_scaffold_plan(&root, &module_dir, &options(), "Example").unwrap();
         let manifest = root.join("modules.toml");
         let changed = fs::read_to_string(&manifest).unwrap() + "\n# external edit\n";
         fs::write(&manifest, &changed).unwrap();
@@ -622,8 +621,7 @@ mod tests {
         let root = temp_root();
         copy_scaffold_inputs(&root);
         let module_dir = root.join("crates/modules/rustok-example");
-        let plan =
-            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        let plan = build_scaffold_plan(&root, &module_dir, &options(), "Example").unwrap();
         fs::create_dir(&module_dir).unwrap();
         let owner_file = module_dir.join("owner.txt");
         fs::write(&owner_file, "external work").unwrap();
@@ -637,8 +635,7 @@ mod tests {
         let root = temp_root();
         copy_scaffold_inputs(&root);
         let module_dir = root.join("crates/modules/rustok-example");
-        let plan =
-            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        let plan = build_scaffold_plan(&root, &module_dir, &options(), "Example").unwrap();
         let transaction = ScaffoldTransaction::apply(&root, &plan, &module_dir).unwrap();
         let manifest = root.join("modules.toml");
         fs::write(&manifest, "external manifest edit").unwrap();
@@ -726,7 +723,6 @@ mod tests {
             &root.join("crates/modules/rustok-example"),
             &options(),
             "Example",
-            "example",
         )
         .unwrap();
         let planned = &plan
@@ -775,7 +771,6 @@ mod tests {
             &root.join("crates/modules/rustok-example"),
             &request,
             "Example",
-            "example",
         )
         .unwrap();
         for (relative, original, expected) in fixtures {
@@ -809,7 +804,7 @@ mod tests {
             let originals = super::registration::registration_target_paths(&root, &request)
                 .into_iter().map(|path| (fs::read(&path).unwrap(), path)).collect::<Vec<_>>();
             let module = root.join("crates/modules/rustok-example");
-            let error = build_scaffold_plan(&root, &module, &request, "Example", "example").unwrap_err();
+            let error = build_scaffold_plan(&root, &module, &request, "Example").unwrap_err();
             assert!(format!("{error:#}").contains(reason), "{relative}: {error:#}");
             for (before, path) in originals {
                 assert_eq!(fs::read(path).unwrap(), before);
@@ -840,7 +835,7 @@ mod tests {
         )
         .unwrap();
         let module = root.join("crates/modules/rustok-example");
-        let plan = build_scaffold_plan(&root, &module, &request, "Example", "example").unwrap();
+        let plan = build_scaffold_plan(&root, &module, &request, "Example").unwrap();
         let updates: Vec<_> = plan
             .iter()
             .filter(|file| file.original.is_some())
@@ -865,6 +860,86 @@ mod tests {
     }
 
     #[test]
+    fn markdown_and_rust_registration_ignore_examples_and_preserve_source_bytes() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let index = root.join(super::registration_docs::INDEX);
+        let original = fs::read_to_string(&index).unwrap();
+        let fake_table = "```markdown\n## Domain Modules\n| Component | Documentation | Implementation Plan |\n| --- | --- | --- |\n| `rustok-example` | fake | fake |\n```\n\n";
+        let source = format!("{fake_table}{original}").replace(
+            "### Optional/Storefront Surfaces\n",
+            "### *Optional/Storefront Surfaces* ###\r\n",
+        );
+        fs::write(&index, &source).unwrap();
+        let rust = root.join(super::registration_rust::DISTRIBUTION_SOURCE);
+        let rust_source = "\u{feff}#!/usr/bin/env rustx\r\n// é: feature = \"mod-example\"\r\nfn helper() { /* generated_promotions::register_promoted_modules(registry) */ }\nfn build_registry() -> ModuleRegistry { let registry = ModuleRegistry::new(); generated_promotions :: register_promoted_modules(\r\n    registry,\r\n) }";
+        fs::write(&rust, rust_source).unwrap();
+
+        let mut request = options();
+        request.ui = ScaffoldUi::Dual;
+        request.description = "Escaped [text] <tag> and `code`".into();
+        let module = root.join("crates/modules/rustok-example");
+        let plan = build_scaffold_plan(&root, &module, &request, "Example").unwrap();
+        let changed =
+            |path: &std::path::Path| &plan.iter().find(|file| file.path == path).unwrap().content;
+        let planned_index = changed(&index);
+        let removed: String = planned_index
+            .split_inclusive('\n')
+            .filter(|line| !line.contains("../../crates/modules/rustok-example/"))
+            .collect();
+        assert_eq!(removed, source);
+        let ui = changed(&root.join(super::registration_docs::UI_INDEX));
+        let storefront = ui
+            .find("- `rustok-example` storefront UI (draft, unmounted)")
+            .unwrap();
+        assert!(storefront > ui.find("### Optional/Storefront Surfaces").unwrap());
+        assert!(storefront < ui.find("### UI Support Crates").unwrap());
+        let readiness = changed(&root.join(super::registration_docs::REGISTRY));
+        assert!(readiness.contains("| `example` | admin + storefront (draft, unmounted) | `not_started` | `not_started` | `core_transport_ui` |"));
+        assert!(readiness.contains(r"Escaped \[text\] \<tag\> and \`code\`"));
+        let statement = "\r\n    #[cfg(feature = \"mod-example\")]\r\n    let registry = registry.register(rustok_example::ExampleModule);\r\n    ";
+        assert_eq!(changed(&rust).replacen(statement, "", 1), rust_source);
+        assert_eq!(fs::read_to_string(&index).unwrap(), source);
+        assert_eq!(fs::read_to_string(&rust).unwrap(), rust_source);
+        assert!(!module.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn occupied_document_and_rust_identities_fail_preflight() {
+        for (relative, before, after, reason) in [
+            (super::registration_docs::INDEX,
+             "| `rustok-content` |", "|`rustok-example`   |", "already registered"),
+            (super::registration_docs::PLANS,
+             "## Live plans", "## Live plans\n\n## *Live plans*", "Ambiguous Markdown section"),
+            (super::registration_rust::DISTRIBUTION_SOURCE,
+             "    generated_promotions::register_promoted_modules(registry)",
+             "    let registry = registry.register(rustok_example :: ExampleModule);\n    generated_promotions::register_promoted_modules(registry)", "already uses feature"),
+            (super::registration_rust::DISTRIBUTION_SOURCE,
+             "    generated_promotions::register_promoted_modules(registry)",
+             "    // generated_promotions::register_promoted_modules(registry)\n    registry", "promotion tail"),
+        ] {
+            let root = temp_root();
+            copy_scaffold_inputs(&root);
+            let path = root.join(relative);
+            let source = fs::read_to_string(&path).unwrap();
+            assert!(source.contains(before));
+            let occupied = source.replacen(before, after, 1);
+            fs::write(&path, &occupied).unwrap();
+            let module = root.join("crates/modules/rustok-example");
+            let mut request = options();
+            request.skip_validate = true;
+            let modules = fs::read(root.join("modules.toml")).unwrap();
+            let error = build_scaffold_plan(&root, &module, &request, "Example").unwrap_err();
+            assert!(format!("{error:#}").contains(reason), "{relative}: {error:#}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), occupied);
+            assert_eq!(fs::read(root.join("modules.toml")).unwrap(), modules);
+            assert!(!module.exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
     fn missing_composition_anchors_fail_during_preflight_even_when_validation_is_skipped() {
         for relative in [
             "Cargo.toml",
@@ -883,7 +958,7 @@ mod tests {
             request.skip_validate = true;
             let module_dir = root.join("crates/modules/rustok-example");
             assert!(
-                build_scaffold_plan(&root, &module_dir, &request, "Example", "example").is_err(),
+                build_scaffold_plan(&root, &module_dir, &request, "Example").is_err(),
                 "accepted missing {relative}"
             );
             assert_eq!(fs::read(root.join("modules.toml")).unwrap(), before);
@@ -898,7 +973,7 @@ mod tests {
         copy_scaffold_inputs(&root);
         fs::remove_file(root.join("crates/modules/rustok-distribution/Cargo.toml")).unwrap();
         let module_dir = root.join("crates/modules/rustok-example");
-        assert!(build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").is_err());
+        assert!(build_scaffold_plan(&root, &module_dir, &options(), "Example").is_err());
         assert!(!module_dir.exists());
         fs::remove_dir_all(root).unwrap();
     }
@@ -909,8 +984,7 @@ mod tests {
         let module_dir = root.join("crates/modules/rustok-example");
         fs::create_dir_all(&module_dir).unwrap();
 
-        let error =
-            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap_err();
+        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example").unwrap_err();
         assert!(error.to_string().contains("already exists"));
         fs::remove_dir_all(root).unwrap();
     }
@@ -926,8 +1000,7 @@ mod tests {
         )
         .unwrap();
 
-        let error =
-            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap_err();
+        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example").unwrap_err();
         assert!(format!("{error:#}").contains("already registered"));
         fs::remove_dir_all(root).unwrap();
     }
