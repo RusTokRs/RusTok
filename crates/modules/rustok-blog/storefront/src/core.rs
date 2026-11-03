@@ -2,6 +2,9 @@ use rustok_ui_core::normalize_ui_text;
 
 use crate::i18n::t;
 
+pub mod comments_pagination;
+pub use comments_pagination::*;
+
 pub const DEFAULT_POST_SLUG: &str = "latest";
 pub const DEFAULT_ROUTE_SEGMENT: &str = "blog";
 pub const SELECTED_POST_QUERY_KEY: &str = "slug";

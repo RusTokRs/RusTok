@@ -93,7 +93,6 @@ function fixture(options = {}) {
     root,
     "crates/modules/rustok-blog/storefront/src/lib.rs",
     `${options.legacyApi ? "mod api;" : ""}
-${pagination ? "mod comments_pagination;" : ""}
 mod transport;
 pub use ui::BlogView;
 `,
@@ -101,13 +100,14 @@ pub use ui::BlogView;
   writeFixtureFile(
     root,
     "crates/modules/rustok-blog/storefront/src/core.rs",
-    options.leptosCore
+    `${pagination ? "mod comments_pagination;" : ""}
+${options.leptosCore
       ? "use leptos::prelude::*;"
-      : "pub struct BlogStorefrontFetchRequest;",
+      : "pub struct BlogStorefrontFetchRequest;"}`,
   );
   writeFixtureFile(
     root,
-    "crates/modules/rustok-blog/storefront/src/comments_pagination.rs",
+    "crates/modules/rustok-blog/storefront/src/core/comments_pagination.rs",
     pagination
       ? `use rustok_ui_core::UiRouteQueryIntent;
 const COMMENTS_PAGE_QUERY_KEY: &str = "commentsPage";

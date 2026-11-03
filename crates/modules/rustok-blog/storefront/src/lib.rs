@@ -4,9 +4,9 @@
 //! Provides published post viewing, RSS feed generation, and comment thread integrations.
 
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
-mod comments_pagination;
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 mod core;
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+pub use core::comments_pagination;
 mod i18n;
 mod model;
 mod transport;

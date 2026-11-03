@@ -6,7 +6,7 @@ const files = {
   storefrontSrc: "crates/modules/rustok-blog/storefront/src",
   lib: "crates/modules/rustok-blog/storefront/src/lib.rs",
   core: "crates/modules/rustok-blog/storefront/src/core.rs",
-  pagination: "crates/modules/rustok-blog/storefront/src/comments_pagination.rs",
+  pagination: "crates/modules/rustok-blog/storefront/src/core/comments_pagination.rs",
   model: "crates/modules/rustok-blog/storefront/src/model.rs",
   ui: "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
   commentsListUi: "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
@@ -139,7 +139,7 @@ if (existsSync(files.legacyApi)) {
 }
 
 assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire legacy api module`);
-assertContains(lib, "mod comments_pagination;", `${files.lib}: lib must wire route-owned comment pagination policy`);
+assertContains(core, "mod comments_pagination;", `${files.core}: core must wire route-owned comment pagination policy`);
 assertContains(lib, "mod transport;", `${files.lib}: lib must wire transport facade`);
 assertContains(lib, "pub use ui::BlogView", `${files.lib}: lib must only re-export BlogView`);
 
