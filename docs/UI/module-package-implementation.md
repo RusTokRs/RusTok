@@ -41,13 +41,13 @@ admin/                            (or storefront/)
 ├── Cargo.toml                    ← must declare ALL dependencies explicitly
 ├── README.md                     ← must link to this guide
 ├── locales/
-│   ├── en.json                   ← nested JSON, identical keys to apps/next-admin/messages/
-│   └── ru.json
+│   ├── en.ftl                    ← Project Fluent interface catalog
+│   └── ru.ftl                    ← same message keys and variables for this package
 └── src/
     ├── lib.rs                    ← wiring only: mod declarations + root re-export
     ├── core.rs or core/mod.rs   ← non-empty, framework-independent presentation policy
     ├── model.rs                  ← non-empty transport-neutral owner/view model and boundary types
-    ├── i18n.rs                   ← written manually using rustok-ui-i18n helpers
+    ├── i18n.rs                   ← rustok-ui-i18n module declaration and typed lookups
     ├── transport/
     │   ├── mod.rs                ← public facade; only entry point for ui/leptos.rs
     │   └── graphql_adapter.rs    ← mandatory for dual-path/headless parity; uses rustok-graphql
@@ -96,6 +96,12 @@ Use `core/` subdirectory instead of `core.rs` when the core layer grows to multi
 subdomains (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 
 Use `ui/leptos/` subdirectory instead of `ui/leptos.rs` when page components multiply.
+
+For Page Builder / Fly, use `core/page_builder.rs` for pure owner presentation
+policy and `ui/page_builder.rs` for a Leptos render/binding component when those
+responsibilities exist. Keep capability calls in `transport/`. The [builder
+consumer placement rules](../backend/module-backend-implementation.md#storage-and-page-builder-reference-variants)
+describe the manifest and owner storage boundary.
 
 Use `transport.rs` instead of `transport/mod.rs` only for small facades. Once the package
 has multiple adapters or subdomains, split it into `transport/`.

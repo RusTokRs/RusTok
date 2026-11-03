@@ -803,11 +803,20 @@ export function lintNativeModule(root, modulePath, slug) {
     diagnostics.push(relative(repo, join(src, "lib.rs")) + ": missing cfg(test) tests module");
   }
 
+  const httpSlot = isDirectory(join(src, "rest")) && !isDirectory(join(src, "controllers"))
+    ? "rest"
+    : "controllers";
+  const rootFileDestinations = new Map([
+    ["contract_tests.rs", "src/tests/contract.rs"],
+    ["openapi.rs", `src/${httpSlot}/openapi.rs`],
+  ]);
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) continue;
     if (entry.isFile() && entry.name.endsWith(".rs") && !ALLOWED_ROOT_RUST_FILES.has(entry.name)) {
+      const destination = rootFileDestinations.get(entry.name);
+      const guidance = destination ? `move or merge into ${destination}` : "move into its responsibility slot";
       diagnostics.push(relative(repo, join(src, entry.name)) +
-        ": noncanonical src/ root Rust file; move into its responsibility slot");
+        `: noncanonical src/ root Rust file; ${guidance}`);
     } else if (entry.isDirectory() && !BACKEND_SLOTS.has(entry.name)) {
       diagnostics.push(relative(repo, join(src, entry.name)) +
         ": unrecognized native responsibility directory");

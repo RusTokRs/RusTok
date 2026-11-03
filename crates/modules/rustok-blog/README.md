@@ -393,10 +393,10 @@ test suite, and the Next storefront's seven utility tests do not establish
 functional/browser parity. The translation-width migration's locale-narrowing
 rollback also conflicts with the platform storage contract. These reference gaps
 are tracked in the
-[current owner plan](./docs/implementation-plan-current.md#reference-verification-follow-up-2026-11-03).
+[scaffold reference assessment](../../../xtask/docs/implementation-plan.md#blog-reference-transfer-assessment).
 
-The following are not implemented. Each is tracked with its audit identifier in
-[the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
+The following limitations retain their identifiers from the
+[Blog engineering audit](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md).
 
 - No server-side text search or facets for the post list (H-7).
 - The rich-text body has no inline images, tables, or embeds (H-8).
@@ -437,7 +437,7 @@ The following are not implemented. Each is tracked with its audit identifier in
   forward the same context. Adding `Resource::Taxonomy` enforcement to the owner is a
   cross-module policy decision (a role holding `Tags:Update` without `Taxonomy:Update` would
   stop being able to edit tags), tracked in
-  [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
+  [the Blog owner plan](./docs/implementation-plan.md).
 
 ## Entry points
 
@@ -456,5 +456,5 @@ The following are not implemented. Each is tracked with its audit identifier in
 
 - [CRATE_API](./CRATE_API.md)
 - [Module docs](./docs/README.md)
-- [Current implementation cursor](./docs/implementation-plan-current.md)
+- [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../../docs/index.md)

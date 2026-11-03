@@ -111,7 +111,17 @@ test("private persistence and canonical root slots are enforced", () => {
     ctx.write("src/contract_tests.rs", "pub fn wrong() {}\n");
     const failures = lint(ctx).join("\n");
     assert.match(failures, /entities must remain private/);
-    assert.match(failures, /noncanonical src\/ root Rust file/);
+    assert.match(failures, /noncanonical src\/ root Rust file; move or merge into src\/tests\/contract\.rs/);
+  });
+});
+
+test("legacy root OpenAPI source points to the existing HTTP slot", () => {
+  fixture((ctx) => {
+    ctx.write("src/openapi.rs", "pub fn openapi_document() {}\n");
+    assert.match(lint(ctx).join("\n"), /move or merge into src\/controllers\/openapi\.rs/);
+
+    ctx.write("src/rest/mod.rs", "pub fn mount_routes() {}\n");
+    assert.match(lint(ctx).join("\n"), /move or merge into src\/rest\/openapi\.rs/);
   });
 });
 

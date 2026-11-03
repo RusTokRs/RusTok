@@ -323,6 +323,10 @@ runs the generic rules in `scripts/verify/native-module-layout.mjs`.
 Blog-only reference assertions remain separate and must not become universal
 requirements.
 
+For legacy root `contract_tests.rs` and `openapi.rs`, lint reports the target
+file to move or merge into. The existing `rest/` slot is respected. Owners apply
+the move with its module declarations and callers in the same change.
+
 The generic lint checks source layout, Cargo/module identity, entry type,
 registration placement, private persistence entities, test location, dependency
 direction, bounded Rust file sizes, FFA package structure, and consistency
