@@ -11,6 +11,7 @@ use rustok_web::{HttpError, HttpResult};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::authorization::security_context;
 use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::CategoryService;
 use crate::dto::{
@@ -18,14 +19,6 @@ use crate::dto::{
     MoveCategoryInput, MoveCategoryResponse, UpdateCategoryInput,
 };
 use crate::services::CategoryCommandService;
-
-fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
-    rustok_core::security_context_from_access_token(
-        auth.user_id,
-        &auth.grant_type,
-        &auth.permissions,
-    )
-}
 
 fn ensure_category_permission(
     tenant: &TenantContext,

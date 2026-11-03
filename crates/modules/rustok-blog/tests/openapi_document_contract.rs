@@ -11,12 +11,12 @@
 
 use rustok_blog::openapi::openapi_document;
 
-/// The module router, the registration list, and the four controller files the router
+/// The module router, the registration list, and the controller files the router
 /// references. `comment_assets` is feature-gated and declares no `#[utoipa::path]`, so it
 /// is deliberately not part of this contract.
 const CONTROLLERS_MOD: &str = include_str!("../src/controllers/mod.rs");
 const OPENAPI_SOURCE: &str = include_str!("../src/controllers/openapi.rs");
-const CONTROLLER_SOURCES: [(&str, &str); 4] = [
+const CONTROLLER_SOURCES: [(&str, &str); 5] = [
     ("posts.rs", include_str!("../src/controllers/posts.rs")),
     (
         "categories.rs",
@@ -25,6 +25,10 @@ const CONTROLLER_SOURCES: [(&str, &str); 4] = [
     (
         "comments.rs",
         include_str!("../src/controllers/comments.rs"),
+    ),
+    (
+        "preview_token.rs",
+        include_str!("../src/controllers/preview_token.rs"),
     ),
     ("tags.rs", include_str!("../src/controllers/tags.rs")),
 ];

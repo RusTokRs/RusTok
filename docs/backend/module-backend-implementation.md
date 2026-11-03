@@ -250,6 +250,70 @@ profile admits only `lib.rs` and `module.rs` at the source root, so a bundle tha
 
 If a file starts mixing two rows from the table, split it before adding new behavior.
 
+### File placement for reference capabilities
+
+Use the owner's existing `snake_case` capability name for `<capability>` and
+the existing command or query verb for `<operation>`. For example, `post` is an
+aggregate and `preview_token` is a separate capability with its own lifecycle.
+Small single-role modules use the file shown below. When a capability needs
+multiple files, move its entrypoint to `<capability>/mod.rs` and use the fixed
+role names. A directory entrypoint declares children and composes or re-exports
+their API. Materialize each file only when the corresponding behavior exists.
+
+| Responsibility | Canonical file |
+| --- | --- |
+| Value types and aggregate invariants | `src/domain/<capability>.rs`; a split uses `<capability>/mod.rs`, with `state_machine.rs` for an explicit lifecycle |
+| Owner input and output types | `src/dto/<capability>.rs`; a split uses `<capability>/commands.rs` and `<capability>/queries.rs` for their respective types |
+| Owner service entrypoint | `src/services/<capability>.rs` for one cohesive role, otherwise `src/services/<capability>/mod.rs` |
+| Mutations and transaction boundaries | `src/services/<capability>/commands.rs`; extract a complex operation to `commands/<operation>.rs` |
+| Read orchestration and pagination | `src/services/<capability>/queries.rs`; extract a complex operation to `queries/<operation>.rs` |
+| Private persistence access shared by operations | `src/services/<capability>/repository.rs` when there is distinct storage access to share |
+| Owner table mappings | `src/entities/<table>.rs` under private `src/entities/mod.rs` |
+| Ordered schema changes | `src/migrations/m<YYYYMMDD>_<sequence>_<change>.rs`, exported from `src/migrations/mod.rs` |
+| Owner port, capability adapter and event | `src/ports/<capability>.rs`, `src/integrations/<provider>.rs`, `src/events/<event>.rs` respectively |
+| GraphQL roots and input/output mappings | `src/graphql/query.rs`, `src/graphql/mutation.rs`, `src/graphql/types.rs`; extract cohesive groups to `query/<capability>.rs`, `mutation/<capability>.rs` or `types/<capability>.rs` |
+| HTTP handlers and schema | `src/controllers/<capability>.rs`, `src/controllers/authorization.rs` for shared HTTP request guards, and `src/controllers/openapi.rs`; an existing `src/rest/` slot follows the same internal roles |
+| Crate-private contracts and public integration scenarios | `src/tests/contract.rs`, `src/tests/<capability>.rs`, `tests/<capability>.rs` |
+
+Prefer the narrowest visibility that admits the real caller. Place transaction
+orchestration in commands and let persistence operations receive that transaction
+when they participate in it. Split by behavior before reaching 32 KiB. Apply the
+same placements when moving a responsibility in an existing module, updating
+its Rust wiring, transport schema references and verifier inputs together.
+Preserve persisted migration identities and public contracts for a layout-only
+move. Published migration sources follow the migration immutability contract.
+
+### Storage and Page Builder reference variants
+
+Use **one native layout** with two independent capability choices. Storage here
+means the module owns a durable schema. Builder here means it contributes to the
+existing Page Builder / Fly contract. UI participation remains a separate choice.
+
+| Owner storage | Page Builder / Fly | Reference behavior and applicable files |
+| --- | --- | --- |
+| No | No | A deterministic operation in `domain/<capability>.rs`; add DTOs or service/transport entrypoints only if called. Test success, invalid inputs and context at the exposed boundary. |
+| No | Yes | A widget/preview consuming typed input or another owner's API. Add the builder consumer manifest and actual bindings below. If persistence is involved, bind the authoritative external owner explicitly. |
+| Yes | No | An owned command and query backed by `entities/`, `migrations/` and `services/<capability>/`. Verify tenant constraints, revisions, migrations and transactional effects on the supported profiles. |
+| Yes | Yes | The persisted slice plus an owner-backed builder contribution. Verify preview and each declared edit/publish operation through the same owner commands, with the documented disabled-provider behavior. |
+
+For a builder consumer, publish the descriptor and typed contribution data in
+`rustok-module.toml` under `[fba.builder_consumer]`. Use
+`src/integrations/page_builder.rs` for a real backend adapter to builder ports,
+`admin/src/core/page_builder.rs` for pure editor state and policy, and
+`admin/src/ui/page_builder.rs` for render/binding code when a module-owned
+component is needed. Place UI calls in the existing `transport/` facade and
+its native/GraphQL adapters. Apply the same FFA split under `storefront/` for
+an implemented storefront contribution. Use the existing Fly contribution
+and host registration contracts, with Next.js bindings for equivalent live
+capabilities. See the [Page Builder owner contract](../../crates/modules/rustok-page-builder/docs/README.md)
+and the [UI package implementation guide](../UI/module-package-implementation.md).
+
+The Page Builder provider owns authoring capabilities and Fly owns the document
+model. The content owner supplies the store, revisions and publication effects.
+An independent widget can operate without authoring or persistence. A module
+without builder participation omits its manifest descriptor, builder bindings,
+and builder dependencies.
+
 ## Static native architecture verification
 
 The supported static entrypoint for a registered local native module is

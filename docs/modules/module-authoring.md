@@ -223,6 +223,8 @@ WASI `rustok-module-template` as a native server-module template.
 
 Unused slots are omitted. When a responsibility grows, split it below its
 canonical owner directory rather than inventing a new top-level convention.
+Use the same [file placement rules](../backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
+for new capabilities and incremental moves in existing modules.
 For every native module, run `cargo xtask module lint <slug>` to check the
 generic source/FFA contract and live Next.js package/route wiring.
 `npm run verify:module-source-layout` remains a separate reference-profile

@@ -10,17 +10,10 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::{BlogHttpRuntime, ensure_blog_module_enabled, posts::ensure_blog_permission};
+use super::authorization::{ensure_blog_permission, security_context};
+use super::{BlogHttpRuntime, ensure_blog_module_enabled};
 use crate::TagService;
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
-
-fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
-    rustok_core::security_context_from_access_token(
-        auth.user_id,
-        &auth.grant_type,
-        &auth.permissions,
-    )
-}
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TagListResponse {

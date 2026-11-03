@@ -32,6 +32,9 @@ Blog contract:
 Large responsibilities are nested below their owner slot. In particular,
 `PostService` is split into command, query, repository/projection, helper-policy,
 and test files instead of one shared source hotspot.
+The preview-token HTTP lifecycle lives in `src/controllers/preview_token.rs`.
+Shared HTTP authorization lives in `src/controllers/authorization.rs` and
+the router and OpenAPI document both reference the capability handlers directly.
 
 The baseline Blog migration keeps the **single registered**
 `m20261029_000001_create_blog_schema` identity. Its responsibilities are

@@ -194,6 +194,10 @@ Establish native ownership before implementing a business capability.
 
 ## Reference verification
 
+Use the [file placement rules](../../../../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
+and the [storage and Page Builder reference variants](../../../../docs/backend/module-backend-implementation.md#storage-and-page-builder-reference-variants)
+to select paths for each implemented capability.
+
 Use the [applicable reference evidence matrix](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence)
 to record scenario names, exact commands, revision, build/database profile,
 prerequisites and results in this plan as owner operations are implemented.

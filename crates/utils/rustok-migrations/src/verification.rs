@@ -321,7 +321,9 @@ pub async fn observe_database(
             expressions.push(format!("{}::text", quote(&name)));
         }
         let only = if kind == "m" { "" } else { "ONLY " };
-        tx.execute_unprepared(&format!("DECLARE rustok_rows NO SCROLL CURSOR FOR SELECT CASE WHEN octet_length(item) > {MAX_ROW_BYTES} THEN NULL ELSE item END AS item FROM (SELECT jsonb_build_array({})::text AS item FROM {only}{}) rows ORDER BY item COLLATE \"C\"", expressions.join(","), qualified(&relation))).await?;
+        // An array expression also handles tables beyond PostgreSQL's function
+        // argument limit, without changing the serialized row representation.
+        tx.execute_unprepared(&format!("DECLARE rustok_rows NO SCROLL CURSOR FOR SELECT CASE WHEN octet_length(item) > {MAX_ROW_BYTES} THEN NULL ELSE item END AS item FROM (SELECT to_jsonb(ARRAY[{}]::text[])::text AS item FROM {only}{}) rows ORDER BY item COLLATE \"C\"", expressions.join(","), qualified(&relation))).await?;
         let mut rows = Vec::new();
         loop {
             let batch = tx
@@ -508,13 +510,21 @@ fn run_pg_dump(
             }
         }
     };
+    while !stdout.is_finished() || !stderr.is_finished() {
+        if exceeded.load(Ordering::SeqCst) || start.elapsed() > Duration::from_secs(120) {
+            return Err(VerificationError::Tool(
+                "pg_dump output exceeded its time or output limit".into(),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
     let output = stdout
         .join()
         .map_err(|_| VerificationError::Tool("pg_dump reader failed".into()))??;
     let stderr = stderr
         .join()
         .map_err(|_| VerificationError::Tool("pg_dump error reader failed".into()))??;
-    if !status.success() || exceeded.load(Ordering::SeqCst) {
+    if !status.success() || exceeded.load(Ordering::SeqCst) || !stderr.is_empty() {
         let mut detail = String::from_utf8_lossy(&stderr).into_owned();
         if let Some(database_url) = database_url {
             detail = detail.replace(database_url, "[fixture URL]");
@@ -711,6 +721,8 @@ mod tests {
             let b = Database::connect(b_url.as_str()).await?;
             let body = async {
                 for (db, version, old_column) in [(&a, "original", true), (&b, "baseline", false)] {
+                    let wide_columns = (0..101).map(|index| format!("col{index} integer")).collect::<Vec<_>>().join(", ");
+                    db.execute_unprepared(&format!("CREATE TABLE wide_records ({wide_columns}); INSERT INTO wide_records DEFAULT VALUES")).await?;
                     db.execute_unprepared("CREATE EXTENSION pg_trgm").await?;
                     db.execute_unprepared("CREATE TABLE public.seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL)").await?;
                     db.execute_unprepared(&format!("INSERT INTO public.seaql_migrations VALUES ('{version}', 1)")).await?;

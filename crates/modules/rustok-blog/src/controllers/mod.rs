@@ -28,12 +28,14 @@ const MAX_BLOG_REQUEST_BODY_BYTES: usize = 2 * MAX_POST_ARTICLE_BYTES;
 /// service-level bound is reached, not after it is deserialized.
 const MAX_BLOG_BULK_BODY_BYTES: usize = 64 * 1024;
 
+mod authorization;
 pub mod categories;
 #[cfg(feature = "comment-assets")]
 mod comment_assets;
 pub mod comments;
 pub mod openapi;
 pub mod posts;
+mod preview_token;
 pub mod tags;
 
 #[derive(Clone)]
@@ -170,11 +172,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         )
         .route(
             "/api/blog/posts/{id}/preview-tokens",
-            get(posts::list_preview_tokens).post(posts::create_preview_token),
+            get(preview_token::list_preview_tokens).post(preview_token::create_preview_token),
         )
         .route(
             "/api/blog/preview-tokens/{id}",
-            axum::routing::delete(posts::revoke_preview_token),
+            axum::routing::delete(preview_token::revoke_preview_token),
         )
         .layer(DefaultBodyLimit::max(MAX_BLOG_REQUEST_BODY_BYTES))
         .merge(

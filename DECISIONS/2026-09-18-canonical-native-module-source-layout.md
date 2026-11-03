@@ -57,6 +57,12 @@ ranges. The initial canonical reference profile treats 32 KiB as a hard source-f
 ceiling; an exception requires an explicit verifier exception and documented
 architectural rationale.
 
+The [file placement rules](../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
+refine this vocabulary inside the existing slots. A name identifies an owner
+capability, an operation, or a fixed role within that capability. Scaffolding and
+incremental adoption use the same rules. Storage ownership and Page Builder / Fly
+participation determine which files apply within the one native profile.
+
 `rustok-blog` is the first canonical native module reference implementation.
 Its public API remains stable through deliberate re-exports even when physical
 source files move.

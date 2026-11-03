@@ -40,7 +40,7 @@ domain, persistence, localization or FBA guarantees.
 The semantic source contract is the
 [native reference ADR](../../DECISIONS/2026-09-18-canonical-native-module-reference-contract.md).
 Blog itself remains a bounded source reference with pending execution evidence,
-as stated by its [current cursor](../../crates/modules/rustok-blog/docs/implementation-plan-current.md).
+as stated by its [owner plan](../../crates/modules/rustok-blog/docs/implementation-plan.md).
 Its comments-consumer registry is `boundary_ready`, not `transport_verified`.
 
 | Reference dimension | Transferred today | Required before claiming the reusable standard |
@@ -239,12 +239,26 @@ read-only and disposable-fixture verification can proceed earlier.
 - [ ] Prove transfer with one second real module/use case. Require zero Blog
   names/permissions/schema assumptions and the same applicable invariant gates.
   Generated code and test bodies must follow the actual owner operation.
+- [ ] Demonstrate all four [storage and Page Builder reference variants](../../docs/backend/module-backend-implementation.md#storage-and-page-builder-reference-variants)
+  using the [shared file placement rules](../../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities).
+  Start with a real stateless operation and a real persisted owner command/query.
+  Extend these references with independently verified Fly contributions. Retain
+  file inventories, build and runtime evidence for each case. Check that omitted
+  capabilities have no registration, dependencies or runtime requirements.
+- [ ] After the reference examples pass, define explicit input for the actual
+  owner operation, schema and builder contribution before enabling capability
+  generation. Reuse the existing native plan, preview and recovery path.
+- [ ] Use the same file placement and applicable evidence when normalizing an
+  existing module. Extend `module lint` with precise diagnostics for provable
+  paths and wiring; use owner review for semantic moves, preserved API behavior,
+  transaction boundaries and migration safety. Validate one existing capability
+  alongside the generated examples before applying the standard more broadly.
 - [ ] Establish shared PostgreSQL/SQLite owner-invariant scenarios through real
   migrations, including prerequisites, upgrade/rollback safety and durable
   mutation/outbox effects. Run PostgreSQL lock/isolation cases separately;
   missing required database configuration must not produce passing evidence.
 - [ ] Close Blog's reference verification gaps in its
-  [current owner plan](../../crates/modules/rustok-blog/docs/implementation-plan-current.md#reference-verification-follow-up-2026-11-03),
+  [current owner plan](../../crates/modules/rustok-blog/docs/implementation-plan.md#evidence-and-guardrails),
   including functional client/i18n evidence, before transferring those patterns.
 
 - [ ] Provide one Windows/Linux verification entrypoint through `xtask`, using a

@@ -734,6 +734,8 @@ fn verify_fresh(
         );
         validate_snapshot(&reference, &plan.reference)?;
         validate_snapshot(&candidate, &plan.candidate)?;
+        validate_snapshot(&original_build, &plan.reference)?;
+        validate_snapshot(&candidate_build, &plan.candidate)?;
         ensure!(
             working_snapshot(root, None)? == plan.candidate,
             "working source changed during verification; evidence is stale"
@@ -936,6 +938,15 @@ fn run_process(command: &mut Command, seconds: u64, limit: usize) -> Result<Vec<
             }
         }
     };
+    // A descendant can keep the pipe open after the direct child exits.
+    // Apply the same deadline to capture rather than joining unconditionally.
+    while !reader.is_finished() {
+        ensure!(
+            start.elapsed() <= Duration::from_secs(seconds),
+            "process output remained open after {seconds} seconds"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
     let bytes = reader
         .join()
         .map_err(|_| anyhow::anyhow!("process reader failed"))??;

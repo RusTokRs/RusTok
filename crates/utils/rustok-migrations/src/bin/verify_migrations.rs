@@ -246,53 +246,89 @@ async fn fresh(
         .map_err(|_| "cannot connect to verification administrator")?;
     let id = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("rustok_verify_{id}");
-    let password = uuid::Uuid::new_v4().simple().to_string();
-    let names = [
-        format!("rustok_original_{id}"),
-        format!("rustok_candidate_{id}"),
-    ];
-    // All interpolated identifiers and the password are generated UUIDs. No
-    // caller-controlled database name is ever accepted for deletion.
+    let name = format!("rustok_fixture_{id}");
     let result = async {
-        admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
-        for name in &names {
-            admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'")).await?;
-            admin.execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC")).await?;
-        }
-        let reference_url = fixture_url(admin_url, &role, &password, &names[0])?;
-        let candidate_url = fixture_url(admin_url, &role, &password, &names[1])?;
-        run_migrator(reference_runner, reference_root, &reference_url)?;
-        // Capture before candidate code can change cluster-wide role state or
-        // the other fixture database owned by the same isolated fixture role.
-        let reference = Database::connect(&reference_url).await?;
-        let original_result = observe_database(&reference, &reference_url, pg_dump).await;
-        reference.close().await?;
-        let original = original_result?;
-        run_migrator(candidate_runner, candidate_root, &candidate_url)?;
-        let candidate = Database::connect(&candidate_url).await?;
-        let proposed_result = observe_database(&candidate, &candidate_url, pg_dump).await;
-        candidate.close().await?;
-        let proposed = proposed_result?;
-        Ok(compare(&original, &proposed, reference_plan, candidate_plan)?)
-    }.await;
-    let cleanup = cleanup(&admin, &names, &role).await;
+        // Recreate both identities between executions. The role name is stable
+        // for comparing ownership and ACLs, but its settings, grants and
+        // credentials start clean on each side. The candidate DB does not exist
+        // while the original chain runs.
+        let original = observe_fresh(
+            &admin,
+            admin_url,
+            &role,
+            &name,
+            reference_runner,
+            reference_root,
+            pg_dump,
+        )
+        .await?;
+        let proposed = observe_fresh(
+            &admin,
+            admin_url,
+            &role,
+            &name,
+            candidate_runner,
+            candidate_root,
+            pg_dump,
+        )
+        .await?;
+        Ok(compare(
+            &original,
+            &proposed,
+            reference_plan,
+            candidate_plan,
+        )?)
+    }
+    .await;
     let close = admin.close().await;
-    match (result, cleanup, close) {
-        (result, Err(error), close) => Err(format!("verification result: {result:?}; cleanup failed: {error}; administrator close: {close:?}").into()),
-        (result, _, Err(error)) => Err(format!("verification result: {result:?}; administrator close: {error}").into()),
-        (result, Ok(()), Ok(())) => result,
+    match (result, close) {
+        (result, Err(error)) => {
+            Err(format!("verification result: {result:?}; administrator close: {error}").into())
+        }
+        (result, Ok(())) => result,
     }
 }
 
-async fn cleanup(admin: &DatabaseConnection, names: &[String], role: &str) -> Result<()> {
+async fn observe_fresh(
+    admin: &DatabaseConnection,
+    admin_url: &str,
+    role: &str,
+    name: &str,
+    runner: &Path,
+    root: &Path,
+    pg_dump: &Path,
+) -> Result<rustok_migrations::verification::DatabaseSnapshot> {
+    let password = uuid::Uuid::new_v4().simple().to_string();
+    let url = fixture_url(admin_url, role, &password, name)?;
+    // All interpolated identifiers and the password are generated UUIDs.
+    let result = async {
+        admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
+        admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'")).await?;
+        admin.execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC")).await?;
+        run_migrator(runner, root, &url)?;
+        let db = Database::connect(&url).await.map_err(|_| "cannot connect to migrated fixture")?;
+        let snapshot = observe_database(&db, &url, pg_dump).await;
+        db.close().await?;
+        Ok(snapshot?)
+    }.await;
+    let cleanup = cleanup(admin, name, role).await;
+    match (result, cleanup) {
+        (result, Ok(())) => result,
+        (result, Err(error)) => Err(format!(
+            "verification error: {:?}; cleanup failed: {error}",
+            result.err()
+        )
+        .into()),
+    }
+}
+
+async fn cleanup(admin: &DatabaseConnection, name: &str, role: &str) -> Result<()> {
     let mut failures = Vec::new();
-    for name in names {
-        if let Err(error) = admin
-            .execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
-            .await
-        {
-            failures.push(format!("{name}: {error}"));
-        }
+    if let Err(error) = admin
+        .execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
+        .await
+    {
+        failures.push(format!("{name}: {error}"));
     }
     if let Err(error) = admin
         .execute_unprepared(&format!("DROP ROLE IF EXISTS {role}"))
@@ -438,7 +474,8 @@ fn main() {{
     let binary = std::env::args().next().unwrap();
     let version = if binary.contains("candidate") {{ "baseline" }} else {{ "original" }};
     let value = if binary.contains("bad") {{ 2 }} else {{ 1 }};
-    let sql = format!("CREATE TABLE seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL); INSERT INTO seaql_migrations VALUES ('{{version}}', 1); CREATE TABLE records (value integer); INSERT INTO records VALUES ({{value}});");
+    let role_change = if binary.contains("role-change") {{ "ALTER ROLE CURRENT_USER SET work_mem = '8MB';" }} else {{ "" }};
+    let sql = format!("CREATE TABLE seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL); INSERT INTO seaql_migrations VALUES ('{{version}}', 1); CREATE TABLE records (value integer); INSERT INTO records VALUES ({{value}}); {{role_change}}");
     let status = std::process::Command::new(PSQL).args(["-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-c", &sql])
         .env("PGHOST", host).env("PGPORT", port).env("PGDATABASE", db).env("PGUSER", user).env("PGPASSWORD", password).status().unwrap();
     assert!(status.success());
@@ -450,20 +487,25 @@ fn main() {{
             let original = directory.join(format!("original{}", std::env::consts::EXE_SUFFIX));
             let candidate = directory.join(format!("candidate{}", std::env::consts::EXE_SUFFIX));
             let bad = directory.join(format!("candidate-bad{}", std::env::consts::EXE_SUFFIX));
+            let changed_role = directory.join(format!("original-role-change{}", std::env::consts::EXE_SUFFIX));
             if !Command::new("rustc").arg("--edition=2021").arg(&source_path).arg("-o").arg(&original).status()?.success() { return Err("fixture runner did not compile".into()); }
             fs::copy(&original, &candidate)?;
             fs::copy(&original, &bad)?;
+            fs::copy(&original, &changed_role)?;
             let reference_plan = vec!["original".into()];
             let candidate_plan = vec!["baseline".into()];
             let admin = Database::connect(&admin_url).await?;
             async fn resources(admin: &DatabaseConnection) -> Result<Vec<String>> {
                 let rows = admin.query_all_raw(sea_orm_migration::sea_orm::Statement::from_string(sea_orm_migration::sea_orm::DbBackend::Postgres,
-                    "SELECT rolname AS name FROM pg_roles WHERE rolname LIKE 'rustok_verify_%' UNION ALL SELECT datname FROM pg_database WHERE datname LIKE 'rustok_original_%' OR datname LIKE 'rustok_candidate_%' ORDER BY name")).await?;
+                    "SELECT rolname AS name FROM pg_roles WHERE rolname LIKE 'rustok_verify_%' UNION ALL SELECT datname FROM pg_database WHERE datname LIKE 'rustok_fixture_%' ORDER BY name")).await?;
                 Ok(rows.into_iter().map(|row| row.try_get("", "name")).collect::<std::result::Result<_,_>>()?)
             }
             let before = resources(&admin).await?;
             let run = async {
                 assert!(fresh(&admin_url, &original, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?.equivalent);
+                assert_eq!(resources(&admin).await?, before);
+                let report = fresh(&admin_url, &changed_role, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?;
+                assert!(!report.equivalent, "candidate inherited the original role settings");
                 assert_eq!(resources(&admin).await?, before);
                 assert!(!fresh(&admin_url, &original, &bad, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?.equivalent);
                 assert_eq!(resources(&admin).await?, before);

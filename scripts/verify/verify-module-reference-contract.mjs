@@ -152,12 +152,17 @@ requireAll("crates/modules/rustok-blog/src/controllers/mod.rs", [
   '"MODULE_NOT_ENABLED"',
   '"The Blog operation could not be completed"',
 ]);
-requireAll("crates/modules/rustok-blog/src/controllers/posts.rs", [
+requireAll("crates/modules/rustok-blog/src/controllers/authorization.rs", [
   "pub(super) fn ensure_blog_permission(",
   "if auth.tenant_id != tenant.id",
   '"blog_tenant_mismatch"',
-  "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
 ]);
+for (const capability of ["posts", "preview_token"]) {
+  requireAll(`crates/modules/rustok-blog/src/controllers/${capability}.rs`, [
+    "ensure_blog_module_enabled(&runtime, tenant.id).await?;",
+    "ensure_blog_permission(",
+  ]);
+}
 forbid("crates/modules/rustok-blog/src/controllers/posts.rs", [
   "pub(super) async fn ensure_blog_module_enabled(",
 ]);
