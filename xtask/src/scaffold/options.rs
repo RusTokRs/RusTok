@@ -254,6 +254,7 @@ impl ScaffoldOptions {
 pub fn print_scaffold_usage() {
     println!("Usage:");
     println!("  cargo xtask scaffold <slug> [OPTIONS]");
+    println!("  cargo xtask scaffold --recover   Recover an interrupted operation without creating a module");
     println!("  cargo xtask module new <slug> [OPTIONS]");
     println!();
     println!("Options:");

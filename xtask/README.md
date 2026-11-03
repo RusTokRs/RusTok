@@ -81,18 +81,15 @@ The command:
   - Owner plans: `docs/modules/implementation-plans-registry.md`; generated plans
     include FFA/FBA and release/data readiness, with `data boundary: none` and
     no automatic rollback approval for the unverified identity.
-- After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure in either check returns a non-zero result and restores the planned source/registration files.
+- After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure returns a non-zero result and starts recovery.
 
 **Verification and remaining limitations:** The generator builds a complete
 source/registration plan before writing, and `--dry-run` lists every planned
 path without mutating the workspace. Required registration postconditions run
-even with `--skip-validate`. A live run checks original bytes captured during planning,
-exclusively creates the module directory and source files,
-applies the plan, runs architecture lint and then publish-metadata validation,
-and restores its writes if either check fails. Partial writes are tracked;
-rollback preserves externally changed files and untracked work and returns an
-actionable error when restoration is incomplete. This is rollback-protected
-multi-file generation, not isolation from concurrent external workspace writers.
+even with `--skip-validate`. A live run holds one workspace lock from recovery
+and planning through validation and commit. It saves original registration bytes
+and complete payloads before publishing any workspace changes. Recovery can
+resume after process termination and preserves changed targets and foreign files.
 `--skip-validate` explicitly leaves the module registered but unverified.
 Passing lint and metadata validation still does not prove compilation, behavior,
 FBA runtime readiness or functional FFA/Next.js parity. The generated UI crates
@@ -109,11 +106,28 @@ Classic Next.js packages remain Next-host owned; live UI wiring is checked by
 the generic native-module lint, while functional cross-client parity needs
 separate evidence.
 
+### Recovering an interrupted scaffold
+
+The next live scaffold recovers first. To recover without generating a module,
+run `cargo xtask scaffold --recover`. If Cargo cannot load the workspace, run the
+retained CLI from the affected workspace:
+
+- Windows: `./.rustok/scaffold/recover.exe scaffold --recover`
+- Unix: `./.rustok/scaffold/recover scaffold --recover`
+
+If recovery reports a conflict, preserve `.rustok/scaffold/active/plan.json`
+and `active/backup/`. Review the reported path against the original and intended
+contents before reconciling the conflict and retrying. Leave `.rustok/scaffold/lock`
+in place. If a claimed directory is ambiguous, verify ownership before moving
+or removing it. Dry-run reports pending recovery and leaves it untouched.
+See the [recovery ADR](../DECISIONS/2026-11-03-native-scaffold-recovery.md)
+for state transitions and filesystem requirements.
+
 ### Known Limitations / Pending Implementation
 
-Native generation has no workspace-wide writer exclusion or durable recovery
-after process termination. External edits can still race with checks and writes;
-rollback failure requires manual reconciliation. Registration still uses textual
+Recovery covers process termination by cooperating writers on supported local
+filesystems. Power loss, network mounts and concurrent external edits fall
+outside that contract. Registration still uses textual
 insertion anchors, and dry-run does not show full content diffs. The existing
 Bash matrix requires a disposable checkout and does not test selected
 distribution composition. Generated facade tests exercise typed unavailability

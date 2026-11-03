@@ -161,6 +161,7 @@ fn print_usage() {
         "  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs"
     );
     println!("  scaffold            Scaffold a new module crate with FBA, FFA, and i18n");
+    println!("  scaffold --recover  Recover an interrupted native scaffold operation");
     println!("  module lint         Check a native module's source architecture (static)");
     println!("  module validate     Validate module publish-readiness contracts");
     println!("  module test         Run or preview local module smoke checks");

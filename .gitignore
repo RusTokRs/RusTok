@@ -1,4 +1,5 @@
 # Rust build artifacts
+/.rustok/scaffold/
 /target
 **/target
 /target-*/

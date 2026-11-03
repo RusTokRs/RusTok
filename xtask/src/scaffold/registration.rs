@@ -11,23 +11,38 @@ pub(crate) struct RegistrationChange {
     pub(crate) content: String,
 }
 
+const REGISTRATION_TARGETS: &[&str] = &[
+    "Cargo.toml",
+    "modules.toml",
+    "docs/modules/registry.md",
+    "docs/modules/_index.md",
+    "docs/modules/implementation-plans-registry.md",
+    "docs/modules/UI_PACKAGES_INDEX.md",
+    "apps/server/Cargo.toml",
+    "crates/modules/rustok-distribution/Cargo.toml",
+    "crates/modules/rustok-distribution/src/lib.rs",
+];
+
+pub(super) fn is_registration_target(path: &Path) -> bool {
+    REGISTRATION_TARGETS
+        .iter()
+        .any(|allowed| path == Path::new(allowed))
+}
+
 pub(crate) fn registration_target_paths(root: &Path, opts: &ScaffoldOptions) -> Vec<PathBuf> {
-    let mut paths = vec![
-        root.join("Cargo.toml"),
-        root.join("modules.toml"),
-        root.join("docs/modules/registry.md"),
-        root.join("docs/modules/_index.md"),
-        root.join("docs/modules/implementation-plans-registry.md"),
-    ];
+    let mut paths: Vec<_> = REGISTRATION_TARGETS[..5]
+        .iter()
+        .map(|relative| root.join(relative))
+        .collect();
     if opts.ui.has_admin() || opts.ui.has_storefront() {
-        paths.push(root.join("docs/modules/UI_PACKAGES_INDEX.md"));
+        paths.push(root.join(REGISTRATION_TARGETS[5]));
     }
     if !opts.skip_server_wire {
-        paths.push(root.join("apps/server/Cargo.toml"));
-        let distribution_cargo = root.join("crates/modules/rustok-distribution/Cargo.toml");
-        let distribution_lib = root.join("crates/modules/rustok-distribution/src/lib.rs");
-        paths.push(distribution_cargo);
-        paths.push(distribution_lib);
+        paths.extend(
+            REGISTRATION_TARGETS[6..]
+                .iter()
+                .map(|relative| root.join(relative)),
+        );
     }
     paths
 }
@@ -82,6 +97,7 @@ pub(crate) fn plan_module_registration(
     let mut originals = Vec::with_capacity(targets.len());
 
     for target in &targets {
+        super::ensure_no_symlink_ancestors(root, target)?;
         let metadata = fs::symlink_metadata(target).with_context(|| {
             format!(
                 "Required registration file is missing: {}",

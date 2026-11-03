@@ -80,9 +80,8 @@ implemented business operations, FBA `boundary_ready` /
 the owner implementation plan and only project evidenced states into the
 registry. Known gaps must be declared in the owner README/plan. The current
 generator preflights source and registration edits, previews the complete plan
-in dry-run, and uses rollback-protected writes; architecture lint runs before
-publish-metadata validation. This does not isolate concurrent external
-workspace writers. Golden file-tree snapshots cover all four UI modes, with
+in dry-run, and holds one workspace lock from planning through recoverable apply.
+Architecture lint runs before publish-metadata validation. Golden file-tree snapshots cover all four UI modes, with
 renderer snapshots for the native manifest and both Leptos package variants.
 The dedicated `Native Scaffold Matrix` workflow runs `cargo test -p xtask`,
 generates headless/admin/storefront/dual modules in a disposable CI checkout,
@@ -109,11 +108,11 @@ separately from generated identity/structure checks.
 
 Planning checks exact TOML module keys and required registration postconditions,
 including when later validation is skipped. Apply rejects changed originals,
-claims its module directory and source files exclusively, and tracks actual
-partial writes for rollback. Rollback preserves external changes/untracked work
-and reports incomplete restoration. Workspace-wide writer exclusion and durable
-process-interruption recovery are still pending; checks do not remove external
-TOCTOU races.
+stages complete files and original backups, and claims its module directory and
+source files exclusively. Process interruption can be recovered using
+`scaffold --recover`; conflicts preserve the journal and affected targets for
+reconciliation. The [scaffold recovery ADR](../../DECISIONS/2026-11-03-native-scaffold-recovery.md)
+defines cooperating writers, supported filesystem operations and recovery limits.
 
 The existing `cargo xtask scaffold` renderer emits a minimal native runtime
 and internal contract tests without invented services, schema, migrations or
@@ -128,9 +127,8 @@ is `core_transport_ui`. No Leptos host route is mounted.
 Classic Next.js packages belong to their own hosts and are not FFA.
 Successful publish metadata validation does not imply runtime or UI readiness.
 The generator now previews complete manifest edits and restores planned files
-when post-generation lint or metadata validation fails. This rollback-protected
-transaction is not a concurrency-isolated filesystem transaction. Golden
-snapshots and the generated-crate matrix are enforced by the dedicated
+when post-generation lint or metadata validation fails and recovery finds no
+conflicts. Golden snapshots and the generated-crate matrix are enforced by the dedicated
 `Native Scaffold Matrix` workflow; passing them still does not imply a working
 domain service or live UI surface.
 

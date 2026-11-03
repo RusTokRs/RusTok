@@ -57,14 +57,14 @@ This keeps generic native lint behavior under the same CI gate as the Blog refer
 
 The [native scaffold owner plan](../../xtask/docs/implementation-plan.md)
 lists the ordered production gates and retained local evidence. Required planned
-registration is checked even with `--skip-validate`; partial-write and changed-file
-rollback behavior have focused unit coverage. This does not prove crash recovery
-or filesystem isolation. The current Bash matrix must run in a disposable checkout;
+registration is checked even with `--skip-validate`. Scoped `xtask` tests cover
+partial writes, process contention, interruption and restart, conflicting edits,
+and redirected paths. The current Bash matrix must run in a disposable checkout;
 it mutates its checkout and does not verify distribution registry execution.
 
 A non-dry-run `cargo xtask scaffold` registers the module, then runs static
 architecture lint before publish-metadata validation. It prints
-`SCAFFOLDED` only after both checks pass. If architecture lint or publish
+`SCAFFOLDED` only after both checks pass and the transaction commits. If architecture lint or publish
 validation fails, the command returns a non-zero error and does not claim the
 module is verified.
 
@@ -73,10 +73,11 @@ still have been written, but the command reports `REGISTERED BUT UNVERIFIED`
 and prints the two checks the owner must run. `--dry-run` previews all planned
 source and registration edits without writing or running validation.
 
-The generator snapshots its planned targets and restores them if architecture
-lint or publish-metadata validation fails. This is rollback-protected
-multi-file generation, not isolation from concurrent external workspace
-writers; the generated-crate compilation/test matrix remains a separate gate.
+The generator retains originals before apply and restores them after validation
+failure or uncommitted process interruption when recovery finds no conflicts.
+Run `cargo xtask scaffold --recover` or use the
+[retained recovery CLI](../../xtask/README.md#recovering-an-interrupted-scaffold).
+The generated-crate compilation/test matrix remains a separate gate.
 
 
 ## Native scaffold golden and generated-crate matrix

@@ -93,8 +93,8 @@ the Blog/reference-tooling boundary rather than the native renderer.
 | Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
 | Planning | All source/registration edits prepared before writing; exact TOML module key lookup; required registration postconditions | Text-based insertion still depends on current formatting; preview lists paths rather than complete content changes |
-| Apply | Original bytes captured during planning; stale targets rejected; exclusive module directory and create-new files; ancestor symlinks rechecked | No workspace-wide writer isolation or durable crash-recovery record |
-| Rollback | Only written files and owned empty directories reverted; actual partial-write bytes tracked; changed/untracked work preserved with an explicit recovery error | Restoration can itself fail during an IO outage; concurrent edits can require manual reconciliation |
+| Apply | Workspace-wide lock for cooperating scaffold processes; versioned journal and original backups before publishing staged payloads; no-clobber source writes | Linux and storage-failure verification remain open; external writers can still race |
+| Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
 | Verification | Unit/negative tests, renderer and four file-tree goldens; four isolated generated modes and eight default-profile crate test suites pass; generated facade tests | Matrix is Bash/disposable-checkout dependent; no selected distribution feature execution; see exact profile evidence below |
 
@@ -128,15 +128,14 @@ Owner: platform tooling. Prerequisite: the current preflight/rollback fixes.
 - [x] Capture the exact original registration bytes in the plan and reject stale targets.
 - [x] Claim the module directory exclusively and create source files with create-new semantics.
 - [x] Restore only our writes; preserve external edits and files, report incomplete rollback.
-- [x] Track partial writes and prove restoration with fault injection.
-- [ ] Define cooperating writer exclusion and interruption recovery in the owning
-  contract/ADR before adding a lock or recovery journal. Specify lock ownership,
-  process termination, stale ownership, backup retention and manual intervention.
-- [ ] Implement and test the accepted protocol on Windows and Linux, including
-  two processes, different slugs sharing manifests, termination between writes,
-  disk-full/permission failures, and failed restoration. Recheck symlink/junction
-  paths through apply and recovery; do not claim elimination of external TOCTOU
-  races from a preflight check alone.
+- [x] Keep injected partial writes private and verify that recovery cleans staging.
+- [x] Define the [workspace lock and process-interruption contract](../../DECISIONS/2026-11-03-native-scaffold-recovery.md).
+- [x] Implement workspace-wide exclusion, versioned recovery state, and standalone
+  recovery. Verify contention across slugs, interrupted apply/validation/rollback/
+  commit, conflict preservation, read-only targets, junction rejection, and retry
+  after Windows denies replacement of an open manifest.
+- [ ] Run the process recovery suite on Linux and verify apply and recovery on a
+  filesystem that runs out of space during the operation.
 
 Exit: an interrupted or repeated operation either preserves/restores all original
 bytes or leaves a durable actionable recovery state. No foreign file is deleted
@@ -294,8 +293,19 @@ existing `proc-macro-error2` future-incompatibility warning. No generated privat
 transport dead-code warnings remain after exposing and testing the owner facade.
 This does not certify the dependency tree for future Rust releases.
 
+Windows recovery increment on 2026-11-03:
+
+| Check | Result |
+| --- | --- |
+| `cargo test -p xtask --offline --quiet` | 202 passed; the subprocess entrypoint is ignored by the top-level test runner and invoked by the process tests |
+| Separate-process recovery tests | Passed for contention, interruption across the write/validation/recovery/commit boundaries, conflicts, invalid state, junctions and a Windows sharing violation |
+| Retained production CLI with no Cargo workspace | Recovered an interrupted write; a second invocation left the same restored state |
+| Live `--ui dual` in a disposable worktree | Preview created no control state; apply passed lint and metadata validation, retired its journal, and survived an invocation of the retained CLI |
+| Staged remediation, ADR governance and Blog source-layout checks | Passed; the source-layout fixture runner skipped two symlink cases requiring Windows privileges |
+| `npm run verify:docs` | Failed on the unchanged topology table and 20 existing missing targets in the continuous audit ledger |
+
 Selected distribution registry execution, docs.rs builds, actual browser/WASM
-mounts, crash recovery, noncooperating-writer isolation, live business/client
+mounts, power-loss recovery, noncooperating-writer isolation, live business/client
 parity and production deployment remain unverified. The full Bash CI script,
 workspace suites and long E2E were not executed in this review. Temporary
 generated fixtures are kept outside the source checkout and removed after use.
