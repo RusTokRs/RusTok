@@ -99,10 +99,8 @@ The repository owner still executes and retains the PostgreSQL packet. Source-co
 
 ## Related documents
 
-- [Current Implementation Plan — 2026-08-12](./implementation-plan-current-2026-08-12.md)
-- [Previous Current Plan — 2026-08-09](./implementation-plan-current-2026-08-09.md)
+- [Implementation Plan](./implementation-plan.md)
 - [Maintainer Unblock Handoff — 2026-08-09](./maintainer-unblock-handoff-2026-08-09.md)
-- [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
 - [M5 Mutation Event Commit/Ack Contract](./m5-mutation-event-ack-contract.md)
 - [M5 Exact Source Refresh Event Worker](./m5-source-refresh-event.md)
