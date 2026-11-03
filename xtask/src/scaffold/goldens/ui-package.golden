@@ -71,6 +71,7 @@ Draft {surface} Leptos adapter for example. Not published as a working FFA surfa
 
 ## Public surface
 - {Page} renders an explicit unavailability message.
+- `transport` exposes the owner facade with explicit typed unavailability; it publishes no backend endpoint.
 - Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
 
 ## Platform Capability Bindings
@@ -95,10 +96,12 @@ Draft {surface} Leptos adapter for example. Not published as a working FFA surfa
 === src/lib.rs ===
 //! Draft FFA {surface} package for example.
 
+#![doc = include_str!("../CRATE_API.md")]
+
 mod core;
 mod i18n;
 mod model;
-mod transport;
+pub mod transport;
 mod ui;
 
 pub use ui::{Page};

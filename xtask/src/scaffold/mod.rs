@@ -4,6 +4,7 @@ use crate::module_commands::module_lint_command;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 mod backend;
@@ -60,61 +61,102 @@ fn validate_scaffold(slug: &str, skip_validate: bool) -> Result<ScaffoldValidati
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlannedFileKind {
-    Create,
-    Update,
-}
-
 #[derive(Debug, Clone)]
 struct PlannedFile {
     path: PathBuf,
     content: String,
-    kind: PlannedFileKind,
+    original: Option<Vec<u8>>,
 }
 
 struct FileSnapshot {
     path: PathBuf,
     original: Option<Vec<u8>>,
+    written: Vec<u8>,
 }
 
 struct ScaffoldTransaction {
+    root: PathBuf,
     snapshots: Vec<FileSnapshot>,
-    module_dir: PathBuf,
+    created_dirs: Vec<PathBuf>,
 }
 
 impl ScaffoldTransaction {
-    fn apply(plan: &[PlannedFile], module_dir: &Path) -> Result<Self> {
-        let mut snapshots = Vec::with_capacity(plan.len());
+    fn apply(root: &Path, plan: &[PlannedFile], module_dir: &Path) -> Result<Self> {
+        Self::apply_with_writer(root, plan, module_dir, |output, content| {
+            output.write(content)
+        })
+    }
+
+    fn apply_with_writer(
+        root: &Path,
+        plan: &[PlannedFile],
+        module_dir: &Path,
+        mut write: impl FnMut(&mut fs::File, &[u8]) -> std::io::Result<usize>,
+    ) -> Result<Self> {
+        // Refuse a stale plan before claiming a directory or changing any file.
+        ensure_no_symlink_ancestors(root, module_dir)?;
         for file in plan {
-            let original = match fs::read(&file.path) {
-                Ok(content) => Some(content),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-                Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("Failed to snapshot scaffold target {}", file.path.display())
-                    });
-                }
-            };
-            snapshots.push(FileSnapshot {
-                path: file.path.clone(),
-                original,
-            });
+            ensure_no_symlink_ancestors(root, &file.path)?;
+            if file.original.is_none() && !file.path.starts_with(module_dir) {
+                anyhow::bail!(
+                    "Create target escapes module directory: {}",
+                    file.path.display()
+                );
+            }
+            Self::check_original(file)?;
         }
 
-        let transaction = Self {
-            snapshots,
-            module_dir: module_dir.to_path_buf(),
+        fs::create_dir(module_dir).with_context(|| {
+            format!(
+                "Failed to exclusively create module directory {}",
+                module_dir.display()
+            )
+        })?;
+        let mut transaction = Self {
+            root: root.to_path_buf(),
+            snapshots: Vec::with_capacity(plan.len()),
+            created_dirs: vec![module_dir.to_path_buf()],
         };
 
         for file in plan {
             let write_result = (|| -> Result<()> {
+                ensure_no_symlink_ancestors(root, &file.path)?;
                 if let Some(parent) = file.path.parent() {
-                    fs::create_dir_all(parent)
-                        .with_context(|| format!("Failed to create {}", parent.display()))?;
+                    transaction.create_parent_dirs(parent)?;
                 }
-                fs::write(&file.path, file.content.as_bytes())
-                    .with_context(|| format!("Failed to write {}", file.path.display()))?;
+                Self::check_original(file)?;
+                let mut output = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(file.original.is_none())
+                    .truncate(file.original.is_some())
+                    .open(&file.path)
+                    .with_context(|| format!("Failed to open {}", file.path.display()))?;
+                let mut snapshot = FileSnapshot {
+                    path: file.path.clone(),
+                    original: file.original.clone(),
+                    written: Vec::with_capacity(file.content.len()),
+                };
+                let mut remaining = file.content.as_bytes();
+                let result = (|| -> std::io::Result<()> {
+                    while !remaining.is_empty() {
+                        match write(&mut output, remaining) {
+                            Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
+                            Ok(count) => {
+                                snapshot.written.extend_from_slice(&remaining[..count]);
+                                remaining = &remaining[count..];
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                                continue
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    Ok(())
+                })();
+                // Record the actual prefix even on failure so rollback can restore
+                // our truncated/partial write without mistaking it for an external edit.
+                transaction.snapshots.push(snapshot);
+                result.with_context(|| format!("Failed to write {}", file.path.display()))?;
                 Ok(())
             })();
 
@@ -131,9 +173,81 @@ impl ScaffoldTransaction {
         Ok(transaction)
     }
 
+    fn check_original(file: &PlannedFile) -> Result<()> {
+        let actual = match fs::symlink_metadata(&file.path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                Some(fs::read(&file.path)?)
+            }
+            Ok(_) => anyhow::bail!(
+                "Scaffold target must be a regular file: {}",
+                file.path.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error).context("Failed to inspect scaffold target"),
+        };
+        if actual != file.original {
+            anyhow::bail!(
+                "Scaffold target changed since planning: {}",
+                file.path.display()
+            );
+        }
+        Ok(())
+    }
+
+    fn create_parent_dirs(&mut self, parent: &Path) -> Result<()> {
+        let mut missing = Vec::new();
+        let mut current = parent;
+        while !current.try_exists()? {
+            missing.push(current.to_path_buf());
+            current = current
+                .parent()
+                .context("Scaffold directory has no parent")?;
+        }
+        for directory in missing.into_iter().rev() {
+            fs::create_dir(&directory)
+                .with_context(|| format!("Failed to create {}", directory.display()))?;
+            self.created_dirs.push(directory);
+        }
+        Ok(())
+    }
+
     fn rollback(self) -> Result<()> {
         let mut failures = Vec::new();
         for snapshot in self.snapshots.into_iter().rev() {
+            if let Err(error) = ensure_no_symlink_ancestors(&self.root, &snapshot.path) {
+                failures.push(error.to_string());
+                continue;
+            }
+            // Preserve edits made after our write, including untracked owner work.
+            let current = match fs::symlink_metadata(&snapshot.path) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                    fs::read(&snapshot.path)
+                }
+                Ok(_) => {
+                    failures.push(format!(
+                        "Rollback target is no longer a regular file: {}",
+                        snapshot.path.display()
+                    ));
+                    continue;
+                }
+                Err(error) => Err(error),
+            };
+            match current {
+                Ok(content) if content == snapshot.written => {}
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::NotFound
+                        && snapshot.original.is_none() =>
+                {
+                    continue
+                }
+                _ => {
+                    failures.push(format!(
+                        "Rollback preserved changed target: {}",
+                        snapshot.path.display()
+                    ));
+                    continue;
+                }
+            }
             let result = match snapshot.original {
                 Some(content) => fs::write(&snapshot.path, content)
                     .with_context(|| format!("Failed to restore {}", snapshot.path.display())),
@@ -149,13 +263,20 @@ impl ScaffoldTransaction {
             }
         }
 
-        match fs::remove_dir_all(&self.module_dir) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => failures.push(format!(
-                "Failed to remove generated module directory {}: {error}",
-                self.module_dir.display()
-            )),
+        // Only remove directories we created, and only while they are empty.
+        for directory in self.created_dirs.into_iter().rev() {
+            if let Err(error) = ensure_no_symlink_ancestors(&self.root, &directory) {
+                failures.push(error.to_string());
+                continue;
+            }
+            match fs::remove_dir(&directory) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => failures.push(format!(
+                    "Rollback preserved directory {}: {error}",
+                    directory.display()
+                )),
+            }
         }
 
         if failures.is_empty() {
@@ -174,6 +295,12 @@ fn ensure_no_symlink_ancestors(root: &Path, path: &Path) -> Result<()> {
         .with_context(|| format!("Scaffold target escapes workspace: {}", path.display()))?;
     let mut current = root.to_path_buf();
     for component in relative.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            anyhow::bail!(
+                "Scaffold target contains a non-normal path component: {}",
+                path.display()
+            );
+        }
         current.push(component);
         match fs::symlink_metadata(&current) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -212,12 +339,12 @@ fn build_scaffold_plan(
     let modules_toml_path = root.join("modules.toml");
     let modules_content = fs::read_to_string(&modules_toml_path)
         .with_context(|| format!("Failed to read {}", modules_toml_path.display()))?;
-    let needle = format!("{} =", options.slug);
-    let needle_sp = format!("{} ", options.slug);
-    if modules_content.lines().any(|line| {
-        let trimmed = line.trim();
-        trimmed.starts_with(&needle) || trimmed.starts_with(&needle_sp)
-    }) {
+    let composition: toml::Value = toml::from_str(&modules_content)?;
+    let modules = composition
+        .get("modules")
+        .and_then(toml::Value::as_table)
+        .context("modules.toml is missing its [modules] table")?;
+    if modules.contains_key(&options.slug) {
         anyhow::bail!(
             "Module '{}' is already registered in modules.toml",
             options.slug
@@ -232,7 +359,7 @@ fn build_scaffold_plan(
         plan.push(PlannedFile {
             path: module_dir.join(relative),
             content,
-            kind: PlannedFileKind::Create,
+            original: None,
         });
     }
 
@@ -240,7 +367,7 @@ fn build_scaffold_plan(
         plan.push(PlannedFile {
             path: change.path,
             content: change.content,
-            kind: PlannedFileKind::Update,
+            original: Some(change.original.into_bytes()),
         });
     }
 
@@ -256,8 +383,8 @@ fn build_scaffold_plan(
             );
         }
         ensure_no_symlink_ancestors(root, &file.path)?;
-        match file.kind {
-            PlannedFileKind::Create => match fs::symlink_metadata(&file.path) {
+        match &file.original {
+            None => match fs::symlink_metadata(&file.path) {
                 Ok(_) => anyhow::bail!(
                     "Scaffold create target already exists: {}",
                     file.path.display()
@@ -268,7 +395,7 @@ fn build_scaffold_plan(
                         .with_context(|| format!("Failed to inspect {}", file.path.display()));
                 }
             },
-            PlannedFileKind::Update => {
+            Some(_) => {
                 let metadata = fs::symlink_metadata(&file.path).with_context(|| {
                     format!("Registration target is missing: {}", file.path.display())
                 })?;
@@ -288,9 +415,10 @@ fn build_scaffold_plan(
 fn print_scaffold_plan(root: &Path, plan: &[PlannedFile]) {
     for file in plan {
         let display_path = file.path.strip_prefix(root).unwrap_or(&file.path);
-        let action = match file.kind {
-            PlannedFileKind::Create => "CREATE",
-            PlannedFileKind::Update => "UPDATE",
+        let action = if file.original.is_some() {
+            "UPDATE"
+        } else {
+            "CREATE"
         };
         println!("  [{action}] {}", display_path.display());
     }
@@ -331,7 +459,7 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
         return Ok(());
     }
 
-    let transaction = ScaffoldTransaction::apply(&plan, &module_dir)?;
+    let transaction = ScaffoldTransaction::apply(&root, &plan, &module_dir)?;
     print_scaffold_plan(&root, &plan);
     println!("  Registration plan applied across workspace manifests and docs.");
 
@@ -375,8 +503,8 @@ pub fn scaffold(options: &ScaffoldOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_scaffold_plan, scaffold, PlannedFile, PlannedFileKind, ScaffoldOptions,
-        ScaffoldProfile, ScaffoldTransaction, ScaffoldUi,
+        build_scaffold_plan, scaffold, PlannedFile, ScaffoldOptions, ScaffoldProfile,
+        ScaffoldTransaction, ScaffoldUi,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -417,6 +545,7 @@ mod tests {
             "modules.toml",
             "docs/modules/registry.md",
             "docs/modules/_index.md",
+            "docs/modules/implementation-plans-registry.md",
             "docs/modules/UI_PACKAGES_INDEX.md",
             "apps/server/Cargo.toml",
             "crates/modules/rustok-distribution/Cargo.toml",
@@ -575,21 +704,207 @@ mod tests {
             PlannedFile {
                 path: module_dir.join("src/lib.rs"),
                 content: "pub struct Example;\n".into(),
-                kind: PlannedFileKind::Create,
+                original: None,
             },
             PlannedFile {
                 path: manifest.clone(),
                 content: "after\n".into(),
-                kind: PlannedFileKind::Update,
+                original: Some(b"before\n".to_vec()),
             },
         ];
 
-        let transaction = ScaffoldTransaction::apply(&plan, &module_dir).unwrap();
+        let transaction = ScaffoldTransaction::apply(&root, &plan, &module_dir).unwrap();
         assert_eq!(fs::read_to_string(&manifest).unwrap(), "after\n");
         assert!(module_dir.join("src/lib.rs").is_file());
 
         transaction.rollback().unwrap();
         assert_eq!(fs::read_to_string(&manifest).unwrap(), "before\n");
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stale_registration_plan_fails_before_any_workspace_write() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let module_dir = root.join("crates/modules/rustok-example");
+        let plan =
+            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        let manifest = root.join("modules.toml");
+        let changed = fs::read_to_string(&manifest).unwrap() + "\n# external edit\n";
+        fs::write(&manifest, &changed).unwrap();
+        let error = ScaffoldTransaction::apply(&root, &plan, &module_dir)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("changed since planning"));
+        assert_eq!(fs::read_to_string(manifest).unwrap(), changed);
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_directory_created_after_planning_is_never_owned_or_removed() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let module_dir = root.join("crates/modules/rustok-example");
+        let plan =
+            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        fs::create_dir(&module_dir).unwrap();
+        let owner_file = module_dir.join("owner.txt");
+        fs::write(&owner_file, "external work").unwrap();
+        assert!(ScaffoldTransaction::apply(&root, &plan, &module_dir).is_err());
+        assert_eq!(fs::read_to_string(owner_file).unwrap(), "external work");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rollback_preserves_external_edits_and_untracked_files() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let module_dir = root.join("crates/modules/rustok-example");
+        let plan =
+            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap();
+        let transaction = ScaffoldTransaction::apply(&root, &plan, &module_dir).unwrap();
+        let manifest = root.join("modules.toml");
+        fs::write(&manifest, "external manifest edit").unwrap();
+        let owner_file = module_dir.join("owner.txt");
+        fs::write(&owner_file, "external work").unwrap();
+        let error = transaction.rollback().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("Rollback preserved changed target"));
+        assert_eq!(
+            fs::read_to_string(manifest).unwrap(),
+            "external manifest edit"
+        );
+        assert_eq!(fs::read_to_string(owner_file).unwrap(), "external work");
+        assert!(!module_dir.join("src/lib.rs").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn mid_apply_failure_restores_only_written_files_and_owned_directories() {
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
+        let manifest = root.join("modules.toml");
+        fs::write(&manifest, "before").unwrap();
+        let plan = vec![
+            PlannedFile {
+                path: manifest.clone(),
+                content: "after".into(),
+                original: Some(b"before".to_vec()),
+            },
+            PlannedFile {
+                path: module_dir.join("src"),
+                content: "a file blocking the next parent".into(),
+                original: None,
+            },
+            PlannedFile {
+                path: module_dir.join("src/lib.rs"),
+                content: "unreachable".into(),
+                original: None,
+            },
+        ];
+        assert!(ScaffoldTransaction::apply(&root, &plan, &module_dir).is_err());
+        assert_eq!(fs::read_to_string(manifest).unwrap(), "before");
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn partial_write_failure_restores_the_original_manifest() {
+        use std::io::Write;
+        let root = temp_root();
+        let module_dir = root.join("crates/modules/rustok-example");
+        fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
+        let manifest = root.join("modules.toml");
+        fs::write(&manifest, "original manifest").unwrap();
+        let plan = vec![PlannedFile {
+            path: manifest.clone(),
+            content: "replacement manifest".into(),
+            original: Some(b"original manifest".to_vec()),
+        }];
+        let mut calls = 0;
+        let result =
+            ScaffoldTransaction::apply_with_writer(&root, &plan, &module_dir, |output, content| {
+                calls += 1;
+                if calls == 1 {
+                    output.write(&content[..3])
+                } else {
+                    Err(std::io::Error::other("injected write failure"))
+                }
+            });
+        assert!(result.is_err());
+        assert_eq!(calls, 2);
+        assert_eq!(fs::read_to_string(manifest).unwrap(), "original manifest");
+        assert!(!module_dir.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn suffix_and_comment_matches_do_not_replace_a_real_module_key() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let manifest = root.join("modules.toml");
+        fs::write(&manifest, "[modules]\nsome_example = { crate = \"rustok-some-example\" }\n# example = a comment, not a module\n").unwrap();
+        let plan = build_scaffold_plan(
+            &root,
+            &root.join("crates/modules/rustok-example"),
+            &options(),
+            "Example",
+            "example",
+        )
+        .unwrap();
+        let planned = &plan
+            .iter()
+            .find(|file| file.path == manifest)
+            .unwrap()
+            .content;
+        let parsed: toml::Value = toml::from_str(planned).unwrap();
+        assert!(parsed["modules"].get("example").is_some());
+        assert!(parsed["modules"].get("some_example").is_some());
+        assert!(!fs::read_to_string(manifest)
+            .unwrap()
+            .contains("crate = \"rustok-example\""));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_composition_anchors_fail_during_preflight_even_when_validation_is_skipped() {
+        for relative in [
+            "Cargo.toml",
+            "apps/server/Cargo.toml",
+            "crates/modules/rustok-distribution/src/lib.rs",
+        ] {
+            let root = temp_root();
+            copy_scaffold_inputs(&root);
+            fs::write(
+                root.join(relative),
+                "# missing required registration anchors\n",
+            )
+            .unwrap();
+            let before = fs::read(root.join("modules.toml")).unwrap();
+            let mut request = options();
+            request.skip_validate = true;
+            let module_dir = root.join("crates/modules/rustok-example");
+            assert!(
+                build_scaffold_plan(&root, &module_dir, &request, "Example", "example").is_err(),
+                "accepted missing {relative}"
+            );
+            assert_eq!(fs::read(root.join("modules.toml")).unwrap(), before);
+            assert!(!module_dir.exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn default_composition_requires_both_distribution_files() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        fs::remove_file(root.join("crates/modules/rustok-distribution/Cargo.toml")).unwrap();
+        let module_dir = root.join("crates/modules/rustok-example");
+        assert!(build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").is_err());
         assert!(!module_dir.exists());
         fs::remove_dir_all(root).unwrap();
     }
@@ -617,8 +932,8 @@ mod tests {
         )
         .unwrap();
 
-        let error = build_scaffold_plan(&root, &module_dir, &options(), "Example", "example")
-            .unwrap_err();
+        let error =
+            build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap_err();
         assert!(error.to_string().contains("already registered"));
         fs::remove_dir_all(root).unwrap();
     }

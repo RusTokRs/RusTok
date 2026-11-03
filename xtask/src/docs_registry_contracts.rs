@@ -104,12 +104,16 @@ pub(crate) fn validate_central_module_registry_inventory_contract(
 fn load_registry_docs_rows(path: &Path) -> Result<HashMap<String, RegistryDocsRow>> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    parse_registry_docs_rows(&content)
+}
+
+fn parse_registry_docs_rows(content: &str) -> Result<HashMap<String, RegistryDocsRow>> {
     let mut rows = HashMap::new();
     let mut section = None;
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("## ") {
+        if trimmed.starts_with("## ") || trimmed.starts_with("### ") {
             section = None;
         }
         if trimmed.starts_with("### Core") {
@@ -120,10 +124,7 @@ fn load_registry_docs_rows(path: &Path) -> Result<HashMap<String, RegistryDocsRo
             section = Some(RegistryDocsSection::Optional);
             continue;
         }
-        if !trimmed.starts_with('|')
-            || trimmed.starts_with("|---")
-            || trimmed.starts_with("| Slug |")
-        {
+        if !trimmed.starts_with('|') {
             continue;
         }
 
@@ -136,6 +137,14 @@ fn load_registry_docs_rows(path: &Path) -> Result<HashMap<String, RegistryDocsRo
             .split('|')
             .map(|column| column.trim())
             .collect::<Vec<_>>();
+        // Markdown padding/alignment is presentation, not module identity.
+        if columns.first() == Some(&"Slug") && columns.get(1) == Some(&"Crate")
+            || columns
+                .iter()
+                .all(|column| !column.is_empty() && column.chars().all(|ch| ch == '-' || ch == ':'))
+        {
+            continue;
+        }
         let minimum_columns = match active_section {
             RegistryDocsSection::Core => 4,
             RegistryDocsSection::Optional => 4,
@@ -206,5 +215,34 @@ fn registry_docs_section_name(section: RegistryDocsSection) -> &'static str {
     match section {
         RegistryDocsSection::Core => "Core",
         RegistryDocsSection::Optional => "Optional",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_registry_docs_rows;
+
+    #[test]
+    fn padded_headers_and_alignment_rows_are_not_modules() {
+        let rows = parse_registry_docs_rows(
+            "### Core Modules\n| Slug      | Crate       | Dependencies | Role |\n| :---- | ----: | :----: | ---- |\n| `core` | `rustok-core` | none | core |\n### Optional Modules\n| Slug         | Crate            | Dependencies | Role |\n| ---- | ---- | ---- | ---- |\n| `example` | `rustok-example` | `core` | example |\n"
+        ).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.contains_key("core"));
+        assert!(rows["example"].dependencies.contains("core"));
+    }
+
+    #[test]
+    fn real_duplicate_module_rows_still_fail() {
+        let error = parse_registry_docs_rows("### Optional Modules\n| `example` | `rustok-example` | none | first |\n| `example` | `rustok-example` | none | duplicate |\n").unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("duplicate module row for 'example'"));
+    }
+
+    #[test]
+    fn unrelated_subsection_tables_do_not_extend_module_inventory() {
+        let rows = parse_registry_docs_rows("### Optional Modules\n| `example` | `rustok-example` | none | module |\n### Notes\n| label | detail | extra | note |\n").unwrap();
+        assert_eq!(rows.len(), 1);
     }
 }

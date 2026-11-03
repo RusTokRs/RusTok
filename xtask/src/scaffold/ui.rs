@@ -121,6 +121,7 @@ Draft {side} Leptos adapter for {slug}. Not published as a working FFA surface.
 
 ## Public surface
 - {page} renders an explicit unavailability message.
+- `transport` exposes the owner facade with explicit typed unavailability; it publishes no backend endpoint.
 - Pure readiness model in src/core/mod.rs; render/bind in src/ui/leptos.rs.
 
 ## Platform Capability Bindings
@@ -250,10 +251,12 @@ pub fn {page}() -> impl IntoView {{
     let lib = format!(
         r#"//! Draft FFA {side} package for {slug}.
 
+#![doc = include_str!("../CRATE_API.md")]
+
 mod core;
 mod i18n;
 mod model;
-mod transport;
+pub mod transport;
 mod ui;
 
 pub use ui::{page};
@@ -276,10 +279,42 @@ fn pure_presentation_state_does_not_fake_a_connected_owner() {
 }
 
 #[test]
-fn both_paths_have_an_explicit_selection_contract() {
+fn both_transport_paths_fail_explicitly_without_fallback() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
     use rustok_ui_transport::UiTransportPath;
-    assert_eq!(UiTransportPath::NativeServer.as_str(), "native_server");
-    assert_eq!(UiTransportPath::Graphql.as_str(), "graphql");
+    for path in [UiTransportPath::NativeServer, UiTransportPath::Graphql] {
+        let mut future = Box::pin(crate::transport::fetch_owner_capability_for(path));
+        let mut context = Context::from_waker(Waker::noop());
+        let Poll::Ready(Err(error)) = future.as_mut().poll(&mut context) else {
+            panic!("an unavailable draft must fail immediately");
+        };
+        assert_eq!(error.failed_path, path);
+        assert!(!error.fallback_attempted);
+        assert_eq!(error.native_error.is_some(), path == UiTransportPath::NativeServer);
+        assert_eq!(error.graphql_error.is_some(), path == UiTransportPath::Graphql);
+        assert!(error.to_string().contains("owner API not implemented"));
+    }
+}
+
+#[test]
+fn selected_transport_fails_on_the_configured_build_path() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+    use rustok_ui_transport::UiTransportPath;
+    let expected = if cfg!(any(feature = "ssr", feature = "hydrate")) {
+        UiTransportPath::NativeServer
+    } else {
+        UiTransportPath::Graphql
+    };
+    assert_eq!(crate::transport::selected_transport_path(), expected);
+    let mut future = Box::pin(crate::transport::fetch_owner_capability());
+    let mut context = Context::from_waker(Waker::noop());
+    let Poll::Ready(Err(error)) = future.as_mut().poll(&mut context) else {
+        panic!("an unavailable draft must fail immediately");
+    };
+    assert_eq!(error.failed_path, expected);
+    assert!(!error.fallback_attempted);
 }
 
 #[test]
@@ -299,7 +334,7 @@ fn documented_ui_is_not_a_fake_business_api() {
     assert!(docs.contains("No CRUD or owner business operation is available"));
 }
 "####
-    .to_string();
+        .to_string();
 
     let translations_en = format!(
         "{side_key} = This module's UI is not available until its owner API is implemented.\n"
@@ -451,7 +486,7 @@ mod tests {
             let root = format!("{side}/");
             let lib = content(&files, &format!("{root}src/lib.rs"));
             assert!(!lib.contains("#[component]"));
-            assert!(!lib.contains("pub mod transport"));
+            assert!(lib.contains("pub mod transport;"));
             assert!(lib.contains("mod core;"));
             let core = content(&files, &format!("{root}src/core/mod.rs"));
             assert!(!core.contains("leptos::"));

@@ -60,6 +60,9 @@ does not translate local Cargo execution into that evidence.
 
 ## Scaffolding (FBA / FFA / i18n / docs.rs)
 
+The [native scaffolding plan](./docs/implementation-plan.md) records the current
+review, remaining production blockers, owners and ordered acceptance gates.
+
 `cargo xtask scaffold <slug>` (or `cargo xtask module new <slug>`) **improves the existing native module scaffolding**. The default creates a draft native runtime identity, not a production-ready FBA/FFA implementation. The target contract is in [Backend Module Implementation Guide](../docs/backend/module-backend-implementation.md#scaffold-profiles-and-generation-contract).
 
 The command:
@@ -75,13 +78,20 @@ The command:
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
   - Central docs: `docs/modules/registry.md`, `docs/modules/_index.md`, and `docs/modules/UI_PACKAGES_INDEX.md`.
+  - Owner plans: `docs/modules/implementation-plans-registry.md`; generated plans
+    include FFA/FBA and release/data readiness, with `data boundary: none` and
+    no automatic rollback approval for the unverified identity.
 - After applying the complete plan, runs `cargo xtask module lint <slug>` and then `cargo xtask module validate <slug>`, unless `--skip-validate` is explicitly supplied. A failure in either check returns a non-zero result and restores the planned source/registration files.
 
 **Verification and remaining limitations:** The generator builds a complete
-source/registration plan before writing, and `--dry-run` previews every planned
-change without mutating the workspace. A live run snapshots the affected files,
+source/registration plan before writing, and `--dry-run` lists every planned
+path without mutating the workspace. Required registration postconditions run
+even with `--skip-validate`. A live run checks original bytes captured during planning,
+exclusively creates the module directory and source files,
 applies the plan, runs architecture lint and then publish-metadata validation,
-and restores the snapshots if either check fails. This is rollback-protected
+and restores its writes if either check fails. Partial writes are tracked;
+rollback preserves externally changed files and untracked work and returns an
+actionable error when restoration is incomplete. This is rollback-protected
 multi-file generation, not isolation from concurrent external workspace writers.
 `--skip-validate` explicitly leaves the module registered but unverified.
 Passing lint and metadata validation still does not prove compilation, behavior,
@@ -98,6 +108,28 @@ real owner schema.
 Classic Next.js packages remain Next-host owned; live UI wiring is checked by
 the generic native-module lint, while functional cross-client parity needs
 separate evidence.
+
+### Known Limitations / Pending Implementation
+
+Native generation has no workspace-wide writer exclusion or durable recovery
+after process termination. External edits can still race with checks and writes;
+rollback failure requires manual reconciliation. Registration still uses textual
+insertion anchors, and dry-run does not show full content diffs. The existing
+Bash matrix requires a disposable checkout and does not test selected
+distribution composition. Generated facade tests exercise typed unavailability
+for explicit and feature-selected paths; dual-package native CSR/hydrate/SSR tests
+pass, while the complete package/browser matrix remains pending. Generated
+UI has no host effective-locale binding or functional owner API. These gaps are
+tracked in the [owner plan](./docs/implementation-plan.md); production readiness
+is not claimed.
+
+Blog's physical layout has transferred further than its semantic reference
+contract. Native scaffolding does not yet generate or enforce the applicable
+tenant/CAS/Patch/locale/outbox/FBA behavior tests of a real owner module. The
+[reference transfer assessment](./docs/implementation-plan.md#blog-reference-transfer-assessment)
+records the missing coverage and Blog's own remaining verification limitations.
+
+### Examples
 
 ```powershell
 # Create the minimal native runtime identity (no business CRUD or storage):

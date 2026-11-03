@@ -93,6 +93,28 @@ runtime integration or functional client parity.
 
 ### Current implementation gap
 
+The [native scaffold delivery plan](../../xtask/docs/implementation-plan.md)
+owns the current findings, prioritized work and acceptance gates. Generated
+owner plans include FFA/FBA and release/data readiness; the central plan index
+and both readiness boards are projections of that owner contract. An unverified
+stateless identity declares `data boundary: none` and `DeniedMaintenanceOnly`,
+without claiming executable release/rollback readiness.
+
+Blog supplies both a physical layout and an accepted semantic reference
+contract. The current generator primarily transfers the former: Blog's
+semantic verifier is module-specific and is not a generic scaffold acceptance
+gate. The [reference transfer assessment](../../xtask/docs/implementation-plan.md#blog-reference-transfer-assessment)
+tracks applicable invariant tests, UI/content localization and FFA/FBA evidence
+separately from generated identity/structure checks.
+
+Planning checks exact TOML module keys and required registration postconditions,
+including when later validation is skipped. Apply rejects changed originals,
+claims its module directory and source files exclusively, and tracks actual
+partial writes for rollback. Rollback preserves external changes/untracked work
+and reports incomplete restoration. Workspace-wide writer exclusion and durable
+process-interruption recovery are still pending; checks do not remove external
+TOCTOU races.
+
 The existing `cargo xtask scaffold` renderer emits a minimal native runtime
 and internal contract tests without invented services, schema, migrations or
 business operations. `--with-db` remains unsupported until an owner schema

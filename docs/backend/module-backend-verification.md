@@ -55,6 +55,13 @@ This keeps generic native lint behavior under the same CI gate as the Blog refer
 
 ## Post-scaffold verification
 
+The [native scaffold owner plan](../../xtask/docs/implementation-plan.md)
+lists the ordered production gates and retained local evidence. Required planned
+registration is checked even with `--skip-validate`; partial-write and changed-file
+rollback behavior have focused unit coverage. This does not prove crash recovery
+or filesystem isolation. The current Bash matrix must run in a disposable checkout;
+it mutates its checkout and does not verify distribution registry execution.
+
 A non-dry-run `cargo xtask scaffold` registers the module, then runs static
 architecture lint before publish-metadata validation. It prints
 `SCAFFOLDED` only after both checks pass. If architecture lint or publish

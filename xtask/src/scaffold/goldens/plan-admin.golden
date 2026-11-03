@@ -28,6 +28,7 @@ Cargo.toml
 modules.toml
 docs/modules/registry.md
 docs/modules/_index.md
+docs/modules/implementation-plans-registry.md
 docs/modules/UI_PACKAGES_INDEX.md
 apps/server/Cargo.toml
 crates/modules/rustok-distribution/Cargo.toml

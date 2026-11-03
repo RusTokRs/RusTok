@@ -160,11 +160,30 @@ Establish native ownership before implementing a business capability.
 - Runtime identity: scaffolded, not independently verified
 - Domain operations: not_started
 - Data schema and persistence: not_started
-- FBA status: `not_started`
-- FFA status: `not_started`
 - UI surfaces: {ui_summary}
 - UI readiness: {ui_readiness}
 - No business functionality or runtime transport parity is claimed.
+
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `not_started`
+- Evidence: {ui_summary} No owner operations, native/GraphQL parity or live client parity are verified.
+- Last verified at (UTC): not verified; record scoped execution evidence before promotion.
+- Owner: {slug} module owner.
+
+## Release and Data Rollback Readiness
+
+- Runtime kind: Optional
+- Rollback unit: Component
+- Data boundary owner: `data boundary: none`
+- Native migrations: none
+- Supported migration policy: none
+- Predecessor standby strategy: none
+- Rollback eligibility: `DeniedMaintenanceOnly`
+- Recovery invariants: no persistent state or mutation path exists; release execution,
+  predecessor retention and rollback are unverified. Specify epoch/idempotency
+  invariants when owner operations are implemented.
 
 ## Local work phases
 - [x] Define native module runtime metadata and contract tests.
@@ -225,6 +244,8 @@ Native runtime owner identity for {title}. No business API is published yet.
         r#"//! Native runtime module for {title}.
 //!
 //! Business API and persistence are intentionally absent until specified.
+
+#![doc = include_str!("../CRATE_API.md")]
 
 mod module;
 
@@ -371,6 +392,7 @@ mod tests {
             .1
             .as_str();
         assert!(lib.contains("mod module;"));
+        assert!(lib.contains("#![doc = include_str!(\"../CRATE_API.md\")]"));
         assert!(!lib.contains("pub mod entities;"));
     }
 
@@ -460,6 +482,39 @@ mod tests {
                 .1;
             assert!(plan.contains("not_started"));
             assert!(plan.contains("NOT mounted"));
+        }
+    }
+
+    #[test]
+    fn every_mode_declares_owner_readiness_without_claiming_safe_release() {
+        for ui in [
+            ScaffoldUi::None,
+            ScaffoldUi::Admin,
+            ScaffoldUi::Storefront,
+            ScaffoldUi::Dual,
+        ] {
+            let mut request = options();
+            request.ui = ui;
+            let files = render_backend(&request, "Example");
+            let plan = &files
+                .iter()
+                .find(|(path, _)| path.to_str() == Some("docs/implementation-plan.md"))
+                .unwrap()
+                .1;
+            for required in [
+                "## FFA/FBA status",
+                "## Release and Data Rollback Readiness",
+                "Runtime kind: Optional",
+                "Rollback unit: Component",
+                "Data boundary owner: `data boundary: none`",
+                "Native migrations: none",
+                "Supported migration policy: none",
+                "Predecessor standby strategy: none",
+                "Rollback eligibility: `DeniedMaintenanceOnly`",
+                "Recovery invariants:",
+            ] {
+                assert!(plan.contains(required), "missing {required} for {ui:?}");
+            }
         }
     }
 
