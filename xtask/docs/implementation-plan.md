@@ -99,11 +99,11 @@ remain separate verification gates.
 
 | Boundary | Current implementation | Remaining gap |
 | --- | --- | --- |
-| Input | Native profile; normalized slug; unknown, repeated and conflicting flags rejected; metadata escaped | Add systematic boundary/size and valid-TOML formatting cases; reject identity collisions across all registries before applying |
+| Input | Native profile; normalized slug; unknown, repeated and conflicting flags rejected; metadata escaped; typed composition identity and Cargo key collisions rejected | Extend systematic boundary/size and identity collision cases to the remaining registration surfaces |
 | Backend | Minimal `RusToKModule`/`MigrationSource`, contract tests and owner docs; no invented domain operations | Generated source and selected composition must compile in isolated verification |
 | Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
-| Planning | Prepare all edits before writing, check exact module keys and required registration, and show unified diffs with apply preconditions in dry-run | Text-based insertion still depends on current formatting |
+| Planning | Prepare all edits before writing, insert by parsed TOML key without rewriting existing bytes, check required registration, and show unified diffs with apply preconditions in dry-run | Markdown and Rust registry insertion still depends on current formatting |
 | Apply | Workspace-wide lock, versioned journal, original backups before apply, and no-clobber source writes. Recovery verified on Windows and Linux. | External writers can still race |
 | Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
@@ -161,9 +161,22 @@ Owner: platform tooling with server/distribution composition owners.
 - [x] Check planned workspace membership/dependency, module identity,
   server/distribution features and registry entry even with `--skip-validate`.
 - [x] Generate required owner readiness blocks and both central readiness/plan projections.
-- [ ] Replace fragile formatting anchors using the existing manifest/document
-  ownership contracts. Support valid whitespace, quoted keys, section ordering,
-  EOF tables and comments without whole-file reformat churn or substring matches.
+- [x] Replace TOML anchors with parser-backed insertions. Support quoted keys,
+  dotted and inline tables, reordered sections, mixed line endings, EOF tables
+  and comments without rewriting existing bytes. Reject occupied feature and
+  dependency keys, conflicting composition identities and excluded workspace
+  paths. Verify exact planned host feature edges before apply.
+- Windows TOML evidence. The `xtask` suite passed 212 tests with one subprocess
+  entrypoint ignored by the top-level runner. The regression fixtures compare
+  exact output bytes across all four edited TOML files and verify that rejected
+  plans preserve every registration input. A disposable Cargo workspace verified
+  literal exclusions, explicit member precedence and case-sensitive glob matching
+  with `cargo metadata --no-deps`.
+  Headless and dual CLI previews were repeatable, matched the original file
+  hashes and passed `git apply --check`. Tests and CLI used cached locked
+  dependencies because a concurrent Cargo run held the shared build lock.
+- [ ] Replace fragile insertion anchors in the Markdown projections and the
+  distribution Rust registry using their owning contracts.
 - [x] Preview actual content changes and preconditions. Verify repeated preview
   stability and byte-for-byte workspace immutability.
 - Windows evidence for preview. All 207 `xtask` tests passed. Repeated headless

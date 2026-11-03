@@ -1084,7 +1084,7 @@ fn auto_approve_argument_detects_flag() {
 fn test_scaffold_dry_run() {
     let opts = ScaffoldOptions {
         profile: ScaffoldProfile::NativeModule,
-        slug: "test-scaffold".to_string(),
+        slug: "test_scaffold".to_string(),
         title: "Test Scaffold".to_string(),
         description: "Test scaffold capability".to_string(),
         category: "collaboration".to_string(),
@@ -1095,14 +1095,14 @@ fn test_scaffold_dry_run() {
         skip_validate: true,
     };
 
-    assert!(scaffold(&opts, std::io::sink()).is_ok());
+    scaffold(&opts, std::io::sink()).expect("dual scaffold preview must succeed");
 }
 
 #[test]
 fn test_scaffold_no_ui_dry_run() {
     let opts = ScaffoldOptions {
         profile: ScaffoldProfile::NativeModule,
-        slug: "test-headless".to_string(),
+        slug: "test_headless".to_string(),
         title: "Test Headless".to_string(),
         description: "Headless backend service module".to_string(),
         category: "erp".to_string(),
@@ -1113,7 +1113,7 @@ fn test_scaffold_no_ui_dry_run() {
         skip_validate: true,
     };
 
-    assert!(scaffold(&opts, std::io::sink()).is_ok());
+    scaffold(&opts, std::io::sink()).expect("headless scaffold preview must succeed");
 }
 
 #[test]

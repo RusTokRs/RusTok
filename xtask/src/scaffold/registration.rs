@@ -1,4 +1,5 @@
 use super::options::{ScaffoldOptions, ScaffoldUi};
+use super::registration_toml::{self, DISTRIBUTION, SERVER, UDEPS_NORMAL};
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,8 +19,8 @@ const REGISTRATION_TARGETS: &[&str] = &[
     "docs/modules/_index.md",
     "docs/modules/implementation-plans-registry.md",
     "docs/modules/UI_PACKAGES_INDEX.md",
-    "apps/server/Cargo.toml",
-    "crates/modules/rustok-distribution/Cargo.toml",
+    SERVER,
+    DISTRIBUTION,
     "crates/modules/rustok-distribution/src/lib.rs",
 ];
 
@@ -126,8 +127,8 @@ pub(crate) fn plan_module_registration(
         originals.push(original);
     }
 
-    apply_registration_mutations(&temporary.root, opts, pascal, snake)?;
-    validate_registration(&temporary.root, opts, pascal)?;
+    apply_registration_mutations(&temporary.root, root, opts, pascal, snake)?;
+    validate_registration(&temporary.root, root, opts, pascal)?;
 
     let mut changes = Vec::new();
     for (target, original) in targets.into_iter().zip(originals) {
@@ -137,10 +138,12 @@ pub(crate) fn plan_module_registration(
                 target.display()
             )
         })?;
-        let staged = preserve_line_endings(
-            &original,
-            fs::read_to_string(temporary.root.join(relative))?,
-        );
+        let staged = fs::read_to_string(temporary.root.join(relative))?;
+        let staged = if relative.extension().is_some_and(|ext| ext == "toml") {
+            staged
+        } else {
+            preserve_line_endings(&original, staged)
+        };
         if staged != original {
             changes.push(RegistrationChange {
                 path: target,
@@ -171,6 +174,7 @@ fn preserve_line_endings(original: &str, mut staged: String) -> String {
 
 fn apply_registration_mutations(
     root: &Path,
+    workspace_root: &Path,
     opts: &ScaffoldOptions,
     pascal: &str,
     _snake: &str,
@@ -178,8 +182,7 @@ fn apply_registration_mutations(
     let slug = &opts.slug;
     let crate_name = opts.crate_name();
 
-    register_in_workspace_cargo_toml(root, &crate_name, opts.ui)?;
-    register_in_modules_toml(root, slug, &crate_name)?;
+    registration_toml::register(root, workspace_root, opts)?;
     register_in_registry_md(root, slug, &crate_name, &opts.description, opts.ui)?;
     register_in_plan_registry(root, slug, &crate_name)?;
     register_in_docs_index_md(
@@ -199,114 +202,12 @@ fn apply_registration_mutations(
     }
 
     if !opts.skip_server_wire {
-        register_in_server_cargo_toml(root, slug, &crate_name)?;
-        register_in_distribution_cargo_toml(root, slug, &crate_name)?;
         // Cargo package uses kebab-case; Rust paths use underscores.
         register_in_distribution_lib_rs(root, slug, pascal, &opts.kebab_name().replace('-', "_"))?;
         // Draft UI crates join Cargo workspace only. They do not add live
         // Leptos host dependencies/features/route composition.
     }
 
-    Ok(())
-}
-
-fn register_in_workspace_cargo_toml(root: &Path, crate_name: &str, ui: ScaffoldUi) -> Result<()> {
-    let cargo_path = root.join("Cargo.toml");
-    let content = fs::read_to_string(&cargo_path)
-        .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
-
-    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
-    let mut modified = false;
-
-    if ui.has_admin() {
-        let admin_entry = format!("    \"crates/modules/{crate_name}/admin\",");
-        if !content.contains(admin_entry.trim()) {
-            if let Some(pos) = lines.iter().position(|l| {
-                let trimmed = l.trim();
-                trimmed == "\"tests/e2e-rust\"," || trimmed == "tests/e2e-rust\","
-            }) {
-                lines.insert(pos, admin_entry);
-                modified = true;
-            } else if let Some(pos) = lines.iter().position(|l| l.trim() == "members = [") {
-                lines.insert(pos + 1, admin_entry);
-                modified = true;
-            }
-        }
-    }
-
-    if ui.has_storefront() {
-        let sf_entry = format!("    \"crates/modules/{crate_name}/storefront\",");
-        if !content.contains(sf_entry.trim()) {
-            if let Some(pos) = lines.iter().position(|l| {
-                let trimmed = l.trim();
-                trimmed == "\"tests/e2e-rust\"," || trimmed == "tests/e2e-rust\","
-            }) {
-                lines.insert(pos, sf_entry);
-                modified = true;
-            } else if let Some(pos) = lines.iter().position(|l| l.trim() == "members = [") {
-                lines.insert(pos + 1, sf_entry);
-                modified = true;
-            }
-        }
-    }
-
-    let dep_needle = format!("{crate_name} = ");
-    if !content.contains(&dep_needle) {
-        let dep_entry = format!("{crate_name} = {{ path = \"crates/modules/{crate_name}\" }}");
-        if let Some(pos) = lines
-            .iter()
-            .position(|l| l.trim() == "[workspace.dependencies]")
-        {
-            lines.insert(pos + 1, dep_entry);
-            modified = true;
-        }
-    }
-
-    if modified {
-        fs::write(&cargo_path, lines.join("\n") + "\n")
-            .with_context(|| format!("Failed to write {}", cargo_path.display()))?;
-    }
-
-    Ok(())
-}
-
-fn register_in_modules_toml(root: &Path, slug: &str, crate_name: &str) -> Result<()> {
-    let path = root.join("modules.toml");
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-
-    let composition: toml::Value = toml::from_str(&content)?;
-    let modules = composition
-        .get("modules")
-        .and_then(toml::Value::as_table)
-        .context("modules.toml is missing its [modules] table")?;
-    if modules.contains_key(slug) {
-        anyhow::bail!("Module '{slug}' is already registered in modules.toml");
-    }
-
-    let entry = format!(
-        "{slug} = {{ crate = \"{crate_name}\", source = \"path\", path = \"crates/modules/{crate_name}\" }}"
-    );
-
-    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
-    let section = lines
-        .iter()
-        .position(|line| line.trim() == "[modules]")
-        .context("Cannot locate the [modules] registration section")?;
-    let insert_pos = lines
-        .iter()
-        .enumerate()
-        .skip(section + 1)
-        .find(|(_, line)| {
-            line.trim_start().starts_with('[') || line.starts_with("# Capability extensions")
-        })
-        .map(|(index, _)| index)
-        .unwrap_or(lines.len());
-
-    lines.insert(insert_pos, entry);
-
-    fs::write(&path, lines.join("\n") + "\n")
-        .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -454,7 +355,12 @@ fn register_in_plan_registry(root: &Path, slug: &str, crate_name: &str) -> Resul
 
 /// Successful planning must mean complete registration even with --skip-validate.
 /// Text insertion anchors are implementation details, never permission to omit wiring.
-fn validate_registration(root: &Path, opts: &ScaffoldOptions, pascal: &str) -> Result<()> {
+fn validate_registration(
+    root: &Path,
+    workspace_root: &Path,
+    opts: &ScaffoldOptions,
+    pascal: &str,
+) -> Result<()> {
     fn read_toml(root: &Path, relative: &str) -> Result<toml::Value> {
         toml::from_str(&fs::read_to_string(root.join(relative))?)
             .with_context(|| format!("Invalid planned registration: {relative}"))
@@ -480,50 +386,48 @@ fn validate_registration(root: &Path, opts: &ScaffoldOptions, pascal: &str) -> R
             == Some(format!("crates/modules/{name}").as_str()),
         "workspace dependency",
     )?;
-    let members = workspace
-        .get("members")
-        .and_then(toml::Value::as_array)
-        .context("Missing workspace members")?;
-    for surface in ["admin", "storefront"] {
-        let requested = if surface == "admin" {
-            opts.ui.has_admin()
-        } else {
-            opts.ui.has_storefront()
-        };
-        if requested {
-            require(
-                members.iter().any(|member| {
-                    member.as_str() == Some(format!("crates/modules/{name}/{surface}").as_str())
-                }),
-                "UI workspace member",
-            )?;
-        }
+    let strings = |key: &str| -> Result<Vec<&str>> {
+        workspace
+            .get(key)
+            .and_then(toml::Value::as_array)
+            .with_context(|| format!("Missing workspace {key}"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .with_context(|| format!("Invalid workspace {key} entry"))
+            })
+            .collect()
+    };
+    let members = strings("members")?;
+    let excludes = if workspace.get("exclude").is_some() {
+        strings("exclude")?
+    } else {
+        Vec::new()
+    };
+    for path in registration_toml::requested_members(opts) {
+        require(
+            registration_toml::workspace_has_member(workspace_root, &members, &excludes, &path)?,
+            &format!("workspace member {path}"),
+        )?;
     }
-    require(
-        members.iter().any(|member| {
-            matches!(member.as_str(), Some("crates/modules/*"))
-                || member.as_str() == Some(format!("crates/modules/{name}").as_str())
-        }),
-        "backend workspace member",
-    )?;
-    let composition = read_toml(root, "modules.toml")?;
+    let composition = rustok_manifest::load_modules_manifest(root.join("modules.toml"))?;
+    rustok_manifest::validate_modules_manifest(&composition)?;
     let entry = composition
-        .get("modules")
-        .and_then(|modules| modules.get(slug))
+        .modules
+        .get(slug)
         .context("Incomplete scaffold registration: modules.toml entry")?;
     require(
-        entry.get("crate").and_then(toml::Value::as_str) == Some(name.as_str())
-            && entry.get("source").and_then(toml::Value::as_str) == Some("path")
-            && entry.get("path").and_then(toml::Value::as_str)
-                == Some(format!("crates/modules/{name}").as_str()),
+        entry.crate_name == name
+            && entry.source == "path"
+            && entry.path.as_deref() == Some(format!("crates/modules/{name}").as_str())
+            && !entry.required
+            && entry.runtime == "module",
         "module identity",
     )?;
     if !opts.skip_server_wire {
         let feature = format!("mod-{slug}");
-        for relative in [
-            "apps/server/Cargo.toml",
-            "crates/modules/rustok-distribution/Cargo.toml",
-        ] {
+        for relative in [SERVER, DISTRIBUTION] {
             let manifest = read_toml(root, relative)?;
             let dependency = manifest
                 .get("dependencies")
@@ -546,19 +450,36 @@ fn validate_registration(root: &Path, opts: &ScaffoldOptions, pascal: &str) -> R
                 .with_context(|| {
                     format!("Incomplete scaffold registration: {relative} feature {feature}")
                 })?;
+            let direct = format!("dep:{name}");
+            let distribution = format!("rustok-distribution/{feature}");
+            let expected = if relative == SERVER {
+                &[direct.as_str(), distribution.as_str()][..]
+            } else {
+                &[direct.as_str()][..]
+            };
             require(
                 features
                     .iter()
-                    .any(|value| value.as_str() == Some(format!("dep:{name}").as_str())),
-                relative,
+                    .map(toml::Value::as_str)
+                    .eq(expected.iter().copied().map(Some)),
+                &format!("{relative} feature {feature}"),
             )?;
-            if relative.starts_with("apps/") {
-                require(
-                    features.iter().any(|value| {
-                        value.as_str() == Some(format!("rustok-distribution/{feature}").as_str())
-                    }),
-                    "server distribution feature",
-                )?;
+            if relative == SERVER {
+                if let Some(ignore) = UDEPS_NORMAL
+                    .iter()
+                    .try_fold(&manifest, |value, key| value.get(key))
+                {
+                    require(
+                        ignore.as_array().is_some_and(|items| {
+                            items
+                                .iter()
+                                .filter(|item| item.as_str() == Some(name.as_str()))
+                                .count()
+                                == 1
+                        }),
+                        "server cargo-udeps ignore entry",
+                    )?;
+                }
             }
         }
         let source =
@@ -786,107 +707,6 @@ fn register_in_ui_packages_index_md(
     Ok(())
 }
 
-fn register_in_server_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> Result<()> {
-    let path = root.join("apps").join("server").join("Cargo.toml");
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-
-    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
-    let mut modified = false;
-
-    let feature_needle = format!("mod-{slug} ");
-    let feature_needle_eq = format!("mod-{slug} =");
-    if !content.contains(&feature_needle) && !content.contains(&feature_needle_eq) {
-        let feature_entry =
-            format!("mod-{slug} = [\"dep:{crate_name}\", \"rustok-distribution/mod-{slug}\"]");
-        if let Some(pos) = lines.iter().position(|l| {
-            l.trim().starts_with("mod-workflow =")
-                || l.trim().starts_with("mod-messenger =")
-                || l.trim().starts_with("mod-docs =")
-        }) {
-            lines.insert(pos + 1, feature_entry);
-            modified = true;
-        }
-    }
-
-    let dep_needle = format!("{crate_name} = ");
-    let dep_needle_sp = format!("{crate_name} ");
-    if !content.contains(&dep_needle) && !content.contains(&dep_needle_sp) {
-        let dep_entry = format!("{crate_name} = {{ workspace = true, optional = true }}");
-        if let Some(pos) = lines.iter().position(|l| {
-            l.trim().starts_with("rustok-messenger =")
-                || l.trim().starts_with("rustok-docs =")
-                || l.trim().starts_with("rustok-blog =")
-        }) {
-            lines.insert(pos + 1, dep_entry);
-            modified = true;
-        }
-    }
-
-    if !content.contains(&format!("\"{crate_name}\"")) {
-        if let Some(pos) = lines
-            .iter()
-            .position(|l| l.contains("normal = [\"rustok-rbac\""))
-        {
-            lines[pos] = lines[pos].replace("]", &format!(", \"{crate_name}\"]"));
-            modified = true;
-        }
-    }
-
-    if modified {
-        fs::write(&path, lines.join("\n") + "\n")
-            .with_context(|| format!("Failed to write {}", path.display()))?;
-    }
-
-    Ok(())
-}
-
-fn register_in_distribution_cargo_toml(root: &Path, slug: &str, crate_name: &str) -> Result<()> {
-    let path = root
-        .join("crates")
-        .join("modules")
-        .join("rustok-distribution")
-        .join("Cargo.toml");
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-
-    let mut lines = content.lines().map(String::from).collect::<Vec<_>>();
-    let mut modified = false;
-
-    let feature_needle = format!("mod-{slug} =");
-    if !content.contains(&feature_needle) {
-        let feature_entry = format!("mod-{slug} = [\"dep:{crate_name}\"]");
-        if let Some(pos) = lines.iter().position(|l| {
-            l.trim().starts_with("mod-messenger =")
-                || l.trim().starts_with("mod-docs =")
-                || l.trim().starts_with("mod-blog =")
-        }) {
-            lines.insert(pos + 1, feature_entry);
-            modified = true;
-        }
-    }
-
-    let dep_needle = format!("{crate_name} =");
-    if !content.contains(&dep_needle) {
-        let dep_entry = format!("{crate_name} = {{ workspace = true, optional = true }}");
-        if let Some(pos) = lines.iter().position(|l| l.trim() == "[dependencies]") {
-            lines.insert(pos + 1, dep_entry);
-            modified = true;
-        }
-    }
-
-    if modified {
-        fs::write(&path, lines.join("\n") + "\n")
-            .with_context(|| format!("Failed to write {}", path.display()))?;
-    }
-
-    Ok(())
-}
-
 fn register_in_distribution_lib_rs(
     root: &Path,
     slug: &str,
@@ -974,7 +794,7 @@ mod scaffold_registration_tests {
         .unwrap();
         fs::write(
             root.join("modules.toml"),
-            "[modules]\n# Capability extensions\n",
+            "schema = 2\n[modules]\n# Capability extensions\n",
         )
         .unwrap();
         fs::create_dir_all(root.join("docs/modules")).unwrap();

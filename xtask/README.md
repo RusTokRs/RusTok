@@ -73,7 +73,7 @@ The command:
 - Retains the existing `ui.rs` generator and `admin/`/`storefront/` architecture. It creates pure `core/mod.rs` / `model.rs`, a dual-path `transport/` facade with fail-closed adapters, `ui/leptos.rs` render adapter, thin `lib.rs`, i18n bundles, contract docs and tests. It does **not** simulate records or CRUD actions. The generated FFA source is **Leptos-only** and uses the shared `rustok-ui-transport` selector with explicit native/GraphQL adapter boundaries. Both adapters reject calls until real owner business operations exist. Next.js uses classic packages owned by its hosts and is not an FFA adapter. Existing Blog Leptos/native/GraphQL/Next.js adapters remain unchanged.
 - Includes docs.rs metadata (`[package.metadata.docs.rs]` with `all-features = true`) and crate doc headers.
 - Automatically registers the new module in:
-  - `Cargo.toml` (`[workspace.dependencies]` and `members`);
+  - `Cargo.toml` (`[workspace.dependencies]` and any members not already covered by workspace paths or globs);
   - `modules.toml` (`[modules.<slug>]`);
   - `apps/server/Cargo.toml` (`mod-<slug>` feature and dependency wiring);
   - `crates/modules/rustok-distribution/Cargo.toml` & `src/lib.rs` (`build_registry()` wiring);
@@ -88,11 +88,16 @@ source/registration plan before writing. `--dry-run` prints unified diffs for
 all planned files, including complete content for newly created files. Updates
 show the SHA-256 of the original bytes and creates require an absent path.
 The preview leaves workspace source and registration files untouched.
+TOML edits resolve exact keys and preserve existing comments, order, whitespace
+and line endings. Planning rejects occupied dependency and feature keys,
+conflicting module identities and excluded workspace paths.
 Required registration postconditions run
 even with `--skip-validate`. A live run holds one workspace lock from recovery
 and planning through validation and commit. It saves original registration bytes
 and complete payloads before publishing any workspace changes. Recovery can
 resume after process termination and preserves changed targets and foreign files.
+`--skip-server-wire` leaves the server and distribution manifests and registry
+unchanged, while the workspace, module manifest and docs are still registered.
 `--skip-validate` explicitly leaves the module registered but unverified.
 Passing lint and metadata validation still does not prove compilation, behavior,
 FBA runtime readiness or functional FFA/Next.js parity. The generated UI crates
@@ -132,8 +137,8 @@ for state transitions and filesystem requirements.
 
 Recovery covers process termination by cooperating writers on supported local
 filesystems. Power loss, network mounts and concurrent external edits fall
-outside that contract. Registration still uses textual
-insertion anchors. The existing
+outside that contract. Markdown projections and the distribution Rust registry
+still use textual insertion anchors. The existing
 Bash matrix requires a disposable checkout and does not test selected
 distribution composition. Generated facade tests exercise typed unavailability
 for explicit and feature-selected paths; dual-package native CSR/hydrate/SSR tests

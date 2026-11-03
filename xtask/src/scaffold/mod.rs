@@ -11,6 +11,7 @@ mod backend;
 mod options;
 mod preview;
 pub(crate) mod registration;
+mod registration_toml;
 mod transaction;
 mod ui;
 
@@ -143,22 +144,6 @@ fn build_scaffold_plan(
             return Err(error)
                 .with_context(|| format!("Failed to inspect {}", module_dir.display()));
         }
-    }
-
-    let modules_toml_path = root.join("modules.toml");
-    ensure_no_symlink_ancestors(root, &modules_toml_path)?;
-    let modules_content = fs::read_to_string(&modules_toml_path)
-        .with_context(|| format!("Failed to read {}", modules_toml_path.display()))?;
-    let composition: toml::Value = toml::from_str(&modules_content)?;
-    let modules = composition
-        .get("modules")
-        .and_then(toml::Value::as_table)
-        .context("modules.toml is missing its [modules] table")?;
-    if modules.contains_key(&options.slug) {
-        anyhow::bail!(
-            "Module '{}' is already registered in modules.toml",
-            options.slug
-        );
     }
 
     let mut plan = Vec::new();
@@ -735,7 +720,7 @@ mod tests {
         let root = temp_root();
         copy_scaffold_inputs(&root);
         let manifest = root.join("modules.toml");
-        fs::write(&manifest, "[modules]\nsome_example = { crate = \"rustok-some-example\" }\n# example = a comment, not a module\n").unwrap();
+        fs::write(&manifest, "schema = 2\n[modules]\nsome_example = { crate = \"rustok-some-example\" }\n# example = a comment, not a module\n").unwrap();
         let plan = build_scaffold_plan(
             &root,
             &root.join("crates/modules/rustok-example"),
@@ -756,6 +741,127 @@ mod tests {
             .unwrap()
             .contains("crate = \"rustok-example\""));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn toml_registration_preserves_bytes_across_supported_layouts() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let workspace = "['workspace'] # workspace\r\n'members' = ['crates/modules/*'] # keep [this]\r\n\n[ workspace . 'dependencies' ] # EOF";
+        let modules = "schema = 2\n'modules'.blog.crate = 'rustok-blog'\nmarker = 'example = a lookalike'\n'modules'.blog.path = 'crates/modules/rustok-blog' # keep\n";
+        let server = "[package.metadata.'cargo-udeps'.ignore]\r\n'normal' = [\r\n\t'rustok-rbac' # keep [this]\r\n]\r\n\r\n[ 'features' ] # reorder\r\nmod-workflow = [\r\n    'dep:workflow' # keep\r\n]\r\n# mod-example = a lookalike\r\n[dependencies.workflow]\r\nworkspace = true\r\noptional = true";
+        let distribution = "features = { 'mod-blog' = ['dep:blog'] }\nmarker = 'rustok-example = lookalike'\ndependencies = { blog.workspace = true, other = '1', blog.optional = true } # EOF";
+        let fixtures = [
+            ("Cargo.toml", workspace, workspace
+                .replace("'crates/modules/*'", "'crates/modules/*', \"crates/modules/rustok-example/admin\", \"crates/modules/rustok-example/storefront\"")
+                + "\nrustok-example = { path = \"crates/modules/rustok-example\" }"),
+            ("modules.toml", modules, modules.to_owned()
+                + "modules.example = { crate = \"rustok-example\", source = \"path\", path = \"crates/modules/rustok-example\" }\n"),
+            (super::registration_toml::SERVER, server, server
+                .replace("'rustok-rbac' # keep [this]\r\n]", "'rustok-rbac', # keep [this]\r\n\t\"rustok-example\"\r\n]")
+                .replace("# mod-example", "mod-example = [\"dep:rustok-example\", \"rustok-distribution/mod-example\"]\r\n# mod-example")
+                + "\r\n[dependencies]\r\nrustok-example = { workspace = true, optional = true }"),
+            (super::registration_toml::DISTRIBUTION, distribution, distribution
+                .replace("['dep:blog']", "['dep:blog'], mod-example = [\"dep:rustok-example\"]")
+                .replace("blog.optional = true", "blog.optional = true, rustok-example = { workspace = true, optional = true }")),
+        ];
+        for (relative, original, _) in &fixtures {
+            fs::write(root.join(relative), original).unwrap();
+        }
+        let mut request = options();
+        request.ui = ScaffoldUi::Dual;
+        let plan = build_scaffold_plan(
+            &root,
+            &root.join("crates/modules/rustok-example"),
+            &request,
+            "Example",
+            "example",
+        )
+        .unwrap();
+        for (relative, original, expected) in fixtures {
+            let target = root.join(relative);
+            let staged = plan.iter().find(|file| file.path == target).unwrap();
+            assert_eq!(staged.content, expected, "{relative}");
+            assert_eq!(fs::read_to_string(target).unwrap(), original);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn toml_conflicts_fail_before_apply_even_when_validation_is_skipped() {
+        for (relative, input, reason) in [
+            ("modules.toml", "schema = 2\nmodules = { other = { crate = 'rustok-example' } }", "already claims crate"),
+            ("modules.toml", "schema = 2\n[modules.other]\ncrate = 'rustok-other'\npath = './crates/modules/../modules/rustok-example'", "already claims crate"),
+            ("Cargo.toml", "workspace = { members = ['crates/modules/*'], exclude = ['crates/modules/rustok-example/admin/Cargo.toml'], dependencies = {} }", "excludes requested module path"),
+            ("Cargo.toml", "workspace = { members = ['crates/modules/rustok-example', './crates/modules/rustok-example'], dependencies = {} }", "Duplicate Cargo workspace member"),
+            ("Cargo.toml", "[workspace]\nmembers = []\n[workspace.dependencies]\n'rustok-example' = '1'", "already occupied"),
+            (super::registration_toml::SERVER, "features = { 'mod-example' = ['dep:rustok-example'] }\ndependencies = {}", "already occupied"),
+            (super::registration_toml::DISTRIBUTION, "features = {}\ndependencies.rustok-example.workspace = true", "already occupied"),
+            (super::registration_toml::DISTRIBUTION, "[dependencies\n", "TOML parse error"),
+        ] {
+            let root = temp_root();
+            copy_scaffold_inputs(&root);
+            let target = root.join(relative);
+            fs::write(&target, input).unwrap();
+            let mut request = options();
+            request.ui = ScaffoldUi::Admin;
+            request.skip_validate = true;
+            let originals = super::registration::registration_target_paths(&root, &request)
+                .into_iter().map(|path| (fs::read(&path).unwrap(), path)).collect::<Vec<_>>();
+            let module = root.join("crates/modules/rustok-example");
+            let error = build_scaffold_plan(&root, &module, &request, "Example", "example").unwrap_err();
+            assert!(format!("{error:#}").contains(reason), "{relative}: {error:#}");
+            for (before, path) in originals {
+                assert_eq!(fs::read(path).unwrap(), before);
+            }
+            assert!(!module.exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn skipping_host_wiring_keeps_workspace_and_manifest_registration() {
+        let root = temp_root();
+        copy_scaffold_inputs(&root);
+        let mut request = options();
+        request.skip_server_wire = true;
+        let mut targets = super::registration::registration_target_paths(&root, &options());
+        for host in targets.split_off(5) {
+            fs::remove_file(host).unwrap();
+        }
+        fs::write(
+            root.join("Cargo.toml"),
+            "workspace = { members = ['xtask'], dependencies = {} }",
+        )
+        .unwrap();
+        fs::write(
+            root.join("modules.toml"),
+            "schema = 2\n[modules.existing]\ncrate = 'rustok-existing'",
+        )
+        .unwrap();
+        let module = root.join("crates/modules/rustok-example");
+        let plan = build_scaffold_plan(&root, &module, &request, "Example", "example").unwrap();
+        let updates: Vec<_> = plan
+            .iter()
+            .filter(|file| file.original.is_some())
+            .map(|file| &file.path)
+            .collect();
+        assert_eq!(updates, targets.iter().collect::<Vec<_>>());
+        assert!(!module.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_membership_honors_cargo_exclusion_precedence() {
+        let path = "crates/modules/rustok-example";
+        let root = std::env::temp_dir();
+        let included = |members: &[&str], excludes: &[&str]| {
+            super::registration_toml::workspace_has_member(&root, members, excludes, path)
+        };
+        assert!(included(&["crates/modules/*"], &["crates/modules/rustok-*"]).unwrap());
+        assert!(included(&[path], &["crates/modules"]).unwrap());
+        assert!(included(&["crates/modules/*"], &["crates/modules"]).is_err());
+        assert!(!included(&["crates/modules/rustok-[A-Z]*"], &[]).unwrap());
     }
 
     #[test]
@@ -813,16 +919,16 @@ mod tests {
     fn dry_run_preflight_rejects_an_existing_registry_slug() {
         let root = temp_root();
         let module_dir = root.join("crates/modules/rustok-example");
-        fs::create_dir_all(module_dir.parent().unwrap()).unwrap();
+        copy_scaffold_inputs(&root);
         fs::write(
             root.join("modules.toml"),
-            "[modules]\nexample = { crate = \"rustok-example\" }\n",
+            "schema = 2\n[modules]\nexample = { crate = \"rustok-example\" }\n",
         )
         .unwrap();
 
         let error =
             build_scaffold_plan(&root, &module_dir, &options(), "Example", "example").unwrap_err();
-        assert!(error.to_string().contains("already registered"));
+        assert!(format!("{error:#}").contains("already registered"));
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -107,8 +107,10 @@ gate. The [reference transfer assessment](../../xtask/docs/implementation-plan.m
 tracks applicable invariant tests, UI/content localization and FFA/FBA evidence
 separately from generated identity/structure checks.
 
-Planning checks exact TOML module keys and required registration postconditions,
-including when later validation is skipped. Apply rejects changed originals,
+Planning inserts entries at parsed TOML keys, preserves existing source bytes,
+and rejects conflicting identities, occupied keys and excluded workspace paths.
+Required registration postconditions run even when later validation is skipped.
+Apply rejects changed originals,
 stages complete files and original backups, and claims its module directory and
 source files exclusively. Process interruption can be recovered using
 `scaffold --recover`; conflicts preserve the journal and affected targets for

@@ -267,7 +267,7 @@ pub fn print_scaffold_usage() {
     println!("  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates");
     println!("  --with-ui                Alias for --ui dual; draft crates are created unmounted");
     println!("  --no-ui                  Explicit headless module (same as default)");
-    println!("  --skip-server-wire       Do not register feature flags in apps/server/Cargo.toml");
+    println!("  --skip-server-wire       Leave server and distribution wiring unchanged");
     println!("  --skip-validate          Skip post-scaffold contract validation");
     println!(
         "  --dry-run                Show source and registration diffs and apply preconditions"
