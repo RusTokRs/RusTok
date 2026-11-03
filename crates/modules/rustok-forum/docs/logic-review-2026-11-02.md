@@ -671,3 +671,21 @@ on create, so the seeded category counters reflect the seeded topic
 and archiving can apply its `-1` delta. The fail-closed counter
 guard is unchanged. A local Rust test run remains the confirmation
 step for these two tests.
+
+**Final static sweep (no-toolchain close-out):** after the fixture
+repair, all six verifiers changed by this branch pass `--static-only`
+(moderation-audience-policy, moderation-audience-transport-composition,
+read-state-runtime-proof, reply-create-audience-enforcement,
+subscription-levels, topic-audience-visibility) and `verify:adrs`
+passes for 165 decisions. Tree-sitter parses all 38 Rust files
+changed on the branch with 0 syntax errors. Two stale-inventory
+notes from earlier sweeps: the full 238-verifier sweep also reports
+failures in verifiers whose markers drifted independently of this
+branch (e.g. account-age posting facts); the branch only vouches
+for the verifiers it changed. The two compile-broken targets
+(`graphql_stats_and_vote_tenant_scope_sqlite`, `subscriptions`) now
+carry `#![recursion_limit = "256"]` at their crate roots, following
+the rustc diagnostic, so the maintainer's confirming test run can
+compile them; they were previously excluded from CI batches for the
+pre-existing depth-limit failure. Confirmation step remains a local
+`cargo test -p rustok-forum` run by the maintainer.
