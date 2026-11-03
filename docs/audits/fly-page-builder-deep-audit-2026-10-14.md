@@ -8,7 +8,7 @@
 **Method:** full static read of the sources, checked against
 `DECISIONS/2026-07-13-fly-page-builder-architecture.md`,
 `DECISIONS/2026-07-16-fly-ssr-first-browser-runtime.md`, and the previous audit
-`docs/audits/fly-builder-engineering-audit-2026-10-02.md` (whose status table was re-verified
+records (whose status table was re-verified
 against code, not trusted). `scripts/fly-check.sh gates` was executed: **20/20 source gates
 green**. The authoring sandbox has no `cargo`/`rustc`, so no compile or test run backs this
 audit; every behavioural claim comes from reading code and is marked where a build must

@@ -105,8 +105,7 @@ See `docs/implementation-plan.md` for the authoritative milestone checklist and 
 
 ## Known limitations / pending implementation
 
-Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../../docs/audits/seo-module-product-logic-audit-2026-10-18.md)
-(source of truth for open findings):
+Tracked in the module backlog:
 
 - **Route-family contract (audit P1-2) — ADR proposed, implementation blocked.**
   `DECISIONS/2026-10-18-seo-canonical-hreflang-route-family.md` (`Proposed`) defines one
@@ -115,7 +114,7 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
 - **Locale-aware path prefixing (audit P2-9) — deferred with design note.** Stripping a stored
   foreign locale prefix (`/ru/about` under `en`) needs the tenant locale policy
   (`rustok_tenant::TenantLocalePolicyPort`) inside SEO; syntactic locale-tag detection is unsound
-  (slug-shaped segments parse as BCP-47 language tags). See the audit report design note.
+  (slug-shaped segments parse as BCP-47 language tags).
 - **Manual redirect target chains (audit P2-10 remainder).** Cycle creation is rejected and
   stored cycles are suppressed at runtime, but a manual redirect whose target is itself a
   registry-owned alias still costs a second hop; flattening it requires target-side alias
@@ -128,11 +127,10 @@ Tracked from [`docs/audits/seo-module-product-logic-audit-2026-10-18.md`](../../
   Diagnostics page contexts now share the render formula (`merge_page_context`), but the editable
   `SeoMetaRecord` projection (`seo_meta` and the diagnostics meta record) still shows raw stored
   values; the fix is additive display-only `effective_*` fields computed by a shared canonical
-  resolver, because editable fields must stay raw for admin round-trips. See the audit report.
+  resolver, because editable fields must stay raw for admin round-trips.
 - **Diagnostics N+1 reads (P2-11), category SEO dual-store (P2-12),
   write-only settings without admin consumers (P2-14),
-  admin surface split (P2-15)** — open; evidence and file:line
-  references live in the audit report.
+  admin surface split (P2-15)** — open; tracked in the module backlog.
 - **Rust compile/test evidence is host-dependent:** the canonical scoped commands are
   `cargo check -p rustok-seo` / `cargo test -p rustok-seo` (see `docs/verification/README.md`).
   Static verification for this module runs via `npm run verify:seo:admin-boundary`,

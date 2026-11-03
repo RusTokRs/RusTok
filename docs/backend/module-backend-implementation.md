@@ -406,9 +406,8 @@ In particular:
 - runtime locale fallback never becomes stored write provenance;
 - nullable edits use explicit `Patch<T>` semantics;
 - aggregate revisions are predecessor-bound CAS inputs, not optional hints;
-- persistence entities are private, with at most one explicitly documented bridge exception per
-  module that must be pinned by its layout/reference verifier and tracked in the module cursor
-  (`rustok-blog`: the orchestration bridge surface in `src/ports/`, finding L-4);
+- persistence entities are strictly private; cross-module transactions execute via typed
+  in-transaction owner commands (as demonstrated by `rustok-blog` orchestration commands in `services::orchestration`);
 - lifecycle commands execute the domain transition table;
 - derived projections do not mutate owner business revisions;
 - public transports use owner-safe/redacted error mapping;

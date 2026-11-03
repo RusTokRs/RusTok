@@ -62,10 +62,10 @@ first implementation of the semantic reference contract in
 Key invariants include current-tenant authority, truthful locale provenance,
 explicit `Patch<T>` updates, mandatory edit CAS, one executable lifecycle
 policy, derived-state/business-revision separation, redacted public errors,
-private persistence entities (the one documented exception is the
-orchestration bridge surface re-exported by `ports`, pinned by
-`verify:module-reference-contract` and tracked as L-4), owner-service integration
-seams, deterministic pagination, and honest FBA readiness.
+private persistence entities (with zero leakage; the orchestration bridge executes
+via typed in-transaction owner commands in `services::orchestration` re-exported by
+`ports`, closing finding L-4), owner-service integration seams, deterministic pagination,
+and honest FBA readiness.
 
 The module-owned UI packages use a separate adapter profile:
 `core/` for commands/presentation/tests, `transport/` for GraphQL/native
