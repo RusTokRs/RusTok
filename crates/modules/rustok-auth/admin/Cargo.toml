@@ -3,6 +3,9 @@ name = "rustok-auth-admin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Leptos admin UI package for the rustok-auth module"
 
 [package.metadata.docs.rs]
@@ -36,13 +39,6 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 rustok-api = { workspace = true, default-features = false }
-
-
-
-
-
-
-
 rustok-ui-i18n.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-auth = { workspace = true, optional = true }
