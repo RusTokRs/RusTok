@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use rustok_forum::{ForumContentTarget, ForumQuery, RevisionService};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database};

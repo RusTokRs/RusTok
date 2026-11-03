@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
 use rustok_api::{AuthContext, Permission, RequestContext, TenantContext};
 use rustok_forum::ForumQuery;

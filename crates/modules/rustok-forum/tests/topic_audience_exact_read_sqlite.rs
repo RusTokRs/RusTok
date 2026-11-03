@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 #[path = "support/forum_public_settings.rs"]
 mod forum_public_settings;
 #[path = "support/posting_cooldown.rs"]
@@ -552,6 +554,7 @@ async fn graphql_storefront_list_uses_guest_gate_but_keeps_authorized_viewer_rea
         permissions: vec![
             Permission::FORUM_TOPICS_LIST,
             Permission::FORUM_TOPICS_READ,
+            Permission::FORUM_CATEGORIES_LIST,
             Permission::FORUM_CATEGORIES_READ,
         ],
         client_id: None,
