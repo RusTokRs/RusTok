@@ -86,10 +86,10 @@
       "path": "crates/modules/alloy",
       "category": "modules",
       "files": 79,
-      "loc": 25264,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 25285,
+      "completed": true,
+      "completed_at": "2026-11-03 00:06",
+      "notes": "Round 2: Exhaustively inspected all 60+ source files across src/ (api, bridge, controllers, engine, execution_log, graphql, integration, migrations, model, runner, scheduler, storage) and static runtime contracts. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for default engine compilation and AlloyAuthoringError display/equality. Remediated collapsible-if and clone-on-copy in rustok-modules dependency. 128/128 tests passed, verify-alloy-runtime-contract passed, clippy clean with -D warnings, gatekeeper approved."
     },
     "crates/modules/flex": {
       "name": "flex",
@@ -829,7 +829,7 @@
       "path": "crates/modules/rustok-modules",
       "category": "modules",
       "files": 283,
-      "loc": 157885,
+      "loc": 157886,
       "completed": false,
       "completed_at": null,
       "notes": ""

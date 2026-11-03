@@ -811,7 +811,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,380 | 2026-11-02 23:16 | Round 2: Exhaustively inspected all 11 source files across src/ and all 4 test suites. Standardized Cargo.toml metadata (rust-version, repository, readme). Derived PartialEq and Eq on LogFormat. Added contract tests for MetricsHandle default/render and TelemetryHandles debug format. 49/49 tests passed, clippy clean, gatekeeper approved. |
 | [ ] | [rustok-translation-targets](../../crates/libs/rustok-translation-targets) | `libs` | 4 | 1,780 | None |  |
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 3 | 992 | 2026-11-02 23:31 | Round 2: Exhaustively inspected all source files (lib, browser_assets, contract_tests). Standardized Cargo.toml metadata (rust-version, repository, readme). Added HttpError status constructors (conflict, service_unavailable, gateway_timeout). Derived PartialEq and Eq for ReleaseAssetSet. Added contract tests for new constructors and json_response. 14/14 tests passed, clippy clean, gatekeeper approved. |
-| [ ] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,264 | None |  |
+| [x] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,285 | 2026-11-03 00:06 | Round 2: Exhaustively inspected all 60+ source files across src/ (api, bridge, controllers, engine, execution_log, graphql, integration, migrations, model, runner, scheduler, storage) and static runtime contracts. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for default engine compilation and AlloyAuthoringError display/equality. Remediated collapsible-if and clone-on-copy in rustok-modules dependency. 128/128 tests passed, verify-alloy-runtime-contract passed, clippy clean with -D warnings, gatekeeper approved. |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,240 | None |  |
 | [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | None |  |
 | [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,489 | None |  |
@@ -909,7 +909,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 10 | 1,969 | None |  |
 | [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 40 | 10,727 | None |  |
 | [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
-| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 283 | 157,885 | None |  |
+| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 283 | 157,886 | None |  |
 | [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 2 | 1,902 | None |  |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 43 | 5,855 | None |  |

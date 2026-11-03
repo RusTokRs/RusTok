@@ -2093,17 +2093,18 @@ impl TenantModuleStateStore {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<(), ModuleOperationStoreError> {
-        if let Some(state) = Self::read(db, tenant_id, module_slug).await? {
-            if state.enabled.is_some() {
-                Self::update_existing(
-                    db,
-                    tenant_id,
-                    module_slug,
-                    &state,
-                    OverrideUpdate::Enabled(None),
-                )
-                .await?;
-            }
+        let Some(state) = Self::read(db, tenant_id, module_slug).await? else {
+            return Ok(());
+        };
+        if state.enabled.is_some() {
+            Self::update_existing(
+                db,
+                tenant_id,
+                module_slug,
+                &state,
+                OverrideUpdate::Enabled(None),
+            )
+            .await?;
         }
         Ok(())
     }

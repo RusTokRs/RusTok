@@ -16,3 +16,24 @@ fn crate_api_defines_minimal_contract_sections() {
         );
     }
 }
+
+#[test]
+fn default_engine_compiles_valid_script() {
+    let engine = crate::create_default_engine();
+    let mut scope = rhai::Scope::new();
+    let result = engine.compile("test", "let a = 10; a + 5", &mut scope);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn alloy_authoring_error_display_and_equality() {
+    use crate::AlloyAuthoringError;
+
+    assert_eq!(AlloyAuthoringError::NotFound, AlloyAuthoringError::NotFound);
+    assert_ne!(AlloyAuthoringError::NotFound, AlloyAuthoringError::Invalid);
+
+    let err = AlloyAuthoringError::RevisionConflict {
+        expected_version: 3,
+    };
+    assert_eq!(err.to_string(), "Alloy script revision conflict");
+}

@@ -2333,7 +2333,7 @@ mod tests {
         let request = serde_json::json!({"module": "forum"});
         let lease = match idempotency::admit(
             &db,
-            scope.clone(),
+            scope,
             STATIC_LIFECYCLE_OWNER_SLUG,
             "same-key",
             STATIC_LIFECYCLE_SETTINGS_OPERATION,
