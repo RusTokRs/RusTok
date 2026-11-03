@@ -140,7 +140,20 @@ fn runtime_mutation_paths_use_explicit_transaction_or_committed_entrypoints() {
 
     assert!(committed.contains("replace_user_role_in_transaction"));
     assert!(admin.contains("RbacService::replace_user_role_in_transaction("));
-    assert!(superadmin.contains("RbacService::replace_user_role_committed("));
+    // Bootstrap creates a new account through the lifecycle transaction; it
+    // must not silently re-promote an already existing, demoted account.
+    let existing = superadmin
+        .find("if let Some(user) = users::Entity::find_by_email")
+        .expect("bootstrap must check for an existing account");
+    let unchanged = superadmin[existing..]
+        .find("return Ok(());")
+        .map(|offset| existing + offset)
+        .expect("bootstrap must leave an existing account unchanged");
+    let create = superadmin
+        .find("AuthLifecycleService::create_user_runtime(")
+        .expect("bootstrap must create new accounts through the lifecycle");
+    assert!(unchanged < create);
+    assert!(!superadmin.contains("RbacService::replace_user_role_committed("));
     assert!(!admin.contains("RbacService::replace_user_role("));
     assert!(!superadmin.contains("RbacService::replace_user_role("));
 }

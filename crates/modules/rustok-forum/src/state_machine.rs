@@ -27,6 +27,7 @@
 /// - Closed   → Archived (archive)
 /// - Archived → Open     (reopen)
 /// - Pending  → Open     (approve after pre-moderation)
+/// - Open     → Pending  (content edit re-enters pre-moderation)
 /// - Pending  → Archived (reject after pre-moderation)
 use std::fmt;
 
@@ -95,6 +96,7 @@ impl TopicStatus {
         matches!(
             (self, target),
             (Self::Open, Self::Closed)
+                | (Self::Open, Self::Pending)
                 | (Self::Open, Self::Archived)
                 | (Self::Closed, Self::Open)
                 | (Self::Closed, Self::Archived)
@@ -187,6 +189,7 @@ impl ReplyStatus {
     /// Check if a transition to the target status is allowed.
     ///
     /// Allowed transitions:
+    /// - Approved → Pending (content edit re-enters moderation)
     /// - Approved → Hidden  (moderation hide)
     /// - Approved → Flagged (user flag)
     /// - Approved → Deleted (soft-delete)
@@ -202,6 +205,7 @@ impl ReplyStatus {
                 | (Self::Pending, Self::Rejected)
                 | (Self::Pending, Self::Hidden)
                 | (Self::Pending, Self::Deleted)
+                | (Self::Approved, Self::Pending)
                 | (Self::Approved, Self::Rejected)
                 | (Self::Approved, Self::Hidden)
                 | (Self::Approved, Self::Flagged)
@@ -354,7 +358,7 @@ mod tests {
         assert!(TopicStatus::Pending.can_transition_to(&TopicStatus::Archived));
         assert!(!TopicStatus::Pending.can_transition_to(&TopicStatus::Closed));
         assert!(!TopicStatus::Pending.can_transition_to(&TopicStatus::Pending));
-        assert!(!TopicStatus::Open.can_transition_to(&TopicStatus::Pending));
+        assert!(TopicStatus::Open.can_transition_to(&TopicStatus::Pending));
         assert!(!TopicStatus::Archived.can_transition_to(&TopicStatus::Pending));
     }
 
@@ -431,6 +435,7 @@ mod tests {
 
     #[test]
     fn valid_reply_transitions() {
+        assert!(ReplyStatus::Approved.can_transition_to(&ReplyStatus::Pending));
         assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Approved));
         assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Rejected));
         assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Hidden));

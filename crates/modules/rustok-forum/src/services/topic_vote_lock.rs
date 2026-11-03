@@ -20,6 +20,11 @@ pub(crate) async fn lock_active_topic_vote_write_in_tx(
             "Forum topic votes cannot be changed after topic archival".to_string(),
         ));
     }
+    if topic.status == TopicStatus::Pending {
+        // A held topic is not published yet; votes on it would let the
+        // author and moderators pre-rank content the audience cannot see.
+        return Err(ForumError::TopicAwaitingModeration);
+    }
     Ok(topic)
 }
 

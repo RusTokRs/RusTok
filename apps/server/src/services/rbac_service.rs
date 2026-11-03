@@ -10,7 +10,8 @@ use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
 use super::rbac_request_scope::{
-    permissions_for as scoped_permissions_for, role_for as scoped_role_for,
+    ensure_scope_not_invalidated, permissions_for as scoped_permissions_for,
+    role_for as scoped_role_for,
 };
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
@@ -68,10 +69,8 @@ impl RbacService {
 
         // Answer from the immutable request-scope snapshot when present,
         // exactly like get_user_permissions/get_user_role: one authority
-        // resolution per request, and an OAuth token can never regain
-        // permissions its scopes removed (the resolver below reads the
-        // persisted set). An invalidated snapshot falls through to the
-        // resolver so post-mutation checks re-read persisted state.
+        // resolution per request. The resolver below rejects an invalidated
+        // matching scope rather than falling back to unscoped grants.
         if let Some(permissions) = scoped_permissions_for(tenant_id, user_id) {
             let allowed = has_effective_permission(&permissions, required_permission);
             debug!(
@@ -279,6 +278,7 @@ impl RbacService {
             return Ok(permissions);
         }
 
+        ensure_scope_not_invalidated(tenant_id, user_id)?;
         let resolver = Self::resolver(db);
         let started_at = std::time::Instant::now();
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
@@ -316,6 +316,7 @@ impl RbacService {
             return Ok(role);
         }
 
+        ensure_scope_not_invalidated(tenant_id, user_id)?;
         Self::get_user_role_authoritative(db, tenant_id, user_id).await
     }
 
@@ -684,6 +685,172 @@ mod tests {
             );
         })
         .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn invalidated_request_scope_never_falls_back_to_unscoped_grants() {
+        use crate::error::Error;
+        use crate::services::rbac_runtime::{AuthorizationCheck, authorize_request};
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let (tenant_id, user_id) = insert_tenant_and_user(
+            &db,
+            "invalidated-request-ceiling",
+            "invalidated-request-ceiling@example.com",
+        )
+        .await;
+        RbacService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::SuperAdmin)
+            .await
+            .expect("assign persisted privileges");
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+                .await
+                .expect("unscoped persisted permission")
+        );
+
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::USERS_READ],
+            UserRole::SuperAdmin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            assert!(
+                RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::USERS_READ)
+                    .await
+                    .expect("valid scoped grant")
+            );
+            assert!(
+                !RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE
+                )
+                .await
+                .expect("scope restricts persisted grant")
+            );
+
+            // Exercise the real host invalidation adapter, not just the state helper.
+            RbacService::invalidate_user_rbac_caches(&tenant_id, &user_id).await;
+            assert!(matches!(
+                RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                RbacService::has_any_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &[Permission::USERS_READ, Permission::SETTINGS_MANAGE]
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                RbacService::has_all_permissions(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &[Permission::USERS_READ, Permission::SETTINGS_MANAGE]
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                RbacService::has_all_permissions(&db, &tenant_id, &user_id, &[]).await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                RbacService::get_user_permissions(&db, &tenant_id, &user_id).await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                RbacService::get_user_role(&db, &tenant_id, &user_id).await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                authorize_request(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    AuthorizationCheck::Single(&Permission::SETTINGS_MANAGE)
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                authorize_request(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    AuthorizationCheck::Any(&[Permission::SETTINGS_MANAGE])
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+            assert!(matches!(
+                authorize_request(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    AuthorizationCheck::All(&[Permission::SETTINGS_MANAGE])
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+
+            // An unrelated identity does not inherit this actor's invalidation.
+            let other = uuid::Uuid::new_v4();
+            assert!(
+                RbacService::get_user_permissions(&db, &tenant_id, &other)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(
+                RbacService::get_user_role(&db, &tenant_id, &other)
+                    .await
+                    .unwrap(),
+                UserRole::Customer
+            );
+        })
+        .await;
+
+        let scope = RbacRequestScope::new(
+            tenant_id,
+            user_id,
+            vec![Permission::USERS_READ],
+            UserRole::SuperAdmin,
+        );
+        with_rbac_request_scope(Some(scope), async {
+            crate::services::rbac_runtime::invalidate_all_user_permissions_cache().await;
+            assert!(matches!(
+                RbacService::has_permission(
+                    &db,
+                    &tenant_id,
+                    &user_id,
+                    &Permission::SETTINGS_MANAGE
+                )
+                .await,
+                Err(Error::Cache(_))
+            ));
+        })
+        .await;
+
+        // Outside the invalidated scope, persisted access remains unchanged.
+        assert!(
+            RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+                .await
+                .expect("unscoped access after request")
+        );
     }
 
     #[test]

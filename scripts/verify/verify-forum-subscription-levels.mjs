@@ -143,16 +143,35 @@ function verifyStatic() {
   requireTokens(paths.migration, migration, [
     "forum.subscription.changed",
     "forum_subscription_policies",
-    "forum_auto_subscribe_topic_author",
-    "forum_auto_subscribe_reply_participant",
-    "ON CONFLICT (tenant_id, topic_id, user_id) DO UPDATE SET",
-    "ON CONFLICT(tenant_id,topic_id,user_id) DO UPDATE SET",
     "AFTER INSERT OR UPDATE OR DELETE ON forum_topic_subscriptions",
     "AFTER INSERT OR UPDATE OR DELETE ON forum_category_subscriptions",
   ]);
+  // Auto-subscribe is a Rust owner rule (`services::subscription::auto_subscribe`),
+  // never a database trigger: triggers upgraded an explicit `normal` (cleared)
+  // row back to a subscribed level without consent. The trigger names may only
+  // appear in drop statements of the removal migration.
   requireTokens(paths.migrationRegistry, migrationRegistry, [
     "m20260713_000013_add_forum_subscription_levels",
+    "m20261102_000040_remove_forum_auto_subscribe_triggers",
   ]);
+  const autoSubscribeService = text(
+    "crates/modules/rustok-forum/src/services/subscription/auto_subscribe.rs",
+  );
+  requireTokens("forum auto-subscribe owner service", autoSubscribeService, [
+    "auto_subscribe_topic_author_in_tx",
+    "auto_subscribe_reply_participant_in_tx",
+    "do_nothing",
+  ]);
+  for (const forbidden of [
+    "CREATE TRIGGER forum_70_auto_subscribe",
+    "CREATE OR REPLACE FUNCTION forum_auto_subscribe",
+    "WHERE forum_topic_subscriptions.level = 'normal'",
+    "WHERE forum_topic_subscriptions.level='normal'",
+  ]) {
+    if (migration.includes(forbidden)) {
+      fail(`${paths.migration}: forbidden auto-subscribe trigger token ${forbidden}`);
+    }
+  }
   requireTokens(paths.controllers, controllers, [
     "get_category_subscription_settings",
     "update_category_subscription_settings",

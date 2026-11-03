@@ -73,6 +73,80 @@ impl ForumVisibilityScopedReadStateService {
         .await
     }
 
+    /// Owner read state for one topic, gated by the exact topic audience.
+    ///
+    /// Missing and audience-denied topics are indistinguishable
+    /// (`TopicNotFound`). This is the single-topic counterpart of the bulk
+    /// operations below; transports must not call the unaudited
+    /// `ForumTopicReadStateService` directly, or hidden topics leak their
+    /// existence through read-state responses.
+    pub async fn get_topic_read_state_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        context: rustok_api::PortContext,
+    ) -> ForumResult<ForumTopicReadState> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
+        self.require_topic_owner_visible(tenant_id, topic_id, &security, context)
+            .await?;
+        ForumTopicReadStateService::new(self.db.clone())
+            .get_topic_read_state(tenant_id, topic_id, security)
+            .await
+    }
+
+    /// Marks one topic read after the same audience gate as
+    /// [`Self::get_topic_read_state_with_audience_context`]. The delegated
+    /// owner write still validates the high-water marks against the latest
+    /// approved reply position and topic revision.
+    pub async fn mark_topic_read_with_audience_context(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        context: rustok_api::PortContext,
+        input: MarkForumTopicReadInput,
+    ) -> ForumResult<ForumTopicReadState> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Read)?;
+        authenticated_user_id(
+            &security,
+            "Authenticated user context is required to mark a topic read",
+        )?;
+        self.require_topic_owner_visible(tenant_id, topic_id, &security, context)
+            .await?;
+        ForumTopicReadStateService::new(self.db.clone())
+            .mark_topic_read(tenant_id, topic_id, security, input)
+            .await
+    }
+
+    async fn require_topic_owner_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: &SecurityContext,
+        context: rustok_api::PortContext,
+    ) -> ForumResult<()> {
+        validate_visibility_bulk_context(tenant_id, &context)?;
+        let viewer = if security.user_id.is_some() {
+            super::topic_audience_visibility::ForumTopicAudienceViewer::authenticated(
+                security.clone(),
+                context,
+            )?
+        } else {
+            super::topic_audience_visibility::ForumTopicAudienceViewer::public()
+        };
+        let visible = super::topic_audience_visibility::ForumTopicAudienceVisibilityService::new(
+            self.db.clone(),
+            self.audience_facts.clone(),
+        )
+        .is_topic_owner_visible(tenant_id, topic_id, &viewer)
+        .await?;
+        if !visible {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        Ok(())
+    }
+
     async fn mark_scope_read_with_audience_context(
         &self,
         tenant_id: Uuid,

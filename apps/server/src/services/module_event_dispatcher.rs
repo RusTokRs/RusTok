@@ -17,6 +17,11 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "blog_public_comments_snapshot.rs"]
 mod blog_public_comments_snapshot;
 
+/// Whether this composition registered module event listeners. A missing
+/// snapshot is not equivalent to an intentionally empty listener set.
+#[derive(Clone, Copy)]
+pub(crate) struct ModuleEventDispatcherRequirement(pub bool);
+
 /// Host-owned lifecycle handle for the module event dispatcher.
 ///
 /// The dispatcher is a background consumer: API/SSR/registry profiles compose
@@ -30,6 +35,13 @@ pub struct ModuleEventDispatcherHandle {
 }
 
 impl ModuleEventDispatcherHandle {
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        Self {
+            running: EventDispatcher::new(EventBus::new()).start(),
+        }
+    }
+
     pub fn is_finished(&self) -> bool {
         self.running.is_finished()
     }
@@ -97,6 +109,7 @@ pub fn spawn_module_event_dispatcher(
     let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
 
     let handler_count = dispatcher.handler_count();
+    ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
     if handler_count == 0 {
         tracing::info!("No module-owned event listeners registered in ModuleRegistry");
         return Ok(());

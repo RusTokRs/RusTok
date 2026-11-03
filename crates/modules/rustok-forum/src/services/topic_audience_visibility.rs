@@ -10,7 +10,7 @@ use crate::audience::{
 use crate::error::{ForumError, ForumResult};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::pending_visibility::can_see_pending;
-use crate::services::topic_audience::{find_topic, load_policy_for_topic};
+use crate::services::topic_audience::{ForumTopicModel, find_topic, load_policy_for_topic};
 use crate::services::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 use crate::state_machine::TopicStatus;
 
@@ -231,7 +231,7 @@ impl ForumTopicAudienceVisibilityService {
         &self,
         connection: &C,
         tenant_id: Uuid,
-        topic: &crate::entities::forum_topic::Model,
+        topic: &ForumTopicModel,
         viewer: &ForumTopicAudienceViewer,
     ) -> ForumResult<bool> {
         let policy = load_policy_for_topic(connection, tenant_id, topic).await?;

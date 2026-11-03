@@ -33,7 +33,7 @@ use crate::services::{
     ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService,
 };
 use crate::state_machine::{ReplyStatus, TopicStatus};
-use crate::subscription::ForumSubscriptionLevel;
+use crate::subscription::{ForumDigestMode, ForumSubscriptionLevel};
 
 const FORUM_SOURCE: &str = "forum";
 const TOPIC_CREATED_TYPE: &str = "forum.topic.created";
@@ -485,6 +485,7 @@ impl ForumNotificationSourceProvider {
             .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_subscription::Column::TopicId.eq(topic_id))
             .filter(forum_topic_subscription::Column::NotifyReplies.eq(true))
+            .filter(forum_topic_subscription::Column::DigestMode.eq(ForumDigestMode::Immediate))
             .filter(forum_topic_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
             .order_by_asc(forum_topic_subscription::Column::UserId);
         if let Some(after) = after {
@@ -521,6 +522,9 @@ impl ForumNotificationSourceProvider {
             .filter(forum_category_subscription::Column::TenantId.eq(tenant_id))
             .filter(forum_category_subscription::Column::CategoryId.eq(category_id))
             .filter(forum_category_subscription::Column::NotifyReplies.eq(true))
+            .filter(
+                forum_category_subscription::Column::DigestMode.eq(ForumDigestMode::Immediate),
+            )
             .filter(forum_category_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
             .order_by_asc(forum_category_subscription::Column::UserId);
         if let Some(after) = after {
@@ -917,6 +921,10 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     .filter(forum_category_subscription::Column::TenantId.eq(event.tenant_id))
                     .filter(forum_category_subscription::Column::CategoryId.eq(topic.category_id))
                     .filter(forum_category_subscription::Column::NotifyNewTopics.eq(true))
+                    .filter(
+                        forum_category_subscription::Column::DigestMode
+                            .eq(ForumDigestMode::Immediate),
+                    )
                     .filter(
                         forum_category_subscription::Column::Level
                             .ne(ForumSubscriptionLevel::Muted),

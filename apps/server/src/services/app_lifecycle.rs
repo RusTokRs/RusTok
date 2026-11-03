@@ -223,6 +223,25 @@ impl SeoBulkWorkerHandle {
     }
 }
 
+/// Whether module-work composition registered any scheduled work. A missing
+/// snapshot means composition has not yet established whether a task is required.
+#[derive(Clone, Copy)]
+pub(crate) struct ModuleWorkSchedulerRequirement(pub bool);
+
+// Serializes module-work initialization with shutdown's handle drain. This is
+// stored per runtime context rather than globally, so independent hosts remain
+// independent and a cancelled initializer releases the reservation.
+#[derive(Clone, Default)]
+pub(crate) struct ModuleWorkSchedulerInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+impl ModuleWorkSchedulerInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
 pub struct ModuleWorkSchedulerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -275,6 +294,130 @@ impl WorkflowCronSchedulerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+}
+
+/// One host-owned worker observation, shared by readiness and Prometheus.
+/// It reports task liveness only, not backlog drainage or recent progress.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RuntimeWorkerSnapshot {
+    pub name: &'static str,
+    pub required: bool,
+    pub finished: Option<bool>,
+}
+
+pub(crate) fn additional_runtime_worker_snapshots(
+    ctx: &ServerRuntimeContext,
+) -> Vec<RuntimeWorkerSnapshot> {
+    #[cfg(feature = "commerce-marketplace-financial")]
+    use crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle;
+    use crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle;
+    use crate::services::module_event_dispatcher::{
+        ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
+    };
+    use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
+    #[cfg(feature = "mod-commerce")]
+    use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
+    #[cfg(feature = "mod-payment")]
+    use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
+    #[cfg(feature = "mod-product")]
+    use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+
+    let local = ctx.settings().runtime.runs_background_workers();
+    let listeners_required = ctx
+        .shared_get::<ModuleEventDispatcherRequirement>()
+        .map(|requirement| requirement.0)
+        // Until composition has evaluated its listener set, fail closed.
+        .unwrap_or(true);
+    let module_work_required = ctx
+        .shared_get::<ModuleWorkSchedulerRequirement>()
+        .map(|requirement| requirement.0)
+        // Before work registrations have been inspected, fail closed.
+        .unwrap_or(true);
+    vec![
+        RuntimeWorkerSnapshot {
+            name: "module_work_scheduler",
+            required: local && module_work_required,
+            finished: ctx
+                .shared_map::<ModuleWorkSchedulerHandle, _>(ModuleWorkSchedulerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "auth_retention",
+            required: local
+                && ctx
+                    .settings()
+                    .runtime
+                    .background_workers
+                    .auth_retention_enabled,
+            finished: ctx
+                .shared_map::<AuthRetentionWorkerHandle, _>(AuthRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "module_event_dispatcher",
+            required: local && listeners_required,
+            finished: ctx.shared_map::<ModuleEventDispatcherHandle, _>(
+                ModuleEventDispatcherHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "module_transition_watchdog",
+            required: local,
+            finished: ctx.shared_map::<ModuleTransitionWatchdogHandle, _>(
+                ModuleTransitionWatchdogHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "module_artifact_maintenance",
+            required: local,
+            finished: ctx.shared_map::<ModuleArtifactMaintenanceHandle, _>(
+                ModuleArtifactMaintenanceHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-payment")]
+        RuntimeWorkerSnapshot {
+            name: "payment_provider_event_recovery",
+            required: local,
+            finished: ctx.shared_map::<PaymentProviderEventWorkerHandle, _>(
+                PaymentProviderEventWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-commerce")]
+        RuntimeWorkerSnapshot {
+            name: "paid_order_create_label",
+            required: local,
+            finished: ctx.shared_map::<PaidOrderCreateLabelWorkerHandle, _>(
+                PaidOrderCreateLabelWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "commerce-marketplace-financial")]
+        RuntimeWorkerSnapshot {
+            name: "marketplace_financial_recovery",
+            required: local,
+            finished: ctx.shared_map::<MarketplaceFinancialWorkerHandle, _>(
+                MarketplaceFinancialWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-product")]
+        RuntimeWorkerSnapshot {
+            name: "product_media_release",
+            required: local,
+            finished: ctx.shared_map::<ProductMediaReleaseWorkerHandle, _>(
+                ProductMediaReleaseWorkerHandle::is_finished,
+            ),
+        },
+        #[cfg(feature = "mod-workflow")]
+        RuntimeWorkerSnapshot {
+            name: "workflow_cron",
+            required: local
+                && ctx
+                    .settings()
+                    .runtime
+                    .background_workers
+                    .workflow_cron_enabled,
+            finished: ctx.shared_map::<WorkflowCronSchedulerHandle, _>(
+                WorkflowCronSchedulerHandle::is_finished,
+            ),
+        },
+    ]
 }
 
 /// Resolves the local development database fallback without depending on a host config type.
@@ -418,10 +561,11 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
 
 /// Stops all runtime workers that were registered during server bootstrap.
 pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
-    if let Some(handle) = runtime_ctx.shared_get::<StopHandle>() {
-        tracing::info!("Stopping background workers");
-        handle.stop().await;
-    }
+    // Publish shutdown even when startup has not created a stop handle yet.
+    // A concurrent initializer must not start workers after the drain.
+    let stop = StopHandle::ensure(runtime_ctx);
+    tracing::info!("Stopping background workers");
+    stop.stop().await;
 
     let timeout_duration = Duration::from_secs(5);
 
@@ -487,8 +631,17 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let seo_drain = std::future::ready(());
 
     let module_work_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<ModuleWorkSchedulerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
+        let initialization = ModuleWorkSchedulerInitializationLock::ensure(runtime_ctx);
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
+            Ok(_guard) => runtime_ctx.shared_take::<ModuleWorkSchedulerHandle>(),
+            Err(_) => {
+                tracing::warn!("Module work scheduler initialization did not stop within 5s");
+                return;
+            }
+        };
+        if let Some(worker) = worker {
+            match tokio::time::timeout_at(deadline, worker.join()).await {
                 Ok(Ok(())) => tracing::info!("Module work scheduler stopped gracefully"),
                 Ok(Err(err)) => tracing::warn!(?err, "Module work scheduler joined with error"),
                 Err(_) => tracing::warn!("Module work scheduler shutdown timed out after 5s"),
@@ -642,6 +795,29 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         notification_fanout_drain,
         forum_search_drain,
     );
+
+    // These supervisors do not consume StopHandle. Explicitly abort them even
+    // if other clones of their handles or the shared context remain alive.
+    if let Some(listener) = runtime_ctx.shared_take::<
+        crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle,
+    >() {
+        listener.abort();
+    }
+    if let Some(listener) = runtime_ctx.shared_take::<
+        crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle,
+    >() {
+        listener.abort();
+    }
+    if let Some(watchdog) = runtime_ctx.shared_take::<
+        crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle,
+    >() {
+        watchdog.abort();
+    }
+    if let Some(forwarder) =
+        runtime_ctx.shared_take::<crate::services::event_bus::EventForwarderHandle>()
+    {
+        forwarder.abort();
+    }
 }
 
 /// Drain module-owned workers after broadcasting the shutdown signal. The
@@ -991,6 +1167,39 @@ mod tests {
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
 
+    #[tokio::test]
+    async fn additional_workers_respect_host_modes_and_auth_retention_config() {
+        use super::additional_runtime_worker_snapshots;
+        use crate::common::settings::RuntimeHostMode;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        for (mode, expected) in [
+            (RuntimeHostMode::Full, true),
+            (RuntimeHostMode::Worker, true),
+            (RuntimeHostMode::Api, false),
+            (RuntimeHostMode::AdminSsr, false),
+            (RuntimeHostMode::StorefrontSsr, false),
+            (RuntimeHostMode::RegistryOnly, false),
+        ] {
+            let mut settings = RustokSettings::default();
+            settings.runtime.host_mode = mode;
+            let ctx = ServerRuntimeContext::new(db.clone(), settings);
+            let snapshots = additional_runtime_worker_snapshots(&ctx);
+            for worker in &snapshots {
+                assert_eq!(worker.required, expected, "{}", worker.name);
+                assert_eq!(worker.finished, None, "{}", worker.name);
+            }
+        }
+        let mut settings = RustokSettings::default();
+        settings.runtime.background_workers.auth_retention_enabled = false;
+        let ctx = ServerRuntimeContext::new(db, settings);
+        let auth = additional_runtime_worker_snapshots(&ctx)
+            .into_iter()
+            .find(|worker| worker.name == "auth_retention")
+            .unwrap();
+        assert!(!auth.required);
+    }
+
     #[test]
     fn uses_sqlite_fallback_when_database_url_is_missing_and_uri_is_empty() {
         assert!(should_use_local_sqlite_fallback(false, ""));
@@ -1271,6 +1480,47 @@ mod tests {
         assert!(!runtime_ctx.shared_contains::<
             crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
         >());
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones() {
+        use crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle;
+        use crate::services::event_bus::EventForwarderHandle;
+        use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
+        use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let (channel, mut tasks) = ChannelCacheInvalidationListenerHandle::for_shutdown_test();
+        let (rbac, other) = RbacCacheInvalidationListenerHandle::for_shutdown_test();
+        tasks.extend(other);
+        let (watchdog, other) = RbacInvalidationGenerationWatchdogHandle::for_shutdown_test();
+        tasks.extend(other);
+        let (forwarder, other) = EventForwarderHandle::for_shutdown_test();
+        tasks.extend(other);
+        // Retain clones to prove shutdown does not rely on the last Arc being dropped.
+        ctx.shared_insert(channel.clone());
+        ctx.shared_insert(rbac.clone());
+        ctx.shared_insert(watchdog.clone());
+        ctx.shared_insert(forwarder.clone());
+        assert!(tasks.iter().all(|task| !task.is_finished()));
+
+        super::shutdown_runtime_workers(&ctx).await;
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while tasks.iter().any(|task| !task.is_finished()) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("all supervisor tasks must be aborted");
+        assert!(!channel.is_running());
+        assert!(!rbac.is_running());
+        assert!(!watchdog.is_running());
+        assert!(!forwarder.is_running());
+        assert!(!ctx.shared_contains::<ChannelCacheInvalidationListenerHandle>());
+        assert!(!ctx.shared_contains::<RbacCacheInvalidationListenerHandle>());
+        assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
+        assert!(!ctx.shared_contains::<EventForwarderHandle>());
     }
 
     #[tokio::test]

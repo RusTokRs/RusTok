@@ -27,7 +27,8 @@ use crate::subscription::ForumSubscriptionLevel;
 
 use super::SubscriptionService;
 use super::helpers::{
-    INITIAL_REVISION, ensure_revision_update, implicit_response, require_authenticated_user,
+    INITIAL_REVISION, ensure_revision_update, implicit_response, next_revision,
+    require_authenticated_user,
     resolve_preferences, topic_response, validate_expected_revision, validate_new_revision,
 };
 
@@ -66,7 +67,7 @@ impl SubscriptionService {
         let existing = self
             .find_topic_subscription(tenant_id, topic_id, user_id)
             .await?;
-        if let Some(existing) = existing {
+        if existing.is_some() {
             self.write_topic_subscription(
                 tenant_id,
                 topic_id,
@@ -78,7 +79,12 @@ impl SubscriptionService {
                     notify_replies: None,
                     notify_new_topics: None,
                     digest_mode: None,
-                    expected_revision: Some(existing.revision),
+                    // Blind clear: do not pin the revision observed
+                    // outside the transaction. The writer re-reads the
+                    // row under the subscription scope lock and CASes
+                    // against that revision, so a concurrent update does
+                    // not make an unsubscribe fail.
+                    expected_revision: None,
                 },
             )
             .await?;
@@ -178,7 +184,7 @@ impl SubscriptionService {
         audience: Option<(SecurityContext, PortContext)>,
         input: UpdateForumSubscriptionInput,
     ) -> ForumResult<ForumSubscriptionResponse> {
-        let preferences = resolve_preferences(&input);
+        let preferences = resolve_preferences(&input)?;
         let txn = self.db.begin().await?;
         if let Some((security, context)) = audience {
             lock_category_tree_in_tx(&txn, tenant_id).await?;
@@ -210,7 +216,7 @@ impl SubscriptionService {
             Some(existing) => {
                 validate_expected_revision(input.expected_revision, existing.revision)?;
                 let previous_revision = existing.revision;
-                let next_revision = previous_revision.saturating_add(1);
+                let next_revision = next_revision(previous_revision)?;
                 let result = forum_topic_subscription::Entity::update_many()
                     .filter(forum_topic_subscription::Column::TenantId.eq(tenant_id))
                     .filter(forum_topic_subscription::Column::TopicId.eq(topic_id))

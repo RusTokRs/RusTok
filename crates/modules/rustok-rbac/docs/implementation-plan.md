@@ -1,5 +1,34 @@
 # Implementation plan for `rustok-rbac`
 
+## GraphQL role-grant durable invalidation (verification pending; 2026-11-02)
+
+The owner GraphQL `update_role` transaction now reserves the existing durable
+RBAC invalidation generation with a supplied grant replacement. The server clears
+its local permission cache and attempts namespace-wide fan-out after commit.
+Metadata-only updates do not reserve a generation; identical supplied grant sets
+are still rewritten and advance it. Missing/exhausted generation storage aborts
+the edit. An optional legacy host callback still needs its own generation
+reconciliation. Added owner/host regressions have not been compiled or executed.
+
+This is a durable watermark plus eventual watchdog reconciliation, not an outbox,
+immediate cross-replica or transaction-spanning revocation fence. Cancellation
+after commit can prevent the fast path; availability and latency depend on live
+watchdogs. PostgreSQL concurrency and real multi-replica recovery remain release
+gates. Do not treat cache TTL as a bound on in-flight request snapshots. See the
+[decision](../../../../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md).
+
+
+## Cache-resolution consistency continuation (2026-11-02)
+
+The owner now distinguishes a relation-store error from exhaustion of bounded
+generation-aware cache-fill retries. A rejected read cannot produce an allowed
+or empty successful authorization result. Unit and server-adapter regressions
+are added but have not been compiled or executed in this workspace. The error
+contract changes `resolve_permissions_with_cache` and the runtime adapter's
+conversion bound; external Rust consumers must migrate. Multi-query consistency,
+commit-time revocation fences, and multi-replica recovery remain separate gates.
+See [the decision](../../../../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md).
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`

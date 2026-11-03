@@ -774,9 +774,10 @@ impl RootQuery {
             Err(err) => return Err(map_module_operation_recovery_error(err)),
         };
 
-        Ok(Some(ModuleOperationRecoveryPlan::from(
+        let plan = ModuleOperationRecoveryPlan::try_from(
             rustok_api::ModuleOperationRecoveryPlanView::from(plan),
-        )))
+        )?;
+        Ok(Some(plan))
     }
 
     async fn failed_module_operation_recovery_plans(
@@ -806,11 +807,11 @@ impl RootQuery {
         .into_iter()
         .take(limit)
         .map(|plan| {
-            ModuleOperationRecoveryPlan::from(rustok_api::ModuleOperationRecoveryPlanView::from(
-                plan,
-            ))
+            ModuleOperationRecoveryPlan::try_from(
+                rustok_api::ModuleOperationRecoveryPlanView::from(plan),
+            )
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>>>()?;
 
         metrics::record_read_path_budget(
             "graphql",

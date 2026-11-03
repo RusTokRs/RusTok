@@ -1,6 +1,6 @@
 use rustok_api::{Action, PortActorKind, PortContext, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -66,6 +66,81 @@ impl ForumModerationAudienceAuthorizationService {
             .await
     }
 
+    /// Transaction-scoped variant of [`Self::evaluate_topic`]. Moderation
+    /// write paths call this after taking the category-tree lock inside
+    /// their write transaction, so an audience change committed between a
+    /// pre-transaction check and the write cannot slip through.
+    pub async fn evaluate_topic_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumTopics, Action::Moderate)?;
+        let context = exact_transport_context(tenant_id, security, context)?;
+        let topic = forum_topic::Entity::find_by_id(topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))?;
+        self.evaluate_category_with_conn(txn, tenant_id, topic.category_id, security, context)
+            .await
+    }
+
+    pub async fn require_topic_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        let authorization = self
+            .evaluate_topic_in_tx(txn, tenant_id, topic_id, security, context)
+            .await?;
+        self.require_allowed(authorization)
+    }
+
+    pub async fn require_reply_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        expected_topic_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        enforce_scope(security, Resource::ForumReplies, Action::Moderate)?;
+        let context = exact_transport_context(tenant_id, security, context)?;
+        let reply = forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(ForumError::ReplyNotFound(reply_id))?;
+        if reply.topic_id != expected_topic_id {
+            return Err(ForumError::Validation(
+                "Reply belongs to another topic".to_string(),
+            ));
+        }
+        let topic = forum_topic::Entity::find_by_id(expected_topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(ForumError::TopicNotFound(expected_topic_id))?;
+        let authorization = self
+            .evaluate_category_with_conn(
+                txn,
+                tenant_id,
+                topic.category_id,
+                security,
+                context,
+            )
+            .await?;
+        self.require_allowed(authorization)
+    }
+
     pub async fn evaluate_reply(
         &self,
         tenant_id: Uuid,
@@ -129,8 +204,23 @@ impl ForumModerationAudienceAuthorizationService {
         security: &SecurityContext,
         context: Option<PortContext>,
     ) -> ForumResult<ForumModerationAudienceAuthorization> {
+        self.evaluate_category_with_conn(&self.db, tenant_id, category_id, security, context)
+            .await
+    }
+
+    async fn evaluate_category_with_conn<C>(
+        &self,
+        db: &C,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: &SecurityContext,
+        context: Option<PortContext>,
+    ) -> ForumResult<ForumModerationAudienceAuthorization>
+    where
+        C: ConnectionTrait,
+    {
         let policy =
-            load_category_moderation_audience_policy(&self.db, tenant_id, category_id).await?;
+            load_category_moderation_audience_policy(db, tenant_id, category_id).await?;
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
         for layer in policy.effective_layers {

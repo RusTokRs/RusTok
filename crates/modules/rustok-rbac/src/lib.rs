@@ -92,10 +92,10 @@ pub use services::permission_policy::{
 
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::relation_permission_resolver::{
-    PermissionCache, PermissionCacheLookup, RelationPermissionStore, SeaOrmRelationPermissionStore,
-    authorize_current_permission, invalidate_cached_permissions, load_role_user_ids_on,
-    resolve_permissions_from_relations, resolve_permissions_with_cache,
-    resolve_persisted_permissions_on,
+    PermissionCache, PermissionCacheLookup, PermissionCacheResolutionError,
+    RelationPermissionStore, SeaOrmRelationPermissionStore, authorize_current_permission,
+    invalidate_cached_permissions, load_role_user_ids_on, resolve_permissions_from_relations,
+    resolve_permissions_with_cache, resolve_persisted_permissions_on,
 };
 pub use services::runtime_permission_resolver::RuntimePermissionResolver;
 

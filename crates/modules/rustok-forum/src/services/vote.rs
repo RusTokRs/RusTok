@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, TransactionTrait,
+    QueryFilter, QuerySelect, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -31,6 +31,13 @@ use crate::state_machine::{ReplyStatus, TopicStatus};
 pub struct VoteSummary {
     pub score: i32,
     pub current_user_vote: Option<i32>,
+}
+
+/// SQL `SUM(value)` widens to `i64`; the public score contract is `i32`.
+/// Clamp instead of wrapping so an extreme aggregate saturates visibly
+/// rather than flipping sign.
+fn clamp_vote_score(score: i64) -> i32 {
+    score.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 /// Tenant vote rules from `ForumModuleSettings`, read inside the vote write transaction.
@@ -366,20 +373,47 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        let votes = forum_topic_vote::Entity::find()
+        // Aggregate in SQL: a popular topic's full vote history must not be
+        // loaded into memory just to render one list page. The current-user
+        // lookup stays a separate bounded query (one row per requested
+        // topic at most).
+        let rows = forum_topic_vote::Entity::find()
+            .select_only()
+            .column(forum_topic_vote::Column::TopicId)
+            .column_as(forum_topic_vote::Column::Value.sum(), "score")
             .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_topic_vote::Column::TopicId.is_in(topic_ids.to_vec()))
+            .group_by(forum_topic_vote::Column::TopicId)
+            .into_tuple::<(Uuid, Option<i64>)>()
             .all(&self.db)
             .await?;
-
-        let mut summaries = HashMap::new();
-        for vote in votes {
-            let entry = summaries
-                .entry(vote.topic_id)
-                .or_insert_with(VoteSummary::default);
-            entry.score += vote.value;
-            if Some(vote.user_id) == user_id {
-                entry.current_user_vote = Some(vote.value);
+        let mut summaries: HashMap<Uuid, VoteSummary> = rows
+            .into_iter()
+            .map(|(topic_id, score)| {
+                (
+                    topic_id,
+                    VoteSummary {
+                        score: clamp_vote_score(score.unwrap_or(0)),
+                        current_user_vote: None,
+                    },
+                )
+            })
+            .collect();
+        if let Some(user_id) = user_id {
+            let user_votes = forum_topic_vote::Entity::find()
+                .select_only()
+                .columns([
+                    forum_topic_vote::Column::TopicId,
+                    forum_topic_vote::Column::Value,
+                ])
+                .filter(forum_topic_vote::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic_vote::Column::TopicId.is_in(topic_ids.to_vec()))
+                .filter(forum_topic_vote::Column::UserId.eq(user_id))
+                .into_tuple::<(Uuid, i32)>()
+                .all(&self.db)
+                .await?;
+            for (topic_id, value) in user_votes {
+                summaries.entry(topic_id).or_default().current_user_vote = Some(value);
             }
         }
 
@@ -413,20 +447,44 @@ impl VoteService {
             return Ok(HashMap::new());
         }
 
-        let votes = forum_reply_vote::Entity::find()
+        // See `topic_vote_summaries` for why this aggregates in SQL.
+        let rows = forum_reply_vote::Entity::find()
+            .select_only()
+            .column(forum_reply_vote::Column::ReplyId)
+            .column_as(forum_reply_vote::Column::Value.sum(), "score")
             .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
             .filter(forum_reply_vote::Column::ReplyId.is_in(reply_ids.to_vec()))
+            .group_by(forum_reply_vote::Column::ReplyId)
+            .into_tuple::<(Uuid, Option<i64>)>()
             .all(&self.db)
             .await?;
-
-        let mut summaries = HashMap::new();
-        for vote in votes {
-            let entry = summaries
-                .entry(vote.reply_id)
-                .or_insert_with(VoteSummary::default);
-            entry.score += vote.value;
-            if Some(vote.user_id) == user_id {
-                entry.current_user_vote = Some(vote.value);
+        let mut summaries: HashMap<Uuid, VoteSummary> = rows
+            .into_iter()
+            .map(|(reply_id, score)| {
+                (
+                    reply_id,
+                    VoteSummary {
+                        score: clamp_vote_score(score.unwrap_or(0)),
+                        current_user_vote: None,
+                    },
+                )
+            })
+            .collect();
+        if let Some(user_id) = user_id {
+            let user_votes = forum_reply_vote::Entity::find()
+                .select_only()
+                .columns([
+                    forum_reply_vote::Column::ReplyId,
+                    forum_reply_vote::Column::Value,
+                ])
+                .filter(forum_reply_vote::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply_vote::Column::ReplyId.is_in(reply_ids.to_vec()))
+                .filter(forum_reply_vote::Column::UserId.eq(user_id))
+                .into_tuple::<(Uuid, i32)>()
+                .all(&self.db)
+                .await?;
+            for (reply_id, value) in user_votes {
+                summaries.entry(reply_id).or_default().current_user_vote = Some(value);
             }
         }
 

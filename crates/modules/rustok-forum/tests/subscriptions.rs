@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 #[path = "support/posting_cooldown.rs"]
 mod posting_cooldown;
 

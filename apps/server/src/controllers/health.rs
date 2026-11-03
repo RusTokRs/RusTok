@@ -32,7 +32,7 @@ use crate::middleware::tenant::{
 };
 use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, RemoteExecutorReaperHandle,
-    RuntimeWorkerLifecycleState, StopHandle,
+    RuntimeWorkerLifecycleState, StopHandle, additional_runtime_worker_snapshots,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
@@ -688,12 +688,18 @@ async fn check_event_transport(ctx: &ServerRuntimeContext) -> std::result::Resul
         .ok_or_else(|| "event transport not initialized in shared_store".to_string())
 }
 
+// Lag is derived from signed database/time values, whereas configured
+// thresholds are u64. Never wrap a large valid threshold into a negative i64.
+fn lag_exceeds_threshold(lag_seconds: i64, threshold_seconds: u64) -> bool {
+    lag_seconds.max(0) as u64 > threshold_seconds
+}
+
 async fn check_outbox_pending_lag(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> ReadinessCheck {
     let started_at = Instant::now();
-    let threshold = settings.readiness.outbox_max_pending_lag_seconds as i64;
+    let threshold = settings.readiness.outbox_max_pending_lag_seconds;
     let result = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
         .order_by_asc(SysEventsColumn::CreatedAt)
@@ -703,7 +709,7 @@ async fn check_outbox_pending_lag(
     let (status, reason) = match result {
         Ok(Some(event)) => {
             let lag_seconds = (Utc::now() - event.created_at).num_seconds().max(0);
-            if lag_seconds > threshold {
+            if lag_exceeds_threshold(lag_seconds, threshold) {
                 (
                     ReadinessStatus::Degraded,
                     Some(format!(
@@ -736,7 +742,7 @@ async fn check_search_index_lag(
     settings: &RustokSettings,
 ) -> ReadinessCheck {
     let started_at = Instant::now();
-    let threshold = settings.readiness.search_max_lag_seconds as i64;
+    let threshold = settings.readiness.search_max_lag_seconds;
     let backend = ctx.db().get_database_backend();
     let stmt = Statement::from_string(backend, search_index_lag_query(backend).to_string());
 
@@ -755,7 +761,7 @@ async fn check_search_index_lag(
                     };
                 }
             };
-            if lag_seconds > threshold {
+            if lag_exceeds_threshold(lag_seconds, threshold) {
                 (
                     ReadinessStatus::Degraded,
                     Some(format!(
@@ -790,13 +796,20 @@ async fn check_search_index_lag(
 fn search_index_lag_query(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Sqlite => {
+            // SQLite parses timestamps at millisecond precision. Integer
+            // milliseconds avoid julianday floating-point errors at half seconds.
             r#"
             SELECT
                 CAST(
                     COALESCE(
                         MAX(
                             CASE
-                                WHEN updated_at > indexed_at THEN CAST((julianday(updated_at) - julianday(indexed_at)) * 86400 AS INTEGER)
+                                WHEN julianday(updated_at) > julianday(indexed_at) THEN (
+                                    (CAST(strftime('%s', updated_at) AS INTEGER) - CAST(strftime('%s', indexed_at) AS INTEGER)) * 1000
+                                    + CAST(substr(strftime('%f', updated_at), 4, 3) AS INTEGER)
+                                    - CAST(substr(strftime('%f', indexed_at), 4, 3) AS INTEGER)
+                                    + 500
+                                ) / 1000
                                 ELSE 0
                             END
                         ),
@@ -873,6 +886,15 @@ fn check_runtime_workers(
         ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
         stop_requested,
     ));
+
+    for worker in additional_runtime_worker_snapshots(ctx) {
+        checks.push(runtime_worker_check(
+            &format!("worker:{}", worker.name),
+            worker.required,
+            worker.finished,
+            stop_requested,
+        ));
+    }
 
     #[cfg(feature = "mod-seo")]
     {
@@ -1265,6 +1287,145 @@ mod tests {
     use super::*;
     use crate::middleware::tenant::TenantInvalidationListenerSnapshot;
 
+    #[test]
+    fn readiness_lag_comparison_handles_full_u64_threshold_range() {
+        assert!(lag_exceeds_threshold(10, 9));
+        assert!(!lag_exceeds_threshold(10, 10));
+        assert!(!lag_exceeds_threshold(-1, 0));
+        assert!(!lag_exceeds_threshold(i64::MAX, i64::MAX as u64 + 1));
+        assert!(!lag_exceeds_threshold(i64::MAX, u64::MAX));
+    }
+
+    #[tokio::test]
+    async fn sqlite_outbox_lag_accepts_large_unsigned_thresholds() {
+        use sea_orm::{ActiveModelTrait, ConnectionTrait, Schema, Set};
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let backend = db.get_database_backend();
+        db.execute_raw(
+            backend.build(
+                &Schema::new(backend).create_table_from_entity(rustok_outbox::entity::Entity),
+            ),
+        )
+        .await
+        .unwrap();
+        rustok_outbox::entity::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            event_type: Set("test.event".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({})),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(Utc::now() - chrono::Duration::minutes(5)),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let mut settings = RustokSettings::default();
+        settings.readiness.outbox_max_pending_lag_seconds = 1;
+        let ctx = ServerRuntimeContext::new(db, settings.clone());
+        assert_eq!(
+            check_outbox_pending_lag(&ctx, &settings).await.status,
+            ReadinessStatus::Degraded
+        );
+        settings.readiness.outbox_max_pending_lag_seconds = u64::MAX;
+        assert_eq!(
+            check_outbox_pending_lag(&ctx, &settings).await.status,
+            ReadinessStatus::Ok
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_search_lag_uses_rounded_seconds_for_readiness() {
+        use sea_orm::ConnectionTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE search_documents (indexed_at TEXT, updated_at TEXT)")
+            .await
+            .unwrap();
+        db.execute_unprepared(
+            "INSERT INTO search_documents VALUES ('2024-01-01 00:00:00', '2024-01-01 00:00:10')",
+        )
+        .await
+        .unwrap();
+        let mut settings = RustokSettings::default();
+        settings.readiness.search_max_lag_seconds = 9;
+        let ctx = ServerRuntimeContext::new(db, settings.clone());
+        let lagging = check_search_index_lag(&ctx, &settings).await;
+        assert_eq!(lagging.status, ReadinessStatus::Degraded);
+        assert!(lagging.reason.as_deref().unwrap().contains("lag 10s"));
+        settings.readiness.search_max_lag_seconds = 10;
+        let within_threshold = check_search_index_lag(&ctx, &settings).await;
+        assert_eq!(within_threshold.status, ReadinessStatus::Ok);
+        settings.readiness.search_max_lag_seconds = u64::MAX;
+        let large_threshold = check_search_index_lag(&ctx, &settings).await;
+        assert_eq!(large_threshold.status, ReadinessStatus::Ok);
+    }
+
+    #[tokio::test]
+    async fn sqlite_search_lag_rounds_half_second_boundaries_for_readiness() {
+        use sea_orm::ConnectionTrait;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_unprepared("CREATE TABLE search_documents (indexed_at TEXT, updated_at TEXT)")
+            .await
+            .unwrap();
+        let mut settings = RustokSettings::default();
+        settings.readiness.search_max_lag_seconds = 0;
+        let ctx = ServerRuntimeContext::new(db, settings.clone());
+        for (indexed, updated, expected) in [
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:04.499", 0),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:04.500", 1),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:05.499", 1),
+            ("2024-01-01 00:00:04.000", "2024-01-01 00:00:05.500", 2),
+            ("2024-01-01 00:00:59.900", "2024-01-01 00:01:00.400", 1),
+            ("1969-12-31 23:59:59.750", "1970-01-01 00:00:00.250", 1),
+            (
+                "2024-01-01 01:00:00.000+01:00",
+                "2024-01-01 00:00:01.000+00:00",
+                1,
+            ),
+            (
+                "2024-01-01 00:00:01.000+00:00",
+                "2024-01-01 01:00:00.000+01:00",
+                0,
+            ),
+        ] {
+            ctx.db()
+                .execute_unprepared("DELETE FROM search_documents")
+                .await
+                .unwrap();
+            ctx.db()
+                .execute_unprepared(&format!(
+                    "INSERT INTO search_documents VALUES ('{indexed}', '{updated}')"
+                ))
+                .await
+                .unwrap();
+            let check = check_search_index_lag(&ctx, &settings).await;
+            if expected == 0 {
+                assert_eq!(check.status, ReadinessStatus::Ok, "{indexed} -> {updated}");
+            } else {
+                assert_eq!(
+                    check.status,
+                    ReadinessStatus::Degraded,
+                    "{indexed} -> {updated}"
+                );
+                assert!(
+                    check
+                        .reason
+                        .as_deref()
+                        .unwrap()
+                        .contains(&format!("lag {expected}s"))
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn readiness_checks_run_concurrently() {
         let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
@@ -1478,6 +1639,127 @@ mod tests {
             required_database_schema_tables(&settings),
             vec!["tenants", "users", "sys_events", "search_documents"]
         );
+    }
+
+    #[tokio::test]
+    async fn dispatcher_readiness_tracks_registration_and_task_liveness() {
+        use crate::services::module_event_dispatcher::{
+            ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
+        };
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let check = || {
+            check_runtime_workers(&ctx, ctx.settings())
+                .into_iter()
+                .find(|check| check.name == "worker:module_event_dispatcher")
+                .unwrap()
+        };
+        // An uninitialized listener set must not be mistaken for no listeners.
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+        ctx.shared_insert(ModuleEventDispatcherRequirement(false));
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        assert_eq!(check().criticality, DependencyCriticality::NonCritical);
+        ctx.shared_insert(ModuleEventDispatcherRequirement(true));
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+
+        ctx.shared_insert(ModuleEventDispatcherHandle::for_test());
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        assert!(
+            ctx.shared_map::<ModuleEventDispatcherHandle, _>(ModuleEventDispatcherHandle::abort)
+                .is_some()
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ctx.shared_map::<ModuleEventDispatcherHandle, _>(
+                ModuleEventDispatcherHandle::is_finished,
+            ) != Some(true)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+    }
+
+    #[tokio::test]
+    async fn module_work_scheduler_readiness_tracks_registration_and_liveness() {
+        use crate::services::app_lifecycle::{
+            ModuleWorkSchedulerHandle, ModuleWorkSchedulerRequirement, StopHandle,
+        };
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let check = || {
+            check_runtime_workers(&ctx, ctx.settings())
+                .into_iter()
+                .find(|check| check.name == "worker:module_work_scheduler")
+                .unwrap()
+        };
+        // Unknown registration state is not equivalent to an empty set.
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(false));
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        assert_eq!(check().criticality, DependencyCriticality::NonCritical);
+        ctx.shared_insert(ModuleWorkSchedulerRequirement(true));
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+
+        let task = tokio::spawn(std::future::pending::<()>());
+        let abort = task.abort_handle();
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(task));
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        abort.abort();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ctx
+                .shared_map::<ModuleWorkSchedulerHandle, _>(ModuleWorkSchedulerHandle::is_finished)
+                != Some(true)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+
+        // Shutdown must fail readiness even before the task has exited.
+        let task = tokio::spawn(std::future::pending::<()>());
+        let abort = task.abort_handle();
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(task));
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        let stop = StopHandle::ensure(&ctx);
+        stop.stop().await;
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+        abort.abort();
+    }
+
+    #[cfg(feature = "mod-payment")]
+    #[tokio::test]
+    async fn payment_recovery_readiness_tracks_a_real_worker() {
+        use crate::services::payment_provider_event_worker::{
+            PaymentProviderEventWorkerHandle, spawn_payment_provider_event_worker,
+        };
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let check = || {
+            check_runtime_workers(&ctx, ctx.settings())
+                .into_iter()
+                .find(|check| check.name == "worker:payment_provider_event_recovery")
+                .unwrap()
+        };
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        ctx.shared_insert(spawn_payment_provider_event_worker(ctx.clone(), stop_rx));
+        assert_eq!(check().status, ReadinessStatus::Ok);
+        stop_tx.send(true).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while ctx.shared_map::<PaymentProviderEventWorkerHandle, _>(
+                PaymentProviderEventWorkerHandle::is_finished,
+            ) != Some(true)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(check().status, ReadinessStatus::Unhealthy);
     }
 
     #[test]

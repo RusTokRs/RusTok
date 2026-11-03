@@ -215,8 +215,13 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     let top_id = Uuid::new_v4();
 
     seed_category(&db, tenant_id, cat_id).await;
-    // seed_topic automatically creates a watching subscription for author_id with revision 1
     seed_topic(&db, tenant_id, cat_id, top_id, author_id).await;
+    // Auto-subscribe is a Rust owner rule, so a raw SQL seed must create the
+    // author's watching subscription explicitly (revision 1).
+    seed_topic_subscription(
+        &db, tenant_id, top_id, author_id, "watching", 1, 1, 1, "immediate", 1,
+    )
+    .await;
     seed_category_subscription(
         &db, tenant_id, cat_id, user2, "normal", 1, 0, 0, "disabled", 1,
     )

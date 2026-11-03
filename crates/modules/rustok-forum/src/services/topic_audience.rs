@@ -21,6 +21,11 @@ use crate::entities::{
     forum_topic_audience_role, forum_topic_audience_user,
 };
 use crate::error::{ForumError, ForumResult};
+
+/// Topic row type owned by this policy module. Audience consumers use this
+/// alias instead of reaching into `crate::entities` directly, so storage
+/// access stays behind the topic/policy owners.
+pub(super) type ForumTopicModel = forum_topic::Model;
 use crate::services::category_audience::{
     ForumCategoryAudiencePolicyLayer, load_category_audience_policy, lock_category_tree_in_tx,
 };

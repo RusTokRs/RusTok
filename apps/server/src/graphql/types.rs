@@ -489,18 +489,30 @@ fn sanitized_recovery_error_message(issue: &str, error_message: Option<String>) 
     })
 }
 
-impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
-    fn from(plan: rustok_api::ModuleOperationRecoveryPlanView) -> Self {
+fn invalid_recovery_identity(field: &'static str) -> async_graphql::FieldError {
+    tracing::error!(
+        field,
+        "GraphQL module recovery projection contains an invalid identity"
+    );
+    <async_graphql::FieldError as GraphQLError>::internal_error(
+        "Module operation recovery is unavailable",
+    )
+}
+
+impl TryFrom<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecoveryPlan {
+    type Error = async_graphql::FieldError;
+
+    fn try_from(
+        plan: rustok_api::ModuleOperationRecoveryPlanView,
+    ) -> std::result::Result<Self, Self::Error> {
+        let operation_id = Uuid::parse_str(&plan.operation_id)
+            .map_err(|_| invalid_recovery_identity("operation_id"))?;
+        let tenant_id =
+            Uuid::parse_str(&plan.tenant_id).map_err(|_| invalid_recovery_identity("tenant_id"))?;
         let error_message = sanitized_recovery_error_message(&plan.issue, plan.error_message);
-        Self {
-            operation_id: plan
-                .operation_id
-                .parse()
-                .expect("owner recovery view contains a UUID operation identity"),
-            tenant_id: plan
-                .tenant_id
-                .parse()
-                .expect("owner recovery view contains a UUID tenant identity"),
+        Ok(Self {
+            operation_id,
+            tenant_id,
             module_slug: plan.module_slug,
             requested_enabled: plan.requested_enabled,
             previous_effective_enabled: plan.previous_effective_enabled,
@@ -511,7 +523,7 @@ impl From<rustok_api::ModuleOperationRecoveryPlanView> for ModuleOperationRecove
             correlation_id: plan.correlation_id,
             requested_by: plan.requested_by,
             error_message,
-        }
+        })
     }
 }
 
@@ -1477,6 +1489,132 @@ mod tests {
         );
 
         assert_eq!(redacted.as_deref(), Some("Module lifecycle hook failed"));
+    }
+
+    fn recovery_view() -> rustok_api::ModuleOperationRecoveryPlanView {
+        rustok_api::ModuleOperationRecoveryPlanView {
+            operation_id: "11111111-1111-1111-1111-111111111111".to_string(),
+            tenant_id: "22222222-2222-2222-2222-222222222222".to_string(),
+            module_slug: "forum".to_string(),
+            requested_enabled: true,
+            previous_effective_enabled: false,
+            status: "committed_hook_failed".to_string(),
+            issue: "post_hook_failed".to_string(),
+            retryable: true,
+            recommended_action: "retry_post_hook".to_string(),
+            correlation_id: Some("correlation".to_string()),
+            requested_by: Some("operator".to_string()),
+            error_message: Some("hook failure: secret backend diagnostic".to_string()),
+        }
+    }
+
+    #[test]
+    fn recovery_plan_projection_preserves_facts_and_redacts_diagnostics() {
+        let view = recovery_view();
+        let plan = super::ModuleOperationRecoveryPlan::try_from(view.clone())
+            .expect("valid identities should project");
+        assert_eq!(plan.operation_id.to_string(), view.operation_id);
+        assert_eq!(plan.tenant_id.to_string(), view.tenant_id);
+        assert_eq!(plan.module_slug, view.module_slug);
+        assert_eq!(plan.requested_enabled, view.requested_enabled);
+        assert_eq!(
+            plan.previous_effective_enabled,
+            view.previous_effective_enabled
+        );
+        assert_eq!(plan.status, view.status);
+        assert_eq!(plan.issue, view.issue);
+        assert_eq!(plan.retryable, view.retryable);
+        assert_eq!(plan.recommended_action, view.recommended_action);
+        assert_eq!(plan.correlation_id, view.correlation_id);
+        assert_eq!(plan.requested_by, view.requested_by);
+        assert_eq!(
+            plan.error_message.as_deref(),
+            Some("Module lifecycle hook failed")
+        );
+
+        let mut no_error = recovery_view();
+        no_error.error_message = None;
+        assert!(
+            super::ModuleOperationRecoveryPlan::try_from(no_error)
+                .expect("valid identities should project")
+                .error_message
+                .is_none()
+        );
+    }
+
+    struct RecoveryProjectionQuery {
+        views: Vec<rustok_api::ModuleOperationRecoveryPlanView>,
+    }
+
+    #[async_graphql::Object]
+    impl RecoveryProjectionQuery {
+        async fn recovery_plan(&self) -> async_graphql::Result<super::ModuleOperationRecoveryPlan> {
+            super::ModuleOperationRecoveryPlan::try_from(self.views[0].clone())
+        }
+
+        async fn recovery_plans(
+            &self,
+        ) -> async_graphql::Result<Vec<super::ModuleOperationRecoveryPlan>> {
+            self.views
+                .iter()
+                .cloned()
+                .map(super::ModuleOperationRecoveryPlan::try_from)
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_recovery_identities_return_safe_graphql_errors() {
+        for invalid_field in ["operation_id", "tenant_id"] {
+            let mut view = recovery_view();
+            let secret = "invalid-uuid-secret";
+            if invalid_field == "operation_id" {
+                view.operation_id = secret.to_string();
+            } else {
+                view.tenant_id = secret.to_string();
+            }
+            let schema = async_graphql::Schema::build(
+                RecoveryProjectionQuery {
+                    views: vec![recovery_view(), view],
+                },
+                async_graphql::EmptyMutation,
+                async_graphql::EmptySubscription,
+            )
+            .finish();
+            // The second, malformed entry must fail the whole list, not be silently dropped.
+            let response = schema
+                .execute("{ recoveryPlans { operationId tenantId } }")
+                .await;
+            assert_eq!(response.errors.len(), 1);
+            let error = &response.errors[0];
+            assert_eq!(error.message, "Module operation recovery is unavailable");
+            assert!(!error.message.contains(secret));
+            assert_eq!(
+                error.extensions.as_ref().and_then(|e| e.get("code")),
+                Some(&async_graphql::Value::from("INTERNAL_ERROR"))
+            );
+            assert_eq!(response.data, async_graphql::Value::Null);
+        }
+    }
+
+    #[tokio::test]
+    async fn single_invalid_recovery_plan_returns_safe_graphql_error() {
+        let mut view = recovery_view();
+        view.operation_id = "invalid-single-secret".to_string();
+        let schema = async_graphql::Schema::build(
+            RecoveryProjectionQuery { views: vec![view] },
+            async_graphql::EmptyMutation,
+            async_graphql::EmptySubscription,
+        )
+        .finish();
+        let response = schema.execute("{ recoveryPlan { operationId } }").await;
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(
+            response.errors[0].message,
+            "Module operation recovery is unavailable"
+        );
+        assert!(!response.errors[0].message.contains("invalid-single-secret"));
+        assert_eq!(response.data, async_graphql::Value::Null);
     }
 
     #[test]

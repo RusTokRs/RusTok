@@ -66,6 +66,20 @@ their selected surface.
 - `search_index_lag` — non-critical check of maximum lag between `search_documents.updated_at`
   and `search_documents.indexed_at`.
 
+The search lag check and `rustok_search_max_lag_seconds` round nonnegative
+intervals to whole seconds. SQLite parses timestamps at millisecond precision,
+so sub-millisecond values may differ from PostgreSQL. SQLite's search lag and
+stale counts compare parsed instants, including their time-zone offsets, rather
+than timestamp text. They compare timestamps in already-indexed rows only. A zero result does **not** prove that the index is
+fresh or complete: an empty index, missing documents, or source changes not yet
+projected can also yield zero. `rustok_search_metrics_collection_status` reports
+query/decoding success, not freshness. `rustok_search_bootstrap_pending_tenants`
+can identify tenants with source rows but no indexed rows; it does not detect a
+partially indexed tenant. Use owner search consistency diagnostics and indexing
+error/queue monitoring as additional signals. An authoritative freshness check
+requires a durable source checkpoint or reconciliation against all projection
+inputs.
+
 Lag thresholds are set in `settings.rustok.readiness`:
 
 ```yaml
@@ -79,8 +93,8 @@ but by itself does not mean the process should be removed from service discovery
 
 ### Runtime worker checks
 
-In full runtime `/health/ready` additionally verifies mandatory background workers with actual
-handles in `AppContext.shared_store`.
+In `full` and `worker` host modes `/health/ready` additionally verifies mandatory
+background workers with actual handles in the server runtime shared store.
 
 Checks are published in `checks` with `kind = "worker"`:
 
@@ -89,11 +103,29 @@ Checks are published in `checks` with `kind = "worker"`:
   built relay config;
 - `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
 - `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.
+- `worker:auth_retention` — critical if auth retention is enabled;
+- `worker:module_event_dispatcher` — critical when composition registered at least one listener.
+  Before composition has evaluated the listener set it is treated as required;
+  a confirmed empty set does not require a dispatcher task;
+- `worker:module_work_scheduler` — critical when module composition registered scheduled work.
+  Before the registration set is evaluated it is treated as required; an absent or empty
+  registration set does not require a scheduler task. Startup is serialized per
+  runtime context; this does not establish fleet-wide ownership or work progress;
+- `worker:module_transition_watchdog` and `worker:module_artifact_maintenance` — critical;
+- `worker:payment_provider_event_recovery` (`mod-payment`),
+  `worker:paid_order_create_label` (`mod-commerce`),
+  `worker:marketplace_financial_recovery` (`commerce-marketplace-financial`), and
+  `worker:product_media_release` (`mod-product`) — critical when compiled in;
+- `worker:workflow_cron` — critical if `mod-workflow` is compiled in and cron is enabled.
 
 If a worker is disabled by settings, check remains `ok` and `non_critical` with reason
 `worker disabled by runtime settings`. If a mandatory worker is not registered in `shared_store`
 or its task has already finished, check becomes `critical` + `unhealthy`. This prevents considering full
 runtime ready until mandatory relay/worker lifecycle is started.
+These checks only establish local task liveness: a live task may be stuck or repeatedly
+fail its work. They do not measure successful progress, backlog age, or remote workers,
+and do not yet cover every background worker. Monitor the relevant queues and errors
+separately; a green readiness result is not proof that recovery is progressing.
 
 ### Registry-only mode
 
@@ -145,8 +177,11 @@ Prometheus surface now also publishes:
 
 Worker/readiness metrics:
 
-- `rustok_runtime_worker_state{worker="outbox_relay|remote_executor_reaper|seo_bulk"}`:
-  `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
+- `rustok_runtime_worker_state{worker}`: `-1 = missing`, `0 = disabled`,
+  `1 = running`, `2 = stopped`. Worker labels include the readiness workers above
+  (using underscores instead of the `worker:` prefix), retention, and enabled SEO
+  variants. Newly covered worker labels are also emitted as disabled for host modes
+  that do not run local workers; feature-gated labels exist only when compiled in.
 - `rustok_runtime_worker_lifecycle_state{worker,state}`:
   `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.
 - `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — number of restart cycles for relay supervisor
