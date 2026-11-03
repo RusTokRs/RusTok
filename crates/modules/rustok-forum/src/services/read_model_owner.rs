@@ -27,6 +27,7 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::state_machine::TopicStatus;
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
@@ -408,19 +409,20 @@ impl ForumReadModelService {
         let limit = bounded_forum_read_limit(query.limit);
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::DeletedAt.is_null());
+            .filter(Expr::cust("deleted_at IS NULL"));
 
-        let hidden_category_ids = crate::services::category_visibility::CategoryVisibilityService::new(self.db.clone())
+        let hidden_category_ids = crate::services::category_visibility::ForumCategoryVisibilityPolicyService::new(self.db.clone())
             .hidden_category_ids_for_viewer(tenant_id, security.user_id.is_some())
             .await?;
         if !hidden_category_ids.is_empty() {
             select = select.filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids));
         }
 
-        let is_operator = security.has_permission(&rustok_api::Permission::FORUM_TOPICS_MANAGE.to_string())
-            || security.has_permission(&rustok_api::Permission::FORUM_MODERATION_MANAGE.to_string())
-            || security.has_role("admin")
-            || security.has_role("moderator");
+        let is_operator = security.role == rustok_core::UserRole::SuperAdmin
+            || security.role == rustok_core::UserRole::Admin
+            || security.get_scope(Resource::ForumTopics, Action::Update) == rustok_core::PermissionScope::All
+            || security.get_scope(Resource::ForumTopics, Action::Manage) == rustok_core::PermissionScope::All
+            || security.get_scope(Resource::ModerationCases, Action::Manage) == rustok_core::PermissionScope::All;
 
         if is_operator {
             if let Some(status) = query.status {

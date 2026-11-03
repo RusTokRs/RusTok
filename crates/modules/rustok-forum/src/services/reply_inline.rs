@@ -212,15 +212,18 @@ impl ReplyService {
             .filter(forum_reply_body::Column::Locale.eq(&locale))
             .one(&txn)
             .await?;
-        let body_changed = match (&document, &existing_body_row) {
-            (Some(new_doc), Some(existing_row)) => {
-                let existing_doc = crate::richtext::project_stored_discussion(&existing_row.body)
-                    .map(|p| p.view.document)
-                    .ok();
-                existing_doc.as_ref() != Some(new_doc)
+        let body_changed = if stored_body.is_some() {
+            match &existing_body_row {
+                Some(existing_row) => {
+                    let existing_doc = crate::richtext::project_stored_discussion(&existing_row.body)
+                        .map(|p| p.view.document)
+                        .ok();
+                    existing_doc.as_ref() != Some(&document)
+                }
+                None => true,
             }
-            (Some(_), None) => true,
-            (None, _) => false,
+        } else {
+            false
         };
 
         let mut repended_for_moderation = false;
