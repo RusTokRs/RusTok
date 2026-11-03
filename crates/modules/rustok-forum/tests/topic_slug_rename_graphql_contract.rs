@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use async_graphql::{EmptySubscription, Schema};
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_forum::{ForumMutation, ForumQuery};

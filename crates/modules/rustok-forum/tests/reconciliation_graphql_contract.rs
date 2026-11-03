@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
 use rustok_api::{Action, AuthContext, Permission, Resource, TenantContext};

@@ -412,7 +412,7 @@ impl ForumReadModelService {
             .filter(Expr::cust("deleted_at IS NULL"));
 
         let hidden_category_ids = crate::services::category_visibility::ForumCategoryVisibilityPolicyService::new(self.db.clone())
-            .hidden_category_ids_for_viewer(tenant_id, security.user_id.is_some())
+            .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
         if !hidden_category_ids.is_empty() {
             select = select.filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids));
