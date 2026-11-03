@@ -66,6 +66,9 @@ impl BlogPostRouteOwner {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("tenant_id must not be nil"));
         }
+        if slug.trim().is_empty() {
+            return Err(BlogError::validation("slug must not be empty"));
+        }
         let post = blog_post::Entity::find()
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::Slug.eq(slug))

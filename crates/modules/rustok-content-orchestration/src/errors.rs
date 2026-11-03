@@ -69,6 +69,22 @@ mod tests {
             converted,
             rustok_content::ContentError::Validation(_)
         ));
+
+        let category_id = uuid::Uuid::new_v4();
+        let err = rustok_blog::BlogError::CategoryNotFound(category_id);
+        let converted = blog_error_to_content_error(err);
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::CategoryNotFound(id) if id == category_id
+        ));
+
+        let post_id = uuid::Uuid::new_v4();
+        let err = rustok_blog::BlogError::PostNotFound(post_id);
+        let converted = blog_error_to_content_error(err);
+        assert!(matches!(
+            converted,
+            rustok_content::ContentError::NodeNotFound(id) if id == post_id
+        ));
     }
 
     #[test]

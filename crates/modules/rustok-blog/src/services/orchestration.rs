@@ -11,7 +11,10 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{blog_category, blog_post, blog_post_tag, blog_post_translation};
+use crate::entities::{
+    blog_category, blog_comment_projection_delivery, blog_post, blog_post_channel_visibility,
+    blog_post_tag, blog_post_translation,
+};
 use crate::error::{BlogError, BlogResult};
 
 /// Verifies that a Blog category exists for the given tenant within an active transaction.
@@ -45,6 +48,9 @@ pub async fn ensure_blog_slug_unique_in_tx(
 ) -> BlogResult<()> {
     if tenant_id.is_nil() {
         return Err(BlogError::validation("tenant_id must not be nil"));
+    }
+    if slug.trim().is_empty() {
+        return Err(BlogError::validation("slug must not be empty"));
     }
     let count = blog_post::Entity::find()
         .filter(blog_post::Column::TenantId.eq(tenant_id))
@@ -103,6 +109,26 @@ pub async fn create_promoted_post_in_tx(
     }
     if input.slug.trim().is_empty() {
         return Err(BlogError::validation("slug must not be empty"));
+    }
+    if let Some(category_id) = input.category_id
+        && category_id.is_nil()
+    {
+        return Err(BlogError::validation("category_id must not be nil"));
+    }
+    if input.translations.is_empty() {
+        return Err(BlogError::validation(
+            "post must have at least one translation",
+        ));
+    }
+    for translation in &input.translations {
+        if translation.locale.trim().is_empty() {
+            return Err(BlogError::validation(
+                "translation locale must not be empty",
+            ));
+        }
+        if translation.title.trim().is_empty() {
+            return Err(BlogError::validation("translation title must not be empty"));
+        }
     }
     let now = Utc::now();
     blog_post::ActiveModel {
@@ -251,8 +277,35 @@ pub async fn delete_demoted_post_in_tx(
     if post_id.is_nil() {
         return Err(BlogError::validation("post_id must not be nil"));
     }
+    let post = blog_post::Entity::find_by_id(post_id)
+        .filter(blog_post::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await
+        .map_err(BlogError::from)?
+        .ok_or(BlogError::PostNotFound(post_id))?;
+
     // Remove tags and refresh usage projection
     crate::services::remove_post_tag_links_in_tx(txn, tenant_id, post_id).await?;
+
+    // Delete comment projection delivery records
+    blog_comment_projection_delivery::Entity::delete_many()
+        .filter(blog_comment_projection_delivery::Column::TenantId.eq(tenant_id))
+        .filter(blog_comment_projection_delivery::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await
+        .map_err(BlogError::from)?;
+
+    // Delete preview tokens
+    crate::services::preview_token::delete_post_preview_tokens_in_tx(txn, tenant_id, post_id)
+        .await?;
+
+    // Delete channel visibility
+    blog_post_channel_visibility::Entity::delete_many()
+        .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+        .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await
+        .map_err(BlogError::from)?;
 
     // Delete post translations
     blog_post_translation::Entity::delete_many()
@@ -261,13 +314,19 @@ pub async fn delete_demoted_post_in_tx(
         .await
         .map_err(BlogError::from)?;
 
-    // Delete post
-    blog_post::Entity::delete_many()
+    // Delete post with optimistic concurrency verification
+    let deleted = blog_post::Entity::delete_many()
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::Id.eq(post_id))
+        .filter(blog_post::Column::Version.eq(post.version))
         .exec(txn)
         .await
         .map_err(BlogError::from)?;
+    if deleted.rows_affected != 1 {
+        return Err(BlogError::conflict(
+            "Blog post changed concurrently before demotion deletion",
+        ));
+    }
 
     Ok(())
 }
