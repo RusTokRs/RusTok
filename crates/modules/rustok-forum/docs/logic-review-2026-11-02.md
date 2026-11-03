@@ -629,3 +629,36 @@ toolchain and run in CI with the rest of the forum suite.
 first-publication journal SQL duplication (L4) and creation-locale
 determinism (L5) — both correct today; they need a journal-contract
 change owned by the moderation/eventing track.
+
+**CI verification close-out (temporary oracle, since removed):**
+- `cargo check -p rustok-forum --all-targets`: 0 errors, 0 warnings.
+  `cargo clippy -p rustok-forum --all-targets`: 0 warnings.
+  `cargo fmt -p rustok-forum -- --check`: no diffs (branch checkout).
+- Test batch 1 green: `logic_review_remediation_sqlite` (5),
+  `subscription_levels_sqlite`, `subscription_levels_contract`,
+  `moderation_semantics_sqlite`,
+  `reply_create_audience_enforcement_sqlite`, `solutions`.
+- `reply_update_window`: 2 of 3 tests fail in fixture setup while
+  archiving the topic (`Forum category counters do not permit the
+  requested delta`). Triage: pre-existing, not a regression from this
+  remediation. The fixture inserts the category with counters `0/0`
+  and inserts the topic row directly, bypassing the `+1 topic_count`
+  adjustment that `TopicService` create performs
+  (`topic_inline.rs`). Archiving then applies a `-1` topic delta
+  against a stored `0`, and the fail-closed category counter guard
+  (`category.rs`) correctly rejects it. Both `category.rs` and the
+  archive counter call sites are byte-identical to the base commit,
+  and the test file is unchanged by this branch. Production topics
+  are created through the service and always carry the increment;
+  the fixture should seed `topic_count = 1` (or create the topic
+  through the service) when it is next touched.
+- Pre-existing compile-broken test targets under rustc 1.96,
+  untouched by this branch: `graphql_stats_and_vote_tenant_scope_sqlite`
+  and `subscriptions` fail with `queries overflow the depth limit!`
+  while computing the layout of the async-graphql `ForumQuery` /
+  `ForumMutation` resolver containers in the test crate. The library
+  and every other inventoried test target compile.
+- The workspace-wide checks on this PR mirror the already-red
+  `main` baseline (Formatting, Cargo Deny, Cargo Check, Documentation
+  fail on a clean `main` run), so they are not used as the gate here;
+  the scoped evidence above is.
