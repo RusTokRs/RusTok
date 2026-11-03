@@ -48,7 +48,12 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
-pub use ports::{blog_category, blog_post, blog_post_tag, blog_post_translation};
+pub use ports::{
+    CreatePromotedPostInput, DemotedPostRecord, DemotedPostTranslationRecord,
+    PromotedPostTranslationInput, create_promoted_post_in_tx, delete_demoted_post_in_tx,
+    ensure_blog_category_exists_in_tx, ensure_blog_slug_unique_in_tx,
+    load_post_for_demotion_in_tx, load_post_tag_ids_in_tx,
+};
 pub use rustok_comments::CommentsThreadPort;
 pub use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 pub use services::{

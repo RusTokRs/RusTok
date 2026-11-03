@@ -30,6 +30,15 @@ node scripts/verify/verify-module-source-layout.mjs --module <slug>
 The direct Node invocation is the same runner for local debugging. The default
 Blog reference gate runs the shared lint and Blog-specific layout checks.
 
+Embedded native providers such as Tax use the same source checks with an
+explicit selector. The CLI verifies the absence of a standalone composition
+entry and the verifier checks the local manifest, canonical crate path and
+package identity. Use the registered selector for entries in `modules.toml`.
+
+```bash
+cargo xtask module lint tax --embedded
+```
+
 ```bash
 npm run verify:module-source-layout
 ```

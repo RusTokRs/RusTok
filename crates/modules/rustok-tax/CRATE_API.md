@@ -34,6 +34,7 @@
 ### Domain Invariants
 - **Non-Negative Amounts**: Taxable amounts must be non-negative; negative amounts fail closed.
 - **Decimal Precision**: Float arithmetic is strictly denied (`#![deny(clippy::float_arithmetic)]`); tax amounts round half away from zero at currency precision.
+- **Decimal Bounds**: An intermediate tax line or total outside the supported decimal range returns validation through the canonical port.
 - **Currency Parity**: Line tax currencies must strictly match the calculation input currency.
 - **Tax Exempt Handling**: Tax-exempt customers produce zero-rate empty tax lines deterministically.
 - **Provider Resolution Precedence**: Explicit channel provider override takes precedence over region baseline provider.
@@ -42,6 +43,5 @@
 - Neutral calculation domain; does not emit durable outbox events directly.
 
 ### Errors / Failure Codes
-- `TaxError::Validation`: Missing required address or invalid negative amounts.
-- `TaxError::UnknownProvider`: Requested calculation provider is not registered in the system.
-- `TaxError::CalculationFailed`: Provider failure or currency mismatch in calculated lines.
+- `TaxError::Validation`: Invalid owner policy, unknown provider or arithmetic bounds.
+- `PortError`: The canonical port enforces the call policy, validates inputs and provider results, and maps owner validation to `tax.validation`.

@@ -7,8 +7,7 @@
 
 use async_trait::async_trait;
 use rustok_blog::{
-    BLOG_ROUTE_PREFIX, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE, blog_post,
-    canonical_post_route,
+    BLOG_ROUTE_PREFIX, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
 };
 use rustok_content::{
     CanonicalRouteResolver, ContentError, ContentResult, ResolvedContentRoute,
@@ -47,15 +46,13 @@ impl OwnerCanonicalRouteResolver {
             .strip_prefix(BLOG_ROUTE_PREFIX)
             .and_then(|query| query.strip_prefix(BLOG_SLUG_PARAM))
         {
-            let live = blog_post::Entity::find()
-                .filter(blog_post::Column::TenantId.eq(tenant_id))
-                .filter(blog_post::Column::Slug.eq(slug))
-                .one(&self.db)
-                .await?;
-            if let Some(post) = live {
+            let live_post_id = BlogPostRouteOwner::find_live_post_by_slug(&self.db, tenant_id, slug)
+                .await
+                .map_err(blog_error_to_content_error)?;
+            if let Some(post_id) = live_post_id {
                 return Ok(Some(ResolvedContentRoute {
                     target_kind: "blog_post".to_string(),
-                    target_id: post.id,
+                    target_id: post_id,
                     locale: CANONICAL_POST_ROUTE_LOCALE.to_string(),
                     matched_url: route.to_string(),
                     canonical_url: route.to_string(),
@@ -172,12 +169,15 @@ impl OwnerCanonicalRouteResolver {
         }
         match target_kind {
             "blog_post" => {
-                let post = blog_post::Entity::find_by_id(target_id)
-                    .filter(blog_post::Column::TenantId.eq(tenant_id))
-                    .one(&self.db)
-                    .await?;
-                match post {
-                    Some(post) => Ok(Some(canonical_post_route(&post.slug))),
+                let canonical = BlogPostRouteOwner::find_canonical_route_by_post_id(
+                    &self.db,
+                    tenant_id,
+                    target_id,
+                )
+                .await
+                .map_err(blog_error_to_content_error)?;
+                match canonical {
+                    Some(route) => Ok(Some(route)),
                     None => missing_target(target_kind, target_id),
                 }
             }

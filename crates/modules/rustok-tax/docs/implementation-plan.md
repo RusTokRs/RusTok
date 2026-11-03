@@ -11,6 +11,12 @@ This module has no module-owned UI. `calculate_tax` is a read-like port with a
 required deadline and typed `PortError` mapping; it must not require write
 idempotency.
 
+Tax is the embedded scaffold reference for a native provider without owner
+storage or Page Builder participation. The [file map](./README.md#file-map)
+shows the domain, DTO, service and port boundaries. The real in-process port
+checks both intermediate tax-line overflow and aggregate overflow. Invalid
+arithmetic maps to the existing `tax.validation` envelope.
+
 The canonical root wrapper and the owner `TaxService` port implementation retain
 correlation plus safe context, request, and detail shape. Local attribution uses stable
 error codes only. Policy admission records a closed error-kind label, retryability, and
@@ -80,8 +86,8 @@ envelopes, provider behavior, and validation order remain unchanged.
 - `node scripts/verify/verify-tax-calculation-error-context.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `npm run verify:tax:fba`
-- `cargo xtask module validate tax`
-- `cargo xtask module test tax`
+- `cargo xtask module lint tax --embedded`
+- `cargo test -p rustok-tax --lib`
 - Targeted tax calculation, snapshot propagation, and region-policy tests.
 
 ## Change rules

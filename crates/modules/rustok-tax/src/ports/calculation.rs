@@ -511,9 +511,58 @@ mod tests {
         )
     }
 
+    #[tokio::test]
+    async fn in_process_port_rejects_tax_line_and_total_overflow() {
+        let port = crate::in_process_tax_calculation_port();
+        // One oversized intermediate product, then individually valid lines
+        // whose rounded sum exceeds the decimal range.
+        for (rate, line_count, detail) in [
+            (2, 1, "tax line exceeds the decimal range"),
+            (1, 101, "tax total exceeds the decimal range"),
+        ] {
+            let request = TaxCalculationInput {
+                currency_code: "USD".to_string(),
+                channel_id: None,
+                customer_tax_exempt: false,
+                policy: crate::TaxPolicySnapshot {
+                    provider_id: None,
+                    channel_provider_id: None,
+                    country_code: None,
+                    tax_rate: Decimal::from(rate),
+                    tax_included: false,
+                    country_rules: Vec::new(),
+                },
+                taxable_amounts: (1..=line_count)
+                    .map(|id| crate::TaxableAmount {
+                        line_item_id: Some(Uuid::from_u128(id)),
+                        shipping_option_id: None,
+                        item_tax_class: None,
+                        shipping_tax_class: None,
+                        description: None,
+                        amount: Decimal::MAX,
+                    })
+                    .collect(),
+            };
+            assert!(matches!(
+                crate::TaxService::new().calculate(request.clone()).await,
+                Err(TaxError::Validation(message)) if message == detail
+            ));
+            let error = port
+                .calculate_tax(
+                    test_context().with_deadline(std::time::Duration::from_secs(1)),
+                    request,
+                )
+                .await
+                .expect_err("calculation outside the decimal range must fail");
+            assert_eq!(error.kind, PortErrorKind::Validation);
+            assert_eq!(error.code, "tax.validation");
+            assert_eq!(error.message, "tax request is invalid");
+        }
+    }
+
     #[test]
     fn rejects_symbolic_currency_and_negative_taxable_amount() {
-        let request = TaxCalculationInput {
+        let mut request = TaxCalculationInput {
             currency_code: "12$".to_string(),
             channel_id: None,
             customer_tax_exempt: false,
@@ -534,7 +583,13 @@ mod tests {
                 amount: -Decimal::ONE,
             }],
         };
-        assert!(validate_tax_request(&test_context(), "test", &request).is_err());
+        let error = validate_tax_request(&test_context(), "test", &request)
+            .expect_err("currency codes must contain three letters");
+        assert_eq!(error.code, "tax.currency_code_invalid");
+        request.currency_code = "USD".to_string();
+        let error = validate_tax_request(&test_context(), "test", &request)
+            .expect_err("valid currency must still reject negative amounts");
+        assert_eq!(error.code, "tax.negative_taxable_amount");
     }
 
     #[test]

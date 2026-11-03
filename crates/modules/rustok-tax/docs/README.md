@@ -32,8 +32,29 @@
 - [Tax calculation policy context](./calculation-port-policy-context.md)
 - [Tax calculation local outcome context](./calculation-local-context.md)
 
+## File map
+
+| File | Responsibility |
+| --- | --- |
+| `src/lib.rs` | Public Rust facade for Cart and other consumers |
+| `src/module.rs` | Native metadata and empty migration source |
+| `src/domain/calculation.rs` | Regional policy and checked decimal arithmetic using canonical currency rounding |
+| `src/dto/calculation.rs` | Serializable calculation input, taxable amounts and tax lines |
+| `src/services/calculation.rs` | Provider selection, default provider and tax-line orchestration |
+| `src/ports/calculation.rs` | Read/deadline admission, owner invocation, result validation and safe errors |
+| `src/ports/in_process.rs` | Canonical factory and caller-context diagnostics |
+| `src/tests/contract.rs` | Native module and public contract assertions |
+
+Cart owns the checkout flow and supplies the current region and channel policy
+through `TaxCalculationInput`. To change tax policy or rounding, start in
+`src/domain/calculation.rs`. To bind another approved provider, implement
+`TaxProvider` and compose it via `TaxService::with_provider` behind the same
+port. Verify provider selection, missing-provider errors, currency rounding,
+deadline admission and result validation through the in-process port.
+
 ## Verification
 
+- `cargo xtask module lint tax --embedded` for the shared source contract;
 - targeted unit tests in `rustok-tax`;
 - static policy and local-outcome context guards under `scripts/verify`;
 - compile-check for `rustok-tax`, `rustok-cart`, `rustok-order`, `rustok-commerce`.

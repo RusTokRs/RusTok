@@ -12,6 +12,12 @@ pub(crate) fn blog_error_to_content_error(
         rustok_blog::BlogError::DuplicateSlug { slug } => {
             rustok_content::ContentError::duplicate_slug(slug, "")
         }
+        rustok_blog::BlogError::CategoryNotFound(id) => {
+            rustok_content::ContentError::category_not_found(id)
+        }
+        rustok_blog::BlogError::PostNotFound(id) => {
+            rustok_content::ContentError::node_not_found(id)
+        }
         rustok_blog::BlogError::Content(error) => error,
         rustok_blog::BlogError::Core(error) => rustok_content::ContentError::Core(error),
         other => rustok_content::ContentError::validation(other.to_string()),

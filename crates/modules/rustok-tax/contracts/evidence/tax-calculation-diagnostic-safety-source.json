@@ -2,8 +2,8 @@
   "status": "tax_calculation_diagnostic_safety_source_unvalidated",
   "scope": {
     "public_operation": "calculate_tax",
-    "canonical_wrapper": "crates/modules/rustok-tax/src/ports/in_process.rs",
-    "canonical_owner": "crates/modules/rustok-tax/src/ports/calculation.rs",
+    "canonical_wrapper": "crates/modules/rustok-tax/src/calculation_context.rs",
+    "canonical_owner": "crates/modules/rustok-tax/src/ports.rs",
     "documentation": [
       "crates/modules/rustok-tax/docs/calculation-local-context.md",
       "crates/modules/rustok-tax/docs/calculation-port-policy-context.md"

@@ -15,7 +15,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::{CANONICAL_POST_ROUTE_LOCALE, canonical_post_route};
-use crate::entities::blog_post_route;
+use crate::entities::{blog_post, blog_post_route};
 use crate::error::{BlogError, BlogResult};
 
 /// Every Blog route starts with this prefix. Redirect sources must match it.
@@ -55,6 +55,44 @@ impl BlogPostRouteOwner {
             target_kind: row.target_kind,
             target_id: row.target_id,
         }))
+    }
+
+    /// Looks up a live blog post ID by slug inside a connection/transaction.
+    pub async fn find_live_post_by_slug<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        slug: &str,
+    ) -> BlogResult<Option<Uuid>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("tenant_id must not be nil"));
+        }
+        let post = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Slug.eq(slug))
+            .one(conn)
+            .await
+            .map_err(BlogError::from)?;
+        Ok(post.map(|p| p.id))
+    }
+
+    /// Looks up the canonical route of a live post by its target ID.
+    pub async fn find_canonical_route_by_post_id<C: ConnectionTrait>(
+        conn: &C,
+        tenant_id: Uuid,
+        post_id: Uuid,
+    ) -> BlogResult<Option<String>> {
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("tenant_id must not be nil"));
+        }
+        if post_id.is_nil() {
+            return Err(BlogError::validation("post_id must not be nil"));
+        }
+        let post = blog_post::Entity::find_by_id(post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(conn)
+            .await
+            .map_err(BlogError::from)?;
+        Ok(post.map(|p| canonical_post_route(&p.slug)))
     }
 
     /// Frees the redirect held at the canonical route of `slug`, so a post can

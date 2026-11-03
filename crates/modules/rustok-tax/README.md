@@ -35,4 +35,15 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 - `TaxCalculationInput`
 - `TaxCalculationResult`
 
+Tax is the embedded reference for a native provider without owner storage or
+Page Builder participation. Cart supplies the policy snapshot and invokes the
+root `in_process_tax_calculation_port` factory. The provider can run entirely
+in-process without database or host setup. See the [file map](./docs/README.md#file-map).
+
+## Verification
+
+- `cargo xtask module lint tax --embedded`
+- `cargo test -p rustok-tax --lib`
+- `npm run verify:tax:fba`
+
 See also `docs/index.md`.

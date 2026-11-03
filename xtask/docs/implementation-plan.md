@@ -245,11 +245,12 @@ read-only and disposable-fixture verification can proceed earlier.
   Extend these references with independently verified Fly contributions. Retain
   file inventories, build and runtime evidence for each case. Check that omitted
   capabilities have no registration, dependencies or runtime requirements.
-  Use Tax calculation and Brand's localized owner data as candidate pilots for
-  the variants without Fly, and the Blog widget contribution as the candidate
-  with owner persistence and Fly. Each candidate must pass the applicable gates
-  before enrollment. A no-owner-storage Fly pilot needs a real read-only widget
-  and a host binding that exercises it without an owner store.
+  Tax calculation supplies the embedded reference without owner storage or Fly.
+  The [Tax owner file map](../../crates/modules/rustok-tax/docs/README.md#file-map)
+  documents the actual domain, DTO, service and port split. Use Brand's localized
+  owner data as the candidate with storage and without Fly, and the Blog widget
+  contribution as the candidate with both. A no-owner-storage Fly pilot needs a
+  real read-only widget and a host binding that exercises it without an owner store.
 - [ ] After the reference examples pass, define explicit input for the actual
   owner operation, schema and builder contribution before enabling capability
   generation. Reuse the existing native plan, preview and recovery path.

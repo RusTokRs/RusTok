@@ -108,10 +108,16 @@ pub(crate) fn calculate_tax_amount(
 ) -> TaxResult<Decimal> {
     let hundred = Decimal::from(100);
     let raw_tax = if tax_included {
-        amount - (amount / (Decimal::ONE + rate / hundred))
+        rate.checked_div(hundred)
+            .and_then(|fraction| Decimal::ONE.checked_add(fraction))
+            .and_then(|divisor| amount.checked_div(divisor))
+            .and_then(|net| amount.checked_sub(net))
     } else {
-        amount * rate / hundred
-    };
+        amount
+            .checked_mul(rate)
+            .and_then(|product| product.checked_div(hundred))
+    }
+    .ok_or_else(|| TaxError::Validation("tax line exceeds the decimal range".to_string()))?;
     money::round_to_currency(raw_tax, currency_code)
         .map_err(|error| TaxError::Validation(error.to_string()))
 }

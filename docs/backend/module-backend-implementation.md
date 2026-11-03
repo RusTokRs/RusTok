@@ -347,6 +347,8 @@ The supported static entrypoint for a registered local native module is
 `cargo xtask module lint <slug>`. It invokes
 `scripts/verify/verify-module-source-layout.mjs --module <slug>`, which
 runs the generic rules in `scripts/verify/native-module-layout.mjs`.
+For an embedded native provider, use `cargo xtask module lint <slug> --embedded`
+to check the same layout against its local identity.
 Blog-only reference assertions remain separate and must not become universal
 requirements.
 

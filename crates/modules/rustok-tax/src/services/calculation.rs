@@ -82,7 +82,9 @@ impl TaxProvider for RegionTaxProvider {
             if line_tax <= Decimal::ZERO {
                 continue;
             }
-            tax_total += line_tax;
+            tax_total = tax_total.checked_add(line_tax).ok_or_else(|| {
+                TaxError::Validation("tax total exceeds the decimal range".to_string())
+            })?;
             lines.push(CalculatedTaxLine {
                 line_item_id: amount.line_item_id,
                 shipping_option_id: amount.shipping_option_id,
