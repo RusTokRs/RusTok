@@ -126,10 +126,10 @@
       "path": "crates/modules/rustok-ai-alloy",
       "category": "modules",
       "files": 2,
-      "loc": 413,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 424,
+      "completed": true,
+      "completed_at": "2026-11-03 01:36",
+      "notes": "Verified all 9 tests, clippy clean with -D warnings on all targets, added contract tests for AlloyOperation slugs and defaults, gatekeeper approved."
     },
     "crates/modules/rustok-ai-athanor": {
       "name": "rustok-ai-athanor",
