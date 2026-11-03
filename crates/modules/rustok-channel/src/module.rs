@@ -10,6 +10,7 @@ use sea_orm_migration::MigrationTrait;
 pub struct ChannelRuntimeSelected;
 
 /// Channel module descriptor implementing the RusToK module system.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ChannelModule;
 
 impl MigrationSource for ChannelModule {

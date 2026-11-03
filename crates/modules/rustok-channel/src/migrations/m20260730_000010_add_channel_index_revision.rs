@@ -40,12 +40,18 @@ EXECUTE FUNCTION rustok_channel_bump_index_revision();
                 Ok(())
             }
             DatabaseBackend::Sqlite => {
-                let _ = manager
+                if let Err(err) = manager
                     .get_connection()
                     .execute_unprepared(
                         "ALTER TABLE channels ADD COLUMN index_revision INTEGER NOT NULL DEFAULT 1;",
                     )
-                    .await;
+                    .await
+                {
+                    let message = err.to_string();
+                    if !message.contains("duplicate column") {
+                        return Err(err);
+                    }
+                }
                 Ok(())
             }
             backend => Err(DbErr::Custom(format!(

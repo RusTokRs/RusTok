@@ -32,14 +32,14 @@ pub struct ChannelListRequest {
 }
 
 /// A paginated tenant channel-read projection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelListProjectionPage {
     pub items: Vec<ChannelReadProjection>,
     pub total: u64,
 }
 
 /// Transport-neutral channel detail projection exposed by the channel owner module.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelReadProjection {
     pub detail: ChannelDetailResponse,
 }
@@ -148,12 +148,12 @@ impl ChannelReadPort for crate::ChannelService {
 
         let detail = match request.selector {
             ChannelReadSelector::Id(channel_id) => {
-                let detail = self
-                    .get_channel_detail(channel_id)
-                    .await
-                    .map_err(map_channel_error)?;
-                ensure_tenant_scope(tenant_id, &detail)?;
-                Some(detail)
+                match self.get_channel_detail(channel_id).await {
+                    Ok(detail) if detail.channel.tenant_id == tenant_id => Some(detail),
+                    Ok(_) => None,
+                    Err(crate::ChannelError::NotFound(_)) => None,
+                    Err(error) => return Err(map_channel_error(error)),
+                }
             }
             ChannelReadSelector::Slug(slug) => self
                 .get_channel_detail_by_slug(tenant_id, &slug)
@@ -223,6 +223,12 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 
 fn validate_channel_read_request(request: &ChannelReadRequest) -> Result<(), PortError> {
     match &request.selector {
+        ChannelReadSelector::Id(id) if id.is_nil() => Err(PortError::new(
+            PortErrorKind::Validation,
+            "channel.id_nil",
+            "channel read port requires a non-nil ID selector",
+            false,
+        )),
         ChannelReadSelector::Slug(slug) if slug.trim().is_empty() => Err(PortError::new(
             PortErrorKind::Validation,
             "channel.slug_empty",

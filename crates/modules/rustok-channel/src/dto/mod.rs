@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::policy::{ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate};
 use crate::resolution::TargetSurface;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateChannelInput {
     #[serde(default)]
     pub tenant_id: Uuid,
@@ -15,7 +15,7 @@ pub struct CreateChannelInput {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateChannelRequest {
     pub slug: String,
     pub name: String,
@@ -41,7 +41,7 @@ impl From<CreateChannelInput> for CreateChannelRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CreateChannelTargetInput {
     pub target_type: String,
     pub value: String,
@@ -49,7 +49,7 @@ pub struct CreateChannelTargetInput {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UpdateChannelTargetInput {
     pub target_type: String,
     pub value: String,
@@ -57,20 +57,20 @@ pub struct UpdateChannelTargetInput {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BindChannelModuleInput {
     pub module_slug: String,
     pub is_enabled: bool,
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BindChannelOauthAppInput {
     pub oauth_app_id: Uuid,
     pub role: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateChannelResolutionPolicySetInput {
     pub tenant_id: Uuid,
     pub slug: String,
@@ -78,14 +78,14 @@ pub struct CreateChannelResolutionPolicySetInput {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateChannelResolutionRuleInput {
     pub priority: i32,
     pub is_active: bool,
     pub definition: ChannelResolutionRuleDefinition,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateChannelResolutionRuleInput {
     pub priority: Option<i32>,
     pub is_active: Option<bool>,
@@ -97,12 +97,12 @@ pub struct UpdateChannelResolutionRuleInput {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReorderChannelResolutionRulesInput {
     pub rule_ids: Vec<Uuid>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelBootstrapResponse<C> {
     pub current_channel: Option<C>,
     pub channels: Vec<ChannelDetailResponse>,
@@ -111,14 +111,14 @@ pub struct ChannelBootstrapResponse<C> {
     pub oauth_apps: Vec<AvailableChannelOauthAppItem>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateResolutionPolicySetRequest {
     pub slug: String,
     pub name: String,
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateResolutionRuleRequest {
     pub priority: i32,
     pub is_active: bool,
@@ -130,7 +130,7 @@ pub struct CreateResolutionRuleRequest {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateResolutionRuleRequest {
     pub priority: Option<i32>,
     pub is_active: Option<bool>,
@@ -142,19 +142,19 @@ pub struct UpdateResolutionRuleRequest {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReorderResolutionRulesRequest {
     pub rule_ids: Vec<Uuid>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AvailableChannelModuleItem {
     pub slug: String,
     pub name: String,
     pub kind: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AvailableChannelOauthAppItem {
     pub id: Uuid,
     pub name: String,
@@ -249,7 +249,7 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -263,7 +263,7 @@ pub struct ChannelResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelTargetResponse {
     pub id: Uuid,
     pub channel_id: Uuid,
@@ -275,7 +275,7 @@ pub struct ChannelTargetResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelModuleBindingResponse {
     pub id: Uuid,
     pub channel_id: Uuid,
@@ -286,7 +286,7 @@ pub struct ChannelModuleBindingResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelOauthAppResponse {
     pub id: Uuid,
     pub channel_id: Uuid,
@@ -295,7 +295,7 @@ pub struct ChannelOauthAppResponse {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelResolutionPolicySetResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -307,7 +307,7 @@ pub struct ChannelResolutionPolicySetResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelResolutionRuleResponse {
     pub id: Uuid,
     pub policy_set_id: Uuid,
@@ -319,13 +319,13 @@ pub struct ChannelResolutionRuleResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelResolutionPolicySetDetailResponse {
     pub policy_set: ChannelResolutionPolicySetResponse,
     pub rules: Vec<ChannelResolutionRuleResponse>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelDetailResponse {
     pub channel: ChannelResponse,
     pub targets: Vec<ChannelTargetResponse>,
