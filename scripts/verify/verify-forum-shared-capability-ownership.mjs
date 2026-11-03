@@ -33,10 +33,6 @@ for (const fragment of contract.forbidden_plan_fragments) {
   if (plan.includes(fragment)) fail(`canonical plan retains stale ownership: ${fragment}`);
 }
 
-if (!existsSync(path.join(repoRoot, contract.archive_snapshot))) {
-  fail("the exact pre-correction plan snapshot is missing");
-}
-
 const modules = read("modules.toml");
 for (const slug of [
   "profiles",

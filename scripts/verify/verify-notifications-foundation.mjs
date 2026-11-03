@@ -59,9 +59,7 @@ const adminUiPath = "crates/modules/rustok-notifications/admin/src/ui/leptos.rs"
 const storefrontCorePath = "crates/modules/rustok-notifications/storefront/src/core.rs";
 const storefrontTransportPath = "crates/modules/rustok-notifications/storefront/src/transport.rs";
 const storefrontUiPath = "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs";
-const canonicalPlanPath = existsSync(absolute("crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot"))
-  ? "crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot"
-  : "crates/modules/rustok-forum/docs/implementation-plan.md";
+const canonicalPlanPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
 
 const apiLib = read(apiLibPath);
 const keys = read(keysPath);

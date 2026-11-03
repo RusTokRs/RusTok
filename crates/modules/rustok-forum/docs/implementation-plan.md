@@ -1109,11 +1109,8 @@ split is enforced by the host policy registered in the generic
 ### Delivered history
 
 The delivered `FORUM-23B*` slice notes and the `FORUM-23B2G2B3*` aggregate
-boundary moved verbatim to
-`crates/modules/rustok-forum/docs/archive/forum-23-search-index-integration.snapshot`.
-They are history, not active work, and they still name the retired Forum-only
-storefront executor and projector, so the canonical plan does not restate them.
-Read that snapshot for slice detail; read this section only for the live
+boundary represent delivered history, not active work, and they still name the retired Forum-only
+storefront executor and projector. Read this section only for the live
 mechanism and the remaining scope.
 
 ### Delivered slices

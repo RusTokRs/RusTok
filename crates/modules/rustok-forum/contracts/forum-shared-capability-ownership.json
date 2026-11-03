@@ -47,7 +47,6 @@
     "Media remains the sole binary asset and delivery-lifecycle owner",
     "Forum trust remains Forum-owned and is not equivalent to reputation"
   ],
-  "archive_snapshot": "crates/modules/rustok-forum/docs/archive/implementation-plan-2026-08-06.snapshot",
   "verification": [
     "node scripts/verify/verify-forum-shared-capability-ownership.mjs",
     "node scripts/verify/verify-reactions-foundation.mjs",

@@ -8,12 +8,11 @@
 pub mod core;
 mod i18n;
 mod model;
-mod page_builder;
 mod transport;
 mod ui;
 
 
-pub use page_builder::{
+pub use core::page_builder::{
     BlogContributionAdapter, BlogWidgetOwnerSchemaRef, BlogWidgetPropertyEditorModel,
     BlogWidgetRenderModel, blog_contribution_manifest, blog_fly_registry_set,
     blog_full_admin_contribution_policy, blog_widget_contribution,
