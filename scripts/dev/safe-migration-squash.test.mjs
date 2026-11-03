@@ -20,6 +20,51 @@ function run(args = []) {
   });
 }
 
+test('source diagnostics reject empty inventories and malformed CLI inputs', () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'squash-empty-'));
+  try {
+    const result = run(['--module', tempDir]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /inventory is empty or incomplete/);
+    for (const args of [['--module'], ['--unsupported'], ['--all', '--module', 'blog']]) {
+      assert.notEqual(run(args).status, 0);
+    }
+  } finally {
+    assert.equal(path.dirname(path.resolve(tempDir)), path.resolve(tmpdir()));
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('directory entrypoints and nested helpers remain diagnostic about SQL type coverage', () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'squash-directory-'));
+  try {
+    mkdirSync(path.join(tempDir, 'src/entities'), { recursive: true });
+    mkdirSync(path.join(tempDir, 'src/migrations/m20261103_000001_init'), { recursive: true });
+    writeFileSync(path.join(tempDir, 'src/entities/item.rs'), `
+#[sea_orm(table_name = "items")]
+pub struct Model {
+    pub name: String,
+}
+`);
+    writeFileSync(path.join(tempDir, 'src/migrations/mod.rs'), 'mod m20261103_000001_init; fn migrations() { Box::new(m20261103_000001_init::Migration); }');
+    writeFileSync(path.join(tempDir, 'src/migrations/m20261103_000001_init/mod.rs'), 'mod tables; pub struct Migration;');
+    writeFileSync(path.join(tempDir, 'src/migrations/m20261103_000001_init/tables.rs'), `
+enum Items { Table, Name }
+fn create() {
+    Table::create().table(Items::Table).col(ColumnDef::new(Items::Name).integer().not_null()).to_owned();
+}
+`);
+    const result = run(['--module', tempDir]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /completed for 1 entity tables/);
+    assert.match(result.stdout, /Database equivalence and replacement admission are not evaluated/);
+    assert.doesNotMatch(result.stdout, /PARITY PERFECT|100%|strictly verified/);
+  } finally {
+    assert.equal(path.dirname(path.resolve(tempDir)), path.resolve(tmpdir()));
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('safe-migration-squash succeeds on canonical rustok-blog consolidated baseline', () => {
   const result = run(['--module', 'blog']);
   assert.equal(result.status, 0, `Expected status 0, got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);

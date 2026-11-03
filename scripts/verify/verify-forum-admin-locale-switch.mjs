@@ -5,7 +5,7 @@ const uiPath = 'crates/modules/rustok-forum/admin/src/ui/leptos.rs';
 const categoryDndPath = 'crates/modules/rustok-forum/admin/src/ui/category_dnd.rs';
 const transportPath = 'crates/modules/rustok-forum/admin/src/transport/graphql_adapter.rs';
 const libPath = 'crates/modules/rustok-forum/admin/src/lib.rs';
-const docsPath = 'crates/modules/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
+const docsPath = 'crates/modules/rustok-forum/docs/implementation-plan.md';
 const enLocalePath = 'crates/modules/rustok-forum/admin/locales/en.ftl';
 const ruLocalePath = 'crates/modules/rustok-forum/admin/locales/ru.ftl';
 

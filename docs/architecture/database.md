@@ -40,7 +40,8 @@ disposable development/test databases.
 The [canonical guide](../guides/safe-database-migrations-and-squashing.md) records
 current tooling limits and the implementation gates for observed PostgreSQL
 schema/data comparison. The [technical ADR](../../DECISIONS/2026-11-03-migration-consolidation.md)
-is proposed. Release sealing and controlled consolidation admission remain
+is accepted. Rust source planning and bounded fresh-install comparison are
+implemented. Release sealing and controlled consolidation admission remain
 unimplemented. Existing operation-summary digests are insufficient evidence of
 an actual database's schema.
 

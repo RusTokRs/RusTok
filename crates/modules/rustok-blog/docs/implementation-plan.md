@@ -279,7 +279,7 @@ source harness is the `services::comment_projection::tests` module in
 `cargo test -p rustok-blog --lib services::comment_projection::tests`.
 
 The production optimistic-update loop delegates every zero-row/success result to
-the shared pure `ProjectionUpdateDecision` helper. One updated row is applied
+the shared pure projection update decision helper. One updated row is applied
 immediately; zero rows produce seven retry decisions before the eighth attempt
 reaches `LimitReached`. The retained Rust cases are
 `optimistic_retry_policy_applies_success_without_retry` and
@@ -287,7 +287,7 @@ reaches `LimitReached`. The retained Rust cases are
 They are `executable_no_run` source-policy evidence and do not measure PostgreSQL
 contention or observed natural retry frequency.
 
-The retained deterministic PostgreSQL retry-limit target is
+The retained deterministic PostgreSQL delivery limit target is
 `optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears` in
 `crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It installs a
 schema-local `BEFORE UPDATE` trigger that returns `NULL`, so the real handler
@@ -384,7 +384,7 @@ The retained PostgreSQL target is
 `crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs`. It uses
 `RUSTOK_BLOG_TEST_DATABASE_URL` (or PostgreSQL `DATABASE_URL`), a unique schema,
 and a one-connection pool for each direct handler. Its five direct-handler cases
-cover duplicate-envelope idempotency, deterministic retry-limit rollback/replay,
+cover duplicate-envelope idempotency, deterministic delivery limit rollback/replay,
 delete-before-create ordering, missing-post replay after source creation, and
 rollback/retry when the outbox table is unavailable. The suggested command is
 `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`.
@@ -424,7 +424,7 @@ Exact commands `verify:blog:comments-event-projection` /
 `verify:blog:comments-dispatcher-duplicate-delivery` /
 `test:verify:blog:comments-dispatcher-duplicate-delivery` run after the Comments
 port gate in that exact order. Overall status remains
-`source_verified_no_compile`; the deterministic retry policy, retry-limit target,
+`source_verified_no_compile`; the deterministic retry policy, delivery limit target,
 concurrent duplicate race, and dispatcher duplicate replay are source-locked,
 The four registered PostgreSQL targets passed locally against PostgreSQL 16 on
 2026-08-01: 7 main projection cases, 3 restart/process-restart cases, 1 concurrent
@@ -639,7 +639,7 @@ full server-host restart without recording execution.
 The continuation audit at `c4149652fa9c5835336daa29156b1d3e7ba68ac9`
 found that the eight-attempt optimistic loop exposed a constant and final error but
 had no shared source decision boundary tying success, retry, and terminal-limit
-behavior to executable cases. Slice 52 introduces `ProjectionUpdateDecision`,
+behavior to executable cases. Slice 52 introduces the pure projection update decision helper,
 routes the production loop through it, and retains deterministic Rust cases for
 immediate success plus seven retry decisions followed by the eighth-attempt
 limit. Evidence schema v4 and Blog registry schema v13 remain compatible; no Rust
@@ -895,7 +895,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v14
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, deterministic retry policy,
-  PostgreSQL retry-limit rollback/replay, concurrent duplicate-delivery race, and
+  PostgreSQL delivery limit rollback/replay, concurrent duplicate-delivery race, and
   dispatcher duplicate-delivery targets, host registration, dispatcher,
   concurrency, PostgreSQL, same-process restart, and process-restart harnesses,
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
@@ -923,7 +923,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
   broader degraded UI modes remain planned or pending.
 - Comments event projection: Blog-owned `source_verified_no_compile`; evidence
   schema v4, shared classifier/counter/retry-decision helpers, `executable_no_run`
-  source harness, deterministic PostgreSQL retry-limit target, module-registration,
+  source harness, deterministic PostgreSQL delivery limit target, module-registration,
   dispatcher, concurrency, PostgreSQL transaction, same-process restart, and
   process-restart targets, verifier, focused self-test, exact npm leaf commands,
   delivery-ledger identity, transactional outbox markers, and Blog FBA ordering
@@ -1173,7 +1173,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
     behavior, registry schema v13, package order, and all execution unchanged or
     pending.
 53. Re-audited all recorded Blog slices on current `main`, added an env-gated
-    PostgreSQL retry-limit target that forces eight real zero-row handler updates,
+    PostgreSQL delivery limit target that forces eight real zero-row handler updates,
     retained atomic rollback and same-envelope recovery in evidence and the focused
     guard, and kept natural contention frequency plus all execution pending.
 54. Added an env-gated same-envelope concurrent delivery target with a controlled
@@ -1323,7 +1323,7 @@ permission gating. Source composition and Fly registry installation are complete
    Execute the compile-only injection-signature, HTTP selection, GraphQL
    runtime-data, storefront native, and admin native selector harnesses, shared
    consumer runtime-order verifier, Blog projection classifier and deterministic
-   retry policy, module registration/routing, dispatcher, concurrency, retry-limit,
+   retry policy, module registration/routing, dispatcher, concurrency, delivery limit,
    duplicate-delivery, and restart targets. Retain deterministic rollback,
    cardinality, process-boundary, authorization, moderation, pagination, and
    fail-closed outputs; then implement the remote network transport through

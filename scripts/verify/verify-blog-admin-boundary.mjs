@@ -53,7 +53,7 @@ const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs"
 const uiPagePath = "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs";
 const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
 const sharedRichtextAdapterPath = "crates/ui/leptos-ui/src/richtext.rs";
-const moderationPath = "crates/modules/rustok-blog/admin/src/moderation.rs";
+const moderationPath = "crates/modules/rustok-blog/admin/src/ui/moderation.rs";
 const transportPath = "crates/modules/rustok-blog/admin/src/transport/mod.rs";
 const graphqlAdapterPath = "crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs";
 const moderationAdapterPath = "crates/modules/rustok-blog/admin/src/transport/moderation_adapter.rs";
@@ -131,7 +131,7 @@ const adminRuLocale = readRepo(adminRuLocalePath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
-assertContains(lib, "mod moderation;", `${libPath}: crate root must wire the moderation UI slice`);
+assertContains(uiMod, "mod moderation;", `${uiModPath}: UI must wire the moderation slice`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 // Page composition moved from the crate root to the UI adapter (see the

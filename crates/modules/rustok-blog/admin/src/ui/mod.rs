@@ -1,13 +1,14 @@
 mod categories;
 mod components;
 pub mod leptos;
+mod moderation;
 mod richtext;
 
 use ::leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use self::categories::BlogCategoriesAdmin;
 use self::leptos::BlogAdmin as BlogEditor;
-use crate::moderation::BlogModerationPanel;
+use self::moderation::BlogModerationPanel;
 use crate::core::{blog_admin_section_for_subpath, BlogAdminSection};
 
 /// Page composition belongs to the UI adapter, not lib.rs. The host renders

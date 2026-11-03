@@ -2494,3 +2494,26 @@ verification until the maintainer runs the commands above.
 
 - [x] Contract tests cover the current public use-cases.
 - [ ] FORUM-35: EntityCardResolverPort unit tests and reverse backlink read-path tests.
+
+## FORUM-28 Admin Locale-Switch Contract
+
+This section defines the Forum admin dirty locale-switch policy left open by the canonical `FORUM-28` rich-text/admin work:
+- The **active locale** owns current reads, writes, category tree labels, topic/reply reads, and rich-text direction/spellcheck.
+- The **candidate locale** is only the text typed into the locale control.
+- Any dirty localized or owner-editable state blocks the switch; the candidate is reset to the active locale and nothing is discarded.
+- The same fallback guard also applies to the **initial editor load**. Opening an owner row directly in a locale that only has fallback content never exposes that fallback copy as writable target-locale form state.
+- Missing target translation: blanked fields while structure is preserved; clearing fallback tag labels ensures Forum's update path does not bind wrong locale term identity. Omitting `tags` (`None`) when unchanged will preserve existing attachment rows.
+- A topic locale switch is blocked while the reply composer contains an unsaved reply draft.
+- Category tree alignment: on the category admin page, the category tree follows the category active locale; on the topic admin page, it follows the topic active locale.
+
+## TAXONOMY-CAT-5 Forum Category Mounted Multilingual/RTL Browser Parity
+
+Status: **executable browser source / maintainer execution pending**
+
+The backend ownership/storage cutover is already complete; this contract defines mounted-browser evidence for the Forum Category → Taxonomy cutover.
+The runner `apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts` reuses `@playwright/test` for browser navigation only, validating RTL locale, root and child canonical Taxonomy slugs, icon/color presentation, and fallback locale behavior without bypassing Forum authorization.
+
+## Shared Platform Integration Status
+
+- Delivered in `NOTIFY-00A`: shared notifications foundation and event delivery integration.
+

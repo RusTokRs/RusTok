@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "crates/modules/rustok-forum/admin/**"
-      - "crates/modules/rustok-forum/docs/forum-28-admin-locale-switch-contract.md"
+      - "crates/modules/rustok-forum/docs/implementation-plan.md"
       - "scripts/verify/verify-forum-admin-locale-switch.mjs"
       - ".github/workflows/forum-admin-locale-switch-contract.yml"
   workflow_dispatch:

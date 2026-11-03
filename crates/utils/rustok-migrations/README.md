@@ -109,6 +109,9 @@ SQL NULL, duplicates and JSON source values. Each journal must match its own
 executable plan; consolidated journal identities may differ.
 
 The observer requires complete read privileges and quiescent fixture writers.
+Fixture URLs explicitly name their host, user and database and currently do not
+accept query options or fragments. IPv6 and percent-encoded identities are
+supported; connection fields are passed through a cleared libpq environment.
 It fails on inaccessible/RLS-filtered data, unsupported extension state, foreign
 tables, large objects, subscriptions, incomplete indexes, missing journals, tool
 failures or limits. Current limits are 100,000 rows and 64 MiB across fixture
@@ -130,6 +133,7 @@ The ignored PostgreSQL regression is explicit about its required environment:
 $env:RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL = 'postgres://verifier@localhost:5432/postgres'
 $env:RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP = 'C:/Program Files/PostgreSQL/16/bin/pg_dump.exe'
 cargo test --locked -p rustok-migrations --no-default-features --lib postgres_detects_schema_data_privilege_and_enforcement_changes -- --ignored
+cargo test --locked -p rustok-migrations --no-default-features --bin verify-migrations -- --include-ignored
 ```
 
 See [the database architecture](../../../docs/architecture/database.md) and the

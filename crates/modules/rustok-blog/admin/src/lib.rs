@@ -8,7 +8,6 @@
 pub mod core;
 mod i18n;
 mod model;
-mod moderation;
 mod page_builder;
 mod transport;
 mod ui;

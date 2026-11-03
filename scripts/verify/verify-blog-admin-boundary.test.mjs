@@ -15,13 +15,12 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false, includeApiLikeText = false, omitModeration = false } = {}) {
+function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false, includeApiLikeText = false } = {}) {
   return `
 ${includeLegacyApiMod ? "mod api;" : ""}
 mod core;
 mod i18n;
 mod model;
-${omitModeration ? "" : "mod moderation;"}
 mod transport;
 mod ui;
 
@@ -36,9 +35,10 @@ function uiModSource({ omitModeration = false } = {}) {
 mod components;
 pub mod leptos;
 mod richtext;
+${omitModeration ? "" : "mod moderation;"}
 
 use ::leptos::prelude::*;
-${omitModeration ? "" : "use crate::moderation::BlogModerationPanel;"}
+${omitModeration ? "" : "use self::moderation::BlogModerationPanel;"}
 use self::leptos::BlogAdmin as BlogEditor;
 
 #[component]
@@ -309,7 +309,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/components.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
   writeFixtureFile(root, "crates/ui/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
-  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/moderation.rs", moderationSource(options));
+  writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));

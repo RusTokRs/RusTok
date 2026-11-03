@@ -15,7 +15,7 @@ const planPath = 'crates/modules/rustok-forum/docs/implementation-plan.md';
 const centralPlanPath = 'docs/modules/translation-implementation-plan.md';
 const modulePlanPath = 'crates/modules/rustok-translation/docs/implementation-plan.md';
 const registryPath = 'docs/modules/translation-surfaces.json';
-const parityPath = 'crates/modules/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md';
+const parityPath = 'crates/modules/rustok-forum/docs/implementation-plan.md';
 const retirementTest = 'crates/modules/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs';
 const retiredPaths = [
   'crates/modules/rustok-forum/src/services/category_translation_target.rs',
@@ -23,7 +23,7 @@ const retiredPaths = [
   'crates/modules/rustok-forum/tests/category_translation_target_postgres.rs',
 ];
 
-for (const path of [planPath, centralPlanPath, modulePlanPath, registryPath, parityPath, retirementTest]) {
+for (const path of [planPath, centralPlanPath, modulePlanPath, registryPath, retirementTest]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 for (const path of retiredPaths) {

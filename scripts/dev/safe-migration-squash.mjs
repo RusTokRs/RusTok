@@ -688,15 +688,18 @@ if (allFlag) {
   const modulesDir = path.join(REPO_ROOT, 'crates', 'modules');
   const dirs = fs.readdirSync(modulesDir).filter((d) => fs.statSync(path.join(modulesDir, d)).isDirectory());
   let allPassed = true;
+  let inspected = 0;
   for (const d of dirs) {
     const hasEntities = fs.existsSync(path.join(modulesDir, d, 'src', 'entities'));
     const hasMigrations = fs.existsSync(path.join(modulesDir, d, 'src', 'migrations'));
     if (hasEntities && hasMigrations) {
+      inspected++;
       const ok = verifyModuleSchemaParity(d);
       if (!ok) allPassed = false;
     }
   }
-  process.exit(allPassed ? 0 : 1);
+  if (inspected === 0) console.error('No supported module source inventories found.');
+  process.exit(allPassed && inspected > 0 ? 0 : 1);
 } else {
   const ok = verifyModuleSchemaParity(moduleArg);
   process.exit(ok ? 0 : 1);

@@ -24,6 +24,28 @@
 - `apply_installer_remaining_schema(db: &DatabaseConnection) -> Result<(), DbErr>`: Completes full platform schema execution after base distribution admission.
 
 ### Schema Diff & Safety Classification (`schema_diff`)
+
+These composition exports are available with the default `composition` feature.
+The independent `verification` module is also available with
+`--no-default-features`:
+
+- `observe_database(db, database_url, pg_dump) -> Result<DatabaseSnapshot, VerificationError>`:
+  PostgreSQL 16 schema/enforcement/data observation on a quiescent fixture.
+- `compare(reference, candidate, reference_plan, candidate_plan) -> Result<ComparisonReport, VerificationError>`:
+  exact observed comparison with separate journal validation for each executable
+  plan. An equivalent result preserves blocked replacement admission.
+- `validate_journal(actual, expected)`: requires a nonempty, duplicate-free
+  expected plan and exactly its migration identities in the observed journal.
+- `DatabaseSnapshot`, `TableObservation`, `RelationName`, `SequenceObservation`:
+  structured observation values; row values retain their exact text forms.
+- `ComparisonReport`, `VerificationError`: scoped evidence and explicit failure
+  semantics. The `verify-migrations` binary exposes fresh and prepared-fixture
+  comparison through a process boundary. See [README.md](README.md#verification-tool)
+  for fixture limits and invocation.
+
+`schema_diff` remains a supplied-operation classifier rather than a database
+observer:
+
 - `SchemaOperation`: Enumeration of granular DDL operations (`CreateTable`, `AddColumn`, `AddIndex`, `AddForeignKey`, `DropTable`, `DropColumn`, `AlterColumnType`, `AddNotNullConstraintWithoutDefault`, `RenameColumn`, `RenameTable`, `RawSql`).
 - `ColumnSummary`: Structural summary of column definitions (`name`, `column_type`, `is_nullable`, `has_default`, `is_primary_key`).
 - `LockClassification`: DDL lock severity (`None`, `RowLevel`, `TableExclusive`, `AccessExclusive`).

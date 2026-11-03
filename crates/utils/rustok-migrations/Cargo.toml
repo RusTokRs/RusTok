@@ -89,6 +89,7 @@ sha2.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 async-trait = { workspace = true, optional = true }
 # Platform-core dependencies
 rustok-core = { workspace = true, optional = true }

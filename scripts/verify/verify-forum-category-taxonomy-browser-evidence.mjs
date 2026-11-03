@@ -208,7 +208,7 @@ for (const path of [
   "crates/modules/rustok-forum/storefront/src/ui/leptos.rs",
   "crates/modules/rustok-forum/src/services/category_taxonomy_tree_read.rs",
   contractPath,
-  "crates/modules/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md",
+  "crates/modules/rustok-forum/docs/implementation-plan.md",
   "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs",
 ]) {
   need(

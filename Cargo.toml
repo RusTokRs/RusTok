@@ -309,6 +309,7 @@ hex = "0.4"
 iggy = "0.11.0"
 reqwest = { version = "0.13", features = ["json", "query", "form"] }
 url = "2.5"
+percent-encoding = "2.3"
 reqwest-middleware = { version = "0.5.2", features = ["json"] }
 reqwest-retry = "0.9.1"
 prometheus = "0.14"

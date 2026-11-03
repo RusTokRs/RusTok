@@ -16204,6 +16204,7 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
+ "percent-encoding",
  "rust_decimal",
  "rustok-ai",
  "rustok-api",
