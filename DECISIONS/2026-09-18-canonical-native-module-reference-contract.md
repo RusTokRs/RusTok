@@ -195,8 +195,13 @@ responsibility rather than arbitrary line ranges.
 - `npm run verify:module-source-layout`
 - `npm run verify:module-reference-contract`
 - Unit and integration tests in `crates/modules/rustok-blog`.
+- Applicable behavior and supported database-profile evidence from the
+  [backend verification guide](../docs/backend/module-backend-verification.md#applicable-reference-evidence).
 
 ## Consequences
 
-- The reference module is hardened and certified for propagation across the platform.
-- New native modules have a clear, enforceable, and verified gold standard.
+- The reference module has an enforceable target contract for propagation across
+  the platform. Accepting this ADR does not certify unexecuted database,
+  transport, FBA/FFA or browser behavior.
+- New native modules inherit the applicable invariant and verification contract;
+  readiness requires retained execution evidence for their actual capabilities.

@@ -192,6 +192,23 @@ Establish native ownership before implementing a business capability.
 {ui_work_phases}
 - [ ] Verify runtime, FBA/FFA evidence, registration and release readiness.
 
+## Reference verification
+
+Use the [applicable reference evidence matrix](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence)
+to record scenario names, exact commands, revision, build/database profile,
+prerequisites and results in this plan as owner operations are implemented.
+Record an owner-contract reason for each inapplicable family; missing execution
+infrastructure leaves applicable evidence pending. Test counts and static guards
+alone do not establish behavioral coverage.
+
+If persistence is introduced, verify the same owner invariants on PostgreSQL
+and SQLite within their supported profiles through real migrations. PostgreSQL
+is the production profile; SQLite is local/demo/test. Database generation is not
+provided by this identity scaffold.
+
+Reuse the canonical backend, FFA/UI and i18n libraries for implemented consumers;
+do not add unused layers or dependencies to fill the reference checklist.
+
 ## Verification
 - `cargo xtask module lint {slug}`
 - `cargo xtask module validate {slug}`

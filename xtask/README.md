@@ -156,6 +156,14 @@ tenant/CAS/Patch/locale/outbox/FBA behavior tests of a real owner module. The
 [reference transfer assessment](./docs/implementation-plan.md#blog-reference-transfer-assessment)
 records the missing coverage and Blog's own remaining verification limitations.
 
+Generated owner plans link to the canonical
+[reference evidence matrix](../docs/backend/module-backend-verification.md#applicable-reference-evidence),
+including supported database portability, FFA/FBA, UI/i18n, security, concurrency,
+accessibility and risk-based performance/robustness checks. Persistence reference
+evidence requires real PostgreSQL and SQLite migrations and owner behavior;
+the current identity generator still creates no database schema. PostgreSQL is
+the production profile and SQLite is local/demo/test.
+
 ### Examples
 
 ```powershell

@@ -383,6 +383,15 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 
 ## Known Limitations / Pending Implementation
 
+Reference verification is incomplete. PostgreSQL harnesses can return success
+without a configured database; the SQLite harness skips some Channel prerequisite
+migrations and cannot prove PostgreSQL row locks. Next admin has no package-local
+test suite, and the Next storefront's seven utility tests do not establish
+functional/browser parity. The translation-width migration's locale-narrowing
+rollback also conflicts with the platform storage contract. These reference gaps
+are tracked in the
+[current owner plan](./docs/implementation-plan-current.md#reference-verification-follow-up-2026-11-03).
+
 The following are not implemented. Each is tracked with its audit identifier in
 [the current implementation cursor](./docs/implementation-plan-current.md#open-backlog-known-limitations).
 

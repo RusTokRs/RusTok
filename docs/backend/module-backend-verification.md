@@ -127,6 +127,69 @@ owner-service integration seams, and FBA write command identity.
 
 A clean layout with a failing reference-contract guard is not a canonical module.
 
+### Applicable reference evidence
+
+Reference readiness is assessed by owner behavior and executed scenarios, not
+by test counts or the presence of test directories. The module owner records
+each applicable family below in its existing implementation plan, with scenario
+names, exact commands, revision, profile/database, prerequisites and results.
+An inapplicable family requires an owner-contract reason. Missing infrastructure
+leaves applicable evidence pending; it does not make the family inapplicable.
+
+| Test family | Required behavior when applicable |
+| --- | --- |
+| Domain unit and property | Bounds, invalid inputs, complete lifecycle graph, explicit Patch semantics, calculations, deterministic ordering and serialization round trips |
+| Persistence and migrations | Real owner migrations, fresh install and upgrade, schema/entity parity, tenant/composite constraints, persisted-value decoding, supported rollback or explicit safe refusal |
+| Database portability | The same owner invariant scenarios on PostgreSQL and SQLite within their supported deployment profiles; dialect-specific constraints preserve the same business meaning |
+| Concurrency and retry | Stale CAS, simultaneous writes, duplicate/reordered delivery, principal-bound idempotency and recovery after partial failure |
+| Security and context | Tenant/principal/channel isolation, permission denial, anonymous public-read authority, missing/invalid context and safe public errors |
+| Events and derived state | Durable mutation/outbox commit and rollback, worker redelivery/restart, cache/search invalidation, independent projection revisions and stale-event handling |
+| Transport contracts | Real native/GraphQL and any declared REST/port entrypoints share commands, authorization, context, nullability, pagination and failure semantics |
+| FBA composition | Selected consumer/provider/worker is actually invoked, missing provider fails explicitly, timeouts/cancellation/retry identity and any documented degraded mode behave as contracted |
+| FFA core and bindings | Pure command/view-model/validation tests without a UI runtime; component loading, empty/error, retry, conflict and success behavior through the owner transport facade |
+| UI and content localization | Host effective locale, Fluent key/variable/plural behavior and formatting; requested/effective/available content locales, explicit localized writes and read-only fallback |
+| Browser and client parity | Critical owner workflows in both declared Leptos and Next.js admin/storefront surfaces, canonical routes/navigation, locale switching, permission and conflict/error handling |
+| Accessibility and design system | Keyboard/focus/labels and error announcements for interactive workflows; token/primitive parity and relevant UI Workbench examples when shared primitives change |
+| Performance and robustness | Representative bounded-query/pagination and N+1 checks; measured budgets for performance-sensitive operations; fuzzing or fault injection for applicable parsers, untrusted inputs and recovery boundaries |
+| Generator and publication | Deterministic preview/goldens, registration, supported feature profiles, rejected requests, interruption/recovery and truthful readiness metadata |
+
+Reuse the [canonical backend foundations](./module-backend-architecture.md#foundation-crate-responsibilities),
+[FFA packages](../UI/module-package-architecture.md),
+[UI verification](../UI/module-package-verification.md) and
+[i18n contract](../architecture/i18n.md). Add library dependencies only when an
+implemented owner operation consumes them. A stateless identity does not need
+fabricated database, event, port or browser tests. Property/fuzz/performance
+techniques are selected for concrete invariants and risks rather than added as
+empty universal suites.
+
+### Database-portability evidence
+
+Database independence means transport/framework-independent domain rules and
+equivalent owner invariants on supported database profiles. The current
+[deployment contract](../architecture/database.md#installer-storage) requires
+PostgreSQL for production; SQLite is local/demo/test. It does not imply support
+for arbitrary engines or SQLite production deployments.
+
+For a persistent reference capability:
+
+- Run shared owner-service scenarios against both databases, creating schema
+  through real owner migrations and declared prerequisites. A manually recreated
+  table or a harness that skips prerequisite migrations is narrower evidence.
+- Check tenant uniqueness/foreign keys, null/Patch/CAS behavior, cursor ordering,
+  UUID/time/JSON/Unicode boundaries and durable mutation/outbox atomicity.
+- Verify PostgreSQL locking/isolation and any declared RLS separately. SQLite
+  cannot establish PostgreSQL row-lock behavior.
+- Exercise fresh install, upgrade with existing data, supported rollback/refusal
+  and restart. Preserve the platform rule against narrowing widened locale
+  columns during rollback.
+- A required database execution gate must fail when its prerequisite is absent.
+  Optional local nonexecution must be reported as skipped/unverified. An early
+  successful return without connecting is not database execution evidence.
+
+Reuse SeaORM, `MigrationSource` and existing `rustok-test-utils` facilities.
+Dialect SQL belongs in owner persistence/migration adapters; do not introduce
+repository interfaces or a database-provider registry without a real consumer.
+
 ## Database Schema and Migration Parity Verification
 
 When creating, altering, or squashing database migrations in a module, verify 100% schema parity between SeaORM entities (`src/entities/*.rs`) and migrations (`src/migrations/*.rs`):

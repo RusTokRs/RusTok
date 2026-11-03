@@ -11,6 +11,47 @@ pending slice-98 PostgreSQL execution gate are superseded by this file. The
 owner-scoped documentation cleanup that followed the source cutover is complete
 through TAXONOMY-CAT-17.
 
+## Reference verification follow-up (2026-11-03)
+
+A bounded source review for native scaffold propagation at
+`4aeefe99ef4eaa59b9731c5d51702789a9cadc7b` found 346 explicit Rust
+`#[test]`/`#[tokio::test]` declarations across backend source (175), backend
+integration targets (83), Leptos admin (43), Leptos storefront (39) and CLI (6).
+The backend count includes nine property-test declarations. These are source
+counts, including structural checks, not executed tests or branch coverage.
+
+Reference acceptance follows the canonical
+[behavioral evidence matrix](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence).
+The following work remains open before these patterns can be certified for reuse:
+
+- [ ] Make required PostgreSQL execution reject missing configuration.
+  `tests/comment_projection_postgres_test.rs` and the related projection/restart
+  harnesses currently return without exercising PostgreSQL when
+  `RUSTOK_BLOG_TEST_DATABASE_URL` is absent. Ordinary green output is insufficient.
+- [ ] Run shared owner invariants on PostgreSQL and SQLite through actual owner
+  and prerequisite migrations. `src/services/post/tests.rs` skips three Channel
+  migrations on SQLite; the PostgreSQL projection harness manually creates its
+  narrow schema. Neither establishes complete migration/profile parity.
+- [ ] Retain PostgreSQL lock/contention/restart and durable outbox evidence
+  separately from SQLite service tests, which cannot prove `FOR UPDATE` behavior.
+- [ ] Resolve the platform-contract conflict in
+  `m20261030_000001_widen_blog_translation_columns::down`: it narrows locale
+  `varchar(32)` to `varchar(16)`, while the platform prohibits that rollback.
+  Verify upgrade and safe rollback/refusal with existing localized data.
+- [ ] Verify equivalent JSON/Unicode size boundaries and deterministic cursor
+  ordering on both backends; dialect SQL need not be textually identical.
+- [ ] Add functional Next admin Blog tests and retained critical-workflow browser
+  evidence for both client ecosystems. No package-local Next admin tests or
+  Blog-specific tests in the Next hosts' browser test directories were found.
+- [ ] Expand UI/i18n evidence beyond storefront utility tests: native/GraphQL
+  command parity, effective locale, localized form hydration/write provenance,
+  CAS conflicts, error/retry paths and accessible interaction.
+
+On 2026-11-03, `npm run test:blog` in `apps/next-frontend` passed seven tests
+with zero skips (`comments-order.test.mjs` and `reading-time.test.mjs`). This
+follow-up did not execute Rust, PostgreSQL or browser suites. Their evidence
+remains pending; no readiness status is promoted.
+
 ## 2026-10-31 Repo gate sweep: stale markers, split files and lost harnesses
 
 A full pass over every verification script (1190 gates + 139 fixture tests)
@@ -1326,7 +1367,9 @@ owner decision or a larger implementation.
   levels 2 to 4.
 - **L-4** Most blog documentation covers evidence and migration tracking; there
   is no user-facing feature roadmap.
-- **L-5** No frontend tests exist for the Blog storefront packages.
+- **L-5** The Next storefront has seven comment-order/reading-time utility tests;
+  functional Blog browser/client parity evidence remains pending as tracked in
+  the [reference follow-up](#reference-verification-follow-up-2026-11-03).
 - **L-6** The post page calls `fetchPublishedPost` twice per request (metadata
   and page) without an explicit cache key.
 

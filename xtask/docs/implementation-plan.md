@@ -46,6 +46,7 @@ Its comments-consumer registry is `boundary_ready`, not `transport_verified`.
 | Reference dimension | Transferred today | Required before claiming the reusable standard |
 | --- | --- | --- |
 | Responsibility layout and ownership | Thin facade, runtime module, internal tests, optional pure core/model/transport/UI; unused slots omitted | Keep private persistence and owner boundaries checked as actual responsibilities are added |
+| Database independence | No-DB identity; persistence generation is rejected; Blog has PostgreSQL/SQLite migration adapters | Transport-independent domain rules and shared owner-invariant scenarios through real migrations on both supported profiles; PostgreSQL production, SQLite local/demo/test; separate PostgreSQL contention evidence |
 | Semantic invariants | Documented platform rules; the semantic verifier is still Blog-specific | Apply tenant authority, explicit Patch, mandatory edit CAS, lifecycle, safe errors, deterministic pagination and derived-revision rules to each applicable owner operation |
 | FFA | Source separation, explicit transport selection, executable unavailable-path tests | Real command/view-model tests, functional owner transports, mounted routes and Leptos/Next capability parity |
 | UI localization | Shared Fluent declaration and generated catalog/variable-parity tests | Host effective locale, parameter-bearing message behavior, no hardcoded language branches and actual localized UI evidence |
@@ -57,6 +58,26 @@ Do not mechanically copy Blog's posts, categories, permission names, migration
 history or Comments integrations. Extract the invariant and test contract into
 the existing tooling/owner boundaries, then instantiate it for real module
 requirements. Empty layers and passing placeholder tests remain forbidden.
+
+Library reuse follows the existing owners, not a mandatory dependency bundle.
+The scaffold's direct backend dependencies are `rustok-core`, `async-trait` and
+`sea-orm-migration`; each generated UI package directly uses `leptos`,
+`rustok-ui-i18n` and `rustok-ui-transport`. Real capabilities then reuse:
+
+| Implemented concern | Canonical library boundary |
+| --- | --- |
+| Persistence and tests | SeaORM / SeaORM Migration, `MigrationSource`, existing `rustok-test-utils` facilities; owner-private mappings and dialect adapters |
+| Backend contracts and runtime | `rustok-api` for typed context/errors/ports, `rustok-runtime` for runtime composition, `rustok-web` only at HTTP adapters, `rustok-fba` for descriptors |
+| Events and observability | `rustok-events`, `rustok-outbox`, `rustok-telemetry` |
+| FFA commands, routes and transport | Pure owner core/model, `rustok-ui-core`, `leptos-ui-routing`, `rustok-ui-transport`, `rustok-graphql` for an implemented headless adapter |
+| Visual controls, forms and tables | Canonical `rustok-ui`/`leptos-ui`, grid and forms libraries, design tokens and UI Workbench |
+| Localization | `rustok-ui-i18n` for interface catalogs; `rustok-api` locale types and tenant-owned locale policy for runtime/content provenance |
+
+The [backend foundations](../../docs/backend/module-backend-architecture.md),
+[FFA/UI contract](../../docs/UI/module-package-architecture.md) and
+[i18n contract](../../docs/architecture/i18n.md) remain authoritative. No unused
+library, repository abstraction, UI control or provider registry is generated
+solely to populate this table.
 
 The bounded reference recheck on 2026-11-03 found:
 
@@ -218,6 +239,13 @@ read-only and disposable-fixture verification can proceed earlier.
 - [ ] Prove transfer with one second real module/use case. Require zero Blog
   names/permissions/schema assumptions and the same applicable invariant gates.
   Generated code and test bodies must follow the actual owner operation.
+- [ ] Establish shared PostgreSQL/SQLite owner-invariant scenarios through real
+  migrations, including prerequisites, upgrade/rollback safety and durable
+  mutation/outbox effects. Run PostgreSQL lock/isolation cases separately;
+  missing required database configuration must not produce passing evidence.
+- [ ] Close Blog's reference verification gaps in its
+  [current owner plan](../../crates/modules/rustok-blog/docs/implementation-plan-current.md#reference-verification-follow-up-2026-11-03),
+  including functional client/i18n evidence, before transferring those patterns.
 
 - [ ] Provide one Windows/Linux verification entrypoint through `xtask`, using a
   disposable checkout and canonical dependency catalog. Keep the current matrix
@@ -251,24 +279,18 @@ modes, with clean source checkout and explicit evidence of any missing dependenc
 or environment requirement. CI workflow edits require the repository's explicit
 CI authorization; this review makes none.
 
-The reusable reference test contract must cover the following dimensions when
-their owning behavior exists:
+The reusable test contract is the canonical
+[applicable reference evidence matrix](../../docs/backend/module-backend-verification.md#applicable-reference-evidence).
+It covers domain/property, persistence/migrations, database portability,
+concurrency/retry, security/context, events/derived state, transports, FBA,
+FFA, UI/content localization, browser/client parity, accessibility/design system,
+performance/robustness and generator/publication behavior.
 
-| Test family | Required acceptance evidence |
-| --- | --- |
-| Pure domain and property tests | Bounds, complete transition graph, Patch semantics, calculations and ordering; pure UI command/view-model tests without a framework runtime |
-| Persistence and migrations | Real owner schema on supported databases, tenant/composite constraints, migration safety and persisted-state decoding failures |
-| Concurrency and side effects | Stale CAS, duplicate/reordered retries, principal-bound identity, rollback, atomic outbox and independent derived revisions |
-| Security and locale provenance | Cross-tenant/principal denial, effective context, missing authority, missing locale, read fallback never silently becoming a localized write |
-| Transport contracts | Same owner command through native/GraphQL and any declared REST/port; schema/nullability/pagination and safe typed public errors |
-| Runtime and recovery | Selected registry/provider/worker actually invoked, restart/redelivery, missing provider and explicitly supported degraded modes |
-| Client and browser parity | Real routes/actions in both hosts, canonical locale and navigation, no UI-owned domain policy; retained browser execution |
-| Generator behavior | Complete immutable preview, registration, fault restoration, source goldens, supported feature profiles and evidence of rejected requests |
-
-A module without a persistent owner state does not need invented migration tests;
-one without a state machine does not need fake transition tests. Once a capability
-is implemented, missing execution prerequisites must leave its evidence pending,
-never silently promote it through empty success or source markers.
+Generated owner plans link to this matrix and require concrete scenarios,
+commands, revision/profile, prerequisites and results. Each inapplicable family
+needs an owner-contract reason; missing infrastructure leaves applicable evidence
+pending. This reference is not permission to create empty test suites or to claim
+that the identity scaffold already implements these capabilities.
 
 #### Pilot for localized read and write provenance
 
