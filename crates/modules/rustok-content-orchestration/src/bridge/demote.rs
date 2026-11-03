@@ -1,7 +1,6 @@
 use chrono::Utc;
 use rustok_blog::{
-    DemotedPostRecord, DemotedPostTranslationRecord, delete_demoted_post_in_tx,
-    load_post_for_demotion_in_tx,
+    DemotedPostTranslationRecord, delete_demoted_post_in_tx, load_post_for_demotion_in_tx,
 };
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
@@ -63,7 +62,7 @@ pub(crate) async fn demote_post_to_topic(
         None,
     )
     .await?;
-    for translation in &translations {
+    for translation in translations {
         rustok_content::richtext::parse_json(
             &translation.body,
             rustok_content::richtext::RichTextProfile::Discussion,
@@ -101,14 +100,14 @@ pub(crate) async fn demote_post_to_topic(
         is_pinned: Set(false),
         is_locked: Set(false),
         reply_count: Set(0),
-        created_at: Set(post.created_at),
+        created_at: Set(post.created_at.into()),
         updated_at: Set(now.into()),
         last_reply_at: Set(None),
     }
     .insert(txn)
     .await?;
 
-    for translation in &translations {
+    for translation in translations {
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             topic_id: Set(topic_id),
@@ -117,8 +116,8 @@ pub(crate) async fn demote_post_to_topic(
             title: Set(translation.title.clone()),
             slug: Set(Some(post.slug.clone())),
             body: Set(translation.body.clone()),
-            created_at: Set(translation.created_at),
-            updated_at: Set(translation.updated_at),
+            created_at: Set(translation.created_at.into()),
+            updated_at: Set(translation.updated_at.into()),
         }
         .insert(txn)
         .await?;

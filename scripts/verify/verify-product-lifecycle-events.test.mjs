@@ -333,7 +333,7 @@ if root_product_id != product_id {
 
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
 `,
-  'docs/audits/product-module-engineering-audit-2026-10-07.md': `| \`PROD-EVENT-001\` | Устранено | Добавлен \`ProductUnpublished\` и команда архивации |
+  'crates/modules/rustok-product/docs/implementation-plan.md': `| \`PROD-EVENT-001\` | Resolved | Added \`ProductUnpublished\` |
 `
 };
 

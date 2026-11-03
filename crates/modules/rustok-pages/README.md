@@ -84,10 +84,7 @@ compatibility or drop migration is retained.
 
 ## Known Limitations / Pending Implementation
 
-Recorded by the 2026-10-08 page-subsystem audit
-([`docs/audits/page-subsystem-engineering-audit-2026-10-08.md`](../../../docs/audits/page-subsystem-engineering-audit-2026-10-08.md))
-and the 2026-10-09 functional audit
-([`docs/audits/pages-page-builder-functional-audit-2026-10-09.md`](../../../docs/audits/pages-page-builder-functional-audit-2026-10-09.md)).
+Recorded by earlier page-subsystem audits.
 These are gaps in what the runtime actually does, not accepted design:
 
 - **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors

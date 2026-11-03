@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 const root = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) =>
+  fs.readFileSync(path.join(root, relative), "utf8").replace(/\r\n/g, "\n");
 const failures = [];
 const need = (source, marker, label) => {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
@@ -87,7 +88,7 @@ const nextRelationsPath = "apps/next-admin/packages/rustok-product/src/api/relat
 const nextBundlesPath = "apps/next-admin/packages/rustok-product/src/api/bundles.ts";
 const boundaryDocPath = "crates/modules/rustok-product/docs/write-boundary.md";
 const registryPath = "docs/modules/registry.md";
-const auditPath = "docs/audits/product-module-engineering-audit-2026-10-07.md";
+const auditPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 
 for (const relative of [
   relationsReceiptsPath,

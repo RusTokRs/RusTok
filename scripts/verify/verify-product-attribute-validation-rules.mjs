@@ -92,7 +92,7 @@ const paths = {
     "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
   commerceQuery: "crates/modules/rustok-commerce/src/graphql/query.rs",
   registry: "docs/modules/registry.md",
-  audit: "docs/audits/product-module-engineering-audit-2026-10-07.md",
+  audit: "crates/modules/rustok-product/docs/implementation-plan.md",
 };
 
 const engine = readRepo(paths.engine);

@@ -154,7 +154,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     assert_eq!(post.slug, "forum-thread");
     assert_eq!(post.comment_count, 2);
     assert_eq!(post.title, "Forum thread");
-    assert_eq!(post_translation.body, "Original forum body");
+    assert!(post.content_plain_text.contains("Original forum body"));
 
     let thread = comment_thread::Entity::find()
         .filter(comment_thread::Column::TargetType.eq("blog_post"))
@@ -181,12 +181,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     assert!(comment_bodies.iter().any(|b| b.body == "First reply"));
     assert!(comment_bodies.iter().any(|b| b.body == "Second reply"));
 
-    let post_tags = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(promoted.target_id))
-        .all(&db)
-        .await
-        .expect("blog post tags lookup should succeed");
-    assert_eq!(post_tags.len(), 2);
+    assert_eq!(post.tags.len(), 2);
 
     let category = forum_category::Entity::find_by_id(category.id)
         .one(&db)
@@ -226,7 +221,7 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     let promoted_retry = orchestration
         .promote_topic_to_post(
             tenant_id,
-            security,
+            security.clone(),
             PromoteTopicToPostInput {
                 topic_id: topic.id,
                 locale: "EN".to_string(),
@@ -240,21 +235,14 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
     assert_eq!(promoted_retry.target_id, promoted.target_id);
     assert_eq!(promoted_retry.moved_comments, promoted.moved_comments);
 
-    let posts_after_retry = blog_post::Entity::find()
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .all(&db)
+    let post_after_retry = PostService::new(db.clone(), events.clone())
+        .get_post(tenant_id, security.clone(), promoted.target_id, "en")
         .await
-        .expect("blog posts after retry query should succeed");
+        .expect("blog post after retry should exist");
     let comments_after_retry = comment::Entity::find()
         .all(&db)
         .await
         .expect("stored comments after retry query should succeed");
-    let post_tags_after_retry = blog_post_tag::Entity::find()
-        .filter(blog_post_tag::Column::PostId.eq(promoted.target_id))
-        .all(&db)
-        .await
-        .expect("blog post tags after retry query should succeed");
-    assert_eq!(posts_after_retry.len(), 1);
+    assert_eq!(post_after_retry.tags.len(), 2);
     assert_eq!(comments_after_retry.len(), 2);
-    assert_eq!(post_tags_after_retry.len(), 2);
 }

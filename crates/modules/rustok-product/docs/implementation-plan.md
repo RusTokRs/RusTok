@@ -1424,3 +1424,13 @@ and [source packet](../../rustok-inventory/contracts/evidence/source-index-consu
       restart/deployment and older-baseline cutover. No historical facts or checkpoint reset inferred.
 - [ ] Admit full downstream Product step-8 evidence. Source/worker registration and initial pending
       enqueue are authored only; no test/build/runtime/readiness evidence is claimed here.
+
+## Historical Audit Remediation Contracts
+
+The following remediations from the product module audit are codified in code and verified by automated guards:
+
+- `PROD-VALID-001`: Runtime enforcement of attribute-level base rules and schema/category validation overrides across product and variant EAV writes. Verified by `scripts/verify/verify-product-attribute-validation-rules.mjs`.
+- `PROD-EVENT-001`: Product lifecycle events emit typed domain events on mutation, including `ProductUnpublished` and `ProductArchived`. Verified by `scripts/verify/verify-product-lifecycle-events.mjs`.
+- `PROD-IDEM-001`: Product relations and bundles operations preserve transaction boundaries and enforce idempotency. Verified by `scripts/verify/verify-product-relations-bundles-idempotency.mjs`.
+- `PROD-PORT-001`: Cross-module product relations expose typed public ports without leaking private persistence entities. Verified by `scripts/verify/verify-product-relations-bundles-idempotency.mjs`.
+

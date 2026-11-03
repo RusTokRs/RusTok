@@ -9,10 +9,7 @@ use rustok_content::{
 use rustok_forum::services::topic_routes::forum_topic_route;
 use rustok_forum::{TopicStatus, forum_topic};
 use rustok_taxonomy::TaxonomyService;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::bridge::OwnerRoutes;

@@ -395,38 +395,33 @@ rollback also conflicts with the platform storage contract. These reference gaps
 are tracked in the
 [scaffold reference assessment](../../../xtask/docs/implementation-plan.md#blog-reference-transfer-assessment).
 
-The following limitations retain their identifiers from the
-[Blog engineering audit](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md).
+The following limitations are tracked in the module backlog:
 
-- No server-side text search or facets for the post list (H-7).
-- The rich-text body has no inline images, tables, or embeds (H-8).
+- No server-side text search or facets for the post list.
+- The rich-text body has no inline images, tables, or embeds.
 - Readers cannot edit, delete, or report comments, and comments send no
-  notifications (H-9).
-- No trash or revision history (M-3, M-4). Draft preview exists through
+  notifications.
+- No trash or revision history. Draft preview exists through
   preview tokens (see "Preview tokens" above).
-- Tag and category archives are query-string filters without their own pages (M-7).
-- Anonymous REST read access is not available (M-8).
-- Newsletter, membership, and paid content are not available (M-9).
-- Reactions are limited to `like` on posts (M-10).
-- Preview reads have no audit trail (M-13 of
-  [`docs/audits/rustok-blog-engineering-audit-2026-10-15.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-15.md));
+- Tag and category archives are query-string filters without their own pages.
+- Anonymous REST read access is not available.
+- Newsletter, membership, and paid content are not available.
+- Reactions are limited to `like` on posts.
+- Preview reads have no audit trail;
   the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
   transition (see "Preview tokens").
 - Bulk post operations run one transaction and one lifecycle event per id inside the request, so a
   batch is not atomic across ids and a request that dies mid-way leaves the remaining ids
-  unprocessed; a queue-based bulk command that resumes is not implemented (H-5 of the 2026-10-15
-  audit). The fan-out is bounded by the [100-id cap and the per-root rate limit](#bulk-post-operations).
+  unprocessed; a queue-based bulk command that resumes is not implemented. The fan-out is bounded by the [100-id cap and the per-root rate limit](#bulk-post-operations).
 - A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
-  it, so the window is bounded by the host scheduler rather than by a cross-module transaction
-  (H-7 of the 2026-10-15 audit).
-- The Leptos storefront does not redirect retired slugs (M-12).
+  it, so the window is bounded by the host scheduler rather than by a cross-module transaction.
+- The Leptos storefront does not redirect retired slugs.
 - The Leptos admin cannot set the Category, the featured image, the SEO title/description, the
   channel visibility, or a publication schedule: `BlogPostDraft`
   (`crates/modules/rustok-blog/admin/src/model.rs`) carries only locale, version, title, slug,
   excerpt, content, publish and tags, and both adapters send `category_id: None`,
   `featured_image_url: None`, `seo_title: None`, `seo_description: None`, `channel_slugs: None`
-  and `scheduled_at: None` (L-7 of
-  [`docs/audits/rustok-blog-engineering-audit-2026-10-17.md`](../../../docs/audits/rustok-blog-engineering-audit-2026-10-17.md)).
+  and `scheduled_at: None`.
   The owner input types (`CreatePostInput`, `UpdatePostInput`) accept all of them and the Next
   admin exposes the Category, the featured image and the SEO fields, so the two admin stacks have
   different capabilities.

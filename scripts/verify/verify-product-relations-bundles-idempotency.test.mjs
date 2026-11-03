@@ -51,10 +51,11 @@ const verifierInputs = [
   "apps/next-admin/packages/rustok-product/src/api/bundles.ts",
   "crates/modules/rustok-product/docs/write-boundary.md",
   "docs/modules/registry.md",
-  "docs/audits/product-module-engineering-audit-2026-10-07.md",
+  "crates/modules/rustok-product/docs/implementation-plan.md",
 ];
 
-const source = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
+const source = (relative) =>
+  fs.readFileSync(path.join(repoRoot, relative), "utf8").replace(/\r\n/g, "\n");
 
 const writeFixture = (overrides = {}) => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "verify-catalog-idem-"));

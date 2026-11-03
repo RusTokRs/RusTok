@@ -162,7 +162,7 @@ default locale before comparing values and attributes with default-locale contra
 
 ## Known Limitations / Pending Implementation
 
-These are tracked in [`docs/engineering-audit-2026-09-30.md`](./docs/engineering-audit-2026-09-30.md)
+These are tracked in [`docs/implementation-plan.md`](./docs/implementation-plan.md)
 and are **not** implemented by the current runtime:
 
 - **CLDR `parentLocales` are not applied.** The fallback chain peels variants,
@@ -190,7 +190,5 @@ and are **not** implemented by the current runtime:
 
 - [Crate docs](./docs/README.md)
 - [Implementation plan](./docs/implementation-plan.md)
-- [Engineering audit (2026-09-27)](./docs/engineering-audit-2026-09-27.md)
-- [Engineering audit (2026-09-30) — subsystem-wide](./docs/engineering-audit-2026-09-30.md)
 - [Platform docs index](../../../docs/index.md)
 - [Module UI package implementation guide](../../../docs/UI/module-package-implementation.md)

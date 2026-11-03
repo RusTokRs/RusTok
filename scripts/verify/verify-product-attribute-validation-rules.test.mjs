@@ -343,7 +343,7 @@ async fn bind_catalog_category_attribute(&self) {
 `,
   "docs/modules/registry.md": `- scripts/verify/verify-product-attribute-validation-rules.mjs
 `,
-  "docs/audits/product-module-engineering-audit-2026-10-07.md": `#### PROD-VALID-001 (P2). validation / validation_overrides не применяются
+  "crates/modules/rustok-product/docs/implementation-plan.md": `#### PROD-VALID-001: validation rules
 `,
 };
 

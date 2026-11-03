@@ -59,7 +59,7 @@ pub use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 pub use services::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
     CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,
-    canonical_post_route,
+    canonical_post_route, remove_post_tag_links_in_tx, replace_post_tag_links_in_tx,
 };
 pub use state_machine::BlogPostStatus;
 
