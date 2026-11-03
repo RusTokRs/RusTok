@@ -196,7 +196,7 @@
       "path": "crates/modules/rustok-auth",
       "category": "modules",
       "files": 62,
-      "loc": 15009,
+      "loc": 15027,
       "completed": true,
       "completed_at": "2026-11-03 02:42",
       "notes": "Verified all 79 unit/graphql tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved."
@@ -216,10 +216,10 @@
       "path": "crates/modules/rustok-auth/cli",
       "category": "modules",
       "files": 2,
-      "loc": 359,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 377,
+      "completed": true,
+      "completed_at": "2026-11-03 03:07",
+      "notes": "Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved."
     },
     "crates/modules/rustok-blog": {
       "name": "rustok-blog",

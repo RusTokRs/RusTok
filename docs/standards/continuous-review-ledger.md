@@ -823,9 +823,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 357 | 2026-11-03 02:19 | Verified all 8 tests, clippy clean with -D warnings, added contract tests for product AI constants and descriptors, gatekeeper approved. |
 | [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,701 | 2026-11-03 02:31 | Verified all 20 tests, clippy clean with -D warnings, added contract tests for machine translation constants, descriptors, and policy digest, gatekeeper approved. |
 | [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,567 | 2026-11-03 01:33 | Verified all 27 unit and SSR tests, clippy clean with -D warnings on all targets, cleaned Cargo.toml, gatekeeper approved. |
-| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,009 | 2026-11-03 02:42 | Verified all 79 unit/graphql tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
+| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,027 | 2026-11-03 02:42 | Verified all 79 unit/graphql tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
 | [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 21 | 7,373 | 2026-11-03 02:55 | Verified all 25 unit/SSR tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
-| [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 359 | None |  |
+| [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 377 | 2026-11-03 03:07 | Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved. |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
 | [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 184 | 48,273 | None |  |
