@@ -396,6 +396,9 @@ mod tests {
 
     #[test]
     fn default_profile_selects_graphql_without_fallback() {
+        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+        #[cfg(any(feature = "ssr", feature = "hydrate"))]
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 }
