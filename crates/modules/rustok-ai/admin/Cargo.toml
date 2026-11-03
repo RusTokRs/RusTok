@@ -36,11 +36,6 @@ leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 chrono.workspace = true
 rustok-api = { workspace = true, default-features = false }
-
-
-
-
-
 rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 rustok-ai = { workspace = true, optional = true, features = ["server"] }
