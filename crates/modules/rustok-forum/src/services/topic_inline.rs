@@ -120,6 +120,13 @@ impl TopicService {
         }
         .insert(&txn)
         .await?;
+        super::subscription::auto_subscribe::auto_subscribe_topic_author_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            security.user_id,
+        )
+        .await?;
         lock_active_topic_tag_write_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_tag_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
 
@@ -206,6 +213,11 @@ impl TopicService {
             Action::Update,
             topic.author_id,
         )?;
+        if topic.status == TopicStatus::Archived {
+            // Archived (including soft-deleted) topics are immutable;
+            // restore the topic before editing it.
+            return Err(ForumError::TopicArchived);
+        }
         let max_edit_window_minutes = self
             .settings
             .module_settings(tenant_id)
@@ -290,6 +302,20 @@ impl TopicService {
         let txn = self.db.begin().await?;
         let claimed_updated_at =
             Self::claim_topic_update_in_tx(&txn, tenant_id, topic_id, expected_updated_at).await?;
+        // A content edit in a pre-moderated tenant re-enters moderation:
+        // otherwise an author could publish a benign topic and rewrite it
+        // into unreviewed content that stays `Open`. Metadata/tag-only
+        // edits do not re-pend. Pending topics already count toward
+        // category/user totals, so no counter changes are needed, and the
+        // publication journal prevents a duplicate `ForumTopicCreated`
+        // when the topic is approved again.
+        let repend_for_moderation = topic.status == TopicStatus::Open
+            && (input.title.is_some() || input.body.is_some())
+            && self
+                .settings
+                .module_settings_in_tx(&txn, tenant_id)
+                .await?
+                .pre_moderation_enabled;
         if let Some(expectation) = quote_expectation {
             super::relation_quote_input::lock_source_and_assert_latest_in_tx(
                 &txn,
@@ -306,6 +332,9 @@ impl TopicService {
         }
         let mut active: forum_topic::ActiveModel = topic.into();
         active.updated_at = Set(claimed_updated_at.into());
+        if repend_for_moderation {
+            active.status = Set(TopicStatus::Pending);
+        }
         if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
             active.metadata = Set(prepared_custom_fields
                 .metadata

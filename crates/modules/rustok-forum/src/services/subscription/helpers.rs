@@ -16,40 +16,58 @@ pub(super) const INITIAL_REVISION: i64 = 1;
 
 pub(super) fn resolve_preferences(
     input: &UpdateForumSubscriptionInput,
-) -> ForumSubscriptionPreferences {
-    ForumSubscriptionPreferences::resolve(
+) -> ForumResult<ForumSubscriptionPreferences> {
+    let preferences = ForumSubscriptionPreferences::resolve(
         input.level,
         input.notify_mentions,
         input.notify_replies,
         input.notify_new_topics,
         input.digest_mode,
-    )
+    );
+    // Digest delivery (daily/weekly batching) is owned by the notifications
+    // platform and is not implemented yet. Accepting an effective
+    // daily/weekly selection would promise batched delivery while the
+    // forum either notified immediately or never, so it fails closed.
+    // (A muted level resolves to `Disabled` and never reaches this check.)
+    // Stored rows with a digest mode are honored by the notification
+    // fan-out as "no immediate delivery" until batching ships.
+    if matches!(
+        preferences.digest_mode,
+        crate::subscription::ForumDigestMode::Daily | crate::subscription::ForumDigestMode::Weekly
+    ) {
+        return Err(ForumError::Validation(
+            "Forum digest delivery is not available yet; use immediate or disabled".to_string(),
+        ));
+    }
+    Ok(preferences)
 }
 
 pub(super) fn ensure_revision_update(rows_affected: u64) -> ForumResult<()> {
     if rows_affected != 1 {
-        return Err(ForumError::Validation(
-            "Forum subscription revision conflict".to_string(),
-        ));
+        return Err(ForumError::SubscriptionRevisionConflict);
     }
     Ok(())
 }
 
+/// Next subscription revision. The database trigger requires exactly
+/// `previous + 1`, so a saturating add at `i64::MAX` would surface as a raw
+/// persistence error; fail with the typed exhaustion error instead.
+pub(super) fn next_revision(previous: i64) -> ForumResult<i64> {
+    previous
+        .checked_add(1)
+        .ok_or(ForumError::SubscriptionRevisionExhausted)
+}
+
 pub(super) fn validate_expected_revision(expected: Option<i64>, actual: i64) -> ForumResult<()> {
     if expected.is_some_and(|expected| expected != actual) {
-        return Err(ForumError::Validation(format!(
-            "Forum subscription revision conflict: expected {}, actual {actual}",
-            expected.unwrap_or_default()
-        )));
+        return Err(ForumError::SubscriptionRevisionConflict);
     }
     Ok(())
 }
 
 pub(super) fn validate_new_revision(expected: Option<i64>) -> ForumResult<()> {
     if expected.is_some_and(|revision| revision != 0) {
-        return Err(ForumError::Validation(
-            "A new forum subscription or policy requires expected_revision 0".to_string(),
-        ));
+        return Err(ForumError::SubscriptionRevisionConflict);
     }
     Ok(())
 }

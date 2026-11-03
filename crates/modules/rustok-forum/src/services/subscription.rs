@@ -1,3 +1,4 @@
+pub(crate) mod auto_subscribe;
 mod category;
 mod helpers;
 mod policy;

@@ -510,14 +510,6 @@ impl TopicService {
         Ok(())
     }
 
-    pub(crate) async fn find_topic(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ForumResult<crate::entities::forum_topic::Model> {
-        self.inner.find_topic(tenant_id, topic_id).await
-    }
-
     pub(crate) async fn find_topic_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

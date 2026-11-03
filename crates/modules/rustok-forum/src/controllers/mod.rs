@@ -205,6 +205,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             "Forum posting rate limit reached; retry later",
         ),
         ForumError::RelationRevisionConflict
+        | ForumError::SubscriptionRevisionConflict
         | ForumError::RelationRevisionUnavailable
         | ForumError::AttachmentSourceRevisionConflict { .. }
         | ForumError::TopicUpdateConflict(_)
@@ -251,6 +252,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         | ForumError::Internal(_)
         | ForumError::AttachmentRelationInvariant
         | ForumError::AttachmentRelationRevisionExhausted
+        | ForumError::SubscriptionRevisionExhausted
         | ForumError::TopicCanonicalResolutionConflict(_)
         | ForumError::TopicRouteResolutionConflict
         | ForumError::CategoryRouteResolutionConflict => HttpError::new(

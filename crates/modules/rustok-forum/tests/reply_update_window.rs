@@ -251,6 +251,8 @@ async fn seed_topic(
         "INSERT INTO forum_topics \
          (id, tenant_id, category_id, author_id, status, metadata, is_pinned, is_locked, reply_count) \
          VALUES ({}, {}, {}, {}, 'open', '{{}}', 0, {}, 0); \
+         UPDATE forum_categories SET topic_count = topic_count + 1 \
+         WHERE tenant_id = {} AND id = {}; \
          INSERT INTO forum_topic_translations \
          (id, topic_id, tenant_id, locale, title, slug, body) \
          VALUES ({}, {}, {}, 'en', 'Topic', 'topic-{topic_id}', 'Topic body')",
@@ -259,6 +261,8 @@ async fn seed_topic(
         sql_uuid(category_id),
         sql_uuid(author_id),
         if locked { 1 } else { 0 },
+        sql_uuid(tenant_id),
+        sql_uuid(category_id),
         sql_uuid(Uuid::new_v4()),
         sql_uuid(topic_id),
         sql_uuid(tenant_id),
