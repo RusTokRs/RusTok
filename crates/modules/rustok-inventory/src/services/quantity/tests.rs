@@ -196,7 +196,11 @@ fn quantity_error_native_policy_keeps_provider_text_private_and_unknown_publicat
         let policy = error.port_error();
         assert_eq!(policy.kind, blocker.kind());
         assert_eq!(policy.code, blocker.code());
-        assert_eq!(policy.message, blocker.message());
+        if blocker.kind() == PortErrorKind::InvariantViolation {
+            assert_eq!(policy.message, "the requested operation could not be completed safely");
+        } else {
+            assert_eq!(policy.message, blocker.message());
+        }
         assert!(!policy.retryable);
     }
     for error in [

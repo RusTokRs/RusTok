@@ -254,6 +254,11 @@ impl PortError {
         Self::new(PortErrorKind::InvariantViolation, code, message, false)
     }
 
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        self.retryable = retryable;
+        self
+    }
+
     pub fn new(
         kind: PortErrorKind,
         code: impl Into<String>,

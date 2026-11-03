@@ -91,6 +91,12 @@ pub enum ForumError {
     #[error("Forum attachment relation revision counter is exhausted")]
     AttachmentRelationRevisionExhausted,
 
+    #[error("Forum subscription revision counter is exhausted")]
+    SubscriptionRevisionExhausted,
+
+    #[error("Forum subscription revision changed concurrently")]
+    SubscriptionRevisionConflict,
+
     #[error("Forum attachment source revision conflict: expected {expected}, current {current}")]
     AttachmentSourceRevisionConflict { expected: u64, current: u64 },
 
@@ -214,6 +220,8 @@ impl ForumError {
             Self::AttachmentRelationRevisionExhausted => {
                 "FORUM_ATTACHMENT_RELATION_REVISION_EXHAUSTED"
             }
+            Self::SubscriptionRevisionExhausted => "FORUM_SUBSCRIPTION_REVISION_EXHAUSTED",
+            Self::SubscriptionRevisionConflict => "FORUM_SUBSCRIPTION_REVISION_CONFLICT",
             Self::AttachmentSourceRevisionConflict { .. } => {
                 "FORUM_ATTACHMENT_SOURCE_REVISION_CONFLICT"
             }
@@ -279,7 +287,10 @@ impl ForumError {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
             Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
-            Self::AttachmentRelationInvariant | Self::AttachmentRelationRevisionExhausted => false,
+            Self::AttachmentRelationInvariant
+            | Self::AttachmentRelationRevisionExhausted
+            | Self::SubscriptionRevisionExhausted => false,
+            Self::SubscriptionRevisionConflict => true,
             Self::AttachmentSourceRevisionConflict { .. } => true,
             Self::TopicUpdateConflict(_) => true,
             _ => false,

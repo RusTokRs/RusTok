@@ -14,7 +14,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadStateService,
+    ForumTopicReadOperation, ForumTopicReadState,
     ForumTopicReadTransport, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
     MarkForumTopicsReadBatchResult, TopicReadModel, TopicStatus, TopicUnreadCursorQuery,
     TopicUnreadReadModel, topic_read_audience_port_context,
@@ -199,9 +199,28 @@ impl ForumReadStateQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, None);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::SelectedTopic,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let state = ForumTopicReadStateService::new(db.clone())
-            .get_topic_read_state(tenant_id, topic_id, forum_security(auth))
+        let state = runtime
+            .visibility_scoped_read_state_service(db.clone())
+            .get_topic_read_state_with_audience_context(
+                tenant_id,
+                topic_id,
+                forum_security(auth),
+                audience_context,
+            )
             .await?;
         Ok(map_read_state(state))
     }
@@ -228,12 +247,27 @@ impl ForumReadStateMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, None);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::Graphql,
+            ForumTopicReadOperation::MarkRead,
+            tenant_id,
+            auth,
+            ctx.data_opt::<RequestContext>(),
+            locale.as_str(),
+        )?;
+        let runtime = ctx
+            .data_opt::<ForumGraphqlRuntimeData>()
+            .cloned()
+            .unwrap_or_default();
 
-        let state = ForumTopicReadStateService::new(db.clone())
-            .mark_topic_read(
+        let state = runtime
+            .visibility_scoped_read_state_service(db.clone())
+            .mark_topic_read_with_audience_context(
                 tenant_id,
                 topic_id,
                 forum_security(auth),
+                audience_context,
                 MarkForumTopicReadInput {
                     last_read_position: input.last_read_position,
                     last_read_revision: input.last_read_revision,

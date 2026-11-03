@@ -147,31 +147,48 @@ for (const marker of [
   "pub async fn create_with_audience_context(",
   "pub async fn create_command_with_audience_context(",
   "async fn create_command_with_optional_audience_context(",
-  ".require(tenant_id, topic_id, &security, context)",
-  ".inner\n            .create_command(tenant_id, security, topic_id, input)",
+  ".create_command_with_audience_authorization(",
+  "&self.create_audience",
 ]) {
   requireText(facade, marker, `reply facade is missing ${marker}`);
 }
-const authorizationIndex = facade.indexOf(
-  ".require(tenant_id, topic_id, &security, context)",
+const facadeDelegationIndex = facade.indexOf(
+  ".create_command_with_audience_authorization(",
 );
-const rawOwnerIndex = facade.indexOf(
-  ".create_command(tenant_id, security, topic_id, input)",
+if (facadeDelegationIndex < 0) {
+  failures.push("reply facade must delegate audience authorization into the raw owner command");
+}
+const authorizationIndex = rawInline.indexOf(
+  ".require_in_tx(&txn, tenant_id, &topic, &security, context)",
 );
-if (authorizationIndex < 0 || rawOwnerIndex < 0 || authorizationIndex > rawOwnerIndex) {
-  failures.push("reply-create audience authorization must run before the raw owner command");
+const firstWriteIndex = rawInline.indexOf("forum_reply::ActiveModel");
+if (authorizationIndex < 0 || firstWriteIndex < 0 || authorizationIndex > firstWriteIndex) {
+  failures.push(
+    "reply-create audience authorization must run inside the owner transaction before reply writes",
+  );
+}
+const audienceLockIndex = rawInline.indexOf("lock_topic_reply_create_audience_in_tx(&txn");
+if (audienceLockIndex < 0 || audienceLockIndex > authorizationIndex) {
+  failures.push(
+    "reply-create audience authorization must run after the audience scope lock inside the owner transaction",
+  );
 }
 
 for (const rawSource of [rawOwner, rawInline]) {
   rejectText(
     rawSource,
-    "ForumReplyCreateAudienceAuthorizationService",
-    "raw reply owners must not duplicate the public facade authorization boundary",
+    "SharedForumAudienceFactsPort",
+    "raw reply owners must not consume optional audience facts directly",
   );
   rejectText(
     rawSource,
-    "SharedForumAudienceFactsPort",
-    "raw reply owners must not consume optional audience facts directly",
+    "ForumAudienceEvaluator::decide(",
+    "raw reply owners must not evaluate audience policy themselves",
+  );
+  rejectText(
+    rawSource,
+    "load_topic_reply_create_audience_policy",
+    "raw reply owners must not load reply-create audience policy themselves",
   );
 }
 

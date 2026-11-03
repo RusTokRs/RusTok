@@ -14,6 +14,12 @@ pub mod topic_status {
     pub const PENDING: &str = "pending";
 }
 
+/// Maximum reply nesting depth. The create path walks the ancestor chain
+/// inside the write transaction and rejects deeper threads, so clients
+/// never render unbounded recursion and a cyclic parent chain terminates
+/// at this bound instead of looping.
+pub const MAX_FORUM_REPLY_NESTING_DEPTH: u32 = 10;
+
 /// Reply statuses.
 pub mod reply_status {
     pub const PENDING: &str = "pending";

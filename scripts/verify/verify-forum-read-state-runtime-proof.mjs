@@ -31,7 +31,7 @@ const contractPath = "crates/modules/rustok-forum/contracts/forum-read-state-run
 const contract = JSON.parse(read(contractPath) || "{}");
 const testSource = read(contract.test_file ?? "");
 const postgresSupport = read("crates/modules/rustok-forum/tests/support/postgres.rs");
-const readModel = read("crates/modules/rustok-forum/src/services/read_model.rs");
+const readModel = read("crates/modules/rustok-forum/src/services/read_model_owner.rs");
 const readTracking = read("crates/modules/rustok-forum/src/services/read_tracking.rs");
 const migration = read(
   "crates/modules/rustok-forum/src/migrations/m20260724_000001_add_forum_topic_read_states.rs",

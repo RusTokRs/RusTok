@@ -17,11 +17,11 @@ use rustok_seo::{
 #[cfg(feature = "ssr")]
 use rustok_core::ModuleRuntimeExtensions;
 #[cfg(feature = "ssr")]
-use rustok_tenant::entities::tenant_module;
+use rustok_tenant::TenantService;
 #[cfg(feature = "ssr")]
 use sea_orm::prelude::Uuid;
 #[cfg(feature = "ssr")]
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::DatabaseConnection;
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "seo";
@@ -56,23 +56,16 @@ fn map_seo_error(err: rustok_seo::SeoError) -> ServerFnError {
 }
 
 #[cfg(feature = "ssr")]
-fn map_db_error(db_err: sea_orm::DbErr) -> ServerFnError {
-    tracing::error!(%db_err, "SEO database query failed");
-    ServerFnError::new("Internal database error")
-}
-
-#[cfg(feature = "ssr")]
 async fn persist_seo_settings(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     input: SeoModuleSettings,
 ) -> Result<SeoModuleSettings, ServerFnError> {
-    let Some(model) = tenant_module::Entity::find()
-        .filter(tenant_module::Column::TenantId.eq(tenant_id))
-        .filter(tenant_module::Column::ModuleSlug.eq(MODULE_SLUG))
-        .one(db)
+    let tenant_service = TenantService::new(db.clone());
+    let Some(model) = tenant_service
+        .find_tenant_module(tenant_id, MODULE_SLUG)
         .await
-        .map_err(map_db_error)?
+        .map_err(|err| ServerFnError::new(err.to_string()))?
     else {
         return Err(ServerFnError::new(
             "Module `seo` must be configured for this tenant before saving defaults",
@@ -90,13 +83,15 @@ async fn persist_seo_settings(
     current.template_overrides = input.template_overrides;
 
     let settings = SeoSettingsService::normalize_settings(current);
-
-    let mut active: tenant_module::ActiveModel = model.into();
-    active.settings = Set(serde_json::to_value(&settings).map_err(|err| {
+    let settings_val = serde_json::to_value(&settings).map_err(|err| {
         tracing::error!(%err, "Failed to serialize SEO settings");
         ServerFnError::new("Failed to serialize SEO settings")
-    })?);
-    active.update(db).await.map_err(map_db_error)?;
+    })?;
+
+    tenant_service
+        .update_tenant_module_settings(tenant_id, MODULE_SLUG, settings_val)
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
 
     Ok(settings)
 }

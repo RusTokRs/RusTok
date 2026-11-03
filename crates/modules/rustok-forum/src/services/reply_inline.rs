@@ -86,6 +86,11 @@ impl ReplyService {
         let (input, quote_inputs) = input.into_parts();
         let locale = normalize_locale(&input.locale)?;
         let existing = self.find_reply(tenant_id, reply_id).await?;
+        // Optimistic-concurrency fence: the in-transaction re-read below
+        // must still carry this `updated_at`, otherwise a concurrent edit
+        // (or status transition) committed in between would be silently
+        // overwritten by this update.
+        let expected_updated_at = existing.updated_at;
         enforce_owned_scope(
             &security,
             Resource::ForumReplies,
@@ -165,7 +170,7 @@ impl ReplyService {
 
         let initial_topic_id = existing.topic_id;
         let txn = self.db.begin().await?;
-        let _locked_topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
+        let locked_topic = super::topic_facade::TopicService::find_topic_for_update_in_tx(
             &txn,
             tenant_id,
             initial_topic_id,
@@ -183,6 +188,9 @@ impl ReplyService {
         if existing.topic_id != initial_topic_id {
             return Err(ForumError::TopicUpdateConflict(initial_topic_id));
         }
+        if existing.updated_at != expected_updated_at {
+            return Err(ForumError::TopicUpdateConflict(existing.topic_id));
+        }
         enforce_owned_scope(
             &security,
             Resource::ForumReplies,
@@ -190,6 +198,65 @@ impl ReplyService {
             existing.author_id,
         )?;
         let topic_id = existing.topic_id;
+        let mut repended_for_moderation = false;
+        if stored_body.is_some() && existing.status == ReplyStatus::Approved {
+            // A content edit of a public reply in a moderated category (or
+            // a pre-moderated tenant) re-enters moderation, mirroring the
+            // reply status owner's counter and solution effects: otherwise
+            // an author could publish a benign reply and rewrite it into
+            // unreviewed content that stays `Approved`.
+            let category = super::category::CategoryService::find_category_for_update_in_tx(
+                &txn,
+                tenant_id,
+                locked_topic.category_id,
+            )
+            .await?;
+            let pre_moderation_enabled = self
+                .settings
+                .module_settings_in_tx(&txn, tenant_id)
+                .await?
+                .pre_moderation_enabled;
+            if category.moderated || pre_moderation_enabled {
+                // The status write itself happens through the ActiveModel
+                // below (built from `existing`), which would otherwise
+                // rewrite the stale `Approved` status over this change.
+                repended_for_moderation = true;
+                super::topic_facade::TopicService::adjust_reply_count_in_tx(
+                    &txn, tenant_id, topic_id, -1,
+                )
+                .await?;
+                super::category::CategoryService::adjust_counters_in_tx(
+                    &txn,
+                    tenant_id,
+                    category.id,
+                    0,
+                    -1,
+                )
+                .await?;
+                crate::services::UserStatsService::adjust_reply_count_in_tx(
+                    &txn,
+                    tenant_id,
+                    existing.author_id,
+                    -1,
+                )
+                .await?;
+                let solution_removed = forum_solution::Entity::delete_many()
+                    .filter(forum_solution::Column::TenantId.eq(tenant_id))
+                    .filter(forum_solution::Column::TopicId.eq(topic_id))
+                    .filter(forum_solution::Column::ReplyId.eq(reply_id))
+                    .exec(&txn)
+                    .await?;
+                if solution_removed.rows_affected > 0 {
+                    crate::services::UserStatsService::adjust_solution_count_in_tx(
+                        &txn,
+                        tenant_id,
+                        existing.author_id,
+                        -1,
+                    )
+                    .await?;
+                }
+            }
+        }
         if let Some(stored_body) = stored_body {
             self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
                 .await?;
@@ -200,6 +267,9 @@ impl ReplyService {
 
         let mut active: forum_reply::ActiveModel = existing.into();
         active.updated_at = Set(Utc::now().into());
+        if repended_for_moderation {
+            active.status = Set(ReplyStatus::Pending);
+        }
         active.update(&txn).await?;
         self.event_bus
             .publish_in_tx(

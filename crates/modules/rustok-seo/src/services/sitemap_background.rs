@@ -304,10 +304,15 @@ impl SeoService {
     }
 
     async fn load_background_sitemap_tenant(&self, tenant_id: Uuid) -> SeoResult<TenantContext> {
-        let tenant = rustok_tenant::entities::tenant::Entity::find_by_id(tenant_id)
-            .one(&self.db)
-            .await?
-            .ok_or(SeoError::NotFound)?;
+        let tenant = rustok_tenant::TenantService::new(self.db.clone())
+            .get_tenant(tenant_id)
+            .await
+            .map_err(|err| match err {
+                rustok_tenant::TenantError::NotFound => SeoError::NotFound,
+                rustok_tenant::TenantError::Database(db_err) => SeoError::Database(db_err),
+                rustok_tenant::TenantError::Validation(msg) => SeoError::validation(msg),
+                other => SeoError::configuration(other.to_string()),
+            })?;
         Ok(TenantContext {
             id: tenant.id,
             name: tenant.name,

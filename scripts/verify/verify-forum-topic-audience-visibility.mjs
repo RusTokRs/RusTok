@@ -123,7 +123,7 @@ for (const marker of [
   "ForumTopicVisibilityService::new(self.db.clone())",
   ".is_topic_visible(tenant_id, topic_id, &scope)",
   "find_topic(&self.db, tenant_id, topic_id)",
-  "load_policy_for_topic(&self.db, tenant_id, &topic)",
+  "load_policy_for_topic(connection, tenant_id, topic)",
   "for layer in &policy.inherited_category_layers",
   "policy.configured_constraints",
   ".resolve_for_constraints(",
@@ -155,7 +155,7 @@ for (const forbidden of [
 }
 
 const baseIndex = owner.indexOf(".is_topic_visible(tenant_id, topic_id, &scope)");
-const policyIndex = owner.indexOf("load_policy_for_topic(&self.db, tenant_id, &topic)");
+const policyIndex = owner.indexOf("load_policy_for_topic(connection, tenant_id, topic)");
 const providerIndex = owner.indexOf(".resolve_for_constraints(");
 if (baseIndex < 0 || policyIndex < 0 || baseIndex > policyIndex) {
   failures.push("current exact storefront visibility must run before richer policy materialization");
@@ -198,7 +198,7 @@ for (const marker of ["ForumTopicAudienceViewer", "ForumTopicAudienceVisibilityS
 }
 
 for (const marker of [
-  "use crate::services::{ForumSettingsProviders, ForumTopicAudienceViewer, ForumTopicAudienceVisibilityService};",
+  "ForumTopicAudienceVisibilityService",
   "async fn load_topic_for_viewer(",
   "ForumTopicAudienceVisibilityService::new(self.db.clone(), self.facts_port.clone())",
   ".is_topic_visible(tenant_id, topic_id, None, viewer)",

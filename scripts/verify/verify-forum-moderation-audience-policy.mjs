@@ -157,7 +157,7 @@ for (const marker of [
   "enforce_scope(security, Resource::ForumReplies, Action::Moderate)?",
   "forum_reply::Entity::find_by_id(reply_id)",
   "Reply belongs to another topic",
-  "load_category_moderation_audience_policy(&self.db, tenant_id, category_id)",
+  "load_category_moderation_audience_policy(db, tenant_id, category_id)",
   "for layer in policy.effective_layers",
   "ForumAudienceEvaluator::decide(",
   "context.ok_or_else(||",
@@ -197,17 +197,19 @@ for (const marker of [
   "archive_topic_with_audience_context",
   "mark_solution_with_audience_context",
   "clear_solution_with_audience_context",
-  ".require_reply(tenant_id, reply_id, topic_id, &security, context)",
-  ".require_topic(tenant_id, topic_id, &security, context)",
-  "if !is_exact_topic_author(&security, topic.author_id)",
+  ".require_reply_in_tx(&txn, tenant_id, reply_id, topic_id, &security, context)",
+  ".require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)",
+  "if is_exact_topic_author(&security, locked_topic.author_id)",
+  "enforce_owned_scope(",
   "security.user_id == topic_author_id",
 ]) {
   requireText(moderation, marker, `ModerationService is missing ${marker}`);
 }
 const topicAuthorizationIndex = moderation.indexOf(
-  ".require_topic(tenant_id, topic_id, &security, context)",
+  ".require_topic_in_tx(&txn, tenant_id, topic_id, &security, context)",
 );
 const topicWriteIndex = moderation.indexOf("TopicService::set_pinned_in_tx");
+const topicLockIndex = moderation.indexOf("lock_category_tree_in_tx(&txn, tenant_id)");
 if (
   topicAuthorizationIndex < 0 ||
   topicWriteIndex < 0 ||
@@ -215,8 +217,16 @@ if (
 ) {
   failures.push("topic moderation audience authorization must run before topic writes");
 }
+if (
+  topicLockIndex < 0 ||
+  topicAuthorizationIndex < topicLockIndex
+) {
+  failures.push(
+    "topic moderation audience authorization must run inside the write transaction after the category-tree lock",
+  );
+}
 const replyAuthorizationIndex = moderation.indexOf(
-  ".require_reply(tenant_id, reply_id, topic_id, &security, context)",
+  ".require_reply_in_tx(&txn, tenant_id, reply_id, topic_id, &security, context)",
 );
 const replyWriteIndex = moderation.indexOf("ReplyService::set_status_in_tx");
 if (

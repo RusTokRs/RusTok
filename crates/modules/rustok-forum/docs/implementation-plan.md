@@ -105,8 +105,9 @@ Findings are ordered by risk and by dependency (owner correctness before transpo
    invalid stored values produce a typed validation error. The module
    manifest now lists only `latest_reply` and `top`; any previously saved
    unsupported value needs explicit operator correction, not a silent remap.
-   `allow_user_topic_closing` remains unwired pending its separate
-   write-authorization and UI decision.
+   `allow_user_topic_closing` was removed as an unwired setting by
+   `DECISIONS/2026-11-02-forum-remove-unwired-closing-and-digest-settings.md`; author
+   self-close returns only as a complete write-authorization and UI feature.
 10. **P2/P3, outstanding:** Separate faithful owner widget preview from live
     storefront preview, batch audience checks, and avoid a hard failure over
     1000 candidates.

@@ -13,7 +13,7 @@ use crate::error::{ForumError, ForumResult};
 
 use super::SubscriptionService;
 use super::helpers::{
-    INITIAL_REVISION, default_policy, enforce_policy_scope, ensure_revision_update,
+    INITIAL_REVISION, default_policy, enforce_policy_scope, ensure_revision_update, next_revision,
     policy_response, validate_expected_revision, validate_new_revision, validate_policy,
 };
 
@@ -51,7 +51,7 @@ impl SubscriptionService {
             Some(existing) => {
                 validate_expected_revision(input.expected_revision, existing.revision)?;
                 let previous_revision = existing.revision;
-                let next_revision = previous_revision.saturating_add(1);
+                let next_revision = next_revision(previous_revision)?;
                 let result = forum_subscription_policy::Entity::update_many()
                     .filter(forum_subscription_policy::Column::TenantId.eq(tenant_id))
                     .filter(forum_subscription_policy::Column::Revision.eq(previous_revision))

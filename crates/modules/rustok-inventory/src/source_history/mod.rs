@@ -216,6 +216,7 @@ async fn gate<C: ConnectionTrait>(
         DbBackend::Sqlite => {}
         DbBackend::MySql if exclusive => return Err(InventorySourceError::Unsupported),
         DbBackend::MySql => {}
+        _ => return Err(InventorySourceError::Unsupported),
     }
     Ok(())
 }

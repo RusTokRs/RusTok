@@ -16,8 +16,6 @@ pub struct ForumModuleSettings {
     #[serde(default = "default_rate_limit_new_reply_seconds")]
     pub rate_limit_new_reply_seconds: u32,
     #[serde(default)]
-    pub allow_user_topic_closing: bool,
-    #[serde(default)]
     pub allow_user_content_deletion: bool,
 
     // Pagination & Display
@@ -56,7 +54,6 @@ impl Default for ForumModuleSettings {
             max_post_body_length: default_max_post_body_length(),
             rate_limit_new_topic_seconds: default_rate_limit_new_topic_seconds(),
             rate_limit_new_reply_seconds: default_rate_limit_new_reply_seconds(),
-            allow_user_topic_closing: false,
             allow_user_content_deletion: false,
             topics_per_page: default_per_page(),
             replies_per_page: default_per_page(),

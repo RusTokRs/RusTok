@@ -358,6 +358,34 @@ impl TenantService {
         Ok(module.map(to_module_response))
     }
 
+    #[instrument(skip(self, settings), fields(tenant_id = %tenant_id, module_slug = %module_slug))]
+    pub async fn update_tenant_module_settings(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        settings: serde_json::Value,
+    ) -> TenantResult<TenantModuleResponse> {
+        let module_slug = module_slug.trim();
+        if module_slug.is_empty() {
+            return Err(TenantError::Validation("Module slug cannot be empty".to_string()));
+        }
+        let Some(model) = tenant_module::Entity::find()
+            .filter(tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(tenant_module::Column::ModuleSlug.eq(module_slug))
+            .one(&self.db)
+            .await?
+        else {
+            return Err(TenantError::NotFound);
+        };
+
+        let now = chrono::Utc::now();
+        let mut active: tenant_module::ActiveModel = model.into();
+        active.settings = Set(settings);
+        active.updated_at = Set(now.into());
+        let updated = active.update(&self.db).await?;
+        Ok(to_module_response(updated))
+    }
+
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub(crate) async fn read_locale_policy_owned(
         &self,
@@ -758,5 +786,92 @@ fn to_module_response(m: tenant_module::Model) -> TenantModuleResponse {
         module_slug: m.module_slug,
         enabled: m.enabled,
         settings: m.settings,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, Database};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn update_tenant_module_settings_validation_and_lifecycle() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        db.execute_unprepared(
+            r#"
+            CREATE TABLE tenants (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
+                domain TEXT,
+                default_locale TEXT NOT NULL DEFAULT 'en',
+                settings JSON NOT NULL DEFAULT '{}',
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE tenant_modules (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                module_slug TEXT NOT NULL,
+                enabled BOOLEAN,
+                settings JSON NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (tenant_id, module_slug)
+            );
+            "#,
+        )
+        .await
+        .expect("create test tables");
+
+        let service = TenantService::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+
+        // 1. Validation error on empty slug
+        let res = service
+            .update_tenant_module_settings(tenant_id, "  ", json!({"key": "value"}))
+            .await;
+        assert!(matches!(res, Err(TenantError::Validation(_))));
+
+        // 2. NotFound error when module does not exist
+        let res = service
+            .update_tenant_module_settings(tenant_id, "seo", json!({"key": "value"}))
+            .await;
+        assert!(matches!(res, Err(TenantError::NotFound)));
+
+        // 3. Seed module and update settings
+        let now = chrono::Utc::now();
+        tenant_module::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            module_slug: Set("seo".to_string()),
+            enabled: Set(Some(true)),
+            settings: Set(json!({"initial": true})),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("seed module");
+
+        let updated = service
+            .update_tenant_module_settings(tenant_id, "seo", json!({"updated": true}))
+            .await
+            .expect("update module settings");
+
+        assert_eq!(updated.module_slug, "seo");
+        assert_eq!(updated.settings, json!({"updated": true}));
+
+        let found = service
+            .find_tenant_module(tenant_id, "seo")
+            .await
+            .expect("find module")
+            .expect("module exists");
+        assert_eq!(found.settings, json!({"updated": true}));
     }
 }

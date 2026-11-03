@@ -109,6 +109,37 @@ impl ReplyService {
                     "Deleted reply cannot be used as a parent".to_string(),
                 ));
             }
+            if parent.status != ReplyStatus::Approved {
+                // A public reply under a held, rejected or hidden parent
+                // would surface in the thread while its parent is redacted,
+                // producing orphan fragments. Only approved parents can
+                // acquire children.
+                return Err(ForumError::Validation(
+                    "Only approved replies can be used as a parent".to_string(),
+                ));
+            }
+            // Bound nesting depth. The loop is depth-capped, so even a
+            // corrupt cyclic parent chain terminates with this error
+            // instead of walking forever inside the transaction.
+            let mut depth = 1_u32;
+            let mut ancestor_id = parent.parent_reply_id;
+            while let Some(ancestor) = ancestor_id {
+                depth += 1;
+                if depth > crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH {
+                    return Err(ForumError::Validation(format!(
+                        "Forum reply nesting exceeds {} levels",
+                        crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH
+                    )));
+                }
+                let ancestor_reply =
+                    reply::ReplyService::find_reply_in_tx(&txn, tenant_id, ancestor).await?;
+                if ancestor_reply.topic_id != topic_id {
+                    return Err(ForumError::Validation(
+                        "Parent reply belongs to another topic".to_string(),
+                    ));
+                }
+                ancestor_id = ancestor_reply.parent_reply_id;
+            }
         }
 
         super::posting_rate::enforce_new_reply_rate_in_tx(
@@ -164,6 +195,13 @@ impl ReplyService {
             .await?;
 
         if status == ReplyStatus::Approved {
+            super::subscription::auto_subscribe::auto_subscribe_reply_participant_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                security.user_id,
+            )
+            .await?;
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
             CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
                 .await?;

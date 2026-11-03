@@ -244,9 +244,10 @@ wrappers. Each one has an owner decision or a follow-up task in
   for REST, GraphQL owner, storefront and unread topic lists when `order`
   is omitted. Explicit `order` wins; unsupported saved values (including
   former manifest choices `created_at`, `votes`, and `views`) fail with a
-  typed configuration error. The manifest now exposes only executable modes. `allow_user_topic_closing` remains unwired:
-  authors cannot close or lock their own topics through this setting. The unread settings removed by
-  `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md` are no longer declared.
+  typed configuration error. The manifest now exposes only executable modes. `allow_user_topic_closing` was
+  removed (it was declared but never read; authors cannot close or lock their own topics) by
+  `DECISIONS/2026-11-02-forum-remove-unwired-closing-and-digest-settings.md`, following the unread-settings
+  removal in `DECISIONS/2026-10-09-forum-remove-unwired-module-settings.md`.
 - `topics_per_page` and `replies_per_page` are the default page size for REST and GraphQL list requests that omit
   `per_page`. An explicit `per_page` is bounded to 1..=100 and wins over the setting. The module storefront transports
   and the Next.js forum package omit the argument, so a configured value reaches those surfaces too; the Next.js
