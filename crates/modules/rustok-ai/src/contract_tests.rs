@@ -16,5 +16,25 @@ mod tests {
             assert!(api.contains(section), "CRATE_API.md must contain '{section}'");
         }
     }
+
+    #[test]
+    fn test_agent_kind_slugs() {
+        use crate::agent::AgentKind;
+        assert_eq!(AgentKind::Product.slug(), "product");
+        assert_eq!(AgentKind::Code.slug(), "code");
+        assert_eq!(AgentKind::Orchestrator.slug(), "orchestrator");
+        assert_eq!(AgentKind::Review.slug(), "review");
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn test_ai_module_descriptor() {
+        use rustok_core::RusToKModule;
+        let module = crate::AiModule;
+        assert_eq!(module.slug(), "ai");
+        assert_eq!(module.name(), "AI");
+        assert_eq!(module.kind(), rustok_core::ModuleKind::Core);
+    }
 }
+
 

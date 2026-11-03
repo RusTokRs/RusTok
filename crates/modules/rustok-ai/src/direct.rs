@@ -2317,6 +2317,12 @@ mod tests {
             "CREATE TABLE product_variant_attribute_value_options (\
                 id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, value_id TEXT NOT NULL, option_id TEXT NOT NULL\
              )",
+            "CREATE TABLE catalog_categories (\
+                id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', \
+                kind TEXT NOT NULL DEFAULT 'structural', path TEXT NOT NULL DEFAULT '', level INTEGER NOT NULL DEFAULT 0, \
+                is_active INTEGER NOT NULL DEFAULT 1, rule_config TEXT NOT NULL DEFAULT '{}', metadata TEXT NOT NULL DEFAULT '{}', \
+                deleted_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
         ] {
             database
                 .execute_raw(Statement::from_string(
