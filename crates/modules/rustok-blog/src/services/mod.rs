@@ -38,4 +38,6 @@ pub use tag::{TagService, remove_post_tag_links_in_tx, replace_post_tag_links_in
 pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;
 
 #[cfg(test)]
+mod orchestration_tests;
+#[cfg(test)]
 mod tag_tenant_integrity_tests;
