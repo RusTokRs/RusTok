@@ -652,16 +652,32 @@ forbid("crates/modules/rustok-blog/src/lib.rs", [
   "pub use entities::",
   "pub use self::entities",
   "pub use crate::entities",
+  " blog_category,",
+  " blog_post,",
+  " blog_post_tag,",
+  " blog_post_translation,",
+  "blog_category::",
+  "blog_post::",
+  "blog_post_tag::",
+  "blog_post_translation::",
 ]);
 
-// `src/ports/mod.rs` is the one deliberate public entity surface (the orchestration bridge).
-// The exception is pinned exactly: these four entity modules, declared on one line, and nothing
-// else, so the surface cannot widen silently.
+// `src/ports/mod.rs` exposes typed owner in-transaction orchestration commands; persistence
+// entities are strictly private.
 requireAll("crates/modules/rustok-blog/src/ports/mod.rs", [
-  /^pub use crate::entities::\{blog_category, blog_post, blog_post_tag, blog_post_translation\};$/m,
+  "pub use crate::services::orchestration::*;",
 ]);
 forbid("crates/modules/rustok-blog/src/ports/mod.rs", [
-  "pub mod ",
+  "pub use crate::entities",
+  "pub mod entities",
+  " blog_category,",
+  " blog_post,",
+  " blog_post_tag,",
+  " blog_post_translation,",
+  "blog_category::",
+  "blog_post::",
+  "blog_post_tag::",
+  "blog_post_translation::",
   "blog_comment_projection_delivery",
   "blog_post_channel_visibility",
   "blog_post_route",
@@ -991,6 +1007,7 @@ const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/tag/relations.rs",
   "crates/modules/rustok-blog/src/services/category_delete.rs",
   "crates/modules/rustok-blog/src/services/comment_projection.rs",
+  "crates/modules/rustok-blog/src/services/orchestration.rs",
 ]);
 for (const path of rustFiles("crates/modules/rustok-blog/src/services")) {
   if (path.endsWith("_tests.rs") || path.endsWith("/tests.rs") || path.includes("/tests/")) continue;

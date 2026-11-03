@@ -8,6 +8,7 @@ mod category_owner;
 pub(crate) mod category_taxonomy_sync;
 mod comment;
 mod comment_projection;
+pub mod orchestration;
 pub(crate) mod post;
 pub(crate) mod preview_token;
 mod rbac;
@@ -21,6 +22,7 @@ pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;
+pub use orchestration::*;
 pub(crate) use post::BLOG_POST_TARGET_TYPE;
 pub(crate) use post::MAX_POST_ARTICLE_BYTES;
 pub use post::{

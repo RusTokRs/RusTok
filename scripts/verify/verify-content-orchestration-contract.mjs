@@ -190,11 +190,12 @@ check(
   includesAll(productionBridge, [
     'TaxonomyOwnerReader',
     'load_terms_by_ids_in_tx(',
-    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
+    'load_post_tag_ids_in_tx(',
     '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
   ]) &&
     !productionBridge.includes('taxonomy_term::Entity') &&
-    !productionBridge.includes('taxonomy_term_translation::Entity'),
+    !productionBridge.includes('taxonomy_term_translation::Entity') &&
+    !productionBridge.includes('blog_post_tag::Entity'),
   'production conversion code must preserve the caller transaction and must not import/read Taxonomy persistence entities directly',
 );
 
@@ -227,11 +228,16 @@ check(
 );
 check(
   'Blog owner command keeps relation replacement tenant-safe',
-  includesAll(read('crates/modules/rustok-blog/src/services/tag.rs'), [
-    'pub async fn replace_post_tag_links_in_tx(',
-    'blog_post_tag::Column::TenantId.eq(tenant_id)',
-    'tenant_id: Set(tenant_id)',
-  ]),
+  includesAll(
+    existsSync('crates/modules/rustok-blog/src/services/tag/relations.rs')
+      ? read('crates/modules/rustok-blog/src/services/tag/relations.rs')
+      : read('crates/modules/rustok-blog/src/services/tag.rs'),
+    [
+      'pub async fn replace_post_tag_links_in_tx(',
+      'blog_post_tag::Column::TenantId.eq(tenant_id)',
+      'tenant_id: Set(tenant_id)',
+    ],
+  ),
   'Blog owner relation replacement must constrain deletion and insert to the tenant',
 );
 check(
@@ -266,7 +272,7 @@ function retiredRegistryHits() {
   for (const root of roots) {
     if (!existsSync(root)) continue;
     for (const entry of readdirSync(root, { recursive: true })) {
-      const file = String(entry);
+      const file = String(entry).replace(/\\/g, '/');
       if (!file.endsWith('.rs') || !file.includes('/src/')) continue;
       if (file.includes('node_modules') || file.includes('/target/')) continue;
       const text = read(`${root}/${file}`);

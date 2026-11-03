@@ -1,6 +1,8 @@
 use chrono::Utc;
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_blog::{blog_category, blog_post, blog_post_translation};
+use rustok_blog::{
+    CreatePromotedPostInput, PromotedPostTranslationInput, create_promoted_post_in_tx,
+    ensure_blog_category_exists_in_tx, ensure_blog_slug_unique_in_tx,
+};
 use rustok_content::{
     ContentError, ContentResult, PromoteTopicToPostInput, PromoteTopicToPostOutput,
 };
@@ -58,7 +60,9 @@ pub(crate) async fn promote_topic_to_post(
         .ok_or_else(|| ContentError::validation("Topic author is required for conversion"))?;
 
     if let Some(category_id) = input.blog_category_id {
-        ensure_blog_category_exists_in_tx(txn, tenant_id, category_id).await?;
+        ensure_blog_category_exists_in_tx(txn, tenant_id, category_id)
+            .await
+            .map_err(crate::errors::blog_error_to_content_error)?;
     }
 
     let slug = source_translation
@@ -71,7 +75,9 @@ pub(crate) async fn promote_topic_to_post(
             "Topic translation must resolve to a non-empty slug",
         ));
     }
-    ensure_blog_slug_unique_in_tx(txn, tenant_id, &slug).await?;
+    ensure_blog_slug_unique_in_tx(txn, tenant_id, &slug)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
 
     for translation in &translations {
         rustok_content::richtext::parse_json(
@@ -102,58 +108,50 @@ pub(crate) async fn promote_topic_to_post(
         }
     };
 
-    blog_post::ActiveModel {
-        id: Set(post_id),
-        tenant_id: Set(tenant_id),
-        author_id: Set(author_id),
-        category_id: Set(input.blog_category_id),
-        status: Set(post_status.to_string()),
-        slug: Set(slug.clone()),
-        metadata: Set(serde_json::json!({
-            "orchestration": {
-                "source_type": "forum_topic",
-                "source_id": topic.id,
-                "source_category_id": topic.category_id,
-            }
-        })),
-        featured_image_url: Set(None),
-        published_at: Set(if post_status == "published" {
-            Some(topic.created_at)
-        } else {
-            None
-        }),
-        created_at: Set(topic.created_at),
-        updated_at: Set(now.into()),
-        archived_at: Set(if post_status == "archived" {
-            Some(now.into())
-        } else {
-            None
-        }),
-        scheduled_at: Set(None),
-        is_pinned: Set(false),
-        pinned_at: Set(None),
-        comment_count: Set(active_comments),
-        version: Set(1),
-    }
-    .insert(txn)
-    .await?;
+    let post_translations = translations
+        .iter()
+        .map(|translation| PromotedPostTranslationInput {
+            locale: translation.locale.clone(),
+            title: translation.title.clone(),
+            body: translation.body.clone(),
+            created_at: translation.created_at.into(),
+            updated_at: translation.updated_at.into(),
+        })
+        .collect();
 
-    for translation in &translations {
-        blog_post_translation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            post_id: Set(post_id),
-            locale: Set(translation.locale.clone()),
-            title: Set(translation.title.clone()),
-            excerpt: Set(None),
-            seo_title: Set(None),
-            seo_description: Set(None),
-            body: Set(translation.body.clone()),
-            created_at: Set(translation.created_at),
-            updated_at: Set(translation.updated_at),
-        }
-        .insert(txn)
-        .await?;
-    }
+    create_promoted_post_in_tx(
+        txn,
+        CreatePromotedPostInput {
+            post_id,
+            tenant_id,
+            author_id,
+            category_id: input.blog_category_id,
+            status: post_status.to_string(),
+            slug: slug.clone(),
+            metadata: serde_json::json!({
+                "orchestration": {
+                    "source_type": "forum_topic",
+                    "source_id": topic.id,
+                    "source_category_id": topic.category_id,
+                }
+            }),
+            comment_count: active_comments,
+            created_at: topic.created_at.into(),
+            published_at: if post_status == "published" {
+                Some(topic.created_at.into())
+            } else {
+                None
+            },
+            archived_at: if post_status == "archived" {
+                Some(now)
+            } else {
+                None
+            },
+            translations: post_translations,
+        },
+    )
+    .await
+    .map_err(crate::errors::blog_error_to_content_error)?;
 
     let tags = load_forum_tag_names_for_topic_in_tx(
         txn,
@@ -226,49 +224,6 @@ pub(crate) async fn promote_topic_to_post(
         moved_comments: reply_records.len() as u64,
         effective_locale: resolved.effective_locale,
     })
-}
-
-pub(crate) async fn ensure_blog_category_exists_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> ContentResult<()> {
-    if tenant_id.is_nil() {
-        return Err(ContentError::validation("tenant_id must not be nil"));
-    }
-    if category_id.is_nil() {
-        return Err(ContentError::validation("category_id must not be nil"));
-    }
-    let exists = blog_category::Entity::find_by_id(category_id)
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .one(txn)
-        .await?;
-    if exists.is_none() {
-        return Err(ContentError::category_not_found(category_id));
-    }
-    Ok(())
-}
-
-pub(crate) async fn ensure_blog_slug_unique_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    slug: &str,
-) -> ContentResult<()> {
-    if tenant_id.is_nil() {
-        return Err(ContentError::validation("tenant_id must not be nil"));
-    }
-    let count = blog_post::Entity::find()
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post::Column::Slug.eq(slug))
-        .count(txn)
-        .await?;
-    if count > 0 {
-        return Err(ContentError::duplicate_slug(
-            slug.to_string(),
-            PLATFORM_FALLBACK_LOCALE.to_string(),
-        ));
-    }
-    Ok(())
 }
 
 pub(crate) async fn move_forum_replies_to_comments_in_tx(

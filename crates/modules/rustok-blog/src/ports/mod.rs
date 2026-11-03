@@ -4,6 +4,4 @@
 //! (`rustok-content-orchestration`) and cross-module boundaries without leaking
 //! private persistence entities.
 
-pub mod orchestration;
-
-pub use orchestration::*;
+pub use crate::services::orchestration::*;

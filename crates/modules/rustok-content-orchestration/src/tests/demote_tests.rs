@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustok_blog::{
     CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
-    CreatePostInput, PostService, blog_post,
+    CreatePostInput, PostService,
 };
 use rustok_comments::{CommentsService, ListCommentsFilter, comment};
 use rustok_content::{CanonicalRouteResolver, ContentOrchestrationService, DemotePostToTopicInput};
@@ -144,22 +144,21 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
                     .contains("until Forum uses the canonical richtext contract")
             );
             assert!(
-                blog_post::Entity::find_by_id(post_id)
-                    .one(&db)
+                PostService::new(db.clone(), events.clone())
+                    .get_post(tenant_id, security.clone(), post_id, "en")
                     .await
-                    .expect("blog post lookup should succeed")
-                    .is_some()
+                    .is_ok(),
+                "blog post lookup should succeed"
             );
             return;
         }
     };
 
     assert!(
-        blog_post::Entity::find_by_id(post_id)
-            .one(&db)
+        PostService::new(db.clone(), events.clone())
+            .get_post(tenant_id, security.clone(), post_id, "en")
             .await
-            .expect("blog post lookup should succeed")
-            .is_none(),
+            .is_err(),
         "source blog post should be deleted after demotion"
     );
 

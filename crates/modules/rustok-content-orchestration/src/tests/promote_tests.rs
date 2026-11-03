@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_api::RichTextDocument;
-use rustok_blog::{blog_post, blog_post_tag, blog_post_translation};
+use rustok_blog::PostService;
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
     CanonicalRouteResolver, ContentOrchestrationService, PromoteTopicToPostInput,
@@ -147,22 +147,13 @@ async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         "source forum topic should be deleted after promotion"
     );
 
-    let post = blog_post::Entity::find_by_id(promoted.target_id)
-        .one(&db)
+    let post = PostService::new(db.clone(), events.clone())
+        .get_post(tenant_id, security.clone(), promoted.target_id, "en")
         .await
-        .expect("blog post lookup should succeed")
         .expect("promoted blog post should exist");
     assert_eq!(post.slug, "forum-thread");
     assert_eq!(post.comment_count, 2);
-
-    let post_translation = blog_post_translation::Entity::find()
-        .filter(blog_post_translation::Column::PostId.eq(promoted.target_id))
-        .filter(blog_post_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await
-        .expect("blog post translation lookup should succeed")
-        .expect("promoted blog post translation should exist");
-    assert_eq!(post_translation.title, "Forum thread");
+    assert_eq!(post.title, "Forum thread");
     assert_eq!(post_translation.body, "Original forum body");
 
     let thread = comment_thread::Entity::find()

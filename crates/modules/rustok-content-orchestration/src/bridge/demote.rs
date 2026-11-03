@@ -1,6 +1,8 @@
 use chrono::Utc;
-use rustok_blog::services::remove_post_tag_links_in_tx;
-use rustok_blog::{blog_post, blog_post_translation};
+use rustok_blog::{
+    DemotedPostRecord, DemotedPostTranslationRecord, delete_demoted_post_in_tx,
+    load_post_for_demotion_in_tx,
+};
 use rustok_comments::{comment, comment_thread};
 use rustok_content::{
     ContentError, ContentResult, DemotePostToTopicInput, DemotePostToTopicOutput,
@@ -48,9 +50,11 @@ pub(crate) async fn demote_post_to_topic(
     }
     let requested_locale = normalize_locale(&input.locale)?;
     ensure_forum_category_exists_in_tx(txn, tenant_id, input.forum_category_id).await?;
-    let post = find_post_in_tx(txn, tenant_id, input.post_id).await?;
-    let translations = load_post_translations_in_tx(txn, post.id).await?;
-    let resolved = resolve_post_translation(&translations, &requested_locale)?;
+    let post = load_post_for_demotion_in_tx(txn, tenant_id, input.post_id)
+        .await
+        .map_err(crate::errors::blog_error_to_content_error)?;
+    let translations = &post.translations;
+    let resolved = resolve_post_translation(translations, &requested_locale)?;
     let tag_names = load_blog_tag_names_for_post_in_tx(
         txn,
         tenant_id,
@@ -142,16 +146,9 @@ pub(crate) async fn demote_post_to_topic(
     .await?;
 
     delete_comments_for_post_in_tx(txn, tenant_id, post.id).await?;
-    // Blog owns the relation rows and derives `blog_tag_usage` from them; the
-    // owner command removes the links and repairs the projection in one step.
-    remove_post_tag_links_in_tx(txn, tenant_id, post.id)
+    delete_demoted_post_in_tx(txn, tenant_id, post.id)
         .await
         .map_err(crate::errors::blog_error_to_content_error)?;
-    blog_post::Entity::delete_many()
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .filter(blog_post::Column::Id.eq(post.id))
-        .exec(txn)
-        .await?;
 
     // Routes move from Blog to Forum. The post's canonical route and every
     // redirect that pointed at the post leave Blog and Forum. The retired Blog
@@ -188,41 +185,10 @@ pub(crate) async fn demote_post_to_topic(
     })
 }
 
-pub(crate) async fn find_post_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    post_id: Uuid,
-) -> ContentResult<blog_post::Model> {
-    if tenant_id.is_nil() {
-        return Err(ContentError::validation("tenant_id must not be nil"));
-    }
-    if post_id.is_nil() {
-        return Err(ContentError::validation("post_id must not be nil"));
-    }
-    blog_post::Entity::find_by_id(post_id)
-        .filter(blog_post::Column::TenantId.eq(tenant_id))
-        .one(txn)
-        .await?
-        .ok_or_else(|| ContentError::node_not_found(post_id))
-}
-
-pub(crate) async fn load_post_translations_in_tx(
-    txn: &DatabaseTransaction,
-    post_id: Uuid,
-) -> ContentResult<Vec<blog_post_translation::Model>> {
-    if post_id.is_nil() {
-        return Err(ContentError::validation("post_id must not be nil"));
-    }
-    Ok(blog_post_translation::Entity::find()
-        .filter(blog_post_translation::Column::PostId.eq(post_id))
-        .all(txn)
-        .await?)
-}
-
 pub(crate) fn resolve_post_translation<'a>(
-    translations: &'a [blog_post_translation::Model],
+    translations: &'a [DemotedPostTranslationRecord],
     locale: &str,
-) -> ContentResult<rustok_content::ResolvedLocale<'a, blog_post_translation::Model>> {
+) -> ContentResult<rustok_content::ResolvedLocale<'a, DemotedPostTranslationRecord>> {
     if translations.is_empty() {
         return Err(ContentError::translation_not_found(Uuid::nil(), locale));
     }
