@@ -2,8 +2,11 @@
 name = "rustok-channel"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Experimental core channel-management module for RusTok"
+repository.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
