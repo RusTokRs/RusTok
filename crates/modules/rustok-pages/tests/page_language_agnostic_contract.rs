@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::PagesModule;
 use rustok_pages::dto::{
-    CreatePageInput, PageBodyInput, PageTranslationInput, SavePageDocumentInput,
+    CreatePageInput, PageBodyInput, PageTranslationInput, PatchPageMetadataInput,
+    SavePageDocumentInput,
 };
 use rustok_pages::services::PageService;
+use rustok_pages::{PagesError, PagesModule};
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -156,7 +157,7 @@ async fn document_locale_requires_matching_translation() {
             CreatePageInput {
                 translations: vec![translation("en", "Home", Some("home"))],
                 template: None,
-                body: None,
+                body: Some(builder_body("en")),
                 channel_slugs: None,
                 publish: false,
             },
@@ -164,23 +165,116 @@ async fn document_locale_requires_matching_translation() {
         .await
         .expect("page should be created");
 
+    let fallback = service
+        .get_with_locale_fallback(
+            tenant_id,
+            SecurityContext::system(),
+            page.id,
+            "de",
+            Some("en"),
+        )
+        .await
+        .expect("missing German translation should use the English read fallback");
+    assert_eq!(fallback.requested_locale.as_deref(), Some("de"));
+    assert_eq!(fallback.effective_locale.as_deref(), Some("en"));
+    assert_eq!(fallback.available_locales, ["en"]);
+    assert_eq!(fallback.translation.as_ref().unwrap().locale, "en");
+    let english_body = fallback.body.expect("English fallback body");
+    assert_eq!(english_body.locale, "en");
+
+    let new_document = || {
+        let mut body = builder_body(fallback.requested_locale.as_deref().unwrap());
+        body.document["pages"][0]["component"]["id"] = serde_json::json!("root-de");
+        SavePageDocumentInput {
+            expected_revision: format!("page:{}:initial", page.id),
+            body,
+        }
+    };
     let error = service
         .save_document(
             tenant_id,
             SecurityContext::system(),
             page.id,
-            SavePageDocumentInput {
-                expected_revision: format!("page:{}:initial", page.id),
-                body: builder_body("de"),
-            },
+            new_document(),
         )
         .await
         .expect_err("body without translation must fail");
-    assert!(
-        error
-            .to_string()
-            .contains("requires a matching page translation")
+    assert!(matches!(error, PagesError::Validation(message)
+        if message == "Page document locale `de` requires a matching page translation"));
+
+    let unchanged = service
+        .get_with_locale_fallback(
+            tenant_id,
+            SecurityContext::system(),
+            page.id,
+            "de",
+            Some("en"),
+        )
+        .await
+        .expect("failed write must preserve the fallback response");
+    assert_eq!(unchanged.version, fallback.version);
+    assert_eq!(unchanged.effective_locale.as_deref(), Some("en"));
+    assert_eq!(unchanged.available_locales, ["en"]);
+    let unchanged_body = unchanged.body.unwrap();
+    assert_eq!(unchanged_body.content, english_body.content);
+    assert_eq!(unchanged_body.updated_at, english_body.updated_at);
+    let german_history = service
+        .body_revision_history(tenant_id, SecurityContext::system(), page.id, "de")
+        .await
+        .expect("German revision history should be readable");
+    assert!(german_history.is_empty());
+
+    service
+        .patch_metadata(
+            tenant_id,
+            SecurityContext::system(),
+            page.id,
+            PatchPageMetadataInput {
+                expected_version: unchanged.version,
+                translations: Some(vec![translation("de", "Startseite", Some("startseite"))]),
+                template: None,
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("German metadata should be authored explicitly");
+    let german = service
+        .save_document(
+            tenant_id,
+            SecurityContext::system(),
+            page.id,
+            new_document(),
+        )
+        .await
+        .expect("German document should use its own metadata");
+    assert_eq!(german.requested_locale.as_deref(), Some("de"));
+    assert_eq!(german.effective_locale.as_deref(), Some("de"));
+    assert_eq!(german.available_locales, ["de", "en"]);
+    assert_eq!(
+        german.translation.unwrap().title.as_deref(),
+        Some("Startseite")
     );
+    let german_body = german.body.unwrap();
+    assert_eq!(german_body.locale, "de");
+    assert_eq!(
+        german_body.content_json.unwrap()["pages"][0]["component"]["id"],
+        "root-de"
+    );
+    let german_history = service
+        .body_revision_history(tenant_id, SecurityContext::system(), page.id, "de")
+        .await
+        .expect("saved German revision should be readable");
+    assert_eq!(german_history.len(), 1);
+    assert_eq!(german_history[0].body_revision, german_body.updated_at);
+
+    let english = service
+        .get_with_locale_fallback(tenant_id, SecurityContext::system(), page.id, "en", None)
+        .await
+        .expect("English source should remain intact");
+    assert_eq!(english.translation.unwrap().title.as_deref(), Some("Home"));
+    let body = english.body.unwrap();
+    assert_eq!(body.content, english_body.content);
+    assert_eq!(body.updated_at, english_body.updated_at);
 }
 
 #[tokio::test]

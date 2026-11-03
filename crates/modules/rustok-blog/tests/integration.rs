@@ -1,19 +1,19 @@
 //! Integration tests for the Blog module
 //!
-//! These tests require a database connection and are marked with #[ignore]
-//! to prevent running in CI without proper test infrastructure.
+//! Each test uses isolated in-memory SQLite with the module migrations.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{
-    Permission, PortError, RichTextDocument, SharedStaticModuleSettingsReader,
+    Patch, Permission, PortError, RichTextDocument, SharedStaticModuleSettingsReader,
     StaticModuleSettingsReader, StaticModuleSettingsSnapshot,
 };
 use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
     ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, UpdateCommentInput,
+    UpdatePostInput,
 };
 use rustok_blog::state_machine::BlogPostStatus;
 use rustok_blog::{BlogError, BlogModule};
@@ -246,6 +246,7 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
     assert_eq!(by_fallback.requested_locale, "fr-FR");
     assert_eq!(by_fallback.locale, "fr-FR");
     assert_eq!(by_fallback.effective_locale, "en-US");
+    assert_eq!(by_fallback.available_locales, ["en-US"]);
 
     let listed = post_service
         .list_posts(
@@ -261,6 +262,79 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
     assert_eq!(listed.items.len(), 1);
     assert_eq!(listed.items[0].locale, "en-US");
     assert_eq!(listed.items[0].effective_locale, "en-US");
+
+    let localized_update = |title, content| UpdatePostInput {
+        locale: Some(by_fallback.requested_locale.clone()),
+        title,
+        content,
+        excerpt: Patch::Keep,
+        slug: None,
+        tags: None,
+        category_id: Patch::Keep,
+        featured_image_url: Patch::Keep,
+        seo_title: Patch::Keep,
+        seo_description: Patch::Keep,
+        channel_slugs: None,
+        metadata: None,
+        version: by_fallback.version,
+        scheduled_at: Patch::Keep,
+    };
+    for (title, content, reason) in [
+        (Some("Article français".to_string()), None, "Content"),
+        (None, Some(richtext("Texte français")), "Title"),
+    ] {
+        let error = post_service
+            .update_post(
+                tenant_id,
+                post_id,
+                admin.clone(),
+                localized_update(title, content),
+            )
+            .await
+            .expect_err("a fallback read must not supply required localized fields");
+        assert!(matches!(error, BlogError::Validation(message)
+            if message == format!("{reason} is required for a new locale")));
+        let unchanged = post_service
+            .get_post_with_locale_fallback(
+                tenant_id,
+                admin.clone(),
+                post_id,
+                "fr-FR",
+                Some("en-US"),
+            )
+            .await?;
+        assert_eq!(unchanged.version, by_fallback.version);
+        assert_eq!(unchanged.effective_locale, "en-US");
+        assert_eq!(unchanged.available_locales, ["en-US"]);
+        assert_eq!(unchanged.title, direct.title);
+        assert_eq!(unchanged.content_plain_text, direct.content_plain_text);
+    }
+
+    post_service
+        .update_post(
+            tenant_id,
+            post_id,
+            admin.clone(),
+            localized_update(
+                Some("Article français".to_string()),
+                Some(richtext("Texte français")),
+            ),
+        )
+        .await?;
+    let french = post_service
+        .get_post_with_locale_fallback(tenant_id, admin.clone(), post_id, "fr-FR", Some("en-US"))
+        .await?;
+    assert_eq!(french.requested_locale, "fr-FR");
+    assert_eq!(french.effective_locale, "fr-FR");
+    assert_eq!(french.available_locales, ["en-US", "fr-FR"]);
+    assert_eq!(french.version, by_fallback.version + 1);
+    assert_eq!(french.title, "Article français");
+    assert_eq!(french.content_plain_text, "Texte français");
+    let english = post_service
+        .get_post(tenant_id, admin, post_id, "en-US")
+        .await?;
+    assert_eq!(english.title, direct.title);
+    assert_eq!(english.content_plain_text, direct.content_plain_text);
 
     Ok(())
 }

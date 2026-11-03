@@ -241,6 +241,32 @@ one without a state machine does not need fake transition tests. Once a capabili
 is implemented, missing execution prerequisites must leave its evidence pending,
 never silently promote it through empty success or source markers.
 
+#### Pilot for localized read and write provenance
+
+Blog and Pages exercise the same invariant against their owner services on
+SQLite. Start with content stored only in the source locale. Read a missing
+locale with fallback and assert the requested, effective, and available locales.
+Try to write to the requested locale with its required localized data missing.
+Require the owner's validation error, unchanged source content and revision,
+and no new locale. Then supply the exact-locale data and verify that the new
+locale can be read independently.
+
+Blog applies this contract to a post update with missing title or body. Pages
+applies it to saving a document before its exact-locale metadata exists. The
+Pages test also checks that the rejected write creates no body revision.
+
+```powershell
+cargo test -p rustok-blog --locked --offline --test integration test_post_read_paths_normalize_requested_and_fallback_locale -- --exact
+cargo test -p rustok-pages --locked --offline --test page_language_agnostic_contract document_locale_requires_matching_translation -- --exact
+```
+
+On 2026-11-03, Windows execution passed the exact Blog scenario and all nine
+tests in the Pages `page_locale_fallback` and `page_language_agnostic_contract`
+targets. The checks ran against isolated in-memory SQLite databases.
+
+The pilot covers owner service and storage behavior. UI form hydration,
+transport parity, and PostgreSQL are separate evidence for the same contract.
+
 ### 4. Owner implementation and optional publication — P2, per module
 
 Owner: the generated module owner; tooling owns reusable generation defects only.
