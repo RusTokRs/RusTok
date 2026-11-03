@@ -1,20 +1,20 @@
 # Content Portability
 
-Реализация сервисов импорта/экспорта контента для платформы RusTok.
+Implementation of content import/export services for the RusToK platform.
 
-См. также [CRATE_API.md](CRATE_API.md) для формального описания публичного API и инвариантов контракта.
+See also [CRATE_API.md](CRATE_API.md) for formal description of the public API and contract invariants.
 
-## Назначение
+## Purpose
 
-Этот crate предоставляет конкретные реализации для импорта и экспорта контента в различных форматах (JSON, CSV).
+This crate provides concrete implementations for importing and exporting content in various formats (JSON, CSV).
 
-## Компоненты
+## Components
 
 ### Format Handlers
 
 #### JsonFormatHandler
 
-Обработчик JSON формата:
+JSON format handler:
 
 ```rust
 use rustok_content_portability::JsonFormatHandler;
@@ -33,7 +33,7 @@ let bytes = JsonFormatHandler::serialize(&items, &options)?;
 
 #### CsvFormatHandler
 
-Обработчик CSV формата:
+CSV format handler:
 
 ```rust
 use rustok_content_portability::CsvFormatHandler;
@@ -53,25 +53,25 @@ let bytes = CsvFormatHandler::serialize(&items, &options)?;
 
 #### ImportService
 
-Сервис для импорта из файлов:
+Service for file imports:
 
 ```rust
 use rustok_content_portability::ImportService;
-use rustok_content_portability_api::{ImportContext, Format};
+use rustok_content_portability_api::{ImportContext, Format, FormatOptions};
 
 let context = ImportContext::new(tenant_id, user_id, Format::Json);
 
 // Import from JSON file
 let posts: Vec<BlogPost> = ImportService::import_json_file(
     "posts.json",
-    context,
+    context.clone(),
 ).await?;
 
 // Import from CSV file
 let options = FormatOptions::new();
 let products: Vec<Product> = ImportService::import_csv_file(
     "products.csv",
-    context,
+    context.clone(),
     &options,
 ).await?;
 
@@ -85,7 +85,7 @@ let items: Vec<BlogPost> = ImportService::import_from_bytes(
 
 #### ExportService
 
-Сервис для экспорта в файлы:
+Service for file exports:
 
 ```rust
 use rustok_content_portability::ExportService;
@@ -98,7 +98,7 @@ let options = FormatOptions::new().with_json_pretty(true);
 let result = ExportService::export_json_file(
     "export.json",
     &posts,
-    context,
+    context.clone(),
     &options,
 ).await?;
 
@@ -116,7 +116,7 @@ let result = ExportService::export_csv_file(
 
 ### File I/O Helpers
 
-Утилиты для работы с файлами:
+File utility helpers:
 
 ```rust
 use rustok_content_portability::{read_file, write_file, file_exists, file_size};
@@ -137,7 +137,7 @@ let size = file_size("data.json").await?;
 println!("File size: {} bytes", size);
 ```
 
-## Пример: Полный цикл импорта
+## Example: Full Import/Export Lifecycle
 
 ```rust
 use rustok_content_portability::{ImportService, ExportService};
@@ -187,14 +187,13 @@ ExportService::export_csv_file(
 ).await?;
 ```
 
-## Интеграция с модулями
+## Integration with Domain Modules
 
-Каждый доменный модуль реализует свои importer/exporter:
+Each domain module implements its own importer/exporter:
 
 ### Blog
 
 ```rust
-// rustok-blog/src/import_export/mod.rs
 pub struct BlogPostImporter {
     repository: Arc<BlogPostRepository>,
 }
@@ -229,7 +228,6 @@ impl ContentExporter<BlogPost, Value> for BlogPostExporter {
 ### Commerce
 
 ```rust
-// rustok-commerce/src/import_export/mod.rs
 pub struct ProductImporter { /* ... */ }
 pub struct ProductExporter { /* ... */ }
 ```
@@ -237,38 +235,37 @@ pub struct ProductExporter { /* ... */ }
 ### Newsletter
 
 ```rust
-// rustok-newsletter/src/import_export/mod.rs
 pub struct SubscriberImporter { /* ... */ }
 pub struct SubscriberExporter { /* ... */ }
 ```
 
-## Тестирование
+## Testing
 
-Все компоненты покрыты unit тестами:
+All components are covered by unit tests:
 
 ```bash
 cargo test -p rustok-content-portability-api
 cargo test -p rustok-content-portability
 ```
 
-## Производительность
+## Performance
 
-- **Batch operations** — обработка больших объемов данных с progress tracking
-- **Streaming** — поддержка потоковой обработки (планируется)
-- **Async I/O** — неблокирующие операции с файлами
-- **Memory efficient** — минимальное использование памяти
+- **Batch operations** — High-throughput batch processing with progress tracking
+- **Streaming** — Streaming processing planned for multi-gigabyte exports
+- **Async I/O** — Non-blocking asynchronous file operations
+- **Memory efficient** — Minimal allocation overhead
 
-## Будущие улучшения
+## Future Enhancements
 
 - [ ] WordPress XML format handler
 - [ ] Markdown with frontmatter handler
-- [ ] Streaming import/export для больших файлов
+- [ ] Streaming import/export for large datasets
 - [ ] Compression support (gzip, zip)
-- [ ] Encryption support для sensitive data
+- [ ] Encryption support for sensitive data
 - [ ] Batch size configuration
-- [ ] Retry logic для failed imports
-- [ ] Import/export job queue для background processing
+- [ ] Retry logic for transient import failures
+- [ ] Import/export job queue for background workers
 
-## Лицензия
+## License
 
 Workspace license applies.

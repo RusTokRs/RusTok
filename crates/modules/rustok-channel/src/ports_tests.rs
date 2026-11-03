@@ -226,3 +226,254 @@ async fn present_blank_and_nil_selectors_refuse_before_lookup() {
     );
     assert!(provider.requests.lock().unwrap().is_empty());
 }
+
+async fn setup_db_for_port_tests() -> sea_orm::DatabaseConnection {
+    use sea_orm::{ConnectionTrait, Statement};
+    use sea_orm_migration::SchemaManager;
+
+    let db = rustok_test_utils::setup_test_db().await;
+    db.execute_raw(Statement::from_string(
+        db.get_database_backend(),
+        r#"
+        CREATE TABLE tenants (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            domain TEXT NULL UNIQUE,
+            settings TEXT NOT NULL DEFAULT '{}',
+            default_locale TEXT NOT NULL DEFAULT 'en',
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    ))
+    .await
+    .unwrap();
+    db.execute_raw(Statement::from_string(
+        db.get_database_backend(),
+        r#"
+        CREATE TABLE oauth_apps (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            app_type TEXT NOT NULL DEFAULT 'machine',
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    ))
+    .await
+    .unwrap();
+    let manager = SchemaManager::new(&db);
+    for migration in crate::migrations::migrations() {
+        migration.up(&manager).await.unwrap();
+    }
+    db
+}
+
+#[tokio::test]
+async fn channel_service_read_port_reads_channel_by_all_selectors() {
+    use crate::dto::{CreateChannelInput, CreateChannelTargetInput};
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let db = setup_db_for_port_tests().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+
+    for (tid, slug) in [(tenant_id, "primary"), (other_tenant_id, "other")] {
+        db.execute_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO tenants (id, name, slug, settings, default_locale, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                tid.into(),
+                format!("{slug} tenant").into(),
+                slug.to_string().into(),
+                "{}".to_string().into(),
+                "en".to_string().into(),
+                true.into(),
+            ],
+        ))
+        .await
+        .unwrap();
+    }
+
+    let service = crate::ChannelService::new(db.clone());
+    let default_channel = service
+        .create_channel(CreateChannelInput {
+            tenant_id,
+            slug: "main".to_string(),
+            name: "Main Channel".to_string(),
+            settings: None,
+        })
+        .await
+        .unwrap();
+
+    let web_channel = service
+        .create_channel(CreateChannelInput {
+            tenant_id,
+            slug: "storefront".to_string(),
+            name: "Storefront Channel".to_string(),
+            settings: None,
+        })
+        .await
+        .unwrap();
+
+    let foreign_channel = service
+        .create_channel(CreateChannelInput {
+            tenant_id: other_tenant_id,
+            slug: "foreign".to_string(),
+            name: "Foreign Channel".to_string(),
+            settings: None,
+        })
+        .await
+        .unwrap();
+
+    service
+        .add_target(
+            web_channel.id,
+            CreateChannelTargetInput {
+                target_type: "web_domain".to_string(),
+                value: "store.example.test".to_string(),
+                is_primary: true,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let port = in_process_channel_read_port(db);
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::system(),
+        "en",
+        "port-read-test",
+    )
+    .with_deadline(std::time::Duration::from_secs(5));
+
+    // Read by Default
+    let read_default = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Default,
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap()
+        .expect("default channel should be found");
+    assert_eq!(read_default.detail.channel.id, default_channel.id);
+
+    // Read by Id
+    let read_by_id = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Id(web_channel.id),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap()
+        .expect("channel by id should be found");
+    assert_eq!(read_by_id.detail.channel.id, web_channel.id);
+
+    // Read by Slug
+    let read_by_slug = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Slug("storefront".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap()
+        .expect("channel by slug should be found");
+    assert_eq!(read_by_slug.detail.channel.id, web_channel.id);
+
+    // Read by HostTargetValue
+    let read_by_host = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::HostTargetValue("store.example.test".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap()
+        .expect("channel by host should be found");
+    assert_eq!(read_by_host.detail.channel.id, web_channel.id);
+
+    // Non-existent ID returns Ok(None)
+    let non_existent_id = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Id(Uuid::new_v4()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(non_existent_id.is_none());
+
+    // Foreign tenant ID returns Ok(None)
+    let foreign_read = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Id(foreign_channel.id),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(foreign_read.is_none());
+
+    // Nil ID returns Validation error
+    let nil_id_err = port
+        .read_channel(
+            context.clone(),
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Id(Uuid::nil()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(nil_id_err.kind, PortErrorKind::Validation);
+
+    // Pagination listing
+    let list_page = port
+        .list_channels_for_tenant(
+            context.clone(),
+            ChannelListRequest {
+                page: 1,
+                per_page: 10,
+                include_inactive: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_page.total, 2);
+    assert_eq!(list_page.items.len(), 2);
+
+    // Zero pagination returns Validation error
+    let zero_page_err = port
+        .list_channels_for_tenant(
+            context,
+            ChannelListRequest {
+                page: 0,
+                per_page: 10,
+                include_inactive: true,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(zero_page_err.kind, PortErrorKind::Validation);
+}

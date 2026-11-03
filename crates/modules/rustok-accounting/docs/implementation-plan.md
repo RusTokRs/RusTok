@@ -28,7 +28,7 @@
 1. **FBA Core & Ports Contract**: Domain types, Account entities, balanced Journal transaction invariants, `AccountingJournalPort`, and `AccountingBalanceReadPort`.
 2. **Posting Rules Engine**: Declarative posting rules mapping operational document facts (invoices, waybills, cash orders, marketplace payouts) to debits and credits.
 3. **Marketplace Balance Bridge**: FBA port adapter connecting `rustok-marketplace-balance` seller balance transitions to statutory G/L postings.
-4. **Trial Balance & Relational Subconto**: Fast indexed trial balance (Оборотно-сальдовая ведомость) aggregation over indexed foreign keys.
+4. **Trial Balance & Relational Subconto**: Fast indexed trial balance aggregation over indexed foreign keys.
 5. **Leptos Admin Interface**: Chart of Accounts management, journal inspection, and trial balance reports.
 
 ## Invariants

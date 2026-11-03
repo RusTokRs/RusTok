@@ -8,7 +8,7 @@
 - ensure the fundamental accounting equation ($\sum \text{Debit} = \sum \text{Credit}$) is strictly enforced per currency in every transaction;
 - maintain immutable, audit-compliant journal entries with append-only storno reversals;
 - provide indexed relational subconto analytics over sovereign domain entities (`party_id`, `contract_id`, `item_id`, `warehouse_id`);
-- offer high-performance trial balance (Оборотно-сальдовая ведомость) aggregation without dynamic EAV tables.
+- offer high-performance trial balance aggregation without dynamic EAV tables.
 
 ## Responsibility Zone
 
@@ -21,16 +21,16 @@
 
 ## Domain Concepts
 
-1. **Account (Счет учета):**
+1. **Account:**
    - Unique code within tenant (e.g. `10.01`, `41.01`, `50.01`, `51.01`, `60.01`, `62.01`, `76.01`, `90.01`, `90.02`).
    - Type: `Asset`, `Liability`, `Equity`, `Revenue`, `Expense`.
    - Subconto dimensions: configuration of enabled analytical dimensions for the account.
 
-2. **Journal Transaction (Хозяйственная операция):**
+2. **Journal Transaction:**
    - Header with `transaction_number`, `posting_date`, `document_type`, `document_id`, `description`, `is_storno`.
    - Contains a set of balanced `JournalPosting` entries.
 
-3. **Journal Posting (Проводка):**
+3. **Journal Posting:**
    - Individual line with `debit_account_code`, `credit_account_code`, `amount_minor`, `currency_code`.
    - Analytical subconto references: `party_id`, `contract_id`, `item_id`, `warehouse_id`.
 

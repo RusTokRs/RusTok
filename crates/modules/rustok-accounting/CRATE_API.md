@@ -9,7 +9,7 @@
   - Balanced multi-currency journal posting (`AccountingJournalPort::post_transaction`).
   - Immutable reverse storno transactions (`AccountingJournalPort::post_storno_reversal`).
 - **Trial Balance & Closing Balances**:
-  - Aggregate trial balance / оборотно-сальдовая ведомость (`AccountingBalanceReadPort::read_trial_balance`).
+  - Aggregate trial balance (`AccountingBalanceReadPort::read_trial_balance`).
   - Account-level closing balance queries (`AccountingBalanceReadPort::read_account_balance`).
 - **Standard Chart of Accounts & Posting Rules**:
   - Standard accounts catalog (`standard_accounts::*`).

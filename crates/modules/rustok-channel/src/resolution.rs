@@ -41,7 +41,7 @@ pub enum ResolutionOutcome {
     Rejected,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolutionTraceStep {
     pub stage: ResolutionStage,
     pub outcome: ResolutionOutcome,
@@ -60,7 +60,7 @@ pub struct RequestFacts {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolutionDecision {
     pub detail: Option<ChannelDetailResponse>,
     pub source: Option<ChannelResolutionOrigin>,
@@ -89,6 +89,7 @@ impl ResolutionDecision {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ChannelResolver {
     service: ChannelService,
 }
@@ -104,35 +105,43 @@ impl ChannelResolver {
         let mut trace = Vec::new();
 
         if let Some(channel_id) = facts.header_channel_id {
-            match self.service.get_channel_detail(channel_id).await? {
-                detail if detail.channel.tenant_id != facts.tenant_id => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderId,
-                        outcome: ResolutionOutcome::Rejected,
-                        detail: format!(
-                            "Channel '{channel_id}' does not belong to tenant '{}'",
-                            facts.tenant_id
-                        ),
-                    });
-                }
-                detail if !detail.channel.is_active => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderId,
-                        outcome: ResolutionOutcome::Rejected,
-                        detail: format!("Channel '{channel_id}' is inactive"),
-                    });
-                }
-                detail => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderId,
-                        outcome: ResolutionOutcome::Matched,
-                        detail: format!("Matched channel '{}'", detail.channel.slug),
-                    });
-                    return Ok(ResolutionDecision::matched(
-                        detail,
-                        ChannelResolutionOrigin::HeaderId,
-                        trace,
-                    ));
+            if channel_id.is_nil() {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::HeaderId,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: "X-Channel-ID header is a nil UUID".to_string(),
+                });
+            } else {
+                match self.service.get_channel_detail(channel_id).await? {
+                    detail if detail.channel.tenant_id != facts.tenant_id => {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::HeaderId,
+                            outcome: ResolutionOutcome::Rejected,
+                            detail: format!(
+                                "Channel '{channel_id}' does not belong to tenant '{}'",
+                                facts.tenant_id
+                            ),
+                        });
+                    }
+                    detail if !detail.channel.is_active => {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::HeaderId,
+                            outcome: ResolutionOutcome::Rejected,
+                            detail: format!("Channel '{channel_id}' is inactive"),
+                        });
+                    }
+                    detail => {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::HeaderId,
+                            outcome: ResolutionOutcome::Matched,
+                            detail: format!("Matched channel '{}'", detail.channel.slug),
+                        });
+                        return Ok(ResolutionDecision::matched(
+                            detail,
+                            ChannelResolutionOrigin::HeaderId,
+                            trace,
+                        ));
+                    }
                 }
             }
         } else {
@@ -143,34 +152,43 @@ impl ChannelResolver {
             });
         }
 
-        if let Some(slug) = facts.header_channel_slug.as_deref() {
-            match self
-                .service
-                .get_channel_detail_by_slug(facts.tenant_id, slug)
-                .await?
-            {
-                Some(detail) if detail.channel.is_active => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::HeaderSlug,
-                        outcome: ResolutionOutcome::Matched,
-                        detail: format!("Matched channel '{slug}'"),
-                    });
-                    return Ok(ResolutionDecision::matched(
-                        detail,
-                        ChannelResolutionOrigin::HeaderSlug,
-                        trace,
-                    ));
-                }
-                Some(_) => trace.push(ResolutionTraceStep {
+        if let Some(raw_slug) = facts.header_channel_slug.as_deref() {
+            let slug = raw_slug.trim();
+            if slug.is_empty() {
+                trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::HeaderSlug,
                     outcome: ResolutionOutcome::Rejected,
-                    detail: format!("Channel '{slug}' is inactive"),
-                }),
-                None => trace.push(ResolutionTraceStep {
-                    stage: ResolutionStage::HeaderSlug,
-                    outcome: ResolutionOutcome::Miss,
-                    detail: format!("No channel found for slug '{slug}'"),
-                }),
+                    detail: "X-Channel-Slug header is blank".to_string(),
+                });
+            } else {
+                match self
+                    .service
+                    .get_channel_detail_by_slug(facts.tenant_id, slug)
+                    .await?
+                {
+                    Some(detail) if detail.channel.is_active => {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::HeaderSlug,
+                            outcome: ResolutionOutcome::Matched,
+                            detail: format!("Matched channel '{slug}'"),
+                        });
+                        return Ok(ResolutionDecision::matched(
+                            detail,
+                            ChannelResolutionOrigin::HeaderSlug,
+                            trace,
+                        ));
+                    }
+                    Some(_) => trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::HeaderSlug,
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!("Channel '{slug}' is inactive"),
+                    }),
+                    None => trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::HeaderSlug,
+                        outcome: ResolutionOutcome::Miss,
+                        detail: format!("No channel found for slug '{slug}'"),
+                    }),
+                }
             }
         } else {
             trace.push(ResolutionTraceStep {
@@ -180,34 +198,43 @@ impl ChannelResolver {
             });
         }
 
-        if let Some(slug) = facts.query_channel_slug.as_deref() {
-            match self
-                .service
-                .get_channel_detail_by_slug(facts.tenant_id, slug)
-                .await?
-            {
-                Some(detail) if detail.channel.is_active => {
-                    trace.push(ResolutionTraceStep {
-                        stage: ResolutionStage::Query,
-                        outcome: ResolutionOutcome::Matched,
-                        detail: format!("Matched channel '{slug}'"),
-                    });
-                    return Ok(ResolutionDecision::matched(
-                        detail,
-                        ChannelResolutionOrigin::Query,
-                        trace,
-                    ));
-                }
-                Some(_) => trace.push(ResolutionTraceStep {
+        if let Some(raw_slug) = facts.query_channel_slug.as_deref() {
+            let slug = raw_slug.trim();
+            if slug.is_empty() {
+                trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::Query,
                     outcome: ResolutionOutcome::Rejected,
-                    detail: format!("Channel '{slug}' is inactive"),
-                }),
-                None => trace.push(ResolutionTraceStep {
-                    stage: ResolutionStage::Query,
-                    outcome: ResolutionOutcome::Miss,
-                    detail: format!("No channel found for slug '{slug}'"),
-                }),
+                    detail: "Query channel slug is blank".to_string(),
+                });
+            } else {
+                match self
+                    .service
+                    .get_channel_detail_by_slug(facts.tenant_id, slug)
+                    .await?
+                {
+                    Some(detail) if detail.channel.is_active => {
+                        trace.push(ResolutionTraceStep {
+                            stage: ResolutionStage::Query,
+                            outcome: ResolutionOutcome::Matched,
+                            detail: format!("Matched channel '{slug}'"),
+                        });
+                        return Ok(ResolutionDecision::matched(
+                            detail,
+                            ChannelResolutionOrigin::Query,
+                            trace,
+                        ));
+                    }
+                    Some(_) => trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::Query,
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!("Channel '{slug}' is inactive"),
+                    }),
+                    None => trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::Query,
+                        outcome: ResolutionOutcome::Miss,
+                        detail: format!("No channel found for slug '{slug}'"),
+                    }),
+                }
             }
         } else {
             trace.push(ResolutionTraceStep {

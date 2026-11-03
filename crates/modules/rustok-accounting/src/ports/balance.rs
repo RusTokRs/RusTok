@@ -5,7 +5,7 @@ use crate::dto::{TrialBalanceQuery, TrialBalanceResponse};
 
 #[async_trait]
 pub trait AccountingBalanceReadPort: Send + Sync {
-    /// Reads trial balance (Оборотно-сальдовая ведомость) aggregated by accounts
+    /// Reads trial balance aggregated by accounts
     /// and optional subconto filters.
     async fn read_trial_balance(
         &self,

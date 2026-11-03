@@ -1,10 +1,10 @@
 # rustok-content-revisions
 
-Межмодульный крейт для интеграции revision history в RusTok platform.
+Cross-module crate for integrating content revision history across the RusToK platform.
 
-## Обзор
+## Overview
 
-Этот крейт предоставляет unified API для tracking content revisions across всех модулей RusTok (blog, forum, commerce, etc.).
+This crate provides a unified API for tracking content revisions across all RusToK modules (blog, forum, commerce, etc.).
 
 ## Architecture
 
@@ -22,7 +22,7 @@ rustok-revisions (standalone library)
 
 ## Installation
 
-Добавьте в `Cargo.toml` вашего модуля:
+Add to your module's `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -31,7 +31,7 @@ rustok-content-revisions = { path = "../../integration/rustok-content-revisions"
 
 ## Quick Start
 
-### 1. Setup в вашем приложении
+### 1. Setup in your host or application
 
 ```rust
 use rustok_content_revisions::{ContentRevisionService, ContentRevisionConfig};
@@ -58,7 +58,7 @@ async fn main() {
 }
 ```
 
-### 2. Implement Revisionable для вашего content type
+### 2. Implement Revisionable for your content type
 
 ```rust
 use rustok_revisions_derive::Revisionable;
@@ -88,7 +88,7 @@ pub struct BlogPost {
 }
 ```
 
-### 3. Track changes в вашем service
+### 3. Track changes in your service
 
 ```rust
 use rustok_content_revisions::ContentRevisionService;
@@ -132,7 +132,7 @@ impl BlogService {
 
 ### Default Configuration
 
-По умолчанию настроены следующие content types:
+By default, the following content types are configured:
 
 ```rust
 ContentRevisionConfig {
@@ -202,9 +202,9 @@ pub async fn track_update<T: Revisionable>(
 ```
 
 **Returns:**
-- `Ok(Some(revision))` — revision создана
-- `Ok(None)` — tracking disabled или нет изменений
-- `Err(...)` — ошибка
+- `Ok(Some(revision))` — Revision created
+- `Ok(None)` — Tracking disabled or no changes detected
+- `Err(...)` — Error during persistence or diffing
 
 #### track_create
 
@@ -424,7 +424,7 @@ impl BlogService {
 
 ## Database Schema
 
-Миграция создает таблицу `content_revisions`:
+The migration creates the `content_revisions` table:
 
 ```sql
 CREATE TABLE content_revisions (

@@ -1,14 +1,14 @@
 # Upstream snapshots for server core libraries
 
-Этот каталог фиксирует **свежие ссылки на документацию** по ключевым библиотекам сервера.
+This directory records **reference documentation links** for the server's core upstream dependencies.
 
-- Источник версий: `Cargo.lock`
-- Дата snapshot: `2026-10-08`
-- Обновление: `make docs-sync-server-libs`
-- Проверка свежести: `make docs-check-server-libs`
-- Режим: `Снапшот содержит актуальные версии и прямые ссылки на docs.rs без скачивания HTML.`
+- Version source: `Cargo.lock`
+- Snapshot date: `2026-10-08`
+- Synchronization command: `make docs-sync-server-libs`
+- Freshness verification: `make docs-check-server-libs`
+- Mode: Direct docs.rs links with local metadata tracking (HTML download disabled by default).
 
-## Текущие версии и ссылки
+## Current Versions and References
 
 | Crate | Version (`Cargo.lock`) | Docs.rs crate page | Rustdoc index | Local metadata |
 |---|---:|---|---|---|
@@ -20,7 +20,7 @@
 | `tracing` | `0.1.44` | [crate](https://docs.rs/crate/tracing/0.1.44) | [rustdoc](https://docs.rs/tracing/0.1.44/tracing/) | `apps/server/docs/upstream-libraries/tracing/metadata.json` |
 | `utoipa` | `5.5.0` | [crate](https://docs.rs/crate/utoipa/5.5.0) | [rustdoc](https://docs.rs/utoipa/5.5.0/utoipa/) | `apps/server/docs/upstream-libraries/utoipa/metadata.json` |
 
-Для попытки скачать HTML-копии docs.rs используйте:
+To download offline HTML copies of docs.rs, run:
 
 ```bash
 python3 scripts/server_library_docs_sync.py sync --download-html

@@ -12,7 +12,7 @@
 - Provide reverse storno operations for correction without mutating posted records.
 - Evaluate declarative Posting Rules mapping operational business facts to debit/credit lines.
 - Expose typed FBA ports for cross-module posting (`AccountingJournalPort`) and balance inspection (`AccountingBalanceReadPort`).
-- Maintain indexed relational subconto dimensions (`party_id`, `contract_id`, `item_id`, `warehouse_id`) for high-speed trial balance (ОСВ) calculation.
+- Maintain indexed relational subconto dimensions (`party_id`, `contract_id`, `item_id`, `warehouse_id`) for high-speed trial balance calculation.
 
 ## Entry Points
 

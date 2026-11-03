@@ -36,6 +36,7 @@ use crate::policy::{
 use crate::resolution::TargetSurface;
 use crate::target_type::ChannelTargetType;
 
+#[derive(Debug, Clone)]
 pub struct ChannelService {
     db: DatabaseConnection,
 }
@@ -50,13 +51,31 @@ impl ChannelService {
         &self,
         input: CreateChannelInput,
     ) -> ChannelResult<ChannelResponse> {
+        if input.tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "channel tenant_id must not be nil".to_string(),
+            ));
+        }
+        let slug = input.slug.trim().to_ascii_lowercase();
+        if slug.is_empty() {
+            return Err(ChannelError::Validation(
+                "channel slug must not be empty".to_string(),
+            ));
+        }
+        let name = input.name.trim().to_string();
+        if name.is_empty() {
+            return Err(ChannelError::Validation(
+                "channel name must not be empty".to_string(),
+            ));
+        }
+
         if let Some(_existing) = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(input.tenant_id))
-            .filter(channel::Column::Slug.eq(&input.slug))
+            .filter(channel::Column::Slug.eq(&slug))
             .one(&self.db)
             .await?
         {
-            return Err(ChannelError::SlugAlreadyExists(input.slug));
+            return Err(ChannelError::SlugAlreadyExists(slug));
         }
 
         let is_default = !self
@@ -66,8 +85,8 @@ impl ChannelService {
         let model = ChannelActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(input.tenant_id),
-            slug: Set(input.slug),
-            name: Set(input.name),
+            slug: Set(slug),
+            name: Set(name),
             is_active: Set(true),
             is_default: Set(is_default),
             status: Set("experimental".to_string()),
@@ -107,9 +126,13 @@ impl ChannelService {
         tenant_id: Uuid,
         slug: &str,
     ) -> ChannelResult<Option<ChannelResponse>> {
+        let slug = slug.trim().to_ascii_lowercase();
+        if slug.is_empty() {
+            return Ok(None);
+        }
         let model = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
-            .filter(channel::Column::Slug.eq(slug))
+            .filter(channel::Column::Slug.eq(&slug))
             .one(&self.db)
             .await?;
         Ok(model.map(to_channel_response))
@@ -120,9 +143,13 @@ impl ChannelService {
         tenant_id: Uuid,
         slug: &str,
     ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        let slug = slug.trim().to_ascii_lowercase();
+        if slug.is_empty() {
+            return Ok(None);
+        }
         let model = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
-            .filter(channel::Column::Slug.eq(slug))
+            .filter(channel::Column::Slug.eq(&slug))
             .one(&self.db)
             .await?;
 
@@ -137,9 +164,13 @@ impl ChannelService {
         tenant_id: Uuid,
         target_value: &str,
     ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        let normalized = match ChannelTargetType::WebDomain.normalize_value(target_value) {
+            Some(value) => value,
+            None => return Ok(None),
+        };
         let target = channel_target::Entity::find()
             .filter(channel_target::Column::TargetType.eq(ChannelTargetType::WebDomain.as_str()))
-            .filter(channel_target::Column::Value.eq(target_value))
+            .filter(channel_target::Column::Value.eq(&normalized))
             .find_also_related(channel::Entity)
             .filter(channel::Column::TenantId.eq(tenant_id))
             .filter(channel::Column::IsActive.eq(true))
@@ -379,17 +410,33 @@ impl ChannelService {
         }
 
         if input.is_primary {
+            let txn = self.db.begin().await?;
             let existing_targets = channel_target::Entity::find()
                 .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&self.db)
+                .all(&txn)
                 .await?;
             for existing in existing_targets {
                 if existing.is_primary {
                     let mut active: channel_target::ActiveModel = existing.into();
                     active.is_primary = Set(false);
-                    active.update(&self.db).await?;
+                    active.update(&txn).await?;
                 }
             }
+            let now = chrono::Utc::now().into();
+            let model = ChannelTargetActiveModel {
+                id: Set(generate_id()),
+                channel_id: Set(channel_id),
+                target_type: Set(target_type.as_str().to_string()),
+                value: Set(target_value),
+                is_primary: Set(true),
+                settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(&txn)
+            .await?;
+            txn.commit().await?;
+            return Ok(to_channel_target_response(model));
         }
 
         let now = chrono::Utc::now().into();
@@ -398,7 +445,7 @@ impl ChannelService {
             channel_id: Set(channel_id),
             target_type: Set(target_type.as_str().to_string()),
             value: Set(target_value),
-            is_primary: Set(input.is_primary),
+            is_primary: Set(false),
             settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
             created_at: Set(now),
             updated_at: Set(now),
@@ -451,24 +498,36 @@ impl ChannelService {
         }
 
         if input.is_primary {
+            let txn = self.db.begin().await?;
             let existing_targets = channel_target::Entity::find()
                 .filter(channel_target::Column::ChannelId.eq(channel_id))
-                .all(&self.db)
+                .all(&txn)
                 .await?;
             for existing in existing_targets {
                 if existing.id != target_id && existing.is_primary {
                     let mut active: channel_target::ActiveModel = existing.into();
                     active.is_primary = Set(false);
-                    active.update(&self.db).await?;
+                    active.update(&txn).await?;
                 }
             }
+
+            let now = chrono::Utc::now().into();
+            let mut active: channel_target::ActiveModel = existing_target.into();
+            active.target_type = Set(target_type.as_str().to_string());
+            active.value = Set(target_value);
+            active.is_primary = Set(true);
+            active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
+            active.updated_at = Set(now);
+            let updated = active.update(&txn).await?;
+            txn.commit().await?;
+            return Ok(to_channel_target_response(updated));
         }
 
         let now = chrono::Utc::now().into();
         let mut active: channel_target::ActiveModel = existing_target.into();
         active.target_type = Set(target_type.as_str().to_string());
         active.value = Set(target_value);
-        active.is_primary = Set(input.is_primary);
+        active.is_primary = Set(false);
         active.settings = Set(input.settings.unwrap_or_else(|| serde_json::json!({})));
         active.updated_at = Set(now);
 
@@ -503,10 +562,17 @@ impl ChannelService {
     ) -> ChannelResult<ChannelModuleBindingResponse> {
         self.ensure_channel_exists(channel_id).await?;
 
+        let module_slug = input.module_slug.trim().to_ascii_lowercase();
+        if module_slug.is_empty() {
+            return Err(ChannelError::Validation(
+                "module_slug must not be empty".to_string(),
+            ));
+        }
+
         let now = chrono::Utc::now().into();
         let existing = channel_module_binding::Entity::find()
             .filter(channel_module_binding::Column::ChannelId.eq(channel_id))
-            .filter(channel_module_binding::Column::ModuleSlug.eq(&input.module_slug))
+            .filter(channel_module_binding::Column::ModuleSlug.eq(&module_slug))
             .one(&self.db)
             .await?;
 
@@ -522,7 +588,7 @@ impl ChannelService {
                 ChannelModuleBindingActiveModel {
                     id: Set(generate_id()),
                     channel_id: Set(channel_id),
-                    module_slug: Set(input.module_slug),
+                    module_slug: Set(module_slug),
                     is_enabled: Set(input.is_enabled),
                     settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
                     created_at: Set(now),
@@ -563,6 +629,12 @@ impl ChannelService {
         input: BindChannelOauthAppInput,
     ) -> ChannelResult<ChannelOauthAppResponse> {
         self.ensure_channel_exists(channel_id).await?;
+
+        if input.oauth_app_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "oauth_app_id must not be nil".to_string(),
+            ));
+        }
 
         let now = chrono::Utc::now().into();
         let existing = channel_oauth_app::Entity::find()
@@ -618,21 +690,39 @@ impl ChannelService {
         &self,
         input: CreateChannelResolutionPolicySetInput,
     ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        if input.tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "policy set tenant_id must not be nil".to_string(),
+            ));
+        }
+        let slug = input.slug.trim().to_ascii_lowercase();
+        if slug.is_empty() {
+            return Err(ChannelError::Validation(
+                "policy set slug must not be empty".to_string(),
+            ));
+        }
+        let name = input.name.trim().to_string();
+        if name.is_empty() {
+            return Err(ChannelError::Validation(
+                "policy set name must not be empty".to_string(),
+            ));
+        }
+
         if let Some(_existing) = channel_resolution_policy_set::Entity::find()
             .filter(channel_resolution_policy_set::Column::TenantId.eq(input.tenant_id))
-            .filter(channel_resolution_policy_set::Column::Slug.eq(&input.slug))
+            .filter(channel_resolution_policy_set::Column::Slug.eq(&slug))
             .one(&self.db)
             .await?
         {
-            return Err(ChannelError::PolicySetSlugAlreadyExists(input.slug));
+            return Err(ChannelError::PolicySetSlugAlreadyExists(slug));
         }
 
         let now = chrono::Utc::now().into();
         let model = ChannelResolutionPolicySetActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(input.tenant_id),
-            slug: Set(input.slug),
-            name: Set(input.name),
+            slug: Set(slug),
+            name: Set(name),
             schema_version: Set(CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION),
             is_active: Set(input.is_active),
             created_at: Set(now),
@@ -2292,5 +2382,160 @@ mod tests {
         assert_eq!(total, 2);
         assert_eq!(page2.len(), 1);
         assert_ne!(page1[0].id, page2[0].id);
+    }
+
+    #[tokio::test]
+    async fn create_channel_rejects_nil_tenant_or_empty_slug_or_name() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-validation").await;
+        let service = ChannelService::new(db);
+
+        // Nil tenant_id
+        let err_nil_tenant = service
+            .create_channel(CreateChannelInput {
+                tenant_id: Uuid::nil(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                settings: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id")));
+
+        // Empty slug
+        let err_empty_slug = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "   ".to_string(),
+                name: "Web".to_string(),
+                settings: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_empty_slug, ChannelError::Validation(msg) if msg.contains("slug")));
+
+        // Empty name
+        let err_empty_name = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "web".to_string(),
+                name: "   ".to_string(),
+                settings: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_empty_name, ChannelError::Validation(msg) if msg.contains("name")));
+    }
+
+    #[tokio::test]
+    async fn create_channel_normalizes_slug_and_name_and_queries_case_insensitively() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-norm").await;
+        let service = ChannelService::new(db);
+
+        let channel = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "  STOREFRONT_WEB  ".to_string(),
+                name: "  Main Storefront  ".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("channel should be created with normalized values");
+
+        assert_eq!(channel.slug, "storefront_web");
+        assert_eq!(channel.name, "Main Storefront");
+
+        // Case-insensitive query
+        let by_upper = service
+            .get_channel_by_slug(tenant_id, "  STOREFRONT_WEB  ")
+            .await
+            .unwrap()
+            .expect("should find by uppercase with whitespace");
+        assert_eq!(by_upper.id, channel.id);
+
+        let detail = service
+            .get_channel_detail_by_slug(tenant_id, "storefront_web")
+            .await
+            .unwrap()
+            .expect("should find detail");
+        assert_eq!(detail.channel.id, channel.id);
+    }
+
+    #[tokio::test]
+    async fn create_resolution_policy_set_rejects_nil_tenant_or_empty_slug_or_name() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-policy-val").await;
+        let service = ChannelService::new(db);
+
+        let err_nil_tenant = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id: Uuid::nil(),
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id")));
+
+        let err_empty_slug = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "   ".to_string(),
+                name: "Default".to_string(),
+                is_active: true,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_empty_slug, ChannelError::Validation(msg) if msg.contains("slug")));
+
+        let err_empty_name = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: "default".to_string(),
+                name: "  ".to_string(),
+                is_active: true,
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err_empty_name, ChannelError::Validation(msg) if msg.contains("name")));
+    }
+
+    #[tokio::test]
+    async fn bind_module_rejects_empty_slug_and_bind_oauth_app_rejects_nil_id() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-bindings").await;
+        let service = ChannelService::new(db);
+        let channel_id = create_channel(&service, tenant_id, "binding-test").await;
+
+        let err_empty_module = service
+            .bind_module(
+                channel_id,
+                crate::dto::BindChannelModuleInput {
+                    module_slug: "  ".to_string(),
+                    is_enabled: true,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err_empty_module, ChannelError::Validation(msg) if msg.contains("module_slug")));
+
+        let err_nil_oauth = service
+            .bind_oauth_app(
+                channel_id,
+                crate::dto::BindChannelOauthAppInput {
+                    oauth_app_id: Uuid::nil(),
+                    role: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err_nil_oauth, ChannelError::Validation(msg) if msg.contains("oauth_app_id")));
     }
 }
