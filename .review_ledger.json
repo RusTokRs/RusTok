@@ -226,7 +226,7 @@
       "path": "crates/modules/rustok-blog",
       "category": "modules",
       "files": 184,
-      "loc": 48276,
+      "loc": 48279,
       "completed": true,
       "completed_at": "2026-11-03 03:13",
       "notes": "Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved.",
@@ -248,10 +248,10 @@
       "path": "crates/modules/rustok-blog/storefront",
       "category": "modules",
       "files": 20,
-      "loc": 4017,
-      "completed": false,
-      "completed_at": null,
-      "notes": "",
+      "loc": 4020,
+      "completed": true,
+      "completed_at": "2026-11-03 03:37",
+      "notes": "Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved.",
       "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-brand": {
