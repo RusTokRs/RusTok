@@ -208,7 +208,7 @@ async fn seed_forum(
     Ok(ids)
 }
 
-async fn seed_category(
+pub async fn seed_category(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     position: i32,
@@ -234,7 +234,7 @@ async fn seed_category(
     Ok(category.id)
 }
 
-async fn seed_topics(
+pub async fn seed_topics(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_id: Uuid,

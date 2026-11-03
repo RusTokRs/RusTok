@@ -30,6 +30,20 @@
       "react/jsx-runtime": [
         "./node_modules/@types/react/jsx-runtime.d.ts"
       ],
+      "react": [
+        "./node_modules/@types/react",
+        "./node_modules/react"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*",
+        "./node_modules/react/*"
+      ],
+      "clsx": [
+        "./node_modules/clsx"
+      ],
+      "tailwind-merge": [
+        "./node_modules/tailwind-merge"
+      ],
       "@/components/*": [
         "./src/components/*"
       ],

@@ -57,6 +57,24 @@
       ],
       "@rustok/ui-controls": [
         "../../packages/rustok-ui-controls/src/index.ts"
+      ],
+      "react": [
+        "./node_modules/@types/react",
+        "./node_modules/react"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*",
+        "./node_modules/react/*"
+      ],
+      "react/jsx-runtime": [
+        "./node_modules/@types/react/jsx-runtime.d.ts",
+        "./node_modules/react/jsx-runtime"
+      ],
+      "clsx": [
+        "./node_modules/clsx"
+      ],
+      "tailwind-merge": [
+        "./node_modules/tailwind-merge"
       ]
     },
     "incremental": true,
