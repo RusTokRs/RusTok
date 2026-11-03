@@ -75,8 +75,8 @@ const pricing = read('crates/modules/rustok-pricing/src/ports.rs');
 const payment = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCompensation = read('crates/modules/rustok-payment/src/checkout_compensation.rs');
 const fulfillment = read('crates/modules/rustok-fulfillment/src/ports.rs');
-const tax = read('crates/modules/rustok-tax/src/ports.rs');
-const taxCalculation = read('crates/modules/rustok-tax/src/calculation_context.rs');
+const tax = read('crates/modules/rustok-tax/src/ports/calculation.rs');
+const taxCalculation = read('crates/modules/rustok-tax/src/ports/in_process.rs');
 const customer =
   read('crates/modules/rustok-customer/src/ports.rs') +
   '\n' +

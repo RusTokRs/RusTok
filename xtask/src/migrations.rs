@@ -957,6 +957,36 @@ fn run_process(command: &mut Command, seconds: u64, limit: usize) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_deadline_covers_output_held_open_by_a_descendant() -> Result<()> {
+        const MODE: &str = "RUSTOK_TEST_MIGRATION_PIPE_MODE";
+        let mut command = Command::new(std::env::current_exe()?);
+        command.args([
+            "--exact",
+            "migrations::tests::process_deadline_covers_output_held_open_by_a_descendant",
+            "--nocapture",
+        ]);
+        match std::env::var(MODE).as_deref() {
+            Ok("hold") => {
+                std::thread::sleep(Duration::from_secs(3));
+                std::process::exit(0);
+            }
+            Ok("spawn") => {
+                // The descendant inherits the output pipe and closes it on exit.
+                command.env(MODE, "hold").spawn()?;
+            }
+            _ => {
+                command.env(MODE, "spawn");
+                let error = run_process(&mut command, 1, 4096).unwrap_err();
+                assert!(
+                    error.to_string().contains("process output remained open"),
+                    "{error}"
+                );
+            }
+        }
+        Ok(())
+    }
     #[test]
     fn rejects_escape_paths_and_option_confusion() {
         for path in [

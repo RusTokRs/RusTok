@@ -1,8 +1,8 @@
 {
   "status": "tax_calculation_diagnostic_safety_source_reviewed_unvalidated",
   "reviewed_scope": [
-    "crates/modules/rustok-tax/src/calculation_context.rs",
-    "crates/modules/rustok-tax/src/ports.rs",
+    "crates/modules/rustok-tax/src/ports/in_process.rs",
+    "crates/modules/rustok-tax/src/ports/calculation.rs",
     "crates/modules/rustok-tax/docs/calculation-local-context.md",
     "crates/modules/rustok-tax/docs/calculation-port-policy-context.md",
     "crates/modules/rustok-tax/docs/implementation-plan.md",

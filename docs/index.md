@@ -271,7 +271,7 @@ from complete operation safety and retention through serving cutover.
 - [Observability Quick Start](./guides/observability-quickstart.md)
 - [Runtime Guardrails](./guides/runtime-guardrails.md)
 - [Safe Database Migrations and Squashing Guide](./guides/safe-database-migrations-and-squashing.md)
-- [Proposed release-bound migration consolidation](../DECISIONS/2026-11-03-migration-consolidation.md) — stable history protection, real PostgreSQL schema/data comparison and ordered implementation gates
+- [Release-bound migration consolidation](../DECISIONS/2026-11-03-migration-consolidation.md) — stable history protection, PostgreSQL schema/data comparison and implementation gates
 - [Alloy Runtime Hardening Contract](../crates/modules/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Input Validation](./guides/input-validation.md)

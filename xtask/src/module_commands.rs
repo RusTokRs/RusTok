@@ -31,7 +31,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 pub(crate) fn print_module_usage() {
     println!("Usage:");
     println!("  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]");
-    println!("  cargo xtask module lint <slug>");
+    println!("  cargo xtask module lint <slug> [--embedded]");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
@@ -63,23 +63,32 @@ pub(crate) fn print_module_usage() {
     );
 }
 
-/// Static architecture validation over the registered local native module.
+/// Static architecture validation over a registered or explicitly embedded native module.
 /// Does not certify compilation, transport, or FBA/FFA readiness.
 pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
-    let [slug] = args else {
-        anyhow::bail!("Usage: cargo xtask module lint <slug>");
+    let (slug, selector) = match args {
+        [slug] => (slug, "--module"),
+        [slug, mode] if mode == "--embedded" => (slug, "--embedded"),
+        _ => anyhow::bail!("Usage: cargo xtask module lint <slug> [--embedded]"),
     };
     if slug.starts_with('-') {
         anyhow::bail!("module lint requires a native module slug, not an option");
     }
     let root = crate::manifest_io::workspace_root();
+    if selector == "--embedded"
+        && load_manifest_from(&root.join(manifest_path()))?
+            .modules
+            .contains_key(slug)
+    {
+        anyhow::bail!("Module '{slug}' is registered; omit --embedded");
+    }
     let script = root
         .join("scripts")
         .join("verify")
         .join("verify-module-source-layout.mjs");
     let status = Command::new("node")
         .arg(&script)
-        .arg("--module")
+        .arg(selector)
         .arg(slug)
         .current_dir(&root)
         .status()

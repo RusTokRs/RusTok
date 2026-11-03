@@ -10,11 +10,11 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 
 const wrapper = readFileSync(
-  new URL('crates/modules/rustok-tax/src/calculation_context.rs', root),
+  new URL('crates/modules/rustok-tax/src/ports/in_process.rs', root),
   'utf8',
 );
 const library = readFileSync(new URL('crates/modules/rustok-tax/src/lib.rs', root), 'utf8');
-const owner = readFileSync(new URL('crates/modules/rustok-tax/src/ports.rs', root), 'utf8');
+const owner = readFileSync(new URL('crates/modules/rustok-tax/src/ports/calculation.rs', root), 'utf8');
 const evidence = readFileSync(
   new URL('crates/modules/rustok-tax/docs/calculation-local-context.md', root),
   'utf8',
@@ -29,9 +29,8 @@ const forbidIn = (source, value, label) => {
 };
 
 for (const [value, label] of [
-  ['mod calculation_context;', 'private context wrapper module'],
   ['pub mod ports;', 'legacy module compatibility'],
-  ['pub use calculation_context::{', 'canonical wrapper exports'],
+  ['pub use ports::in_process::{', 'canonical wrapper exports'],
   ['InProcessTaxCalculationPort, in_process_tax_calculation_port', 'root type and factory'],
   ['pub use ports::TaxCalculationPort;', 'root trait contract'],
 ]) {

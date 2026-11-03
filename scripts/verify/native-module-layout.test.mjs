@@ -104,6 +104,23 @@ test("unknown and non-path module registry entries are rejected", () => {
   });
 });
 
+test("embedded lint checks canonical local identity without registering the module", () => {
+  fixture((ctx) => {
+    const mode = { embedded: true };
+    assert.throws(() => resolveNativeModule(ctx.root, "sample", mode), /registered/);
+    ctx.writeRoot("modules.toml", "[modules]\n");
+    assert.throws(() => resolveNativeModule(ctx.root, "sample"), /Unknown native/);
+    assert.throws(() => resolveNativeModule(ctx.root, "../sample", mode), /snake_case/);
+    const modulePath = resolveNativeModule(ctx.root, "sample", mode);
+    assert.equal(modulePath, ctx.path("."));
+    assert.deepEqual(lintNativeModule(ctx.root, modulePath, "sample", mode), []);
+
+    ctx.write("Cargo.toml", '[package]\nname = "rustok-other"\n');
+    assert.match(lintNativeModule(ctx.root, modulePath, "sample", mode).join("\n"),
+      /embedded path and Cargo package\.name must match/);
+  });
+});
+
 test("private persistence and canonical root slots are enforced", () => {
   fixture((ctx) => {
     ctx.write("src/lib.rs",

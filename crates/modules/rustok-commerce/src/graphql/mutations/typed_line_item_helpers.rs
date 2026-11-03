@@ -72,6 +72,85 @@ impl std::fmt::Debug for StorefrontLineItemDiagnosticSource {
     }
 }
 
+struct StorefrontLineItemFailure {
+    kind: StorefrontLineItemFailureKind,
+    source_owner: &'static str,
+    source_operation: &'static str,
+    product_id: Option<Uuid>,
+    source: StorefrontLineItemFailureSource,
+}
+
+impl StorefrontLineItemFailure {
+    fn database(operation: &'static str, error: sea_orm::DbErr) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
+            source_owner: "rustok_product.persistence",
+            source_operation: operation,
+            product_id: None,
+            source: StorefrontLineItemFailureSource::Database(error),
+        }
+    }
+
+    fn pricing(product_id: Uuid, error: PortError) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
+            source_owner: "rustok_pricing",
+            source_operation: "resolve_product_price",
+            product_id: Some(product_id),
+            source: StorefrontLineItemFailureSource::Pricing(error),
+        }
+    }
+
+    fn inventory(product_id: Uuid, error: CommerceError) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::DependencyUnavailable,
+            source_owner: "rustok_inventory.public_channel",
+            source_operation: "check_variant_availability",
+            product_id: Some(product_id),
+            source: StorefrontLineItemFailureSource::Inventory(error),
+        }
+    }
+
+    fn product_unavailable(
+        product_id: Option<Uuid>,
+        operation: &'static str,
+        reason: &'static str,
+    ) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::ProductUnavailable,
+            source_owner: "rustok_product",
+            source_operation: operation,
+            product_id,
+            source: StorefrontLineItemFailureSource::Local(reason),
+        }
+    }
+
+    fn inventory_insufficient(product_id: Uuid) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::InventoryInsufficient,
+            source_owner: "rustok_inventory.public_channel",
+            source_operation: "check_variant_availability",
+            product_id: Some(product_id),
+            source: StorefrontLineItemFailureSource::Local("available inventory is below request"),
+        }
+    }
+
+    fn invalid_metadata(product_id: Uuid, error: serde_json::Error) -> Self {
+        Self {
+            kind: StorefrontLineItemFailureKind::InputInvalid,
+            source_owner: "rustok_commerce.graphql_input",
+            source_operation: "parse_line_item_metadata",
+            product_id: Some(product_id),
+            source: StorefrontLineItemFailureSource::Metadata(error),
+        }
+    }
+
+    fn with_product_id(mut self, product_id: Uuid) -> Self {
+        self.product_id = Some(product_id);
+        self
+    }
+}
+
 #[derive(Clone, Copy)]
 enum StorefrontLineItemConsumerOperation {
     Resolve,

@@ -246,8 +246,8 @@ pub async fn create_storefront_payment_collection(
         pricing_context.claims = auth
             .scopes
             .iter()
-            .chain(auth.permissions.iter())
             .cloned()
+            .chain(auth.permissions.iter().map(ToString::to_string))
             .collect();
     }
     let input = rustok_cart::UpdateCartContextInput {
@@ -263,7 +263,7 @@ pub async fn create_storefront_payment_collection(
         runtime.event_bus(),
         runtime.product_catalog_read_runtime(),
     );
-    let command = crate::prepare_storefront_cart_context(
+    let cart_update = crate::prepare_storefront_cart_context(
         pricing.as_ref(),
         pricing_context.clone(),
         &cart,
@@ -272,7 +272,7 @@ pub async fn create_storefront_payment_collection(
     .await
     .map_err(port_runtime_error)?;
     let cart = cart_storefront_port
-        .update_storefront_context(pricing_context, command)
+        .update_storefront_context(pricing_context, cart_update)
         .await
         .map_err(port_runtime_error)?;
 
@@ -362,8 +362,8 @@ pub async fn select_storefront_shipping_option(
         context.claims = auth
             .scopes
             .iter()
-            .chain(auth.permissions.iter())
             .cloned()
+            .chain(auth.permissions.iter().map(ToString::to_string))
             .collect();
     }
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());

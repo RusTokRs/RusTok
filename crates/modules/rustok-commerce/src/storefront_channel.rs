@@ -1,10 +1,11 @@
-use rustok_api::RequestContext;
+use rustok_api::{PortContext, PortError, RequestContext};
 use rustok_channel::{ChannelService, error::ChannelError};
 use rustok_inventory::{
     is_metadata_visible_for_public_channel as inventory_metadata_visible_for_public_channel,
     normalize_public_channel_slug as inventory_normalize_public_channel_slug,
 };
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 pub(crate) async fn is_module_enabled_for_request_channel(
     db: &DatabaseConnection,

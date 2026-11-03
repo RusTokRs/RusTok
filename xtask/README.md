@@ -317,7 +317,8 @@ and Cargo ancestor tree. Global/ancestor Cargo configuration is rejected;
 ambient build variables and credentials are cleared. The command records actual
 Cargo/Rust versions, executable artifact paths, source/plan/tool/binary digests
 and the observed database result. Build caches still come from the local Cargo
-home. Reports become stale when an input changes. Failed runs retain a failure
+home. Source inputs are verified again after execution, including the build
+copies used as migration working directories. Failed runs retain a failure
 record; temporary build sources, fixture databases and roles are cleaned up.
 
 The implemented scope is **fresh-install equivalence**. A matching result keeps

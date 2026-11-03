@@ -73,6 +73,9 @@ fn map_storefront_product_error(
             "Product request is invalid",
             "validation",
         ),
+        ProductError::InventoryQuantityBlocked(blocker) => storefront_product_port_http_policy(
+            &rustok_product::error::inventory_quantity_port_error(blocker).kind,
+        ),
         ProductError::DuplicateHandle { .. }
         | ProductError::DuplicateSku(_)
         | ProductError::NoVariants

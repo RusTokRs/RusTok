@@ -7,7 +7,7 @@ Status: **source-ready / unvalidated**
 This source slice hardens diagnostics across both tax calculation layers:
 
 - the canonical root `InProcessTaxCalculationPort` wrapper;
-- the owner `TaxCalculationPort for TaxService` implementation in `ports.rs`.
+- the owner `TaxCalculationPort for TaxService` implementation in `src/ports/calculation.rs`.
 
 The public trait, DTOs, constructors, provider selection, validation policy, result policy,
 public `PortError` envelopes, and return paths are unchanged.

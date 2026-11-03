@@ -594,15 +594,13 @@ pub(crate) use pricing_read_owner_boundary::in_process_pricing_read_port as cont
 mod rustok_cart_shim {
     pub(crate) use super::cart_storefront_owner_boundary::in_process_cart_storefront_port;
     pub use ::rustok_cart::{
-        CartContextUpdateRequest, CartStorefrontAddLineItemRequest, CartStorefrontCreateRequest,
-        CartStorefrontLineItemPricingRequest, CartStorefrontReadRequest,
+        CartPricingContextGuard, CartStorefrontCreateRequest, CartStorefrontReadRequest,
         CartStorefrontRemoveLineItemRequest,
     };
 }
 
 mod rustok_pricing_shim {
     pub(crate) use super::pricing_read_owner_boundary::in_process_pricing_read_port;
-    pub use ::rustok_pricing::{ResolveProductPriceRequest, ResolvedPrice};
 }
 
 mod async_graphql_shim {

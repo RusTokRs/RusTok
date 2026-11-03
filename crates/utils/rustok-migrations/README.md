@@ -118,9 +118,12 @@ failures or limits. Current limits are 100,000 rows and 64 MiB across fixture
 tables, 1 MiB per row, 64 MiB schema output, 30-second SQL statements and a
 120-second dump process. Supported extensions are `plpgsql` and `pg_trgm`.
 
-`verify-migrations fresh` creates temporary UUID-named roles/databases, invokes
-the two actual `rustok-migrate up/status` binaries from their source roots,
-observes each result immediately, compares, and cleans up. Migration children
+`verify-migrations fresh` runs each `rustok-migrate up/status` binary from its
+source root against a newly created fixture database and login. It observes and
+removes the original fixture before creating the candidate fixture. Both use
+the same generated names so ownership and grants can be compared directly.
+Recreating the login with a new password also discards original role settings
+before the candidate runs. Migration children
 receive their fixture URL and a bounded OS environment. `compare --quiescent`
 compares two already prepared fixture endpoints without creating or deleting
 databases. Run `verify-migrations --help` for explicit arguments. Reports contain

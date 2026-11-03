@@ -32,9 +32,10 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   const central = read(root, 'docs/modules/registry.md');
   const cargo = read(root, 'crates/modules/rustok-tax/Cargo.toml');
   const libSource = read(root, 'crates/modules/rustok-tax/src/lib.rs');
-  const contextSource = read(root, 'crates/modules/rustok-tax/src/calculation_context.rs');
-  const portSource = read(root, 'crates/modules/rustok-tax/src/ports.rs');
-  const servicesSource = read(root, 'crates/modules/rustok-tax/src/services.rs');
+  const contextSource = read(root, 'crates/modules/rustok-tax/src/ports/in_process.rs');
+  const portSource = read(root, 'crates/modules/rustok-tax/src/ports/calculation.rs');
+  const servicesSource = read(root, 'crates/modules/rustok-tax/src/services/calculation.rs');
+  const dtoSource = read(root, 'crates/modules/rustok-tax/src/dto/calculation.rs');
 
   if (registry.schema_version !== 1) fail('tax registry schema_version must be 1');
   if (registry.module !== 'tax') fail('tax registry module drift');
@@ -58,7 +59,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::TaxCalculationPort;')) {
     fail('tax lib.rs must export the port module and root trait contract');
   }
-  if (!libSource.includes('mod calculation_context;') || !libSource.includes('in_process_tax_calculation_port')) {
+  if (!libSource.includes('pub use ports::in_process::{') || !libSource.includes('in_process_tax_calculation_port')) {
     fail('tax lib.rs must export canonical context-preserving construction');
   }
   if (!contextSource.includes('impl TaxCalculationPort for InProcessTaxCalculationPort')) {
@@ -74,7 +75,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   }
   if (portSource.includes('require_write_semantics()?')) fail('tax calculate_tax must not require write idempotency semantics');
   if (!/PortError::validation\(\s*"tax\.validation"/.test(portSource)) fail('tax errors must map to typed PortError validation');
-  if (!servicesSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');
+  if (!dtoSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');
 
   if (!plan.includes('- FBA status: `boundary_ready`')) fail('tax local plan FBA status drift');
   if (!plan.includes(registryPath)) fail('tax local plan lacks registry evidence');

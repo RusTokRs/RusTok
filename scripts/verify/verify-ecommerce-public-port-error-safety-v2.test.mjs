@@ -486,9 +486,9 @@ function fixture(options = {}) {
   put(root, 'crates/modules/rustok-fulfillment/src/ports.rs', fulfillment);
 
   let tax = `${canonicalTaxPort()}${options.taxAppend ?? ''}`;
-  put(root, 'crates/modules/rustok-tax/src/ports.rs', tax);
+  put(root, 'crates/modules/rustok-tax/src/ports/calculation.rs', tax);
   let taxCalculation = `${canonicalTaxCalculation()}${options.taxCalculationAppend ?? ''}`;
-  put(root, 'crates/modules/rustok-tax/src/calculation_context.rs', taxCalculation);
+  put(root, 'crates/modules/rustok-tax/src/ports/in_process.rs', taxCalculation);
   let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
   if (options.removeCustomerCorrelation) customer = customer.replaceAll('correlation_id = %context.correlation_id', 'correlation_id = omitted');
   put(root, 'crates/modules/rustok-customer/src/ports.rs', customer);

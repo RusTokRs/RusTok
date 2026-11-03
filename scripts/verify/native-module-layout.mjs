@@ -685,18 +685,26 @@ function nativeModuleRegistryEntry(root, slug) {
       path: spec.match(/\bpath\s*=\s*"([^"]+)"/)?.[1],
     };
   }
-  throw new Error("Unknown native path module '" + slug + "' in modules.toml");
+  return null;
 }
 
-export function resolveNativeModule(root, slug) {
+export function resolveNativeModule(root, slug, { embedded = false } = {}) {
   const entry = nativeModuleRegistryEntry(root, slug);
+  if (embedded) {
+    if (entry) throw new Error(`Module '${slug}' is registered; omit --embedded`);
+    if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(slug)) {
+      throw new Error("Embedded module slug must use canonical snake_case");
+    }
+    return join("crates", "modules", `rustok-${slug.replaceAll("_", "-")}`);
+  }
+  if (!entry) throw new Error("Unknown native path module '" + slug + "' in modules.toml");
   if (entry.source !== "path" || !entry.path) {
     throw new Error("Module '" + slug + "' is not a native local path module");
   }
   return entry.path;
 }
 
-export function lintNativeModule(root, modulePath, slug) {
+export function lintNativeModule(root, modulePath, slug, { embedded = false } = {}) {
   const diagnostics = [];
   const repo = resolve(root);
   const moduleRoot = resolve(repo, modulePath);
@@ -724,6 +732,7 @@ export function lintNativeModule(root, modulePath, slug) {
     diagnostics.push(relative(repo, join(repo, "modules.toml")) + ": " + error.message);
   }
   if (registryEntry) {
+    if (embedded) diagnostics.push(`Module '${slug}' is registered; omit --embedded`);
     if (registryEntry.source !== "path" || !registryEntry.path) {
       diagnostics.push(relative(repo, moduleRoot) + ": module registry entry is not a native local path module");
     } else if (resolve(repo, registryEntry.path) !== moduleRoot) {
@@ -733,6 +742,14 @@ export function lintNativeModule(root, modulePath, slug) {
       diagnostics.push(relative(repo, moduleRoot) +
         ": Cargo package.name must match modules.toml crate identity");
     }
+  } else if (embedded) {
+    const crate = `rustok-${slug.replaceAll("_", "-")}`;
+    if (packageName !== crate || moduleRoot !== join(repo, "crates", "modules", crate)) {
+      diagnostics.push(relative(repo, moduleRoot) + ": embedded path and Cargo package.name must match the module slug");
+    }
+  } else {
+    diagnostics.push(relative(repo, join(repo, "modules.toml")) +
+      ": Unknown native path module '" + slug + "' in modules.toml");
   }
   const entryType = keyInSection(manifest, "crate", "entry_type");
   if (!entryType || !/^[A-Za-z][A-Za-z0-9_]*$/.test(entryType)) {

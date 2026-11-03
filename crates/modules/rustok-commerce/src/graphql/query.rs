@@ -33,6 +33,10 @@ use uuid::Uuid;
 
 use crate::{
     CommerceError, ShippingProfileService, StoreContextService,
+    graphql::{
+        mutations::catalog::{product_command_port_error, product_command_runtime},
+        product_mutation_actor,
+    },
     storefront_channel::{
         is_metadata_visible_for_public_channel, normalize_public_channel_slug,
         public_channel_slug_from_request,
@@ -144,7 +148,7 @@ impl CommerceQuery {
             "Permission denied: products:update required",
         )?;
         let tenant_id = product_query_tenant(ctx, tenant_id)?;
-        let (_, actor_id) = super::product_mutation_actor(ctx)?;
+        let (_, actor_id) = product_mutation_actor(ctx)?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = ctx
             .data_opt::<RequestContext>()
@@ -160,17 +164,11 @@ impl CommerceQuery {
         for permission in &ctx.data::<AuthContext>()?.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let preview = super::mutations::catalog::product_command_runtime(ctx)?
+        let preview = product_command_runtime(ctx)?
             .command_port()
             .preview_variant_axes(context.clone(), product_id, input.into())
             .await
-            .map_err(|error| {
-                super::mutations::catalog::product_command_port_error(
-                    &context,
-                    error,
-                    "preview_variant_axes",
-                )
-            })?;
+            .map_err(|error| product_command_port_error(&context, error, "preview_variant_axes"))?;
         Ok(preview.into())
     }
 
