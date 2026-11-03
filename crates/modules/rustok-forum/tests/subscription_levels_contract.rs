@@ -11,10 +11,7 @@ fn postgres_and_sqlite_subscription_contracts_remain_present() {
         include_str!("../src/migrations/m20260713_000013_add_forum_subscription_levels/sqlite_up/automation.rs"),
     ]
     .join("\n");
-    for token in [
-        "forum.subscription.changed",
-        "forum_subscription_policies",
-    ] {
+    for token in ["forum.subscription.changed", "forum_subscription_policies"] {
         assert!(
             migration.contains(token),
             "missing subscription contract token {token}"
@@ -35,9 +32,8 @@ fn postgres_and_sqlite_subscription_contracts_remain_present() {
             "forbidden auto-subscribe trigger token {forbidden}"
         );
     }
-    let removal_migration = include_str!(
-        "../src/migrations/m20261102_000040_remove_forum_auto_subscribe_triggers.rs"
-    );
+    let removal_migration =
+        include_str!("../src/migrations/m20261102_000040_remove_forum_auto_subscribe_triggers.rs");
     assert!(removal_migration.contains("forum_70_auto_subscribe_topic_author"));
     let owner = include_str!("../src/services/subscription/auto_subscribe.rs");
     for token in [
@@ -45,6 +41,9 @@ fn postgres_and_sqlite_subscription_contracts_remain_present() {
         "auto_subscribe_reply_participant_in_tx",
         "do_nothing",
     ] {
-        assert!(owner.contains(token), "missing auto-subscribe owner token {token}");
+        assert!(
+            owner.contains(token),
+            "missing auto-subscribe owner token {token}"
+        );
     }
 }

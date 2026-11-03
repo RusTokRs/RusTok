@@ -17,4 +17,3 @@ fn crate_api_defines_minimal_contract_sections() {
         );
     }
 }
-

@@ -374,11 +374,9 @@ mod tests {
 
     #[test]
     fn validate_topic_transition_ok() {
-        assert!(
-            TopicStatus::Open
-                .validate_transition(&TopicStatus::Closed)
-                .is_ok()
-        );
+        assert!(TopicStatus::Open
+            .validate_transition(&TopicStatus::Closed)
+            .is_ok());
     }
 
     // --- ReplyStatus parsing ---

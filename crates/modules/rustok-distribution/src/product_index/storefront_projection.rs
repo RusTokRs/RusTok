@@ -12,7 +12,9 @@ pub(crate) enum ProductStorefrontIndexPublicProjectionError {
         entity_id: Uuid,
         field: &'static str,
     },
-    #[error("Product Storefront Index item {entity_id} projects root field {field} more than once")]
+    #[error(
+        "Product Storefront Index item {entity_id} projects root field {field} more than once"
+    )]
     DuplicateField {
         entity_id: Uuid,
         field: &'static str,

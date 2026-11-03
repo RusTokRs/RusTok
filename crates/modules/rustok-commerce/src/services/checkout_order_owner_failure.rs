@@ -347,7 +347,11 @@ fn identity_text_shape(value: &str) -> &'static str {
 }
 
 fn text_shape(value: &str) -> &'static str {
-    if value.is_empty() { "empty" } else { "present" }
+    if value.is_empty() {
+        "empty"
+    } else {
+        "present"
+    }
 }
 
 fn optional_text_shape(value: Option<&str>) -> &'static str {

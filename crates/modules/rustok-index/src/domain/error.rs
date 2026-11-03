@@ -21,7 +21,9 @@ pub enum DomainError {
     DuplicateLink(String),
     #[error("schema link {link} must define source and target fields")]
     EmptyLinkFields { link: String },
-    #[error("schema link {link} has {source_count} source fields and {target_count} target fields")]
+    #[error(
+        "schema link {link} has {source_count} source fields and {target_count} target fields"
+    )]
     LinkFieldArityMismatch {
         link: String,
         source_count: usize,

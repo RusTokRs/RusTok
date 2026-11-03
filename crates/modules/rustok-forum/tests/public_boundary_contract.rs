@@ -108,16 +108,12 @@ fn sensitive_forum_error_display_is_redacted() {
         capability_error.to_string(),
         "Forum capability operation failed"
     );
-    assert!(
-        !capability_error
-            .to_string()
-            .contains("PRIVATE_PROVIDER_CODE")
-    );
-    assert!(
-        !capability_error
-            .to_string()
-            .contains("private upstream response")
-    );
+    assert!(!capability_error
+        .to_string()
+        .contains("PRIVATE_PROVIDER_CODE"));
+    assert!(!capability_error
+        .to_string()
+        .contains("private upstream response"));
     assert_eq!(capability_error.stable_code(), "FORUM_CAPABILITY_FAILURE");
     assert!(capability_error.is_retryable());
 }

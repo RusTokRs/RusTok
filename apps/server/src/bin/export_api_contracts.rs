@@ -109,10 +109,9 @@ mod tests {
     fn errors_on_missing_output_dir_argument() {
         let args = vec!["--output-dir"];
         let err = parse_output_dir_from_args(args).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("--output-dir requires a path argument")
-        );
+        assert!(err
+            .to_string()
+            .contains("--output-dir requires a path argument"));
     }
 
     #[test]

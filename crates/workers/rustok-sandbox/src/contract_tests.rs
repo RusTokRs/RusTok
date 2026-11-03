@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     CapabilityBrokerRouter, CapabilityName, ExecutorRegistry, FixtureCapabilityBroker,
-    LocalSandboxHarness, SandboxAdmissionLimits, SandboxCancellation, SandboxLimits,
-    SandboxPolicy, SandboxRuntime,
+    LocalSandboxHarness, SandboxAdmissionLimits, SandboxCancellation, SandboxLimits, SandboxPolicy,
+    SandboxRuntime,
 };
 
 #[test]

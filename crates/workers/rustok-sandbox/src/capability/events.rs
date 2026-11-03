@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{CapabilityCall, CapabilityGrant, valid_capability_operation};
+use super::{valid_capability_operation, CapabilityCall, CapabilityGrant};
 use crate::{SandboxError, SandboxResult};
 
 /// Typed policy for the `platform.events` capability.

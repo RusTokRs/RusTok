@@ -6,7 +6,7 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 use crate::{
-    ArtifactEventDeliveryWorkRegistration, ArtifactScheduleDeliveryWorkRegistration, migrations,
+    migrations, ArtifactEventDeliveryWorkRegistration, ArtifactScheduleDeliveryWorkRegistration,
 };
 
 /// Mandatory Core entry point for module and marketplace control-plane ownership.

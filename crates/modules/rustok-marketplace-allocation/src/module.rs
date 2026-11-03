@@ -50,4 +50,3 @@ impl MigrationSource for MarketplaceAllocationModule {
         migrations::migrations()
     }
 }
-

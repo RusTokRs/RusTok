@@ -119,12 +119,10 @@ fn immutable_members_nil_ids_bad_locale_tokens_copy_and_negative_writes_are_refu
         "defaultValue",
         "metadata",
     ] {
-        assert!(
-            serde_json::from_value::<AttributeDefinitionPatch>(
-                serde_json::json!({(key): "replacement"})
-            )
-            .is_err()
-        );
+        assert!(serde_json::from_value::<AttributeDefinitionPatch>(
+            serde_json::json!({(key): "replacement"})
+        )
+        .is_err());
     }
     let mut value = input();
     value.attribute_id = Uuid::nil();

@@ -9,8 +9,8 @@
  */
 
 use rustok_ui_i18n::{
-    AcceptLanguagePreference, PreparedUiMessages, UiLocaleTranslator, UiMessages,
-    accept_language_catalog_locales, try_parse_accept_language,
+    accept_language_catalog_locales, try_parse_accept_language, AcceptLanguagePreference,
+    PreparedUiMessages, UiLocaleTranslator, UiMessages,
 };
 
 fn assert_send_sync<T: Send + Sync>() {}

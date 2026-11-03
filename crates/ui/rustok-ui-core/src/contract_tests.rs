@@ -23,10 +23,7 @@ fn test_status_badge_tone_and_classes() {
 
 #[test]
 fn test_css_hex_normalization_and_accents() {
-    assert_eq!(
-        normalize_css_hex_color("#fff"),
-        Some("#fff".to_string())
-    );
+    assert_eq!(normalize_css_hex_color("#fff"), Some("#fff".to_string()));
     assert_eq!(
         normalize_css_hex_color("#123456"),
         Some("#123456".to_string())

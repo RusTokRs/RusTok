@@ -9,8 +9,8 @@ pub use category::{
     ListCategoriesFilter, UpdateCategoryInput,
 };
 pub use category_command::{
-    CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
-    MoveCategoryResponse,
+    CategoryPlacementResponse, MoveCategoryInput, MoveCategoryResponse,
+    MAX_BLOG_CATEGORY_TREE_NODES,
 };
 pub(crate) use comment::bounded_comment_page;
 pub use comment::{

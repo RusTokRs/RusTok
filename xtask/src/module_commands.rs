@@ -73,7 +73,10 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
         anyhow::bail!("module lint requires a native module slug, not an option");
     }
     let root = crate::manifest_io::workspace_root();
-    let script = root.join("scripts").join("verify").join("verify-module-source-layout.mjs");
+    let script = root
+        .join("scripts")
+        .join("verify")
+        .join("verify-module-source-layout.mjs");
     let status = Command::new("node")
         .arg(&script)
         .arg("--module")

@@ -28,7 +28,8 @@ fn blog_published_notify() -> WorkflowTemplate {
     WorkflowTemplate {
         id: "blog-published-notify",
         name: "Blog Post Published → Notify Subscribers",
-        description: "Sends an email notification to subscribers whenever a blog post is published.",
+        description:
+            "Sends an email notification to subscribers whenever a blog post is published.",
         category: "content",
         trigger_config: json!({ "type": "event", "event_type": "blog.post.published" }),
         steps: vec![
@@ -60,7 +61,8 @@ fn order_paid_fulfillment() -> WorkflowTemplate {
     WorkflowTemplate {
         id: "order-paid-fulfillment",
         name: "Order Paid → Fulfillment Pipeline",
-        description: "Triggers fulfillment and sends order confirmation email when payment is received.",
+        description:
+            "Triggers fulfillment and sends order confirmation email when payment is received.",
         category: "commerce",
         trigger_config: json!({ "type": "event", "event_type": "commerce.order.paid" }),
         steps: vec![
@@ -93,7 +95,8 @@ fn new_user_onboarding() -> WorkflowTemplate {
     WorkflowTemplate {
         id: "new-user-onboarding",
         name: "New User → Onboarding Sequence",
-        description: "Sends a welcome email and queues a follow-up notification after user registration.",
+        description:
+            "Sends a welcome email and queues a follow-up notification after user registration.",
         category: "auth",
         trigger_config: json!({ "type": "event", "event_type": "user.account_registered" }),
         steps: vec![

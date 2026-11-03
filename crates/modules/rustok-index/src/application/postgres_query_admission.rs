@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use super::{CompiledPostgresQuery, postgres_compiler::quote_identifier};
+use super::{postgres_compiler::quote_identifier, CompiledPostgresQuery};
 
 const ENTITY_ALIAS_TOKEN: &str = "{{entity}}";
 const MAX_ENTITY_ADMISSION_BYTES: usize = 32 * 1024;

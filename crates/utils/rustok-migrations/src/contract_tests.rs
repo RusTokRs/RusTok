@@ -3,10 +3,10 @@ use std::collections::BTreeSet;
 use sea_orm_migration::MigratorTrait;
 
 use crate::{
-    ColumnSummary, LockClassification, MigrationDescriptor, MigrationSafetyClassification,
-    Migrator, SchemaOperation, SqliteTestMigrator, classify_operations,
-    compute_migration_plan_digest, compute_schema_state_digest,
-    generate_migration_dry_run_receipt, sqlite_test_migration_is_compatible,
+    classify_operations, compute_migration_plan_digest, compute_schema_state_digest,
+    generate_migration_dry_run_receipt, sqlite_test_migration_is_compatible, ColumnSummary,
+    LockClassification, MigrationDescriptor, MigrationSafetyClassification, Migrator,
+    SchemaOperation, SqliteTestMigrator,
 };
 
 #[test]
@@ -46,10 +46,12 @@ fn sqlite_test_migrator_contract_excludes_postgresql_native_migrations() {
         );
     }
 
-    assert!(
-        !sqlite_test_migration_is_compatible("m20260914_000001_create_product_relations")
-    );
-    assert!(sqlite_test_migration_is_compatible("m20250101_000001_create_tenants"));
+    assert!(!sqlite_test_migration_is_compatible(
+        "m20260914_000001_create_product_relations"
+    ));
+    assert!(sqlite_test_migration_is_compatible(
+        "m20250101_000001_create_tenants"
+    ));
 }
 
 #[test]
@@ -152,9 +154,14 @@ fn deterministic_digests_and_dry_run_receipt_generation() {
 fn migration_descriptor_roundtrip_contract() {
     let descriptor = MigrationDescriptor::new(
         "m20260713_000009_create_checkout_operations",
-        vec!["m20261029_000101_create_cart_schema", "m20260325_000101_create_order_tables"],
+        vec![
+            "m20261029_000101_create_cart_schema",
+            "m20260325_000101_create_order_tables",
+        ],
     );
-    assert_eq!(descriptor.migration, "m20260713_000009_create_checkout_operations");
+    assert_eq!(
+        descriptor.migration,
+        "m20260713_000009_create_checkout_operations"
+    );
     assert_eq!(descriptor.after.len(), 2);
 }
-

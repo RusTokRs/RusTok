@@ -1,6 +1,6 @@
-use std::time::Duration;
 use rustok_artifact_node_transport::ModuleArtifactNodeAgentIdentity;
 use rustok_storage::StorageConfig;
+use std::time::Duration;
 use tonic::transport::Endpoint;
 use uuid::Uuid;
 
@@ -12,7 +12,8 @@ use crate::{
 #[test]
 fn cargo_manifest_contract_is_standardized() {
     let manifest_bytes = include_bytes!("../Cargo.toml");
-    let manifest_text = std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
+    let manifest_text =
+        std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
 
     assert!(manifest_text.contains(r#"name = "rustok-artifact-node-agent""#));
     assert!(manifest_text.contains(r#"readme = "README.md""#));
@@ -57,17 +58,25 @@ fn slot_supervisor_invariants() {
     let supervisor = SlotSupervisor::new("sha256:initial".to_string(), 8081, 8082);
     assert_eq!(supervisor.active_slot(), DeploymentSlot::SlotA);
     assert_eq!(supervisor.standby_slot(), DeploymentSlot::SlotB);
-    assert!(matches!(supervisor.active_state(), SlotState::Serving { port: 8081, .. }));
+    assert!(matches!(
+        supervisor.active_state(),
+        SlotState::Serving { port: 8081, .. }
+    ));
 }
 
 #[test]
 fn http_ssr_coordinator_pre_switch_safety_invariants() {
-    let mut coordinator = HttpSsrSwitchingCoordinator::new("sha256:initial".to_string(), 8081, 8082);
+    let mut coordinator =
+        HttpSsrSwitchingCoordinator::new("sha256:initial".to_string(), 8081, 8082);
     assert_eq!(coordinator.proxy_target_port(), 8081);
     assert_eq!(coordinator.recovery_attempts_consumed(), 0);
 
-    coordinator.pre_stage_candidate("sha256:candidate".to_string()).unwrap();
-    let receipt = coordinator.record_pre_switch_failure("sha256:candidate").unwrap();
+    coordinator
+        .pre_stage_candidate("sha256:candidate".to_string())
+        .unwrap();
+    let receipt = coordinator
+        .record_pre_switch_failure("sha256:candidate")
+        .unwrap();
     assert_eq!(receipt.recovery_attempts_consumed, 0);
     assert!(receipt.predecessor_capacity_retained);
 }

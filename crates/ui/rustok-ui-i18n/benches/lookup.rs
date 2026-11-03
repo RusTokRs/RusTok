@@ -11,10 +11,10 @@
 use std::fmt::Write as _;
 use std::hint::black_box;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use rustok_ui_i18n::{
-    LazyUiMessages, UiTranslator, accept_language_catalog_locales, build_fluent_catalog,
-    fluent_args, locale_candidates,
+    accept_language_catalog_locales, build_fluent_catalog, fluent_args, locale_candidates,
+    LazyUiMessages, UiTranslator,
 };
 
 const EN: &str = r#"

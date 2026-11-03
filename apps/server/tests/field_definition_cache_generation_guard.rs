@@ -31,10 +31,8 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
 
     assert!(wrapper.contains("#[path = \"field_definition_cache_base.rs\"]"));
     assert!(wrapper.contains("let cache = base::field_definition_cache_from_context(ctx, bus);"));
-    assert!(
-        wrapper
-            .contains("start_field_definition_cache_generation_reconciliation(ctx, cache.clone())")
-    );
+    assert!(wrapper
+        .contains("start_field_definition_cache_generation_reconciliation(ctx, cache.clone())"));
     assert!(base.contains("pub fn field_definition_cache_from_context"));
     assert!(base.contains("cache.invalidate_all();"));
 
@@ -127,10 +125,8 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
         );
     }
 
-    assert!(
-        guardrails
-            .contains("ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()")
-    );
+    assert!(guardrails
+        .contains("ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>()"));
     assert!(guardrails.contains("Flex field-definition durable cache reconciliation"));
     assert!(guardrails.contains(".map(|handle| handle.is_ready())"));
 }

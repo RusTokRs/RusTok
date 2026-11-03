@@ -235,10 +235,7 @@ fn slsa_provenance_generation() {
 
     assert_eq!(statement["_type"], "https://in-toto.io/Statement/v1");
     assert_eq!(statement["predicateType"], "https://slsa.dev/provenance/v1");
-    assert_eq!(
-        statement["subject"][0]["digest"]["sha256"],
-        VALID_HEX_64
-    );
+    assert_eq!(statement["subject"][0]["digest"]["sha256"], VALID_HEX_64);
     assert_eq!(
         statement["predicate"]["buildDefinition"]["buildType"],
         "https://rustok.dev/build-types/static-distribution"

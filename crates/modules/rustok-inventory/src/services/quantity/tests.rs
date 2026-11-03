@@ -197,7 +197,10 @@ fn quantity_error_native_policy_keeps_provider_text_private_and_unknown_publicat
         assert_eq!(policy.kind, blocker.kind());
         assert_eq!(policy.code, blocker.code());
         if blocker.kind() == PortErrorKind::InvariantViolation {
-            assert_eq!(policy.message, "the requested operation could not be completed safely");
+            assert_eq!(
+                policy.message,
+                "the requested operation could not be completed safely"
+            );
         } else {
             assert_eq!(policy.message, blocker.message());
         }
@@ -250,13 +253,11 @@ fn quantity_product_response_and_visible_projection_sum_without_order_dependent_
         available_by_variant(&binding, &rows).unwrap()[&variant],
         i32::MAX
     );
-    assert!(
-        available_by_variant(
-            &binding,
-            rows.iter().filter(|row| row.reserved_quantity == 0)
-        )
-        .is_err()
-    );
+    assert!(available_by_variant(
+        &binding,
+        rows.iter().filter(|row| row.reserved_quantity == 0)
+    )
+    .is_err());
     rows[0].incoming_quantity = -1;
     assert!(available_by_variant(&binding, &rows).is_err());
     assert!(available_by_variant(&std::collections::HashMap::new(), &rows).is_err());

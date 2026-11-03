@@ -56,4 +56,3 @@ fn wit_schema_structural_invariants() {
         "world must export run function"
     );
 }
-

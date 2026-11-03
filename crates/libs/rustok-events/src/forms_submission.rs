@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{ContractEventPayload, EventContract, sealed};
-use crate::validation::{EventValidationError, ValidateEvent, validators};
+use crate::contract::{sealed, ContractEventPayload, EventContract};
+use crate::validation::{validators, EventValidationError, ValidateEvent};
 use crate::{EventSchema, FieldSchema};
 
 /// Typed contract event for one stored form submission.
@@ -132,45 +132,39 @@ mod tests {
 
     #[test]
     fn validates_submission_received_contract() {
-        assert!(
-            FormSubmissionEvent::SubmissionReceived {
-                submission_id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                form_id: "contact".to_string(),
-                page_id: Some(Uuid::new_v4()),
-                locale: "en".to_string(),
-                state: "new".to_string(),
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(FormSubmissionEvent::SubmissionReceived {
+            submission_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            form_id: "contact".to_string(),
+            page_id: Some(Uuid::new_v4()),
+            locale: "en".to_string(),
+            state: "new".to_string(),
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]
     fn rejects_unknown_state_and_empty_form_id() {
-        assert!(
-            FormSubmissionEvent::SubmissionReceived {
-                submission_id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                form_id: String::new(),
-                page_id: None,
-                locale: "en".to_string(),
-                state: "new".to_string(),
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            FormSubmissionEvent::SubmissionReceived {
-                submission_id: Uuid::new_v4(),
-                tenant_id: Uuid::new_v4(),
-                form_id: "contact".to_string(),
-                page_id: None,
-                locale: "en".to_string(),
-                state: "archived".to_string(),
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(FormSubmissionEvent::SubmissionReceived {
+            submission_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            form_id: String::new(),
+            page_id: None,
+            locale: "en".to_string(),
+            state: "new".to_string(),
+        }
+        .validate()
+        .is_err());
+        assert!(FormSubmissionEvent::SubmissionReceived {
+            submission_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            form_id: "contact".to_string(),
+            page_id: None,
+            locale: "en".to_string(),
+            state: "archived".to_string(),
+        }
+        .validate()
+        .is_err());
     }
 }

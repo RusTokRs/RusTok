@@ -17,8 +17,8 @@ fn crate_api_defines_minimal_contract_sections() {
 
 #[test]
 fn http_error_constructors_map_to_canonical_status_codes() {
-    use axum::http::StatusCode;
     use crate::HttpError;
+    use axum::http::StatusCode;
 
     let bad_req = HttpError::bad_request("bad", "bad req");
     assert_eq!(bad_req.status, StatusCode::BAD_REQUEST);
@@ -48,8 +48,8 @@ fn http_error_constructors_map_to_canonical_status_codes() {
 
 #[test]
 fn json_response_creates_valid_ok_response() {
-    use axum::http::StatusCode;
     use crate::json_response;
+    use axum::http::StatusCode;
 
     let resp = json_response(serde_json::json!({"status": "ok"}));
     assert_eq!(resp.status(), StatusCode::OK);

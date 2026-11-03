@@ -20,7 +20,7 @@ pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::{TasksAdminTableRow, filter_rows};
+pub use core::{filter_rows, TasksAdminTableRow};
 pub use transport::TasksAdminTransport;
 pub use ui::{TasksAdmin, TasksAdminPage};
 

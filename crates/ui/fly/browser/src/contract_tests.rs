@@ -9,10 +9,22 @@ fn test_package_metadata_contract() {
 
 #[test]
 fn test_embedded_assets_contract() {
-    assert!(!FLY_BROWSER_ADAPTER_JS.is_empty(), "Browser adapter JS asset must not be empty");
-    assert!(!FLY_ACTIONS_JS.is_empty(), "Actions JS asset must not be empty");
-    assert!(FLY_BROWSER_ADAPTER_JS.contains("fly"), "Browser JS asset must reference fly");
-    assert!(FLY_ACTIONS_JS.contains("fly"), "Actions JS asset must reference fly");
+    assert!(
+        !FLY_BROWSER_ADAPTER_JS.is_empty(),
+        "Browser adapter JS asset must not be empty"
+    );
+    assert!(
+        !FLY_ACTIONS_JS.is_empty(),
+        "Actions JS asset must not be empty"
+    );
+    assert!(
+        FLY_BROWSER_ADAPTER_JS.contains("fly"),
+        "Browser JS asset must reference fly"
+    );
+    assert!(
+        FLY_ACTIONS_JS.contains("fly"),
+        "Actions JS asset must reference fly"
+    );
 }
 
 #[test]
@@ -29,9 +41,18 @@ fn test_csrf_derivation_contract() {
     let session_token = "secure-fly-session-secret-987654";
     let csrf = derive_csrf_token(session_token);
     assert_eq!(csrf.len(), 64, "CSRF token must be 64-char SHA256 hex");
-    assert!(verify_csrf_token(session_token, &csrf), "Valid CSRF token must verify");
-    assert!(!verify_csrf_token("tampered-session", &csrf), "Tampered session must fail");
-    assert!(!verify_csrf_token(session_token, "wrong-csrf-hex"), "Wrong CSRF token must fail");
+    assert!(
+        verify_csrf_token(session_token, &csrf),
+        "Valid CSRF token must verify"
+    );
+    assert!(
+        !verify_csrf_token("tampered-session", &csrf),
+        "Tampered session must fail"
+    );
+    assert!(
+        !verify_csrf_token(session_token, "wrong-csrf-hex"),
+        "Wrong CSRF token must fail"
+    );
     assert!(!verify_csrf_token("", &csrf), "Empty session must fail");
 }
 
@@ -51,4 +72,3 @@ fn test_intent_kind_classification_contract() {
     assert!(!BrowserIntentKind::FocusRequested.is_mutating());
     assert!(!BrowserIntentKind::HoverRequested.is_mutating());
 }
-

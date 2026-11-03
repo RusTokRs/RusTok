@@ -1,7 +1,5 @@
 #[cfg(feature = "server")]
-use rustok_core::{
-    MigrationSource, ModuleRuntimeExtensions, Result as RusToKResult, RusToKModule,
-};
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, Result as RusToKResult, RusToKModule};
 #[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
 
@@ -46,8 +44,8 @@ impl RusToKModule for AiModule {
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> RusToKResult<()> {
-        let deployment =
-            crate::runtime_extensions::AiDeploymentRuntime::from_environment().map_err(|error| {
+        let deployment = crate::runtime_extensions::AiDeploymentRuntime::from_environment()
+            .map_err(|error| {
                 rustok_core::Error::Validation(format!(
                     "invalid deployment-owned AI runtime configuration: {error}"
                 ))
@@ -78,4 +76,3 @@ mod tests {
         assert_eq!(module.kind(), ModuleKind::Core);
     }
 }
-

@@ -25,12 +25,19 @@ fn test_capability_policy_contract() {
 #[test]
 fn test_viewport_presets_contract() {
     let presets = builtin_viewport_presets();
-    assert!(!presets.is_empty(), "Builtin viewport presets must not be empty");
+    assert!(
+        !presets.is_empty(),
+        "Builtin viewport presets must not be empty"
+    );
 
-    let desktop = presets.iter().find(|p| p.device_class == DeviceClass::Desktop);
+    let desktop = presets
+        .iter()
+        .find(|p| p.device_class == DeviceClass::Desktop);
     assert!(desktop.is_some(), "Desktop preset must exist");
 
-    let mobile = presets.iter().find(|p| p.device_class == DeviceClass::Mobile);
+    let mobile = presets
+        .iter()
+        .find(|p| p.device_class == DeviceClass::Mobile);
     assert!(mobile.is_some(), "Mobile preset must exist");
 
     // Zoom normalizer clamps within [0.1, 4.0]
@@ -80,7 +87,10 @@ fn test_editor_shortcut_resolution_contract() {
 #[test]
 fn test_builtin_style_properties_contract() {
     let props = builtin_style_properties();
-    assert!(!props.is_empty(), "Builtin style properties must not be empty");
+    assert!(
+        !props.is_empty(),
+        "Builtin style properties must not be empty"
+    );
     assert!(props.iter().any(|p| p.property == "color"));
     assert!(props.iter().any(|p| p.property == "width"));
     assert!(props.iter().any(|p| p.property == "padding"));

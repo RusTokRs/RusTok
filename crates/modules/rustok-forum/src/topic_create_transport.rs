@@ -151,11 +151,9 @@ mod tests {
             context.claims,
             vec![Permission::FORUM_TOPICS_CREATE.to_string()]
         );
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-rest-topic-create-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-rest-topic-create-"));
     }
 
     #[test]
@@ -175,11 +173,9 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-graphql-topic-create-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-graphql-topic-create-"));
     }
 
     #[test]
@@ -200,11 +196,9 @@ mod tests {
 
         assert_eq!(context.locale, "ru-RU");
         assert_eq!(context.channel.as_deref(), Some("members"));
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-native-topic-create-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-native-topic-create-"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use rustok_events::{
-    ContractEventEnvelope, ContractEventPayload, RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS,
-    RbacArtifactPermissionEvent, ValidateEvent, event_schema,
+    event_schema, ContractEventEnvelope, ContractEventPayload, RbacArtifactPermissionEvent,
+    ValidateEvent, RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS,
 };
 use uuid::Uuid;
 
@@ -47,40 +47,34 @@ fn rbac_artifact_permission_contract_is_typed_validated_and_enveloped() {
 
 #[test]
 fn rbac_artifact_permission_contract_rejects_invalid_identity_and_key() {
-    assert!(
-        RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id: Uuid::nil(),
-            artifact_permission_id: Uuid::new_v4(),
-            role_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
-            granted: true,
-        }
-        .validate()
-        .is_err()
-    );
-    assert!(
-        RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id: Uuid::new_v4(),
-            artifact_permission_id: Uuid::nil(),
-            role_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            permission_key: "sample.events.handle".to_string(),
-            granted: true,
-        }
-        .validate()
-        .is_err()
-    );
-    assert!(
-        RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id: Uuid::new_v4(),
-            artifact_permission_id: Uuid::new_v4(),
-            role_id: Uuid::new_v4(),
-            installation_id: Uuid::new_v4(),
-            permission_key: " sample.events.handle".to_string(),
-            granted: true,
-        }
-        .validate()
-        .is_err()
-    );
+    assert!(RbacArtifactPermissionEvent::AssignmentChanged {
+        operation_id: Uuid::nil(),
+        artifact_permission_id: Uuid::new_v4(),
+        role_id: Uuid::new_v4(),
+        installation_id: Uuid::new_v4(),
+        permission_key: "sample.events.handle".to_string(),
+        granted: true,
+    }
+    .validate()
+    .is_err());
+    assert!(RbacArtifactPermissionEvent::AssignmentChanged {
+        operation_id: Uuid::new_v4(),
+        artifact_permission_id: Uuid::nil(),
+        role_id: Uuid::new_v4(),
+        installation_id: Uuid::new_v4(),
+        permission_key: "sample.events.handle".to_string(),
+        granted: true,
+    }
+    .validate()
+    .is_err());
+    assert!(RbacArtifactPermissionEvent::AssignmentChanged {
+        operation_id: Uuid::new_v4(),
+        artifact_permission_id: Uuid::new_v4(),
+        role_id: Uuid::new_v4(),
+        installation_id: Uuid::new_v4(),
+        permission_key: " sample.events.handle".to_string(),
+        granted: true,
+    }
+    .validate()
+    .is_err());
 }

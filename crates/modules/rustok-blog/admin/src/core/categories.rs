@@ -72,10 +72,7 @@ pub fn blog_category_name_is_valid(name: &str) -> bool {
 /// the loaded row: an unchanged description is a keep, an emptied one is a
 /// clear, and a new text is a set. This mirrors the owner's Patch semantics
 /// and keeps "clear" distinguishable from "not supplied".
-pub fn blog_category_description_patch(
-    current: &str,
-    loaded: Option<&str>,
-) -> Patch<String> {
+pub fn blog_category_description_patch(current: &str, loaded: Option<&str>) -> Patch<String> {
     let trimmed = current.trim();
     match loaded {
         Some(existing) if trimmed == existing => Patch::Keep,
@@ -155,7 +152,10 @@ pub fn prepare_blog_category_save_command(
                 locale,
                 name: Some(name),
                 slug,
-                description: blog_category_description_patch(input.description, input.loaded_description),
+                description: blog_category_description_patch(
+                    input.description,
+                    input.loaded_description,
+                ),
             },
         },
         None => {

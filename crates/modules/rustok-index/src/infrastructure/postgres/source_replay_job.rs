@@ -367,13 +367,13 @@ impl PostgresIndexReplayJobStore {
         let mut claimable = None;
         if let Some(row) = rows.into_iter().next() {
             let stored = stored_job(&row, backend)?;
-            if let Some(expected) = request.job_id {
-                if stored.job_id != expected {
-                    return Err(IndexReplayJobError::JobIdentityConflict {
-                        expected,
-                        actual: stored.job_id,
-                    });
-                }
+            if let Some(expected) = request.job_id
+                && stored.job_id != expected
+            {
+                return Err(IndexReplayJobError::JobIdentityConflict {
+                    expected,
+                    actual: stored.job_id,
+                });
             }
             if stored.source_name != request.source_name {
                 return Err(IndexReplayJobError::InvalidStoredJob(

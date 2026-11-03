@@ -50,4 +50,3 @@ impl MigrationSource for MarketplaceCommissionModule {
         migrations::migrations()
     }
 }
-

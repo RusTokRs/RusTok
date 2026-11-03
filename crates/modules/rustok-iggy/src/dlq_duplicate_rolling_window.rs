@@ -3,8 +3,8 @@ use std::collections::VecDeque;
 use thiserror::Error;
 
 use crate::dlq_duplicate_inspection::{
-    DlqDuplicateInspectionError, DlqDuplicateObservation, DlqDuplicateSummary,
-    summarize_dlq_duplicates,
+    summarize_dlq_duplicates, DlqDuplicateInspectionError, DlqDuplicateObservation,
+    DlqDuplicateSummary,
 };
 
 const MAX_ROLLING_WINDOW_CYCLES: u32 = 128;

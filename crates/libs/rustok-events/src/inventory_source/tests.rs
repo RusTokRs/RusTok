@@ -108,12 +108,10 @@ fn inventory_source_envelope_uses_the_owner_identity_without_invented_product_ca
     assert_eq!(envelope.causation_id(), None);
     let mut wire = serde_json::to_value(envelope).unwrap();
     wire["schema_version"] = serde_json::json!(2);
-    assert!(
-        serde_json::from_value::<ContractEventEnvelope>(wire)
-            .unwrap()
-            .validate_registered_schema()
-            .is_err()
-    );
+    assert!(serde_json::from_value::<ContractEventEnvelope>(wire)
+        .unwrap()
+        .validate_registered_schema()
+        .is_err());
 }
 
 #[test]

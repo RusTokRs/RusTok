@@ -930,7 +930,11 @@ pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
             }),
         GridColumnDef::new(
             "publishedAt",
-            if is_ru { "Опубликован" } else { "Published" },
+            if is_ru {
+                "Опубликован"
+            } else {
+                "Published"
+            },
         )
         .min_width(110)
         .align(ColumnAlign::Left)

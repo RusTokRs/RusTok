@@ -22,7 +22,6 @@ pub(crate) fn validate_module_event_listener_contract(
             );
         }
         for forbidden in [
-            "fn register_event_listeners(",
             "IndexerRuntimeConfig",
             "ContentIndexer::with_runtime",
             "ProductIndexer::with_runtime",

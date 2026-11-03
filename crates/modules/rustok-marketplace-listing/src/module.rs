@@ -53,4 +53,3 @@ impl MigrationSource for MarketplaceListingModule {
         migrations::migrations()
     }
 }
-

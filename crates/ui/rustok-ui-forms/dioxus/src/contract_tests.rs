@@ -69,4 +69,3 @@ fn test_form_and_field_context_integration_contract() {
 
     dom.rebuild_in_place();
 }
-

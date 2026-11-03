@@ -91,4 +91,3 @@ pub use inputs::{
 
 #[cfg(test)]
 mod contract_tests;
-

@@ -55,4 +55,3 @@ fn test_reexported_ui_primitives_contract() {
     let initials = extract_initials("Jane Doe");
     assert_eq!(initials, "JD");
 }
-

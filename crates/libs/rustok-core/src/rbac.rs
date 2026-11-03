@@ -815,11 +815,9 @@ mod tests {
         );
         assert_eq!(security.actor_kind, SecurityActorKind::User);
         assert_eq!(security.user_id, Some(user_id));
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_READ)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_READ));
     }
 
     #[test]
@@ -829,32 +827,22 @@ mod tests {
         assert!(security.is_public_read());
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::Customer);
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_READ)
-        );
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_LIST)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_READ));
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_LIST));
         assert!(security.permissions().contains(&Permission::PAGES_LIST));
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::new(Resource::ForumTopics, Action::Read))
-        );
-        assert!(
-            !security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_UPDATE)
-        );
-        assert!(
-            !security
-                .permissions()
-                .contains(&Permission::BLOG_POSTS_UPDATE)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::new(Resource::ForumTopics, Action::Read)));
+        assert!(!security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_UPDATE));
+        assert!(!security
+            .permissions()
+            .contains(&Permission::BLOG_POSTS_UPDATE));
     }
 
     #[test]
@@ -863,11 +851,9 @@ mod tests {
         assert_eq!(security.actor_kind, SecurityActorKind::System);
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::SuperAdmin);
-        assert!(
-            security
-                .permissions()
-                .contains(&Permission::BLOG_CATEGORIES_MANAGE)
-        );
+        assert!(security
+            .permissions()
+            .contains(&Permission::BLOG_CATEGORIES_MANAGE));
     }
 
     #[test]

@@ -70,7 +70,10 @@ fn test_delta_rle_monotonic() {
 #[test]
 fn test_columnar_error_formatting() {
     let rle_err = ColumnarError::RleEncodeError("corrupted stream".to_string());
-    assert_eq!(format!("{rle_err}"), "`corrupted stream` during rle encoding");
+    assert_eq!(
+        format!("{rle_err}"),
+        "`corrupted stream` during rle encoding"
+    );
 
     let strategy_err = ColumnarError::InvalidStrategy(99);
     assert_eq!(format!("{strategy_err}"), "invalid strategy code `99`");

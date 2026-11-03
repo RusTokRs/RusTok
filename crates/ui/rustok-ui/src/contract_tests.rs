@@ -12,7 +12,8 @@ fn test_button_and_badge_deterministic_resolvers() {
     let default_btn = button_classes(ButtonVariant::Default, Size::Md, None);
     assert!(default_btn.contains("bg-primary"));
 
-    let destructive_btn = button_classes(ButtonVariant::Destructive, Size::Sm, Some("custom-action"));
+    let destructive_btn =
+        button_classes(ButtonVariant::Destructive, Size::Sm, Some("custom-action"));
     assert!(destructive_btn.contains("bg-destructive"));
     assert!(destructive_btn.contains("custom-action"));
 
@@ -45,6 +46,12 @@ fn test_headless_dialog_and_tabs_state() {
 fn test_tokens_and_utilities() {
     assert_eq!(extract_initials("Jane Doe"), "JD");
     assert_eq!(extract_initials("Admin"), "A");
-    assert_eq!(slugify_heading("Introduction & Overview", 0), "introduction-overview");
-    assert_eq!(merge_classes(&["btn", "  ", "btn-primary", ""]), "btn btn-primary");
+    assert_eq!(
+        slugify_heading("Introduction & Overview", 0),
+        "introduction-overview"
+    );
+    assert_eq!(
+        merge_classes(&["btn", "  ", "btn-primary", ""]),
+        "btn btn-primary"
+    );
 }

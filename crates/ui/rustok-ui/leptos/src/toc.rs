@@ -10,8 +10,8 @@
 
 use leptos::prelude::*;
 use rustok_ui::{
-    TocItem, extract_headings_from_html, toc_header_classes, toc_item_classes, toc_list_classes,
-    toc_nav_classes,
+    extract_headings_from_html, toc_header_classes, toc_item_classes, toc_list_classes,
+    toc_nav_classes, TocItem,
 };
 
 /// Universal Table of Contents component for Leptos applications.

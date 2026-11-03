@@ -165,7 +165,7 @@ pub fn checksum_json<T: Serialize>(value: &T) -> Result<String, ReceiptError> {
 
 #[cfg(test)]
 mod tests {
-    use base64::{Engine, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use chrono::Duration;
     use ed25519_dalek::{Signer, SigningKey};
     use uuid::Uuid;

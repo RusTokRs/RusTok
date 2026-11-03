@@ -230,8 +230,8 @@ impl ModuleEffectivePolicyCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ModuleDefinitionCatalog;
     use crate::policy::ModuleEffectivePolicyQuery;
+    use crate::ModuleDefinitionCatalog;
 
     fn empty_policy() -> ModuleEffectivePolicy {
         let catalog = ModuleDefinitionCatalog::default();

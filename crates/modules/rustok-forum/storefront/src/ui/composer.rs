@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    ComposerMode, ComposerState, ComposerSubmission, forum_storefront_content_locale,
+    forum_storefront_content_locale, ComposerMode, ComposerState, ComposerSubmission,
 };
 use crate::i18n::t;
 use crate::model::ForumCategoryListItem;

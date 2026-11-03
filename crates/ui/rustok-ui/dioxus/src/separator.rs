@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{Orientation, separator_classes};
+use rustok_ui::{separator_classes, Orientation};
 
 #[component]
 pub fn Separator(

@@ -1,8 +1,6 @@
 use rustok_modules::MODULE_ARTIFACT_SOURCE_MANIFEST_FILE;
 
-use crate::{
-    ModuleTemplateError, ModuleTemplateInput, RUST_TOOLCHAIN, TEMPLATE_VERSION, render,
-};
+use crate::{render, ModuleTemplateError, ModuleTemplateInput, RUST_TOOLCHAIN, TEMPLATE_VERSION};
 
 fn sample_input() -> ModuleTemplateInput {
     ModuleTemplateInput {
@@ -18,17 +16,29 @@ fn display_name_validation_matrix() {
 
     // 1. Empty or whitespace
     input.display_name = "".to_string();
-    assert!(matches!(render(&input), Err(ModuleTemplateError::InvalidDisplayName)));
+    assert!(matches!(
+        render(&input),
+        Err(ModuleTemplateError::InvalidDisplayName)
+    ));
     input.display_name = "   ".to_string();
-    assert!(matches!(render(&input), Err(ModuleTemplateError::InvalidDisplayName)));
+    assert!(matches!(
+        render(&input),
+        Err(ModuleTemplateError::InvalidDisplayName)
+    ));
 
     // 2. Control character
     input.display_name = "Contract\nModule".to_string();
-    assert!(matches!(render(&input), Err(ModuleTemplateError::InvalidDisplayName)));
+    assert!(matches!(
+        render(&input),
+        Err(ModuleTemplateError::InvalidDisplayName)
+    ));
 
     // 3. Exceeds 80 chars
     input.display_name = "a".repeat(81);
-    assert!(matches!(render(&input), Err(ModuleTemplateError::InvalidDisplayName)));
+    assert!(matches!(
+        render(&input),
+        Err(ModuleTemplateError::InvalidDisplayName)
+    ));
 
     // 4. Exactly 80 chars
     input.display_name = "a".repeat(80);
@@ -88,4 +98,3 @@ fn rendered_cargo_metadata_and_constants_contract() {
     assert!(toolchain.contains(&format!("channel = \"{RUST_TOOLCHAIN}\"")));
     assert!(toolchain.contains("targets = [\"wasm32-wasip2\"]"));
 }
-

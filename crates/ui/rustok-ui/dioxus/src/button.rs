@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{ButtonVariant, Size, button_classes};
+use rustok_ui::{button_classes, ButtonVariant, Size};
 
 use crate::spinner::Spinner;
 

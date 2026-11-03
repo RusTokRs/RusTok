@@ -226,7 +226,7 @@
       "path": "crates/modules/rustok-blog",
       "category": "modules",
       "files": 184,
-      "loc": 48279,
+      "loc": 48353,
       "completed": true,
       "completed_at": "2026-11-03 03:13",
       "notes": "Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved.",
@@ -340,16 +340,6 @@
       "category": "modules",
       "files": 9,
       "loc": 1690,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-comments-storefront-support": {
-      "name": "rustok-comments-storefront-support",
-      "path": "crates/modules/rustok-comments-storefront-support",
-      "category": "modules",
-      "files": 3,
-      "loc": 247,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -474,22 +464,12 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-events-module/next-admin": {
-      "name": "next-admin",
-      "path": "crates/modules/rustok-events-module/next-admin",
-      "category": "modules",
-      "files": 6,
-      "loc": 278,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-forum": {
       "name": "rustok-forum",
       "path": "crates/modules/rustok-forum",
       "category": "modules",
-      "files": 638,
-      "loc": 178659,
+      "files": 641,
+      "loc": 179856,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -604,16 +584,6 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-iggy-connector/next-admin": {
-      "name": "next-admin",
-      "path": "crates/modules/rustok-iggy-connector/next-admin",
-      "category": "modules",
-      "files": 5,
-      "loc": 367,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-index": {
       "name": "rustok-index",
       "path": "crates/modules/rustok-index",
@@ -680,16 +650,6 @@
       "category": "modules",
       "files": 18,
       "loc": 3099,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-marketplace-ledger": {
-      "name": "rustok-marketplace-ledger",
-      "path": "crates/modules/rustok-marketplace-ledger",
-      "category": "modules",
-      "files": 28,
-      "loc": 6426,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -814,16 +774,6 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-moderation-api": {
-      "name": "rustok-moderation-api",
-      "path": "crates/modules/rustok-moderation-api",
-      "category": "modules",
-      "files": 3,
-      "loc": 835,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",
       "path": "crates/modules/rustok-modules",
@@ -840,16 +790,6 @@
       "category": "modules",
       "files": 2,
       "loc": 1902,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-modules-translation": {
-      "name": "rustok-modules-translation",
-      "path": "crates/modules/rustok-modules-translation",
-      "category": "modules",
-      "files": 1,
-      "loc": 822,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -900,16 +840,6 @@
       "category": "modules",
       "files": 17,
       "loc": 3297,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-notifications-api": {
-      "name": "rustok-notifications-api",
-      "path": "crates/modules/rustok-notifications-api",
-      "category": "modules",
-      "files": 5,
-      "loc": 1486,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -984,22 +914,12 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-page-builder-storefront": {
-      "name": "rustok-page-builder-storefront",
-      "path": "crates/modules/rustok-page-builder-storefront",
-      "category": "modules",
-      "files": 6,
-      "loc": 1633,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-pages": {
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
       "files": 204,
-      "loc": 59586,
+      "loc": 59680,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1070,16 +990,6 @@
       "category": "modules",
       "files": 11,
       "loc": 2776,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-pricing-persistence": {
-      "name": "rustok-pricing-persistence",
-      "path": "crates/modules/rustok-pricing-persistence",
-      "category": "modules",
-      "files": 5,
-      "loc": 623,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1209,7 +1119,7 @@
       "path": "crates/modules/rustok-rbac",
       "category": "modules",
       "files": 59,
-      "loc": 14979,
+      "loc": 15493,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1240,26 +1150,6 @@
       "category": "modules",
       "files": 19,
       "loc": 5357,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-reactions-api": {
-      "name": "rustok-reactions-api",
-      "path": "crates/modules/rustok-reactions-api",
-      "category": "modules",
-      "files": 3,
-      "loc": 1576,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-reactions-storefront": {
-      "name": "rustok-reactions-storefront",
-      "path": "crates/modules/rustok-reactions-storefront",
-      "category": "modules",
-      "files": 6,
-      "loc": 743,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1344,52 +1234,12 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-seo/render": {
-      "name": "render",
-      "path": "crates/modules/rustok-seo/render",
-      "category": "modules",
-      "files": 1,
-      "loc": 17,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-seo-admin-support": {
-      "name": "rustok-seo-admin-support",
-      "path": "crates/modules/rustok-seo-admin-support",
-      "category": "modules",
-      "files": 6,
-      "loc": 2627,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-seo-targets": {
-      "name": "rustok-seo-targets",
-      "path": "crates/modules/rustok-seo-targets",
-      "category": "modules",
-      "files": 1,
-      "loc": 1487,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-social-graph": {
       "name": "rustok-social-graph",
       "path": "crates/modules/rustok-social-graph",
       "category": "modules",
       "files": 40,
       "loc": 9809,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-social-graph-cli": {
-      "name": "rustok-social-graph-cli",
-      "path": "crates/modules/rustok-social-graph-cli",
-      "category": "modules",
-      "files": 1,
-      "loc": 324,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1450,16 +1300,6 @@
       "category": "modules",
       "files": 10,
       "loc": 14265,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-translation-targets": {
-      "name": "rustok-translation-targets",
-      "path": "crates/modules/rustok-translation-targets",
-      "category": "modules",
-      "files": 3,
-      "loc": 1729,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1608,8 +1448,8 @@
       "name": "rustok-build",
       "path": "crates/utils/rustok-build",
       "category": "utils",
-      "files": 13,
-      "loc": 2323,
+      "files": 14,
+      "loc": 3159,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2110,7 +1950,7 @@
       "path": "apps/server",
       "category": "apps",
       "files": 498,
-      "loc": 204381,
+      "loc": 207544,
       "completed": false,
       "completed_at": null,
       "notes": "",
@@ -2146,16 +1986,6 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/libs/rustok-content-portability-api": {
-      "name": "rustok-content-portability-api",
-      "path": "crates/libs/rustok-content-portability-api",
-      "category": "libs",
-      "files": 6,
-      "loc": 920,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/modules/rustok-accounting": {
       "name": "rustok-accounting",
       "path": "crates/modules/rustok-accounting",
@@ -2172,16 +2002,6 @@
       "category": "modules",
       "files": 8,
       "loc": 1243,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-comments-api": {
-      "name": "rustok-comments-api",
-      "path": "crates/modules/rustok-comments-api",
-      "category": "modules",
-      "files": 3,
-      "loc": 330,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2232,26 +2052,6 @@
       "category": "modules",
       "files": 26,
       "loc": 3376,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-newsletter-api": {
-      "name": "rustok-newsletter-api",
-      "path": "crates/modules/rustok-newsletter-api",
-      "category": "modules",
-      "files": 4,
-      "loc": 445,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
-    "crates/modules/rustok-profiles-api": {
-      "name": "rustok-profiles-api",
-      "path": "crates/modules/rustok-profiles-api",
-      "category": "modules",
-      "files": 3,
-      "loc": 132,
       "completed": false,
       "completed_at": null,
       "notes": ""

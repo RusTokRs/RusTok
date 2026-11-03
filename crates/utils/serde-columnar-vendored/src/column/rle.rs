@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ColumnAttr, ColumnarError,
     strategy::{AnyRleDecoder, AnyRleEncoder},
+    ColumnAttr, ColumnarError,
 };
 
 use super::ColumnTrait;

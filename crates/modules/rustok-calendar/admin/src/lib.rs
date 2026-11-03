@@ -23,6 +23,6 @@ pub mod ui;
 #[cfg(test)]
 mod contract_tests;
 
-pub use core::{CalendarAdminTableRow, filter_rows};
+pub use core::{filter_rows, CalendarAdminTableRow};
 pub use transport::CalendarAdminTransport;
 pub use ui::{CalendarAdmin, CalendarAdminPage};

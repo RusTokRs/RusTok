@@ -1,6 +1,6 @@
 //! Contract tests verifying the architectural invariants and public API of `rustok-forms-admin`.
 
-use crate::core::{FormsAdminLabels, allowed_transitions, state_label, summarize_submission};
+use crate::core::{allowed_transitions, state_label, summarize_submission, FormsAdminLabels};
 use crate::model::FormSubmission;
 use serde_json::json;
 use uuid::Uuid;

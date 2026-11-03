@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{AvatarSize, avatar_classes, extract_initials};
+use rustok_ui::{avatar_classes, extract_initials, AvatarSize};
 
 #[component]
 pub fn Avatar(

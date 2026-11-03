@@ -461,12 +461,8 @@ fn preview_link_action_is_draft_only() {
 
     // Draft rows mint preview tokens; the token dies on the first lifecycle
     // transition away from draft, so published and archived rows must not offer it.
-    let draft_row = blog_post_admin_table_row_view(
-        sample_list_item("post-9"),
-        None,
-        None,
-        labels(),
-    );
+    let draft_row =
+        blog_post_admin_table_row_view(sample_list_item("post-9"), None, None, labels());
     assert!(draft_row.show_preview_action);
 
     let mut archived = sample_list_item("post-9");
@@ -898,7 +894,10 @@ fn category_description_patch_keeps_unchanged_clears_emptied_and_sets_changed() 
         Patch::Set("new text".to_string())
     );
     // Nothing was loaded (create flow): any text is a set, blank is a clear.
-    assert_eq!(blog_category_description_patch("text", None), Patch::Set("text".to_string()));
+    assert_eq!(
+        blog_category_description_patch("text", None),
+        Patch::Set("text".to_string())
+    );
     assert_eq!(blog_category_description_patch("", None), Patch::Clear);
 }
 
@@ -993,7 +992,10 @@ fn category_save_command_update_uses_description_patch_semantics() {
     )
     .unwrap();
     match command.operation {
-        BlogCategorySaveOperation::Update { category_id, update } => {
+        BlogCategorySaveOperation::Update {
+            category_id,
+            update,
+        } => {
             assert_eq!(category_id, "11111111-1111-1111-1111-111111111111");
             assert_eq!(update.locale, "en");
             assert_eq!(update.name.as_deref(), Some("News"));

@@ -2568,6 +2568,45 @@ fn validate_module_event_listener_contract_accepts_index_without_legacy_listener
 }
 
 #[test]
+fn validate_module_event_listener_contract_accepts_index_factory_listener_delegation() {
+    let base = env::temp_dir().join(format!(
+        "xtask-event-listener-factory-{}",
+        std::process::id()
+    ));
+    let src_dir = base.join("src");
+    std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+    std::fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+                pub struct IndexModule;
+
+                impl RusToKModule for IndexModule {
+                    fn register_event_listeners(
+                        &self,
+                        registry: &mut rustok_core::ModuleEventListenerRegistry,
+                        context: &rustok_core::ModuleEventListenerContext<'_>,
+                    ) {
+                        if let Some(factories) = context
+                            .extensions
+                            .get::<PostgresIndexSourceFactoryCatalog>()
+                        {
+                            factories.register_event_listeners(registry, context);
+                        }
+                    }
+                }
+            "#,
+    )
+    .expect("temporary lib.rs should be writable");
+
+    validate_module_event_listener_contract("index", &base)
+        .expect("current index source factory listener delegation is accepted");
+
+    let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+    let _ = std::fs::remove_dir(&src_dir);
+    let _ = std::fs::remove_dir(&base);
+}
+
+#[test]
 fn validate_module_event_ingress_contract_rejects_workflow_without_axum_webhook_router() {
     let base = env::temp_dir().join(format!(
         "xtask-event-ingress-missing-{}",

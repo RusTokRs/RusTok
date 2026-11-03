@@ -1,13 +1,13 @@
 use crate::landing::LandingProjectError;
 use crate::static_landing::{
-    StaticLandingCompiler,
     static_publish_resource_limits::{
-        PageBuilderStaticPublishResourceLimitError, validate_static_publish_resource_limits,
+        validate_static_publish_resource_limits, PageBuilderStaticPublishResourceLimitError,
     },
+    StaticLandingCompiler,
 };
 use crate::static_publish_policy::{
-    PageBuilderStaticPublishPolicyError, PageBuilderStaticPublishPolicyEvidence,
-    validate_static_publish_document,
+    validate_static_publish_document, PageBuilderStaticPublishPolicyError,
+    PageBuilderStaticPublishPolicyEvidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -269,11 +269,9 @@ mod tests {
         else {
             panic!("expected compiler resource-limit validation error");
         };
-        assert!(
-            diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded")
-        );
+        assert!(diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded"));
     }
 
     #[test]

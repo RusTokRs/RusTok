@@ -795,12 +795,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 8 | 803 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 6 | 1,551 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 2 | 718 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 498 | 204,381 | None |  |
+| [ ] | [server](../../apps/server) | `apps` | 498 | 207,544 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,431 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 7 | 1,257 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,690 | 2026-11-02 21:39 | Audited in Round 2; resolved SQLite in-memory transaction connection deadlock in runtime test; standardized Cargo metadata (rust-version, repository, readme); implemented Debug for HostRuntimeContext, SharedEventDeliveryControl, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader, SharedTenantRbacCatalog, AuthContext, AuthPrincipalContext, and extensions; added artifact_permissions unit tests; 135/135 tests passed across all feature profiles; clippy clean, gatekeeper approved. |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 12 | 1,476 | None |  |
-| [ ] | [rustok-content-portability-api](../../crates/libs/rustok-content-portability-api) | `libs` | 6 | 920 | None |  |
 | [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 66 | 18,481 | 2026-11-02 21:49 | Audited in Round 2; verified 6 Universal Logic Dimensions across kernel primitives (id, rbac, money, field_schema, cache_atomic, events, resilience, error); standardized Cargo metadata (rust-version, repository, readme); verified 291 unit tests and 13 integration test binaries; clippy clean on all targets; remediation gate approved. |
 | [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 37 | 12,729 | 2026-11-02 22:14 | Audited in Round 2; regenerated canonical event-contract digests via canonical generator; standardized Cargo metadata (readme); verified 82 unit tests and 44 integration tests (126 total); clippy clean on all targets; remediation gate approved. |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 2 | 186 | 2026-11-02 22:21 | Audited in Round 2; verified FBA descriptors, topologies, and transport profiles; standardized Cargo metadata (rust-version, repository, readme); 5/5 tests passed; clippy clean on all targets; remediation gate approved. |
@@ -828,7 +827,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 377 | 2026-11-03 03:07 | Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved. |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
-| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 184 | 48,279 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
+| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 184 | 48,353 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
 | [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 24 | 9,468 | 2026-11-03 03:28 | Fixed transport profile selection test under ssr/hydrate features, verified all 45 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
 | [ ] | [rustok-blog-cli](../../crates/modules/rustok-blog/cli) | `modules` | 2 | 580 | None |  |
 | [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 20 | 4,020 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
@@ -847,8 +846,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 11,858 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,231 | None |  |
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 10,932 | None |  |
-| [ ] | [rustok-comments-api](../../crates/modules/rustok-comments-api) | `modules` | 3 | 330 | None |  |
-| [ ] | [rustok-comments-storefront-support](../../crates/modules/rustok-comments-storefront-support) | `modules` | 3 | 247 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,690 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 265 | None |  |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,066 | None |  |
@@ -866,12 +863,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | None |  |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 887 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 9 | 782 | None |  |
-| [ ] | [next-admin](../../crates/modules/rustok-events-module/next-admin) | `modules` | 6 | 278 | None |  |
 | [ ] | [rustok-finance](../../crates/modules/rustok-finance) | `modules` | 18 | 979 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-finance/admin) | `modules` | 6 | 316 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 21 | 2,419 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 6 | 582 | None |  |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 638 | 178,659 | None |  |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 641 | 179,856 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 36 | 13,480 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 27 | 7,841 | None |  |
 | [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 86 | 31,436 | None |  |
@@ -883,7 +879,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,363 | None |  |
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,767 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 703 | None |  |
-| [ ] | [next-admin](../../crates/modules/rustok-iggy-connector/next-admin) | `modules` | 5 | 367 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 142 | 60,079 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | None |  |
 | [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 65 | 21,996 | None |  |
@@ -892,7 +887,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 14 | 1,796 | None |  |
 | [ ] | [rustok-marketplace-balance](../../crates/modules/rustok-marketplace-balance) | `modules` | 31 | 7,109 | None |  |
 | [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 18 | 3,099 | None |  |
-| [ ] | [rustok-marketplace-ledger](../../crates/modules/rustok-marketplace-ledger) | `modules` | 28 | 6,426 | None |  |
 | [ ] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 34 | 6,902 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 10 | 2,008 | None |  |
 | [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 15 | 2,050 | None |  |
@@ -908,16 +902,12 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 10 | 1,223 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 10 | 1,969 | None |  |
 | [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 40 | 10,727 | None |  |
-| [ ] | [rustok-moderation-api](../../crates/modules/rustok-moderation-api) | `modules` | 3 | 835 | None |  |
 | [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 283 | 157,886 | None |  |
-| [ ] | [rustok-modules-translation](../../crates/modules/rustok-modules-translation) | `modules` | 1 | 822 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 2 | 1,902 | None |  |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 43 | 5,855 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 10 | 652 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 26 | 3,376 | None |  |
-| [ ] | [rustok-newsletter-api](../../crates/modules/rustok-newsletter-api) | `modules` | 4 | 445 | None |  |
 | [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,128 | None |  |
-| [ ] | [rustok-notifications-api](../../crates/modules/rustok-notifications-api) | `modules` | 5 | 1,486 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 290 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,297 | None |  |
 | [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,875 | None |  |
@@ -926,10 +916,9 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 29 | 5,526 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 9 | 578 | None |  |
 | [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 37,809 | None |  |
-| [ ] | [rustok-page-builder-storefront](../../crates/modules/rustok-page-builder-storefront) | `modules` | 6 | 1,633 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 67 | 20,466 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 7 | 1,846 | None |  |
-| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 204 | 59,586 | None |  |
+| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 204 | 59,680 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 28 | 9,341 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 18 | 5,076 | None |  |
 | [ ] | [rustok-party](../../crates/modules/rustok-party) | `modules` | 22 | 1,731 | None |  |
@@ -937,7 +926,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,530 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,394 | None |  |
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 55 | 23,287 | None |  |
-| [ ] | [rustok-pricing-persistence](../../crates/modules/rustok-pricing-persistence) | `modules` | 5 | 623 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 15 | 8,374 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 11 | 2,776 | None |  |
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 231 | 99,782 | None |  |
@@ -950,15 +938,12 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,520 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,570 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 59 | 9,706 | None |  |
-| [ ] | [rustok-profiles-api](../../crates/modules/rustok-profiles-api) | `modules` | 3 | 132 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 2 | 484 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 10 | 1,492 | None |  |
-| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 14,979 | None |  |
+| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 15,493 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 9 | 981 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 2 | 369 | None |  |
 | [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 19 | 5,357 | None |  |
-| [ ] | [rustok-reactions-api](../../crates/modules/rustok-reactions-api) | `modules` | 3 | 1,576 | None |  |
-| [ ] | [rustok-reactions-storefront](../../crates/modules/rustok-reactions-storefront) | `modules` | 6 | 743 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-reactions/storefront) | `modules` | 7 | 768 | None |  |
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 43 | 9,228 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 9 | 3,092 | None |  |
@@ -970,14 +955,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-security-admin](../../crates/modules/rustok-security/admin) | `modules` | 6 | 319 | None |  |
 | [ ] | [rustok-security-storefront](../../crates/modules/rustok-security/storefront) | `modules` | 6 | 123 | None |  |
 | [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 87 | 36,931 | None |  |
-| [ ] | [rustok-seo-admin-support](../../crates/modules/rustok-seo-admin-support) | `modules` | 6 | 2,627 | None |  |
-| [ ] | [rustok-seo-targets](../../crates/modules/rustok-seo-targets) | `modules` | 1 | 1,487 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 16 | 4,606 | None |  |
 | [ ] | [panel](../../crates/modules/rustok-seo/panel) | `modules` | 7 | 2,834 | None |  |
-| [ ] | [render](../../crates/modules/rustok-seo/render) | `modules` | 1 | 17 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-seo/storefront) | `modules` | 7 | 979 | None |  |
 | [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 40 | 9,809 | None |  |
-| [ ] | [rustok-social-graph-cli](../../crates/modules/rustok-social-graph-cli) | `modules` | 1 | 324 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-social-graph/cli) | `modules` | 2 | 503 | None |  |
 | [ ] | [rustok-tasks](../../crates/modules/rustok-tasks) | `modules` | 18 | 980 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tasks/admin) | `modules` | 6 | 322 | None |  |
@@ -986,7 +967,6 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 31 | 4,573 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 864 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,673 | None |  |
-| [ ] | [rustok-translation-targets](../../crates/modules/rustok-translation-targets) | `modules` | 3 | 1,729 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,265 | None |  |
 | [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,814 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,530 | None |  |
@@ -1013,7 +993,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 2 | 595 | None |  |
 | [ ] | [rustok-ui-dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 21 | 1,374 | None |  |
 | [ ] | [rustok-ui-leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 21 | 2,155 | None |  |
-| [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 13 | 2,323 | None |  |
+| [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 14 | 3,159 | None |  |
 | [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 5 | 1,007 | None |  |
 | [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 3 | 1,866 | None |  |
 | [ ] | [rustok-cli](../../crates/utils/rustok-cli) | `utils` | 4 | 1,544 | None |  |

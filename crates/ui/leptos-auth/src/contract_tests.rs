@@ -31,7 +31,10 @@ fn test_refresh_cookie_helpers_contract() {
     assert!(parse_refresh_cookie_value(".token").is_none());
     assert!(parse_refresh_cookie_value("tenant.").is_none());
 
-    let raw_header = format!("other=1; {}={}; session=abc", ADMIN_REFRESH_COOKIE, cookie_val);
+    let raw_header = format!(
+        "other=1; {}={}; session=abc",
+        ADMIN_REFRESH_COOKIE, cookie_val
+    );
     let extracted = extract_refresh_cookie(&raw_header);
     assert_eq!(extracted, Some((tenant.to_string(), token.to_string())));
 
@@ -80,4 +83,3 @@ fn test_session_id_from_access_token_contract() {
     assert!(session_id_from_access_token("not-a-jwt").is_none());
     assert!(session_id_from_access_token("head.badbase64!!!.sig").is_none());
 }
-

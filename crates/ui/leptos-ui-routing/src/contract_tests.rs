@@ -64,7 +64,9 @@ fn test_route_query_policy_sanitization_contract() {
 
 #[test]
 fn test_route_query_writer_dispatch_contract() {
-    let recorded_updates = Arc::new(Mutex::new(Vec::<(Vec<(String, Option<String>)>, bool)>::new()));
+    let recorded_updates = Arc::new(Mutex::new(
+        Vec::<(Vec<(String, Option<String>)>, bool)>::new(),
+    ));
     let recorded_clone = Arc::clone(&recorded_updates);
 
     let writer = RouteQueryWriter {
@@ -78,7 +80,10 @@ fn test_route_query_writer_dispatch_contract() {
         let records = recorded_updates.lock().unwrap();
         assert_eq!(records.len(), 1);
         assert!(!records[0].1);
-        assert_eq!(records[0].0, vec![("filter".to_string(), Some("active".to_string()))]);
+        assert_eq!(
+            records[0].0,
+            vec![("filter".to_string(), Some("active".to_string()))]
+        );
     }
 
     writer.replace_value("page", "3");
@@ -86,7 +91,10 @@ fn test_route_query_writer_dispatch_contract() {
         let records = recorded_updates.lock().unwrap();
         assert_eq!(records.len(), 2);
         assert!(records[1].1);
-        assert_eq!(records[1].0, vec![("page".to_string(), Some("3".to_string()))]);
+        assert_eq!(
+            records[1].0,
+            vec![("page".to_string(), Some("3".to_string()))]
+        );
     }
 
     writer.clear_key("filter");
@@ -102,7 +110,10 @@ fn test_route_query_writer_dispatch_contract() {
         let records = recorded_updates.lock().unwrap();
         assert_eq!(records.len(), 4);
         assert!(records[3].1);
-        assert_eq!(records[3].0, vec![("sort".to_string(), Some("desc".to_string()))]);
+        assert_eq!(
+            records[3].0,
+            vec![("sort".to_string(), Some("desc".to_string()))]
+        );
     }
 
     let write = UiRouteQueryWrite {
@@ -114,7 +125,10 @@ fn test_route_query_writer_dispatch_contract() {
         let records = recorded_updates.lock().unwrap();
         assert_eq!(records.len(), 5);
         assert!(records[4].1);
-        assert_eq!(records[4].0, vec![("page".to_string(), Some("1".to_string()))]);
+        assert_eq!(
+            records[4].0,
+            vec![("page".to_string(), Some("1".to_string()))]
+        );
     }
 
     let intent = UiRouteQueryIntent::clear("page");

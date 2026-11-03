@@ -1,4 +1,4 @@
-use serde_json::{Value as JsonValue, json};
+use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
 use super::{CompiledPostgresCell, CompiledPostgresRow, PostgresQueryDecodeError, SchemaRegistry};

@@ -48,7 +48,7 @@ mod tests {
     use rustok_core::field_schema::FlexError;
     use uuid::Uuid;
 
-    use super::{FlexMappedErrorKind, map_flex_error};
+    use super::{map_flex_error, FlexMappedErrorKind};
 
     #[test]
     fn map_database_error_to_internal() {

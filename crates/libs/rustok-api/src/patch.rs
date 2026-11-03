@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, marker::PhantomData};
 
 /// Explicit mutation semantics for nullable owner fields.

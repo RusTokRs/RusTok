@@ -7,9 +7,10 @@ use rustok_index::{
     SchemaVersion,
 };
 use rustok_product::{
-    ProductAttributeTermExpr, ProductResolvedAttributeFilter, StorefrontProductListQuery,
-    StorefrontProductSortBy, StorefrontProductSortDirection, entities::product::ProductStatus,
-    group_product_attribute_filters, services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
+    entities::product::ProductStatus, group_product_attribute_filters,
+    services::MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeTermExpr,
+    ProductResolvedAttributeFilter, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
 };
 
 use super::PRODUCT_SCHEMA_ROUTING_KEY;
@@ -320,13 +321,11 @@ mod tests {
         assert_eq!(query.query.scope.tenant_id, tenant);
         assert_eq!(query.identity_order_direction, OrderDirection::Desc);
         assert_eq!(query.query.order_by.len(), 2);
-        assert!(
-            query
-                .query
-                .order_by
-                .iter()
-                .all(|order| order.direction == OrderDirection::Desc)
-        );
+        assert!(query
+            .query
+            .order_by
+            .iter()
+            .all(|order| order.direction == OrderDirection::Desc));
         assert_eq!(
             query.query.order_by[0].field.field().as_str(),
             "published_at"
@@ -365,11 +364,9 @@ mod tests {
         let Some(FilterExpr::And(filters)) = query.query.filter else {
             panic!("shadow query root filter must be AND");
         };
-        assert!(
-            filters
-                .iter()
-                .any(|filter| matches!(filter, FilterExpr::Not(_)))
-        );
+        assert!(filters
+            .iter()
+            .any(|filter| matches!(filter, FilterExpr::Not(_))));
     }
 
     #[test]

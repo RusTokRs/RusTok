@@ -59,4 +59,3 @@ impl MigrationSource for MarketplaceBalanceModule {
         migrations::migrations()
     }
 }
-

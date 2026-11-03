@@ -26,4 +26,3 @@ fn alloy_operation_default_and_slug_contract() {
     assert_eq!(AlloyOperation::ValidateScript.slug(), "validate_script");
     assert_eq!(AlloyOperation::RunScript.slug(), "run_script");
 }
-

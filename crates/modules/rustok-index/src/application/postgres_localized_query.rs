@@ -10,10 +10,10 @@ use crate::domain::{
 };
 
 use super::{
-    CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, ExecutableQueryPlan,
-    LocalizedCursorCodec, LocalizedCursorValidationError, LocalizedEntityQueryValidationError,
-    LocalizedIndexCursor, PlannedField, PostgresBindValue, PostgresQueryCompileError,
-    QueryPlanError, QueryPlanFingerprint, SchemaRegistry, postgres_compiler::quote_identifier,
+    postgres_compiler::quote_identifier, CompiledPostgresCount, CompiledPostgresQuery,
+    CompiledQueryColumn, ExecutableQueryPlan, LocalizedCursorCodec, LocalizedCursorValidationError,
+    LocalizedEntityQueryValidationError, LocalizedIndexCursor, PlannedField, PostgresBindValue,
+    PostgresQueryCompileError, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
 };
 
 const ROOT_ALIAS: &str = "t0";
@@ -692,11 +692,11 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::PostgresQueryEntityAdmission;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope,
         IndexSchema, LocaleKey, LocaleMode, ModuleName, OrderExpr, SchemaRef, SchemaVersion,
     };
+    use crate::PostgresQueryEntityAdmission;
 
     fn schema() -> IndexSchema {
         IndexSchema {

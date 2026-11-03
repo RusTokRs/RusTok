@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::factory::*;
 use lazy_static::lazy_static;
-use prometheus::IntGaugeVec;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
+use prometheus::IntGaugeVec;
 
 const STATES: [&str; 6] = [
     "total",

@@ -6,7 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::import_mapping::{
-    FORUM_IMPORT_SOURCE_NODEBB, ForumImportEntityKind, ForumImportExternalRef,
+    ForumImportEntityKind, ForumImportExternalRef, FORUM_IMPORT_SOURCE_NODEBB,
     MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 use crate::import_write_preparation::{
@@ -14,9 +14,9 @@ use crate::import_write_preparation::{
     ForumPreparedImportWriteBatch,
 };
 use crate::mentions::{
-    FORUM_MAX_MENTION_TARGETS_PER_REVISION, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
-    ForumContentTarget, ForumMentionAudience, ForumMentionPolicy, ForumQuoteReference,
-    extract_forum_mention_candidates,
+    extract_forum_mention_candidates, ForumContentTarget, ForumMentionAudience, ForumMentionPolicy,
+    ForumQuoteReference, FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
 };
 
 pub const MAX_FORUM_IMPORT_RELATION_TARGETS_PER_BATCH: usize =

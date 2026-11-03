@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{ScriptId, deleted_evidence_retention, deletion::is_bounded_owner_audit_value};
+use super::{deleted_evidence_retention, deletion::is_bounded_owner_audit_value, ScriptId};
 
 /// A transition of the retention policy for evidence owned by a deleted draft.
 ///

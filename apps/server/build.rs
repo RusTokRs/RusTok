@@ -1,4 +1,4 @@
-use rustok_manifest::{ModuleSpec, load_module_package_manifest, load_modules_manifest};
+use rustok_manifest::{load_module_package_manifest, load_modules_manifest, ModuleSpec};
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -1,6 +1,6 @@
 use leptos::html;
 use leptos::prelude::*;
-use rustok_api::{RichTextDocument, RichTextView, normalize_locale_tag};
+use rustok_api::{normalize_locale_tag, RichTextDocument, RichTextView};
 
 #[derive(Clone, Debug)]
 pub struct RichTextFrameCopy {
@@ -87,7 +87,7 @@ pub fn RichTextEditorFrame(
 
     #[cfg(target_arch = "wasm32")]
     {
-        use wasm_bindgen::prelude::{Closure, JsValue, wasm_bindgen};
+        use wasm_bindgen::prelude::{wasm_bindgen, Closure, JsValue};
         use web_sys::HtmlIFrameElement;
 
         #[wasm_bindgen]

@@ -1,6 +1,6 @@
 use super::{humanize_setting_key, humanize_token, tr};
-use crate::Locale;
 use crate::use_admin_locale;
+use crate::Locale;
 use leptos::prelude::*;
 
 #[derive(Clone, Debug)]

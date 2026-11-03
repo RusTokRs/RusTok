@@ -9,4 +9,3 @@ fn test_crate_api_compliance() {
     assert!(api_doc.contains("### Events / Outbox Side Effects"));
     assert!(api_doc.contains("### Errors / Failure Codes"));
 }
-

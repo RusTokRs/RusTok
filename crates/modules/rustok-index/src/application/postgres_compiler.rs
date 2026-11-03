@@ -8,9 +8,9 @@ use uuid::Uuid;
 use crate::domain::{FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName, Pagination};
 
 use super::{
-    CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
-    PlannedManyProjection, QueryPlanError, QueryPlanFingerprint, SchemaRegistry,
-    planner::derive_many_projections,
+    planner::derive_many_projections, CursorCodec, CursorValidationError, ExecutableQueryPlan,
+    IndexCursor, PlannedField, PlannedManyProjection, QueryPlanError, QueryPlanFingerprint,
+    SchemaRegistry,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

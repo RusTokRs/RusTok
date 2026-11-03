@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use rustok_core::field_schema::FieldDefinition;
 
 use crate::{
-    FlexSchemaTranslationError, FlexSchemaTranslationLeaf, FlexSchemaTranslationLeafSnapshot,
-    FlexSchemaTranslationResult, validate_flex_schema_translation_locale_pair,
+    validate_flex_schema_translation_locale_pair, FlexSchemaTranslationError,
+    FlexSchemaTranslationLeaf, FlexSchemaTranslationLeafSnapshot, FlexSchemaTranslationResult,
 };
 
 /// Extract only structurally declared field-definition copy for one exact source/target

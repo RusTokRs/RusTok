@@ -11,7 +11,11 @@ struct TestProvider {
 #[async_trait::async_trait]
 impl CommandProvider for TestProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
-        vec![CommandDescriptor::new(self.namespace, self.name, "Test cmd")]
+        vec![CommandDescriptor::new(
+            self.namespace,
+            self.name,
+            "Test cmd",
+        )]
     }
 }
 
@@ -78,4 +82,3 @@ fn test_selected_distribution_registry_integration() {
     assert!(namespaces.contains("rbac"));
     assert!(namespaces.contains("social_graph"));
 }
-

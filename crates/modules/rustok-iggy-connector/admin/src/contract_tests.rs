@@ -34,8 +34,10 @@ mod tests {
             "### Events / Outbox Side Effects",
             "### Errors / Failure Codes",
         ] {
-            assert!(api.contains(section), "CRATE_API.md must contain '{section}'");
+            assert!(
+                api.contains(section),
+                "CRATE_API.md must contain '{section}'"
+            );
         }
     }
 }
-

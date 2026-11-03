@@ -1,5 +1,5 @@
 use crate::{FormatOptions, PortabilityError};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 
 /// JSON format handler for import/export operations.
 pub struct JsonFormatHandler;

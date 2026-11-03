@@ -22,9 +22,8 @@ fn test_chronological_key_construction_and_formatting() {
     .expect("chronological key should construct cleanly");
 
     let expected_shard = "3a";
-    let expected = format!(
-        "media/objects/tenants/{tenant_id}/2026/10/31/{expected_shard}/{object_id}.webp"
-    );
+    let expected =
+        format!("media/objects/tenants/{tenant_id}/2026/10/31/{expected_shard}/{object_id}.webp");
     assert_eq!(key.as_path().as_ref(), expected);
     assert_eq!(key.to_string(), expected);
 }
@@ -37,37 +36,88 @@ fn test_chronological_key_validation_errors() {
 
     // Invalid namespace: empty
     assert!(matches!(
-        ObjectKey::chronological("", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, "png"),
-        Err(KeyError::InvalidSegment { name: "namespace", .. })
+        ObjectKey::chronological(
+            "",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            "png"
+        ),
+        Err(KeyError::InvalidSegment {
+            name: "namespace",
+            ..
+        })
     ));
 
     // Invalid namespace: uppercase or illegal character
     assert!(matches!(
-        ObjectKey::chronological("Media_Uploads", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, "png"),
-        Err(KeyError::InvalidSegment { name: "namespace", .. })
+        ObjectKey::chronological(
+            "Media_Uploads",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            "png"
+        ),
+        Err(KeyError::InvalidSegment {
+            name: "namespace",
+            ..
+        })
     ));
 
     // Invalid namespace: path traversal sequence
     assert!(matches!(
-        ObjectKey::chronological("../escape", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, "png"),
-        Err(KeyError::InvalidSegment { name: "namespace", .. })
+        ObjectKey::chronological(
+            "../escape",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            "png"
+        ),
+        Err(KeyError::InvalidSegment {
+            name: "namespace",
+            ..
+        })
     ));
 
     // Invalid extension: empty
     assert!(matches!(
-        ObjectKey::chronological("media", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, ""),
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            ""
+        ),
         Err(KeyError::InvalidExtension(_))
     ));
 
     // Invalid extension: uppercase
     assert!(matches!(
-        ObjectKey::chronological("media", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, "PNG"),
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            "PNG"
+        ),
         Err(KeyError::InvalidExtension(_))
     ));
 
     // Invalid extension: contains dot
     assert!(matches!(
-        ObjectKey::chronological("media", ObjectZone::Objects, ObjectScope::Tenant(tenant_id), now, object_id, ".png"),
+        ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(tenant_id),
+            now,
+            object_id,
+            ".png"
+        ),
         Err(KeyError::InvalidExtension(_))
     ));
 }
@@ -170,7 +220,9 @@ fn test_storage_runtime_in_memory_and_options() {
 
     // Public URL construction
     let path = Path::from("media/test.png");
-    let url = runtime.public_url(&path).expect("public url should be generated");
+    let url = runtime
+        .public_url(&path)
+        .expect("public url should be generated");
     assert_eq!(url, "/media/media/test.png");
 }
 

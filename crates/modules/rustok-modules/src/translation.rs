@@ -11,18 +11,18 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    ModuleCommandContext, StaticLocalizedSettingApplyCommand, StaticSettingsLocalizationRegistry,
     is_valid_static_module_slug,
     static_settings_translation_read::{
         StaticSettingsExactLocaleField, StaticSettingsExactLocaleSnapshot,
     },
+    ModuleCommandContext, StaticLocalizedSettingApplyCommand, StaticSettingsLocalizationRegistry,
 };
 use rustok_translation_targets::{
-    FieldKey, OpaqueRevision, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
-    TranslationFieldDescriptor, TranslationPatchIssue, TranslationPatchIssueSeverity,
-    TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
-    TranslationStrategy, TranslationTargetContractError, TranslationValueProfile,
-    provider_support::field_hash,
+    provider_support::field_hash, FieldKey, OpaqueRevision, OwnerSlug, ResourceId, ResourceKind,
+    TranslationDataClassification, TranslationFieldDescriptor, TranslationPatchIssue,
+    TranslationPatchIssueSeverity, TranslationPatchRequest, TranslationPatchValidation,
+    TranslationResourceIdentity, TranslationStrategy, TranslationTargetContractError,
+    TranslationValueProfile,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -508,16 +508,16 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet, HashMap};
 
     use crate::{
-        ModuleSettingSpec,
         static_settings_translation_read::{
             StaticSettingsExactLocaleField, StaticSettingsExactLocaleSnapshot,
         },
+        ModuleSettingSpec,
     };
     use rustok_api::TenantLocale;
     use rustok_translation_targets::{
-        FieldKey, OwnerSlug, ResourceId, ResourceKind, TranslationDataClassification,
-        TranslationFieldPatch, TranslationPatchRequest, TranslationStrategy,
-        TranslationValueProfile, provider_support::field_hash,
+        provider_support::field_hash, FieldKey, OwnerSlug, ResourceId, ResourceKind,
+        TranslationDataClassification, TranslationFieldPatch, TranslationPatchRequest,
+        TranslationStrategy, TranslationValueProfile,
     };
 
     use super::*;
@@ -758,12 +758,10 @@ mod tests {
             panic!("stale patch must be rejected before owner command preparation");
         };
         assert!(!validation.accepted);
-        assert!(
-            validation
-                .issues
-                .iter()
-                .any(|issue| issue.code == "resource_revision_conflict")
-        );
+        assert!(validation
+            .issues
+            .iter()
+            .any(|issue| issue.code == "resource_revision_conflict"));
     }
 
     #[test]

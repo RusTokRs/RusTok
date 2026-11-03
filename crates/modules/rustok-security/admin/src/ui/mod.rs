@@ -16,7 +16,7 @@ use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
 
-use crate::core::{SecurityAdminTableRow, filter_rows};
+use crate::core::{filter_rows, SecurityAdminTableRow};
 use crate::i18n::t;
 
 #[component]

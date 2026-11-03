@@ -23,6 +23,6 @@ pub mod ui;
 #[cfg(test)]
 mod contract_tests;
 
-pub use core::{CallsAdminTableRow, filter_rows};
+pub use core::{filter_rows, CallsAdminTableRow};
 pub use transport::CallsAdminTransport;
 pub use ui::{CallsAdmin, CallsAdminPage};

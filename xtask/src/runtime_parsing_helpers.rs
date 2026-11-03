@@ -219,11 +219,11 @@ mod runtime_string_tests {
     #[test]
     fn parses_escaped_rust_metadata_strings() {
         let original = "An \"Example\" with backslash \\ and new\nline";
-        let source = format!(
-            "fn name(&self) -> &'static str {{ {:?} }}",
-            original
+        let source = format!("fn name(&self) -> &'static str {{ {:?} }}", original);
+        assert_eq!(
+            extract_runtime_string_method(&source, "name").as_deref(),
+            Some(original)
         );
-        assert_eq!(extract_runtime_string_method(&source, "name").as_deref(), Some(original));
     }
 
     #[test]

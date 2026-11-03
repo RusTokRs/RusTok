@@ -5,8 +5,8 @@ use crate::i18n::{
     remediation_action_label, remediation_empty_label, remediation_reason, tr,
 };
 use crate::model::{
-    SeoCompletenessReport, SeoControlPlaneWidgetState, SeoEntityForm, SeoEventDeliveryStatus,
-    SeoEventDeliverySummary, SeoRemediationHint, remediation_hint_for_issue_code,
+    remediation_hint_for_issue_code, SeoCompletenessReport, SeoControlPlaneWidgetState,
+    SeoEntityForm, SeoEventDeliveryStatus, SeoEventDeliverySummary, SeoRemediationHint,
 };
 
 #[component]

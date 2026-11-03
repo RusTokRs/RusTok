@@ -9,4 +9,3 @@ pub fn shipment_context(tenant_id: uuid::Uuid) -> rustok_api::PortContext {
     .with_idempotency_key(uuid::Uuid::new_v4().to_string())
     .with_deadline(std::time::Duration::from_secs(30))
 }
-

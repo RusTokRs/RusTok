@@ -159,7 +159,7 @@ pub struct ReorderProductRelationsInput {
 mod tests {
     use std::str::FromStr;
 
-    use super::{MAX_RELATION_TYPE_LEN, RelationType};
+    use super::{RelationType, MAX_RELATION_TYPE_LEN};
     use crate::error::ProductRelationError;
 
     #[test]

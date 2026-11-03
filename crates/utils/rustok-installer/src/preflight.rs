@@ -218,12 +218,10 @@ mod tests {
         ));
 
         assert!(!report.passed());
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "production_database_engine")
-        );
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "production_database_engine"));
     }
 
     #[test]
@@ -236,12 +234,10 @@ mod tests {
         ));
 
         assert!(!report.passed());
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "plaintext_secret_production")
-        );
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "plaintext_secret_production"));
     }
 
     #[test]
@@ -260,13 +256,11 @@ mod tests {
         let report = evaluate_preflight(&plan);
 
         assert!(report.passed());
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "schema_disable_not_supported"
-                    && issue.severity == PreflightSeverity::Warning)
-        );
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "schema_disable_not_supported"
+                && issue.severity == PreflightSeverity::Warning));
     }
 
     #[test]
@@ -287,24 +281,20 @@ mod tests {
         let report = evaluate_preflight_with_deployment(&plan, false);
 
         assert!(!report.passed());
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "distribution_deployment_unavailable")
-        );
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "distribution_deployment_unavailable"));
 
         let adapter_report = evaluate_preflight_with_deployment(&plan, true);
         assert!(adapter_report.passed());
 
         plan.topology = bound_topology();
         let monolith_report = evaluate_preflight_with_deployment(&plan, false);
-        assert!(
-            monolith_report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "distribution_deployment_unavailable")
-        );
+        assert!(monolith_report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "distribution_deployment_unavailable"));
     }
 
     fn distribution() -> InstallDistributionBinding {
@@ -386,12 +376,10 @@ mod tests {
         let report = evaluate_preflight(&plan);
 
         assert!(report.passed());
-        assert!(
-            report
-                .issues
-                .iter()
-                .any(|issue| issue.code == "sample_secret"
-                    && issue.severity == PreflightSeverity::Warning)
-        );
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.code == "sample_secret"
+                && issue.severity == PreflightSeverity::Warning));
     }
 }

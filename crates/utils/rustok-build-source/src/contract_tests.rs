@@ -101,15 +101,23 @@ fn test_source_tree_materializer_in_memory_validation() {
 
     // Valid file list
     let files = vec![
-        SourceTreeFile::new("Cargo.toml", b"[package]\nname = \"pkg\"\nversion = \"0.1.0\"\n"),
+        SourceTreeFile::new(
+            "Cargo.toml",
+            b"[package]\nname = \"pkg\"\nversion = \"0.1.0\"\n",
+        ),
         SourceTreeFile::new("src/lib.rs", b"pub fn answer() -> u32 { 42 }\n"),
     ];
-    let validation = materializer.validate(&files).expect("validation should succeed");
+    let validation = materializer
+        .validate(&files)
+        .expect("validation should succeed");
     assert_eq!(validation.entries, 3); // 2 files + 1 intermediate directory "src"
     assert!(validation.source_bytes > 0);
 
     // Empty list is rejected
-    assert_eq!(materializer.validate(&[]), Err(SourceTreeError::UnsafeSource));
+    assert_eq!(
+        materializer.validate(&[]),
+        Err(SourceTreeError::UnsafeSource)
+    );
 
     // Duplicate path is rejected
     let duplicates = vec![
@@ -142,7 +150,10 @@ fn test_source_tree_materializer_in_memory_validation() {
         Err(SourceTreeError::UnsafeSource)
     );
 
-    let descriptor = vec![SourceTreeFile::new("module-artifact-descriptor.json", b"{}")];
+    let descriptor = vec![SourceTreeFile::new(
+        "module-artifact-descriptor.json",
+        b"{}",
+    )];
     assert_eq!(
         materializer.validate(&descriptor),
         Err(SourceTreeError::UnsafeSource)
@@ -185,14 +196,19 @@ fn test_source_archive_builder_and_cas_pipeline() {
     // 1. Materialize source
     let materializer = SourceTreeMaterializer::new(standard_limits());
     let files = vec![
-        SourceTreeFile::new("Cargo.toml", b"[package]\nname = \"pkg\"\nversion = \"0.1.0\"\n"),
+        SourceTreeFile::new(
+            "Cargo.toml",
+            b"[package]\nname = \"pkg\"\nversion = \"0.1.0\"\n",
+        ),
         SourceTreeFile::new("src/lib.rs", b"pub fn code() -> bool { true }\n"),
     ];
     materializer.write(&files, &src_dir).expect("write tree");
 
     // 2. Build archive
     let builder = SourceArchiveBuilder::new(standard_limits());
-    let receipt = builder.write(&src_dir, &archive_path).expect("write archive");
+    let receipt = builder
+        .write(&src_dir, &archive_path)
+        .expect("write archive");
     assert!(receipt.source_digest.starts_with("sha256:"));
     assert!(receipt.archive_bytes > 0);
     assert_eq!(receipt.entries, 2);

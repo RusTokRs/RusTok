@@ -320,7 +320,7 @@ mod graphql {
 mod tests {
     use serde_json::json;
 
-    use super::{RichTextDocument, RichTextProfileId, document_json_schema};
+    use super::{document_json_schema, RichTextDocument, RichTextProfileId};
 
     #[test]
     fn empty_document_uses_the_canonical_root_shape() {

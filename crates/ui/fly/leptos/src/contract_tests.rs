@@ -53,4 +53,3 @@ fn test_cleanup_registry_contract() {
     cleanup.cleanup();
     assert!(cleanup.is_empty());
 }
-

@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 #[cfg(not(feature = "ssr"))]
-use leptos_router::NavigateOptions;
-#[cfg(not(feature = "ssr"))]
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
+#[cfg(not(feature = "ssr"))]
+use leptos_router::NavigateOptions;
 use rustok_ui_core::{UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, UiRouteQueryWrite};
 
 type RouteQuerySanitizeFn = dyn Fn(Option<&str>, Option<&str>, &BTreeMap<String, String>) -> BTreeMap<String, String>
@@ -239,4 +239,3 @@ fn sanitize_route_query(
 
 #[cfg(test)]
 mod contract_tests;
-

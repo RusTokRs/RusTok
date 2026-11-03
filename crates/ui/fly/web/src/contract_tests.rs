@@ -26,7 +26,10 @@ fn test_geometric_primitives_contract() {
     let outside_pt = BrowserPoint { x: 10.0, y: 10.0 };
     assert!(!rect.contains(outside_pt));
 
-    let nan_pt = BrowserPoint { x: f64::NAN, y: 0.0 };
+    let nan_pt = BrowserPoint {
+        x: f64::NAN,
+        y: 0.0,
+    };
     assert!(!nan_pt.is_finite());
 }
 
@@ -46,7 +49,10 @@ fn test_origin_sanitization_contract() {
 
     // Outbound target origin for opaque origin must map to wildcard
     assert_eq!(outbound_target_origin(OPAQUE_ORIGIN), "*");
-    assert_eq!(outbound_target_origin("https://rustok.dev"), "https://rustok.dev");
+    assert_eq!(
+        outbound_target_origin("https://rustok.dev"),
+        "https://rustok.dev"
+    );
 }
 
 #[test]
@@ -62,4 +68,3 @@ fn test_cleanup_registry_contract() {
     cleanup.cleanup();
     assert!(cleanup.is_empty());
 }
-

@@ -169,10 +169,8 @@ mod tests {
         let definitions = builtin_asset_provider_definitions();
         assert_eq!(definitions.len(), 1);
         assert_eq!(definitions[0].id, RUSTOK_MEDIA_ASSET_PROVIDER);
-        assert!(
-            definitions[0]
-                .supported_kinds
-                .contains(&"image".to_string())
-        );
+        assert!(definitions[0]
+            .supported_kinds
+            .contains(&"image".to_string()));
     }
 }

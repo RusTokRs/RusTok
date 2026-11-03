@@ -5,10 +5,10 @@
 //! owner-local CLI authoring flows, without touching the filesystem.
 
 use rustok_modules::{
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
-    MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI, ModuleArtifactSourceManifest,
+    ModuleArtifactSourceManifest, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use thiserror::Error;
 
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
@@ -329,4 +329,3 @@ mod tests {
 
 #[cfg(test)]
 mod contract_tests;
-

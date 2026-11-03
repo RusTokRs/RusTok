@@ -698,7 +698,11 @@ pub(super) fn BlogPreviewTokenBanner(
     on_close: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let title = t(ui_locale.as_deref(), "blog.preview.title", "Draft preview link");
+    let title = t(
+        ui_locale.as_deref(),
+        "blog.preview.title",
+        "Draft preview link",
+    );
     let path_label = t(
         ui_locale.as_deref(),
         "blog.preview.pathLabel",

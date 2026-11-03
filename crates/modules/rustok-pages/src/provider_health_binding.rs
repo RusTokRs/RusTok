@@ -192,8 +192,8 @@ impl PagesProviderHealthAuthority {
 
 pub type SharedPagesProviderHealthAuthority = Arc<PagesProviderHealthAuthority>;
 
-pub fn page_builder_provider_health_authority_from_environment()
--> Result<Option<SharedPagesProviderHealthAuthority>, PagesProviderHealthBindingError> {
+pub fn page_builder_provider_health_authority_from_environment(
+) -> Result<Option<SharedPagesProviderHealthAuthority>, PagesProviderHealthBindingError> {
     let acceptance_path = environment_value(PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV)?;
     let deployment_id = environment_value(PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID_ENV)?;
     let image_digest = environment_value(PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST_ENV)?;
@@ -562,15 +562,11 @@ mod tests {
             decided_at: evaluated_at,
             health_valid_until: evaluated_at + Duration::seconds(60),
         };
-        assert!(
-            accepted
-                .snapshot_at(evaluated_at + Duration::seconds(65))
-                .is_some()
-        );
-        assert!(
-            accepted
-                .snapshot_at(evaluated_at + Duration::seconds(66))
-                .is_none()
-        );
+        assert!(accepted
+            .snapshot_at(evaluated_at + Duration::seconds(65))
+            .is_some());
+        assert!(accepted
+            .snapshot_at(evaluated_at + Duration::seconds(66))
+            .is_none());
     }
 }

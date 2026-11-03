@@ -27,7 +27,8 @@ fn test_fly_editor_command_undo_redo_contract() {
         }]
     });
 
-    let doc = GrapesJsCodec::decode_value(raw_project).expect("decoding minimal project must succeed");
+    let doc =
+        GrapesJsCodec::decode_value(raw_project).expect("decoding minimal project must succeed");
     let mut editor = FlyEditor::new(doc, RegistrySet::with_builtins());
     assert_eq!(editor.history().undo_len(), 0);
     assert_eq!(editor.history().redo_len(), 0);
@@ -40,7 +41,9 @@ fn test_fly_editor_command_undo_redo_contract() {
         patch: ComponentPatch::default().merge_style(json!({ "width": "320px" })),
     };
 
-    editor.apply(patch_cmd).expect("command execution must succeed");
+    editor
+        .apply(patch_cmd)
+        .expect("command execution must succeed");
     assert_eq!(editor.history().undo_len(), 1);
     assert_eq!(editor.history().redo_len(), 0);
     assert_ne!(editor.document().hash(), initial_hash);
@@ -94,10 +97,16 @@ fn test_safe_digest_and_constant_time_comparison() {
 
     let digest1 = ContentDigest::from_bytes(data);
     let digest2 = ContentDigest::from_bytes(data);
-    assert!(constant_time_eq(digest1.as_str().as_bytes(), digest2.as_str().as_bytes()));
+    assert!(constant_time_eq(
+        digest1.as_str().as_bytes(),
+        digest2.as_str().as_bytes()
+    ));
 
     let digest3 = ContentDigest::from_bytes(b"other-data");
-    assert!(!constant_time_eq(digest1.as_str().as_bytes(), digest3.as_str().as_bytes()));
+    assert!(!constant_time_eq(
+        digest1.as_str().as_bytes(),
+        digest3.as_str().as_bytes()
+    ));
 }
 
 #[test]

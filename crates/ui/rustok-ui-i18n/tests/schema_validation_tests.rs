@@ -10,8 +10,8 @@
 
 use rustok_ui_i18n::error::{BundleBuildError, I18nError, MessageKeyError};
 use rustok_ui_i18n::messages::{
-    MAX_MESSAGE_KEY_LEN, UiMessages, extract_locale_schemas, validate_catalog_schemas,
-    validate_message_key,
+    extract_locale_schemas, validate_catalog_schemas, validate_message_key, UiMessages,
+    MAX_MESSAGE_KEY_LEN,
 };
 
 #[test]

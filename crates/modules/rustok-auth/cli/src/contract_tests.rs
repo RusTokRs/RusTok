@@ -33,4 +33,3 @@ fn auth_cli_command_provider_descriptors() {
     assert_eq!(commands[1].namespace, "auth");
     assert_eq!(commands[1].name, "sessions-cleanup");
 }
-

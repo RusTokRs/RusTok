@@ -11,7 +11,7 @@
 use rustok_api::{RichTextDocument, RichTextMark, RichTextNode, RichTextView};
 use url::Url;
 
-use super::{RichTextError, RichTextProfile, validate_and_normalize};
+use super::{validate_and_normalize, RichTextError, RichTextProfile};
 
 pub fn render_html(
     document: &RichTextDocument,

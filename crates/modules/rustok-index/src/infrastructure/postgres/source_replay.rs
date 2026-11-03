@@ -110,6 +110,10 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                         })
                     })
                     .transpose()?;
+                let source_version = match source_version {
+                    Some(0) | None => None,
+                    Some(version) => Some(version),
+                };
                 let last_delivery_id: Option<String> =
                     row.try_get("", "last_delivery_id").map_err(|error| {
                         checkpoint_contract_failure("checkpoint_delivery_invalid", error)
@@ -318,15 +322,13 @@ fn optional_source_version_value(
     source_version: Option<u64>,
     backend: DbBackend,
 ) -> Result<SqlValue, IndexReplayFailure> {
+    let version = source_version.unwrap_or(0);
     match backend {
-        DbBackend::Postgres => Ok(source_version.map(Decimal::from).into()),
-        DbBackend::Sqlite => source_version
-            .map(|value| {
-                i64::try_from(value).map_err(|error| {
-                    checkpoint_contract_failure("checkpoint_source_version_invalid", error)
-                })
+        DbBackend::Postgres => Ok(Decimal::from(version).into()),
+        DbBackend::Sqlite => i64::try_from(version)
+            .map_err(|error| {
+                checkpoint_contract_failure("checkpoint_source_version_invalid", error)
             })
-            .transpose()
             .map(Into::into),
         _ => unreachable!("unsupported database backend was validated"),
     }
@@ -358,6 +360,6 @@ fn select_checkpoint_sql(backend: DbBackend) -> String {
 fn upsert_checkpoint_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
     format!(
-        "INSERT INTO index_checkpoints (tenant_id, checkpoint_kind, source_name, module_name, entity_name, schema_version, locale_key, partition_key, cursor, source_version, last_delivery_id) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, {prefix}9, {prefix}10, {prefix}11) ON CONFLICT (tenant_id, checkpoint_kind, source_name, module_name, entity_name, schema_version, locale_key, partition_key) DO UPDATE SET cursor = excluded.cursor, source_version = COALESCE(excluded.source_version, index_checkpoints.source_version), last_delivery_id = COALESCE(excluded.last_delivery_id, index_checkpoints.last_delivery_id), updated_at = CURRENT_TIMESTAMP"
+        "INSERT INTO index_checkpoints (tenant_id, checkpoint_kind, source_name, module_name, entity_name, schema_version, locale_key, partition_key, cursor, source_version, last_delivery_id) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, {prefix}8, {prefix}9, {prefix}10, {prefix}11) ON CONFLICT (tenant_id, checkpoint_kind, source_name, module_name, entity_name, schema_version, locale_key, partition_key) DO UPDATE SET cursor = excluded.cursor, source_version = CASE WHEN excluded.source_version > 0 THEN excluded.source_version ELSE index_checkpoints.source_version END, last_delivery_id = COALESCE(excluded.last_delivery_id, index_checkpoints.last_delivery_id), updated_at = CURRENT_TIMESTAMP"
     )
 }

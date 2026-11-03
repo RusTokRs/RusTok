@@ -4,8 +4,8 @@ use crate::landing::LandingProjectError;
 use crate::static_landing::StaticLandingCompiler;
 use crate::{RuntimeContextScenario, RuntimeScenarioRenderSnapshot, StaticLandingArtifact};
 use fly::{
-    PageSelection, ProjectHash, ValidationSeverity,
-    materialize_project_with_runtime_context_with_providers,
+    materialize_project_with_runtime_context_with_providers, PageSelection, ProjectHash,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

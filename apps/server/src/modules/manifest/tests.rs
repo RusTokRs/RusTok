@@ -1,5 +1,5 @@
 use super::{
-    ManifestError, ManifestManager, ModulesManifest, StorefrontBuildConfig, builtin_module_catalog,
+    builtin_module_catalog, ManifestError, ManifestManager, ModulesManifest, StorefrontBuildConfig,
 };
 use crate::modules::build_registry;
 use rustok_build::{BuildRuntimeMode, DeploymentProfile, FrontendArtifactKind, FrontendBuildTool};
@@ -327,13 +327,11 @@ fn uninstall_removes_default_enabled_entry() {
 
     ManifestManager::uninstall_module(&mut manifest, "pages").unwrap();
 
-    assert!(
-        !manifest
-            .settings
-            .default_enabled
-            .iter()
-            .any(|slug| slug == "pages")
-    );
+    assert!(!manifest
+        .settings
+        .default_enabled
+        .iter()
+        .any(|slug| slug == "pages"));
 }
 
 #[test]
@@ -345,13 +343,11 @@ fn install_builtin_module_restores_catalog_defaults() {
         .unwrap();
 
     assert!(manifest.modules.contains_key("pages"));
-    assert!(
-        manifest
-            .settings
-            .default_enabled
-            .iter()
-            .any(|slug| slug == "pages")
-    );
+    assert!(manifest
+        .settings
+        .default_enabled
+        .iter()
+        .any(|slug| slug == "pages"));
 }
 
 #[test]

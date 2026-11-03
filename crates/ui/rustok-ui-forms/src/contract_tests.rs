@@ -52,14 +52,8 @@ fn test_schema_builder_and_json_validation_contract() {
                 .with_min_length(3)
                 .with_max_length(20),
         )
-        .with_field(
-            FieldDescriptor::new("email", FieldKind::Email)
-                .with_required(true),
-        )
-        .with_field(
-            FieldDescriptor::new("age", FieldKind::Number)
-                .with_min(18.0),
-        );
+        .with_field(FieldDescriptor::new("email", FieldKind::Email).with_required(true))
+        .with_field(FieldDescriptor::new("age", FieldKind::Number).with_min(18.0));
 
     let invalid_json = serde_json::json!({
         "username": "al",

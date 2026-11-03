@@ -1,7 +1,7 @@
 //! Source definitions only: no test execution or runtime claim in this continuation.
 
 use super::*;
-use crate::services::inventory::{STOCK_LEVEL_READ_LIMIT, checked_available_quantity};
+use crate::services::inventory::{checked_available_quantity, STOCK_LEVEL_READ_LIMIT};
 use serde_json::json;
 
 fn id(value: u128) -> Uuid {
@@ -160,10 +160,13 @@ fn contradictory_variant_and_all_five_terminal_markers_refuse_before_any_plan() 
         for value in [json!(false), json!(0)] {
             let mut terminal = row(2, 41, 3);
             terminal.metadata[marker] = value;
-            assert!(
-                SelectedQuantityRelease::select(id(10), id(20), 1, vec![row(1, 41, 3), terminal],)
-                    .is_err()
-            );
+            assert!(SelectedQuantityRelease::select(
+                id(10),
+                id(20),
+                1,
+                vec![row(1, 41, 3), terminal],
+            )
+            .is_err());
         }
     }
 }
@@ -190,15 +193,13 @@ fn missing_foreign_duplicate_and_relocated_levels_refuse_without_fallback() {
     for (locations, levels) in cases {
         assert!(bind(selected(1, vec![row(1, 41, 3)]), id(30), locations, levels).is_err());
     }
-    assert!(
-        bind(
-            selected(4, vec![row(1, 41, 3), row(2, 42, 3)]),
-            id(30),
-            vec![location(41), location(42)],
-            vec![level(41, 3), level(41, 3)],
-        )
-        .is_err()
-    );
+    assert!(bind(
+        selected(4, vec![row(1, 41, 3), row(2, 42, 3)]),
+        id(30),
+        vec![location(41), location(42)],
+        vec![level(41, 3), level(41, 3)],
+    )
+    .is_err());
 }
 
 #[test]
@@ -207,24 +208,20 @@ fn archived_original_location_can_only_be_left_completely_zero() {
     archived.deleted_at = Some(Utc::now().into());
     let mut empty_stock = level(41, 3);
     empty_stock.stocked_quantity = 0;
-    assert!(
-        bind(
-            selected(2, vec![row(1, 41, 3)]),
-            id(30),
-            vec![archived.clone()],
-            vec![empty_stock.clone()],
-        )
-        .is_err()
-    );
-    assert!(
-        bind(
-            selected(3, vec![row(1, 41, 3)]),
-            id(30),
-            vec![archived.clone()],
-            vec![level(41, 3)],
-        )
-        .is_err()
-    );
+    assert!(bind(
+        selected(2, vec![row(1, 41, 3)]),
+        id(30),
+        vec![archived.clone()],
+        vec![empty_stock.clone()],
+    )
+    .is_err());
+    assert!(bind(
+        selected(3, vec![row(1, 41, 3)]),
+        id(30),
+        vec![archived.clone()],
+        vec![level(41, 3)],
+    )
+    .is_err());
     let plan = bind(
         selected(3, vec![row(1, 41, 3)]),
         id(30),
@@ -245,15 +242,13 @@ fn active_row_bound_and_large_claim_totals_never_truncate_or_overflow() {
     excessive.push(row(999_999, 41, 1));
     assert!(SelectedQuantityRelease::select(id(10), id(20), 1, excessive).is_err());
     let selected = selected(1, vec![row(1, 41, i32::MAX), row(2, 41, i32::MAX)]);
-    assert!(
-        bind(
-            selected,
-            id(30),
-            vec![location(41)],
-            vec![level(41, i32::MAX)]
-        )
-        .is_err()
-    );
+    assert!(bind(
+        selected,
+        id(30),
+        vec![location(41)],
+        vec![level(41, i32::MAX)]
+    )
+    .is_err());
 }
 
 #[test]
@@ -307,15 +302,14 @@ fn availability_overflow_negative_reserved_and_level_bound_refuse_without_satura
 #[test]
 fn database_claims_include_keyed_rows_not_materialized_in_the_anonymous_pool() {
     let pool = selected(2, vec![row(1, 41, 3)]);
-    assert!(
-        pool.bind_levels(
+    assert!(pool
+        .bind_levels(
             id(30),
             vec![location(41)],
             vec![level(41, 5)],
             BTreeMap::from([(id(41), 7)])
         )
-        .is_err()
-    );
+        .is_err());
     let pool = selected(2, vec![row(1, 41, 3)]);
     let plan = pool
         .bind_levels(

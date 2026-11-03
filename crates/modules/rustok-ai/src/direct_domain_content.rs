@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use rustok_ai_content::{
-    BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG, register_content_ai_vertical_handlers,
+    register_content_ai_vertical_handlers, BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG,
 };
 
 use super::direct_content_moderation::ContentModerationHandler;

@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::bundle::build_fluent_catalog_report;
-use rustok_ui_i18n::{BundleBuildError, UiTranslator, try_build_fluent_catalog};
+use rustok_ui_i18n::{try_build_fluent_catalog, BundleBuildError, UiTranslator};
 
 #[test]
 fn thousand_message_resource_resolves_across_the_catalog() {

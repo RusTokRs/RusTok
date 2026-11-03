@@ -2,20 +2,20 @@ pub(crate) mod buyer;
 
 use rustok_api::locale_tags_match;
 use rustok_pricing_storefront::{
-    StorefrontPricingQueryError, parse_optional_currency_code, parse_optional_uuid_string,
-    parse_pricing_route_quantity, parse_resolution_quantity, pricing_context_matches_request,
+    parse_optional_currency_code, parse_optional_uuid_string, parse_pricing_route_quantity,
+    parse_resolution_quantity, pricing_context_matches_request, StorefrontPricingQueryError,
 };
 use rustok_ui_core::apply_ui_query_pairs;
 // `resolve_requested_locale` is the only user, and it is an SSR-only entry point.
 #[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_optional_ui_text;
 
-use rustok_grid::facet_panel::{FacetPanel, count_label as grid_count_label};
+use rustok_grid::facet_panel::{count_label as grid_count_label, FacetPanel};
 use rustok_grid::{FacetDomain, FacetValue, GridFacet};
 
 use crate::catalog_controls::{
-    CatalogFacetLabels, CatalogListInput, clear_attribute_filter_code, serialize_attribute_filters,
-    toggle_attribute_filter,
+    clear_attribute_filter_code, serialize_attribute_filters, toggle_attribute_filter,
+    CatalogFacetLabels, CatalogListInput,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -1043,19 +1043,17 @@ mod tests {
             build_route_input(None, None, None, None, None, None, None, Some("bad".into()))
                 .is_err()
         );
-        assert!(
-            build_route_input(
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(String::new())
-            )
-            .is_err()
-        );
+        assert!(build_route_input(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(String::new())
+        )
+        .is_err());
 
         let request = build_fetch_request(&input);
         assert_eq!(request.selected_handle.as_deref(), Some("boot"));

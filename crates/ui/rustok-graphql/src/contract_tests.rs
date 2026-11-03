@@ -29,7 +29,10 @@ fn test_header_constants_and_endpoint_contract() {
 
 #[test]
 fn test_graphql_request_extensions_and_operations() {
-    let mut req = GraphqlRequest::new("query ListPosts { posts { id title } }", Some(serde_json::json!({ "limit": 10 })));
+    let mut req = GraphqlRequest::new(
+        "query ListPosts { posts { id title } }",
+        Some(serde_json::json!({ "limit": 10 })),
+    );
     assert!(req.is_query());
     assert!(!req.is_mutation());
 
@@ -58,14 +61,19 @@ fn test_graphql_http_error_handling() {
     assert_eq!(auth_err.to_string(), "Unauthorized");
 
     let gql_err = GraphqlHttpError::from_str("GraphQL error: syntax error").expect("parse gql");
-    assert_eq!(gql_err, GraphqlHttpError::Graphql("syntax error".to_string()));
+    assert_eq!(
+        gql_err,
+        GraphqlHttpError::Graphql("syntax error".to_string())
+    );
     assert_eq!(gql_err.to_string(), "GraphQL error: syntax error");
 
     let http_err = GraphqlHttpError::from_str("Http error: 404 Not Found").expect("parse http");
-    assert_eq!(http_err, GraphqlHttpError::Http("404 Not Found".to_string()));
+    assert_eq!(
+        http_err,
+        GraphqlHttpError::Http("404 Not Found".to_string())
+    );
     assert_eq!(http_err.to_string(), "Http error: 404 Not Found");
 
     let unknown = GraphqlHttpError::from_str("Something else");
     assert!(unknown.is_err());
 }
-

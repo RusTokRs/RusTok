@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_ui::{RichTextEditorFrame, localized_richtext_frame_copy};
+use leptos_ui::{localized_richtext_frame_copy, RichTextEditorFrame};
 use rustok_api::RichTextDocument;
 
 use crate::i18n::t;

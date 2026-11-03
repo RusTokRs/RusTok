@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{SwitchSize, switch_classes};
+use rustok_ui::{switch_classes, SwitchSize};
 
 #[component]
 pub fn Switch(

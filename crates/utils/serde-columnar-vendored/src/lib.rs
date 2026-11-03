@@ -77,17 +77,17 @@ pub use err::ColumnarError;
 use std::ops::DerefMut;
 mod column;
 pub use column::{
-    ColumnAttr, ColumnTrait, GenericColumn,
     bool_rle::BoolRleColumn,
     delta_of_delta::DeltaOfDeltaColumn,
     delta_rle::{DeltaRleColumn, DeltaRleable},
     rle::{RleColumn, Rleable},
+    ColumnAttr, ColumnTrait, GenericColumn,
 };
 mod columnar_internal;
 pub use columnar_internal::{ColumnarDecoder, ColumnarEncoder};
 pub mod iterable;
 mod row;
-pub use itertools::{Itertools, MultiUnzip, izip};
+pub use itertools::{izip, Itertools, MultiUnzip};
 pub use row::{KeyRowDe, KeyRowSer, RowDe, RowSer};
 use serde::{Deserialize, Serialize};
 mod strategy;
@@ -99,7 +99,7 @@ mod wrap;
 pub use wrap::{ColumnarMap, ColumnarVec};
 
 pub use postcard::Error as PostcardError;
-pub use serde_columnar_derive::{columnar, __private_consume_columnar_attributes};
+pub use serde_columnar_derive::{__private_consume_columnar_attributes, columnar};
 pub mod __serde_utils;
 
 #[cfg(feature = "bench")]

@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{ContractEventPayload, EventContract, sealed};
-use crate::validation::{EventValidationError, ValidateEvent, validators};
+use crate::contract::{sealed, ContractEventPayload, EventContract};
+use crate::validation::{validators, EventValidationError, ValidateEvent};
 use crate::{EventSchema, FieldSchema};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -200,43 +200,37 @@ mod tests {
     fn validates_user_and_audience_contracts() {
         let source_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
-        assert!(
-            ForumMentionEvent::UserMentionAdded {
-                source_kind: "topic".to_string(),
-                source_id,
-                source_revision_id: 1,
-                source_locale: "en".to_string(),
-                mentioned_user_id: user_id,
-            }
-            .validate()
-            .is_ok()
-        );
-        assert!(
-            ForumMentionEvent::AudienceMentionAdded {
-                source_kind: "reply".to_string(),
-                source_id,
-                source_revision_id: 2,
-                source_locale: "pt-br".to_string(),
-                audience: "moderators".to_string(),
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(ForumMentionEvent::UserMentionAdded {
+            source_kind: "topic".to_string(),
+            source_id,
+            source_revision_id: 1,
+            source_locale: "en".to_string(),
+            mentioned_user_id: user_id,
+        }
+        .validate()
+        .is_ok());
+        assert!(ForumMentionEvent::AudienceMentionAdded {
+            source_kind: "reply".to_string(),
+            source_id,
+            source_revision_id: 2,
+            source_locale: "pt-br".to_string(),
+            audience: "moderators".to_string(),
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]
     fn rejects_unknown_audience_and_source_kind() {
         let source_id = Uuid::new_v4();
-        assert!(
-            ForumMentionEvent::AudienceMentionAdded {
-                source_kind: "post".to_string(),
-                source_id,
-                source_revision_id: 1,
-                source_locale: "en".to_string(),
-                audience: "everyone".to_string(),
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(ForumMentionEvent::AudienceMentionAdded {
+            source_kind: "post".to_string(),
+            source_id,
+            source_revision_id: 1,
+            source_locale: "en".to_string(),
+            audience: "everyone".to_string(),
+        }
+        .validate()
+        .is_err());
     }
 }

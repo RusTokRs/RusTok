@@ -173,11 +173,9 @@ mod tests {
 
         assert_eq!(context.locale, "en");
         assert!(context.channel.is_none());
-        assert!(
-            context
-                .correlation_id
-                .starts_with("forum-graphql-moderation-")
-        );
+        assert!(context
+            .correlation_id
+            .starts_with("forum-graphql-moderation-"));
     }
 
     #[test]

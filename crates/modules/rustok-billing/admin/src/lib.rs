@@ -23,6 +23,6 @@ pub mod ui;
 #[cfg(test)]
 mod contract_tests;
 
-pub use core::{BillingAdminTableRow, filter_rows};
+pub use core::{filter_rows, BillingAdminTableRow};
 pub use transport::BillingAdminTransport;
 pub use ui::{BillingAdmin, BillingAdminPage};

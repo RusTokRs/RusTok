@@ -1,8 +1,7 @@
 use fly_ui::{
-    ContributionAssemblyPolicy, ContributionAssemblyResult,
-    ContributionDescriptor as GeneratedPagesDescriptor,
+    build_admin_contribution_registry_from_manifests, ContributionAssemblyPolicy,
+    ContributionAssemblyResult, ContributionDescriptor as GeneratedPagesDescriptor,
     ModuleContributionManifest as GeneratedPagesManifest,
-    build_admin_contribution_registry_from_manifests,
 };
 use rustok_page_builder_admin::ConsumerPropertyEditorSchema;
 use std::collections::BTreeSet;

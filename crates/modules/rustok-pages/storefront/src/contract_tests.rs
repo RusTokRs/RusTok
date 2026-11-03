@@ -1,8 +1,8 @@
 //! Contract tests verifying the architectural invariants and public API of `rustok-pages-storefront`.
 
 use crate::builder::{
-    PAGE_BUILDER_DOCUMENT_FORMAT, STATIC_LANDING_PAYLOAD_BODY_FORMAT,
-    STATIC_LANDING_URL_BODY_FORMAT, is_page_builder_body,
+    is_page_builder_body, PAGE_BUILDER_DOCUMENT_FORMAT, STATIC_LANDING_PAYLOAD_BODY_FORMAT,
+    STATIC_LANDING_URL_BODY_FORMAT,
 };
 use crate::core::{
     count_label, open_link_label, page_link_href, selected_page_effective_locale,

@@ -1,5 +1,5 @@
 use super::metadata::{
-    MetadataChecklistItem, metadata_status_badge_classes, metadata_status_panel_classes,
+    metadata_status_badge_classes, metadata_status_panel_classes, MetadataChecklistItem,
 };
 use super::tr;
 use crate::Locale;

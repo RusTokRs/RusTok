@@ -85,7 +85,7 @@ It is important to distinguish:
 | `reactions` | `rustok-reactions` | `outbox` |
 | `groups` | `rustok-groups` | — |
 | `region` | `rustok-region` | — |
-| `pricing` | `rustok-pricing` | `product` |
+| `pricing` | `rustok-pricing` | `product`, `region` |
 | `inventory` | `rustok-inventory` | `product` |
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |

@@ -20,7 +20,7 @@ fn crate_api_defines_minimal_contract_sections() {
 #[cfg(feature = "athanor")]
 #[test]
 fn athanor_config_validation_and_constants() {
-    use crate::{ATHANOR_SOURCE_ID, AthanorRagConfig};
+    use crate::{AthanorRagConfig, ATHANOR_SOURCE_ID};
     use rustok_ai::RagError;
     use std::path::PathBuf;
     use uuid::Uuid;
@@ -29,7 +29,10 @@ fn athanor_config_validation_and_constants() {
 
     let tenant_id = Uuid::new_v4();
     let zero_result = AthanorRagConfig::new(PathBuf::from("/tmp"), tenant_id, 0);
-    assert!(matches!(zero_result, Err(RagError::InvalidLimit { max: 0 })));
+    assert!(matches!(
+        zero_result,
+        Err(RagError::InvalidLimit { max: 0 })
+    ));
 
     let valid_config = AthanorRagConfig::new(PathBuf::from("/tmp/rag"), tenant_id, 16)
         .expect("config should be valid");
@@ -37,5 +40,3 @@ fn athanor_config_validation_and_constants() {
     assert_eq!(valid_config.tenant_id, tenant_id);
     assert_eq!(valid_config.root, PathBuf::from("/tmp/rag"));
 }
-
-

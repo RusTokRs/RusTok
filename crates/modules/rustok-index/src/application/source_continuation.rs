@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 
 use aes_gcm::{
-    Aes256Gcm, KeyInit,
     aead::{Aead, Payload},
+    Aes256Gcm, KeyInit,
 };
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Utc};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};

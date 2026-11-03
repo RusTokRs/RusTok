@@ -1,6 +1,6 @@
 use rustok_modules::{
-    MigrationPreflightInput, ModuleSettingSpec, SettingsCompatibilityGuard, UpdateMode,
-    evaluate_migration_preflight,
+    evaluate_migration_preflight, MigrationPreflightInput, ModuleSettingSpec,
+    SettingsCompatibilityGuard, UpdateMode,
 };
 use std::collections::HashMap;
 use uuid::Uuid;

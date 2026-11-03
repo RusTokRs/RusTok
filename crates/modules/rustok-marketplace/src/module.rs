@@ -53,4 +53,3 @@ impl MigrationSource for MarketplaceModule {
         Vec::new()
     }
 }
-

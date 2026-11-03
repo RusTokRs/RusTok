@@ -9,7 +9,8 @@ use crate::ArtifactNodeReconcilerConfig;
 #[test]
 fn cargo_manifest_contract_is_standardized() {
     let manifest_bytes = include_bytes!("../Cargo.toml");
-    let manifest_text = std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
+    let manifest_text =
+        std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
 
     assert!(manifest_text.contains(r#"name = "rustok-artifact-node-reconciler""#));
     assert!(manifest_text.contains(r#"readme = "README.md""#));
@@ -39,11 +40,9 @@ fn reconciler_config_debug_redacts_database_url() {
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     )
     .unwrap();
-    let identity = ModuleArtifactNodeReconciliationIdentity::new(
-        Uuid::new_v4(),
-        vec![Uuid::new_v4()],
-    )
-    .unwrap();
+    let identity =
+        ModuleArtifactNodeReconciliationIdentity::new(Uuid::new_v4(), vec![Uuid::new_v4()])
+            .unwrap();
     let authenticator =
         StaticModuleArtifactNodeReconciliationAuthenticator::new(vec![(fp, identity)]).unwrap();
 

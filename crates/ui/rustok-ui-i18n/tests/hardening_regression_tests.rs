@@ -9,9 +9,9 @@
  */
 
 use rustok_ui_i18n::{
-    BundleBuildError, I18nError, TextDirection, UiMessages, UiTranslator, build_fluent_catalog,
-    fluent_args, locale_candidates, locale_text_direction, normalize_locale_tag,
-    normalize_unicode_locale, try_build_fluent_catalog,
+    build_fluent_catalog, fluent_args, locale_candidates, locale_text_direction,
+    normalize_locale_tag, normalize_unicode_locale, try_build_fluent_catalog, BundleBuildError,
+    I18nError, TextDirection, UiMessages, UiTranslator,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {

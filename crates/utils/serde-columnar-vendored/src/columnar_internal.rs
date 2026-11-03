@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use postcard::{Deserializer, Serializer, de_flavors::Flavor as DeFlavor, ser_flavors::Flavor};
+use postcard::{de_flavors::Flavor as DeFlavor, ser_flavors::Flavor, Deserializer, Serializer};
 
 use crate::ColumnarError;
 

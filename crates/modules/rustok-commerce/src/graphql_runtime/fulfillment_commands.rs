@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use rustok_fulfillment::{
-    FulfillmentAdminCommandPort, FulfillmentAdminCommandRuntime, FulfillmentAdminCreateCommandPort,
-    FulfillmentAdminCreateCommandRuntime, providers::FulfillmentProviderRegistry,
+    providers::FulfillmentProviderRegistry, FulfillmentAdminCommandPort,
+    FulfillmentAdminCommandRuntime, FulfillmentAdminCreateCommandPort,
+    FulfillmentAdminCreateCommandRuntime,
 };
 use sea_orm::DatabaseConnection;
 

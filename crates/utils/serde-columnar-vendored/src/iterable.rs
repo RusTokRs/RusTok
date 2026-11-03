@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use crate::{
-    ColumnarError, DeltaOfDeltaDecoder, DeltaRleable, Rleable,
     column::delta_of_delta::DeltaOfDeltable, columnar_internal::Cursor, strategy::MAX_RLE_COUNT,
+    ColumnarError, DeltaOfDeltaDecoder, DeltaRleable, Rleable,
 };
 use postcard::Deserializer;
-use serde::Deserialize;
 use serde::de::Error;
+use serde::Deserialize;
 
 pub struct GenericIter<'de, T> {
     de: Deserializer<'de, Cursor<'de>>,

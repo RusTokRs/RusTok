@@ -1,4 +1,4 @@
-use crate::{LOCALIZED_VALUES_FIELD, PagePatch, ProjectPage};
+use crate::{PagePatch, ProjectPage, LOCALIZED_VALUES_FIELD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 

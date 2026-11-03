@@ -1,4 +1,4 @@
-use crate::{PageBuilderAdminProviderStatus, editor::AdminEditorRuntime};
+use crate::{editor::AdminEditorRuntime, PageBuilderAdminProviderStatus};
 use leptos::prelude::*;
 
 #[component]

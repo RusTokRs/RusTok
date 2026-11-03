@@ -5,10 +5,10 @@ use rustok_core::{EventBus, ModuleRuntimeExtensions};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_index::{
     EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexMutation, IndexRecord,
-    IndexReplayDryRunRequest, IndexReplayDryRunStatus, IndexSchema, IndexSource, IndexSourceFailure,
-    IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
-    IndexValue, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
-    materialize_index_replay_dry_run_runtime, materialize_index_schema_registry,
+    IndexReplayDryRunRequest, IndexReplayDryRunStatus, IndexSchema, IndexSource,
+    IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
+    IndexSourceScanRequest, IndexValue, IndexValueType, LocaleMode, ModuleName, SchemaRef,
+    SchemaVersion, materialize_index_replay_dry_run_runtime, materialize_index_schema_registry,
     materialize_index_source_registry, register_index_schema_source, register_index_source,
 };
 use tokio::sync::broadcast;

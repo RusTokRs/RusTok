@@ -10,9 +10,7 @@
 
 use leptos::prelude::IntoAny;
 
-use crate::app::modules::{
-    AdminChildPageRegistration, AdminPageRegistration, AdminSlot,
-};
+use crate::app::modules::{AdminChildPageRegistration, AdminPageRegistration, AdminSlot};
 use crate::app::providers::locale::Locale;
 use crate::app::security::validate_admin_security_profile;
 use crate::i18n::{t, validate};
@@ -74,8 +72,7 @@ fn test_admin_page_registration_contract() {
     assert_eq!(page.child_pages[0].title, "Settings");
     assert_eq!(page.child_pages[0].nav_label, "Settings");
     assert_eq!(
-        page.child_page_for_subpath("settings")
-            .map(|c| c.title),
+        page.child_page_for_subpath("settings").map(|c| c.title),
         Some("Settings")
     );
     assert!(page.child_page_for_subpath("nonexistent").is_none());

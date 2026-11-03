@@ -233,7 +233,6 @@ pub(crate) fn validate_module_ui_package(
     }))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

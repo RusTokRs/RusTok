@@ -39,10 +39,9 @@ pub mod tokens;
 pub mod types;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod contract_tests;
-
+#[cfg(test)]
+mod tests;
 
 pub use classes::{
     alert_classes, avatar_classes, badge_classes, button_classes, card_action_classes,
@@ -52,17 +51,17 @@ pub use classes::{
     dialog_footer_classes, dialog_header_classes, dialog_title_classes, input_classes,
     label_classes, merge_classes, progress_classes, select_classes, separator_classes,
     skeleton_classes, spinner_classes, switch_classes, tabs_content_classes, tabs_list_classes,
-    tabs_trigger_classes, textarea_classes, toc_header_classes, toc_item_classes,
-    toc_list_classes, toc_nav_classes,
+    tabs_trigger_classes, textarea_classes, toc_header_classes, toc_item_classes, toc_list_classes,
+    toc_nav_classes,
 };
 pub use contracts::{
-    DialogState, SelectOption, TabItem, TabsState, TocItem, extract_headings_from_html,
-    extract_initials, normalize_progress_max, normalize_progress_value,
-    normalize_progress_value_for_max, progress_value_percentage, slugify_heading,
+    extract_headings_from_html, extract_initials, normalize_progress_max, normalize_progress_value,
+    normalize_progress_value_for_max, progress_value_percentage, slugify_heading, DialogState,
+    SelectOption, TabItem, TabsState, TocItem,
 };
 pub use tokens::{
-    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES, INPUT_FOCUS_RING_CLASSES,
-    TRANSITION_COLORS_CLASSES, radius, shadow,
+    radius, shadow, DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES,
+    INPUT_FOCUS_RING_CLASSES, TRANSITION_COLORS_CLASSES,
 };
 pub use types::{
     AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, InputType, Orientation,

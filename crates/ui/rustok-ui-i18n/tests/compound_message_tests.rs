@@ -9,8 +9,8 @@
  */
 
 use rustok_ui_i18n::{
-    BundleBuildError, I18nError, MessageKeyError, UiMessages, extract_locale_entry_schemas,
-    fluent_args, validate_message_attribute, validate_message_key,
+    extract_locale_entry_schemas, fluent_args, validate_message_attribute, validate_message_key,
+    BundleBuildError, I18nError, MessageKeyError, UiMessages,
 };
 
 fn strip_bidi_isolates(value: &str) -> String {
@@ -92,14 +92,12 @@ fn entry_schema_keeps_value_and_attribute_contracts_separate() {
     let schemas = extract_locale_entry_schemas("en", EN).expect("schema should parse");
     let field = schemas.get("field").expect("field schema");
 
-    assert!(
-        field
-            .value
-            .as_ref()
-            .expect("field value")
-            .variables
-            .is_empty()
-    );
+    assert!(field
+        .value
+        .as_ref()
+        .expect("field value")
+        .variables
+        .is_empty());
     assert_eq!(
         field.attributes["placeholder"]
             .variables
@@ -217,14 +215,12 @@ literal = { -case-brand(case: "for") }
 "#;
 
     let schemas = extract_locale_entry_schemas("en", SOURCE).expect("schema should parse");
-    assert!(
-        schemas["literal"]
-            .value
-            .as_ref()
-            .expect("literal value")
-            .variables
-            .is_empty()
-    );
+    assert!(schemas["literal"]
+        .value
+        .as_ref()
+        .expect("literal value")
+        .variables
+        .is_empty());
 
     let messages = UiMessages::new("en", &[("en", SOURCE)]);
     assert_eq!(

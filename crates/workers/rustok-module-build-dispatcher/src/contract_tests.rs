@@ -2,14 +2,15 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::{
-    host::ModuleBuildDispatcherConfig, MODULE_BUILD_CONSUMER_GROUP, ModuleBuildDelivery,
-    ModuleBuildDeliveryResult,
+    host::ModuleBuildDispatcherConfig, ModuleBuildDelivery, ModuleBuildDeliveryResult,
+    MODULE_BUILD_CONSUMER_GROUP,
 };
 
 #[test]
 fn cargo_manifest_contract_is_standardized() {
     let manifest_bytes = include_bytes!("../Cargo.toml");
-    let manifest_text = std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
+    let manifest_text =
+        std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
 
     assert!(manifest_text.contains(r#"name = "rustok-module-build-dispatcher""#));
     assert!(manifest_text.contains(r#"readme = "README.md""#));
@@ -35,7 +36,10 @@ fn crate_api_contract_specification_is_complete() {
 
 #[test]
 fn consumer_group_contract_matches_expected_topic_owner() {
-    assert_eq!(MODULE_BUILD_CONSUMER_GROUP, "rustok-module-build-dispatcher");
+    assert_eq!(
+        MODULE_BUILD_CONSUMER_GROUP,
+        "rustok-module-build-dispatcher"
+    );
 }
 
 #[test]
@@ -69,7 +73,8 @@ fn delivery_result_invariants_and_representation() {
 #[test]
 fn dispatcher_config_debug_redacts_database_url() {
     let config = ModuleBuildDispatcherConfig {
-        database_url: "postgres://secret_user:super_secret_password@db.internal:5432/rustok".to_string(),
+        database_url: "postgres://secret_user:super_secret_password@db.internal:5432/rustok"
+            .to_string(),
         worker_endpoint: "https://worker.internal:8443".to_string(),
         iggy: rustok_iggy::IggyConfig::default(),
         idle_poll_delay: Duration::from_millis(1_000),

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
 
-use crate::{PaymentService, ports::PaymentCollectionPort};
+use crate::{ports::PaymentCollectionPort, PaymentService};
 
 /// Host-selectable owner runtime for transport-neutral payment collection create/reuse and status reads.
 ///

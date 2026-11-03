@@ -2,7 +2,7 @@ use async_graphql::{Context, Error, FieldError, Result};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{Action, Resource};
 use rustok_api::{AuthContext, PortActor, PortContext, RequestContext};
-use rustok_core::{PermissionScope, SecurityContext, infer_user_role_from_permissions};
+use rustok_core::{infer_user_role_from_permissions, PermissionScope, SecurityContext};
 use uuid::Uuid;
 
 const TRANSLATION_GRAPHQL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);

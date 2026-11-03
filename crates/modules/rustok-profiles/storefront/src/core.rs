@@ -128,11 +128,9 @@ mod tests {
                 .unwrap();
         assert!(command.following);
         assert_eq!(command.expected_revision.as_deref(), Some("42"));
-        assert!(
-            command
-                .idempotency_key
-                .starts_with("profiles-storefront-follow-")
-        );
+        assert!(command
+            .idempotency_key
+            .starts_with("profiles-storefront-follow-"));
         assert_eq!(
             prepare_follow_command("not-a-uuid", true, None),
             Err(ProfilesStorefrontInputError::InvalidUserId)

@@ -30,5 +30,8 @@ fn log_format_traits_and_telemetry_handles_debug() {
     assert_ne!(crate::LogFormat::Json, crate::LogFormat::Pretty);
 
     let handles = crate::TelemetryHandles { metrics: None };
-    assert_eq!(format!("{handles:?}"), "TelemetryHandles { metrics: false }");
+    assert_eq!(
+        format!("{handles:?}"),
+        "TelemetryHandles { metrics: false }"
+    );
 }

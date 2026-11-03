@@ -23,4 +23,3 @@ fn test_reexported_types_contract() {
 
     assert_eq!(CHECKBOX_COLUMN_ID, "__checkbox");
 }
-

@@ -3,7 +3,7 @@
 //! The Product owner persists resolved UUID membership under a dedicated monotonic relation epoch.
 //! This contract validates locale fan-out identity and rejects epoch reuse for different membership.
 
-use rustok_index::{IndexSourceEventIdError, LocaleKey, derive_index_source_event_id};
+use rustok_index::{derive_index_source_event_id, IndexSourceEventIdError, LocaleKey};
 use thiserror::Error;
 use uuid::Uuid;
 

@@ -1,6 +1,6 @@
 use crate::{
-    LocalizedPageRouteEntry, ProjectDocument, RuntimeLocaleSelection, localized_page_route_index,
-    normalize_locale_tag,
+    localized_page_route_index, normalize_locale_tag, LocalizedPageRouteEntry, ProjectDocument,
+    RuntimeLocaleSelection,
 };
 use std::collections::{BTreeMap, BTreeSet};
 

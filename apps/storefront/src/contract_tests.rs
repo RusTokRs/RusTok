@@ -13,12 +13,12 @@ use std::collections::{HashMap, HashSet};
 use leptos::prelude::IntoAny;
 
 use crate::modules::{
+    components_for_slot, page_for_route_segment, register_component, register_page,
     StorefrontComponentRegistration, StorefrontPageLookup, StorefrontPageRegistration,
-    StorefrontSlot, components_for_slot, page_for_route_segment, register_component,
-    register_page,
+    StorefrontSlot,
 };
 use crate::shared::context::canonical_route::{
-    ResolvedCanonicalRoute, build_module_route, build_redirect_location,
+    build_module_route, build_redirect_location, ResolvedCanonicalRoute,
 };
 use crate::shared::local::{featured_products, locale_strings};
 
@@ -68,8 +68,7 @@ fn test_storefront_slots_and_component_registry() {
 
     let mut enabled_mut = HashSet::new();
     enabled_mut.insert("test_slug".to_string());
-    let components_enabled =
-        components_for_slot(StorefrontSlot::HeaderActions, Some(&enabled_mut));
+    let components_enabled = components_for_slot(StorefrontSlot::HeaderActions, Some(&enabled_mut));
     assert!(
         components_enabled
             .iter()

@@ -1,4 +1,4 @@
-use fly::{ProjectHash, constant_time_eq};
+use fly::{constant_time_eq, ProjectHash};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter};
 
@@ -298,7 +298,7 @@ mod browser {
     use std::cell::{Cell, RefCell};
     use std::collections::{BTreeMap, BTreeSet};
     use std::rc::Rc;
-    use wasm_bindgen::{JsCast, closure::Closure};
+    use wasm_bindgen::{closure::Closure, JsCast};
     use web_sys::{Element, Event, HtmlElement};
 
     struct MarkedElement {

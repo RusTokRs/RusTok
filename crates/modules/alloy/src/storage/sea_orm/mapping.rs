@@ -18,9 +18,9 @@ use crate::model::{
 use crate::storage::ScriptQuery;
 
 use super::entities::{
-    ActiveModel, Column, Entity, Model, component_candidate, component_candidate_build,
-    component_candidate_build_execution, component_candidate_review, draft_retention_receipt,
-    draft_review, draft_revision, draft_test_run, draft_tombstone,
+    component_candidate, component_candidate_build, component_candidate_build_execution,
+    component_candidate_review, draft_retention_receipt, draft_review, draft_revision,
+    draft_test_run, draft_tombstone, ActiveModel, Column, Entity, Model,
 };
 
 pub(crate) fn retention_state_from_parts(

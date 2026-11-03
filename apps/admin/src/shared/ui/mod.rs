@@ -4,7 +4,7 @@ pub use leptos_ui::*;
 pub mod page_header;
 pub use page_header::PageHeader;
 
-use crate::{Locale, use_admin_locale};
+use crate::{use_admin_locale, Locale};
 
 #[cfg(target_arch = "wasm32")]
 const THEME_STORAGE_KEY: &str = "rustok-admin-theme";

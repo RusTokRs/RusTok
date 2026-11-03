@@ -1,6 +1,6 @@
 use rustok_events::{
-    ContractEventEnvelope, ContractEventPayload, ReactionsEvent, ValidateEvent, event_schema,
-    event_schemas,
+    event_schema, event_schemas, ContractEventEnvelope, ContractEventPayload, ReactionsEvent,
+    ValidateEvent,
 };
 use uuid::Uuid;
 

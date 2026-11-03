@@ -2,16 +2,17 @@ use rustok_worker_transport::PeerCertificateFingerprint;
 use uuid::Uuid;
 
 use crate::{
-    ARTIFACT_NODE_AGENT_MAX_MESSAGE_SIZE, ARTIFACT_NODE_AGENT_PROTOCOL_REVISION,
-    ARTIFACT_NODE_RECONCILIATION_MAX_MESSAGE_SIZE, ModuleArtifactNodeAgentIdentity,
-    ModuleArtifactNodeReconciliationIdentity, StaticModuleArtifactNodeAgentAuthenticator,
-    StaticModuleArtifactNodeReconciliationAuthenticator,
+    ModuleArtifactNodeAgentIdentity, ModuleArtifactNodeReconciliationIdentity,
+    StaticModuleArtifactNodeAgentAuthenticator,
+    StaticModuleArtifactNodeReconciliationAuthenticator, ARTIFACT_NODE_AGENT_MAX_MESSAGE_SIZE,
+    ARTIFACT_NODE_AGENT_PROTOCOL_REVISION, ARTIFACT_NODE_RECONCILIATION_MAX_MESSAGE_SIZE,
 };
 
 #[test]
 fn cargo_manifest_contract_is_standardized() {
     let manifest_bytes = include_bytes!("../Cargo.toml");
-    let manifest_text = std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
+    let manifest_text =
+        std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
 
     assert!(manifest_text.contains(r#"name = "rustok-artifact-node-transport""#));
     assert!(manifest_text.contains(r#"readme = "README.md""#));
@@ -49,13 +50,17 @@ fn static_authenticators_debug_formatting() {
     )
     .unwrap();
     let agent_id = ModuleArtifactNodeAgentIdentity::new(Uuid::new_v4(), "agent-1").unwrap();
-    let agent_auth = StaticModuleArtifactNodeAgentAuthenticator::new(vec![(fp.clone(), agent_id)]).unwrap();
+    let agent_auth =
+        StaticModuleArtifactNodeAgentAuthenticator::new(vec![(fp.clone(), agent_id)]).unwrap();
     let agent_debug = format!("{agent_auth:?}");
     assert!(agent_debug.contains("StaticModuleArtifactNodeAgentAuthenticator"));
     assert!(agent_debug.contains("identities_count: 1"));
 
-    let operator_id = ModuleArtifactNodeReconciliationIdentity::new(Uuid::new_v4(), vec![Uuid::new_v4()]).unwrap();
-    let operator_auth = StaticModuleArtifactNodeReconciliationAuthenticator::new(vec![(fp, operator_id)]).unwrap();
+    let operator_id =
+        ModuleArtifactNodeReconciliationIdentity::new(Uuid::new_v4(), vec![Uuid::new_v4()])
+            .unwrap();
+    let operator_auth =
+        StaticModuleArtifactNodeReconciliationAuthenticator::new(vec![(fp, operator_id)]).unwrap();
     let operator_debug = format!("{operator_auth:?}");
     assert!(operator_debug.contains("StaticModuleArtifactNodeReconciliationAuthenticator"));
     assert!(operator_debug.contains("identities_count: 1"));

@@ -57,11 +57,8 @@ fn cache_alerts_reference_metrics_exported_by_the_capability() {
     assert!(alerts.contains("increase(rustok_cache_generation_bump_failures_total[5m]) > 0"));
     assert!(alerts.contains("increase(rustok_cache_cas_failed_total[5m]) > 0"));
     assert!(alerts.contains("increase(rustok_event_consumer_lagged_total[5m]) > 0"));
-    assert!(
-        alerts.contains(
-            "increase(rustok_event_bus_errors_total{error_type=~\".*restart.*\"}[10m]) > 3"
-        )
-    );
+    assert!(alerts
+        .contains("increase(rustok_event_bus_errors_total{error_type=~\".*restart.*\"}[10m]) > 3"));
     assert!(!alerts.contains("rustok_cache_cas_mismatch_total[5m]) > 0"));
 
     assert_eq!(alerts.matches("- alert: VerySlowRequestLatency").count(), 1);
@@ -136,11 +133,9 @@ fn permanent_gate_executes_expiry_eviction_and_concurrent_local_cas() {
         );
     }
 
-    assert!(
-        workflow
-            .lines()
-            .any(|line| line.trim() == "cargo test -p rustok-cache --test atomic_cas")
-    );
+    assert!(workflow
+        .lines()
+        .any(|line| line.trim() == "cargo test -p rustok-cache --test atomic_cas"));
     assert!(!workflow.contains(
         "cargo test -p rustok-cache --test atomic_cas concurrent_local_compare_and_set_has_exactly_one_winner"
     ));

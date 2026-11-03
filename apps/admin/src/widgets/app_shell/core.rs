@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::app::modules::GeneratedModuleNavigationEntry;
 pub(super) use rustok_ui_core::navigation::{
-    UiChildPageEntry, UiNavChild as NavChild, UiNavGroup as ModuleNavGroup, UiNavigationEntry,
-    build_ui_nav_groups, ui_href_is_active, ui_module_group_icon,
+    build_ui_nav_groups, ui_href_is_active, ui_module_group_icon, UiChildPageEntry,
+    UiNavChild as NavChild, UiNavGroup as ModuleNavGroup, UiNavigationEntry,
 };
 
 pub(super) fn build_module_nav_groups(

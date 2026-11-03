@@ -1,6 +1,7 @@
 use crate::{
-    CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource, DragState, FlyUiState,
-    HitTestCandidate, PanelKind, Presentation, UiError, UiResult, ViewportState, command_for_drop,
+    command_for_drop, CanvasRect, CapabilityState, CommandCapabilityRequirement, DragSource,
+    DragState, FlyUiState, HitTestCandidate, PanelKind, Presentation, UiError, UiResult,
+    ViewportState,
 };
 use fly::{EditorCommand, ProjectHash, ValidationDiagnostic};
 use serde::{Deserialize, Serialize};

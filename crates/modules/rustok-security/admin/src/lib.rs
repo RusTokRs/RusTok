@@ -20,7 +20,7 @@ pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::{SecurityAdminTableRow, filter_rows};
+pub use core::{filter_rows, SecurityAdminTableRow};
 pub use transport::SecurityAdminTransport;
 pub use ui::SecurityAdminPage;
 

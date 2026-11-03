@@ -169,8 +169,11 @@ fn test_embedded_default_starter_invariants() {
 
     let blog = content.blog.expect("blog must exist");
     assert!(!blog.posts.is_empty());
-    let category_slugs: std::collections::HashSet<_> =
-        taxonomy.categories.iter().map(|c| c.slug.as_str()).collect();
+    let category_slugs: std::collections::HashSet<_> = taxonomy
+        .categories
+        .iter()
+        .map(|c| c.slug.as_str())
+        .collect();
     for post in &blog.posts {
         assert!(!post.slug.is_empty());
         assert!(!post.title.is_empty());
@@ -201,4 +204,3 @@ fn test_embedded_default_starter_invariants() {
         assert!(!menu.items.is_empty());
     }
 }
-

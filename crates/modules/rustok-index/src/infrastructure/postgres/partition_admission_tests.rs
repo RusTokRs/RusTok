@@ -1,8 +1,8 @@
 use super::{
-    PartitionAdmissionError, PartitionAdmissionOutcome, PartitionAdmissionPolicy,
-    PartitionAdmissionPolicyParams, PartitionAdmissionReason, PartitionBaselineEvidence,
-    PartitionEvidence, PartitionMeasurementCoverage, PartitionShadowEvidence,
-    PartitionShadowEvidenceParams, PartitionStrategy, evaluate_partition_admission,
+    evaluate_partition_admission, PartitionAdmissionError, PartitionAdmissionOutcome,
+    PartitionAdmissionPolicy, PartitionAdmissionPolicyParams, PartitionAdmissionReason,
+    PartitionBaselineEvidence, PartitionEvidence, PartitionMeasurementCoverage,
+    PartitionShadowEvidence, PartitionShadowEvidenceParams, PartitionStrategy,
 };
 
 const EVIDENCE_ID: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -67,16 +67,14 @@ fn admitted_plan_is_stable_and_shadow_only() {
     assert_eq!(plan.evidence_id(), EVIDENCE_ID);
     assert_eq!(plan.strategy().modulus(), 16);
     assert_eq!(plan.definition_hash().len(), 64);
-    assert!(
-        plan.entities()
-            .parent_name()
-            .starts_with("index_entities_shadow_")
-    );
-    assert!(
-        plan.links()
-            .parent_name()
-            .starts_with("index_links_shadow_")
-    );
+    assert!(plan
+        .entities()
+        .parent_name()
+        .starts_with("index_entities_shadow_"));
+    assert!(plan
+        .links()
+        .parent_name()
+        .starts_with("index_links_shadow_"));
     assert_eq!(plan.entities().partition_names().len(), 16);
     assert_eq!(plan.links().partition_names().len(), 16);
 
@@ -84,23 +82,17 @@ fn admitted_plan_is_stable_and_shadow_only() {
     assert_eq!(statements.len(), 34);
     assert!(statements[0].contains("PARTITION BY HASH (tenant_id)"));
     assert!(statements[1].contains("PARTITION BY HASH (tenant_id)"));
-    assert!(
-        statements
-            .iter()
-            .any(|sql| sql.contains("FOR VALUES WITH (MODULUS 16, REMAINDER 15)"))
-    );
+    assert!(statements
+        .iter()
+        .any(|sql| sql.contains("FOR VALUES WITH (MODULUS 16, REMAINDER 15)")));
     assert!(statements.iter().all(|sql| !sql.contains("DROP TABLE")));
     assert!(statements.iter().all(|sql| !sql.contains("RENAME TO")));
-    assert!(
-        statements
-            .iter()
-            .all(|sql| !sql.starts_with("ALTER TABLE \"index_entities\""))
-    );
-    assert!(
-        statements
-            .iter()
-            .all(|sql| !sql.starts_with("ALTER TABLE \"index_links\""))
-    );
+    assert!(statements
+        .iter()
+        .all(|sql| !sql.starts_with("ALTER TABLE \"index_entities\"")));
+    assert!(statements
+        .iter()
+        .all(|sql| !sql.starts_with("ALTER TABLE \"index_links\"")));
 }
 
 #[test]
@@ -129,16 +121,12 @@ fn incomplete_or_regressed_evidence_keeps_storage_unpartitioned() {
         panic!("incomplete evidence must fail closed");
     };
 
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::BelowMinimumRows { .. }))
-    );
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::BelowMinimumBytes { .. }))
-    );
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::BelowMinimumRows { .. })));
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::BelowMinimumBytes { .. })));
     assert!(reasons.iter().any(|reason| matches!(
         reason,
         PartitionAdmissionReason::InsufficientDistinctTenants { .. }
@@ -159,11 +147,9 @@ fn incomplete_or_regressed_evidence_keeps_storage_unpartitioned() {
     assert!(reasons.contains(&PartitionAdmissionReason::LinkDigestMismatch));
     assert!(reasons.contains(&PartitionAdmissionReason::ShadowNotCaughtUp));
     assert!(reasons.contains(&PartitionAdmissionReason::ForeignKeysNotValidated));
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::OrphanLinks { count: 7 }))
-    );
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::OrphanLinks { count: 7 })));
     assert!(reasons.iter().any(|reason| matches!(
         reason,
         PartitionAdmissionReason::QueryPlanRegressions { count: 2 }
@@ -176,21 +162,15 @@ fn incomplete_or_regressed_evidence_keeps_storage_unpartitioned() {
         reason,
         PartitionAdmissionReason::MutationLatencyRegression { .. }
     )));
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::WalAmplification { .. }))
-    );
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::PartitionSizeSkew { .. }))
-    );
-    assert!(
-        reasons
-            .iter()
-            .any(|reason| matches!(reason, PartitionAdmissionReason::CutoverLockExceeded { .. }))
-    );
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::WalAmplification { .. })));
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::PartitionSizeSkew { .. })));
+    assert!(reasons
+        .iter()
+        .any(|reason| matches!(reason, PartitionAdmissionReason::CutoverLockExceeded { .. })));
 }
 
 #[test]

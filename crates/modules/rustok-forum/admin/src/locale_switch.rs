@@ -1,4 +1,4 @@
-use rustok_api::{RichTextDocument, normalize_locale_tag};
+use rustok_api::{normalize_locale_tag, RichTextDocument};
 
 use crate::core::{CategoryFormSnapshot, TopicFormSnapshot};
 use crate::model::{CategoryDetail, TopicDetail};

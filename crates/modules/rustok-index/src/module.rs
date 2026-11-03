@@ -6,8 +6,8 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 use crate::{
-    IndexSchemaSourceCatalog, IndexSourceCatalog,
-    infrastructure::postgres::PostgresIndexSourceFactoryCatalog,
+    infrastructure::postgres::PostgresIndexSourceFactoryCatalog, IndexSchemaSourceCatalog,
+    IndexSourceCatalog,
 };
 
 /// Core index engine module descriptor for RusToK.

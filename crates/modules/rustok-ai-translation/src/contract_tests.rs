@@ -20,8 +20,8 @@ fn crate_api_defines_minimal_contract_sections() {
 #[test]
 fn machine_translation_constants_and_descriptors() {
     use crate::{
-        MACHINE_TRANSLATION_PROVIDER_SLUG, MACHINE_TRANSLATION_TASK_SLUG,
         machine_translation_policy_digest, machine_translation_task_descriptor,
+        MACHINE_TRANSLATION_PROVIDER_SLUG, MACHINE_TRANSLATION_TASK_SLUG,
     };
 
     assert_eq!(MACHINE_TRANSLATION_TASK_SLUG, "machine_translation");
@@ -30,7 +30,8 @@ fn machine_translation_constants_and_descriptors() {
     let descriptor = machine_translation_task_descriptor();
     assert_eq!(descriptor.task_slug, "machine_translation");
     assert_eq!(descriptor.owner, "translation");
-    assert_eq!(descriptor.prompt_policy_digest, machine_translation_policy_digest());
+    assert_eq!(
+        descriptor.prompt_policy_digest,
+        machine_translation_policy_digest()
+    );
 }
-
-

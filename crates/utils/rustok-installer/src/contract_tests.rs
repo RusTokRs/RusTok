@@ -1,18 +1,17 @@
 #[cfg(test)]
 mod tests {
     use crate::plan::{
-        AdminBootstrap, DatabaseConfig, DatabaseEngine,
-        InstallDistributionBinding, InstallEnvironment, InstallPlan, InstallProfile, InstallRole,
-        InstallSurface, InstallTopology, InstallTopologyMode,
-        ModuleSelection, SeedProfile, TenantBootstrap,
+        AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallDistributionBinding,
+        InstallEnvironment, InstallPlan, InstallProfile, InstallRole, InstallSurface,
+        InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
     };
     use crate::preflight::{
-        PreflightSeverity, evaluate_preflight, evaluate_preflight_with_deployment,
+        evaluate_preflight, evaluate_preflight_with_deployment, PreflightSeverity,
     };
-    use crate::receipt::{InstallReceipt, ReceiptOutcome, checksum_json};
+    use crate::receipt::{checksum_json, InstallReceipt, ReceiptOutcome};
     use crate::secrets::{
-        SecretMode, SecretRef, SecretValue, redact_install_plan, redact_secret,
-        resolve_local_secret_value,
+        redact_install_plan, redact_secret, resolve_local_secret_value, SecretMode, SecretRef,
+        SecretValue,
     };
     use crate::state::{InstallState, InstallStep, StateTransitionError};
     use crate::{InstancePlacement, SeedContentOutcome};
@@ -165,7 +164,9 @@ mod tests {
         let redacted_plain = redact_secret(&plain);
         assert_eq!(redacted_plain["kind"], "redacted");
         assert_eq!(redacted_plain["value"], "***");
-        assert!(!redacted_plain.to_string().contains("super_secret_value_123"));
+        assert!(!redacted_plain
+            .to_string()
+            .contains("super_secret_value_123"));
 
         let reference = SecretValue::Reference {
             reference: SecretRef {
@@ -362,9 +363,18 @@ mod tests {
             count: u32,
         }
 
-        let p1 = Payload { key: "abc", count: 42 };
-        let p2 = Payload { key: "abc", count: 42 };
-        let p3 = Payload { key: "abc", count: 43 };
+        let p1 = Payload {
+            key: "abc",
+            count: 42,
+        };
+        let p2 = Payload {
+            key: "abc",
+            count: 42,
+        };
+        let p3 = Payload {
+            key: "abc",
+            count: 43,
+        };
 
         let cs1 = checksum_json(&p1).unwrap();
         let cs2 = checksum_json(&p2).unwrap();
@@ -502,21 +512,17 @@ mod tests {
         assert!(error_codes.contains(&"plaintext_secret_production"));
         assert!(error_codes.contains(&"sample_secret"));
 
-        let has_warning = report
-            .issues
-            .iter()
-            .any(|i| i.code == "schema_disable_not_supported" && i.severity == PreflightSeverity::Warning);
+        let has_warning = report.issues.iter().any(|i| {
+            i.code == "schema_disable_not_supported" && i.severity == PreflightSeverity::Warning
+        });
         assert!(has_warning);
 
         // evaluate_preflight_with_deployment missing deployment adapter fails
         let deploy_report = evaluate_preflight_with_deployment(&plan, false);
         assert!(!deploy_report.passed());
-        assert!(
-            deploy_report
-                .issues
-                .iter()
-                .any(|i| i.code == "distribution_deployment_unavailable")
-        );
+        assert!(deploy_report
+            .issues
+            .iter()
+            .any(|i| i.code == "distribution_deployment_unavailable"));
     }
 }
-

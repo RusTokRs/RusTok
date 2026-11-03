@@ -222,14 +222,12 @@ mod tests {
     fn a_default_product_has_exactly_one_unassigned_sku() {
         assert!(validate_selection(&[], &[VariantDraft::default()], None).is_ok());
         assert!(validate_selection(&[], &[], None).is_err());
-        assert!(
-            validate_selection(
-                &[],
-                &[VariantDraft::default(), VariantDraft::default()],
-                None
-            )
-            .is_err()
-        );
+        assert!(validate_selection(
+            &[],
+            &[VariantDraft::default(), VariantDraft::default()],
+            None
+        )
+        .is_err());
     }
 
     #[test]
@@ -720,11 +718,9 @@ mod pending_assignment_tests {
         let before = values.clone();
         assert_eq!(pending_assignment_value(&values, "color"), "blue");
         let choices = pending_assignment_choices(&axes, &values, "color", Some(&form));
-        assert!(
-            choices
-                .iter()
-                .any(|option| option.id == "blue" && option.available)
-        );
+        assert!(choices
+            .iter()
+            .any(|option| option.id == "blue" && option.available));
         assert_eq!(values, before);
         set_pending_assignment(&mut values, "color", "red".into());
         assert_eq!(pending_assignment_value(&values, "color"), "red");

@@ -24,7 +24,7 @@ pub mod bindings {
     });
 }
 
-pub use bindings::{Guest, rustok};
+pub use bindings::{rustok, Guest};
 
 /// Export a `Guest` implementation through the canonical component world.
 #[macro_export]
@@ -49,4 +49,3 @@ mod tests {
 
 #[cfg(test)]
 mod contract_tests;
-

@@ -41,4 +41,3 @@ fn test_reexported_types_contract() {
     let state = GridState::new();
     assert_eq!(state.pagination.page, 1);
 }
-

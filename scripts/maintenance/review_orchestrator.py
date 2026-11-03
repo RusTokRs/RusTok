@@ -214,6 +214,11 @@ def sync_ledger() -> dict:
     current_round = ledger.get("current_round", 1)
     stored_comps = ledger.setdefault("components", {})
 
+    # Prune stale components that no longer exist on disk
+    stale_paths = [p for p in stored_comps if p not in discovered]
+    for p in stale_paths:
+        del stored_comps[p]
+
     # Update or add components
     for comp_path, disc in discovered.items():
         if comp_path in stored_comps:

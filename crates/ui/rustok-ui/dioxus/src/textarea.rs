@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{Size, textarea_classes};
+use rustok_ui::{textarea_classes, Size};
 
 #[component]
 pub fn Textarea(

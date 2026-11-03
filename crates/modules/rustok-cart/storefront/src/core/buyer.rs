@@ -1,8 +1,8 @@
 //! Buyer command construction. A displayed amount is deliberately absent from these DTOs.
 
 use rustok_pricing_storefront::{
-    PricingResolutionContext, normalize_pricing_context, parse_optional_currency_code,
-    parse_optional_uuid_string,
+    normalize_pricing_context, parse_optional_currency_code, parse_optional_uuid_string,
+    PricingResolutionContext,
 };
 use serde::{Deserialize, Serialize};
 
@@ -168,29 +168,25 @@ mod tests {
         );
         let mut preview = context();
         preview.price_list_id = Some(uuid::Uuid::new_v4().to_string());
-        assert!(
-            add_variant_request(
-                cart.clone(),
-                sku.clone(),
-                preview.clone(),
-                Some("en".into())
-            )
-            .is_err()
-        );
+        assert!(add_variant_request(
+            cart.clone(),
+            sku.clone(),
+            preview.clone(),
+            Some("en".into())
+        )
+        .is_err());
         assert!(create_cart_request(&preview, Some("en".into())).is_err());
         let mut invalid = context();
         invalid.quantity = 0;
         assert!(
             add_variant_request(cart.clone(), sku.clone(), invalid, Some("en".into())).is_err()
         );
-        assert!(
-            add_variant_request(
-                "00000000-0000-0000-0000-000000000000".into(),
-                sku,
-                context(),
-                Some("en".into())
-            )
-            .is_err()
-        );
+        assert!(add_variant_request(
+            "00000000-0000-0000-0000-000000000000".into(),
+            sku,
+            context(),
+            Some("en".into())
+        )
+        .is_err());
     }
 }

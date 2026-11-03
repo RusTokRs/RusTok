@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{ContractEventPayload, EventContract, sealed};
-use crate::validation::{EventValidationError, ValidateEvent, validators};
+use crate::contract::{sealed, ContractEventPayload, EventContract};
+use crate::validation::{validators, EventValidationError, ValidateEvent};
 use crate::{EventSchema, FieldSchema};
 
 pub const PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE: &str =
