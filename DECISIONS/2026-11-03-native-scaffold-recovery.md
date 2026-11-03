@@ -2,7 +2,7 @@
 
 - Date: 2026-11-03
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform tooling (`xtask`)
 - Extends: [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md)
 - Supersedes: None
@@ -138,5 +138,8 @@ Use scoped `xtask` tests and real child processes: contention across slugs,
 independent roots, killed owner and lock reuse; interrupted preparation/apply,
 validation, rollback, commit and retirement; repeated recovery; staged partial
 writes; corrupt/unsafe journals; foreign edits and files; and zero-write preview.
+Verify storage exhaustion during staging and restoration on a dedicated bounded
+filesystem, including successful retry after freeing space. The owner plan
+[records the commands and Windows/Linux results](../xtask/docs/implementation-plan.md#verification-and-evidence).
 Run canonical architecture/ADR/remediation checks. Retain Windows and Linux
 results separately; do not promote unexecuted platform or power-loss evidence.

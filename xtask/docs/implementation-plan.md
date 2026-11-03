@@ -93,7 +93,7 @@ the Blog/reference-tooling boundary rather than the native renderer.
 | Persistence | `--with-db` rejected before writes; `--no-db` emits no schema | An actual module owner must first specify its data model, migration safety, transaction and event contracts |
 | UI | Optional unmounted Leptos core/model/transport/render packages; public owner transport facade; both adapters explicitly unavailable with executable failure tests | Effective host locale, owner operations and live Leptos/Next.js parity are not implemented |
 | Planning | All source/registration edits prepared before writing; exact TOML module key lookup; required registration postconditions | Text-based insertion still depends on current formatting; preview lists paths rather than complete content changes |
-| Apply | Workspace-wide lock for cooperating scaffold processes; versioned journal and original backups before publishing staged payloads; no-clobber source writes | Linux and storage-failure verification remain open; external writers can still race |
+| Apply | Workspace-wide lock, versioned journal, original backups before apply, and no-clobber source writes. Recovery verified on Windows and Linux. | External writers can still race |
 | Recovery | New process resumes rollback or finishes committed cleanup; changed targets and foreign files are preserved; a retained CLI runs without Cargo | Ambiguous claims and conflicting edits require manual reconciliation |
 | Governance | Crate rustdoc includes owner API; plans declare FFA/FBA and release/data readiness; central plan and readiness indexes updated | Indexes must remain tested as projections; a new identity has no verified release/rollback execution |
 | Verification | Unit/negative tests, renderer and four file-tree goldens; four isolated generated modes and eight default-profile crate test suites pass; generated facade tests | Matrix is Bash/disposable-checkout dependent; no selected distribution feature execution; see exact profile evidence below |
@@ -121,7 +121,7 @@ Complete each gate with retained commands/results before promoting its status.
 Each increment must preserve one native generator and leave generated identities
 explicitly incomplete until their owner functionality is implemented.
 
-### 1. Safe filesystem mutation — P0, in progress
+### 1. Safe filesystem mutation — P0, verified
 
 Owner: platform tooling. Prerequisite: the current preflight/rollback fixes.
 
@@ -134,7 +134,7 @@ Owner: platform tooling. Prerequisite: the current preflight/rollback fixes.
   recovery. Verify contention across slugs, interrupted apply/validation/rollback/
   commit, conflict preservation, read-only targets, junction rejection, and retry
   after Windows denies replacement of an open manifest.
-- [ ] Run the process recovery suite on Linux and verify apply and recovery on a
+- [x] Run the process recovery suite on Linux and verify apply and recovery on a
   filesystem that runs out of space during the operation.
 
 Exit: an interrupted or repeated operation either preserves/restores all original
@@ -266,6 +266,21 @@ git diff --check
 
 `--offline` requires cached dependencies. Use the normal command when dependency
 download is required; do not weaken TLS verification to obtain a green result.
+
+On Linux, run the storage-failure test on a dedicated 4 MiB `tmpfs`. The test
+fills that mount and refuses to run on an ordinary workspace directory.
+
+```bash
+(
+  set -e
+  storage=$(mktemp -d)
+  sudo mount -t tmpfs -o "size=4m,uid=$(id -u),gid=$(id -g),mode=0700" tmpfs "$storage"
+  trap 'sudo umount "$storage" && rmdir "$storage"' EXIT
+  RUSTOK_SCAFFOLD_TEST_STORAGE="$storage" cargo test -p xtask --locked -- \
+    --ignored --exact scaffold::transaction::tests::full_filesystem_preserves_scaffold_recovery
+)
+```
+
 Run the existing `scripts/ci/verify-scaffold-matrix.sh` only in a disposable
 checkout: it changes manifests/docs and creates fixture crates. It does not
 provide local isolation or cleanup itself. Full workspace suites and long E2E
@@ -303,6 +318,15 @@ Windows recovery increment on 2026-11-03:
 | Live `--ui dual` in a disposable worktree | Preview created no control state; apply passed lint and metadata validation, retired its journal, and survived an invocation of the retained CLI |
 | Staged remediation, ADR governance and Blog source-layout checks | Passed; the source-layout fixture runner skipped two symlink cases requiring Windows privileges |
 | `npm run verify:docs` | Failed on the unchanged topology table and 20 existing missing targets in the continuous audit ledger |
+
+Linux recovery was verified on 2026-11-03 using x86-64 Linux 6.18 and Rust
+1.96.0 in a disposable Docker checkout with networking disabled.
+
+| Check | Result |
+| --- | --- |
+| `cargo test -p xtask --locked --offline --quiet` | 201 passed and zero failed. The top-level runner ignored the subprocess entrypoint and the dedicated storage test. |
+| Dedicated 4 MiB `tmpfs` storage test above, with `--offline` | Passed. The kernel returned `ENOSPC` during staging and restoration. Staging left the original manifest intact. Failed restoration retained the journal and exact backup. After freeing space, a fresh process restored the original bytes and cleaned the interrupted transaction. |
+| Windows regression run, Rust 1.97.1 | `cargo test -p xtask --offline --quiet` passed with 202 tests and the subprocess entrypoint ignored by the top-level runner |
 
 Selected distribution registry execution, docs.rs builds, actual browser/WASM
 mounts, power-loss recovery, noncooperating-writer isolation, live business/client

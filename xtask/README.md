@@ -119,7 +119,9 @@ If recovery reports a conflict, preserve `.rustok/scaffold/active/plan.json`
 and `active/backup/`. Review the reported path against the original and intended
 contents before reconciling the conflict and retrying. Leave `.rustok/scaffold/lock`
 in place. If a claimed directory is ambiguous, verify ownership before moving
-or removing it. Dry-run reports pending recovery and leaves it untouched.
+or removing it. If recovery fails because the filesystem is full, free space on
+that filesystem before retrying. Dry-run reports pending recovery and leaves it
+untouched.
 See the [recovery ADR](../DECISIONS/2026-11-03-native-scaffold-recovery.md)
 for state transitions and filesystem requirements.
 

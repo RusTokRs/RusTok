@@ -11,8 +11,12 @@ struct TestRoot(PathBuf);
 
 impl TestRoot {
     fn new() -> Self {
+        Self::in_directory(&std::env::temp_dir())
+    }
+
+    fn in_directory(parent: &Path) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
+        let path = parent.join(format!(
             "rustok-recovery-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
@@ -602,4 +606,82 @@ fn windows_sharing_violation_preserves_recovery_until_target_is_released() {
     assert!(module.join("src/lib.rs").is_file());
     drop(open);
     assert_recovered(&root);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "Requires a dedicated small filesystem at RUSTOK_SCAFFOLD_TEST_STORAGE"]
+fn full_filesystem_preserves_scaffold_recovery() {
+    use std::io::ErrorKind::StorageFull;
+    use std::os::unix::fs::MetadataExt;
+
+    let storage = PathBuf::from(
+        std::env::var_os("RUSTOK_SCAFFOLD_TEST_STORAGE").expect("dedicated storage mount"),
+    )
+    .canonicalize()
+    .unwrap();
+    assert_ne!(
+        fs::metadata(&storage).unwrap().dev(),
+        fs::metadata(storage.parent().expect("dedicated mount cannot be /"))
+            .unwrap()
+            .dev(),
+        "storage test requires a dedicated mounted filesystem"
+    );
+
+    let root = TestRoot::in_directory(&storage);
+    let ballast = root.0.join("ballast");
+    let fill_storage = || {
+        let mut ballast = File::create_new(&ballast).unwrap();
+        for _ in 0..2048 {
+            match ballast.write_all(&[1; 4096]) {
+                Ok(()) => {}
+                Err(error) if error.kind() == StorageFull => return,
+                Err(error) => panic!("Could not fill test filesystem: {error}"),
+            }
+        }
+        panic!("Test filesystem must run out of space within 8 MiB");
+    };
+    let assert_storage_full = |error: anyhow::Error| {
+        assert!(
+            error.chain().any(|cause| cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == StorageFull)),
+            "Expected ENOSPC, got {error:#}"
+        );
+    };
+
+    let manifest = root.0.join("modules.toml");
+    let module = root.0.join("crates/modules/rustok-example");
+    let state = root.0.join(".rustok/scaffold");
+    let mut plan = root.plan();
+    let original = vec![b'a'; 256 * 1024];
+    fs::write(&manifest, &original).unwrap();
+    plan[2].original = Some(original.clone());
+
+    let failure = ScaffoldTransaction::apply_with_writer(&root.0, &plan, &module, |file, bytes| {
+        fill_storage();
+        file.write(bytes)
+    });
+    assert_storage_full(failure.err().expect("apply must fail"));
+    assert_eq!(fs::read(&manifest).unwrap(), original);
+    assert!(!module.exists());
+    assert!(!state.join("preparing").exists());
+    assert!(!state.join("active").exists());
+    fs::remove_file(&ballast).unwrap();
+
+    let transaction = ScaffoldTransaction::apply(&root.0, &plan, &module).unwrap();
+    fill_storage();
+    assert_storage_full(transaction.rollback().unwrap_err());
+    assert_eq!(fs::read(&manifest).unwrap(), b"after");
+    assert_eq!(fs::read(state.join("active/backup/2")).unwrap(), original);
+    assert!(state.join("active/plan.json").is_file());
+    assert!(module.join("src/lib.rs").is_file());
+    fs::remove_file(&ballast).unwrap();
+
+    let recovered = run_worker(&root.0, "recover");
+    assert!(recovered.status.success(), "{:?}", recovered);
+    assert_eq!(fs::read(&manifest).unwrap(), original);
+    assert!(!module.exists());
+    assert!(!state.join("active").exists());
+    assert!(!state.join("retired").exists());
 }
