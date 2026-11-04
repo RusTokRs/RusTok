@@ -60,3 +60,4 @@ export function CommerceRecentOrdersWidget({ context }: { context: AdminRenderCo
     </Card>
   );
 }
+
