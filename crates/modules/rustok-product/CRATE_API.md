@@ -51,6 +51,7 @@ capability before tenant-less price-row reads. Remote adapter execution remains 
 - **Pricing Persistence**: Transaction-aware initial price creation via `rustok_pricing_persistence::BootstrapService::create_initial_prices_in_tx` during product variant bootstrap.
 - **Inventory**: Transaction-aware initial inventory item provisioning during variant creation.
 - **Flex**: Custom fields and dynamic attribute schemas attached to product aggregates.
+- **Brand**: Cross-boundary collaboration with `rustok-brand`. Product owns the relational `product_brands` table mapping products to primary manufacturers and collaborative partner brands.
 - **Outbox & Events**: Publishes catalog lifecycle domain events through `rustok_outbox::TransactionalEventBus`.
 - **SEO & Translation Targets**: Implements targets for search engine optimization and multi-locale translation engines.
 
@@ -68,6 +69,7 @@ capability before tenant-less price-row reads. Remote adapter execution remains 
 - `UpdateProduct`: Partial product metadata updates, status changes, publication controls.
 - `CreateVariant`: SKU, option combinations, weight, dimensions, initial pricing and inventory attributes.
 - `UpdateVariant`: Variant updates including barcode, status, and attribute assignments.
+- `ProductBrandInput` / `ProductBrandResponse`: Product brand assignment DTOs specifying `brand_id`, `is_primary`, `role` (e.g. `manufacturer`, `collaboration`), and `position`.
 - `ProductProjectionRequest`: Request for single product projection by ID, slug, or locale.
 - `VariantProductProjectionRequest`: Request for product projection resolved via variant ID.
 - `PublishedProductsRequest`: Storefront query for published catalog items with pagination and sorting.
@@ -80,6 +82,7 @@ capability before tenant-less price-row reads. Remote adapter execution remains 
 - **Handle Uniqueness**: Product handle/slug must be unique per locale across the tenant (`DuplicateHandle`).
 - **SKU Uniqueness**: Variant SKU must be unique across the tenant catalog (`DuplicateSku`).
 - **Monetary & Measurement Bounds**: Non-negative decimal validation for prices, compare-at amounts, weights, and dimensions.
+- **Brand Associations & Primary Brand Invariant**: Products can be associated with multiple brands. When multiple brands are assigned, exactly one must be designated as primary (`is_primary = true`). If a single brand is assigned without explicit designation, it defaults to primary. Enforced by unique constraint `uq_product_brands` and partial unique index `uq_product_brands_primary` at the database level.
 
 ### Events / Outbox Side Effects
 
