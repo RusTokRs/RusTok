@@ -62,6 +62,96 @@ fn validate_variant_prices(prices: &[PriceInput]) -> CommerceResult<()> {
     Ok(())
 }
 
+fn validate_product_brands(brands: &[ProductBrandInput]) -> CommerceResult<()> {
+    let mut seen = HashSet::new();
+    let mut primary_count = 0;
+    for brand in brands {
+        if brand.brand_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "Brand ID cannot be nil".to_string(),
+            ));
+        }
+        if !seen.insert(brand.brand_id) {
+            return Err(CommerceError::Validation(format!(
+                "Duplicate brand ID `{}` in product brands",
+                brand.brand_id
+            )));
+        }
+        if brand.is_primary {
+            primary_count += 1;
+        }
+    }
+    if brands.len() > 1 && primary_count == 0 {
+        return Err(CommerceError::Validation(
+            "A product with multiple associated brands must specify exactly one primary brand"
+                .to_string(),
+        ));
+    }
+    if primary_count > 1 {
+        return Err(CommerceError::Validation(
+            "A product cannot have multiple primary brands".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn sync_product_brands_in_tx<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    brand_inputs: &[ProductBrandInput],
+) -> CommerceResult<()> {
+    validate_product_brands(brand_inputs)?;
+
+    entities::product_brand::Entity::delete_many()
+        .filter(entities::product_brand::Column::TenantId.eq(tenant_id))
+        .filter(entities::product_brand::Column::ProductId.eq(product_id))
+        .exec(conn)
+        .await?;
+
+    if brand_inputs.is_empty() {
+        return Ok(());
+    }
+
+    let default_single_primary = brand_inputs.len() == 1 && !brand_inputs[0].is_primary;
+    let now = Utc::now();
+    let mut models = Vec::with_capacity(brand_inputs.len());
+
+    for (pos, brand_input) in brand_inputs.iter().enumerate() {
+        let is_primary = if default_single_primary {
+            true
+        } else {
+            brand_input.is_primary
+        };
+        let position = if brand_input.position != 0 {
+            brand_input.position
+        } else {
+            pos as i32
+        };
+
+        models.push(entities::product_brand::ActiveModel {
+            id: Set(generate_id()),
+            tenant_id: Set(tenant_id),
+            product_id: Set(product_id),
+            brand_id: Set(brand_input.brand_id),
+            is_primary: Set(is_primary),
+            role: Set(if brand_input.role.is_empty() {
+                "manufacturer".to_string()
+            } else {
+                brand_input.role.clone()
+            }),
+            position: Set(position),
+            created_at: Set(now.into()),
+        });
+    }
+
+    entities::product_brand::Entity::insert_many(models)
+        .exec(conn)
+        .await?;
+
+    Ok(())
+}
+
 impl CatalogService {
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn create_product(
@@ -81,6 +171,7 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        validate_product_brands(&input.brands)?;
         self.validate_shipping_profiles(
             tenant_id,
             actor_id,
@@ -1256,6 +1347,7 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        validate_product_brands(&input.brands)?;
         self.validate_shipping_profiles(
             tenant_id,
             actor_id,
