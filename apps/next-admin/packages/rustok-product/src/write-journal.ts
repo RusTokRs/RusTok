@@ -107,13 +107,14 @@ export class ProductWriteJournal {
   readonly scope: ProductWriteScope;
   readonly resource: string;
   readonly intent: string;
+  readonly resourceKind: CatalogJournalKind;
   private readonly driver: ProductJournalDriver;
   constructor(
     scope: ProductWriteScope,
     resource: string,
     intent: string,
     driver: ProductJournalDriver,
-    readonly resourceKind: CatalogJournalKind = 'product'
+    resourceKind: CatalogJournalKind = 'product'
   ) {
     this.scope = Object.freeze({
       tenantId: scope.tenantId,
@@ -122,6 +123,7 @@ export class ProductWriteJournal {
     this.resource = resource;
     this.intent = intent;
     this.driver = driver;
+    this.resourceKind = resourceKind;
     if (
       typeof scope.tenantId !== 'string' ||
       !scope.tenantId ||
@@ -698,17 +700,24 @@ function browserCatalogWriteJournal(
     // no owner write can occur if either storage or the host history annotation fails.
     const initialized = journal(intent);
     const key = storageKey(intent);
-    if (storage.getItem(key) !== null)
+    try {
+      if (storage.getItem(key) !== null)
+        throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+      const baseline = JSON.stringify({
+        scope: { tenantId: scope.tenantId, actorId: scope.actorId },
+        resource,
+        intent,
+        record: null
+      });
+      storage.setItem(key, baseline);
+      if (storage.getItem(key) !== baseline)
+        throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    } catch (error) {
+      if (error instanceof Error && error.message === PRODUCT_RECOVERY_UNAVAILABLE) {
+        throw error;
+      }
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
-    const baseline = JSON.stringify({
-      scope: { tenantId: scope.tenantId, actorId: scope.actorId },
-      resource,
-      intent,
-      record: null
-    });
-    storage.setItem(key, baseline);
-    if (storage.getItem(key) !== baseline)
-      throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
+    }
     initialized.read();
     url.searchParams.set(queryKey, intent);
     window.history.replaceState(window.history.state, '', url);

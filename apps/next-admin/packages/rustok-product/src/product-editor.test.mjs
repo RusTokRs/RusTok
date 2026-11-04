@@ -236,6 +236,12 @@ test('editor initialization restores recovery before enabling writes, including 
     setSettledWrite: (value) => {
       state.settled = value;
     },
+    setPendingAxesInput: (value) => {
+      state.pendingAxes = value;
+    },
+    setPendingVariantInput: (value) => {
+      state.pendingVariant = value;
+    },
     setRecoveryError: (value) => {
       state.error = value;
     },

@@ -43,7 +43,7 @@ fn main() {
     console_error_panic_hook::set_once();
 
     let (locale, route_segment, query_params) = browser_route_context();
-    let enabled_modules = debug_enabled_modules();
+    let enabled_modules = resolve_csr_enabled_modules(&query_params);
 
     mount_to_body(move || {
         if let Some(route_segment) = route_segment.clone() {
@@ -122,28 +122,61 @@ fn looks_like_locale(segment: &str) -> bool {
 }
 
 #[cfg(feature = "csr")]
-fn debug_enabled_modules() -> Vec<String> {
-    [
-        "content",
-        "cart",
-        "customer",
-        "product",
-        "taxonomy",
-        "region",
-        "pricing",
-        "inventory",
-        "order",
-        "payment",
-        "fulfillment",
-        "commerce",
-        "pages",
-        "blog",
-        "forum",
-        "search",
-    ]
-    .into_iter()
-    .map(ToOwned::to_owned)
-    .collect()
+fn read_dom_bootstrap_modules() -> Option<Vec<String>> {
+    let window = web_sys::window()?;
+    let document = window.document()?;
+    let meta = document
+        .query_selector("meta[name='rustok-enabled-modules']")
+        .ok()??;
+    let content = meta.get_attribute("content")?;
+    let modules: Vec<String> = content
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if modules.is_empty() {
+        None
+    } else {
+        Some(modules)
+    }
+}
+
+#[cfg(feature = "csr")]
+fn resolve_csr_enabled_modules(
+    #[allow(unused_variables)] query_params: &std::collections::HashMap<String, String>,
+) -> Vec<String> {
+    if let Some(modules) = read_dom_bootstrap_modules() {
+        return modules;
+    }
+
+    #[cfg(debug_assertions)]
+    if query_params
+        .get("rustok_debug_modules")
+        .map(|v| v.as_str())
+        == Some("true")
+    {
+        return vec![
+            "content".into(),
+            "cart".into(),
+            "customer".into(),
+            "product".into(),
+            "taxonomy".into(),
+            "region".into(),
+            "pricing".into(),
+            "inventory".into(),
+            "order".into(),
+            "payment".into(),
+            "fulfillment".into(),
+            "commerce".into(),
+            "pages".into(),
+            "blog".into(),
+            "forum".into(),
+            "search".into(),
+        ];
+    }
+
+    // Fail closed by default when tenant policy is not yet fetched or configured
+    Vec::new()
 }
 
 #[cfg(not(any(feature = "ssr", feature = "csr")))]

@@ -28,7 +28,8 @@ import {
   attributeDefinitionRefusalCode
 } from './attribute-lifecycle.ts';
 
-const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const id = (n) =>
+  `00000000-0000-4000-8000-${Number(n).toString(16).padStart(12, '0')}`;
 const scope = { tenantId: id(90), actorId: id(91) };
 const unknown = { status: 'unknown', message: 'Response lost' };
 const state = () => ({ text: null, locked: false });

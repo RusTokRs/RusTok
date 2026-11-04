@@ -81,8 +81,21 @@ pub async fn fetch_enabled_modules_graphql(tenant_slug: String) -> Result<Vec<St
 
 #[component]
 pub fn EnabledModulesProvider(initial_modules: Vec<String>, children: Children) -> impl IntoView {
-    let context = EnabledModulesContext::new(initial_modules);
-    provide_context(context);
+    let context = EnabledModulesContext::new(initial_modules.clone());
+    provide_context(context.clone());
+
+    #[cfg(all(feature = "csr", target_arch = "wasm32"))]
+    if initial_modules.is_empty() {
+        let ctx = context.clone();
+        leptos::task::spawn_local(async move {
+            if let Ok(modules) = fetch_enabled_modules().await {
+                if !modules.is_empty() {
+                    ctx.replace_modules(modules);
+                }
+            }
+        });
+    }
+
     children()
 }
 

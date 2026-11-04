@@ -119,6 +119,7 @@ pub(crate) fn convert_create_product_input(
             .custom_fields
             .map(|cf| cf.0)
             .unwrap_or_else(|| serde_json::Value::Object(Default::default())),
+        brands: Vec::new(),
         publish: input.publish.unwrap_or(false),
     })
 }

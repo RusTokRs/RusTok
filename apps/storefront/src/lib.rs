@@ -250,7 +250,11 @@ pub async fn render_shell(
             })
         })
         .await;
-    render_document(locale, "RusToK Storefront", "", app_html, None)
+    let modules_meta = format!(
+        r#"<meta name="rustok-enabled-modules" content="{}" />"#,
+        enabled_modules.join(",")
+    );
+    render_document(locale, "RusToK Storefront", &modules_meta, app_html, None)
 }
 
 #[cfg(feature = "ssr")]
@@ -319,10 +323,19 @@ async fn render_module_page_with_nonce(
     let head_html = seo_context
         .map(|context| build_seo_head(context, csp_nonce))
         .unwrap_or_default();
+    let modules_meta = format!(
+        r#"<meta name="rustok-enabled-modules" content="{}" />"#,
+        enabled_modules.join(",")
+    );
+    let mut head = head_html;
+    if !head.is_empty() {
+        head.push('\n');
+    }
+    head.push_str(&modules_meta);
     render_document(
         locale,
         title.as_str(),
-        head_html.as_str(),
+        head.as_str(),
         app_html,
         csp_nonce,
     )

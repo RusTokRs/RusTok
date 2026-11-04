@@ -7,8 +7,12 @@ const source = await readFile(new URL('./modules.ts', import.meta.url), 'utf8');
 const js =
   stripTypeScriptTypes(source)
     .replace(
-      /import \{ graphqlRequest,?\s*\} from ['\"]\.\/graphql['\"];?/,
+      /import \{[^}]*\} from ['\"]\.\/graphql['\"];?/,
       "const { graphqlRequest } = require('./graphql');"
+    )
+    .replace(
+      /import \{[^}]*\} from ['\"]\.\/http['\"];?/,
+      "const { readHttpError } = require('./http');"
     )
     .replace(/export async function /g, 'async function ')
     .replace(/export const /g, 'const ') +
@@ -26,9 +30,11 @@ function client() {
     graphqlCalls.push(args);
     return { rollbackModuleTransition: { operationId: 'operation' } };
   };
+  const readHttpError = async () => 'http-error';
   const require = (name) => {
-    assert.equal(name, './graphql');
-    return { graphqlRequest };
+    if (name === './graphql') return { graphqlRequest };
+    if (name === './http') return { readHttpError };
+    assert.fail(`unexpected require: ${name}`);
   };
   const crypto = { randomUUID: () => 'generated-key' };
   new Function(
