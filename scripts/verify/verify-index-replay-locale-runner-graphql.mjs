@@ -86,7 +86,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-runner-graphql
   'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
   'Execution/admission remains maintainer-owned',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'optional locale is carried through the multi-page replay runner and GraphQL command transport',
   'Add partition replay scope only after a real partition-capable source contract exists',
   'Add explicit targeted/full/shadow rebuild modes under a separate contract',

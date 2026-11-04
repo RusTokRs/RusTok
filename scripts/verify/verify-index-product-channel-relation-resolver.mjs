@@ -115,7 +115,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relati
   'Automatic convergence',
   'Materialized/query freshness admission',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'bounded cross-owner Product visibility to SalesChannel UUID resolver',
   'one canonical Product Index source',
   'Freshness watermark source complete',

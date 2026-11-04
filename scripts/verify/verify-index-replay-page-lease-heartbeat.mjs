@@ -106,7 +106,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-replay-pending-future-timeou
   'There is deliberately no generic `index_replay_page_timeout` code.',
 ]);
 
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds',
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',

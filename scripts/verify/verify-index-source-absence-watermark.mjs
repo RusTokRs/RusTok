@@ -11,7 +11,7 @@ const files = {
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   doc: "crates/modules/rustok-index/docs/m6-explicit-source-absence-watermark.md",
   readerDoc: "crates/modules/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
 };
 
 const c = Object.fromEntries(

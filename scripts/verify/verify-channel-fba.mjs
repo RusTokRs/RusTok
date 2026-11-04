@@ -42,7 +42,8 @@ for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::
 if (ports.includes('require_write_semantics()?')) fail('channel read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('channel FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('ChannelReadPort') || !plan.includes('channel-contract-test-static-matrix.json') || !plan.includes('channel-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `channel` |') || !central.includes(registryPath) || !central.includes('channel-runtime-fallback-smoke.json') || !central.includes('| `channel` | admin | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
+const hasChannelRow = /\|\s*`channel`\s*\|\s*admin\s*\|\s*`in_progress`\s*\|\s*`boundary_ready`/.test(central);
+if (!central.includes(registryPath) || !central.includes('channel-runtime-fallback-smoke.json') || !hasChannelRow) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'channel' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-channel-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

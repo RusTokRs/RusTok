@@ -31,9 +31,7 @@ const docsPath = 'apps/server/docs/index-reconciliation-operator-runtime.md';
 const exactDocsPath = 'apps/server/docs/index-drift-diagnosis-graphql-transport.md';
 const pageDocsPath = 'apps/server/docs/index-drift-source-page-diagnosis.md';
 const pageTransportDocsPath = 'apps/server/docs/index-drift-source-page-graphql-transport.md';
-const planPath = 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md';
-const recheckPath =
-  'crates/modules/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md';
+const planPath = 'crates/modules/rustok-index/docs/implementation-plan.md';
 
 const composition = requireMarkers(compositionPath, [
   '#[path = "index_reconciliation_operator.rs"]',
@@ -252,10 +250,6 @@ requireMarkers(planPath, [
   '`source_complete_owner_execution_pending`',
   '[x] Expose one bounded source-page GraphQL mutation over the sealed method only.',
   'M6 stale entity, orphan-link, lifecycle, and targeted repair',
-]);
-requireMarkers(recheckPath, [
-  'Bounded GraphQL source-page transport',
-  'did not run tests',
 ]);
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-server-reconciliation-guard.mjs'",

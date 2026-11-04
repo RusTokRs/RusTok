@@ -149,7 +149,10 @@ impl ChannelReadPort for crate::ChannelService {
         let detail = match request.selector {
             ChannelReadSelector::Id(channel_id) => {
                 match self.get_channel_detail(channel_id).await {
-                    Ok(detail) if detail.channel.tenant_id == tenant_id => Some(detail),
+                    Ok(detail) if detail.channel.tenant_id == tenant_id => {
+                        ensure_tenant_scope(tenant_id, &detail)?;
+                        Some(detail)
+                    }
                     Ok(_) => None,
                     Err(crate::ChannelError::NotFound(_)) => None,
                     Err(error) => return Err(map_channel_error(error)),

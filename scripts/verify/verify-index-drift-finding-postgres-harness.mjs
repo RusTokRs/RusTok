@@ -5,11 +5,10 @@ import { readFile } from "node:fs/promises";
 const files = {
   test: "crates/modules/rustok-index/tests/drift_finding_writer_postgres_test.rs",
   doc: "crates/modules/rustok-index/docs/m6-drift-finding-postgres-harness.md",
-  recheck: "crates/modules/rustok-index/docs/implementation-recheck-2026-08-03.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
 };
 
-const [test, doc, recheck, plan] = await Promise.all(
+const [test, doc, plan] = await Promise.all(
   Object.values(files).map((path) => readFile(path, "utf8")),
 );
 
@@ -55,11 +54,6 @@ function requireMarkers(label, content, markers) {
 requireMarkers(files.test, test, requiredTestMarkers);
 requireMarkers(files.doc, doc, requiredDocMarkers);
 requireMarkers(files.plan, plan, requiredPlanMarkers);
-requireMarkers(files.recheck, recheck, [
-  "Audited commit: `e66540bceffe0ae23ee2d04e0f39a1a6ab08aaeb`",
-  "The harness is source-ready only.",
-  "Define the bounded producer contract",
-]);
 
 const forbiddenClaims = [
   "tests passed",
@@ -69,8 +63,7 @@ const forbiddenClaims = [
 ];
 for (const claim of forbiddenClaims) {
   if (
-    doc.toLowerCase().includes(claim.toLowerCase()) ||
-    recheck.toLowerCase().includes(claim.toLowerCase())
+    doc.toLowerCase().includes(claim.toLowerCase())
   ) {
     throw new Error(`documentation makes forbidden execution claim: ${claim}`);
   }

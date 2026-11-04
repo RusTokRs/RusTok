@@ -187,7 +187,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   'No additional independent source-only M6 replay boundary is open',
 ]);
 
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',
   'Guard the existing side-effect-free Shadow replay runtime behind the request-bound `modules:manage` operator boundary.',
   'Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.',

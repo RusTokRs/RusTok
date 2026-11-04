@@ -51,7 +51,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-storefront-localized
   'entity_id < cursor.entity_id',
   'Channel-less visibility',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Status overlay rechecked at `main@',
   'localized identity fold, cursor v3 and requested -> fallback projection',
   'localized PostgreSQL compiler/decoder/runtime with readiness/admission and repeatable-read page/count snapshot',

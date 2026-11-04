@@ -174,7 +174,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-replay-mode-contract.md', [
   '`runIndexReplayTargeted` is a dedicated mutation',
   'No additional independent source-only M6 replay boundary is open',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   '[x] Add a dedicated authorization-first Targeted GraphQL transport over `IndexReplayOperatorRuntime::run_targeted`.',
   'There is no remaining independent source-only M6 replay expansion justified by the current contract.',
 ]);

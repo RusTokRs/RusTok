@@ -109,7 +109,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-locale-replay-runner-graphql
   'runner_graphql_evidence_source_complete_execution_pending',
   'end-to-end GraphQL locale yield/isolation/fresh-runtime resume',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.',
   'Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.',
   'Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.',

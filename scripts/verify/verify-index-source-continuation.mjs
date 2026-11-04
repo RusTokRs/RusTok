@@ -11,7 +11,7 @@ const files = {
   pageGraphql: "apps/server/src/graphql/index_drift_source_page_diagnosis.rs",
   doc: "crates/modules/rustok-index/docs/m6-source-continuation-codec.md",
   serverDoc: "crates/modules/rustok-index/docs/m6-source-continuation-server-keyring.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
   agents: "AGENTS.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };

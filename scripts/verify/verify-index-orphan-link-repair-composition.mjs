@@ -8,7 +8,7 @@ const files = {
   lib: 'crates/modules/rustok-index/src/lib.rs',
   genericDoc: 'crates/modules/rustok-index/docs/m6-targeted-drift-repair.md',
   doc: 'crates/modules/rustok-index/docs/m6-orphan-link-repair-composition.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

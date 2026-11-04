@@ -11,7 +11,7 @@ const files = {
   doc: 'crates/modules/rustok-index/docs/m6-drift-candidate-confirmation.md',
   lifecycleDoc: 'crates/modules/rustok-index/docs/m6-drift-finding-lifecycle.md',
   repairDoc: 'crates/modules/rustok-index/docs/m6-targeted-drift-repair.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

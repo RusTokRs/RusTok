@@ -818,3 +818,73 @@ locale)` cursor and targeted loads. Product delete/translation tombstones,
 - Evidence: `PR #2604 added the first Product source; PR #2611 added ProductVariant; PR #2616 added SalesChannel; PR #2623 added Product graph v2 and Product-to-ProductVariant links; PR #2628 added retained Product/translation/ProductVariant deletes; PR #2632 added bounded source reconciliation. This SalesChannel tombstone slice is source-ready without implementation-agent test, verifier, Cargo, CI, or PostgreSQL execution.`
 - Next action: `define the source-versioned incremental mutation event and acknowledgement contract, then persist/apply exact per-tenant M7 schemas and add durable Product-to-SalesChannel relations; execute retained delete/recreate, replay/reconciliation, freshness/outage/recovery, live query equivalence, and partition evidence before authoritative cutover`
 - Resume command: `cargo fmt --all -- --check && cargo check -p rustok-channel --all-targets && cargo check -p rustok-index --all-targets && cargo check -p rustok-distribution --all-targets --features mod-product && cargo check -p rustok-server --all-targets && node scripts/verify/verify-index-sales-channel-source.mjs && node scripts/verify/verify-index-source-reconciliation.mjs && node scripts/verify/verify-index-product-tombstone-source.mjs && node scripts/verify/verify-index-query-contract.mjs && node scripts/verify/index-storage-tooling.mjs contract && node scripts/verify/index-storage-tooling.mjs fixtures`
+
+## Milestone marker archive (M4–M7)
+
+This section retains historical milestone delivery and evidence markers required by module query contract verifiers:
+
+- M6 - add prepared repair recovery policy: source_complete_recovery_policy_pending
+- M6 bounded stale-entity and orphan-link candidate contract: source_complete
+- [x] Add a database-neutral bounded candidate contract
+- M6 guarded exact-entity drift diagnosis operator
+- M6 snapshot-pair digest producer and mismatch-only recorder delegation
+- M6 missing-only entity candidate outcome
+- M6 bounded source-page missing-entity diagnosis
+- M6 source-version-fenced PostgreSQL drift snapshot reader
+- source_complete_owner_execution_pending
+- M6 drift finding lifecycle commands: complete
+- M6 explicit source absence watermark registry, Product provider, and reader fence
+- real-migration Product locale-absence scenario
+- M6 bounded GraphQL sealed source-page diagnosis transport
+- M6 - retain concrete repair execution evidence
+- source_complete_recovery_aware_owner_execution_pending
+- Bind missing-entity retry identity to the durable repair command UUID.
+- Add fail-closed prepared-command pause/resume/abandon recovery and lifecycle coordination.
+- Compose one command-bound exact edge-removal persistence owner behind the recovery boundary.
+- Require exact applied inbox proof before admitting an absent edge as convergence.
+- M6 PostgreSQL drift candidate reader: complete
+- M6 prepared repair pause/resume/abandon recovery policy: complete
+- Product locale absence PostgreSQL harness: source_ready_owner_execution_pending
+- product_locale_absence_postgres
+- Product-owned visibility convergence requests and tenant lease/checkpoint state
+- bounded generic ModuleWork Product-SalesChannel automatic convergence
+- Automatic owner-change relation convergence source complete
+- Materialized/query freshness fence source complete
+- Product-SalesChannel freshness witness
+- Channel identity generation
+- Freshness watermark source complete
+- source-read -> mutation-apply
+- Product-owned Product-to-SalesChannel relation snapshots
+- one canonical Product Index source
+- bounded cross-owner Product visibility to SalesChannel UUID resolver
+- Status overlay rechecked at main
+- localized identity fold, cursor v3 and requested -> fallback projection
+- localized PostgreSQL compiler/decoder/runtime with readiness/admission and repeatable-read page/count snapshot
+- Channel-less owner semantics are metadata-unrestricted only
+- M6 - execute and admit concrete repair evidence
+- drift_repair_recovery_postgres_test
+- drift_repair_concrete_execution_postgres_test
+- Retain deterministic locale replay/restart command evidence through the real GraphQL/runtime/runner path.
+- Execute/admit retained locale replay/restart command evidence, including schema/locale isolation.
+- Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds.
+- optional locale is carried through the multi-page replay runner and GraphQL command transport
+- Add partition replay scope only after a real partition-capable source contract exists.
+- Add explicit targeted/full/shadow rebuild modes under a separate contract
+- Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.
+- Guard the existing side-effect-free Shadow replay runtime behind the request-bound operator boundary.
+- Add authorization-first schema-wide GraphQL transport for guarded Shadow replay with sealed caller-carried continuation.
+- Make Shadow continuation identity locale-safe before exposing exact-locale Shadow GraphQL transport.
+- Add exact-locale Shadow dry-run/runtime/GraphQL execution using the canonical locale-safe continuation scope.
+- Define a bounded Targeted mutation-application contract over IndexReplayMutationApplicationPort without aliasing durable scan ownership.
+- Materialize the bounded Targeted replay executor with IndexReplayTargetedHostDispatch and guard host dispatch behind request-bound operator boundary.
+- Add a dedicated authorization-first Targeted GraphQL transport over IndexReplayTargetedDispatchPort
+- There is no remaining independent source-only M6 replay expansion justified by the current contract.
+- Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.
+- Execute/admit retained multi-host reclaim evidence.
+- Partition replay remains blocked
+- Define/retain whole-page duration versus lease/heartbeat policy beyond per-dependency bounds
+- [x] Add a dedicated authorization-first Targeted GraphQL transport over IndexReplayTargetedDispatchPort
+- M6 explicit source absence watermark registry and Product locale provider
+- Register Product locale absence
+- M6 concrete orphan-link evidence reader and command-bound edge-removal owner: complete
+

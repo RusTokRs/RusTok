@@ -15,7 +15,7 @@ const files = {
   concreteDoc: 'crates/modules/rustok-index/docs/m6-missing-entity-repair-composition.md',
   orphanDoc: 'crates/modules/rustok-index/docs/m6-orphan-link-repair-composition.md',
   recoveryDoc: 'crates/modules/rustok-index/docs/m6-prepared-repair-recovery.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

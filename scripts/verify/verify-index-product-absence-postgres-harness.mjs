@@ -13,7 +13,7 @@ const files = {
   freshnessMigration:
     "crates/modules/rustok-product/src/migrations/m20260807_000011_add_product_sales_channel_relation_freshness.rs",
   doc: "crates/modules/rustok-index/docs/m6-product-locale-absence-postgres-harness.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
   aggregate: "scripts/verify/verify-index-query-contract.mjs",
 };
 

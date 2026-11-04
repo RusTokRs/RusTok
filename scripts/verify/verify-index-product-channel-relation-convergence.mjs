@@ -218,7 +218,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relati
   'Materialized/query freshness admission for the source-read -> mutation-apply window: source complete',
   'PostgreSQL execution/admission evidence pending',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Product-owned visibility convergence requests and tenant lease/checkpoint state',
   'bounded generic ModuleWork Product-SalesChannel automatic convergence',
   'Automatic owner-change relation convergence source complete',

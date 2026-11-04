@@ -13,7 +13,7 @@ const files = {
   retainedVerifier: 'scripts/verify/verify-index-repair-retained-evidence.mjs',
   doc: 'crates/modules/rustok-index/docs/m6-repair-execution-postgres-harness.md',
   admissionDoc: 'crates/modules/rustok-index/docs/m6-repair-retained-evidence-admission.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 

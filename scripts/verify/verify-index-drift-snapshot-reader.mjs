@@ -8,8 +8,7 @@ const files = {
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
   productProvider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
   doc: "crates/modules/rustok-index/docs/m6-postgres-drift-snapshot-reader.md",
-  recheck: "crates/modules/rustok-index/docs/implementation-recheck-2026-08-05-explicit-absence-watermark.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
 };
 
 const c = Object.fromEntries(
@@ -107,12 +106,6 @@ requireMarkers("doc", [
   "Product locale provider",
   "No retained PostgreSQL execution evidence is claimed",
 ]);
-requireMarkers("recheck", [
-  "Audited baseline: `main@368c79b78549e97a68120358021552b2552b800c`",
-  "`product-locale-absence-postgres`",
-  "index_drift_source_changed_during_capture",
-  "index_drift_source_watermark_missing",
-]);
 requireMarkers("plan", [
   "M6 source-version-fenced PostgreSQL drift snapshot reader",
   "M6 guarded exact-entity drift diagnosis operator",
@@ -129,8 +122,7 @@ for (const claim of [
   "repair is complete",
 ]) {
   if (
-    c.doc.toLowerCase().includes(claim.toLowerCase()) ||
-    c.recheck.toLowerCase().includes(claim.toLowerCase())
+    c.doc.toLowerCase().includes(claim.toLowerCase())
   ) {
     throw new Error(`forbidden completion claim: ${claim}`);
   }

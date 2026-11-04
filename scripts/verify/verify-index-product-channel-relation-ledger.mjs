@@ -135,7 +135,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-relati
   '`product_index_graph_projection_snapshots.projection_epoch`',
   'Product-owned freshness witness',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Product-owned Product-to-SalesChannel relation snapshots',
   'one canonical Product Index source',
   'Product-SalesChannel freshness witness',

@@ -6,8 +6,7 @@ const files = {
   source: 'crates/modules/rustok-index/src/application/drift_candidates.rs',
   applicationMod: 'crates/modules/rustok-index/src/application/mod.rs',
   doc: 'crates/modules/rustok-index/docs/m6-bounded-drift-candidates.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
-  recheck: 'crates/modules/rustok-index/docs/implementation-recheck-2026-08-06-bounded-drift-candidates.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 
@@ -115,11 +114,6 @@ requireMarkers('plan', [
   'M6 bounded stale-entity and orphan-link candidate contract: `source_complete`',
   'source_complete_recovery_policy_pending',
   '[x] Add a database-neutral bounded candidate contract',
-]);
-requireMarkers('recheck', [
-  'Audited baseline: `main@53aeddfbf05ceccea27f6c2f639af904c3ace6b2`.',
-  'This recheck does not claim:',
-  'did not run tests, JavaScript verifiers',
 ]);
 requireMarkers('aggregate', [
   "'verify-index-drift-candidate-contract.mjs'",

@@ -11,7 +11,7 @@ const files = {
   pageDiagnosis: "apps/server/src/services/index_drift_source_page_diagnosis.rs",
   postgresMod: "crates/modules/rustok-index/src/infrastructure/postgres/mod.rs",
   doc: "crates/modules/rustok-index/docs/m6-drift-digest-producer.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
 };
 
 const content = Object.fromEntries(

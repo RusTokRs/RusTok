@@ -203,7 +203,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-conver
 requireMarkers('crates/modules/rustok-index/docs/m7-product-graph-source.md', [
   'Status: `single_current_product_and_storefront_query_source_complete_execution_admission_pending`',
 ]);
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-07.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Product-SalesChannel freshness witness',
   'Channel identity generation',
   'Freshness watermark source complete',

@@ -12,7 +12,7 @@ const files = {
   keyTest: "crates/modules/rustok-index/tests/drift_finding_locale_key_contract.rs",
   postgresTest: "crates/modules/rustok-index/tests/drift_finding_locale_scope_postgres_test.rs",
   doc: "crates/modules/rustok-index/docs/m6-drift-finding-locale-scope.md",
-  plan: "crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md",
+  plan: "crates/modules/rustok-index/docs/implementation-plan.md",
   queryVerifier: "scripts/verify/verify-index-query-contract.mjs",
 };
 

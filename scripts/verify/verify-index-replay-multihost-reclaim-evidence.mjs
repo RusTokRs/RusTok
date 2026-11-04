@@ -111,7 +111,7 @@ requireMarkers('crates/modules/rustok-index/docs/m6-replay-multihost-reclaim-evi
   'Production execution/admission remains maintainer-owned.',
 ]);
 
-requireMarkers('crates/modules/rustok-index/docs/implementation-plan-current-2026-08-08.md', [
+requireMarkers('crates/modules/rustok-index/docs/implementation-plan.md', [
   'Retain deterministic two-host lease-expiry/reclaim/stale-owner fencing evidence through distinct replay runners.',
   'Execute/admit retained multi-host reclaim evidence.',
   'Define explicit Full/Targeted/Shadow replay mode identity and fail-closed execution surfaces.',

@@ -7,7 +7,7 @@ const files = {
   postgresMod: 'crates/modules/rustok-index/src/infrastructure/postgres/mod.rs',
   lib: 'crates/modules/rustok-index/src/lib.rs',
   doc: 'crates/modules/rustok-index/docs/m6-postgres-drift-candidate-reader.md',
-  plan: 'crates/modules/rustok-index/docs/implementation-plan-current-2026-08-03.md',
+  plan: 'crates/modules/rustok-index/docs/implementation-plan.md',
   aggregate: 'scripts/verify/verify-index-query-contract.mjs',
 };
 
