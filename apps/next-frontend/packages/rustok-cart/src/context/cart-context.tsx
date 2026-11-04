@@ -79,6 +79,7 @@ export interface CartProviderProps {
   authReady: boolean;
   authRefused: boolean;
   authScopeIsCurrent: () => boolean;
+  enabled?: boolean;
 }
 
 type Scope = { tenant: string | null; token: string | null; locale: string };
@@ -98,6 +99,7 @@ export function CartProvider({
   authReady,
   authRefused,
   authScopeIsCurrent,
+  enabled = true,
 }: CartProviderProps) {
   const scope = useMemo<Scope>(
     () => ({ tenant: tenantSlug, token: authToken, locale }),
@@ -108,7 +110,7 @@ export function CartProvider({
     cart: null,
     storageKey: null,
     storedId: null,
-    loading: true,
+    loading: enabled,
   });
   const [error, setErrorState] = useState<{
     scope: Scope;
@@ -141,17 +143,19 @@ export function CartProvider({
     [scope, scopeCurrent],
   );
   const current = session.scope === scope ? session : null;
-  const cart = current?.cart ?? null;
-  const actionError = authRefused
-    ? "auth"
-    : error?.scope === scope
-      ? error.code
-      : null;
-  const isLoading = !authReady || (current?.loading ?? true);
-  const isUpdating = operation !== null;
+  const cart = enabled ? (current?.cart ?? null) : null;
+  const actionError = !enabled
+    ? null
+    : authRefused
+      ? "auth"
+      : error?.scope === scope
+        ? error.code
+        : null;
+  const isLoading = enabled ? (!authReady || (current?.loading ?? true)) : false;
+  const isUpdating = enabled && operation !== null;
 
   useEffect(() => {
-    if (!authReady || !scopeCurrent()) return;
+    if (!enabled || !authReady || !scopeCurrent()) return;
     let cancelled = false;
     async function restore() {
       let key: string | null = null;
@@ -222,9 +226,13 @@ export function CartProvider({
     };
   }, [scope, authReady, scopeCurrent, setError]);
 
-  const openCart = useCallback(() => setIsOpen(true), []);
+  const openCart = useCallback(() => {
+    if (enabled) setIsOpen(true);
+  }, [enabled]);
   const closeCart = useCallback(() => setIsOpen(false), []);
-  const toggleCart = useCallback(() => setIsOpen((value) => !value), []);
+  const toggleCart = useCallback(() => {
+    if (enabled) setIsOpen((value) => !value);
+  }, [enabled]);
 
   const commit = useCallback(
     (value: Cart) => {
@@ -239,6 +247,7 @@ export function CartProvider({
   );
 
   const refreshCart = useCallback(async () => {
+    if (!enabled) return;
     const id = current?.cart?.id ?? current?.storedId;
     if (!scopeCurrent() || !id || inFlight.current) return;
     const op = { scope };
@@ -285,6 +294,7 @@ export function CartProvider({
       expectation: CartPricingExpectation,
     ): Promise<boolean> => {
       if (
+        !enabled ||
         !scopeCurrent() ||
         inFlight.current ||
         blockedScope.current === scope ||
@@ -398,6 +408,7 @@ export function CartProvider({
   const mutate = useCallback(
     async (run: (active: Cart) => Promise<Cart | null>): Promise<boolean> => {
       if (
+        !enabled ||
         !scopeCurrent() ||
         !cart ||
         inFlight.current ||
@@ -497,7 +508,7 @@ export function CartProvider({
     [mutate, scope],
   );
   const clearCart = useCallback(() => {
-    if (!scopeCurrent() || inFlight.current || !current?.storageKey) return;
+    if (!enabled || !scopeCurrent() || inFlight.current || !current?.storageKey) return;
     try {
       // Explicit user action drops only this session's local reference, never persisted cart data.
       window.localStorage.setItem(current.storageKey, "");

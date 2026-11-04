@@ -24,6 +24,7 @@ function CartSession({
 }) {
   const auth = useStorefrontAuth();
   const { enabledModules } = useEnabledModulesContext();
+  const isCartEnabled = enabledModules.includes("cart");
   return (
     <CartProvider
       locale={locale}
@@ -32,9 +33,10 @@ function CartSession({
       authReady={auth.ready}
       authRefused={auth.refused}
       authScopeIsCurrent={auth.isCurrent}
+      enabled={isCartEnabled}
     >
       {children}
-      {enabledModules.includes("cart") && (
+      {isCartEnabled && (
         <>
           <CartTrigger locale={locale} />
           <CartDrawer locale={locale} />

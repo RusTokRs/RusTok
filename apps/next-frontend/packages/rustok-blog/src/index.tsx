@@ -22,6 +22,7 @@ export {
 } from "./api/posts";
 export { BlogSection } from "./components/blog-section";
 export { BlogListingView, type BlogListingViewProps } from "./components/blog-listing";
+export { BlogPostDetailView, type BlogPostDetailViewProps } from "./components/blog-detail";
 export { PostCard } from "./components/post-card";
 export { BlogCommentComposer } from "./components/blog-comment-composer";
 export { ThreadedCommentsList } from "./components/threaded-comments";

@@ -627,6 +627,7 @@ impl DirectTaskHandler for ProductCopyHandler {
                     product_type: Patch::Keep,
                     shipping_profile_slug: Patch::Keep,
                     primary_category_id: Patch::Keep,
+                    brands: None,
                     tags: None,
                     metadata: None,
                     status: None,
