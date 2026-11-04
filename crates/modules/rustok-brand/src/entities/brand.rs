@@ -23,6 +23,8 @@ pub enum Relation {
     Translations,
     #[sea_orm(has_many = "super::brand_product::Entity")]
     BrandProducts,
+    #[sea_orm(has_many = "super::brand_category::Entity")]
+    BrandCategories,
 }
 
 impl Related<super::brand_translation::Entity> for Entity {
@@ -34,6 +36,12 @@ impl Related<super::brand_translation::Entity> for Entity {
 impl Related<super::brand_product::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::BrandProducts.def()
+    }
+}
+
+impl Related<super::brand_category::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::BrandCategories.def()
     }
 }
 

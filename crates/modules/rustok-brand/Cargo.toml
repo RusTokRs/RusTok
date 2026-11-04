@@ -19,7 +19,6 @@ rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
-rustok-product = { path = "../rustok-product" }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
@@ -32,4 +31,4 @@ uuid.workspace = true
 tokio.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["rustok-outbox", "rustok-product"]
+normal = ["rustok-outbox"]

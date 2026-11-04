@@ -30,10 +30,11 @@ Adopt the **Hybrid Architecture**: `rustok-brand` owns the brand master catalog 
 `rustok-brand` is the sole canonical source of truth for:
 - Brand identity (`brands` table: `id`, `tenant_id`, `slug`, `logo_media_id`, `banner_media_id`, `website_url`, `is_active`, `metadata`);
 - Parallel localized content (`brand_translations` table: `id`, `brand_id`, `locale`, `name`, `description`, `meta_title`, `meta_description`);
+- Brand-to-category scoping (`brand_categories` table: `id`, `tenant_id`, `brand_id REFERENCES brands(id) ON DELETE CASCADE`, `category_id`, `is_featured`, `created_at`);
 - Unique slug constraints per tenant (`UNIQUE (tenant_id, slug)`);
 - Transactional outbox publications for brand lifecycle events (`BrandCreated`, `BrandUpdated`, `BrandDeleted`);
 - Owner query and command port `BrandPort` / `BrandReadPort`;
-- Brand storefront routing: `/brands` and `/brands/:slug`.
+- Brand storefront routing: `/brands`, `/brands/:slug`, and category-scoped brand indexes `/:category_slug/brands`.
 
 `rustok-brand` **MUST NOT** own product assignment tables (`brand_products` is deprecated and retired).
 
