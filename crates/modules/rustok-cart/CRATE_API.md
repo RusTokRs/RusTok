@@ -23,6 +23,7 @@
 - **`rustok-pricing`**: Re-pricing port provider for catalog and dynamic promotional discounts.
 - **`rustok-fulfillment`**: Shipping option discovery and shipping method validation for cart delivery groups.
 - **`rustok-tax`**: Tax rate calculation and cart tax line generation.
+- **`rustok-region`**: Reads the base and country tax policy through `RegionService::read_tax_policy_in_tx` in the active Cart transaction, including the selected channel provider.
 
 ## Primary Public Types and Signatures
 
@@ -50,7 +51,7 @@
 
 - `rustok-core`
 - `rustok-api`
-- `rustok-commerce-foundation`
+- `rustok-region`
 - `rustok-fulfillment`
 - `rustok-tax`
 

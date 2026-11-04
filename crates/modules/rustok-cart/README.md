@@ -47,6 +47,8 @@
 - Keeps tax provider identity explicit in cart tax-line snapshots, so future
   external tax engines can replace the default runtime without breaking the
   downstream cart/order contract.
+- Reads native Region tax policy through the Region owner service in the Cart
+  write transaction, preserving rollback of line and tax snapshot changes.
 - Persists discounted add-to-cart snapshots atomically, so a storefront line item is
   not created in a temporary “sale-only unit price” state before pricing adjustments land.
 - Exposes a typed promotion runtime for cart-level and line-item percentage/fixed

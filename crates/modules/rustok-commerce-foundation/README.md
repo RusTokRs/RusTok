@@ -14,6 +14,8 @@
 ## Interactions
 
 - Used by `rustok-product`, `rustok-pricing`, `rustok-inventory`, and `rustok-commerce`.
+- Region persistence mappings live privately in `rustok-region`. Consumers use
+  owner projections and fixtures use Region migrations and commands.
 
 ## Entry points
 

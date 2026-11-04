@@ -277,6 +277,11 @@ The fresh report diagnoses these tables independently on each side. It checks
 the expected singleton, column types, identity, counters and references, and
 checks `updated_at` against the installation window measured by PostgreSQL.
 The report marks a difference as clock-only only after both checks pass.
+The PostgreSQL 16.13 full-chain run on 2026-11-04 passed all eight diagnostics
+on both fixtures. Strict comparison still reported those eight timestamp
+differences and blocked equivalence.
+The window spans `up` and `status`. Per-migration clock bounds and independent
+schema/data assertions at each retained boundary remain pending.
 This diagnostic leaves strict comparison and its original digests in force.
 An owner-reviewed disposition is required before the verifier can accept a
 clock-only difference for equivalence.

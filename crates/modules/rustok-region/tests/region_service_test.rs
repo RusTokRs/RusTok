@@ -85,13 +85,22 @@ async fn assert_region_create_and_read(db: DatabaseConnection) {
     input.metadata = serde_json::json!({
         "channel_tax_provider_ids": { channel_id.to_string(): { "provider_id": "region_default" } }
     });
+    input
+        .country_tax_policies
+        .as_mut()
+        .unwrap()
+        .push(RegionCountryTaxPolicyInput {
+            country_code: "FR".into(),
+            tax_rate: Decimal::from(19),
+            tax_included: false,
+        });
     let created = service
         .create_region(tenant_id, input)
         .await
         .expect("region should be created");
     assert_eq!(created.currency_code, "EUR");
     assert_eq!(created.countries, vec!["DE".to_string(), "FR".to_string()]);
-    assert_eq!(created.country_tax_policies.len(), 1);
+    assert_eq!(created.country_tax_policies.len(), 2);
     assert_eq!(created.country_tax_policies[0].country_code, "DE");
     assert_eq!(
         created.country_tax_policies[0].tax_rate,
@@ -128,6 +137,7 @@ async fn assert_region_create_and_read(db: DatabaseConnection) {
         .unwrap()
         .expect("region policy");
     assert_eq!(policy.tax_rate, created.tax_rate);
+    assert_eq!(policy.provider_id, created.tax_provider_id);
     assert_eq!(policy.tax_included, created.tax_included);
     assert_eq!(policy.country_rules, created.country_tax_policies);
     assert_eq!(

@@ -77,7 +77,7 @@ jobs:
         run: |
           rustfmt "+${RUST_TOOLCHAIN}" --edition 2024 --check \
             apps/server/tests/region_translation_target_postgres.rs \
-            crates/modules/rustok-region/src/domain/region.rs \
+            crates/modules/rustok-region/src/domain/mod.rs \
             crates/modules/rustok-region/src/services/region/mod.rs \
             crates/modules/rustok-region/src/services/translation.rs \
             crates/modules/rustok-region/src/services/translation_progress.rs \

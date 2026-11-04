@@ -1539,7 +1539,6 @@ where
 mod tests {
     use super::*;
     use serde_json::json;
-    use uuid::Uuid;
 
     #[test]
     fn tax_class_helpers_read_trimmed_tax_classes() {

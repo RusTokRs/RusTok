@@ -37,18 +37,23 @@ pub(super) async fn load_tax_policy(
             channel_provider_id: channel_tax_provider_id(&region.metadata, channel_id),
             tax_rate: region.tax_rate,
             tax_included: region.tax_included,
-            country_rules: rules.into_iter().map(map_country_tax_policy).collect(),
+            country_rules: map_country_tax_policies(rules),
         }))
 }
 
-fn map_country_tax_policy(
-    policy: entities::region_country_tax_policy::Model,
-) -> RegionCountryTaxPolicyResponse {
-    RegionCountryTaxPolicyResponse {
-        country_code: policy.country_code,
-        tax_rate: policy.tax_rate,
-        tax_included: policy.tax_included,
-    }
+fn map_country_tax_policies(
+    policies: Vec<entities::region_country_tax_policy::Model>,
+) -> Vec<RegionCountryTaxPolicyResponse> {
+    let mut policies = policies
+        .into_iter()
+        .map(|policy| RegionCountryTaxPolicyResponse {
+            country_code: policy.country_code,
+            tax_rate: policy.tax_rate,
+            tax_included: policy.tax_included,
+        })
+        .collect::<Vec<_>>();
+    policies.sort_by(|left, right| left.country_code.cmp(&right.country_code));
+    policies
 }
 
 pub(super) async fn load_region(
@@ -162,10 +167,7 @@ fn map_region(
         tax_provider_id: model.tax_provider_id,
         tax_rate: model.tax_rate,
         tax_included: model.tax_included,
-        country_tax_policies: country_tax_policies
-            .into_iter()
-            .map(map_country_tax_policy)
-            .collect(),
+        country_tax_policies: map_country_tax_policies(country_tax_policies),
         countries,
         metadata: model.metadata,
         created_at: model.created_at.with_timezone(&Utc),
