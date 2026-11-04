@@ -68,6 +68,7 @@ pub fn BrandAdmin() -> impl IntoView {
                             Some(search_term.trim().to_string())
                         },
                         is_active: active,
+                        category_id: None,
                         page: 1,
                         per_page: 100,
                     },

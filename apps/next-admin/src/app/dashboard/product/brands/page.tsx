@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { BrandsPage, listCatalogCategories } from '@rustok/product-admin';
+import { BrandsPage, listCatalogCategories, type CatalogCategorySummary } from '@rustok/product-admin';
 
 export const metadata = {
   title: 'RusTok Admin: Brands'
@@ -12,7 +12,7 @@ export default async function Page() {
   const tenantSlug = session?.user?.tenantSlug ?? null;
   const tenantId = session?.user?.tenantId ?? null;
 
-  let categories = [];
+  let categories: CatalogCategorySummary[] = [];
   try {
     categories = await listCatalogCategories(
       { token, tenantSlug, tenantId },

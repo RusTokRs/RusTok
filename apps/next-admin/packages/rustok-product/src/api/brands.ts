@@ -116,7 +116,11 @@ export async function listBrands(
   filter?: BrandFilterInput,
   locale?: string
 ): Promise<BrandListResponse> {
-  const data = await graphqlRequest<{ brands: BrandListResponse }>(
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    Record<string, unknown>,
+    { brands: BrandListResponse }
+  >(
     BRANDS_QUERY,
     {
       page: filter?.page ?? 1,
@@ -139,7 +143,11 @@ export async function listCategoryBrands(
   categoryId: string,
   locale?: string
 ): Promise<BrandSummary[]> {
-  const data = await graphqlRequest<{ categoryBrands: BrandSummary[] }>(
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    Record<string, unknown>,
+    { categoryBrands: BrandSummary[] }
+  >(
     CATEGORY_BRANDS_QUERY,
     {
       categoryId,
@@ -157,7 +165,11 @@ export async function createBrand(
   opts: GqlOpts,
   input: CreateBrandPayload
 ): Promise<BrandSummary> {
-  const data = await graphqlRequest<{ createBrand: BrandSummary }>(
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    Record<string, unknown>,
+    { createBrand: BrandSummary }
+  >(
     CREATE_BRAND_MUTATION,
     {
       input: {
@@ -181,7 +193,11 @@ export async function updateBrand(
   id: string,
   input: UpdateBrandPayload
 ): Promise<BrandSummary> {
-  const data = await graphqlRequest<{ updateBrand: BrandSummary }>(
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    Record<string, unknown>,
+    { updateBrand: BrandSummary }
+  >(
     UPDATE_BRAND_MUTATION,
     {
       id,
@@ -205,7 +221,11 @@ export async function deleteBrand(
   opts: GqlOpts,
   id: string
 ): Promise<boolean> {
-  const data = await graphqlRequest<{ deleteBrand: boolean }>(
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
+    Record<string, unknown>,
+    { deleteBrand: boolean }
+  >(
     DELETE_BRAND_MUTATION,
     { id },
     opts.token,

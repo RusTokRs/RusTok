@@ -18,7 +18,7 @@ import {
   TableHead,
   TableHeader,
   TableRow
-} from '@/shared/ui/shadcn/table';
+} from '@/widgets/data-table/table';
 import { ExternalLink, Trash2 } from 'lucide-react';
 import type { BrandSummary } from '../../api/types';
 
