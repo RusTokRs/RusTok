@@ -3,8 +3,8 @@
   "private": true,
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
-    "autoprefixer": "^10.6.1",
-    "postcss": "^8.5.29",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4.2.1"
   },
   "scripts": {
