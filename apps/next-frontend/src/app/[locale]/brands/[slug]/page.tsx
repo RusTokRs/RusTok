@@ -55,7 +55,7 @@ export async function generateMetadata({
     const res = await storefrontGraphql<{ brandBySlug: BrandDetail | null }>({
       query: BRAND_BY_SLUG_QUERY,
       variables: { slug, locale },
-      tenant: tenantSlug
+      tenant: tenantSlug ?? undefined
     });
     const brand = res.data?.brandBySlug;
     if (brand) {
@@ -85,7 +85,7 @@ export default async function BrandDetailPage({
     const res = await storefrontGraphql<{ brandBySlug: BrandDetail | null }>({
       query: BRAND_BY_SLUG_QUERY,
       variables: { slug, locale },
-      tenant: tenantSlug
+      tenant: tenantSlug ?? undefined
     });
     brand = res.data?.brandBySlug ?? null;
   } catch {
@@ -202,7 +202,15 @@ export default async function BrandDetailPage({
             </p>
           </div>
         ) : (
-          <ProductGrid products={productsResponse.items} locale={locale} />
+          <ProductGrid
+            products={productsResponse.items}
+            total={productsResponse.total}
+            currentPage={productsResponse.page}
+            perPage={productsResponse.perPage}
+            hasNext={productsResponse.hasNext}
+            locale={locale}
+            showFilters={false}
+          />
         )}
       </div>
     </div>

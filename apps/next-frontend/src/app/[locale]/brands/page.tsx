@@ -81,7 +81,7 @@ export default async function BrandsPage({
         locale,
         categoryId
       },
-      tenant: tenantSlug
+      tenant: tenantSlug ?? undefined
     });
     brands = res.data?.brands?.items ?? [];
   } catch {
