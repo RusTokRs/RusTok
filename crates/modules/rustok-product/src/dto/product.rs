@@ -26,6 +26,31 @@ fn validate_tenant_locale(locale: &str) -> Result<(), ValidationError> {
     }
 }
 
+fn default_brand_role() -> String {
+    "manufacturer".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
+pub struct ProductBrandInput {
+    pub brand_id: Uuid,
+    #[serde(default)]
+    pub is_primary: bool,
+    #[serde(default = "default_brand_role")]
+    #[validate(length(min = 1, max = 32, message = "Role must be 1-32 characters"))]
+    pub role: String,
+    #[serde(default)]
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProductBrandResponse {
+    pub id: Uuid,
+    pub brand_id: Uuid,
+    pub is_primary: bool,
+    pub role: String,
+    pub position: i32,
+}
+
 /// Typed value edits composed into the catalog owner transaction, not a nested command.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProductAttributeValueBatch {
