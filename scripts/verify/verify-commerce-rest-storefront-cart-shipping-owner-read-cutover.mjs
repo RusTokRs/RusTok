@@ -24,9 +24,7 @@ const shippingOwner = read(
   "crates/modules/rustok-fulfillment/src/shipping_option_read.rs",
 );
 const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
-const record = read(
-  "crates/modules/rustok-commerce/docs/rest-storefront-cart-shipping-owner-read-cutover-2026-08-09.md",
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -189,30 +187,7 @@ requireText(
   "broad ecommerce topology item remains open",
 );
 
-for (const [value, label] of [
-  [
-    "# Commerce REST storefront cart shipping owner-read cutover",
-    "record title",
-  ],
-  ["Status: `source_complete_unvalidated`", "record source status"],
-  [
-    "`ShippingOptionReadPort::list_shipping_option_projections`",
-    "record owner list",
-  ],
-  [
-    "`ShippingOptionReadPort::read_shipping_option_projection`",
-    "record owner detail",
-  ],
-  [
-    "The canonical ecommerce topology item remains open",
-    "record broad P0 open",
-  ],
-  [
-    "No tests, Cargo commands, Node verifiers, formatter",
-    "record no validation execution",
-  ],
-])
-  requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error(

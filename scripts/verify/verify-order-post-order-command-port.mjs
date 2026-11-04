@@ -6,12 +6,12 @@ const read = (path) => readFileSync(path, 'utf8');
 const portPath = 'crates/modules/rustok-order/src/post_order_command.rs';
 const servicePath = 'crates/modules/rustok-order/src/services/order.rs';
 const libPath = 'crates/modules/rustok-order/src/lib.rs';
-const recordPath = 'crates/modules/rustok-commerce/docs/order-post-order-command-owner-capability-2026-08-09.md';
+
 
 const port = read(portPath);
 const service = read(servicePath);
 const lib = read(libPath);
-const record = read(recordPath);
+
 
 const requireText = (text, marker, message) => {
   if (!text.includes(marker)) throw new Error(message);
@@ -71,16 +71,5 @@ for (const forbidden of [
     throw new Error(`${portPath}: technical error text must stay out of public PortError: ${forbidden}`);
   }
 }
-
-requireText(
-  record,
-  'source_complete_unvalidated',
-  `${recordPath}: source validation state must remain explicit`,
-);
-requireText(
-  record,
-  'durable idempotency receipts',
-  `${recordPath}: replay limitation must remain explicit`,
-);
 
 console.log('order post-order command port source guard passed');

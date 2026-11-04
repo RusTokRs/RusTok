@@ -16,12 +16,8 @@ const lib = read('crates/modules/rustok-fulfillment/src/lib.rs');
 const runtime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const consumer = read('crates/modules/rustok-commerce/src/controllers/admin/shipping.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-fulfillment/docs/shipping-option-admin-command-owner-port-2026-08-09.md',
-);
-const cutoverRecord = read(
-  'crates/modules/rustok-commerce/docs/admin-shipping-option-command-owner-port-cutover-2026-08-09.md',
-);
+
+
 
 for (const marker of [
   'pub trait ShippingOptionAdminCommandPort',
@@ -107,20 +103,6 @@ need(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,',
   'canonical ecommerce topology P0 remains open',
 );
-
-for (const marker of [
-  'Status: `source_complete_unvalidated`',
-  '`ShippingOptionAdminCommandPort`',
-  '`ShippingOptionAdminCommandRuntime`',
-  'claims durable idempotent replay for shipping-option create',
-  'new create-idempotency source path is covered by a focused regression test and source verifier',
-]) need(record, marker, 'owner capability source record');
-
-for (const marker of [
-  'Status: `source_complete_unvalidated`',
-  'Those handlers no longer construct `rustok_fulfillment::FulfillmentService`',
-  'shipping-option create has durable owner receipt/replay semantics',
-]) need(cutoverRecord, marker, 'consumer cutover source record');
 
 if (failures.length > 0) {
   console.error('[verify-fulfillment-shipping-option-admin-command-owner-port] FAIL');

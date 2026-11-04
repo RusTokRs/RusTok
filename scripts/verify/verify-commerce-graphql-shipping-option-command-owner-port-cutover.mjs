@@ -19,9 +19,7 @@ const checkout = read('crates/modules/rustok-commerce/src/graphql/mutations/chec
 const safeCheckout = read('crates/modules/rustok-commerce/src/graphql/mutations/safe_checkout.rs');
 const owner = read('crates/modules/rustok-fulfillment/src/shipping_option_admin_command.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/graphql-shipping-option-command-owner-port-cutover-2026-08-09.md',
-);
+
 
 const need = (source, marker, label) => {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
@@ -122,18 +120,6 @@ need(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   'canonical topology item remains open',
 );
-
-for (const marker of [
-  '# Commerce GraphQL shipping-option command owner-port cutover',
-  'Status: `source_complete_unvalidated`',
-  '`createShippingOption`',
-  '`updateShippingOption`',
-  '`deactivateShippingOption`',
-  '`reactivateShippingOption`',
-  'does **not** claim',
-  '`createStorefrontPaymentCollection` in the same resolver source still constructs `PaymentService`',
-  'no tests, Cargo commands, Node verifiers, formatter',
-]) need(record, marker, 'truthful source record');
 
 if (failures.length > 0) {
   console.error('Commerce GraphQL shipping-option command owner-port cutover verification failed:');

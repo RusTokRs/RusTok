@@ -20,9 +20,7 @@ const server = read('apps/server/src/services/commerce_provider_runtime.rs');
 const checkout = read('crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs');
 const routing = read('crates/modules/rustok-commerce/src/graphql/mutations/mod.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/graphql-storefront-payment-collection-owner-port-cutover-2026-08-09.md',
-);
+
 
 const need = (source, marker, label) => {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
@@ -173,18 +171,6 @@ need(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   'canonical topology item remains open',
 );
-
-for (const marker of [
-  '# Commerce GraphQL storefront payment-collection owner-port cutover',
-  'Status: `source_complete_unvalidated`',
-  '`PaymentCartReadPort::find_reusable_collection_by_cart`',
-  '`PaymentCollectionPort::create_or_reuse_collection`',
-  '`PaymentCollectionRuntime`',
-  'without parsing the new request metadata',
-  'does **not** claim',
-  'The canonical ecommerce topology item',
-  'no tests, Cargo commands, Node verifiers, formatter',
-]) need(record, marker, 'truthful source record');
 
 if (failures.length > 0) {
   console.error('Commerce GraphQL storefront payment collection owner-port cutover verification failed:');

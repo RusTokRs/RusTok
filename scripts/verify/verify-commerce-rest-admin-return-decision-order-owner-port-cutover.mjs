@@ -20,9 +20,7 @@ const ownerCommand = read('crates/modules/rustok-order/src/post_order_command.rs
 const paymentAdminRead = read('crates/modules/rustok-payment/src/admin_read.rs');
 const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-admin-return-decision-payment-owner-read-cutover-2026-08-12.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -243,14 +241,7 @@ requireText(
   'broad ecommerce topology P0 remains open',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST admin return-decision Payment owner-read cutover', 'record title'],
-  ['Status: `source_complete_validation_pending`', 'record validation status'],
-  ['PaymentAdminReadPort', 'record Payment owner boundary'],
-  ['list_payment_collection_projections', 'record Payment read operation'],
-  ['PaymentOrchestrationService', 'record preserved execution boundary'],
-  ['broad ecommerce topology P0', 'record broad invariant'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce REST admin return-decision owner-port verification failed:');

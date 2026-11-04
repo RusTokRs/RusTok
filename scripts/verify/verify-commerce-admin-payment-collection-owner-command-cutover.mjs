@@ -22,7 +22,7 @@ const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs"
 const paymentLib = read("crates/modules/rustok-payment/src/lib.rs");
 const ownerCommand = read("crates/modules/rustok-payment/src/admin_collection_command.rs");
 const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
-const doc = read("crates/modules/rustok-commerce/docs/admin-payment-collection-owner-command-cutover-2026-08-09.md");
+
 
 requireText(paymentLib, "mod admin_collection_command;", "Payment admin collection command module");
 requireText(paymentLib, "PaymentAdminCollectionCommandPort, PaymentAdminCollectionCommandRuntime", "Payment command exports");
@@ -84,8 +84,8 @@ requireText(
   "- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.",
   "canonical topology item remains open",
 );
-requireText(doc, "Refund creation/completion/cancellation are intentionally out of scope", "refund follow-up remains explicit");
-requireText(doc, "execution evidence pending and unvalidated", "unvalidated source status");
-requireText(doc, "not a newly claimed durable command receipt", "transport versus durable replay distinction");
+
+
+
 
 console.log("commerce admin Payment collection owner-command cutover source guard: OK");

@@ -870,7 +870,7 @@ These are source-contract defects, not verification-only tasks.
 - [ ] Execute the minimal/base and marketplace-financial compile/migration profiles and
       the new topology guard, then retain evidence when validation policy allows it.
 - [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,
-      Payment, and Fulfillment concrete services behind host-composed owner ports.
+  Payment, and Fulfillment concrete services behind host-composed owner ports.
 - [x] Route checkout-plan shipping-option reads through the typed
       `ShippingOptionReadPort`; the builder no longer constructs `FulfillmentService`
       and accepts a host-selected shipping-option read port.

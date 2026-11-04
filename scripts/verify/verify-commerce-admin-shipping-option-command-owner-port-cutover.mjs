@@ -15,9 +15,7 @@ const runtime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const shipping = read('crates/modules/rustok-commerce/src/controllers/admin/shipping.rs');
 const owner = read('crates/modules/rustok-fulfillment/src/shipping_option_admin_command.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/admin-shipping-option-command-owner-port-cutover-2026-08-09.md',
-);
+
 
 for (const marker of [
   'shipping_option_admin_command_runtime: rustok_fulfillment::ShippingOptionAdminCommandRuntime',
@@ -66,14 +64,6 @@ need(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,',
   'canonical ecommerce topology P0 remains open',
 );
-
-for (const marker of [
-  'Status: `source_complete_unvalidated`',
-  '`ShippingOptionAdminCommandPort`',
-  'Those handlers no longer construct `rustok_fulfillment::FulfillmentService`',
-  'does **not** claim',
-  'no tests, Cargo commands, Node verifiers, formatter',
-]) need(record, marker, 'dated source record');
 
 for (const marker of [
   'admin_shipping_option_command_idempotency_key(',

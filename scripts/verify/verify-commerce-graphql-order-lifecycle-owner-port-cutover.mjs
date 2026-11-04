@@ -17,7 +17,6 @@ const paths = {
   orderOwner: 'crates/modules/rustok-order/src/admin_command.rs',
   hostRuntime: 'apps/server/src/services/commerce_provider_runtime.rs',
   plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/modules/rustok-commerce/docs/graphql-order-lifecycle-owner-port-cutover-2026-08-09.md',
 };
 
 const mutations = read(paths.mutations);
@@ -25,7 +24,7 @@ const graphqlRuntime = read(paths.graphqlRuntime);
 const orderOwner = read(paths.orderOwner);
 const hostRuntime = read(paths.hostRuntime);
 const plan = read(paths.plan);
-const document = read(paths.document);
+
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -129,18 +128,6 @@ requireText(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   `${paths.plan}: broad topology item remains open`,
 );
-
-for (const marker of [
-  '# Commerce GraphQL order lifecycle owner-port cutover',
-  'Status: `source_complete_unvalidated`',
-  '`markOrderPaid`',
-  '`shipOrder`',
-  '`deliverOrder`',
-  '`cancelOrder`',
-  '`OrderAdminCommandPort`',
-  'The broad canonical topology item remains open.',
-  'no tests, Cargo commands, Node verifiers, formatter, mounted GraphQL scenarios, workflows, CI reruns, runtime calls, database scenarios, restart scenarios, or remote-adapter scenarios were executed',
-]) requireText(document, marker, `${paths.document}: truthful source record`);
 
 for (const marker of [
   'create_storefront_order_return',

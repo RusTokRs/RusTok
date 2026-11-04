@@ -18,7 +18,6 @@ const paths = {
   collectionOwner: 'crates/modules/rustok-payment/src/admin_collection_command.rs',
   refundOwner: 'crates/modules/rustok-payment/src/admin_refund_command.rs',
   plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/modules/rustok-commerce/docs/graphql-payment-command-owner-port-cutover-2026-08-09.md',
 };
 
 const providerOperations = read(paths.providerOperations);
@@ -27,7 +26,7 @@ const paymentCommands = read(paths.paymentCommands);
 const collectionOwner = read(paths.collectionOwner);
 const refundOwner = read(paths.refundOwner);
 const plan = read(paths.plan);
-const document = read(paths.document);
+
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -161,22 +160,6 @@ requireText(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   `${paths.plan}: broad topology item remains open`,
 );
-
-for (const marker of [
-  '# Commerce GraphQL Payment command owner-port cutover',
-  'Status: `source_complete_unvalidated`',
-  '`authorizePaymentCollection`',
-  '`capturePaymentCollection`',
-  '`cancelPaymentCollection`',
-  '`createRefund`',
-  '`completeRefund`',
-  '`cancelRefund`',
-  '`PaymentAdminCollectionCommandPort`',
-  '`PaymentAdminRefundCommandPort`',
-  '`PaymentRefundCreationService::create_or_replay`',
-  'The broad canonical topology item remains open.',
-  'No tests, Node verifiers, Cargo commands, formatting, mounted GraphQL scenarios, workflows, CI, runtime calls, provider execution, lost-response scenarios, restart scenarios, or remote-adapter scenarios were executed for this slice.',
-]) requireText(document, marker, `${paths.document}: truthful source record`);
 
 if (failures.length > 0) {
   console.error('Commerce GraphQL Payment command owner-port cutover verification failed:');

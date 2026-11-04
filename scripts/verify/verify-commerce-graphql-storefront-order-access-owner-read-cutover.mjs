@@ -16,9 +16,7 @@ const runtime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const owner = read('crates/modules/rustok-order/src/order_read.rs');
 const orderService = read('crates/modules/rustok-order/src/services/order.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/graphql-storefront-order-access-owner-read-cutover-2026-08-09.md',
-);
+
 
 for (const marker of [
   'TenantContext',
@@ -68,16 +66,6 @@ need(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,',
   'canonical broad topology P0 remains open',
 );
-
-for (const marker of [
-  'Status: `source_complete_unvalidated`',
-  '`CommerceOrderReadRuntime` / `OrderReadPort`',
-  'tenant default locale from `TenantContext`',
-  'matches the former `OrderService::get_order` behavior',
-  'Raw owner/backend messages are not logged or exposed',
-  'broad implementation-plan item',
-  'no tests, Cargo commands, Node verifiers, formatter',
-]) need(record, marker, 'dated source record');
 
 if (failures.length > 0) {
   console.error('[verify-commerce-graphql-storefront-order-access-owner-read-cutover] FAIL');

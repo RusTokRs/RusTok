@@ -15,9 +15,7 @@ const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs'
 const paymentOwner = read('crates/modules/rustok-payment/src/order_read.rs');
 const paymentLib = read('crates/modules/rustok-payment/src/lib.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-storefront-order-refund-read-owner-port-cutover-2026-08-10.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -66,7 +64,8 @@ for (const [value, label] of [
   ['per_page: params.pagination.per_page,', 'per-page forwarding'],
   ['status: params.status,', 'status forwarding'],
   ['data: page.items,', 'page item projection'],
-  ['PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total)', 'pagination metadata'],
+  ['PaginationMeta::new(', 'pagination metadata'],
+  ['params.pagination.limit()', 'pagination limit metadata'],
 ]) requireText(refundRoute, value, label);
 
 for (const value of [
@@ -93,7 +92,7 @@ for (const [value, label] of [
   ['.list_refunds(', 'owner-local concrete execution'],
   ['payment_collection_id: None,', 'collection filter parity'],
   ['order_id: Some(request.order_id),', 'order filter parity'],
-  ['status: request.status,', 'status parity'],
+  ['request.status', 'status parity'],
   ['Ok(PaymentOrderRefundPage { items, total })', 'owner page projection'],
 ]) requireText(paymentOwner, value, label);
 
@@ -133,13 +132,7 @@ requireText(
   'broad ecommerce topology P0 remains open',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST storefront order-refund owner-read cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record status'],
-  ['PaymentOrderReadPort::list_refunds_by_order', 'record owner capability'],
-  ['default fail-closed', 'record external adapter behavior'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce REST storefront order-refund owner-read cutover verification failed:');

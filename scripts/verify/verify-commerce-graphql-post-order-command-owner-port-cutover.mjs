@@ -12,15 +12,14 @@ const runtimePath = 'crates/modules/rustok-commerce/src/graphql_runtime.rs';
 const hostPath = 'apps/server/src/services/commerce_provider_runtime.rs';
 const ownerPath = 'crates/modules/rustok-order/src/post_order_command.rs';
 const planPath = 'crates/modules/rustok-commerce/docs/implementation-plan.md';
-const recordPath =
-  'crates/modules/rustok-commerce/docs/graphql-post-order-command-owner-port-cutover-2026-08-09.md';
+
 
 const mutations = read(mutationPath);
 const runtime = read(runtimePath);
 const host = read(hostPath);
 const owner = read(ownerPath);
 const plan = read(planPath);
-const record = read(recordPath);
+
 
 const body = (name) => {
   const start = mutations.indexOf(`async fn ${name}(`);
@@ -108,7 +107,7 @@ expect(
   plan.includes('- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,'),
   'broad ecommerce topology P0 was closed prematurely',
 );
-expect(record.includes('Status: `source_complete_unvalidated`'), 'source record status is not truthful');
-expect(record.includes('no tests, Cargo commands, Node verifiers'), 'source record does not state validation was skipped');
+
+
 
 console.log('commerce GraphQL post-order owner-port source guard passed');

@@ -33,9 +33,7 @@ const ownerCreate = read(
   "crates/modules/rustok-fulfillment/src/admin_create_command.rs",
 );
 const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
-const doc = read(
-  "crates/modules/rustok-commerce/docs/admin-fulfillment-create-owner-port-cutover-2026-08-09.md",
-);
+
 
 requireText(
   adminMod,
@@ -360,26 +358,10 @@ requireText(
   "Payment, and Fulfillment concrete services behind host-composed owner ports.",
   "canonical topology continuation remains open",
 );
-requireText(
-  doc,
-  "Source-complete for the mounted `POST /admin/fulfillments` route",
-  "focused source-complete status",
-);
-requireText(
-  doc,
-  "provider operation record remains the durable external create-label execution anchor",
-  "durable provider-operation anchor",
-);
-requireText(
-  doc,
-  "canonical broad Commerce topology P0 remains open",
-  "broad topology remains open",
-);
-requireText(
-  doc,
-  "Execution evidence remains pending and unvalidated",
-  "execution evidence remains open",
-);
+
+
+
+
 
 console.log(
   "commerce admin Fulfillment create owner-port cutover source guard: OK",

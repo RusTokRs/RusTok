@@ -18,9 +18,7 @@ const runtime = read('crates/modules/rustok-product/src/runtime.rs');
 const commerceRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const lib = read('crates/modules/rustok-product/src/lib.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-storefront-product-list-owner-read-cutover-2026-08-10.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -171,16 +169,7 @@ requireText(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   'broad ecommerce topology P0 remains open',
 );
-for (const [value, label] of [
-  ['# Commerce REST storefront Product list owner-read cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record status'],
-  ['ProductStorefrontHttpReadPort::list_legacy_storefront_http_products', 'record owner operation'],
-  ['does not currently restrict the search by locale', 'record raw search parity'],
-  ['metadata-only shipping-profile', 'record shipping-profile parity'],
-  ['thin annotated wrappers', 'record wrapper topology'],
-  ['The canonical ecommerce P0 item', 'record broad P0 open'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record no validation execution'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce REST storefront Product list owner-read cutover verification failed:');

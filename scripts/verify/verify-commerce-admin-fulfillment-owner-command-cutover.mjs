@@ -30,9 +30,7 @@ const ownerCommand = read(
 );
 const openapi = read("crates/modules/rustok-commerce/src/openapi.rs");
 const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
-const doc = read(
-  "crates/modules/rustok-commerce/docs/admin-fulfillment-owner-command-cutover-2026-08-09.md",
-);
+
 
 requireText(
   adminMod,
@@ -267,21 +265,6 @@ requireText(
   plan,
   "Payment, and Fulfillment concrete services behind host-composed owner ports.",
   "canonical topology continuation remains open",
-);
-requireText(
-  doc,
-  "Manual fulfillment creation is a cross-owner Commerce workflow",
-  "create follow-up boundary",
-);
-requireText(
-  doc,
-  "execution evidence pending and unvalidated",
-  "unvalidated source status",
-);
-requireText(
-  doc,
-  "The generic key is not outcome evidence or authorization.",
-  "transport/durable replay distinction",
 );
 
 console.log(

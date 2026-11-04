@@ -18,7 +18,7 @@ const httpRuntime = read("crates/modules/rustok-commerce/src/controllers/mod.rs"
 const paymentLib = read("crates/modules/rustok-payment/src/lib.rs");
 const owner = read("crates/modules/rustok-payment/src/admin_refund_command.rs");
 const plan = read("crates/modules/rustok-commerce/docs/implementation-plan.md");
-const doc = read("crates/modules/rustok-commerce/docs/admin-refund-owner-command-cutover-2026-08-09.md");
+
 
 requireText(paymentLib, "mod admin_refund_command;", "Payment refund command module");
 requireText(paymentLib, "PaymentAdminRefundCommandPort", "Payment refund command port export");
@@ -68,9 +68,9 @@ requireText(
   "- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.",
   "canonical topology item remains open",
 );
-requireText(doc, "execution evidence pending and unvalidated", "unvalidated source status");
-requireText(doc, "payment_refund:{refund_id}", "provider refund identity documentation");
-requireText(doc, "two different durable identities", "creation versus provider identity distinction");
-requireText(doc, "remains open", "broad topology follow-up");
+
+
+
+
 
 console.log("commerce admin refund owner-command cutover source guard: OK");

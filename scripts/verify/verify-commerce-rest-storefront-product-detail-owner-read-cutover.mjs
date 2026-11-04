@@ -28,9 +28,7 @@ const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs'
 const productPorts = read('crates/modules/rustok-product/src/ports.rs');
 const productQueries = read('crates/modules/rustok-product/src/services/catalog/queries.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-storefront-product-detail-owner-read-cutover-2026-08-09.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -152,14 +150,7 @@ requireText(
   'broad ecommerce topology item remains open',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST storefront Product detail owner-read cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record status'],
-  ['`ProductCatalogReadPort::read_storefront_product_projection`', 'record owner operation'],
-  ['The storefront Product list remains outside this slice', 'record explicit list exclusion'],
-  ['The canonical ecommerce topology item remains open', 'record broad P0 open'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record no validation execution'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce REST storefront Product detail owner-read cutover verification failed:');

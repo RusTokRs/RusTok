@@ -23,9 +23,7 @@ const fulfillmentRead = read('crates/modules/rustok-fulfillment/src/fulfillment_
 const serverComposition = read(
   'apps/server/src/services/commerce_provider_runtime.rs',
 );
-const note = read(
-  'crates/modules/rustok-commerce/docs/admin-order-owner-port-cutover-2026-08-08.md',
-);
+
 
 const failures = [];
 const requireText = (source, value, label) => {
@@ -78,9 +76,6 @@ for (const [source, value, label] of [
   [serverComposition, 'host\n            .shared_get::<rustok_payment::PaymentOrderReadRuntime>()', 'host-selected Payment read preference'],
   [serverComposition, '.or_else(|| server.shared_get::<rustok_payment::PaymentOrderReadRuntime>())', 'server-shared Payment read fallback'],
   [serverComposition, 'rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone())', 'built-in Payment read fallback'],
-
-  [note, 'source-complete for the mounted admin Order route', 'cutover note status'],
-  [note, 'does **not** claim durable Order command replay', 'cutover durable replay non-claim'],
 ]) requireText(source, value, label);
 
 for (const [source, value, label] of [

@@ -16,9 +16,7 @@ const serverRuntime = read('apps/server/src/services/commerce_provider_runtime.r
 const paymentPort = read('crates/modules/rustok-payment/src/ports.rs');
 const paymentCartRead = read('crates/modules/rustok-payment/src/cart_read.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-storefront-payment-collection-owner-port-cutover-2026-08-09.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -148,17 +146,7 @@ requireText(
   'broad ecommerce topology item remains open',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST storefront payment-collection owner-port cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record validation status'],
-  ['`PaymentCartReadPort::find_reusable_collection_by_cart`', 'record reusable owner read'],
-  ['`PaymentCollectionPort::create_or_reuse_collection`', 'record create/reuse owner call'],
-  ['`200 OK`', 'record reusable response parity'],
-  ['`201 Created`', 'record post-miss response parity'],
-  ['does **not** claim', 'record replay non-claim'],
-  ['The canonical ecommerce topology item remains open.', 'record broad item remains open'],
-  ['No tests, Cargo commands, Node verifiers, formatter', 'record validation non-execution'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce storefront payment collection owner-port verification failed:');

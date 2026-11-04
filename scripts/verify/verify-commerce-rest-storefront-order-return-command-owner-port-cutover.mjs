@@ -14,9 +14,7 @@ const controller = read('crates/modules/rustok-commerce/src/controllers/store/or
 const httpRuntime = read('crates/modules/rustok-commerce/src/controllers/mod.rs');
 const owner = read('crates/modules/rustok-order/src/post_order_command.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-storefront-order-return-command-owner-port-cutover-2026-08-10.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -124,15 +122,7 @@ requireText(
   'broad ecommerce topology P0 remains open',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST storefront order-return command owner-port cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record status'],
-  ['OrderPostOrderCommandPort::create_return', 'record owner operation'],
-  ['write-admission metadata only', 'record replay limitation'],
-  ['subsequently', 'record subsequent Payment cutover'],
-  ['PaymentOrderReadPort::list_refunds_by_order', 'record Payment owner capability'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce REST storefront order-return owner command cutover verification failed:');

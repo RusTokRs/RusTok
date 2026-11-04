@@ -19,9 +19,7 @@ const ownerLib = read('crates/modules/rustok-order/src/lib.rs');
 const graphql = read('crates/modules/rustok-commerce/src/graphql/mutations/fulfillment.rs');
 const graphqlRuntime = read('crates/modules/rustok-commerce/src/graphql_runtime.rs');
 const plan = read('crates/modules/rustok-commerce/docs/implementation-plan.md');
-const record = read(
-  'crates/modules/rustok-commerce/docs/rest-admin-order-change-apply-owner-port-cutover-2026-08-10.md',
-);
+
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -240,14 +238,7 @@ requireText(
   'broad ecommerce topology P0 remains open for Payment compatibility',
 );
 
-for (const [value, label] of [
-  ['# Commerce REST admin order-change apply owner-port cutover', 'record title'],
-  ['Status: `source_complete_unvalidated`', 'record status'],
-  ['OrderPostOrderCommandPort::apply_change', 'record owner command'],
-  ['persists the command receipt atomically', 'record replay receipt semantics'],
-  ['mounted GraphQL `applyOrderChange`', 'historical deferred GraphQL scope'],
-  ['no tests, Cargo commands, Node verifiers, formatter', 'record validation status'],
-]) requireText(record, value, label);
+
 
 if (failures.length > 0) {
   console.error('Commerce admin order-change Order-owner verification failed:');

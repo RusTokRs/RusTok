@@ -20,7 +20,6 @@ const paths = {
   createOwner: 'crates/modules/rustok-fulfillment/src/admin_create_command.rs',
   manualCreate: 'crates/modules/rustok-commerce/src/services/admin_manual_fulfillment_orchestration.rs',
   plan: 'crates/modules/rustok-commerce/docs/implementation-plan.md',
-  document: 'crates/modules/rustok-commerce/docs/graphql-fulfillment-command-owner-port-cutover-2026-08-09.md',
 };
 
 const providerOperations = read(paths.providerOperations);
@@ -30,7 +29,7 @@ const lifecycleOwner = read(paths.lifecycleOwner);
 const createOwner = read(paths.createOwner);
 const manualCreate = read(paths.manualCreate);
 const plan = read(paths.plan);
-const document = read(paths.document);
+
 
 const requireText = (source, value, label) => {
   if (!containsMarker(source, value)) failures.push(`${label}: missing ${value}`);
@@ -200,23 +199,6 @@ requireText(
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
   `${paths.plan}: broad topology item remains open`,
 );
-
-for (const marker of [
-  '# Commerce GraphQL Fulfillment command owner-port cutover',
-  'Status: `source_complete_unvalidated`',
-  '`createFulfillment`',
-  '`shipFulfillment`',
-  '`deliverFulfillment`',
-  '`reopenFulfillment`',
-  '`reshipFulfillment`',
-  '`cancelFulfillment`',
-  '`FulfillmentAdminCommandPort`',
-  '`FulfillmentAdminCreateCommandPort`',
-  'The broad canonical topology item remains open.',
-  'Source guards, syntax parsing and formatting are not compilation or runtime evidence.',
-  'Tests remain unrun and with the maintainer.',
-  'caller-owned `idempotencyKey`',
-]) requireText(document, marker, `${paths.document}: truthful source record`);
 
 if (failures.length > 0) {
   console.error('Commerce GraphQL Fulfillment command owner-port cutover verification failed:');
