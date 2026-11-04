@@ -2,7 +2,6 @@
 
 ## Public Modules
 - `dto`: Input and output DTOs (`CreateRegionInput`, `UpdateRegionInput`, `RegionResponse`).
-- `entities`: SeaORM entity models for regions, countries, and country tax policies.
 - `error`: Strongly typed domain error variants (`RegionError`, `RegionResult`).
 - `migrations`: SeaORM migration chain for region persistence.
 - `module`: Lifecycle descriptor `RegionModule` implementing `RusToKModule`.
@@ -28,34 +27,32 @@
 
 ## Domain Collaborations
 - **Translation Targets**: Implements `RegionTranslationTargetProvider` for localized region presentation and translation journal synchronization.
-- **Commerce Foundation**: Shares tax policy and region identity primitives.
-- **Outbox**: Emits region lifecycle domain events through `rustok_outbox::TransactionalEventBus`.
+- **Cart**: Native tax recalculation calls `RegionService::read_tax_policy_in_tx` with the active Cart transaction and receives `RegionTaxPolicy`.
+- **Outbox**: Translation target application uses owner operation receipts. Region commands append the Region translation change journal in their transaction.
 - **FBA Port**: Exposes `RegionReadPort` for decoupled cross-boundary reading of regional configurations, currencies, and countries.
 
 ## Minimum Contract Set
 - `RegionReadPort`: Decoupled read port for resolving regions, tax rates, and country associations.
 - `RegionService`: Core domain CRUD operations on regional aggregates.
+- `RegionService::read_tax_policy_in_tx(&DatabaseTransaction, tenant_id, region_id, channel_id) -> Result<Option<RegionTaxPolicy>, DbErr>` returns the tenant-scoped base rate, country rules, baseline provider, and selected channel provider from one database statement. Missing and foreign regions return `None`. Storage failures propagate to the native transaction caller.
 - `RegionTranslationService`: Regional translation snapshot and exact locale applying.
 
 ### Input DTOs/Commands
-- `CreateRegionDto`: Region name, currency code, tax rate, tax code, list of countries.
-- `UpdateRegionDto`: Partial updates to regional settings and tax rates.
-- `CountryTaxPolicyInput`: Country code and country-specific tax rules.
-- `RegionFilter`: Filtering parameters for listing regions.
+- `CreateRegionInput`: Explicit translations, currency, baseline tax provider/rate/inclusion, countries, optional country policies, and metadata.
+- `UpdateRegionInput`: Optional updates to those owner fields.
+- `RegionCountryTaxPolicyInput`: Country code, rate, and inclusion rule.
+- `RegionTaxPolicy`: Native tax policy projection without persistence entities or localization data. Region resolves `channel_tax_provider_ids` into `channel_provider_id` using the selected Cart channel.
 
 ### Domain Invariants
 - **Non-Empty Name**: Region name must not be blank.
 - **Valid Currency Code**: Currency code must be a 3-letter ISO code.
-- **Country Uniqueness**: A country cannot be assigned to multiple active regions simultaneously (`CountryAlreadyAssigned`).
+- **Country Uniqueness**: The shipped integrity migration rejects duplicate country ownership within a tenant.
 - **Tax Rate Precision**: Tax rates must be valid decimal percentages.
 
 ### Events / Outbox Side Effects
-- `DomainEvent::RegionCreated { region_id }`
-- `DomainEvent::RegionUpdated { region_id }`
-- `DomainEvent::RegionDeleted { region_id }`
+- Region create and localized update append a translation change in the same transaction. The translation target uses the owner receipt contract for apply operations.
 
 ### Errors / Failure Codes
 - `RegionError::RegionNotFound`: The requested region aggregate does not exist.
-- `RegionError::CountryAlreadyAssigned`: Country is already attached to another regional grouping.
 - `RegionError::Validation`: Input validation failed.
 - `RegionError::Database`: Database storage failure.

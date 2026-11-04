@@ -2,6 +2,7 @@
 
 - Date: 2026-03-25
 - Status: Accepted & Implemented
+- Region entity sharing superseded by [Region storage ownership and Cart tax policy reads](2026-11-04-region-storage-and-cart-tax-policy.md).
 
 ## Context
 

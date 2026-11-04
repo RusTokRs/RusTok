@@ -84,7 +84,7 @@ pub struct ComparisonReport {
     pub reference_digest: String,
     pub candidate_digest: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bootstrap: Option<Vec<bootstrap::BootstrapTable>>,
+    pub bootstrap: Option<bootstrap::BootstrapReport>,
 }
 
 /// Compare observations only after each journal was checked against its own

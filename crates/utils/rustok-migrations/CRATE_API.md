@@ -42,6 +42,11 @@ The independent `verification` module is also available with
   semantics. The `verify-migrations` binary exposes fresh and prepared-fixture
   comparison through a process boundary. See [README.md](README.md#verification-tool)
   for fixture limits and invocation.
+- `bootstrap::diagnose`, `InstallWindow`, `BootstrapReport`: independent fresh
+  installation assertions for eight clock-bearing singleton rows. Reports bind
+  both PostgreSQL installation windows and distinguish missing rows, schema or
+  value drift, and invalid timestamps. These diagnostics preserve the strict
+  comparison result and its raw snapshot digests.
 
 `schema_diff` remains a supplied-operation classifier rather than a database
 observer:

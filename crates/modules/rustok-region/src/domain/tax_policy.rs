@@ -1,7 +1,10 @@
 use serde_json::Value;
 use uuid::Uuid;
 
-pub(crate) fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option<String> {
+pub(crate) fn channel_tax_provider_id(
+    metadata: &Value,
+    channel_id: Option<Uuid>,
+) -> Option<String> {
     let channel_id = channel_id?;
     let channel_key = channel_id.to_string();
     let value = metadata

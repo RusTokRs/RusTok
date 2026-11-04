@@ -1,6 +1,6 @@
+use crate::entities;
 use chrono::Utc;
 use rustok_api::normalize_locale_tag;
-use crate::entities;
 use rustok_core::generate_id;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,

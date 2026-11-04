@@ -25,6 +25,11 @@ an independent domain module.
 - changes to shared DTOs/entities must be synchronized with consumer crates and umbrella docs;
 - must not absorb logic that already belongs to a stable bounded context.
 
+Region table mappings live privately in `rustok-region`. Consumers use the
+Region projection contracts, and fixtures use Region migrations and commands.
+The [Region ownership decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
+supersedes their initial placement in this support crate.
+
 ## Verification
 
 - structural verification: shared docs and consumer expectations must remain synchronized;

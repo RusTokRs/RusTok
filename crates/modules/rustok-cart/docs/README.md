@@ -59,6 +59,14 @@
 - the cart owner publishes `guest_access_http::resolve`; HTTP hosts compose this
   adapter instead of owning or duplicating guest-cart token parsing and emission.
 
+Tax recalculation reads `RegionTaxPolicy` through
+`RegionService::read_tax_policy_in_tx` in the active Cart write transaction.
+Region owns country rules, channel-provider map interpretation, and private
+table mappings. Cart adapts the typed policy into `TaxCalculationInput` and
+retains transaction rollback on missing/foreign regions or storage failure.
+The [native Region boundary](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
+defines the shared-database profile.
+
 ## Fulfillment capability gap
 
 Capability evidence must cover digital-only carts with no delivery group, physical

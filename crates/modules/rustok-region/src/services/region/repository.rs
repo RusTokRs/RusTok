@@ -1,16 +1,18 @@
+use crate::entities;
 use chrono::Utc;
 use rustok_api::normalize_locale_tag;
-use crate::entities;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, Set,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::dto::{
-    RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
-    RegionTaxPolicy, RegionTranslationInput, RegionTranslationResponse,
-};
 use crate::domain::tax_policy::channel_tax_provider_id;
+use crate::dto::{
+    RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse, RegionTaxPolicy,
+    RegionTranslationInput, RegionTranslationResponse,
+};
 use crate::error::{RegionError, RegionResult};
 
 pub(super) async fn load_tax_policy(
@@ -27,16 +29,21 @@ pub(super) async fn load_tax_policy(
         .all(db)
         .await?;
 
-    Ok(result.into_iter().next().map(|(region, rules)| RegionTaxPolicy {
-        provider_id: region.tax_provider_id,
-        channel_provider_id: channel_tax_provider_id(&region.metadata, channel_id),
-        tax_rate: region.tax_rate,
-        tax_included: region.tax_included,
-        country_rules: rules.into_iter().map(map_country_tax_policy).collect(),
-    }))
+    Ok(result
+        .into_iter()
+        .next()
+        .map(|(region, rules)| RegionTaxPolicy {
+            provider_id: region.tax_provider_id,
+            channel_provider_id: channel_tax_provider_id(&region.metadata, channel_id),
+            tax_rate: region.tax_rate,
+            tax_included: region.tax_included,
+            country_rules: rules.into_iter().map(map_country_tax_policy).collect(),
+        }))
 }
 
-fn map_country_tax_policy(policy: entities::region_country_tax_policy::Model) -> RegionCountryTaxPolicyResponse {
+fn map_country_tax_policy(
+    policy: entities::region_country_tax_policy::Model,
+) -> RegionCountryTaxPolicyResponse {
     RegionCountryTaxPolicyResponse {
         country_code: policy.country_code,
         tax_rate: policy.tax_rate,

@@ -13,6 +13,7 @@ use rustok_commerce::entities::{
     return_completion_command, return_completion_operation, shipping_profile,
     shipping_profile_translation,
 };
+use rustok_core::MigrationSource;
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{
     checkout_identity as fulfillment_checkout_identity, fulfillment, fulfillment_item,
@@ -35,7 +36,6 @@ use rustok_product::entities::{
     product_translation, product_variant, product_variant_axis, product_variant_axis_value,
     variant_translation,
 };
-use rustok_region::entities::{region, region_country_tax_policy, region_translation};
 use rustok_taxonomy::entities::{
     taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
     taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation, translation_change,
@@ -194,24 +194,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(variant_translation::Entity),
     )
     .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(region::Entity),
-    )
-    .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(region_translation::Entity),
-    )
-    .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(region_country_tax_policy::Entity),
-    )
-    .await;
+    for migration in rustok_region::RegionModule.migrations() {
+        migration
+            .up(&SchemaManager::new(db))
+            .await
+            .expect("apply Region owner migrations");
+    }
     create_entity_table(
         db,
         &builder,

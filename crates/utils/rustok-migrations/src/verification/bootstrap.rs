@@ -75,6 +75,7 @@ const SEEDS: &[Seed] = &[
     },
 ];
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstallWindow {
     start: DateTimeWithTimeZone,
     end: DateTimeWithTimeZone,
@@ -111,11 +112,18 @@ pub struct BootstrapTable {
     pub clock_only_difference: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BootstrapReport {
+    pub reference_window: InstallWindow,
+    pub candidate_window: InstallWindow,
+    pub tables: Vec<BootstrapTable>,
+}
+
 pub fn diagnose(
     reference: (&DatabaseSnapshot, &InstallWindow),
     candidate: (&DatabaseSnapshot, &InstallWindow),
-) -> Vec<BootstrapTable> {
-    SEEDS
+) -> BootstrapReport {
+    let tables = SEEDS
         .iter()
         .map(|seed| {
             let original = find_table(reference.0, seed);
@@ -134,7 +142,12 @@ pub fn diagnose(
                 clock_only_difference,
             }
         })
-        .collect()
+        .collect();
+    BootstrapReport {
+        reference_window: reference.1.clone(),
+        candidate_window: candidate.1.clone(),
+        tables,
+    }
 }
 
 fn find_table<'a>(snapshot: &'a DatabaseSnapshot, seed: &Seed) -> Option<&'a TableObservation> {
@@ -202,6 +215,8 @@ mod tests {
         )
         .unwrap();
         let seed = &SEEDS[6];
+        assert!(InstallWindow::new(window.end, window.start).is_err());
+        assert_eq!(check(None, seed, &window), BootstrapCheck::MissingTable);
         let mut table = TableObservation {
             relation: RelationName {
                 schema: "public".into(),
@@ -218,6 +233,37 @@ mod tests {
             rows: vec![r#"["current", "0", null, "2026-11-04 15:00:00.000001+00"]"#.into()],
         };
         assert_eq!(check(Some(&table), seed, &window), BootstrapCheck::Verified);
+        let original = DatabaseSnapshot {
+            environment: vec![],
+            schema: String::new(),
+            enforcement: vec![],
+            tables: vec![table.clone()],
+            sequences: vec![],
+            migration_versions: vec!["migration".into()],
+        };
+        let mut proposed = original.clone();
+        proposed.tables[0].rows =
+            vec![r#"["current", "0", null, "2026-11-04 15:00:00.000002+00"]"#.into()];
+        let diagnostic = diagnose((&original, &window), (&proposed, &window));
+        assert!(diagnostic.tables[6].clock_only_difference);
+        let strict = super::super::compare(
+            &original,
+            &proposed,
+            &["migration".into()],
+            &["migration".into()],
+        )
+        .unwrap();
+        assert!(!strict.equivalent);
+        assert_eq!(
+            strict.differences,
+            ["table \"public\".\"module_static_distribution_state\""]
+        );
+        table.rows.clear();
+        assert_eq!(
+            check(Some(&table), seed, &window),
+            BootstrapCheck::UnexpectedRowCount
+        );
+        table.rows = original.tables[0].rows.clone();
         table.rows.push(table.rows[0].clone());
         assert_eq!(
             check(Some(&table), seed, &window),
@@ -242,6 +288,11 @@ mod tests {
             BootstrapCheck::TimestampOutsideInstall
         );
         table.rows = vec![r#"["current", "0", null, "infinity"]"#.into()];
+        assert_eq!(
+            check(Some(&table), seed, &window),
+            BootstrapCheck::InvalidTimestamp
+        );
+        table.rows = vec![r#"["current", "0", null, null]"#.into()];
         assert_eq!(
             check(Some(&table), seed, &window),
             BootstrapCheck::InvalidTimestamp

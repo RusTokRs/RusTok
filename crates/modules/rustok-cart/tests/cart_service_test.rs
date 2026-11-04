@@ -6,10 +6,9 @@ use rustok_cart::dto::{
 };
 use rustok_cart::error::CartError;
 use rustok_cart::services::{CartService, cart::CartPricingAdjustmentUpdate};
-use rustok_commerce_foundation::entities::region;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -52,26 +51,31 @@ async fn insert_shipping_option(
 async fn insert_region(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    id: Uuid,
     currency_code: &str,
+    country_code: &str,
     tax_provider_id: Option<&str>,
     metadata: serde_json::Value,
-) {
-    region::ActiveModel {
-        id: Set(id),
-        tenant_id: Set(tenant_id),
-        currency_code: Set(currency_code.to_ascii_uppercase()),
-        tax_provider_id: Set(tax_provider_id.map(|value| value.to_string())),
-        tax_rate: Set(Decimal::from_str("10.00").expect("decimal")),
-        tax_included: Set(false),
-        countries: Set(serde_json::json!([])),
-        metadata: Set(metadata),
-        created_at: Set(Utc::now().into()),
-        updated_at: Set(Utc::now().into()),
-    }
-    .insert(db)
-    .await
-    .expect("region should insert");
+) -> Uuid {
+    rustok_region::RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            rustok_region::CreateRegionInput {
+                translations: vec![rustok_region::RegionTranslationInput {
+                    locale: "en".into(),
+                    name: "Cart test region".into(),
+                }],
+                currency_code: currency_code.into(),
+                tax_provider_id: tax_provider_id.map(str::to_owned),
+                tax_rate: Decimal::from_str("10.00").expect("decimal"),
+                tax_included: false,
+                countries: vec![country_code.into()],
+                country_tax_policies: None,
+                metadata,
+            },
+        )
+        .await
+        .expect("region owner creates fixture")
+        .id
 }
 
 fn create_cart_input() -> CreateCartInput {
@@ -98,6 +102,148 @@ fn line_item_input() -> AddCartLineItemInput {
         quantity: 2,
         unit_price: Decimal::from_str("15.50").unwrap(),
         metadata: serde_json::json!({ "slot": 1 }),
+    }
+}
+
+#[tokio::test]
+async fn region_policy_missing_or_foreign_rolls_back_cart_line() {
+    for foreign in [false, true] {
+        let (db, service) = setup_with_db().await;
+        let tenant_id = support::TEST_TENANT_ID;
+        let region_id = if foreign {
+            insert_region(
+                &db,
+                Uuid::new_v4(),
+                "USD",
+                "US",
+                None,
+                serde_json::json!({}),
+            )
+            .await
+        } else {
+            Uuid::new_v4()
+        };
+        let cart = service
+            .create_cart(
+                tenant_id,
+                CreateCartInput {
+                    region_id: Some(region_id),
+                    ..create_cart_input()
+                },
+            )
+            .await
+            .unwrap();
+        let result = service
+            .add_line_item(tenant_id, cart.id, line_item_input())
+            .await;
+        assert!(
+            matches!(result, Err(CartError::Validation(message)) if message == "Region not found for cart")
+        );
+        let persisted = service.get_cart(tenant_id, cart.id).await.unwrap();
+        assert!(persisted.line_items.is_empty());
+        assert!(persisted.tax_lines.is_empty());
+        assert_eq!(persisted.total_amount, Decimal::ZERO);
+    }
+}
+
+#[tokio::test]
+async fn region_policy_storage_failure_preserves_cart_and_tax_snapshot() {
+    let (db, service) = setup_with_db().await;
+    let tenant_id = support::TEST_TENANT_ID;
+    let region_id = insert_region(&db, tenant_id, "USD", "US", None, serde_json::json!({})).await;
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                region_id: Some(region_id),
+                ..create_cart_input()
+            },
+        )
+        .await
+        .unwrap();
+    let saved = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    assert!(!saved.tax_lines.is_empty());
+
+    // Remove the owner dependency only in this isolated fixture. The Cart
+    // transaction has already written a line and deleted its previous tax
+    // lines when the policy read fails.
+    db.execute_unprepared("DROP TABLE region_country_tax_policies")
+        .await
+        .unwrap();
+    assert!(matches!(
+        service
+            .add_line_item(tenant_id, cart.id, line_item_input())
+            .await,
+        Err(CartError::Database(_))
+    ));
+    let persisted = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(persisted.line_items.len(), saved.line_items.len());
+    assert_eq!(
+        persisted.line_items[0].quantity,
+        saved.line_items[0].quantity
+    );
+    assert_eq!(persisted.tax_total, saved.tax_total);
+    assert_eq!(persisted.total_amount, saved.total_amount);
+    assert_eq!(persisted.tax_lines[0].id, saved.tax_lines[0].id);
+}
+
+#[tokio::test]
+async fn region_owner_country_rule_controls_cart_tax_and_inclusion() {
+    for included in [false, true] {
+        let (db, service) = setup_with_db().await;
+        let tenant_id = support::TEST_TENANT_ID;
+        let region_id =
+            insert_region(&db, tenant_id, "USD", "US", None, serde_json::json!({})).await;
+        rustok_region::RegionService::new(db.clone())
+            .update_region(
+                tenant_id,
+                region_id,
+                rustok_region::UpdateRegionInput {
+                    country_tax_policies: Some(vec![rustok_region::RegionCountryTaxPolicyInput {
+                        country_code: "US".into(),
+                        tax_rate: Decimal::from(7),
+                        tax_included: included,
+                    }]),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let cart = service
+            .create_cart(
+                tenant_id,
+                CreateCartInput {
+                    region_id: Some(region_id),
+                    country_code: Some("US".into()),
+                    ..create_cart_input()
+                },
+            )
+            .await
+            .unwrap();
+        let cart = service
+            .add_line_item(
+                tenant_id,
+                cart.id,
+                AddCartLineItemInput {
+                    unit_price: Decimal::from(100),
+                    quantity: 1,
+                    ..line_item_input()
+                },
+            )
+            .await
+            .unwrap();
+        let (expected_tax, expected_total) = if included {
+            (Decimal::new(654, 2), Decimal::from(100))
+        } else {
+            (Decimal::from(7), Decimal::from(107))
+        };
+        assert_eq!(cart.tax_total, expected_tax);
+        assert_eq!(cart.total_amount, expected_total);
+        assert_eq!(cart.tax_lines[0].rate, Decimal::from(7));
+        assert_eq!(cart.tax_lines[0].provider_id, "region_default");
     }
 }
 
@@ -418,7 +564,6 @@ async fn apply_fixed_cart_promotion_replaces_same_source_id_instead_of_stacking_
 async fn create_cart_persists_multilingual_context_snapshot() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let shipping_option_id = Uuid::new_v4();
 
     let cart = service
@@ -469,14 +614,13 @@ async fn create_cart_with_channel_persists_channel_snapshot() {
 async fn channel_tax_provider_mapping_overrides_region_provider() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -521,14 +665,13 @@ async fn channel_tax_provider_mapping_overrides_region_provider() {
 async fn channel_mapping_is_ignored_without_cart_channel_context() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let mapped_channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -562,14 +705,13 @@ async fn channel_mapping_is_ignored_without_cart_channel_context() {
 async fn channel_tax_provider_mapping_is_normalized_and_overrides_region_provider() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("external_tax"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -605,14 +747,13 @@ async fn channel_tax_provider_mapping_is_normalized_and_overrides_region_provide
 async fn object_channel_tax_provider_mapping_uses_provider_id_successfully() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("external_tax"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -648,14 +789,13 @@ async fn object_channel_tax_provider_mapping_uses_provider_id_successfully() {
 async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -700,14 +840,13 @@ async fn object_channel_tax_provider_mapping_uses_provider_key_alias() {
 async fn channel_tax_provider_alias_is_ignored_without_channel_context() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let mapped_channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -745,14 +884,13 @@ async fn channel_tax_provider_alias_is_ignored_without_channel_context() {
 async fn channel_tax_provider_alias_is_normalized_and_snapshots_channel_id() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("external_tax"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -792,14 +930,13 @@ async fn channel_tax_provider_alias_is_normalized_and_snapshots_channel_id() {
 async fn channel_tax_provider_mapping_with_invalid_chars_is_rejected() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -844,14 +981,13 @@ async fn channel_tax_provider_mapping_with_invalid_chars_is_rejected() {
 async fn blank_channel_tax_provider_mapping_falls_back_to_region_provider() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
     let channel_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({
             "channel_tax_provider_ids": {
@@ -887,29 +1023,13 @@ async fn blank_channel_tax_provider_mapping_falls_back_to_region_provider() {
 async fn update_cart_context_rewrites_snapshot_fields() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let initial_region_id = Uuid::new_v4();
-    let updated_region_id = Uuid::new_v4();
     let initial_shipping_option_id = Uuid::new_v4();
     let updated_shipping_option_id = Uuid::new_v4();
 
-    insert_region(
-        &db,
-        tenant_id,
-        initial_region_id,
-        "eur",
-        None,
-        serde_json::json!({}),
-    )
-    .await;
-    insert_region(
-        &db,
-        tenant_id,
-        updated_region_id,
-        "eur",
-        None,
-        serde_json::json!({}),
-    )
-    .await;
+    let initial_region_id =
+        insert_region(&db, tenant_id, "eur", "DE", None, serde_json::json!({})).await;
+    let updated_region_id =
+        insert_region(&db, tenant_id, "eur", "US", None, serde_json::json!({})).await;
     insert_shipping_option(
         &db,
         tenant_id,
@@ -1642,13 +1762,12 @@ async fn seller_scope_without_seller_id_does_not_split_delivery_groups() {
 async fn tax_calculated_on_net_discounted_line_item_price() {
     let (db, service) = setup_with_db().await;
     let tenant_id = support::TEST_TENANT_ID;
-    let region_id = Uuid::new_v4();
 
-    insert_region(
+    let region_id = insert_region(
         &db,
         tenant_id,
-        region_id,
         "usd",
+        "US",
         Some("region_default"),
         serde_json::json!({}),
     )

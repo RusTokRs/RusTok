@@ -6,8 +6,7 @@ async fn test_resolve_variant_price_prefers_exact_region_over_global() {
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
-    let region_id = Uuid::new_v4();
-    seed_pricing_region(&_db, tenant_id, region_id, "USD").await;
+    let region_id = seed_pricing_region(&_db, tenant_id, "USD").await;
 
     service
         .set_price(tenant_id, actor_id, variant_id, "USD", dec!(99.99), None)
@@ -203,8 +202,7 @@ async fn test_resolve_variant_price_prefers_narrower_max_quantity_when_min_quant
 async fn test_resolve_variant_price_falls_back_to_global_price_without_region_specific_match() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let region_id = Uuid::new_v4();
-    seed_pricing_region(&_db, tenant_id, region_id, "USD").await;
+    let region_id = seed_pricing_region(&_db, tenant_id, "USD").await;
     let actor_id = Uuid::new_v4();
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 

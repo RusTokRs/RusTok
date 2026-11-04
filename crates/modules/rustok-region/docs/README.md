@@ -34,12 +34,14 @@
 
 | File | Responsibility |
 | --- | --- |
-| `src/domain/region.rs` | Normalize country, currency, and tax provider values without database access |
+| `src/domain/region.rs`, `src/domain/tax_policy.rs` | Normalize country, currency, and tax provider values and resolve the channel provider map |
 | `src/dto/region.rs` | Define Region inputs, translations, and projections |
 | `src/services/region/mod.rs` | Construct `RegionService` and wire commands and queries |
 | `src/services/region/commands.rs` | Validate writes, own the transaction, and assemble the response before commit |
 | `src/services/region/queries.rs` | Serve tenant-scoped reads and country lookup |
 | `src/services/region/repository.rs` | Load and map owner rows, apply read-side locale fallback, and write related rows through the supplied transaction |
+| `src/entities/{region,region_translation,region_country_tax_policy}.rs` | Private owner table mappings |
+| `src/dto/tax_policy.rs` | Typed tax configuration returned to Cart |
 | `src/migrations/mod.rs` | Provide the owner migration chain used in runtime and database tests |
 | `src/tests/contract.rs`, `tests/region_service_test.rs` | Verify module wiring and owner behavior on the migrated schema |
 
@@ -47,6 +49,13 @@ Commands assemble the response inside the same transaction as the base row,
 translation rows, country policy, and translation change journal. Return the
 response after commit succeeds. Read callers outside the module should use
 `RegionReadPort` for the tenant-scoped projection.
+
+Native Cart recalculation uses `RegionService::read_tax_policy_in_tx` with its
+active write transaction. The Region query reads the tenant-scoped base policy
+and country rules in one left join and resolves the channel provider map.
+Cart retains its missing-region validation and database failure handling.
+The [ownership decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
+defines this shared-database contract.
 
 ## Verification
 

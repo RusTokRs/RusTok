@@ -5,7 +5,9 @@
 `rustok-commerce-foundation` is the dependency-only shared contract layer for
 the split commerce family. It contains common DTOs, SeaORM entities, errors,
 and the product-translation search helper used by product, pricing, inventory,
-cart, region, and the commerce umbrella. It owns no transport, runtime,
+and the commerce umbrella. Region mappings have moved to their owner under the
+[Region storage decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md).
+It owns no transport, runtime,
 service orchestration, or UI boundary.
 
 ## Readiness

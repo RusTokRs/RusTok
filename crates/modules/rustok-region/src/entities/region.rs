@@ -23,7 +23,9 @@ pub enum Relation {}
 
 impl Related<super::region_country_tax_policy::Entity> for Entity {
     fn to() -> RelationDef {
-        super::region_country_tax_policy::Relation::Region.def().rev()
+        super::region_country_tax_policy::Relation::Region
+            .def()
+            .rev()
     }
 }
 

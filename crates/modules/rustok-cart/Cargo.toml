@@ -38,5 +38,6 @@ uuid.workspace = true
 validator.workspace = true
 
 [dev-dependencies]
+sea-orm-migration.workspace = true
 rustok-test-utils.workspace = true
 rustok-tenant.workspace = true

@@ -83,13 +83,14 @@ the owner migration list and verify country resolution, locale fallback, and
 tenant isolation. A SQLite fault test inserts a journal entry, injects a
 readback failure, and verifies that the entire update rolls back.
 
-Before enrolling the module, migrate Cart tax recalculation from direct reads
-of the shared Region entities to a typed owner projection. Preserve the tax
-baseline, country overrides, tenant context, and Cart rollback behavior through
-the chosen boundary. Move the mappings to Region once production and fixture
-consumers no longer import them. Complete the remaining layout checks and
-verify the declared admin and storefront clients before marking the module as
-a full reference.
+Cart tax recalculation now reads `RegionTaxPolicy` through the native
+`RegionService::read_tax_policy_in_tx` entrypoint. The private Region mappings
+live inside this crate. Cart and Commerce fixtures apply the owner migrations
+and create Regions through the service. The
+[ownership decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
+records the transaction and deployment profile. Complete the remaining layout
+checks and verify the declared admin and storefront clients before enrolling
+the complete module.
 
 ## Verification
 

@@ -2,12 +2,13 @@ use rustok_cart::entities::{
     cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
     cart_line_item_translation, cart_shipping_selection, cart_tax_line,
 };
-use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
+use rustok_core::MigrationSource;
 use rustok_fulfillment::entities::{shipping_option, shipping_option_translation};
 use rustok_tenant::entities::tenant;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, Schema,
 };
+use sea_orm_migration::SchemaManager;
 use uuid::{Uuid, uuid};
 
 pub const TEST_TENANT_ID: Uuid = uuid!("11111111-1111-1111-1111-111111111111");
@@ -69,18 +70,12 @@ pub async fn ensure_cart_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(shipping_option_translation::Entity),
     )
     .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(region::Entity),
-    )
-    .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(region_country_tax_policy::Entity),
-    )
-    .await;
+    for migration in rustok_region::RegionModule.migrations() {
+        migration
+            .up(&SchemaManager::new(db))
+            .await
+            .expect("apply Region owner migrations");
+    }
     create_entity_table(
         db,
         &builder,

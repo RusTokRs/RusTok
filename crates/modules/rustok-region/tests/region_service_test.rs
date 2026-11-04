@@ -8,7 +8,7 @@ use rustok_test_utils::db::{
     drop_postgres_database_if_exists, postgres_database_url, setup_test_db,
     unique_postgres_database_name,
 };
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -42,7 +42,9 @@ fn create_region_input() -> CreateRegionInput {
 
 #[tokio::test]
 async fn create_and_resolve_region_by_country() {
-    assert_region_create_and_read(setup().await).await;
+    let db = setup_test_db().await;
+    support::apply_region_migrations(&db).await;
+    assert_region_create_and_read(db).await;
 }
 
 #[tokio::test]
@@ -64,7 +66,7 @@ async fn postgres_create_and_resolve_region_by_country() {
             .await
             .expect("connect to disposable database");
         support::apply_region_migrations(&db).await;
-        assert_region_create_and_read(RegionService::new(db)).await;
+        assert_region_create_and_read(db).await;
     })
     .await;
     drop_postgres_database_if_exists(&admin, &database_name)
@@ -75,11 +77,16 @@ async fn postgres_create_and_resolve_region_by_country() {
     }
 }
 
-async fn assert_region_create_and_read(service: RegionService) {
+async fn assert_region_create_and_read(db: DatabaseConnection) {
+    let service = RegionService::new(db.clone());
     let tenant_id = Uuid::new_v4();
-
+    let channel_id = Uuid::new_v4();
+    let mut input = create_region_input();
+    input.metadata = serde_json::json!({
+        "channel_tax_provider_ids": { channel_id.to_string(): { "provider_id": "region_default" } }
+    });
     let created = service
-        .create_region(tenant_id, create_region_input())
+        .create_region(tenant_id, input)
         .await
         .expect("region should be created");
     assert_eq!(created.currency_code, "EUR");
@@ -114,6 +121,90 @@ async fn assert_region_create_and_read(service: RegionService) {
             .unwrap()
             .is_none()
     );
+
+    let tx = db.begin().await.unwrap();
+    let policy = RegionService::read_tax_policy_in_tx(&tx, tenant_id, created.id, Some(channel_id))
+        .await
+        .unwrap()
+        .expect("region policy");
+    assert_eq!(policy.tax_rate, created.tax_rate);
+    assert_eq!(policy.tax_included, created.tax_included);
+    assert_eq!(policy.country_rules, created.country_tax_policies);
+    assert_eq!(
+        policy.channel_provider_id.as_deref(),
+        Some("region_default")
+    );
+    assert!(
+        RegionService::read_tax_policy_in_tx(&tx, other_tenant, created.id, Some(channel_id))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        RegionService::read_tax_policy_in_tx(&tx, tenant_id, Uuid::new_v4(), None)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let without_channel = RegionService::read_tax_policy_in_tx(&tx, tenant_id, created.id, None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(without_channel.channel_provider_id, None);
+
+    // The native owner entrypoint must observe the supplied transaction's
+    // writes. A separately pooled read would miss this uncommitted change.
+    let backend = tx.get_database_backend();
+    let region_marker = if backend == sea_orm::DbBackend::Postgres {
+        "$1"
+    } else {
+        "?"
+    };
+    tx.execute_raw(Statement::from_sql_and_values(
+        backend,
+        format!("UPDATE regions SET tax_rate = 12 WHERE id = {region_marker}"),
+        [created.id.into()],
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        RegionService::read_tax_policy_in_tx(&tx, tenant_id, created.id, None)
+            .await
+            .unwrap()
+            .unwrap()
+            .tax_rate,
+        Decimal::from(12)
+    );
+    tx.execute_unprepared("DELETE FROM region_country_tax_policies")
+        .await
+        .unwrap();
+    assert!(
+        RegionService::read_tax_policy_in_tx(&tx, tenant_id, created.id, None)
+            .await
+            .unwrap()
+            .unwrap()
+            .country_rules
+            .is_empty()
+    );
+    tx.rollback().await.unwrap();
+
+    let persisted = service
+        .get_region(tenant_id, created.id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(persisted.tax_rate, created.tax_rate);
+    assert_eq!(persisted.country_tax_policies, created.country_tax_policies);
+
+    let tx = db.begin().await.unwrap();
+    tx.execute_unprepared("DROP TABLE region_country_tax_policies")
+        .await
+        .unwrap();
+    assert!(
+        RegionService::read_tax_policy_in_tx(&tx, tenant_id, created.id, None)
+            .await
+            .is_err()
+    );
+    tx.rollback().await.unwrap();
 }
 
 #[tokio::test]

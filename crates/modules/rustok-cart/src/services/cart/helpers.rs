@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use serde_json::Value;
 use std::{
@@ -1006,9 +1006,10 @@ async fn recalculate_tax_lines(
         return Ok((Decimal::ZERO, false));
     };
 
-    let policy = RegionService::read_tax_policy_in_tx(conn, cart.tenant_id, region_id, cart.channel_id)
-        .await?
-        .ok_or_else(|| CartError::Validation("Region not found for cart".to_string()))?;
+    let policy =
+        RegionService::read_tax_policy_in_tx(conn, cart.tenant_id, region_id, cart.channel_id)
+            .await?
+            .ok_or_else(|| CartError::Validation("Region not found for cart".to_string()))?;
     let now = Utc::now();
     let mut taxable_amounts = Vec::new();
 
@@ -1097,7 +1098,8 @@ async fn recalculate_tax_lines(
                     country_code: cart.country_code.clone(),
                     tax_rate: policy.tax_rate,
                     tax_included: policy.tax_included,
-                    country_rules: policy.country_rules
+                    country_rules: policy
+                        .country_rules
                         .into_iter()
                         .map(|policy| TaxPolicyCountryRule {
                             country_code: policy.country_code,

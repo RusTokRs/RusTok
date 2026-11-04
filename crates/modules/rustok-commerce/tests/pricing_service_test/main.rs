@@ -69,26 +69,28 @@ pub(crate) async fn seed_pricing_channel(
 pub(crate) async fn seed_pricing_region(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    id: Uuid,
     currency: &str,
-) {
-    use rustok_region::entities::region;
-    let now = chrono::Utc::now();
-    region::ActiveModel {
-        id: Set(id),
-        tenant_id: Set(tenant_id),
-        currency_code: Set(currency.into()),
-        tax_provider_id: Set(None),
-        tax_rate: Set(Decimal::ZERO),
-        tax_included: Set(false),
-        countries: Set(serde_json::json!([])),
-        metadata: Set(serde_json::json!({})),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(db)
-    .await
-    .unwrap();
+) -> Uuid {
+    rustok_region::RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            rustok_region::CreateRegionInput {
+                translations: vec![rustok_region::RegionTranslationInput {
+                    locale: "en".into(),
+                    name: "Pricing test region".into(),
+                }],
+                currency_code: currency.into(),
+                tax_provider_id: None,
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                countries: vec!["US".into()],
+                country_tax_policies: None,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("region owner creates pricing fixture")
+        .id
 }
 
 pub(crate) async fn setup() -> (DatabaseConnection, PricingService, CatalogService) {

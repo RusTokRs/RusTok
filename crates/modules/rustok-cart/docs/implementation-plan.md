@@ -193,6 +193,14 @@ remote/provider execution remain unverified. No historical migration or stored s
 
 ## Current state
 
+Tax recalculation consumes `RegionTaxPolicy` through
+`RegionService::read_tax_policy_in_tx` in the active Cart transaction. Region
+owns the mappings and channel-provider selection. The owner query reads base
+policy and country rules in one statement. Cart and Commerce fixtures use
+Region migrations and commands. The
+[Region storage decision](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
+records this native boundary and its verification requirements.
+
 `rustok-cart` owns cart state, line items, pricing and tax snapshots, cart
 lifecycle, and the persisted storefront context. Its storefront package owns
 cart inspection and safe decrement/remove mutations. `rustok-commerce` keeps
