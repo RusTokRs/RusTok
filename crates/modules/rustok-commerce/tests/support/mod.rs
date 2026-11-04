@@ -32,7 +32,7 @@ use rustok_payment::entities::{
 };
 use rustok_pricing::entities::{price, price_list, price_list_translation};
 use rustok_product::entities::{
-    product, product_attribute_group, product_image, product_image_translation, product_tag,
+    product, product_attribute_group, product_brand, product_image, product_image_translation, product_tag,
     product_translation, product_variant, product_variant_axis, product_variant_axis_value,
     variant_translation,
 };
@@ -451,6 +451,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(product_tag::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(product_brand::Entity),
     )
     .await;
     create_entity_table(

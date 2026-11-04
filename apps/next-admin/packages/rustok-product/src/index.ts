@@ -37,6 +37,7 @@ export { productNavItems } from './nav';
 export { parsePriceAmount, salePercent, discountedPrice } from './money';
 export * from './api/types';
 export * from './api/categories';
+export * from './api/brands';
 export * from './api/attributes';
 export * from './api/attribute-lifecycle';
 export * from './attribute-lifecycle';
@@ -469,3 +470,7 @@ export async function createProduct(
 
   return data.createProduct;
 }
+
+export { BrandsPage } from './pages/brands-page';
+export { BrandsTable } from './components/brands/brands-table';
+export { BrandCreateDialog } from './components/brands/brand-create-dialog';

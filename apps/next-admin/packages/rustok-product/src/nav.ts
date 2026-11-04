@@ -29,6 +29,11 @@ export const productNavItems: NavItem[] = [
         i18nKey: 'categories'
       },
       {
+        title: 'Brands',
+        url: '/dashboard/product/brands',
+        i18nKey: 'brands'
+      },
+      {
         title: 'Attributes',
         url: '/dashboard/product/attributes',
         i18nKey: 'attributes'

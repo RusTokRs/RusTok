@@ -28,6 +28,7 @@ pub struct BrandAdminDirectory {
 pub struct BrandAdminFilters {
     pub search: Option<String>,
     pub is_active: Option<bool>,
+    pub category_id: Option<String>,
     pub page: u64,
     pub per_page: u64,
 }

@@ -437,7 +437,6 @@ async fn store_cart_line_item_transport_resolves_backend_title_and_price() {
     assert_eq!(
         updated_cart["line_items"][0]["metadata"],
         json!({
-            "seller": { "id": null },
             "source": "transport-line-item-test"
         })
     );

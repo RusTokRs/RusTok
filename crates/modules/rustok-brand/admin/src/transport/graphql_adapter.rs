@@ -9,8 +9,8 @@ use crate::model::{
 pub type GraphqlBrandAdminError = String;
 
 const DIRECTORY_QUERY: &str = r#"
-query BrandAdminDirectory($page: Int, $perPage: Int, $search: String, $isActive: Boolean) {
-  brands(filter: { page: $page, perPage: $perPage, search: $search, isActive: $isActive }) {
+query BrandAdminDirectory($page: Int, $perPage: Int, $search: String, $isActive: Boolean, $categoryId: UUID) {
+  brands(filter: { page: $page, perPage: $perPage, search: $search, isActive: $isActive, categoryId: $categoryId }) {
     total
     page
     perPage
@@ -103,6 +103,8 @@ struct DirectoryVariables {
     search: Option<String>,
     #[serde(rename = "isActive")]
     is_active: Option<bool>,
+    #[serde(rename = "categoryId")]
+    category_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -221,6 +223,7 @@ pub async fn load_directory(
         per_page: filters.per_page.clamp(1, 100) as i64,
         search: filters.search,
         is_active: filters.is_active,
+        category_id: filters.category_id,
     };
 
     let response: DirectoryResponse =

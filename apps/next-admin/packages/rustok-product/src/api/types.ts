@@ -353,6 +353,7 @@ export interface ProductDetail {
   variantAxes: VariantAxisConfig[];
   variants: ProductVariant[];
   images: ProductImage[];
+  brands?: ProductBrandItem[];
 }
 
 export interface ProductListItem {
@@ -518,4 +519,58 @@ export interface BundleListResponse {
 export interface ProductAttributeValueBatch {
   locale: string;
   patches: ProductAttributeValuePatch[];
+}
+
+export interface BrandSummary {
+  id: string;
+  tenantId?: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  logoUrl?: string | null;
+  isActive: boolean;
+  sortOrder?: number;
+  productsCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BrandFilterInput {
+  search?: string | null;
+  isActive?: boolean | null;
+  categoryId?: string | null;
+  page?: number;
+  perPage?: number;
+}
+
+export interface BrandListResponse {
+  items: BrandSummary[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export interface CreateBrandPayload {
+  slug: string;
+  name: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  isActive?: boolean;
+}
+
+export interface UpdateBrandPayload {
+  slug?: string | null;
+  name?: string | null;
+  description?: string | null;
+  websiteUrl?: string | null;
+  isActive?: boolean | null;
+}
+
+export interface ProductBrandItem {
+  brandId: string;
+  isPrimary: boolean;
+  role: string;
+  position: number;
+  brand?: BrandSummary | null;
 }

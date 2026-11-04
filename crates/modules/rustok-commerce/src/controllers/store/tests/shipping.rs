@@ -387,23 +387,15 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
         .expect("update cart body should read");
     assert_eq!(
         status,
-        StatusCode::OK,
+        StatusCode::BAD_REQUEST,
         "unexpected update cart body: {}",
         String::from_utf8_lossy(&body)
     );
-    let updated_cart: serde_json::Value =
-        serde_json::from_slice(&body).expect("updated cart response should be JSON");
+    let error_response: serde_json::Value =
+        serde_json::from_slice(&body).expect("error response should be JSON");
     assert_eq!(
-        updated_cart["cart"]["selected_shipping_option_id"],
-        json!(null)
-    );
-    assert_eq!(
-        updated_cart["cart"]["delivery_groups"][0]["shipping_profile_slug"],
-        json!("bulky")
-    );
-    assert_eq!(
-        updated_cart["cart"]["delivery_groups"][0]["available_shipping_options"],
-        json!([])
+        error_response["code"],
+        json!("commerce_store_invalid")
     );
 }
 

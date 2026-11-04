@@ -68,13 +68,18 @@ async fn brand_directory_native(
         let per_page = filters.per_page.clamp(1, 100);
         let service = BrandService::new(runtime.db_clone());
 
+        let parsed_category_id = filters
+            .category_id
+            .as_deref()
+            .and_then(|c| c.parse::<uuid::Uuid>().ok());
+
         let response = service
             .list_brands(
                 tenant.id,
                 BrandFilter {
                     search: filters.search,
                     is_active: filters.is_active,
-                    category_id: None,
+                    category_id: parsed_category_id,
                 },
                 page,
                 per_page,
