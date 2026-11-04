@@ -467,6 +467,10 @@ impl CatalogService {
                 .await?;
         }
 
+        if !input.brands.is_empty() {
+            sync_product_brands_in_tx(&txn, tenant_id, product_id, &input.brands).await?;
+        }
+
         let schema = ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone());
         let attributes_changed = schema
             .apply_product_attribute_batches_in_tx(
@@ -544,6 +548,9 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        if let Some(brands) = input.brands.as_deref() {
+            validate_product_brands(brands)?;
+        }
         let shipping_slug = match &input.shipping_profile_slug {
             Patch::Set(slug) => Some(slug.as_str()),
             Patch::Keep | Patch::Clear => None,
@@ -858,6 +865,10 @@ impl CatalogService {
             .await?;
             self.sync_product_tags_in_tx(&txn, tenant_id, product_id, &locale, tags)
                 .await?;
+        }
+
+        if let Some(brand_inputs) = input.brands.as_deref() {
+            sync_product_brands_in_tx(&txn, tenant_id, product_id, brand_inputs).await?;
         }
 
         let attributes_changed =
@@ -1347,7 +1358,6 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
-        validate_product_brands(&input.brands)?;
         self.validate_shipping_profiles(
             tenant_id,
             actor_id,
