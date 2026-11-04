@@ -32,7 +32,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 - **Upstream Modules:**
   - `rustok-core`: Common module lifecycle traits (`RusToKModule`, `MigrationSource`, `ModuleKind`, `ModuleHealth`).
   - `rustok-api`: Standard permission definitions (`Permission`).
-  - `rustok-product`: Product entity references for brand-to-product mapping.
+  - `rustok-product`: Brand stores Product IDs. The current assignment command does not validate them with the Product owner.
 - **Persistence Layer:**
   - SeaORM entities: `brand`, `brand_translation`, `brand_product`.
   - Multi-tenant tenant scoping across all tables.

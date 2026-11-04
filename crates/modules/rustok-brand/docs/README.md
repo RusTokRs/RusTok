@@ -21,10 +21,10 @@ The module boundary strictly owns:
 
 ## File map
 
-Brand is the storage-backed backend candidate without Page Builder / Fly. Use
-the [canonical file placement](../../../../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
-for new operations. The table describes this implemented slice; see the
-[owner plan](implementation-plan.md) before copying other capabilities.
+The table documents Brand's current backend layout. The
+[canonical file placement](../../../../docs/backend/module-backend-implementation.md#file-placement-for-reference-capabilities)
+remains applicable. Brand is outside the scaffold reference set while its
+[Product ownership boundary](implementation-plan.md#product-ownership-review) is under review.
 
 | File | Responsibility |
 | --- | --- |
@@ -45,7 +45,8 @@ active transaction to private persistence helpers when adding a related write.
 
 ## Integration
 
-- **`rustok-product`**: References product IDs in `brand_products`.
+- **`rustok-product`**: Brand stores Product IDs in its own `brand_products`
+  table. Assignment does not currently validate the Product against its owner.
 - **`rustok-media`**: References media assets for logo and banner presentation.
 - **`rustok-commerce`**: Exposes brands through GraphQL queries and mutations.
 - **`rustok-product-admin`**: Embedded brand selector and editor panels.

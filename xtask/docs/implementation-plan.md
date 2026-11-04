@@ -247,14 +247,16 @@ read-only and disposable-fixture verification can proceed earlier.
   capabilities have no registration, dependencies or runtime requirements.
   Tax calculation supplies the embedded reference without owner storage or Fly.
   The [Tax owner file map](../../crates/modules/rustok-tax/docs/README.md#file-map)
-  documents the actual domain, DTO, service and port split. Use Brand's localized
-  owner data as the candidate with storage and without Fly, and the Blog widget
-  contribution as the candidate with both. A no-owner-storage Fly pilot needs a
+  documents the actual domain, DTO, service and port split. For storage without
+  Fly, assess the [Region](../../crates/modules/rustok-region/README.md) tenant
+  region create/read slice next. Verify its ownership, shipped migrations,
+  locale behavior, and applicable runtime bindings before enrolling it.
+  The current Region lint reports backend placement and entity visibility
+  issues, UI layout issues, and missing Next.js manifest bindings.
+  Keep Brand as [layout and migration evidence only](../../crates/modules/rustok-brand/docs/implementation-plan.md#product-ownership-review)
+  while its Product boundary is unresolved. Use the Blog widget contribution as
+  the candidate with both storage and Fly. A no-owner-storage Fly pilot needs a
   real read-only widget and a host binding that exercises it without an owner store.
-  Brand now has a [canonical backend file map](../../crates/modules/rustok-brand/docs/README.md#file-map)
-  and a [shared SQLite/PostgreSQL migration and owner scenario](../../crates/modules/rustok-brand/docs/implementation-plan.md#verification).
-  Brand's full reference enrollment remains open pending the owner plan's
-  admin parity and runtime evidence.
 - [ ] After the reference examples pass, define explicit input for the actual
   owner operation, schema and builder contribution before enabling capability
   generation. Reuse the existing native plan, preview and recovery path.

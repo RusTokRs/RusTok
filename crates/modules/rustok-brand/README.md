@@ -19,7 +19,7 @@ The module boundary strictly owns:
 
 ## Integration
 
-- **`rustok-product`**: Associates catalog products with brands via `brand_products`.
+- **`rustok-product`**: Brand stores product links in `brand_products`; see the [ownership review](docs/implementation-plan.md#product-ownership-review) for the current integrity gap.
 - **`rustok-media`**: References media assets (`logo_media_id`, `banner_media_id`).
 - **`rustok-commerce`**: Exposes brands via GraphQL queries and mutations.
 - **`rustok-product-admin`**: Embedded brand selector and management in catalog administration.

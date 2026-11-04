@@ -54,6 +54,28 @@ Brand catalog, manufacturers, media presentation, and product associations.
 - Atomic localized writes: the owner saves base rows and translations in one
   transaction. The current command path has no transactional outbox publication.
 
+## Product ownership review
+
+Brand is outside the scaffold reference set. Its file layout and database
+tests remain useful evidence for the implemented Brand tables. They do not
+establish the ownership or integrity of the Product association.
+
+- Brand owns `brand_products` today. Its assignment command checks the tenant
+  and brand, but only requires a non-nil `product_id`. The Commerce GraphQL
+  caller checks module availability and product update permission, then calls
+  Brand without resolving the Product. The shipped table has a Brand foreign
+  key and no Product foreign key. The owner test assigns a generated Product ID
+  without creating a Product row.
+- Confirm whether brands have an independently managed lifecycle or consumers
+  outside the Product catalog. If brands are catalog-owned, evaluate moving the
+  capability into Product. If Brand remains independent, evaluate a
+  Product-owned assignment with an explicit Brand contract. Either design must
+  reject missing and cross-tenant references and specify who handles deletion.
+- Record the chosen owner and cutover in an ADR before moving data or changing
+  runtime ownership. Inventory existing links, permissions, public GraphQL and
+  admin consumers, migration identity, and the supported database profiles.
+  Verify valid assignment, rejection and deletion through the chosen owner.
+
 ## Verification
 
 - `cargo test -p rustok-brand --lib --test brand`: crate contract and SQLite
@@ -68,7 +90,7 @@ Brand catalog, manufacturers, media presentation, and product associations.
 - `cargo xtask validate-manifest`: Workspace manifest and central registry consistency.
 - `cargo xtask module lint brand`: validates backend and declared UI. The
   backend slice has no reported layout violations; the admin failures listed
-  above still prevent enrollment of the whole module as a strict reference.
+  above remain open independently of the Product ownership review.
 
 On 2026-11-04, against `b163a901a6` with the Brand verification changes applied,
 all four crate tests, nine SQLite integration tests, and the explicitly
