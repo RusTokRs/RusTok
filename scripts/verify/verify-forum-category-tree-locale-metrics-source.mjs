@@ -15,11 +15,7 @@ function requireAbsent(text, marker, message) {
 }
 
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/category_tree_query.rs";
-const packetPath =
-  "docs/modules/forum-33-category-tree-locale-metrics-actualization-2026-08-09.md";
-
 const graphql = read(graphqlPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "async fn forum_category_tree(",
@@ -106,22 +102,6 @@ for (const forbiddenLabel of [
     forbiddenLabel,
     `${graphqlPath}: locale values must not become metric labels`,
   );
-}
-
-for (const marker of [
-  "FORUM-33J",
-  "FORUM-33I",
-  "Attachments therefore remain blocked on FORUM-14",
-  "forumCategoryTree",
-  "rustok_forum_graphql_category_tree_locale_resolution_total",
-  "MAX_FORUM_CATEGORY_TREE_NODES",
-  "no additional database query",
-  "Tenant-controlled locale strings",
-  "Spam-outcome telemetry remains blocked",
-  "Moderation recovery now has public owner commands",
-  "no Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 console.log("Forum FORUM-33J category-tree locale metric source: ok");

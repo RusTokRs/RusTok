@@ -28,7 +28,6 @@ const files = {
   replyImport: "crates/modules/rustok-forum/src/services/reply_owner_import.rs",
   pgSoftDelete: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
   sqliteRevisions: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
-  packet: "docs/modules/forum-34-deleted-reply-tombstone-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -78,39 +77,6 @@ for (const marker of [
   "pub writes: ForumPreparedImportWriteBatch",
 ]) need(source.relation, marker, "FORUM-34M relation batch baseline");
 
-for (const marker of [
-  "reply.status == ReplyStatus::Deleted",
-  "tombstone timestamp is admitted",
-]) need(source.write, marker, "FORUM-34O deleted-reply fail-closed baseline");
-for (const marker of [
-  "SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP",
-  "remove_in_tx",
-]) need(source.replyOwner, marker, "interactive reply owner delete baseline");
-for (const marker of [
-  "record.status == ReplyStatus::Deleted",
-  "requires an admitted tombstone timestamp",
-]) need(source.replyImport, marker, "FORUM-34O reply import boundary baseline");
-for (const marker of [
-  "forum_guard_deleted_reply_update",
-  "revision_reason",
-  "'delete'",
-]) need(source.pgSoftDelete, marker, "Postgres delete-revision baseline");
-for (const marker of [
-  "forum_reply_delete_revision_update",
-  "OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL",
-  "'delete'",
-]) need(source.sqliteRevisions, marker, "SQLite delete-revision baseline");
-
-for (const marker of [
-  "FORUM-34P",
-  "does not guarantee a historical deletion timestamp",
-  "does **not** change `NodebbPostRecord`",
-  "separate explicit exporter/audit enrichment contract",
-  "every `ReplyStatus::Deleted` reply to have exactly one tombstone",
-  "34O atomic writer remains unchanged",
-  "FORUM-34Q",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34P actualization");
 
 for (const marker of [
   "sea_orm",

@@ -20,11 +20,9 @@ function requireAbsent(text, marker, message) {
 
 const mappingPath = "crates/modules/rustok-forum/src/export_mapping.rs";
 const libPath = "crates/modules/rustok-forum/src/lib.rs";
-const packetPath = "docs/modules/forum-34-owner-export-fragment-actualization-2026-08-09.md";
 
 const mapping = read(mappingPath);
 const lib = read(libPath);
-const packet = read(packetPath);
 
 for (const marker of [
   'pub const FORUM_EXPORT_SCHEMA_V1: &str = "rustok.forum.export.v1";',
@@ -126,31 +124,7 @@ for (const forbiddenOutputField of [
     forbiddenOutputField,
     `${mappingPath}: export records must not promote viewer/derived field ${forbiddenOutputField}`,
   );
-}
 
-for (const marker of [
-  "FORUM-34D",
-  "shared-runner-blocked",
-  "locale-enumeration-open",
-  "ReplyReadModel` contains only `content_preview`",
-  "already-authorized full owner responses",
-  "not a wire contract",
-  "does not implement `Serialize` or `Deserialize`",
-  "serializable contract begins at `ForumExportFragment`",
-  "explicit non-nil `tenant_id`",
-  "does not replace owner authorization",
-  "uses `effective_locale`, never `requested_locale`",
-  "does **not** claim multilingual export completeness",
-  "`ReplyResponse` currently does not",
-  "canonical `RichTextDocument`",
-  "does not declare that a source RusTok user UUID can be reused",
-  "TranslationInterchangeService",
-  "not a neutral module data migration runner",
-  "no generic `ImportRunner`, `ImportAdapter`, `ImportJob`, `ExportRunner` or `rustok-import` framework",
-  "Taxonomy/Channel owner boundaries",
-  "no test, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 if (failures.length > 0) {

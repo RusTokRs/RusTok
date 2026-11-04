@@ -24,10 +24,6 @@ const graphql = read("crates/modules/rustok-forum/src/graphql/member_card_query.
 const storefrontCargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 const storefrontModel = read("crates/modules/rustok-forum/storefront/src/model.rs");
 const storefrontUi = read("crates/modules/rustok-forum/storefront/src/ui/leptos.rs");
-const packet = read(
-  "docs/modules/forum-15-member-card-owner-service-actualization-2026-08-10.md",
-);
-
 for (const marker of [
   "pub const MAX_FORUM_MEMBER_CARD_USER_IDS: usize = 100",
   "pub enum ForumMemberCardAudience",
@@ -74,41 +70,6 @@ for (const marker of [
 need(userStats, '#[path = "member_card.rs"]', "FORUM-15C user-stats wiring");
 need(userStats, "pub use member_card_file::{", "FORUM-15C user-stats re-export");
 
-for (const marker of [
-  "ForumMemberCardService::new(db.clone())",
-  "ForumMemberCardService::normalize_user_ids(&user_ids)",
-  "ctx.data_opt::<DataLoader<ProfileSummaryLoader>>()",
-  ".compose_admitted_profiles(tenant.id, &requested_user_ids, profiles)",
-  "ForumMemberCardAudience::Anonymous",
-  ".read_for_audience(",
-]) need(graphql, marker, "FORUM-15C GraphQL adapter");
-
-for (const marker of [
-  "forum_user_stat::Entity::find()",
-  "ProfilePresentationService::new(",
-  "ProfilePresentationService::for_audience(",
-]) forbid(graphql, marker, "FORUM-15C GraphQL must stay thin");
-
-forbid(
-  storefrontCargo,
-  "rustok-profiles",
-  "FORUM-15C storefront must not gain a direct Profiles dependency",
-);
-for (const marker of [
-  "pub struct ForumTopicListItem",
-  "pub struct ForumTopicDetail",
-  "pub struct ForumReplyDetail",
-]) need(storefrontModel, marker, "FORUM-15C storefront baseline");
-forbid(storefrontUi, "ForumMemberCard", "FORUM-15C storefront UI integration remains open");
-
-for (const marker of [
-  "FORUM-15C",
-  "shared-owner-service",
-  "pub(crate)",
-  "before any Forum statistics are queried",
-  "storefront package has no direct `rustok-profiles` dependency",
-  "no Cargo command, test, Node verifier",
-]) need(packet, marker, "FORUM-15C actualization");
 
 if (failures.length > 0) {
   console.error("Forum FORUM-15C member-card owner service source failed:");

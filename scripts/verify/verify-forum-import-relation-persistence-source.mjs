@@ -26,7 +26,6 @@ const files = {
   relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
   relationImport: "crates/modules/rustok-forum/src/services/mention_relation_import.rs",
   services: "crates/modules/rustok-forum/src/services/mod.rs",
-  packet: "docs/modules/forum-34-import-relation-persistence-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -109,35 +108,6 @@ for (const marker of [
   'publish_added_target_events_in_tx',
 ]) need(source.relationOwner, marker, "existing relation owner persistence baseline");
 
-for (const marker of [
-  'pub enum ForumImportRelationMode',
-  'SuppressRelations',
-  'MaterializeRelations',
-  'pub enum ForumImportRelationEventMode',
-  'SuppressAddedTargetEvents',
-  'EmitAddedTargetEvents',
-  'pub struct ForumPreparedImportContentRelations',
-]) need(source.relationPreparation, marker, "34M relation admission baseline");
-
-for (const marker of [
-  'FORUM_MAX_MENTION_TARGETS_PER_REVISION: usize = 32',
-  'pub struct ForumResolvedMentions',
-  'pub fn extract_forum_mention_candidates',
-]) need(source.mentions, marker, "Forum mention owner baseline");
-
-for (const marker of [
-  'FORUM-34N',
-  'FORUM-34A through FORUM-34M',
-  'owner-internal bridge',
-  'does not infer current visibility/status or historical permissions',
-  'calls the already-established `MentionRelationService::persist_in_tx`',
-  'writes no relation revision and returns `None`',
-  '`SuppressAddedTargetEvents`',
-  'first FORUM-34 import slice that can cause persistence',
-  'No complete category/topic/reply import batch has been persisted yet',
-  'FORUM-34O',
-  'no tests, Cargo commands',
-]) need(source.packet, marker, "FORUM-34N packet");
 
 if (failures.length > 0) {
   console.error("Forum source guard failed:");

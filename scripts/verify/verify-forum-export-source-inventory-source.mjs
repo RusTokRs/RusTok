@@ -17,7 +17,6 @@ function forbid(text, marker, label) {
 const files = {
   planner: "crates/modules/rustok-forum/src/export_planner.rs",
   inventory: "crates/modules/rustok-forum/src/export_inventory.rs",
-  packet: "docs/modules/forum-34-export-source-inventory-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -110,25 +109,6 @@ for (const marker of [
   "Deserialize",
 ]) forbid(source.inventory, marker, "inventory storage-only boundary");
 
-for (const marker of [
-  "FORUM-34I",
-  "FORUM-34A through FORUM-34H",
-  "still labels `FORUM-34` as `planned`",
-  "presentation projections",
-  "returns `None` for an empty terminal page",
-  "PermissionScope::All",
-  "strict `id > after_id` continuation",
-  "does **not** claim a transactionally frozen tenant snapshot",
-  "Archived categories are excluded",
-  "normal `TopicStatus::Archived` topic remains eligible",
-  "Soft-deleted topics are excluded",
-  "Merge-source topics are excluded",
-  "Reply rows are **not** filtered by their own `deleted_at`/`deleted` status",
-  "permanently missing `parent_reply_id`",
-  "Locale/body presence is **not** silently filtered",
-  "34I bounded candidate IDs -> 34H bounded exact-locale target planning -> 34F exact owner reads -> 34D export mapping",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34I packet");
 
 const queryCalls = source.inventory.split(".query_all_raw(").length - 1;
 if (queryCalls !== 1) {

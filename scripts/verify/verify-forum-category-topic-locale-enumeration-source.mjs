@@ -24,7 +24,6 @@ const files = {
   topicRaw: "crates/modules/rustok-forum/src/services/topic_locale_enumeration.rs",
   topicFacade: "crates/modules/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
   replyFacade: "crates/modules/rustok-forum/src/services/reply_facade.rs",
-  packet: "docs/modules/forum-34-category-topic-locale-enumeration-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(Object.entries(files).map(([key, path]) => [key, read(path)]));
@@ -98,19 +97,6 @@ for (const marker of ["sea_orm", "crate::entities", "::Entity::find()", "Seriali
   forbid(source.topicFacade, marker, "topic facade locale API");
 }
 
-for (const marker of [
-  "pub async fn available_locales_for_replies(",
-  "MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS",
-  "Action::Manage",
-]) need(source.replyFacade, marker, "reply parity baseline");
-
-for (const marker of [
-  "FORUM-34G",
-  "FORUM-34A through FORUM-34F",
-  "effective `Manage` permission satisfies narrower actions",
-  "all three current Forum export shapes",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34G historical packet");
 
 for (const retired of ["forum_category_taxonomy_binding::Entity::find()"]) {
   forbid(

@@ -44,9 +44,6 @@ if (fs.existsSync(categoryPresentationPath)) {
     `Forum attachment relation admission source: retired Forum presentation owner ${categoryPresentationPath} must stay removed`,
   );
 }
-const packet = read(
-  "docs/modules/forum-14-attachment-relation-admission-actualization-2026-08-10.md",
-);
 const forumPlan = read("crates/modules/rustok-forum/docs/implementation-plan.md");
 
 for (const marker of [
@@ -119,15 +116,6 @@ for (const forbidden of ["CategoryCoverService", "category_cover_media"]) {
   forbid(lib, forbidden, "Forum category-cover owner command must stay absent");
 }
 
-for (const marker of [
-  "FORUM-14A",
-  "admission-only",
-  "repeated use of the same Media asset",
-  "does **not** call Media",
-  "does not yet unblock attachment reconciliation",
-  "FORUM-14B",
-  "no Cargo command, test, Node verifier",
-]) need(packet, marker, "FORUM-14A actualization");
 
 if (failures.length > 0) {
   console.error("Forum source guard failed:");

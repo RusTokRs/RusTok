@@ -18,13 +18,11 @@ const servicePath = "crates/modules/rustok-forum/src/services/mention_reconcilia
 const servicesModPath = "crates/modules/rustok-forum/src/services/mod.rs";
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/mention_reconciliation_query.rs";
 const graphqlModPath = "crates/modules/rustok-forum/src/graphql/mod.rs";
-const packetPath = "docs/modules/forum-33-mention-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
 const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub struct ForumMentionReconciliationService",
@@ -123,30 +121,6 @@ for (const marker of [
   "mention_reconciliation_query::ForumMentionReconciliationQuery",
 ]) {
   requireText(graphqlMod, marker, `Forum GraphQL composition missing ${marker}`);
-}
-
-for (const marker of [
-  "Status: `source-ready / maintainer-execution-open / repair-open`",
-  "FORUM-33D",
-  "next source reconciliation cursor to mentions",
-  "canonical implementation-plan ledger still describes subscriptions as open",
-  "MentionRelationService",
-  "does not re-resolve handles through Profiles",
-  "does not query Notifications-owned",
-  "source_unavailable",
-  "child_source_mismatch",
-  "target_limit_exceeded",
-  "locale_invalid",
-  "projection_fingerprint_invalid",
-  "revision_id > relationAfter",
-  "relationAfter: String",
-  "forum_categories:manage",
-  "forum_topics:manage",
-  "REPEATABLE READ READ ONLY",
-  "adds no relation repair",
-  "next FORUM-33 source reconciliation cursor is **attachments**",
-]) {
-  requireText(packet, marker, `FORUM-33E actualization missing ${marker}`);
 }
 
 console.log("Forum FORUM-33E mention reconciliation source: ok");

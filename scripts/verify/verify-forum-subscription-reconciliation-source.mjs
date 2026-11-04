@@ -18,13 +18,11 @@ const servicePath = "crates/modules/rustok-forum/src/services/subscription/recon
 const subscriptionModulePath = "crates/modules/rustok-forum/src/services/subscription.rs";
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/subscription_reconciliation_query.rs";
 const graphqlModulePath = "crates/modules/rustok-forum/src/graphql/mod.rs";
-const packetPath = "docs/modules/forum-33-subscription-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
 const subscriptionModule = read(subscriptionModulePath);
 const graphql = read(graphqlPath);
 const graphqlModule = read(graphqlModulePath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub struct ForumSubscriptionReconciliationService",
@@ -124,29 +122,6 @@ for (const marker of [
   "subscription_reconciliation_query::ForumSubscriptionReconciliationQuery",
 ]) {
   requireText(graphqlModule, marker, `Forum GraphQL composition missing ${marker}`);
-}
-
-for (const marker of [
-  "Status: `source-ready / maintainer-execution-open / repair-open`",
-  "FORUM-33C",
-  "The next explicit source cursor recorded by FORUM-33C was subscriptions",
-  "services::subscription::reconciliation",
-  "does **not** infer",
-  "(topic_id, user_id) > (topicAfter, topicUserAfter)",
-  "(category_id, user_id) > (categoryAfter, categoryUserAfter)",
-  "forumSubscriptionReconciliationReport(",
-  "target_missing",
-  "merged_topic_source_subscription",
-  "muted_preferences_invalid",
-  "revision_invalid",
-  "reversible ordinary `archived` topic",
-  "forum_categories:manage",
-  "forum_topics:manage",
-  "REPEATABLE READ READ ONLY",
-  "adds no repair mutation",
-  "next source reconciliation cursor is mentions",
-]) {
-  requireText(packet, marker, `FORUM-33D actualization missing ${marker}`);
 }
 
 console.log("Forum FORUM-33D subscription reconciliation source: ok");

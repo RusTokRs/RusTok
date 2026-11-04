@@ -15,11 +15,7 @@ function requireAbsent(text, marker, message) {
 }
 
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/storefront_audience_topics.rs";
-const packetPath =
-  "docs/modules/forum-33-storefront-topic-list-locale-metrics-actualization-2026-08-09.md";
-
 const graphql = read(graphqlPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "async fn forum_storefront_audience_topics(",
@@ -121,24 +117,6 @@ for (const forbiddenLabel of [
     forbiddenLabel,
     `${graphqlPath}: locale or DTO values must not become metric labels`,
   );
-}
-
-for (const marker of [
-  "FORUM-33K",
-  "FORUM-33J",
-  "locale-baseline-complete",
-  "Attachments therefore remain blocked on FORUM-14",
-  "forumStorefrontAudienceTopics",
-  "rustok_forum_graphql_storefront_topic_list_locale_resolution_total",
-  "observation counter",
-  "no database query",
-  "tenant-controlled locale string",
-  "Spam-outcome telemetry therefore remains blocked",
-  "public Moderation application-operation read/status contract",
-  "stop locale expansion",
-  "no Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 console.log("Forum FORUM-33K storefront topic-list locale metric source: ok");

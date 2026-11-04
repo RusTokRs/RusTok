@@ -32,8 +32,6 @@ const forumGraphqlModPath = "crates/modules/rustok-forum/src/graphql/mod.rs";
 const serverShimPath = "apps/server/src/graphql/forum_notification_reconciliation.rs";
 const serverGraphqlModPath = "apps/server/src/graphql/mod.rs";
 const schemaPath = "apps/server/src/graphql/schema.rs";
-const packetPath =
-  "docs/modules/forum-33-notification-reconciliation-status-actualization-2026-08-09.md";
 const guardPath = "apps/server/tests/module_surface_boundary_guard.rs";
 
 
@@ -47,7 +45,6 @@ const serverShim = fs.existsSync(serverShimPath) ? read(serverShimPath) : "";
 const serverGraphqlMod = read(serverGraphqlModPath);
 const schema = read(schemaPath);
 const guard = read(guardPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub struct NotificationInboxReconcileInspectionPage",
@@ -205,20 +202,5 @@ requireText(
   "forum_notification_reconciliation_graphql_is_owned_by_forum_crate",
   guardPath + ": missing Forum ownership guard",
 );
-
-for (const marker of [
-  "FORUM-33G",
-  "Attachments remain blocked on FORUM-14",
-  "NotificationInboxReconcileService::inspect_page",
-  "NotificationInboxReconciliationInspectPort",
-  "forumNotificationReconciliationStatus",
-  "forum_categories:manage",
-  "forum_topics:manage",
-  "page-local",
-  "existing Notifications `reconcile_page` remains the durable archive owner",
-  "no Cargo command",
-]) {
-  requireText(packet, marker, packetPath + ": missing " + marker);
-}
 
 console.log("Forum FORUM-33G notification reconciliation status source: owner-port-composed");

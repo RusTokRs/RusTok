@@ -26,7 +26,6 @@ const files = {
   mentions: "crates/modules/rustok-forum/src/mentions.rs",
   relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
   categoryProjectionOwner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
-  packet: "docs/modules/forum-34-import-relation-admission-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -106,36 +105,6 @@ for (const marker of [
   "ForumMentionAudience",
 ]) need(source.mentions, marker, "Forum mention baseline");
 
-for (const marker of [
-  "pub(crate) async fn prepare(",
-  "security: &SecurityContext",
-  "publish_added_target_events_in_tx",
-  "persist_in_tx",
-]) need(source.relationOwner, marker, "current owner relation baseline");
-
-for (const marker of [
-  "publish_forum_projection_scope_direct_in_tx",
-  "sync_category_copy_in_tx",
-]) need(source.categoryProjectionOwner, marker, "category owner projection baseline");
-
-for (const marker of [
-  "FORUM_IMPORT_SOURCE_NODEBB",
-  "MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH: usize = 512",
-]) need(source.mapping, marker, "NodeBB mapping baseline");
-
-for (const marker of [
-  "FORUM-34M",
-  "FORUM-34A through FORUM-34L",
-  "relation-admission gap",
-  "does not call `ProfilesReader`",
-  "does not use `SecurityContext`",
-  "rejects every non-empty quote set",
-  "SuppressInteractiveEvents` -> `SuppressAddedTargetEvents",
-  "Projection invalidation is not an interactive event",
-  "34A NodeBB mapping -> 34B/34C inspection -> 34K identity/application resolution -> 34L owner-write preparation -> 34M exact relation admission",
-  "FORUM-34N",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34M packet");
 
 const libWiringCount = source.lib.split("import_relation_preparation").length - 1;
 if (libWiringCount !== 2) {

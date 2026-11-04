@@ -15,11 +15,7 @@ function requireAbsent(text, marker, message) {
 }
 
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/read_state.rs";
-const packetPath =
-  "docs/modules/forum-33-unread-activity-metrics-actualization-2026-08-09.md";
-
 const graphql = read(graphqlPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "async fn forum_unread_topics(",
@@ -85,23 +81,6 @@ for (const forbiddenLabel of [
     forbiddenLabel,
     `${graphqlPath}: unread activity metric labels must remain fixed`,
   );
-}
-
-for (const marker of [
-  "FORUM-33I",
-  "FORUM-33H",
-  "Attachments remain blocked on FORUM-14",
-  "rustok_forum_graphql_unread_topic_state_total",
-  "observation counter",
-  "unreadOnly = true",
-  "not described as",
-  "Spam-outcome telemetry remains premature",
-  "DuplicateContent",
-  "ExternalSpamScore",
-  "No additional database query",
-  "no Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 console.log("Forum FORUM-33I unread activity metric source: ok");

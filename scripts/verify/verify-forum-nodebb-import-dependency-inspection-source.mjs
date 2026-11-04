@@ -20,12 +20,8 @@ function requireAbsent(text, marker, message) {
 
 const inspectionPath = "crates/modules/rustok-forum/src/import_inspection.rs";
 const libPath = "crates/modules/rustok-forum/src/lib.rs";
-const packetPath =
-  "docs/modules/forum-34-nodebb-dependency-inspection-actualization-2026-08-09.md";
-
 const inspection = read(inspectionPath);
 const lib = read(libPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub const MAX_FORUM_IMPORT_DEPENDENCY_ISSUES_PER_BATCH: usize =",
@@ -114,23 +110,7 @@ for (const forbiddenIdentity of [
     forbiddenIdentity,
     `${inspectionPath}: dependency inspection must not manufacture owner identity: ${forbiddenIdentity}`,
   );
-}
 
-for (const marker of [
-  "FORUM-34B",
-  "shared-runner-blocked",
-  "no neutral shared import runner/framework",
-  "dry-runnable, resumable, cursor-based, idempotent and bounded",
-  "missing_batch_record",
-  "mismatched_batch_record",
-  "external_owner_resolution",
-  "does not treat a missing reference as proof",
-  "is not a persistence-admission decision",
-  "MAX_FORUM_IMPORT_DEPENDENCY_ISSUES_PER_BATCH = 1536",
-  "Forum export adapter over stable bounded owner reads",
-  "no test, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 if (failures.length > 0) {

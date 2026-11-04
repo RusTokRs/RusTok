@@ -16,11 +16,9 @@ function requireAbsent(text, marker, message) {
 
 const mappingPath = "crates/modules/rustok-forum/src/export_mapping.rs";
 const readerPath = "crates/modules/rustok-forum/src/export_reader.rs";
-const packetPath = "docs/modules/forum-34-owner-export-reader-actualization-2026-08-09.md";
 
 const mapping = read(mappingPath);
 const reader = read(readerPath);
-const packet = read(packetPath);
 
 for (const marker of [
   '#[path = "export_reader.rs"]',
@@ -109,27 +107,6 @@ if (ownerReadCalls !== 3) {
 const mapperCalls = reader.split("ForumOwnerExportMapper.map_fragment(&owner_views)").length - 1;
 if (mapperCalls !== 1) {
   throw new Error(`${readerPath}: reader must delegate export field mapping exactly once`);
-}
-
-for (const marker of [
-  "FORUM-34F",
-  "FORUM-34A through FORUM-34E",
-  "still finds no generic `ImportRunner`, `ExportRunner`, `ImportAdapter`, `ExportAdapter` or `rustok-import`",
-  "canonical Forum ledger still labels `FORUM-34` as `planned`",
-  "do not derive `Serialize` or `Deserialize`",
-  "at most 512 localized targets",
-  "category targets require `forum_categories:manage`",
-  "topic targets require `forum_topics:manage`",
-  "reply targets require `forum_replies:manage`",
-  "has no SeaORM/database/entity dependency",
-  "normalized `effective_locale` equals the normalized requested locale",
-  "prevents a fallback read from silently fabricating multilingual export completeness",
-  "prevents Topic canonical resolution from silently exporting a different topic identity",
-  "ForumOwnerExportMapper",
-  "at most 512 localized owner calls per fragment",
-  "no test, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 console.log("Forum FORUM-34F bounded owner export reader source: ok");

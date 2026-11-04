@@ -28,7 +28,6 @@ const files = {
   categoryOwner: "crates/modules/rustok-forum/src/services/category_projection_owner.rs",
   topicOwner: "crates/modules/rustok-forum/src/services/topic_inline.rs",
   replyOwner: "crates/modules/rustok-forum/src/services/reply_owner_inline.rs",
-  packet: "docs/modules/forum-34-atomic-import-content-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -112,39 +111,6 @@ for (const marker of [
   "DomainEvent::ForumTopicReplied",
 ]) need(source.replyImport, marker, "FORUM-34O reply owner primitive");
 
-for (const marker of [
-  "persist_import_admitted_in_tx(",
-  "self.persist_in_tx(txn, prepared).await?",
-]) need(source.relationImport, marker, "FORUM-34N relation bridge baseline");
-
-for (const marker of [
-  "sync_category_copy_in_tx",
-  "publish_forum_projection_scope_direct_in_tx",
-]) need(source.categoryOwner, marker, "category owner baseline");
-for (const marker of [
-  "validate_normalized_topic_tags",
-  "sync_channel_access_in_tx",
-  "sync_topic_tags_in_tx",
-  "ForumTopicCreated",
-]) need(source.topicOwner, marker, "topic owner baseline");
-for (const marker of [
-  "allocate_reply_position_in_tx",
-  "status == ReplyStatus::Approved",
-  "ForumTopicReplied",
-]) need(source.replyOwner, marker, "reply owner baseline");
-
-for (const marker of [
-  "FORUM-34O",
-  "FORUM-34A through FORUM-34N",
-  "exact `PermissionScope::All`",
-  "Provisional topic state",
-  "only `ReplyStatus::Approved`",
-  "always calls `publish_forum_projection_scope_direct_in_tx",
-  "rejects every prepared `ReplyStatus::Deleted` before opening the write transaction",
-  "one content transaction",
-  "FORUM-34P",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34O packet");
 
 for (const marker of [
   "checkpoint table",

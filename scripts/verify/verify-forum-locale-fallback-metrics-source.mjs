@@ -16,12 +16,8 @@ function requireAbsent(text, marker, message) {
 
 const graphqlPath = "crates/modules/rustok-forum/src/graphql/read_state.rs";
 const cargoPath = "crates/modules/rustok-forum/Cargo.toml";
-const packetPath =
-  "docs/modules/forum-33-locale-fallback-metrics-actualization-2026-08-09.md";
-
 const graphql = read(graphqlPath);
 const cargo = read(cargoPath);
-const packet = read(packetPath);
 
 requireText(cargo, 'prometheus = "0.14"', `${cargoPath}: prometheus dependency is missing`);
 
@@ -78,22 +74,5 @@ requireAbsent(
   "with_label_values(&[effective_locale",
   `${graphqlPath}: effective locale must never become a metric label`,
 );
-
-for (const marker of [
-  "FORUM-33H",
-  "FORUM-33G",
-  "Attachments remain blocked on FORUM-14",
-  "forumUnreadTopics",
-  "rustok_forum_graphql_locale_resolution_total",
-  "resource=\"unread_topic\"",
-  "exact",
-  "fallback",
-  "missing",
-  "No locale values are metric labels",
-  "no additional database query",
-  "no Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
-}
 
 console.log("Forum FORUM-33H locale fallback metric source: ok");

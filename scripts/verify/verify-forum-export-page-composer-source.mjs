@@ -18,7 +18,6 @@ const files = {
   planner: "crates/modules/rustok-forum/src/export_planner.rs",
   page: "crates/modules/rustok-forum/src/export_page.rs",
   inventory: "crates/modules/rustok-forum/src/export_inventory.rs",
-  packet: "docs/modules/forum-34-export-page-composer-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -87,25 +86,7 @@ for (const marker of [
   "MAX_FORUM_EXPORT_SOURCE_INVENTORY_LIMIT",
 ]) {
   need(source.inventory, marker, "34I authorization/bound baseline");
-}
 
-for (const marker of [
-  "FORUM-34J",
-  "FORUM-34A through FORUM-34I",
-  "still labels `FORUM-34` as `planned`",
-  "34I list_page -> 34H target_plan_request/plan_fragment -> 34F read_fragment -> 34D mapping",
-  "fragment` is `None`",
-  "PermissionScope::All",
-  "TooManyTargets",
-  "retry the same `after_id` with a smaller source limit",
-  "ordered unique source IDs",
-  "does **not** claim a frozen database snapshot",
-  "imports no SeaORM/database types",
-  "does not call `ForumOwnerExportMapper` directly",
-  "34J page composer -> 34I bounded candidate IDs -> 34H exact-locale targets -> 34F exact owner reads -> 34D export mapping",
-  "no tests, Cargo commands",
-]) {
-  need(source.packet, marker, "FORUM-34J packet");
 }
 
 const inventoryCalls = source.page.split(".list_page(").length - 1;

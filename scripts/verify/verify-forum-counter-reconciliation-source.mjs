@@ -25,7 +25,6 @@ const mentionGqlPath = "crates/modules/rustok-forum/src/graphql/mention_reconcil
 const graphqlModPath = "crates/modules/rustok-forum/src/graphql/mod.rs";
 const libPath = "crates/modules/rustok-forum/src/lib.rs";
 const planPath = "crates/modules/rustok-forum/docs/implementation-plan.md";
-const packetPath = "docs/modules/forum-33-counter-reconciliation-actualization-2026-08-08.md";
 
 const service = read(servicePath);
 const solution = read(solutionPath);
@@ -38,7 +37,6 @@ const mentionGql = read(mentionGqlPath);
 const graphqlMod = read(graphqlModPath);
 const lib = read(libPath);
 const plan = read(planPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub const DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 100",
@@ -298,29 +296,6 @@ for (const marker of [
   "empty source registry",
 ]) {
   requireText(plan, marker, `canonical Forum plan missing ${marker}`);
-}
-
-for (const marker of [
-  "Status: `in-progress / bounded-counter-and-solution-reconciliation-source-ready / repair-and-runtime-evidence-open`",
-  "forumSolutionReconciliationReport(",
-  "solutionAfter: UUID",
-  "solutionStatAfter: UUID",
-  "accepted_reply_eligibility",
-  "solution_author_stat_missing",
-  "solution_author_stat_count",
-  "forum_user_stats.solution_count",
-  "strict `topic_id > solutionAfter`",
-  "strict `user_id > solutionStatAfter`",
-  "page-local",
-  "forum_categories:manage",
-  "forum_topics:manage",
-  "Authorization is deliberately enforced twice",
-  "services::rbac::enforce_scope",
-  "REPEATABLE READ READ ONLY",
-  "does **not** add a repair mutation",
-  "idempotent job/receipt state",
-]) {
-  requireText(packet, marker, `FORUM-33 actualization missing ${marker}`);
 }
 
 console.log("Forum FORUM-33 reconciliation source: ok");

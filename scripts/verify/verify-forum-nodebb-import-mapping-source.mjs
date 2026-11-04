@@ -20,11 +20,9 @@ function requireAbsent(text, marker, message) {
 
 const mappingPath = "crates/modules/rustok-forum/src/import_mapping.rs";
 const libPath = "crates/modules/rustok-forum/src/lib.rs";
-const packetPath = "docs/modules/forum-34-nodebb-mapping-actualization-2026-08-09.md";
 
 const mapping = read(mappingPath);
 const lib = read(libPath);
-const packet = read(packetPath);
 
 for (const marker of [
   'pub const FORUM_IMPORT_SOURCE_NODEBB: &str = "nodebb";',
@@ -128,23 +126,7 @@ for (const forbidden of [
   "scheduler",
 ]) {
   requireAbsent(mapper, forbidden, `${mappingPath}: mapper must stay side-effect free: ${forbidden}`);
-}
 
-for (const marker of [
-  "FORUM-34A",
-  "shared-runner-blocked",
-  "FORUM-33 has no additional truthful source slice",
-  "no neutral shared import runner/framework contract",
-  "does **not** create a Forum-only runner",
-  "NodeBB numeric identities are preserved only as external source references",
-  "never manufactures RusTok UUIDs",
-  "or the topic has no positive `mainPid`",
-  "role is `Unresolved`",
-  "final Forum owner validation",
-  "Forum export adapter",
-  "no tests, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 if (failures.length > 0) {

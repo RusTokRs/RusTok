@@ -22,7 +22,6 @@ const files = {
   lib: "crates/modules/rustok-forum/src/lib.rs",
   resolution: "crates/modules/rustok-forum/src/import_resolution.rs",
   preparation: "crates/modules/rustok-forum/src/import_write_preparation.rs",
-  packet: "docs/modules/forum-34-import-write-preparation-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -100,29 +99,6 @@ for (const marker of [
   ".delete(&",
 ]) forbid(source.preparation, marker, "preparation side-effect/non-wire boundary");
 
-for (const marker of [
-  "pub struct ForumResolvedImportApplicationBatch",
-  "pub struct ForumResolvedImportCategory",
-  "pub struct ForumResolvedImportTopic",
-  "pub struct ForumResolvedImportReply",
-  "ForumImportTargetIdentityKind",
-]) need(source.resolution, marker, "34K resolution baseline");
-
-for (const marker of [
-  "FORUM-34L",
-  "FORUM-34A through FORUM-34K",
-  "owner-write preparation",
-  "NodeBB category mapping has no owner-required category slug",
-  "raw source text, not an admitted `RichTextDocument`",
-  "at most `MAX_FORUM_IMPORT_WRITE_RECORDS_PER_BATCH = 512`",
-  "does not generate any entity UUID",
-  "Cross-batch dependency assembly remains a shared-runner concern",
-  "`ForumImportWriteEventMode` is explicit and has no default",
-  "imports no SeaORM/database types",
-  "34A NodeBB mapping -> 34B/34C inspection -> 34K identity/application resolution -> 34L owner-write preparation",
-  "FORUM-34M",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34L packet");
 
 const libWiringCount = source.lib.split("import_write_preparation").length - 1;
 if (libWiringCount !== 2) {

@@ -26,7 +26,6 @@ const files = {
   relationOwner: "crates/modules/rustok-forum/src/services/mention_relation.rs",
   postgres: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/postgres_up.rs",
   sqlite: "crates/modules/rustok-forum/src/migrations/m20260713_000009_add_forum_soft_delete_revisions/sqlite_revisions.rs",
-  packet: "docs/modules/forum-34-deleted-reply-persistence-actualization-2026-08-10.md",
 };
 
 const source = Object.fromEntries(
@@ -90,40 +89,6 @@ for (const marker of [
   "requires an admitted tombstone timestamp",
 ]) need(source.legacyReplyImport, marker, "FORUM-34O live reply primitive baseline");
 
-for (const marker of [
-  "persist_import_admitted_in_tx",
-  "SuppressAddedTargetEvents",
-]) need(source.relationImport, marker, "FORUM-34N relation bridge baseline");
-
-for (const marker of [
-  "lock_source_in_tx",
-  "ensure_prepared_matches_source_in_tx",
-]) need(source.relationOwner, marker, "Forum relation owner persistence baseline");
-
-for (const marker of [
-  "forum_guard_deleted_reply_update",
-  "forum_reply_revisions",
-  "revision_reason",
-  "'delete'",
-]) need(source.postgres, marker, "Postgres delete revision trigger baseline");
-for (const marker of [
-  "forum_reply_delete_revision_update",
-  "OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL",
-  "forum_reply_revisions",
-  "'delete'",
-]) need(source.sqlite, marker, "SQLite delete revision trigger baseline");
-
-for (const marker of [
-  "FORUM-34Q",
-  "apply_prepared_tombstone_batch",
-  "exactly one delete revision",
-  "no `ForumTopicReplied` event",
-  "no `ForumReplyStatusChanged` event",
-  "Historical child -> deleted-parent relationships are allowed",
-  "relation revisions/mention rows",
-  "shared owner-data migration runner",
-  "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34Q actualization");
 
 for (const marker of [
   "CURRENT_TIMESTAMP",

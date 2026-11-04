@@ -17,11 +17,7 @@ function requireAbsent(text, marker, message) {
 }
 
 const inspectionPath = "crates/modules/rustok-forum/src/import_inspection.rs";
-const packetPath =
-  "docs/modules/forum-34-nodebb-category-cycle-validation-actualization-2026-08-09.md";
-
 const inspection = read(inspectionPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "CyclicBatchRelation",
@@ -97,20 +93,7 @@ for (const forbidden of [
     forbidden,
     `${inspectionPath}: cycle helper must stay bounded to category ids/parents: ${forbidden}`,
   );
-}
 
-for (const marker of [
-  "FORUM-34C",
-  "shared-runner-blocked",
-  "self-parent and multi-node category cycles",
-  "cyclic_batch_relation",
-  "missing external parent remaining `missing_batch_record` rather than cyclic",
-  "does not infer that such a reference is cyclic or invalid globally",
-  "MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH = 512",
-  "MAX_FORUM_IMPORT_DEPENDENCY_ISSUES_PER_BATCH = 1536",
-  "no test, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 if (failures.length > 0) {

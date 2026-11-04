@@ -32,10 +32,6 @@ const native = read("crates/modules/rustok-forum/storefront/src/transport/native
 const cargo = read("crates/modules/rustok-forum/storefront/Cargo.toml");
 const en = read("crates/modules/rustok-forum/storefront/locales/en.ftl");
 const ru = read("crates/modules/rustok-forum/storefront/locales/ru.ftl");
-const packet = read(
-  "docs/modules/forum-15-storefront-member-card-ui-actualization-2026-08-10.md",
-);
-
 for (const marker of [
   "pub member_cards: Vec<ForumMemberCard>",
   'rename = "authorId"',
@@ -98,14 +94,6 @@ need(uiMod, "mod member_card;", "FORUM-15E UI module wiring");
 forbid(cargo, "rustok-profiles", "FORUM-15E storefront must not add Profiles dependency");
 forbid(cargo, "rustok-media", "FORUM-15E storefront must not add Media dependency");
 
-for (const marker of [
-  "FORUM-15E",
-  "privacy-filtered-lookup",
-  "no-new-owner-reads",
-  "Media-backed avatar rendering remains open",
-  "browser/runtime evidence",
-  "no Cargo command, test, Node verifier",
-]) need(packet, marker, "FORUM-15E actualization");
 
 for (const marker of [
   "forumMemberCards(userIds: $userIds, locale: $locale)",

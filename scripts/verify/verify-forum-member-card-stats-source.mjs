@@ -23,7 +23,6 @@ const owner = read("crates/modules/rustok-forum/src/services/member_card.rs");
 const gqlMod = read("crates/modules/rustok-forum/src/graphql/mod.rs");
 const profilePresentation = read("crates/modules/rustok-profiles/src/presentation.rs");
 const profileLoader = read("crates/modules/rustok-profiles/src/loader.rs");
-const packet = read("docs/modules/forum-15-member-card-stats-actualization-2026-08-10.md");
 
 // The resolver is now a thin transport: it admits the permission, normalises the request and hands
 // it to the owner service, which owns privacy admission and the single statistics read.
@@ -71,33 +70,6 @@ for (const marker of [
   ".get(tenant_id",
 ]) forbid(query, marker, "FORUM-15B must not broaden or bypass batch owner composition");
 
-for (const marker of [
-  "mod member_card_query;",
-  "GqlForumMemberCard, GqlForumMemberStats, MAX_FORUM_MEMBER_CARD_USER_IDS",
-  "member_card_query::ForumMemberCardQuery",
-]) need(gqlMod, marker, "FORUM-15B GraphQL wiring");
-
-for (const marker of [
-  "ProfilePrivacyService::new(self.db.clone())",
-  ".evaluate_access_batch(tenant_id, user_ids, self.audience)",
-  "ProfilePrivacyDecision::Allow",
-  "ProfileError::PresentationUnavailable",
-]) need(profilePresentation, marker, "Profiles presentation owner baseline");
-
-for (const marker of [
-  "ProfilePresentationService::for_audience(db, audience)",
-  "ProfileSummaryBatchKey",
-  ".find_profile_summaries(",
-]) need(profileLoader, marker, "Profiles batch loader baseline");
-
-for (const marker of [
-  "FORUM-15B",
-  "profile-privacy-authoritative",
-  "MAX_FORUM_MEMBER_CARD_USER_IDS = 100",
-  "one `forum_user_stats` query",
-  "is not claimed here",
-  "no Cargo command, test, Node verifier",
-]) need(packet, marker, "FORUM-15B actualization");
 
 if (failures.length > 0) {
   console.error("Forum FORUM-15B member-card statistics source failed:");

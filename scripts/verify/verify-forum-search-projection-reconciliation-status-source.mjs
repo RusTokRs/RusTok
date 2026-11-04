@@ -17,13 +17,9 @@ function requireAbsent(text, marker, message) {
 const queryPath = "crates/modules/rustok-search/src/graphql/forum_projection_reconciliation.rs";
 const graphqlModPath = "crates/modules/rustok-search/src/graphql/mod.rs";
 const serverSchemaPath = "apps/server/src/graphql/schema.rs";
-const packetPath =
-  "docs/modules/forum-33-shared-search-reconciliation-actualization-2026-08-09.md";
-
 const query = read(queryPath);
 const graphqlMod = read(graphqlModPath);
 const serverSchema = read(serverSchemaPath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub struct ForumSearchProjectionReconciliationQuery",
@@ -96,30 +92,6 @@ for (const marker of [
   ".data(runtime_extensions)",
 ]) {
   requireText(serverSchema, marker, `${serverSchemaPath}: missing ${marker}`);
-}
-
-for (const marker of [
-  "FORUM-33F",
-  "FORUM-33E",
-  "attachments remain **blocked on FORUM-14**",
-  "ForumProjectionOwnerRevisionSourcePort",
-  "search_projection_owner_checkpoints",
-  "search_projection_inbox",
-  "forumSearchProjectionReconciliationStatus",
-  "after_owner_revision = N - 1, limit = 1",
-  "after_owner_revision = N, limit = 1",
-  "checkpoint_behind",
-  "checkpoint_ahead",
-  "checkpoint_event_mismatch",
-  "non_terminal_inbox_work",
-  "settings:read",
-  "forum_categories:manage",
-  "forum_topics:manage",
-  "REPEATABLE READ READ ONLY",
-  "diagnostic convergence observation",
-  "permitted shared-owner projection diagnostics and non-duplicative operational metrics",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 console.log("Forum FORUM-33F shared Search reconciliation source: ok");

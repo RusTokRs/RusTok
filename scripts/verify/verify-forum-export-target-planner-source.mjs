@@ -20,7 +20,6 @@ const files = {
   categoryLocales: "crates/modules/rustok-forum/src/services/category_owner_locale_enumeration.rs",
   topicLocales: "crates/modules/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
   replyLocales: "crates/modules/rustok-forum/src/services/reply_facade.rs",
-  packet: "docs/modules/forum-34-export-target-planner-actualization-2026-08-09.md",
 };
 
 const source = Object.fromEntries(
@@ -117,24 +116,7 @@ for (const [text, method, label] of [
 ]) {
   need(text, method, label);
   need(text, "Action::Manage", label);
-}
 
-for (const marker of [
-  "FORUM-34H",
-  "FORUM-34A through FORUM-34G",
-  "still labels `FORUM-34` as `planned`",
-  "combined category + topic + reply source-ID count exceeds 512",
-  "preflighted for every requested kind before the first owner locale query",
-  "category -> topic -> reply",
-  "normalize_locale_code",
-  "target 513",
-  "contains no SeaORM/database/entity access",
-  "does not call `ForumOwnerExportReader::read_fragment`",
-  "Export eligibility remains a 34F concern",
-  "neutral shared migration runner remains absent",
-  "no tests, Cargo commands",
-]) {
-  need(source.packet, marker, "FORUM-34H packet");
 }
 
 console.log("Forum FORUM-34H bounded export target planner source: ok");

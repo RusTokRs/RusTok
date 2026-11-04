@@ -19,12 +19,10 @@ function requireAbsent(text, marker, message) {
 const storagePath = "crates/modules/rustok-forum/src/services/reply_inline.rs";
 const ownerPath = "crates/modules/rustok-forum/src/services/reply_owner_inline.rs";
 const facadePath = "crates/modules/rustok-forum/src/services/reply_facade.rs";
-const packetPath = "docs/modules/forum-34-reply-locale-enumeration-actualization-2026-08-09.md";
 
 const storage = read(storagePath);
 const owner = read(ownerPath);
 const facade = read(facadePath);
-const packet = read(packetPath);
 
 for (const marker of [
   "pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;",
@@ -124,26 +122,7 @@ for (const forbidden of [
     forbidden,
     `${facadePath}: public facade must reject public-read and delegate without per-reply probes: ${forbidden}`,
   );
-}
 
-for (const marker of [
-  "FORUM-34E",
-  "34A-34D",
-  "canonical Forum ledger still says `FORUM-34` is `planned`",
-  "exact stored locale enumeration",
-  "MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS = 512",
-  "requires `forum_replies:manage`",
-  "rejects `SecurityContext::is_public_read()`",
-  "anonymous reply-existence or locale oracle",
-  "raw batched storage method and its bound remain crate-private",
-  "one tenant-scoped reply existence query",
-  "existing batched `load_bodies_map` loader",
-  "does not call `resolve_by_locale_with_fallback`",
-  "does not introduce an N+1 enumeration path",
-  "shared or Forum-only import/export runner",
-  "no test, Cargo command",
-]) {
-  requireText(packet, marker, `${packetPath}: missing ${marker}`);
 }
 
 if (failures.length > 0) {
