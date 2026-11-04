@@ -4,7 +4,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_commerce_foundation::entities;
+use crate::entities;
 
 use crate::{RegionError, RegionResult, RegionTranslationService};
 

@@ -812,7 +812,7 @@ fn validate_owner_report(
         "unsupported owner report"
     );
     ensure!(
-        report["report"]["scope"] == "fresh-install-equivalence"
+        report["report"]["scope"] == "fresh-install-stepwise-equivalence"
             && report["report"]["equivalent"] == true,
         "owner did not verify fresh-install equivalence"
     );
@@ -1046,13 +1046,16 @@ mod tests {
     #[test]
     fn rejects_incorrect_or_unbound_owner_report() {
         let inputs = BTreeMap::from([("reference-plan".into(), "abc".into())]);
-        let correct = serde_json::json!({ "schema_version": 1, "report": { "schema_version": 1, "scope": "fresh-install-equivalence", "equivalent": true, "replacement_admission": "blocked" }, "input_sha256": { "reference-plan": "abc" } });
+        let correct = serde_json::json!({ "schema_version": 1, "report": { "schema_version": 1, "scope": "fresh-install-stepwise-equivalence", "equivalent": true, "replacement_admission": "blocked" }, "input_sha256": { "reference-plan": "abc" } });
         assert!(validate_owner_report(&correct, &inputs).is_ok());
         for field in ["scope", "equivalent", "replacement_admission"] {
             let mut wrong = correct.clone();
             wrong["report"][field] = serde_json::Value::Null;
             assert!(validate_owner_report(&wrong, &inputs).is_err());
         }
+        let mut old = correct.clone();
+        old["report"]["scope"] = "fresh-install-equivalence".into();
+        assert!(validate_owner_report(&old, &inputs).is_err());
         let mut wrong = correct;
         wrong["input_sha256"]["reference-plan"] = "changed".into();
         assert!(validate_owner_report(&wrong, &inputs).is_err());

@@ -122,6 +122,19 @@ tables, 1 MiB per row, 64 MiB schema output, 30-second SQL statements and a
 source root against a newly created fixture database and login. It observes and
 removes the original fixture before creating the candidate fixture. Both use
 the same generated names so ownership and grants can be compared directly.
+`up` loads the plan once and accepts only a journal that is a prefix of that
+plan. It applies one migration at a time using SeaORM's transaction policy,
+reads back the committed journal entry and emits a confirmation before the next
+step. Concurrent PostgreSQL `up` commands coordinate through an advisory lock.
+`status` reads the journal without creating it. Fresh verification requires
+the ordered confirmations from both runners and checks each final journal
+against its executable plan.
+
+Fresh reports include bootstrap diagnostics for eight known singleton tables.
+The verifier uses PostgreSQL's clock to bound each run and checks the exact row
+count, column types, keys, counters, references and other seed values. A
+diagnostic flags a clock-only difference when both rows satisfy those checks and
+only `updated_at` differs. The raw observations still determine equivalence.
 Recreating the login with a new password also discards original role settings
 before the candidate runs. Migration children
 receive their fixture URL and a bounded OS environment. `compare --quiescent`

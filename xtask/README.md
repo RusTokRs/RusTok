@@ -312,7 +312,9 @@ local comparison input, not a trusted release boundary.
 
 `verify-fresh` validates the snapshots against Git and current files, builds
 both canonical migration runners/exporters with `--locked --offline`, and runs
-them on new fixture databases. Each isolated build has a two-hour deadline to
+them on new fixture databases. Both runners must support stepwise confirmation.
+The verifier checks each confirmation sequence and the final journals against
+their respective plans. Each isolated build has a two-hour deadline to
 allow for compiling the composed module graph with a cold build cache. Build
 sources are copied outside the active Git and Cargo ancestor tree.
 Global/ancestor Cargo configuration is rejected;

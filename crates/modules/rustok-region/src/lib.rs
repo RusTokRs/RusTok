@@ -5,7 +5,7 @@
 
 mod domain;
 pub mod dto;
-pub mod entities;
+mod entities;
 pub mod error;
 pub mod migrations;
 pub mod module;
@@ -16,7 +16,7 @@ pub mod translation_target;
 
 pub use dto::{
     CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
-    RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
+    RegionTaxPolicy, RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
 };
 pub use error::{RegionError, RegionResult};
 pub use module::RegionModule;

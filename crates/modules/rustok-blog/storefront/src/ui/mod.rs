@@ -8,4 +8,4 @@ pub mod share;
 #[cfg(feature = "comment-island")]
 pub use comment::BlogCommentComposer;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
-pub use leptos::BlogView;
+pub use leptos::{BlogDraftPreview, BlogView};

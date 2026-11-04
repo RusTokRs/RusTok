@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, Statement,
 };
 use serde_json::Value;
@@ -14,11 +14,11 @@ use uuid::Uuid;
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, normalize_locale_tag,
 };
-use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::{generate_id, money};
 use rustok_fulfillment::{
     ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
 };
+use rustok_region::RegionService;
 use rustok_tax::{
     TaxCalculationInput, TaxCalculationPort, TaxPolicyCountryRule, TaxPolicySnapshot, TaxableAmount,
 };
@@ -259,27 +259,6 @@ pub fn allocate_discount_over_nets(
         shares.push(share);
     }
     Ok(shares)
-}
-
-pub fn channel_tax_provider_id(metadata: &Value, channel_id: Option<Uuid>) -> Option<String> {
-    let channel_id = channel_id?;
-    let channel_key = channel_id.to_string();
-    let value = metadata
-        .get("channel_tax_provider_ids")
-        .and_then(Value::as_object)
-        .and_then(|mapping| mapping.get(&channel_key))?;
-
-    match value {
-        Value::String(value) => Some(value.as_str()),
-        Value::Object(value) => value
-            .get("provider_id")
-            .and_then(Value::as_str)
-            .or_else(|| value.get("provider").and_then(Value::as_str)),
-        _ => None,
-    }
-    .map(str::trim)
-    .filter(|value| !value.is_empty())
-    .map(|value| value.to_string())
 }
 
 pub fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
@@ -1010,17 +989,14 @@ pub async fn load_shipping_total(
         .fold(Decimal::ZERO, |acc, option| acc + option.amount))
 }
 
-pub async fn recalculate_tax_lines<C>(
-    conn: &C,
+async fn recalculate_tax_lines(
+    conn: &DatabaseTransaction,
     tax_calculation_port: &dyn TaxCalculationPort,
     cart: &entities::cart::Model,
     line_items: &[entities::cart_line_item::Model],
     adjustments: &[entities::cart_adjustment::Model],
     shipping_options: &[ShippingOptionResponse],
-) -> CartResult<(Decimal, bool)>
-where
-    C: ConnectionTrait,
-{
+) -> CartResult<(Decimal, bool)> {
     entities::cart_tax_line::Entity::delete_many()
         .filter(entities::cart_tax_line::Column::CartId.eq(cart.id))
         .exec(conn)
@@ -1030,20 +1006,9 @@ where
         return Ok((Decimal::ZERO, false));
     };
 
-    let region = region::Entity::find_by_id(region_id)
-        .filter(region::Column::TenantId.eq(cart.tenant_id))
-        .one(conn)
+    let policy = RegionService::read_tax_policy_in_tx(conn, cart.tenant_id, region_id, cart.channel_id)
         .await?
-        .ok_or(CartError::Validation(
-            "Region not found for cart".to_string(),
-        ))?;
-    // INVARIANT: `region_country_tax_policy` has no tenant column; the tenant
-    // boundary is the region loaded with `cart.tenant_id` above.
-    let country_tax_policies = region_country_tax_policy::Entity::find()
-        .filter(region_country_tax_policy::Column::RegionId.eq(region_id))
-        .all(conn)
-        .await?;
-    let tax_rate = region.tax_rate;
+        .ok_or_else(|| CartError::Validation("Region not found for cart".to_string()))?;
     let now = Utc::now();
     let mut taxable_amounts = Vec::new();
 
@@ -1127,12 +1092,12 @@ where
                 channel_id: cart.channel_id,
                 customer_tax_exempt: customer_tax_exempt(&cart.metadata),
                 policy: TaxPolicySnapshot {
-                    provider_id: region.tax_provider_id.clone(),
-                    channel_provider_id: channel_tax_provider_id(&region.metadata, cart.channel_id),
+                    provider_id: policy.provider_id,
+                    channel_provider_id: policy.channel_provider_id,
                     country_code: cart.country_code.clone(),
-                    tax_rate,
-                    tax_included: region.tax_included,
-                    country_rules: country_tax_policies
+                    tax_rate: policy.tax_rate,
+                    tax_included: policy.tax_included,
+                    country_rules: policy.country_rules
                         .into_iter()
                         .map(|policy| TaxPolicyCountryRule {
                             country_code: policy.country_code,
@@ -1175,15 +1140,12 @@ where
     Ok((result.tax_total, result.tax_included))
 }
 
-pub async fn recalculate_totals<C>(
-    conn: &C,
+pub(crate) async fn recalculate_totals(
+    conn: &DatabaseTransaction,
     tax_calculation_port: &dyn TaxCalculationPort,
     shipping_option_read_port: &dyn ShippingOptionReadPort,
     cart: entities::cart::Model,
-) -> CartResult<()>
-where
-    C: ConnectionTrait,
-{
+) -> CartResult<()> {
     let cart = entities::cart::Entity::find_by_id(cart.id)
         .one(conn)
         .await?
@@ -1576,93 +1538,6 @@ mod tests {
     use super::*;
     use serde_json::json;
     use uuid::Uuid;
-
-    #[test]
-    fn channel_tax_provider_id_reads_string_mapping_for_channel() {
-        let channel_id = Uuid::new_v4();
-        let metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): "provider_alpha"
-            }
-        });
-
-        let resolved = channel_tax_provider_id(&metadata, Some(channel_id));
-        assert_eq!(resolved.as_deref(), Some("provider_alpha"));
-    }
-
-    #[test]
-    fn channel_tax_provider_id_ignores_blank_or_malformed_values() {
-        let channel_id = Uuid::new_v4();
-
-        let blank_metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): "   "
-            }
-        });
-        assert_eq!(
-            channel_tax_provider_id(&blank_metadata, Some(channel_id)),
-            None
-        );
-
-        let typed_legacy_metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): {"provider": "external_tax"}
-            }
-        });
-        assert_eq!(
-            channel_tax_provider_id(&typed_legacy_metadata, Some(channel_id)).as_deref(),
-            Some("external_tax")
-        );
-
-        let malformed_metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): {"unknown_key": "external_tax"}
-            }
-        });
-        assert_eq!(
-            channel_tax_provider_id(&malformed_metadata, Some(channel_id)),
-            None
-        );
-
-        let typed_object_metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): {"provider_id": "external_tax"}
-            }
-        });
-        assert_eq!(
-            channel_tax_provider_id(&typed_object_metadata, Some(channel_id)).as_deref(),
-            Some("external_tax")
-        );
-    }
-
-    #[test]
-    fn channel_tax_provider_id_prefers_provider_id_over_provider_alias() {
-        let channel_id = Uuid::new_v4();
-        let metadata = json!({
-            "channel_tax_provider_ids": {
-                channel_id.to_string(): {
-                    "provider_id": "region_default",
-                    "provider": "external_tax"
-                }
-            }
-        });
-
-        assert_eq!(
-            channel_tax_provider_id(&metadata, Some(channel_id)).as_deref(),
-            Some("region_default")
-        );
-    }
-
-    #[test]
-    fn channel_tax_provider_id_returns_none_without_channel_context() {
-        let metadata = json!({
-            "channel_tax_provider_ids": {
-                Uuid::new_v4().to_string(): "provider_alpha"
-            }
-        });
-
-        assert_eq!(channel_tax_provider_id(&metadata, None), None);
-    }
 
     #[test]
     fn tax_class_helpers_read_trimmed_tax_classes() {

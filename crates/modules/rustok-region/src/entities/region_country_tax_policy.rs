@@ -2,9 +2,7 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Tenant-less by schema: the row is keyed by `region_id`, and the tenant
-/// boundary is the owning `region`. Queries must load that region tenant-scoped
-/// first and carry an `// INVARIANT:` note at the site.
+/// The owning region supplies the tenant boundary for this row.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "region_country_tax_policies")]
 pub struct Model {

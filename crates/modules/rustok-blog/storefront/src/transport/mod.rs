@@ -8,7 +8,7 @@ pub mod native_server_adapter;
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::model::StorefrontBlogData;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail};
 use leptos::prelude::ServerFnError;
 use rustok_ui_transport::UiTransportError;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
@@ -128,6 +128,22 @@ pub async fn create_comment(
         )
         .await
     }
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+pub async fn fetch_post_by_preview_token(
+    token: String,
+    locale: Option<String>,
+) -> Result<Option<BlogPostDetail>, BlogTransportError> {
+    let native_token = token.clone();
+    let native_locale = locale.clone();
+    execute_selected_transport(
+        "blog_preview_post",
+        selected_transport_path(),
+        move || native_server_adapter::fetch_post_by_preview_token(native_token, native_locale),
+        move || graphql_adapter::fetch_post_by_preview_token(token, locale),
+    )
+    .await
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::model::StorefrontBlogData;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostAuthorProfile,
@@ -44,6 +44,98 @@ pub async fn create_comment(
     create_blog_comment_native(request)
         .await
         .map_err(ApiError::from)
+}
+
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+pub async fn fetch_post_by_preview_token(
+    token: String,
+    locale: Option<String>,
+) -> Result<Option<BlogPostDetail>, ApiError> {
+    fetch_preview_post_native(configured_tenant_slug(), token, locale)
+        .await
+        .map_err(ApiError::from)
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/preview-post")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+async fn fetch_preview_post_native(
+    tenant_slug: Option<String>,
+    token: String,
+    locale: Option<String>,
+) -> Result<Option<BlogPostDetail>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::use_context;
+        use rustok_api::HostRuntimeContext;
+        use rustok_blog::PreviewTokenService;
+        use rustok_outbox::TransactionalEventBus;
+        use rustok_tenant::TenantService;
+
+        let runtime_ctx = use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?;
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(public_internal_error)?;
+        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .ok();
+
+        let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
+            (tenant.id, tenant.default_locale.clone())
+        } else {
+            let slug = super::configured_fallback_tenant_slug(tenant_slug.as_deref())?;
+            let tenant = TenantService::new(runtime_ctx.db_clone())
+                .get_tenant_by_slug(slug.as_str())
+                .await
+                .map_err(|_| public_internal_error())?;
+            (tenant.id, tenant.default_locale)
+        };
+
+        let db = runtime_ctx.db_clone();
+        if !tenant_has_module_enabled(&db, tenant_id, MODULE_SLUG).await? {
+            return Ok(None);
+        }
+
+        let preview_service = PreviewTokenService::new(db.clone(), event_bus.clone());
+        let effective_req_locale = locale.as_deref().unwrap_or(&fallback_locale);
+        let post = preview_service
+            .get_post_by_token_for_tenant(
+                tenant_id,
+                &token,
+                effective_req_locale,
+                Some(&fallback_locale),
+            )
+            .await
+            .map_err(|_| public_internal_error())?;
+
+        let Some(post) = post else {
+            return Ok(None);
+        };
+
+        let mut authors = std::collections::HashSet::new();
+        authors.insert(post.author_id);
+        let mut author_profiles = load_author_profiles_by_user_ids(
+            &runtime_ctx,
+            tenant_id,
+            &authors,
+            &post.effective_locale,
+            &fallback_locale,
+            rustok_profiles::ProfileSummaryAudience::Public,
+        )
+        .await;
+
+        let author_profile = author_profiles.remove(&post.author_id);
+
+        Ok(Some(map_post_detail(
+            post,
+            BlogCommentList::default(),
+            author_profile,
+        )))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (tenant_slug, token, locale);
+        Err(ServerFnError::new("SSR feature required"))
+    }
 }
 
 #[server(

@@ -79,7 +79,7 @@ pub struct RegionTranslationResponse {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct RegionCountryTaxPolicyResponse {
     pub country_code: String,
     pub tax_rate: Decimal,

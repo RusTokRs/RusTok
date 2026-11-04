@@ -13,9 +13,9 @@ language: markdown
 This guide owns the migration consolidation protocol and implementation sequence.
 The [technical ADR](../../DECISIONS/2026-11-03-migration-consolidation.md) is
 accepted and implementation is in progress. Rust source planning, PostgreSQL
-observation and fresh-install comparison are implemented. Release-bound
-replacement admission remains blocked. Existing CI continues to require
-append-only PR migration plans.
+observation and fresh-install comparison are implemented. Keep migration history
+append-only until all implementation gates pass and the maintainer explicitly
+admits a reviewed replacement. CI requires append-only PR migration plans.
 
 ## Stable-release policy
 
@@ -248,10 +248,41 @@ next admission capability becomes available.
    expand to dependent owners. Blog can exercise fresh-baseline nested-source
    handling, but a post-release upgrade pilot also needs a real predecessor.
 
+`verify-fresh` replays each migration separately. The executor reads the ordered
+plan and journal prefix before applying steps. It confirms each committed
+journal entry before advancing. The verifier checks the full sequence of
+confirmations against the executable plan for each fixture, then independently
+checks its final journal and database state. A replacement still requires an
+independent review of every removed migration and its disposition.
+
 Current status is implementation in progress. Existing-check corrections, Rust
 source planning and the bounded fresh-install observer/runner are implemented.
-Gate 1 still needs a full composed PostgreSQL smoke result; gate 3 still needs
-released-prefix replay and installer coverage. Gates 2, 4 and 5 remain pending.
+On PostgreSQL 16.13, the composed runner applied and confirmed all 580 exported
+identities one at a time on each of two empty fixtures. Both confirmation
+sequences and final journals matched the executable plan. The schema observations
+agreed. The existing fresh PostgreSQL smoke test also passed on this cluster,
+including its independent schema assertions.
+
+The strict data comparison remains blocked by `updated_at` in eight bootstrap
+singletons. The affected owner tables are:
+
+- Channel: `channel_resolution_invalidation_state`.
+- Flex: `flex_field_definition_cache_generation`.
+- Modules: `module_artifact_node_reconciliation_state`, `module_security_epoch`,
+  `module_static_distribution_state`, `module_static_distribution_release_state`,
+  and `module_static_distribution_rollout_state`.
+- RBAC: `rbac_invalidation_state`.
+
+The fresh report diagnoses these tables independently on each side. It checks
+the expected singleton, column types, identity, counters and references, and
+checks `updated_at` against the installation window measured by PostgreSQL.
+The report marks a difference as clock-only only after both checks pass.
+This diagnostic leaves strict comparison and its original digests in force.
+An owner-reviewed disposition is required before the verifier can accept a
+clock-only difference for equivalence.
+
+Gate 3 still needs a passing fresh comparison, released-prefix replay and
+installer coverage. Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition
 also requires enforcement at the installer/update admission boundary. Release
 workflow prerelease labels by themselves do not enforce it.

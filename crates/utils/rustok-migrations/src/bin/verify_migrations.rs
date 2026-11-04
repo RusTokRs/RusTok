@@ -1,18 +1,18 @@
 //! Disposable verification runner. Destructive production migration commands
 //! remain unavailable in rustok-migrate.
 
-use rustok_migrations::verification::{compare, observe_database, ComparisonReport};
-use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use rustok_migrations::verification::{
+    APPLIED_STEP_PREFIX, ComparisonReport, DatabaseSnapshot, bootstrap, compare, observe_database,
+};
+use sea_orm_migration::sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    entity::prelude::DateTimeWithTimeZone,
+};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
-    error::Error,
-    fs,
-    io::Write,
-    path::Path,
-    process::{Command, Stdio},
-    time::{Duration, Instant},
+    collections::BTreeMap, error::Error, fs, io::Write, path::Path, process::Stdio, time::Duration,
 };
+use tokio::{io::AsyncReadExt, process::Command, time::timeout};
 use url::Url;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -24,8 +24,12 @@ async fn main() -> Result<()> {
         .next()
         .ok_or("use fresh or compare; --help shows arguments")?;
     if command == "--help" || command == "-h" {
-        println!("verify-migrations fresh --admin-url-env ENV --reference-runner FILE --candidate-runner FILE --reference-root DIR --candidate-root DIR --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE");
-        println!("verify-migrations compare --reference-url-env ENV --candidate-url-env ENV --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE --quiescent");
+        println!(
+            "verify-migrations fresh --admin-url-env ENV --reference-runner FILE --candidate-runner FILE --reference-root DIR --candidate-root DIR --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE"
+        );
+        println!(
+            "verify-migrations compare --reference-url-env ENV --candidate-url-env ENV --reference-plan FILE --candidate-plan FILE --pg-dump FILE --output FILE --quiescent"
+        );
         return Ok(());
     }
     if command != "fresh" && command != "compare" {
@@ -140,7 +144,7 @@ async fn main() -> Result<()> {
         .await?
     };
     if command == "fresh" {
-        report.scope = "fresh-install-equivalence".into();
+        report.scope = "fresh-install-stepwise-equivalence".into();
     }
     for name in [
         "--reference-plan",
@@ -252,32 +256,34 @@ async fn fresh(
         // for comparing ownership and ACLs, but its settings, grants and
         // credentials start clean on each side. The candidate DB does not exist
         // while the original chain runs.
-        let original = observe_fresh(
+        let (original, original_window) = observe_fresh(
             &admin,
             admin_url,
             &role,
             &name,
             reference_runner,
             reference_root,
+            reference_plan,
             pg_dump,
         )
         .await?;
-        let proposed = observe_fresh(
+        let (proposed, proposed_window) = observe_fresh(
             &admin,
             admin_url,
             &role,
             &name,
             candidate_runner,
             candidate_root,
+            candidate_plan,
             pg_dump,
         )
         .await?;
-        Ok(compare(
-            &original,
-            &proposed,
-            reference_plan,
-            candidate_plan,
-        )?)
+        let mut report = compare(&original, &proposed, reference_plan, candidate_plan)?;
+        report.bootstrap = Some(bootstrap::diagnose(
+            (&original, &original_window),
+            (&proposed, &proposed_window),
+        ));
+        Ok(report)
     }
     .await;
     let close = admin.close().await;
@@ -289,6 +295,7 @@ async fn fresh(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn observe_fresh(
     admin: &DatabaseConnection,
     admin_url: &str,
@@ -296,8 +303,9 @@ async fn observe_fresh(
     name: &str,
     runner: &Path,
     root: &Path,
+    plan: &[String],
     pg_dump: &Path,
-) -> Result<rustok_migrations::verification::DatabaseSnapshot> {
+) -> Result<(DatabaseSnapshot, bootstrap::InstallWindow)> {
     let password = uuid::Uuid::new_v4().simple().to_string();
     let url = fixture_url(admin_url, role, &password, name)?;
     // All interpolated identifiers and the password are generated UUIDs.
@@ -305,11 +313,13 @@ async fn observe_fresh(
         admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
         admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'")).await?;
         admin.execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC")).await?;
-        run_migrator(runner, root, &url)?;
+        let start = database_clock(admin).await?;
+        run_migrator(runner, root, &url, plan).await?;
+        let window = bootstrap::InstallWindow::new(start, database_clock(admin).await?)?;
         let db = Database::connect(&url).await.map_err(|_| "cannot connect to migrated fixture")?;
         let snapshot = observe_database(&db, &url, pg_dump).await;
         db.close().await?;
-        Ok(snapshot?)
+        Ok((snapshot?, window))
     }.await;
     let cleanup = cleanup(admin, name, role).await;
     match (result, cleanup) {
@@ -320,6 +330,17 @@ async fn observe_fresh(
         )
         .into()),
     }
+}
+
+async fn database_clock(admin: &DatabaseConnection) -> Result<DateTimeWithTimeZone> {
+    let row = admin
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT pg_catalog.clock_timestamp() AS now",
+        ))
+        .await?
+        .ok_or("PostgreSQL clock result is missing")?;
+    Ok(row.try_get("", "now")?)
 }
 
 async fn cleanup(admin: &DatabaseConnection, name: &str, role: &str) -> Result<()> {
@@ -375,7 +396,24 @@ fn file_digest(path: &Path) -> Result<String> {
     Ok(hex::encode(digest.finalize()))
 }
 
-fn run_migrator(binary: &Path, source_root: &Path, database_url: &str) -> Result<()> {
+fn verify_step_trace(output: &[u8], plan: &[String]) -> Result<()> {
+    let output = std::str::from_utf8(output)?;
+    let confirmed = output
+        .lines()
+        .filter_map(|line| line.strip_prefix(APPLIED_STEP_PREFIX));
+    if !confirmed.eq(plan.iter().map(String::as_str)) {
+        return Err("runner step confirmations are missing or out of order; rebuild both runners with stepwise verification support".into());
+    }
+    Ok(())
+}
+
+async fn run_migrator(
+    binary: &Path,
+    source_root: &Path,
+    database_url: &str,
+    plan: &[String],
+) -> Result<()> {
+    const MAX_TRACE_BYTES: u64 = 1024 * 1024;
     for operation in ["up", "status"] {
         let mut command = Command::new(binary);
         command
@@ -383,7 +421,9 @@ fn run_migrator(binary: &Path, source_root: &Path, database_url: &str) -> Result
             .current_dir(source_root)
             .env_clear()
             .env("DATABASE_URL", database_url)
-            .stdin(Stdio::null());
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .kill_on_drop(true);
         for key in [
             "PATH",
             "SystemRoot",
@@ -398,20 +438,35 @@ fn run_migrator(binary: &Path, source_root: &Path, database_url: &str) -> Result
             }
         }
         let mut child = command.spawn()?;
-        let start = Instant::now();
-        loop {
-            if let Some(status) = child.try_wait()? {
-                if !status.success() {
-                    return Err(format!("migration runner {operation} failed").into());
-                }
-                break;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or("runner stdout is missing")?
+            .take(MAX_TRACE_BYTES + 1);
+        let mut output = Vec::new();
+        let completed = timeout(Duration::from_secs(300), async {
+            if stdout.read_to_end(&mut output).await? as u64 > MAX_TRACE_BYTES {
+                return Err("migration runner output exceeded its limit".into());
             }
-            if start.elapsed() > Duration::from_secs(300) {
-                child.kill()?;
-                child.wait()?;
+            if !child.wait().await?.success() {
+                return Err(format!("migration runner {operation} failed").into());
+            }
+            Ok::<_, Box<dyn Error>>(())
+        })
+        .await;
+        match completed {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                child.kill().await?;
+                return Err(error);
+            }
+            Err(_) => {
+                child.kill().await?;
                 return Err(format!("migration runner {operation} exceeded five minutes").into());
             }
-            std::thread::sleep(Duration::from_millis(100));
+        }
+        if operation == "up" {
+            verify_step_trace(&output, plan)?;
         }
     }
     Ok(())
@@ -420,15 +475,37 @@ fn run_migrator(binary: &Path, source_root: &Path, database_url: &str) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_missing_duplicate_and_reordered_confirmations() {
+        let plan = vec!["first".into(), "second".into()];
+        assert!(
+            verify_step_trace(
+                b"confirmed migration: first\r\nconfirmed migration: second\r\n",
+                &plan
+            )
+            .is_ok()
+        );
+        for output in [
+            "all migrations are applied\n",
+            "confirmed migration: first\n",
+            "confirmed migration: second\nconfirmed migration: first\n",
+            "confirmed migration: first\nconfirmed migration: first\nconfirmed migration: second\n",
+        ] {
+            assert!(verify_step_trace(output.as_bytes(), &plan).is_err());
+        }
+    }
     #[test]
     fn fixture_connection_cannot_inherit_admin_options() {
-        assert!(fixture_url(
-            "postgres://admin:secret@localhost/db?user=admin",
-            "fixture",
-            "pw",
-            "test"
-        )
-        .is_err());
+        assert!(
+            fixture_url(
+                "postgres://admin:secret@localhost/db?user=admin",
+                "fixture",
+                "pw",
+                "test"
+            )
+            .is_err()
+        );
         assert_eq!(
             fixture_url(
                 "postgres://admin:secret@localhost:55439/postgres",
@@ -479,6 +556,7 @@ fn main() {{
     let status = std::process::Command::new(PSQL).args(["-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-c", &sql])
         .env("PGHOST", host).env("PGPORT", port).env("PGDATABASE", db).env("PGUSER", user).env("PGPASSWORD", password).status().unwrap();
     assert!(status.success());
+    if !binary.contains("no-trace") {{ println!("confirmed migration: {{version}}"); }}
 }}
 "#, psql=psql.to_str().ok_or("psql path is not UTF-8")?);
             let source_path = directory.join("runner.rs");
@@ -488,10 +566,12 @@ fn main() {{
             let candidate = directory.join(format!("candidate{}", std::env::consts::EXE_SUFFIX));
             let bad = directory.join(format!("candidate-bad{}", std::env::consts::EXE_SUFFIX));
             let changed_role = directory.join(format!("original-role-change{}", std::env::consts::EXE_SUFFIX));
-            if !Command::new("rustc").arg("--edition=2021").arg(&source_path).arg("-o").arg(&original).status()?.success() { return Err("fixture runner did not compile".into()); }
+            let no_trace = directory.join(format!("original-no-trace{}", std::env::consts::EXE_SUFFIX));
+            if !std::process::Command::new("rustc").arg("--edition=2021").arg(&source_path).arg("-o").arg(&original).status()?.success() { return Err("fixture runner did not compile".into()); }
             fs::copy(&original, &candidate)?;
             fs::copy(&original, &bad)?;
             fs::copy(&original, &changed_role)?;
+            fs::copy(&original, &no_trace)?;
             let reference_plan = vec!["original".into()];
             let candidate_plan = vec!["baseline".into()];
             let admin = Database::connect(&admin_url).await?;
@@ -508,6 +588,8 @@ fn main() {{
                 assert!(!report.equivalent, "candidate inherited the original role settings");
                 assert_eq!(resources(&admin).await?, before);
                 assert!(!fresh(&admin_url, &original, &bad, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?.equivalent);
+                assert_eq!(resources(&admin).await?, before);
+                assert!(fresh(&admin_url, &no_trace, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await.is_err());
                 assert_eq!(resources(&admin).await?, before);
                 assert!(fresh(&admin_url, &directory.join("missing-runner"), &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await.is_err());
                 assert_eq!(resources(&admin).await?, before);

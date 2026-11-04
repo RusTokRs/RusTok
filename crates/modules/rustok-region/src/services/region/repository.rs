@@ -1,16 +1,48 @@
 use chrono::Utc;
 use rustok_api::normalize_locale_tag;
-use rustok_commerce_foundation::entities;
+use crate::entities;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, Set};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::dto::{
     RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
-    RegionTranslationInput, RegionTranslationResponse,
+    RegionTaxPolicy, RegionTranslationInput, RegionTranslationResponse,
 };
+use crate::domain::tax_policy::channel_tax_provider_id;
 use crate::error::{RegionError, RegionResult};
+
+pub(super) async fn load_tax_policy(
+    db: &impl ConnectionTrait,
+    tenant_id: Uuid,
+    region_id: Uuid,
+    channel_id: Option<Uuid>,
+) -> Result<Option<RegionTaxPolicy>, DbErr> {
+    // The tenant filter applies to the owning region before any rules are
+    // returned. A left join retains the base policy when there are no rules.
+    let result = entities::region::Entity::find_by_id(region_id)
+        .filter(entities::region::Column::TenantId.eq(tenant_id))
+        .find_with_related(entities::region_country_tax_policy::Entity)
+        .all(db)
+        .await?;
+
+    Ok(result.into_iter().next().map(|(region, rules)| RegionTaxPolicy {
+        provider_id: region.tax_provider_id,
+        channel_provider_id: channel_tax_provider_id(&region.metadata, channel_id),
+        tax_rate: region.tax_rate,
+        tax_included: region.tax_included,
+        country_rules: rules.into_iter().map(map_country_tax_policy).collect(),
+    }))
+}
+
+fn map_country_tax_policy(policy: entities::region_country_tax_policy::Model) -> RegionCountryTaxPolicyResponse {
+    RegionCountryTaxPolicyResponse {
+        country_code: policy.country_code,
+        tax_rate: policy.tax_rate,
+        tax_included: policy.tax_included,
+    }
+}
 
 pub(super) async fn load_region(
     db: &impl ConnectionTrait,
@@ -125,11 +157,7 @@ fn map_region(
         tax_included: model.tax_included,
         country_tax_policies: country_tax_policies
             .into_iter()
-            .map(|policy| RegionCountryTaxPolicyResponse {
-                country_code: policy.country_code,
-                tax_rate: policy.tax_rate,
-                tax_included: policy.tax_included,
-            })
+            .map(map_country_tax_policy)
             .collect(),
         countries,
         metadata: model.metadata,

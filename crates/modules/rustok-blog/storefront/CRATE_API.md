@@ -4,6 +4,7 @@
 
 ### UI Components
 - `BlogView`: Root storefront component rendering published blog posts and post details.
+- `BlogDraftPreview`: Storefront draft preview screen resolving unpublished drafts via token fragments or input.
 - `BlogCommentComposer`: Storefront comment composer island component.
 
 ### Feed Transports

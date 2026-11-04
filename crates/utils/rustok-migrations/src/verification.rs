@@ -20,9 +20,13 @@ use std::{
 };
 use thiserror::Error;
 
+pub mod bootstrap;
+
 const MAX_ROWS: usize = 100_000;
 const MAX_BYTES: usize = 64 * 1024 * 1024;
 const MAX_ROW_BYTES: usize = 1024 * 1024;
+
+pub const APPLIED_STEP_PREFIX: &str = "confirmed migration: ";
 const APPLICATION_SCHEMA: &str =
     "n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp)_?'";
 
@@ -79,6 +83,8 @@ pub struct ComparisonReport {
     pub differences: Vec<String>,
     pub reference_digest: String,
     pub candidate_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap: Option<Vec<bootstrap::BootstrapTable>>,
 }
 
 /// Compare observations only after each journal was checked against its own
@@ -129,6 +135,7 @@ pub fn compare(
         differences,
         reference_digest: snapshot_digest(reference),
         candidate_digest: snapshot_digest(candidate),
+        bootstrap: None,
     })
 }
 

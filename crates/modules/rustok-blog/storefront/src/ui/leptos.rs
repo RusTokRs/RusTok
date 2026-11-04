@@ -1,6 +1,9 @@
+mod draft_preview;
 mod published_posts_list;
 mod selected_post_card;
 mod showcase;
+
+pub use draft_preview::BlogDraftPreview;
 
 use showcase::BlogShowcase;
 

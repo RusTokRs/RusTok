@@ -1,16 +1,30 @@
-use rustok_commerce_foundation::entities;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use crate::entities;
+use sea_orm::{ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, QueryFilter, QueryOrder};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::domain::region::normalize_country_code;
-use crate::dto::RegionResponse;
+use crate::dto::{RegionResponse, RegionTaxPolicy};
 use crate::error::{RegionError, RegionResult};
 
 use super::RegionService;
-use super::repository::{load_region, load_regions_with_translations};
+use super::repository::{load_region, load_regions_with_translations, load_tax_policy};
 
 impl RegionService {
+    /// Read Region's tax configuration within the caller's local write transaction.
+    ///
+    /// The caller supplies the tenant and channel from the admitted cart. A
+    /// missing region and a region outside that tenant both return `None`.
+    /// The base rate and country rules are read in a single database statement.
+    pub async fn read_tax_policy_in_tx(
+        tx: &DatabaseTransaction,
+        tenant_id: Uuid,
+        region_id: Uuid,
+        channel_id: Option<Uuid>,
+    ) -> Result<Option<RegionTaxPolicy>, DbErr> {
+        load_tax_policy(tx, tenant_id, region_id, channel_id).await
+    }
+
     #[instrument(skip(self), fields(tenant_id = %tenant_id, region_id = %region_id))]
     pub async fn get_region(
         &self,
