@@ -59,3 +59,13 @@ blog-filter-clear = Очистить всё
 blog-related-title = Похожие статьи
 blog-scrollTop = Наверх
 blog-search-placeholder = Поиск по статьям и тегам...
+
+blog-preview-badge = Предпросмотр черновика
+blog-preview-banner-body = Эта статья ещё не опубликована. Ссылка перестанет работать после публикации, архивации или истечения срока действия токена.
+blog-preview-title = Предпросмотр черновика
+blog-preview-subtitle = Вставьте токен предпросмотра или откройте ссылку с фрагментом #token=…
+blog-preview-token-placeholder = token
+blog-preview-button-open = Открыть
+blog-preview-button-loading = Загрузка…
+blog-preview-error-not-found = Токен недействителен, истёк или был отозван.
+blog-preview-error-load = Не удалось загрузить черновик.

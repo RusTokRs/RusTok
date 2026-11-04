@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+const BUILD_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SourceFile {
     path: String,
@@ -615,13 +617,23 @@ fn verify_fresh(
                 "export-migration-plan",
                 "--message-format=json-render-diagnostics",
             ];
-            build_identity.insert(side, serde_json::json!({ "cargo": cargo_version, "rustc": rustc_version, "arguments": build_args, "ambient_cargo_config": "rejected", "source_git_discovery": "disabled" }));
+            build_identity.insert(
+                side,
+                serde_json::json!({
+                    "cargo": cargo_version,
+                    "rustc": rustc_version,
+                    "arguments": build_args,
+                    "timeout_seconds": BUILD_TIMEOUT_SECONDS,
+                    "ambient_cargo_config": "rejected",
+                    "source_git_discovery": "disabled",
+                }),
+            );
             let mut build = build_command("cargo", source)?;
             build
                 .args(build_args)
                 .env("CARGO_TARGET_DIR", &target)
                 .env("CARGO_BUILD_JOBS", "2");
-            let output = run_process(&mut build, 1800, 64 * 1024 * 1024)
+            let output = run_process(&mut build, BUILD_TIMEOUT_SECONDS, 64 * 1024 * 1024)
                 .with_context(|| format!("{side} migration build failed"))?;
             let mut artifacts = BTreeMap::new();
             for line in output

@@ -580,5 +580,69 @@ pub fn twitter_share_url(url: &str, text: &str) -> String {
     )
 }
 
+/// Extracts a draft preview token from a URL fragment (e.g. `#token=…` or `token=…`).
+/// Returns `None` if the fragment does not contain a non-empty `token` parameter.
+pub fn parse_preview_token_from_fragment(fragment: &str) -> Option<String> {
+    let raw = fragment.trim().strip_prefix('#').unwrap_or(fragment.trim());
+    if raw.is_empty() {
+        return None;
+    }
+    for part in raw.split('&') {
+        let mut key_val = part.splitn(2, '=');
+        let key = key_val.next().map(str::trim)?;
+        let val = key_val.next().map(str::trim);
+        if key == "token" {
+            if let Some(val) = val {
+                let token = val.trim();
+                if !token.is_empty() && token.len() <= 128 {
+                    return Some(token.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Localized view model copy for the draft preview screen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DraftPreviewCopy {
+    pub badge: String,
+    pub banner_body: String,
+    pub title: String,
+    pub subtitle: String,
+    pub token_placeholder: String,
+    pub button_open: String,
+    pub button_loading: String,
+    pub error_not_found: String,
+    pub error_load: String,
+}
+
+/// Builds the localized view model copy for the draft preview screen.
+pub fn build_draft_preview_copy(locale: Option<&str>) -> DraftPreviewCopy {
+    DraftPreviewCopy {
+        badge: t(locale, "blog.preview.badge", "Draft preview"),
+        banner_body: t(
+            locale,
+            "blog.preview.banner.body",
+            "This article is not published yet. The link stops working once the post is published, archived or the token expires.",
+        ),
+        title: t(locale, "blog.preview.title", "Draft preview"),
+        subtitle: t(
+            locale,
+            "blog.preview.subtitle",
+            "Paste a preview token, or open the link containing the #token=… fragment.",
+        ),
+        token_placeholder: t(locale, "blog.preview.token.placeholder", "token"),
+        button_open: t(locale, "blog.preview.button.open", "Open preview"),
+        button_loading: t(locale, "blog.preview.button.loading", "Loading…"),
+        error_not_found: t(
+            locale,
+            "blog.preview.error.not.found",
+            "The token is invalid, expired or has been revoked.",
+        ),
+        error_load: t(locale, "blog.preview.error.load", "Failed to load the draft."),
+    }
+}
+
 #[cfg(test)]
 mod tests;

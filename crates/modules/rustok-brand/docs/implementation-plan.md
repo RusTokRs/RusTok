@@ -70,6 +70,14 @@ Brand catalog, manufacturers, media presentation, and product associations.
   backend slice has no reported layout violations; the admin failures listed
   above still prevent enrollment of the whole module as a strict reference.
 
+On 2026-11-04, against `b163a901a6` with the Brand verification changes applied,
+all four crate tests, nine SQLite integration tests, and the explicitly
+selected PostgreSQL 16.13 scenario passed. The PostgreSQL run used a fresh
+local instance. The Brand library and test binaries were compiled from the
+current sources with `rustc` and cached Cargo dependencies while the shared
+Cargo target was locked by another build. This records executed owner behavior,
+not a clean Cargo or host build.
+
 These are owner-scoped database tests. Host migration ordering and upgrades
 from deployed versions, concurrent writes and error mapping, outbox delivery,
 and mounted admin parity still need their own evidence. Builder checks do not

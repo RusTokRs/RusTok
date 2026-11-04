@@ -3,7 +3,9 @@ use rustok_brand::error::BrandError;
 use rustok_brand::migrations::Migrator;
 use rustok_brand::ports::BrandPort;
 use rustok_brand::services::BrandService;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::{MigratorTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -38,7 +40,7 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
 
     // The second row conflicts after normalization. The earlier inserts in
     // this transaction must disappear as well, so the slug is reusable.
-    assert!(
+    assert!(matches!(
         service
             .create_brand(
                 tenant,
@@ -47,9 +49,9 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
                     translation(" EN ", "Second")
                 ])
             )
-            .await
-            .is_err()
-    );
+            .await,
+        Err(BrandError::Database(_))
+    ));
     assert!(matches!(
         service.get_brand_by_slug(tenant, "acme", None).await,
         Err(BrandError::SlugNotFound(_))
@@ -68,6 +70,13 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
         service.get_brand(other_tenant, brand.id, Some("fr")).await,
         Err(BrandError::NotFound(id)) if id == brand.id
     ));
+    assert!(matches!(
+        service.update_brand(other_tenant, brand.id, UpdateBrandInput {
+            translations: Some(vec![translation("fr", "Wrong tenant")]),
+            ..UpdateBrandInput::default()
+        }).await,
+        Err(BrandError::NotFound(id)) if id == brand.id
+    ));
 
     let fallback = service
         .get_brand(tenant, brand.id, Some("fr"))
@@ -82,13 +91,8 @@ async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
             tenant,
             brand.id,
             UpdateBrandInput {
-                slug: None,
-                logo_media_id: None,
-                banner_media_id: None,
-                website_url: None,
-                is_active: None,
-                metadata: None,
                 translations: Some(vec![translation("fr", "Version française")]),
+                ..UpdateBrandInput::default()
             },
         )
         .await
@@ -154,10 +158,22 @@ async fn postgres_migration_and_owner_behavior() {
 
     let mut options = ConnectOptions::new(url);
     options.set_schema_search_path(&schema);
+    let expected_schema = schema.clone();
     let result = tokio::spawn(async move {
         let db = Database::connect(options)
             .await
             .expect("connect to isolated schema");
+        let active_schema: String = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT current_schema()::text AS name",
+            ))
+            .await
+            .expect("check test search path")
+            .expect("current schema row")
+            .try_get("", "name")
+            .expect("current schema name");
+        assert_eq!(active_schema, expected_schema);
         Migrator::up(&db, None)
             .await
             .expect("apply the shipped Brand migrations");

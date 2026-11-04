@@ -11,6 +11,7 @@ use super::{ApiError, configured_tenant_slug};
 
 const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PublicPostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts: publicBlogPosts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt categoryId categoryName status publishedAt tags featuredImageUrl authorProfile { userId handle displayName tags avatarMediaId } } } }";
 const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation CreateBlogComment($postId: UUID!, $input: CreateBlogCommentInput!) { createBlogComment(postId: $postId, input: $input) { id requestedLocale effectiveLocale postId authorId content { document html } contentPlainText status parentCommentId createdAt updatedAt } }";
+const POST_BY_PREVIEW_TOKEN_QUERY: &str = "query PostByPreviewToken($token: String!, $locale: String) { postByPreviewToken(token: $token, locale: $locale) { id effectiveLocale title slug excerpt categoryId categoryName authorProfile { userId handle displayName tags avatarMediaId } content { document html } contentPlainText status publishedAt tags featuredImageUrl } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontBlogResponse {
@@ -132,4 +133,30 @@ pub async fn create_comment(
     .await?;
 
     Ok(response.create_blog_comment)
+}
+
+#[derive(Debug, Deserialize)]
+struct PostByPreviewTokenResponse {
+    #[serde(rename = "postByPreviewToken")]
+    post_by_preview_token: Option<BlogPostDetail>,
+}
+
+#[derive(Debug, Serialize)]
+struct PostByPreviewTokenVariables {
+    token: String,
+    locale: Option<String>,
+}
+
+pub async fn fetch_post_by_preview_token(
+    token: String,
+    locale: Option<String>,
+) -> Result<Option<BlogPostDetail>, ApiError> {
+    let response: PostByPreviewTokenResponse = request(
+        POST_BY_PREVIEW_TOKEN_QUERY,
+        PostByPreviewTokenVariables { token, locale },
+        None,
+    )
+    .await?;
+
+    Ok(response.post_by_preview_token)
 }

@@ -254,6 +254,8 @@ impl BrandService {
             }
         }
 
+        // Read back the result before commit so a snapshot error rolls back
+        // the update instead of reporting a failure after the write succeeded.
         let all_translations = load_translations(&txn, id).await?;
         txn.commit().await?;
 

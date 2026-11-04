@@ -263,7 +263,4 @@ this slice.
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
 - [Connector plan](../../rustok-iggy-connector/docs/implementation-plan.md)
-- [External raw poison evidence guide](./contract-poison-external-evidence.md)
-- [External physical header evidence guide](./contract-poison-external-header-evidence.md)
-- [External dedup behavior evidence guide](./contract-poison-external-dedup-evidence.md)
 - [Iggy integration reference](../../../../docs/references/iggy/README.md)

@@ -4,6 +4,11 @@ use uuid::Uuid;
 use crate::dto::{BrandDto, BrandFilter, BrandListResponse, CreateBrandInput, UpdateBrandInput};
 use crate::error::BrandResult;
 
+/// Owner contract for brand operations.
+///
+/// Transport callers resolve the effective tenant and enforce the applicable
+/// product permission before calling the service. The service scopes owner
+/// rows to that tenant; a bare tenant ID is not authorization.
 #[async_trait]
 pub trait BrandPort: Send + Sync {
     async fn get_brand(

@@ -520,3 +520,43 @@ fn filter_links_preserve_independent_filters_and_drop_stale_pagination() {
     );
     assert_eq!(filter_query_href(None, None, None, None), "?");
 }
+
+#[test]
+fn parse_preview_token_from_fragment_handles_various_formats() {
+    assert_eq!(
+        super::parse_preview_token_from_fragment("#token=secret-token-123"),
+        Some("secret-token-123".to_string())
+    );
+    assert_eq!(
+        super::parse_preview_token_from_fragment("token=secret-token-123"),
+        Some("secret-token-123".to_string())
+    );
+    assert_eq!(
+        super::parse_preview_token_from_fragment("#foo=bar&token=secret-token-123&baz=qux"),
+        Some("secret-token-123".to_string())
+    );
+    assert_eq!(
+        super::parse_preview_token_from_fragment("  #token=trimmed-token   "),
+        Some("trimmed-token".to_string())
+    );
+    assert_eq!(super::parse_preview_token_from_fragment(""), None);
+    assert_eq!(super::parse_preview_token_from_fragment("#"), None);
+    assert_eq!(super::parse_preview_token_from_fragment("#token="), None);
+    assert_eq!(super::parse_preview_token_from_fragment("#other=1"), None);
+    // Oversized tokens (> 128 chars) are rejected
+    let long_token = format!("#token={}", "a".repeat(129));
+    assert_eq!(super::parse_preview_token_from_fragment(&long_token), None);
+}
+
+#[test]
+fn draft_preview_copy_resolves_localized_strings() {
+    let copy_en = super::build_draft_preview_copy(Some("en"));
+    assert_eq!(copy_en.badge, "Draft preview");
+    assert_eq!(copy_en.title, "Draft preview");
+    assert_eq!(copy_en.button_open, "Open preview");
+
+    let copy_ru = super::build_draft_preview_copy(Some("ru"));
+    assert_eq!(copy_ru.badge, "Предпросмотр черновика");
+    assert_eq!(copy_ru.title, "Предпросмотр черновика");
+    assert_eq!(copy_ru.button_open, "Открыть");
+}

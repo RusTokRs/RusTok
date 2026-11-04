@@ -57,3 +57,13 @@ blog-filter-clear = Clear all
 blog-related-title = Related articles
 blog-scrollTop = Scroll to top
 blog-search-placeholder = Search articles and tags...
+
+blog-preview-badge = Draft preview
+blog-preview-banner-body = This article is not published yet. The link stops working once the post is published, archived or the token expires.
+blog-preview-title = Draft preview
+blog-preview-subtitle = Paste a preview token, or open the link containing the #token=… fragment.
+blog-preview-token-placeholder = token
+blog-preview-button-open = Open preview
+blog-preview-button-loading = Loading…
+blog-preview-error-not-found = The token is invalid, expired or has been revoked.
+blog-preview-error-load = Failed to load the draft.
