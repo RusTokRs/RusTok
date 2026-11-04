@@ -6,7 +6,6 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ## Public Modules
 - `dto`: Input and output data transfer objects (`BrandDto`, `CreateBrandInput`, `UpdateBrandInput`).
-- `entities`: SeaORM entity definitions for brands, translations, and product links.
 - `error`: Strongly typed domain error variants (`BrandError`, `BrandResult`).
 - `migrations`: SeaORM migration chain for brand schemas.
 - `module`: Lifecycle descriptor `BrandModule` implementing `RusToKModule`.
@@ -73,7 +72,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 
 ### Domain Invariants
 
-- **Tenant Scoping:** Every brand, translation, and brand-product association is partitioned by `tenant_id`.
+- **Tenant Scoping:** Brand reads and writes scope base rows and product associations by `tenant_id`. Translation rows are scoped through their owning brand.
 - **Slug Uniqueness:** Brand slugs must be unique within a given tenant. Slugs are trimmed and normalized to lowercase.
 - **Slug Non-Empty:** Empty or whitespace-only slugs are strictly rejected with `BrandError::InvalidInput`.
 - **Locale Resolution Fallback:** When a specific locale is requested, translation lookup matches requested locale first, then falls back to English (`en*`), then the first available translation, or defaults to the brand slug if no translation exists.
@@ -84,7 +83,7 @@ Canonical public contract and domain architecture specification for `rustok-bran
 ### Events / Outbox Side Effects
 
 - Brand mutations (creation, update, deletion) are atomically transacted in PostgreSQL/SQLite.
-- Outbox integration reserved for brand publication and catalog index synchronization events.
+- No Brand events are written to the outbox today. Brand publication and catalog index synchronization require a typed event contract and transactional verification before consumers rely on either.
 
 ---
 

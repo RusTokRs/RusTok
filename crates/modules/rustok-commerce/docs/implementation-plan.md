@@ -1770,8 +1770,6 @@ Source inspection is not execution evidence.
 
 - [Commerce documentation](./README.md)
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
-- [Checkout compensation owner cutover](./checkout-compensation-owner-cutover.md)
-- [Checkout owner stage cutover](./checkout-owner-stage-cutover.md)
 - [Public ecommerce port error safety](./public-port-error-safety.md)
 - [Order read port](../../rustok-order/docs/order-read-port.md)
 - [Order checkout compensation contract](../../rustok-order/contracts/order-checkout-compensation-v1.json)

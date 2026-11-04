@@ -1,3 +1,3 @@
-pub mod brand_service;
+mod brand;
 
-pub use brand_service::BrandService;
+pub use brand::BrandService;

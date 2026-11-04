@@ -1434,3 +1434,10 @@ The following remediations from the product module audit are codified in code an
 - `PROD-IDEM-001`: Product relations and bundles operations preserve transaction boundaries and enforce idempotency. Verified by `scripts/verify/verify-product-relations-bundles-idempotency.mjs`.
 - `PROD-PORT-001`: Cross-module product relations expose typed public ports without leaking private persistence entities. Verified by `scripts/verify/verify-product-relations-bundles-idempotency.mjs`.
 
+### Product Schema Write Receipt Coverage
+- all eleven mounted Product schema writes
+- exact completed projection
+- empty-target detached clear
+- source-complete durable owner replay
+
+

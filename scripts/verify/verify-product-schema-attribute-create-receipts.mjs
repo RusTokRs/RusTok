@@ -34,7 +34,7 @@ const categories = read("crates/modules/rustok-product/src/services/catalog_sche
 const schemas = read("crates/modules/rustok-product/src/services/catalog_schema_service/schemas.rs");
 const values = read("crates/modules/rustok-product/src/services/catalog_schema_service/values.rs");
 const effectiveForms = read("crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs");
-const recheck = read("crates/modules/rustok-commerce/docs/product-schema-write-recheck-2026-08-08.md");
+const recheck = read("crates/modules/rustok-product/docs/implementation-plan.md");
 const implStart = port.indexOf("impl ProductCatalogSchemaWritePort for ProductCatalogSchemaService");
 if (implStart < 0) failures.push("missing ProductCatalogSchemaWritePort implementation");
 const portImpl = implStart < 0 ? "" : port.slice(implStart);

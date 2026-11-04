@@ -4,7 +4,7 @@
 //! localized translations, and product-brand associations.
 
 pub mod dto;
-pub mod entities;
+mod entities;
 pub mod error;
 pub mod migrations;
 pub mod module;
@@ -21,4 +21,4 @@ pub use ports::BrandPort;
 pub use services::BrandService;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

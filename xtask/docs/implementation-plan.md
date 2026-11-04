@@ -251,6 +251,10 @@ read-only and disposable-fixture verification can proceed earlier.
   owner data as the candidate with storage and without Fly, and the Blog widget
   contribution as the candidate with both. A no-owner-storage Fly pilot needs a
   real read-only widget and a host binding that exercises it without an owner store.
+  Brand now has a [canonical backend file map](../../crates/modules/rustok-brand/docs/README.md#file-map)
+  and a [shared SQLite/PostgreSQL migration and owner scenario](../../crates/modules/rustok-brand/docs/implementation-plan.md#verification).
+  Brand's full reference enrollment remains open pending the owner plan's
+  admin parity and runtime evidence.
 - [ ] After the reference examples pass, define explicit input for the actual
   owner operation, schema and builder contribution before enabling capability
   generation. Reuse the existing native plan, preview and recovery path.

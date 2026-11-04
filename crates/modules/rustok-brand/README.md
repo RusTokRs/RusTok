@@ -16,22 +16,21 @@ The module boundary strictly owns:
 - Unique slug constraints per tenant (`UNIQUE (tenant_id, slug)`).
 - Localized translations lifecycle for brand names and descriptions.
 - Product-to-brand association with primary brand designation.
-- Emitting transactional outbox events on brand lifecycle events (`brand.created`, `brand.updated`, `brand.deleted`).
 
 ## Integration
 
 - **`rustok-product`**: Associates catalog products with brands via `brand_products`.
 - **`rustok-media`**: References media assets (`logo_media_id`, `banner_media_id`).
-- **`rustok-outbox`**: Emits `brand.created`, `brand.updated`, and `brand.deleted` for search indices and cache invalidation.
 - **`rustok-commerce`**: Exposes brands via GraphQL queries and mutations.
 - **`rustok-product-admin`**: Embedded brand selector and management in catalog administration.
 
 ## Verification
 
-- Module unit tests: `cargo test -p rustok-brand`.
+- Module contracts and SQLite owner scenarios: `cargo test -p rustok-brand --lib --test brand`.
+- PostgreSQL profile: see the [owner verification plan](docs/implementation-plan.md#verification).
 - GraphQL surface tests: `cargo test -p rustok-commerce --test graphql_surface_regression`.
 - Manifest validation: `cargo xtask validate-manifest`.
-- Module publish contract: `cargo xtask module validate brand`.
+- Module layout and wiring: `cargo xtask module lint brand` (see outstanding admin findings in the owner plan).
 
 ## Related Documentation
 

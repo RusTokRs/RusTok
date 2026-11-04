@@ -1,213 +1,30 @@
-use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Order, PaginatorTrait,
-    QueryFilter, QueryOrder, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use uuid::Uuid;
 
-use crate::dto::{
-    BrandDto, BrandFilter, BrandListResponse, BrandTranslationDto, CreateBrandInput,
-    UpdateBrandInput,
-};
-use crate::entities::{
-    brand::{ActiveModel as BrandActiveModel, Column as BrandColumn, Entity as Brand},
-    brand_product::{
-        ActiveModel as BrandProductActiveModel, Column as BrandProductColumn,
-        Entity as BrandProduct,
+use crate::{
+    dto::{BrandDto, CreateBrandInput, UpdateBrandInput},
+    entities::{
+        brand::{ActiveModel as BrandActiveModel, Column as BrandColumn, Entity as Brand},
+        brand_product::{
+            ActiveModel as BrandProductActiveModel, Column as BrandProductColumn,
+            Entity as BrandProduct,
+        },
+        brand_translation::{
+            ActiveModel as BrandTranslationActiveModel, Column as BrandTranslationColumn,
+            Entity as BrandTranslation,
+        },
     },
-    brand_translation::{
-        ActiveModel as BrandTranslationActiveModel, Column as BrandTranslationColumn,
-        Entity as BrandTranslation,
-    },
+    error::{BrandError, BrandResult},
 };
-use crate::error::{BrandError, BrandResult};
-use crate::ports::BrandPort;
 
-#[derive(Clone)]
-pub struct BrandService {
-    db: DatabaseConnection,
-}
+use super::{
+    BrandService,
+    repository::{assemble_brand_dto, load_translations},
+};
 
 impl BrandService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
-    }
-
-    fn assemble_brand_dto(
-        model: crate::entities::brand::Model,
-        translations: Vec<crate::entities::brand_translation::Model>,
-        locale: Option<&str>,
-    ) -> BrandDto {
-        let translation_dtos: Vec<BrandTranslationDto> = translations
-            .iter()
-            .map(|t| BrandTranslationDto {
-                id: t.id,
-                locale: t.locale.clone(),
-                name: t.name.clone(),
-                description: t.description.clone(),
-            })
-            .collect();
-
-        // Best match for requested locale
-        let effective_trans = if let Some(req_loc) = locale {
-            translations
-                .iter()
-                .find(|t| t.locale.eq_ignore_ascii_case(req_loc))
-                .or_else(|| translations.iter().find(|t| t.locale.starts_with("en")))
-                .or_else(|| translations.first())
-        } else {
-            translations
-                .iter()
-                .find(|t| t.locale.starts_with("en"))
-                .or_else(|| translations.first())
-        };
-
-        let name = effective_trans
-            .map(|t| t.name.clone())
-            .unwrap_or_else(|| model.slug.clone());
-        let description = effective_trans.and_then(|t| t.description.clone());
-
-        BrandDto {
-            id: model.id,
-            tenant_id: model.tenant_id,
-            slug: model.slug,
-            name,
-            description,
-            logo_media_id: model.logo_media_id,
-            banner_media_id: model.banner_media_id,
-            website_url: model.website_url,
-            is_active: model.is_active,
-            metadata: model.metadata,
-            translations: translation_dtos,
-            created_at: model.created_at.into(),
-            updated_at: model.updated_at.into(),
-        }
-    }
-}
-
-#[async_trait]
-impl BrandPort for BrandService {
-    async fn get_brand(
-        &self,
-        tenant_id: Uuid,
-        id: Uuid,
-        locale: Option<&str>,
-    ) -> BrandResult<BrandDto> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        if id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Brand ID cannot be nil".to_string(),
-            ));
-        }
-
-        let brand = Brand::find_by_id(id)
-            .filter(BrandColumn::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(BrandError::NotFound(id))?;
-
-        let translations = BrandTranslation::find()
-            .filter(BrandTranslationColumn::BrandId.eq(id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::assemble_brand_dto(brand, translations, locale))
-    }
-
-    async fn get_brand_by_slug(
-        &self,
-        tenant_id: Uuid,
-        slug: &str,
-        locale: Option<&str>,
-    ) -> BrandResult<BrandDto> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        let clean_slug = slug.trim().to_lowercase();
-        if clean_slug.is_empty() {
-            return Err(BrandError::InvalidInput("Slug cannot be empty".to_string()));
-        }
-
-        let brand = Brand::find()
-            .filter(BrandColumn::TenantId.eq(tenant_id))
-            .filter(BrandColumn::Slug.eq(&clean_slug))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| BrandError::SlugNotFound(slug.to_string()))?;
-
-        let translations = BrandTranslation::find()
-            .filter(BrandTranslationColumn::BrandId.eq(brand.id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::assemble_brand_dto(brand, translations, locale))
-    }
-
-    async fn list_brands(
-        &self,
-        tenant_id: Uuid,
-        filter: BrandFilter,
-        page: u64,
-        per_page: u64,
-        locale: Option<&str>,
-    ) -> BrandResult<BrandListResponse> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        let page = if page == 0 { 1 } else { page };
-        let per_page = if per_page == 0 {
-            20
-        } else {
-            std::cmp::min(per_page, 100)
-        };
-
-        let mut query = Brand::find().filter(BrandColumn::TenantId.eq(tenant_id));
-
-        if let Some(active) = filter.is_active {
-            query = query.filter(BrandColumn::IsActive.eq(active));
-        }
-
-        if let Some(ref search) = filter.search {
-            let s = search.trim();
-            if !s.is_empty() {
-                let bounded_s = if s.len() > 100 { &s[..100] } else { s };
-                query = query.filter(BrandColumn::Slug.contains(bounded_s));
-            }
-        }
-
-        query = query.order_by(BrandColumn::Slug, Order::Asc);
-
-        let paginator = query.paginate(&self.db, per_page);
-        let total = paginator.num_items().await?;
-        let brands = paginator.fetch_page(page - 1).await?;
-
-        let mut dtos = Vec::with_capacity(brands.len());
-        for brand in brands {
-            let translations = BrandTranslation::find()
-                .filter(BrandTranslationColumn::BrandId.eq(brand.id))
-                .all(&self.db)
-                .await?;
-            dtos.push(Self::assemble_brand_dto(brand, translations, locale));
-        }
-
-        Ok(BrandListResponse {
-            items: dtos,
-            total,
-            page,
-            per_page,
-        })
-    }
-
-    async fn create_brand(
+    pub(super) async fn create_brand(
         &self,
         tenant_id: Uuid,
         input: CreateBrandInput,
@@ -307,10 +124,10 @@ impl BrandPort for BrandService {
 
         txn.commit().await?;
 
-        Ok(Self::assemble_brand_dto(brand_model, trans_models, None))
+        Ok(assemble_brand_dto(brand_model, trans_models, None))
     }
 
-    async fn update_brand(
+    pub(super) async fn update_brand(
         &self,
         tenant_id: Uuid,
         id: Uuid,
@@ -437,21 +254,13 @@ impl BrandPort for BrandService {
             }
         }
 
+        let all_translations = load_translations(&txn, id).await?;
         txn.commit().await?;
 
-        let all_translations = BrandTranslation::find()
-            .filter(BrandTranslationColumn::BrandId.eq(id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::assemble_brand_dto(
-            updated_brand,
-            all_translations,
-            None,
-        ))
+        Ok(assemble_brand_dto(updated_brand, all_translations, None))
     }
 
-    async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {
+    pub(super) async fn delete_brand(&self, tenant_id: Uuid, id: Uuid) -> BrandResult<()> {
         if tenant_id.is_nil() {
             return Err(BrandError::InvalidInput(
                 "Tenant ID cannot be nil".to_string(),
@@ -487,39 +296,7 @@ impl BrandPort for BrandService {
         Ok(())
     }
 
-    async fn get_brand_for_product(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: Option<&str>,
-    ) -> BrandResult<Option<BrandDto>> {
-        if tenant_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Tenant ID cannot be nil".to_string(),
-            ));
-        }
-        if product_id.is_nil() {
-            return Err(BrandError::InvalidInput(
-                "Product ID cannot be nil".to_string(),
-            ));
-        }
-
-        let link = BrandProduct::find()
-            .filter(BrandProductColumn::TenantId.eq(tenant_id))
-            .filter(BrandProductColumn::ProductId.eq(product_id))
-            .order_by(BrandProductColumn::IsPrimary, Order::Desc)
-            .one(&self.db)
-            .await?;
-
-        let Some(link) = link else {
-            return Ok(None);
-        };
-
-        let brand = self.get_brand(tenant_id, link.brand_id, locale).await?;
-        Ok(Some(brand))
-    }
-
-    async fn assign_product_brand(
+    pub(super) async fn assign_product_brand(
         &self,
         tenant_id: Uuid,
         brand_id: Uuid,
@@ -572,7 +349,7 @@ impl BrandPort for BrandService {
         Ok(())
     }
 
-    async fn unassign_product_brand(
+    pub(super) async fn unassign_product_brand(
         &self,
         tenant_id: Uuid,
         brand_id: Uuid,

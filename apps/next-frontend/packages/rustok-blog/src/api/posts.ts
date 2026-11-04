@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 import type { RichTextDocument, RichTextView } from "@rustok/richtext";
 
@@ -306,15 +307,15 @@ export async function fetchPublishedPosts(
   };
 }
 
-export async function fetchPublishedPost(
+const fetchPublishedPostUncached = async (
   graphql: BlogGraphqlExecutor,
   tenantId: string,
   tenantSlug: string | null,
   slug: string,
   locale: string,
-  commentsPage = 1,
-  commentsPerPage = 20,
-): Promise<BlogPostDetail | null> {
+  commentsPage: number,
+  commentsPerPage: number,
+): Promise<BlogPostDetail | null> => {
   const response = await graphql<{ postBySlug: BlogPostDetail | null }, {
     tenantId: string;
     slug: string;
@@ -330,6 +331,28 @@ export async function fetchPublishedPost(
     throw new Error(response.errors?.[0]?.message ?? "Blog post payload is missing");
   }
   return response.data.postBySlug;
+};
+
+const cachedFetchPublishedPost = cache(fetchPublishedPostUncached);
+
+export async function fetchPublishedPost(
+  graphql: BlogGraphqlExecutor,
+  tenantId: string,
+  tenantSlug: string | null,
+  slug: string,
+  locale: string,
+  commentsPage = 1,
+  commentsPerPage = 20,
+): Promise<BlogPostDetail | null> {
+  return cachedFetchPublishedPost(
+    graphql,
+    tenantId,
+    tenantSlug,
+    slug,
+    locale,
+    commentsPage,
+    commentsPerPage,
+  );
 }
 
 /**

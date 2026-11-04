@@ -1,57 +1,178 @@
 use rustok_brand::dto::{BrandFilter, BrandTranslationInput, CreateBrandInput, UpdateBrandInput};
 use rustok_brand::error::BrandError;
+use rustok_brand::migrations::Migrator;
 use rustok_brand::ports::BrandPort;
 use rustok_brand::services::BrandService;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm_migration::{MigratorTrait, SchemaManager};
 use uuid::Uuid;
 
 async fn setup_test_db() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
-        .expect("Failed to connect to in-memory sqlite");
-
-    db.execute_unprepared(
-        r#"
-CREATE TABLE brands (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    logo_media_id TEXT,
-    banner_media_id TEXT,
-    website_url TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (tenant_id, slug)
-);
-
-CREATE TABLE brand_translations (
-    id TEXT PRIMARY KEY,
-    brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
-    locale TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (brand_id, locale)
-);
-
-CREATE TABLE brand_products (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL,
-    is_primary INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    UNIQUE (tenant_id, brand_id, product_id)
-);
-"#,
-    )
-    .await
-    .expect("Failed to create brand tables");
-
+        .expect("connect to isolated in-memory SQLite");
+    Migrator::up(&db, None)
+        .await
+        .expect("apply the shipped Brand migrations");
     db
+}
+
+async fn assert_migrated_owner_behavior(db: &DatabaseConnection) {
+    let service = BrandService::new(db.clone());
+    let tenant = Uuid::new_v4();
+    let other_tenant = Uuid::new_v4();
+    let translation = |locale: &str, name: &str| BrandTranslationInput {
+        locale: locale.to_owned(),
+        name: name.to_owned(),
+        description: None,
+    };
+    let input = |translations| CreateBrandInput {
+        slug: "acme".into(),
+        logo_media_id: None,
+        banner_media_id: None,
+        website_url: None,
+        is_active: None,
+        metadata: None,
+        translations,
+    };
+
+    // The second row conflicts after normalization. The earlier inserts in
+    // this transaction must disappear as well, so the slug is reusable.
+    assert!(
+        service
+            .create_brand(
+                tenant,
+                input(vec![
+                    translation("en", "First"),
+                    translation(" EN ", "Second")
+                ])
+            )
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        service.get_brand_by_slug(tenant, "acme", None).await,
+        Err(BrandError::SlugNotFound(_))
+    ));
+
+    let brand = service
+        .create_brand(tenant, input(vec![translation("en", "Original")]))
+        .await
+        .expect("retry after rollback");
+    let other_brand = service
+        .create_brand(other_tenant, input(vec![translation("en", "Other tenant")]))
+        .await
+        .expect("slug is unique within a tenant");
+    assert_ne!(brand.id, other_brand.id);
+    assert!(matches!(
+        service.get_brand(other_tenant, brand.id, Some("fr")).await,
+        Err(BrandError::NotFound(id)) if id == brand.id
+    ));
+
+    let fallback = service
+        .get_brand(tenant, brand.id, Some("fr"))
+        .await
+        .unwrap();
+    assert_eq!(fallback.name, "Original");
+    assert_eq!(fallback.translations.len(), 1);
+    assert_eq!(fallback.translations[0].locale, "en");
+
+    let updated = service
+        .update_brand(
+            tenant,
+            brand.id,
+            UpdateBrandInput {
+                slug: None,
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: None,
+                metadata: None,
+                translations: Some(vec![translation("fr", "Version française")]),
+            },
+        )
+        .await
+        .expect("save explicit French content");
+    assert_eq!(updated.translations.len(), 2);
+    assert_eq!(
+        service
+            .get_brand(tenant, brand.id, Some("fr"))
+            .await
+            .unwrap()
+            .name,
+        "Version française"
+    );
+    assert_eq!(
+        service
+            .get_brand(tenant, brand.id, Some("en"))
+            .await
+            .unwrap()
+            .name,
+        "Original"
+    );
+}
+
+async fn assert_migration_cycle(db: &DatabaseConnection) {
+    assert_migrated_owner_behavior(db).await;
+    // This destructive rollback is exercised only in an isolated test store.
+    Migrator::down(db, None)
+        .await
+        .expect("roll back test migration");
+    let schema = SchemaManager::new(db);
+    for table in ["brands", "brand_translations", "brand_products"] {
+        assert!(
+            !schema.has_table(table).await.unwrap(),
+            "{table} survived rollback"
+        );
+    }
+    Migrator::up(db, None)
+        .await
+        .expect("reapply test migration");
+    assert_migrated_owner_behavior(db).await;
+}
+
+#[tokio::test]
+async fn sqlite_migration_and_owner_behavior() {
+    let db = setup_test_db().await;
+    assert_migration_cycle(&db).await;
+}
+
+#[tokio::test]
+#[ignore = "requires RUSTOK_BRAND_TEST_POSTGRES_URL and permission to create a disposable schema"]
+async fn postgres_migration_and_owner_behavior() {
+    let url = std::env::var("RUSTOK_BRAND_TEST_POSTGRES_URL")
+        .expect("set RUSTOK_BRAND_TEST_POSTGRES_URL to a PostgreSQL test database");
+    assert!(url.starts_with("postgres://") || url.starts_with("postgresql://"));
+    let control = Database::connect(&url)
+        .await
+        .expect("connect to test database");
+    let schema = format!("brand_test_{}", Uuid::new_v4().simple());
+    control
+        .execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+        .await
+        .unwrap();
+
+    let mut options = ConnectOptions::new(url);
+    options.set_schema_search_path(&schema);
+    let result = tokio::spawn(async move {
+        let db = Database::connect(options)
+            .await
+            .expect("connect to isolated schema");
+        Migrator::up(&db, None)
+            .await
+            .expect("apply the shipped Brand migrations");
+        assert_migration_cycle(&db).await;
+        db.close().await.expect("close isolated connection pool");
+    })
+    .await;
+
+    control
+        .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+    if let Err(error) = result {
+        std::panic::resume_unwind(error.into_panic());
+    }
 }
 
 #[tokio::test]
@@ -386,6 +507,30 @@ async fn lists_brands_with_filter() {
         .unwrap();
     assert_eq!(searched.total, 1);
     assert_eq!(searched.items[0].slug, "alpha");
+
+    let beyond_last_page = service
+        .list_brands(tenant_id, BrandFilter::default(), u64::MAX, 100, None)
+        .await
+        .expect("an out-of-range page is empty");
+    assert!(beyond_last_page.items.is_empty());
+    assert_eq!(beyond_last_page.total, all.total);
+
+    // A 100-byte cut would fall inside the first Cyrillic character.
+    let unicode = format!("{}ж", "a".repeat(99));
+    let no_match = service
+        .list_brands(
+            tenant_id,
+            BrandFilter {
+                search: Some(unicode),
+                is_active: None,
+            },
+            1,
+            10,
+            None,
+        )
+        .await
+        .expect("a long Unicode query remains a valid string");
+    assert!(no_match.items.is_empty());
 }
 
 #[tokio::test]
