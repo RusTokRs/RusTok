@@ -225,6 +225,7 @@ pub(crate) fn storefront_product_input() -> CreateProductInput {
         product_type: Some("physical".to_string()),
         shipping_profile_slug: None,
         primary_category_id: None,
+        brands: vec![],
         tags: vec![],
         publish: false,
         metadata: json!({}),

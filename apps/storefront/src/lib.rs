@@ -240,7 +240,7 @@ pub async fn render_shell(
             let stream = view! {
                 <StorefrontShell
                     locale=locale
-                    enabled_modules=enabled_modules
+                    enabled_modules=enabled_modules.clone()
                     query_params=query_params
                 />
             }
@@ -300,7 +300,7 @@ async fn render_module_page_with_nonce(
             let stream = view! {
                 <StorefrontModulePage
                     locale=locale
-                    enabled_modules=enabled_modules
+                    enabled_modules=enabled_modules.clone()
                     route_segment=route_segment
                     query_params=query_params
                 />

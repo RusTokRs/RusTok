@@ -3310,10 +3310,20 @@ pub struct GqlBrandListResponse {
     pub per_page: u64,
 }
 
+#[derive(SimpleObject, Clone)]
+pub struct GqlProductBrand {
+    pub brand_id: Uuid,
+    pub is_primary: bool,
+    pub role: String,
+    pub position: i32,
+    pub brand: Option<GqlBrand>,
+}
+
 #[derive(InputObject, Clone, Default)]
 pub struct GqlBrandFilter {
     pub search: Option<String>,
     pub is_active: Option<bool>,
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(InputObject, Clone)]

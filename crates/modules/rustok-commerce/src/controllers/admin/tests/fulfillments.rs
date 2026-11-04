@@ -117,7 +117,13 @@ async fn admin_fulfillments_transport_lists_fulfillments_with_pagination_and_fil
         .expect("second fulfillment should be created");
     fulfillment_service
         .ship_fulfillment(
-            tenant_id,
+            rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::user(actor_id.to_string()),
+                "en",
+                "admin-fulfillment-test",
+            )
+            .with_deadline(std::time::Duration::from_secs(30)),
             second_fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
@@ -827,7 +833,13 @@ async fn admin_fulfillment_transport_supports_reopen_and_reship() {
             rustok_fulfillment::NoopShipmentStockPort,
         ))
         .ship_fulfillment(
-            tenant_id,
+            rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::user(actor_id.to_string()),
+                "en",
+                "admin-fulfillment-test",
+            )
+            .with_deadline(std::time::Duration::from_secs(30)),
             fulfillment.id,
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),

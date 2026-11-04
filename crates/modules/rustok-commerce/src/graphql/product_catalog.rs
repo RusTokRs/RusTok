@@ -735,7 +735,7 @@ impl ProductCatalogQuery {
                 rustok_brand::dto::BrandFilter {
                     search: f.search,
                     is_active: f.is_active,
-                    category_id: None,
+                    category_id: f.category_id,
                 },
                 page.unwrap_or(1),
                 per_page.unwrap_or(20),
@@ -761,6 +761,32 @@ impl ProductCatalogQuery {
         require_module_enabled(ctx, "brand").await?;
         let tenant = ctx.data::<TenantContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
+
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+        // Authoritative resolution: product-owned product_brands
+        let primary_brand_link = rustok_product::entities::product_brand::Entity::find()
+            .filter(rustok_product::entities::product_brand::Column::TenantId.eq(tenant.id))
+            .filter(rustok_product::entities::product_brand::Column::ProductId.eq(product_id))
+            .filter(rustok_product::entities::product_brand::Column::IsPrimary.eq(true))
+            .one(db)
+            .await?;
+
+        if let Some(link) = primary_brand_link {
+            let service = rustok_brand::BrandService::new(db.clone());
+            use rustok_brand::BrandReadPort;
+            let brand = BrandReadPort::get_brand(
+                &service,
+                tenant.id,
+                link.brand_id,
+                locale.as_deref(),
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            return Ok(brand.map(Into::into));
+        }
+
+        // Backward compatibility fallback to legacy brand_products
         let service = rustok_brand::BrandService::new(db.clone());
         use rustok_brand::BrandPort;
         let brand = service
@@ -768,6 +794,92 @@ impl ProductCatalogQuery {
             .await
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         Ok(brand.map(Into::into))
+    }
+
+    async fn product_brands(
+        &self,
+        ctx: &Context<'_>,
+        product_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Vec<super::GqlProductBrand>> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+
+        // Query product_brands ordered by is_primary DESC, position ASC
+        let links = rustok_product::entities::product_brand::Entity::find()
+            .filter(rustok_product::entities::product_brand::Column::TenantId.eq(tenant.id))
+            .filter(rustok_product::entities::product_brand::Column::ProductId.eq(product_id))
+            .order_by_desc(rustok_product::entities::product_brand::Column::IsPrimary)
+            .order_by_asc(rustok_product::entities::product_brand::Column::Position)
+            .all(db)
+            .await?;
+
+        if !links.is_empty() {
+            let brand_ids: Vec<Uuid> = links.iter().map(|l| l.brand_id).collect();
+            let service = rustok_brand::BrandService::new(db.clone());
+            use rustok_brand::BrandReadPort;
+            let brands_list = service
+                .get_brands_batch(tenant.id, &brand_ids, locale.as_deref())
+                .await
+                .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            let brands_map: std::collections::HashMap<Uuid, rustok_brand::dto::BrandDto> =
+                brands_list.into_iter().map(|b| (b.id, b)).collect();
+
+            let result = links
+                .into_iter()
+                .map(|link| {
+                    let brand_dto = brands_map.get(&link.brand_id).cloned();
+                    super::GqlProductBrand {
+                        brand_id: link.brand_id,
+                        is_primary: link.is_primary,
+                        role: link.role,
+                        position: link.position,
+                        brand: brand_dto.map(Into::into),
+                    }
+                })
+                .collect();
+            return Ok(result);
+        }
+
+        // Backward compatibility fallback to legacy brand_products
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandPort;
+        if let Ok(Some(legacy_brand)) = service
+            .get_brand_for_product(tenant.id, product_id, locale.as_deref())
+            .await
+        {
+            let brand_id = legacy_brand.id;
+            return Ok(vec![super::GqlProductBrand {
+                brand_id,
+                is_primary: true,
+                role: "manufacturer".to_string(),
+                position: 0,
+                brand: Some(legacy_brand.into()),
+            }]);
+        }
+
+        Ok(vec![])
+    }
+
+    async fn category_brands(
+        &self,
+        ctx: &Context<'_>,
+        category_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Vec<super::GqlBrand>> {
+        require_module_enabled(ctx, "brand").await?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let service = rustok_brand::BrandService::new(db.clone());
+        use rustok_brand::BrandReadPort;
+        let brands = service
+            .list_brands_for_category(tenant.id, category_id, locale.as_deref())
+            .await
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(brands.into_iter().map(Into::into).collect())
     }
 
     async fn bundle(
