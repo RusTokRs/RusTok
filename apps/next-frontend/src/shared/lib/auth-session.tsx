@@ -58,7 +58,7 @@ export function StorefrontAuthProvider({
   tenantSlug,
   children,
 }: {
-  tenantSlug: string;
+  tenantSlug: string | null;
   children: ReactNode;
 }) {
   const snapshot = useSyncExternalStore(subscribe, readSnapshot, () => PENDING);

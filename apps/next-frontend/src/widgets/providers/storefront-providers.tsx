@@ -6,11 +6,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CartProvider } from "@rustok/cart-frontend";
+import { CartDrawer, CartProvider, CartTrigger } from "@rustok/cart-frontend";
 import {
   StorefrontAuthProvider,
   useStorefrontAuth,
 } from "@/shared/lib/auth-session";
+import { useEnabledModulesContext } from "@/shared/lib/enabled-modules-context";
 
 function CartSession({
   children,
@@ -19,9 +20,10 @@ function CartSession({
 }: {
   children: ReactNode;
   locale: string;
-  tenantSlug: string;
+  tenantSlug: string | null;
 }) {
   const auth = useStorefrontAuth();
+  const { enabledModules } = useEnabledModulesContext();
   return (
     <CartProvider
       locale={locale}
@@ -32,6 +34,12 @@ function CartSession({
       authScopeIsCurrent={auth.isCurrent}
     >
       {children}
+      {enabledModules.includes("cart") && (
+        <>
+          <CartTrigger locale={locale} />
+          <CartDrawer locale={locale} />
+        </>
+      )}
     </CartProvider>
   );
 }
@@ -39,7 +47,7 @@ function CartSession({
 export function StorefrontProviders(props: {
   children: ReactNode;
   locale: string;
-  tenantSlug: string;
+  tenantSlug: string | null;
 }) {
   return (
     <StorefrontAuthProvider tenantSlug={props.tenantSlug}>
