@@ -63,13 +63,16 @@ for (const marker of [
   'async fn read_region(',
   'async fn list_regions_for_tenant(',
   'impl RegionReadPort for crate::RegionService',
-  'self.get_region(',
-  'self.resolve_region_for_country(',
-  'self.list_regions(',
   'require_region_read_policy(&context, owner_operation)?;',
   'parse_tenant_id(&context, owner_operation)?;',
   'map_region_error(&context, owner_operation, error)',
 ]) requireText(ports, marker, `${paths.ports}: preserved owner boundary`);
+
+for (const method of ['get_region', 'resolve_region_for_country', 'list_regions']) {
+  if (!new RegExp(`\\bself\\s*\\.\\s*${method}\\s*\\(`).test(ports)) {
+    failures.push(`${paths.ports}: preserved owner boundary: missing self.${method}(`);
+  }
+}
 
 for (const marker of [
   'Validation(String)',

@@ -6,6 +6,7 @@ on:
       - "apps/server/src/services/module_event_dispatcher.rs"
       - "apps/server/tests/region_translation_target_postgres.rs"
       - "crates/modules/rustok-region/src/**"
+      - "crates/modules/rustok-region/tests/**"
       - "crates/modules/rustok-outbox/**"
       - "crates/modules/rustok-translation-targets/**"
       - "crates/utils/rustok-migrations/**"
@@ -17,6 +18,7 @@ on:
       - "apps/server/src/services/module_event_dispatcher.rs"
       - "apps/server/tests/region_translation_target_postgres.rs"
       - "crates/modules/rustok-region/src/**"
+      - "crates/modules/rustok-region/tests/**"
       - "crates/modules/rustok-outbox/**"
       - "crates/modules/rustok-translation-targets/**"
       - "crates/utils/rustok-migrations/**"
@@ -73,13 +75,21 @@ jobs:
       - name: Check focused Rust formatting
         shell: bash
         run: |
-          rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check \
+          rustfmt "+${RUST_TOOLCHAIN}" --edition 2024 --check \
             apps/server/tests/region_translation_target_postgres.rs \
-            crates/modules/rustok-region/src/services/region.rs \
+            crates/modules/rustok-region/src/domain/region.rs \
+            crates/modules/rustok-region/src/services/region/mod.rs \
             crates/modules/rustok-region/src/services/translation.rs \
             crates/modules/rustok-region/src/services/translation_progress.rs \
             crates/modules/rustok-region/src/translation_changes.rs \
-            crates/modules/rustok-region/src/translation_target.rs
+            crates/modules/rustok-region/src/translation_target.rs \
+            crates/modules/rustok-region/tests/region_service_test.rs
+      - name: Run Region owner PostgreSQL create and read scenario
+        env:
+          RUSTOK_REGION_TEST_POSTGRES_URL: ${{ env.RUSTOK_MIGRATION_SMOKE_ADMIN_URL }}
+        run: >-
+          cargo test --locked -p rustok-region --test region_service_test
+          postgres_create_and_resolve_region_by_country -- --ignored --exact
       - name: Compile Region registered provider PostgreSQL evidence
         run: >-
           cargo test --locked -p rustok-server --no-default-features

@@ -253,6 +253,9 @@ read-only and disposable-fixture verification can proceed earlier.
   locale behavior, and applicable runtime bindings before enrolling it.
   The current Region lint reports backend placement and entity visibility
   issues, UI layout issues, and missing Next.js manifest bindings.
+  The [Region owner plan](../../crates/modules/rustok-region/docs/implementation-plan.md#scaffold-reference-candidate)
+  records the command/query slice and the Cart storage boundary that must be
+  closed before enrollment.
   Keep Brand as [layout and migration evidence only](../../crates/modules/rustok-brand/docs/implementation-plan.md#product-ownership-review)
   while its Product boundary is unresolved. Use the Blog widget contribution as
   the candidate with both storage and Fly. A no-owner-storage Fly pilot needs a

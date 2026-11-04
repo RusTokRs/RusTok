@@ -3,6 +3,7 @@
 //! Provides geographical jurisdiction boundaries, country-to-region mapping,
 //! currency codes, localized region naming, and regional tax policy definitions.
 
+mod domain;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -35,4 +36,4 @@ pub use translation_target::{
 };
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

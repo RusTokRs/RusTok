@@ -74,6 +74,23 @@ adapters bind and render prepared state.
    **Done when:** source guard, compile, and mounted runtime evidence are retained
    without changing the current FFA/FBA status prematurely.
 
+## Scaffold reference candidate
+
+The Region create/read slice is the candidate with owner storage and no Fly
+contribution. Its [file map](README.md#region-command-and-query-file-map)
+documents the service split. The SQLite and PostgreSQL create/read tests apply
+the owner migration list and verify country resolution, locale fallback, and
+tenant isolation. A SQLite fault test inserts a journal entry, injects a
+readback failure, and verifies that the entire update rolls back.
+
+Before enrolling the module, migrate Cart tax recalculation from direct reads
+of the shared Region entities to a typed owner projection. Preserve the tax
+baseline, country overrides, tenant context, and Cart rollback behavior through
+the chosen boundary. Move the mappings to Region once production and fixture
+consumers no longer import them. Complete the remaining layout checks and
+verify the declared admin and storefront clients before marking the module as
+a full reference.
+
 ## Verification
 
 - `node scripts/verify/verify-region-owner-port-error-safety.mjs`
@@ -82,8 +99,21 @@ adapters bind and render prepared state.
 - `npm run verify:region:fba`
 - `cargo xtask module validate region`
 - `cargo xtask module test region`
+- `cargo test -p rustok-region --lib --test region_service_test --test module`
+- `cargo test -p rustok-region --test region_service_test postgres_create_and_resolve_region_by_country -- --ignored`
+  runs the same create/read scenario in a fresh database. Set
+  `RUSTOK_REGION_TEST_POSTGRES_URL` to a test PostgreSQL instance with database
+  creation permission. The fixture removes the database after the run. The
+  Region PostgreSQL workflow runs the same crate-scoped scenario.
 - Targeted region lookup, country/currency policy, tax-baseline, and storefront
   transport tests.
+
+On 2026-11-04, on local `main` at `111d6dd4bf` with the Region slice changes
+applied, Cargo passed five crate and module contract tests and ten SQLite
+tests. The Cargo-built integration test binary passed the same create/read
+scenario on PostgreSQL 16.13. The Region FBA and owner-port source guards
+passed. The Commerce GraphQL error-safety verifier still expects an earlier
+adapter shape and needs separate reconciliation with Commerce's current code.
 
 ## Update rules
 

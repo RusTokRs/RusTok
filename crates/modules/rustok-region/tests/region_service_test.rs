@@ -2,8 +2,13 @@ use rust_decimal::Decimal;
 use rustok_region::dto::{
     CreateRegionInput, RegionCountryTaxPolicyInput, RegionTranslationInput, UpdateRegionInput,
 };
-use rustok_region::services::RegionService;
-use rustok_test_utils::db::setup_test_db;
+use rustok_region::{RegionError, RegionService, RegionTranslationService};
+use rustok_test_utils::db::{
+    assert_postgres_url, connect_postgres, create_postgres_database,
+    drop_postgres_database_if_exists, postgres_database_url, setup_test_db,
+    unique_postgres_database_name,
+};
+use sea_orm::ConnectionTrait;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -11,7 +16,7 @@ mod support;
 
 async fn setup() -> RegionService {
     let db = setup_test_db().await;
-    support::ensure_region_schema(&db).await;
+    support::apply_region_migrations(&db).await;
     RegionService::new(db)
 }
 
@@ -37,7 +42,40 @@ fn create_region_input() -> CreateRegionInput {
 
 #[tokio::test]
 async fn create_and_resolve_region_by_country() {
-    let service = setup().await;
+    assert_region_create_and_read(setup().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires RUSTOK_REGION_TEST_POSTGRES_URL with permission to create a disposable database"]
+async fn postgres_create_and_resolve_region_by_country() {
+    let url = std::env::var("RUSTOK_REGION_TEST_POSTGRES_URL")
+        .expect("set RUSTOK_REGION_TEST_POSTGRES_URL to a PostgreSQL test instance");
+    assert_postgres_url(&url);
+    let admin = connect_postgres(&url)
+        .await
+        .expect("connect to test instance");
+    let database_name = unique_postgres_database_name("region_create_read");
+    create_postgres_database(&admin, &database_name)
+        .await
+        .expect("create disposable database");
+    let database_url = postgres_database_url(&url, &database_name);
+    let result = tokio::spawn(async move {
+        let db = connect_postgres(&database_url)
+            .await
+            .expect("connect to disposable database");
+        support::apply_region_migrations(&db).await;
+        assert_region_create_and_read(RegionService::new(db)).await;
+    })
+    .await;
+    drop_postgres_database_if_exists(&admin, &database_name)
+        .await
+        .expect("remove disposable database");
+    if let Err(error) = result {
+        std::panic::resume_unwind(error.into_panic());
+    }
+}
+
+async fn assert_region_create_and_read(service: RegionService) {
     let tenant_id = Uuid::new_v4();
 
     let created = service
@@ -54,11 +92,88 @@ async fn create_and_resolve_region_by_country() {
     );
 
     let resolved = service
-        .resolve_region_for_country(tenant_id, "fr", Some("en"), Some("en"))
+        .resolve_region_for_country(tenant_id, "fr", Some("fr"), Some("en"))
         .await
         .expect("region lookup should succeed")
         .expect("region should resolve");
     assert_eq!(resolved.id, created.id);
+    assert_eq!(resolved.requested_locale.as_deref(), Some("fr"));
+    assert_eq!(resolved.effective_locale.as_deref(), Some("en"));
+    assert_eq!(resolved.available_locales, ["en"]);
+    assert_eq!(resolved.name, "European Union");
+
+    let other_tenant = Uuid::new_v4();
+    assert!(matches!(
+        service.get_region(other_tenant, created.id, None, None).await,
+        Err(RegionError::RegionNotFound(id)) if id == created.id
+    ));
+    assert!(
+        service
+            .resolve_region_for_country(other_tenant, "FR", None, None)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn projection_failure_rolls_back_region_and_translation_journal() {
+    let db = setup_test_db().await;
+    support::apply_region_migrations(&db).await;
+    let service = RegionService::new(db.clone());
+    let translations = RegionTranslationService::new(db.clone());
+    let tenant_id = Uuid::new_v4();
+    let region = service
+        .create_region(tenant_id, create_region_input())
+        .await
+        .unwrap();
+    let highwater = translations
+        .region_translation_change_highwater(tenant_id)
+        .await
+        .unwrap();
+    assert!(highwater.is_some());
+
+    // Corrupt the projection only after the journal insert to exercise the last
+    // read inside the write transaction, after every intended write ran.
+    db.execute_unprepared(
+        "CREATE TRIGGER fail_region_projection AFTER INSERT ON region_translation_change_journal \
+         BEGIN UPDATE regions SET metadata = 'invalid JSON' WHERE id = NEW.region_id; END;",
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        service
+            .update_region(
+                tenant_id,
+                region.id,
+                UpdateRegionInput {
+                    currency_code: Some("USD".into()),
+                    translations: Some(vec![RegionTranslationInput {
+                        locale: "en".into(),
+                        name: "Changed".into()
+                    }]),
+                    ..Default::default()
+                }
+            )
+            .await,
+        Err(RegionError::Database(_))
+    ));
+
+    let persisted = service
+        .get_region(tenant_id, region.id, Some("en"), None)
+        .await
+        .unwrap();
+    assert_eq!(persisted.currency_code, "EUR");
+    assert_eq!(persisted.name, "European Union");
+    assert_eq!(persisted.metadata, region.metadata);
+    assert_eq!(
+        translations
+            .region_translation_change_highwater(tenant_id)
+            .await
+            .unwrap(),
+        highwater
+    );
 }
 
 #[tokio::test]
