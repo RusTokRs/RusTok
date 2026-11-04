@@ -1129,9 +1129,6 @@ transition watchdog reading all checkpoints.
 
 ## Related Documents
 
-- [Logic audit 2026-10-21](./logic-audit-2026-10-21.md)
-- [Logic audit R2 2026-10-23](./logic-audit-r2-2026-10-23.md)
-- [Logic audit R3 2026-10-25](./logic-audit-r3-2026-10-25.md)
 - [Implementation plan](./implementation-plan.md)
 - [Neutral sandbox ADR](../../../../DECISIONS/2026-07-11-neutral-sandbox-foundation.md)
 - [Module control-plane plan](../../../../docs/modules/module-control-plane-consolidation-plan.md)

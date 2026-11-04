@@ -80,9 +80,6 @@ compile/unit/source evidence and retained live ordinary-tenant denial, host
 admission, rotation/revocation and multi-replica parity exist. These cross-owner
 findings do not change the Tenant-owner count.
 
-Detailed post-handoff evidence is retained in
-[`cycle-001-core-trust-supplement-20260731.md`](./cycle-001-core-trust-supplement-20260731.md).
-
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -193,7 +190,6 @@ is still required; source inspection is not a substitute.
 
 ## References
 
-- [Cycle-001 Core trust supplement](./cycle-001-core-trust-supplement-20260731.md)
 - [Commerce tenant-locale owner cutover](../../rustok-commerce/docs/tenant-locale-owner-cutover.md)
 - [Host cache contract inventory](../../rustok-cache/docs/host-cache-inventory.md)
 - [Events runtime adapter plan](../../rustok-events-module/docs/implementation-plan.md)

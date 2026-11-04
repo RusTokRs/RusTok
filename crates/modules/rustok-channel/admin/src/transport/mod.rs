@@ -12,7 +12,7 @@ use crate::model::{
     CreateResolutionRulePayload, ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiError {
     Rest(String),
     ServerFn(String),

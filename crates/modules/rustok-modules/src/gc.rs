@@ -14,8 +14,7 @@
 //! storage. Nothing in this module is reachable from a production caller
 //! today. A durable tombstone/receipt store, live inventory and
 //! reference sources, and real per-surface purge adapters are required
-//! before any production claim (see
-//! docs/logic-audit-remediation-2026-10-21.md §5.2).
+//! before any production claim.
 
 use std::collections::{HashMap, HashSet};
 

@@ -2,7 +2,7 @@ use rustok_api::context::{ChannelResolutionSource, ChannelResolutionTraceStep};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChannelAdminBootstrap {
     pub current_channel: Option<ResolvedChannelContext>,
     pub channels: Vec<ChannelDetail>,
@@ -11,7 +11,7 @@ pub struct ChannelAdminBootstrap {
     pub oauth_apps: Vec<AvailableOauthAppItem>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ResolvedChannelContext {
     pub id: String,
     pub tenant_id: String,
@@ -26,7 +26,7 @@ pub struct ResolvedChannelContext {
     pub resolution_trace: Vec<ChannelResolutionTraceStep>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChannelDetail {
     pub channel: ChannelRecord,
     pub targets: Vec<ChannelTargetRecord>,
@@ -34,13 +34,13 @@ pub struct ChannelDetail {
     pub oauth_apps: Vec<ChannelOauthAppRecord>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChannelResolutionPolicySetDetail {
     pub policy_set: ChannelResolutionPolicySetRecord,
     pub rules: Vec<ChannelResolutionRuleRecord>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChannelResolutionPolicySetRecord {
     pub id: String,
     pub tenant_id: String,
@@ -52,7 +52,7 @@ pub struct ChannelResolutionPolicySetRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChannelResolutionRuleRecord {
     pub id: String,
     pub policy_set_id: String,
@@ -64,13 +64,13 @@ pub struct ChannelResolutionRuleRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChannelResolutionRuleDefinitionRecord {
     pub predicates: Vec<ChannelResolutionPredicateRecord>,
     pub action: ChannelResolutionActionRecord,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ChannelResolutionPredicateRecord {
     HostEquals(String),
@@ -80,13 +80,13 @@ pub enum ChannelResolutionPredicateRecord {
     LocaleEquals(String),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum ChannelResolutionActionRecord {
     ResolveToChannel { channel_id: String },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChannelRecord {
     pub id: String,
     pub tenant_id: String,
@@ -100,7 +100,7 @@ pub struct ChannelRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChannelTargetRecord {
     pub id: String,
     pub channel_id: String,
@@ -112,7 +112,7 @@ pub struct ChannelTargetRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChannelModuleBindingRecord {
     pub id: String,
     pub channel_id: String,
@@ -123,7 +123,7 @@ pub struct ChannelModuleBindingRecord {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChannelOauthAppRecord {
     pub id: String,
     pub channel_id: String,
@@ -132,14 +132,14 @@ pub struct ChannelOauthAppRecord {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AvailableModuleItem {
     pub slug: String,
     pub name: String,
     pub kind: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AvailableOauthAppItem {
     pub id: String,
     pub name: String,
@@ -148,7 +148,7 @@ pub struct AvailableOauthAppItem {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CreateChannelPayload {
     pub tenant_id: Option<String>,
     pub slug: String,
@@ -156,7 +156,7 @@ pub struct CreateChannelPayload {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CreateChannelTargetPayload {
     pub target_type: String,
     pub value: String,
@@ -164,27 +164,27 @@ pub struct CreateChannelTargetPayload {
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct BindChannelModulePayload {
     pub module_slug: String,
     pub is_enabled: bool,
     pub settings: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct BindChannelOauthAppPayload {
     pub oauth_app_id: String,
     pub role: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CreateResolutionPolicySetPayload {
     pub slug: String,
     pub name: String,
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CreateResolutionRulePayload {
     pub priority: i32,
     pub is_active: bool,
@@ -196,7 +196,7 @@ pub struct CreateResolutionRulePayload {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UpdateResolutionRulePayload {
     pub priority: Option<i32>,
     pub is_active: Option<bool>,
@@ -208,7 +208,7 @@ pub struct UpdateResolutionRulePayload {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ReorderResolutionRulesPayload {
     pub rule_ids: Vec<String>,
 }

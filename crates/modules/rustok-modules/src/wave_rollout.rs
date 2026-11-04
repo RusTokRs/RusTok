@@ -13,8 +13,7 @@
 //! rollout store, no node transport, and no health-evidence source, and
 //! `verify_wave` records the caller's attestation rather than observed
 //! evidence. A durable store plus real node and evidence adapters are
-//! required before any production claim (see
-//! docs/logic-audit-remediation-2026-10-21.md §5.4).
+//! required before any production claim.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

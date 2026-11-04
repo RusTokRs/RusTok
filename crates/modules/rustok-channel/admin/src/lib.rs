@@ -3,12 +3,13 @@
 //! Leptos admin UI package for the `rustok-channel` module.
 //! Provides channel administration, routing target management, and module bindings.
 
-mod core;
+pub mod core;
 mod i18n;
-mod model;
-mod transport;
-mod ui;
+pub mod model;
+pub mod transport;
+pub mod ui;
 
+pub use transport::ApiError;
 pub use ui::leptos::ChannelAdmin;
 
 #[cfg(test)]

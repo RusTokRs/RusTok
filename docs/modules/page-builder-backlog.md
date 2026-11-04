@@ -11,9 +11,7 @@ This is the single forward-looking backlog for Fly and the Page Builder. It exis
 because the audit of 2026-10-14 (P3-19) found three parallel plans whose checkboxes
 could not distinguish release blockers from "someday". Historical plans and
 actualization notes keep their records; **remaining work is tracked only here**.
-Status source of truth per item: the deep audit
-(`docs/audits/fly-page-builder-deep-audit-2026-10-14.md`) plus the phase ADRs in
-`DECISIONS/`.
+Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
 ## Done (2026-10-14 remediation, Phases 1–6)
 

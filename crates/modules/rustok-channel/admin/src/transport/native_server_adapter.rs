@@ -335,11 +335,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
 
         let effective_locale = normalize_locale_tag(&request_context.locale)
             .filter(|locale| locale != "und")
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "channel OAuth bootstrap requires a normalized effective locale other than `und`",
-                )
-            })?;
+            .unwrap_or_else(|| "en".to_string());
         let backend = db.get_database_backend();
         let stmt = match backend {
             DbBackend::Postgres => Statement::from_sql_and_values(
@@ -400,20 +396,17 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
                     let app_id = row
                         .try_get::<uuid::Uuid>("", "id")
                         .map_err(ServerFnError::new)?;
+                    let slug = row
+                        .try_get::<String>("", "slug")
+                        .map_err(ServerFnError::new)?;
                     let name = row
                         .try_get::<Option<String>>("", "name")
                         .map_err(ServerFnError::new)?
-                        .ok_or_else(|| {
-                            ServerFnError::new(format!(
-                                "OAuth app translation missing: app {app_id}, locale `{effective_locale}`"
-                            ))
-                        })?;
+                        .unwrap_or_else(|| slug.clone());
                     Ok(AvailableOauthAppItem {
                         id: app_id.to_string(),
                         name,
-                        slug: row
-                            .try_get::<String>("", "slug")
-                            .map_err(ServerFnError::new)?,
+                        slug,
                         app_type: row
                             .try_get::<String>("", "app_type")
                             .map_err(ServerFnError::new)?,
@@ -707,19 +700,49 @@ pub(super) async fn channel_bind_oauth_app_native(
         let service = ChannelService::new(db.clone());
         ensure_channel_belongs_to_tenant(&service, tenant.id, channel_uuid).await?;
 
-        let stmt = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-            SELECT id
-            FROM oauth_apps
-            WHERE tenant_id = $1
-              AND id = $2
-              AND is_active = TRUE
-              AND revoked_at IS NULL
-            LIMIT 1
-            "#,
-            vec![tenant.id.into(), oauth_app_uuid.into()],
-        );
+        let backend = db.get_database_backend();
+        let stmt = match backend {
+            DbBackend::Postgres => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT id
+                FROM oauth_apps
+                WHERE tenant_id = $1
+                  AND id = $2
+                  AND is_active = TRUE
+                  AND revoked_at IS NULL
+                LIMIT 1
+                "#,
+                vec![tenant.id.into(), oauth_app_uuid.into()],
+            ),
+            DbBackend::MySql => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT id
+                FROM oauth_apps
+                WHERE tenant_id = ?
+                  AND id = ?
+                  AND is_active = TRUE
+                  AND revoked_at IS NULL
+                LIMIT 1
+                "#,
+                vec![tenant.id.into(), oauth_app_uuid.into()],
+            ),
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT id
+                FROM oauth_apps
+                WHERE tenant_id = ?1
+                  AND id = ?2
+                  AND is_active = 1
+                  AND revoked_at IS NULL
+                LIMIT 1
+                "#,
+                vec![tenant.id.into(), oauth_app_uuid.into()],
+            ),
+            _ => unreachable!("unsupported SeaORM database backend"),
+        };
         let exists = db
             .query_one_raw(stmt)
             .await

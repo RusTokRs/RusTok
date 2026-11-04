@@ -10,7 +10,7 @@
 
 ## Context
 
-The deep audit (P2-13 in `docs/audits/fly-page-builder-deep-audit-2026-10-14.md`) found the
+The deep audit (P2-13) found the
 `fly` core to be a god-crate with RusTok domain leakage: next to the framework-neutral AST
 and GrapesJS codec sit `landing_contract`, `landing_property`, `landing_readiness`,
 `context_scenario`, and the `runtime_scenario_*` modules. Landing contracts and release

@@ -10,7 +10,7 @@
 
 ## Context
 
-The 2026-10-18 SEO product-logic audit (finding P1-2, `docs/audits/seo-module-product-logic-audit-2026-10-18.md`)
+The 2026-10-18 SEO product-logic audit (finding P1-2)
 found that SEO outputs disagree about which URL family represents a page:
 
 1. Owner providers emit heterogeneous canonical families:

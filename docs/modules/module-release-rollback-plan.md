@@ -1747,8 +1747,7 @@ backend preflight.
   narrow execution/evidence ports. Implemented via `ModuleControlPlane`, the
   canonical installation/lifecycle services, and `TransitionCoordinatorService`;
   `ModuleOperatorService` is the read-model projection over their state. (The
-  parallel `DynamicLifecycleService` was removed 2026-10-21; see
-  `crates/modules/rustok-modules/docs/logic-audit-remediation-2026-10-21.md` §5.1.)
+  parallel `DynamicLifecycleService` was removed.)
 - [x] Keep one static build layering: `rustok-build` owns the canonical role
   plan/validation primitives, `rustok-static-distribution-worker` is the sole
   complete role-bundle executor/publisher, and one unversioned role-bundle
