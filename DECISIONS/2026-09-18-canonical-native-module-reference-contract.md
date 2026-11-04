@@ -184,6 +184,9 @@ responsibility rather than arbitrary line ranges.
 
 - `rustok-blog` acts as the first reference module.
 - Subsequent modules (Product, Pages, Forum, Taxonomy) migrate incrementally and enroll into reference verifiers.
+- Reference contract verification is integrated into CI (`platform-contract` gate in `.github/workflows/ci.yml`), enforcing `verify:module-source-layout`, `verify:module-reference-contract`, and Blog UI boundary invariants.
+- Storefront FFA core is modularized by cohesion (`routing`, `reading_time`, `sharing`, `presentation`, `comments_pagination`) and separates semantic status tones (`PostStatusTone`) from presentation styles.
+- Admin transport contract unavailability is normalized with typed classification (`BlogAdminContractUnavailable`).
 
 ## Alternatives considered
 

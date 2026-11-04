@@ -337,6 +337,30 @@ fn error_and_href_helpers_format_expected_values() {
 }
 
 #[test]
+fn post_status_tone_maps_semantic_variants() {
+    assert_eq!(
+        super::post_status_tone("published"),
+        super::PostStatusTone::Published
+    );
+    assert_eq!(
+        super::post_status_tone("  Published  "),
+        super::PostStatusTone::Published
+    );
+    assert_eq!(
+        super::post_status_tone("archived"),
+        super::PostStatusTone::Archived
+    );
+    assert_eq!(
+        super::post_status_tone("draft"),
+        super::PostStatusTone::Default
+    );
+    assert_eq!(
+        super::post_status_tone(""),
+        super::PostStatusTone::Default
+    );
+}
+
+#[test]
 fn status_badge_css_maps_known_statuses() {
     assert_eq!(
         status_badge_css("published"),

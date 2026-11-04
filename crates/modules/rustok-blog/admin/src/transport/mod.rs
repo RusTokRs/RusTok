@@ -382,6 +382,22 @@ pub async fn moderate_comment(
     .await
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlogAdminContractUnavailable {
+    Posts,
+    Moderation,
+}
+
+pub fn blog_admin_contract_unavailable(error: &ApiError) -> Option<BlogAdminContractUnavailable> {
+    if is_posts_contract_unavailable(error) {
+        Some(BlogAdminContractUnavailable::Posts)
+    } else if is_moderation_contract_unavailable(error) {
+        Some(BlogAdminContractUnavailable::Moderation)
+    } else {
+        None
+    }
+}
+
 pub fn is_moderation_contract_unavailable(error: &ApiError) -> bool {
     error.failed_path == UiTransportPath::Graphql
         && error
@@ -400,5 +416,32 @@ mod tests {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
         #[cfg(any(feature = "ssr", feature = "hydrate"))]
         assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
+    }
+
+    #[test]
+    fn contract_unavailable_classifies_typed_errors() {
+        let posts_err = UiTransportError::graphql(
+            "blog/admin/posts",
+            "CONTRACT_UNAVAILABLE: posts schema missing",
+        );
+        assert!(is_posts_contract_unavailable(&posts_err));
+        assert_eq!(
+            blog_admin_contract_unavailable(&posts_err),
+            Some(BlogAdminContractUnavailable::Posts)
+        );
+
+        let mod_err = UiTransportError::graphql(
+            "blog/admin/moderation",
+            "Unknown field \"moderationComments\"",
+        );
+        assert!(is_moderation_contract_unavailable(&mod_err));
+        assert_eq!(
+            blog_admin_contract_unavailable(&mod_err),
+            Some(BlogAdminContractUnavailable::Moderation)
+        );
+
+        let unrelated_err = UiTransportError::graphql("blog/admin/posts", "Network connection reset");
+        assert!(!is_posts_contract_unavailable(&unrelated_err));
+        assert_eq!(blog_admin_contract_unavailable(&unrelated_err), None);
     }
 }

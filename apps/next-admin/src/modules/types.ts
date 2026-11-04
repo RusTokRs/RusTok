@@ -16,7 +16,7 @@ export type AdminRenderContext = {
 export type AdminComponentRegistration = {
   id: string;
   moduleSlug?: string;
-  slot: AdminSlot;
+  slot: AdminSlot | string;
   order?: number;
   render: (context: AdminRenderContext) => React.ReactNode;
 };

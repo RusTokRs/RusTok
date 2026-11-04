@@ -5,9 +5,13 @@
 
 mod catalog_read;
 mod diagnostics;
+pub mod pricing;
 mod types;
 
 pub use catalog_read::ProductCatalogReadPort;
+pub use pricing::{
+    CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
+};
 pub use types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
     LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,

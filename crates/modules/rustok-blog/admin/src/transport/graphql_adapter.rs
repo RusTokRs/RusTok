@@ -333,7 +333,9 @@ pub async fn fetch_posts(
 }
 
 pub(crate) fn is_posts_contract_unavailable_message(message: &str) -> bool {
-    message.contains("Unknown type \"PostsFilter\"") || message.contains("Unknown field \"posts\"")
+    message.contains("CONTRACT_UNAVAILABLE")
+        || message.contains("Unknown type \"PostsFilter\"")
+        || message.contains("Unknown field \"posts\"")
 }
 
 pub async fn fetch_post(

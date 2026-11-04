@@ -17,7 +17,9 @@ mod ui;
 #[cfg(feature = "comment-island")]
 pub use ui::BlogCommentComposer;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
-pub use ui::{BlogDraftPreview, BlogView};
+pub use ui::BlogDraftPreview;
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+pub use ui::BlogView;
 
 #[cfg(feature = "ssr")]
 pub use transport::feed::render_rss_feed;

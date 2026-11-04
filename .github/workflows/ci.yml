@@ -81,6 +81,9 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
         with:
           toolchain: "1.96.0"
@@ -89,6 +92,12 @@ jobs:
       - run: cargo xtask module validate
       - name: Check Dependabot directories
         run: python scripts/ci/check-dependabot-directories.py
+      - name: Verify module reference contracts and boundaries
+        run: |
+          npm run verify:module-source-layout
+          npm run verify:module-reference-contract
+          npm run verify:blog:admin-boundary
+          npm run verify:blog:storefront-boundary
 
   audit:
     name: Security Audit

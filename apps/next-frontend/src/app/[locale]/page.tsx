@@ -56,7 +56,9 @@ export default async function StorefrontHome({
   const chips = (t as any).raw("chips") as string[];
   const tenantSlug = getStorefrontTenantSlug();
   const enabledModules = await fetchEnabledModules(tenantSlug);
-  const moduleSections = getModulesForSlot("home:afterHero", enabledModules);
+  const afterHeroSections = getModulesForSlot("home:afterHero", enabledModules);
+  const afterCatalogSections = getModulesForSlot("home:afterCatalog", enabledModules);
+  const beforeFooterSections = getModulesForSlot("home:beforeFooter", enabledModules);
   const seoResolution = await resolveHomeSeoContext(locale);
   const structuredDataScripts = buildSeoStructuredDataScripts(
     seoResolution.context,
@@ -149,7 +151,31 @@ export default async function StorefrontHome({
             </div>
           </div>
         </section>
-        {moduleSections.map((module) => (
+        {afterHeroSections.map((module) => (
+          <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
+            {module.render({
+              locale,
+              searchParams: resolvedSearchParams,
+              enabledModules,
+              tenantSlug,
+              tenantId: getStorefrontTenantId(),
+              graphql: storefrontGraphql,
+            })}
+          </section>
+        ))}
+        {afterCatalogSections.map((module) => (
+          <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
+            {module.render({
+              locale,
+              searchParams: resolvedSearchParams,
+              enabledModules,
+              tenantSlug,
+              tenantId: getStorefrontTenantId(),
+              graphql: storefrontGraphql,
+            })}
+          </section>
+        ))}
+        {beforeFooterSections.map((module) => (
           <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
             {module.render({
               locale,

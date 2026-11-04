@@ -16,8 +16,26 @@ function attachModuleSlug(items: NavItem[], moduleSlug: string): NavItem[] {
   }));
 }
 
+export function normalizeAdminSlot(slot: string): AdminSlot | string {
+  switch (slot) {
+    case 'dashboard_metric':
+      return 'dashboard:metric';
+    case 'dashboard_section':
+      return 'dashboard:section';
+    case 'header_actions':
+      return 'header:actions';
+    case 'sidebar_footer':
+      return 'sidebar:footer';
+    default:
+      return slot;
+  }
+}
+
 export function registerAdminComponent(component: AdminComponentRegistration) {
-  componentRegistry.set(component.id, component);
+  componentRegistry.set(component.id, {
+    ...component,
+    slot: normalizeAdminSlot(component.slot) as AdminSlot
+  });
 }
 
 export function registerAdminModule(module: AdminModule) {
@@ -45,14 +63,15 @@ export function getAdminNavItems(): NavItem[] {
 }
 
 export function getAdminComponentsForSlot(
-  slot: AdminSlot,
+  slot: AdminSlot | string,
   enabledModules?: Iterable<string>
 ): AdminComponentRegistration[] {
+  const normalizedTarget = normalizeAdminSlot(slot);
   const enabled = enabledModules === undefined ? null : new Set(enabledModules);
 
   return Array.from(componentRegistry.values())
     .filter((comp) => {
-      if (comp.slot !== slot) return false;
+      if (normalizeAdminSlot(comp.slot) !== normalizedTarget) return false;
       if (!comp.moduleSlug) return true;
       if (enabled === null) return false; // fail-closed if module availability unknown
       return enabled.has(comp.moduleSlug);

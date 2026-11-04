@@ -83,7 +83,7 @@ use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
 use rustok_inventory::{BootstrapService, InitialInventory};
 use rustok_outbox::TransactionalEventBus;
-use rustok_pricing_persistence::{BootstrapService as PricingBootstrapService, InitialPrice};
+use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 
 use crate::ProductCatalogSchemaService;
 
@@ -136,6 +136,7 @@ pub struct CatalogService {
     event_bus: TransactionalEventBus,
     pub(crate) shipping_profile_port: Option<std::sync::Arc<dyn crate::ProductShippingProfilePort>>,
     pub(crate) media_reference_port: Option<std::sync::Arc<dyn crate::ProductMediaReferencePort>>,
+    pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
 }
 
 impl CatalogService {
@@ -145,6 +146,7 @@ impl CatalogService {
             event_bus,
             media_reference_port: None,
             shipping_profile_port: None,
+            pricing_port: None,
         }
     }
 
@@ -153,6 +155,14 @@ impl CatalogService {
         port: std::sync::Arc<dyn crate::ProductMediaReferencePort>,
     ) -> Self {
         self.media_reference_port = Some(crate::media_reference::bound_media_reference_port(port));
+        self
+    }
+
+    pub fn with_pricing_port(
+        mut self,
+        port: std::sync::Arc<dyn ProductPricingPort>,
+    ) -> Self {
+        self.pricing_port = Some(port);
         self
     }
 
