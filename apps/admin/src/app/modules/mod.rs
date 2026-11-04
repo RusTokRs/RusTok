@@ -5,7 +5,7 @@ mod generated_ui_codegen {
 mod registry;
 mod search_composition;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 
 pub use generated_ui_codegen::core_module_slugs;
 pub use generated_ui_codegen::module_navigation_entries;
@@ -26,12 +26,11 @@ pub struct GeneratedModuleNavigationEntry {
     pub child_pages: &'static [AdminChildPageRegistration],
 }
 
-static INIT: AtomicBool = AtomicBool::new(false);
+static INIT: OnceLock<()> = OnceLock::new();
 
 pub fn init_modules() {
-    if INIT.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    core::register_components();
-    generated_ui_codegen::register_generated_components();
+    INIT.get_or_init(|| {
+        core::register_components();
+        generated_ui_codegen::register_generated_components();
+    });
 }
