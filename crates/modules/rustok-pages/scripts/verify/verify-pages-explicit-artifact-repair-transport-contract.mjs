@@ -9,7 +9,6 @@ const failures = [];
 const files = {
   test: "crates/modules/rustok-pages/tests/explicit_artifact_repair_transport_contract.rs",
   evidence: "crates/modules/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-transport-contract-source.json",
-  continuation: "docs/modules/pages-page-builder-repair-transport-contract-continuation-2026-08-07.md",
 };
 const read = (relative) => fs.readFileSync(path.join(repoRoot, relative), "utf8");
 const need = (source, marker, label) => {
@@ -33,7 +32,6 @@ if (failures.length > 0) {
 
 const test = read(files.test);
 const evidenceSource = read(files.evidence);
-const continuation = read(files.continuation);
 const evidence = JSON.parse(evidenceSource);
 
 if (evidence.format !== "pages_explicit_artifact_repair_transport_contract_source_v1") {

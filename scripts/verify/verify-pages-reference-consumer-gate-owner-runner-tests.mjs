@@ -14,8 +14,6 @@ const files = {
   runner: "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
   test: "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",
-  overlay:
-    "docs/modules/pages-page-builder-reference-consumer-gate-owner-runner-tests-actualization-2026-08-12.md",
 };
 
 function absolute(relativePath) {
@@ -201,17 +199,6 @@ for (const marker of [
   need(sources.workflow, marker, "focused provider-health/gate workflow");
 }
 
-for (const marker of [
-  "reference-consumer-gate-owner-runner-tested",
-  "nine synthetic fail-closed cases",
-  files.test,
-  files.workflow,
-  "Live candidate and observed-health execution remain pending",
-  "Forum Wave remains unaccepted",
-  "mutate `pages-reference-consumer-gate-source.json`",
-]) {
-  need(sources.overlay, marker, "gate owner-runner actualization");
-}
 
 if (
   contract.next_cursor?.reference_consumer_gate_acceptance_runner !==

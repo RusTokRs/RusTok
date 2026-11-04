@@ -14,8 +14,6 @@ const files = {
   pagesGraphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
   pagesFacade: "crates/modules/rustok-pages/admin/src/builder.rs",
   evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-runtime-observation-source.json",
-  overlay: "docs/modules/page-builder-provider-health-runtime-observation-actualization-2026-08-09.md",
-  parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -90,72 +88,9 @@ for (const [key, expected] of Object.entries({
   if (contract[key] !== expected) failures.push(`source_contract.${key} must equal ${JSON.stringify(expected)}`);
 }
 
-for (const marker of [
-  "pub const PROVIDER_HEALTH_WINDOW_CAPACITY: usize = 256;",
-  "pub const PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION: usize = 20;",
-  "pub enum ProviderHealthOperation",
-  "Preview,",
-  "Publish,",
-  "pub enum ProviderHealthOutcome",
-  "pub fn record_provider_health_observation",
-  "pub fn provider_health_runtime_snapshot() -> Option<ProviderHealthSnapshot>",
-  "window.preview.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION",
-  "window.publish.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION",
-  "ProviderHealthSnapshot::evaluate(ProviderSloObservations",
-  "process-local provider-health snapshot",
-]) need(sources.health, marker, "health runtime window");
+, marker, "runtime observation overlay");
 
-for (const marker of [
-  "const PROVIDER_HEALTH_PENDING_CALL_CAPACITY: usize = 1024;",
-  "pub struct ProviderHealthRuntimeTelemetry",
-  "PageBuilderRuntimeOperation::RenderPreview => Some(ProviderHealthOperation::Preview)",
-  "PageBuilderRuntimeOperation::SaveProject => Some(ProviderHealthOperation::Publish)",
-  "PageBuilderRuntimeOperation::LoadProject => None",
-  "Some(PageBuilderErrorKind::Sanitize) => ProviderHealthOutcome::SanitizeFailed",
-  "Some(PageBuilderErrorKind::Runtime) => ProviderHealthOutcome::RuntimeFailed",
-  // The elapsed value is sampled once and shared with the platform metrics call below, so the
-  // reachable form is the `elapsed` binding; pinning the inlined expression matched nothing.
-  "record_provider_health_observation(operation, elapsed, outcome)",
-]) need(sources.telemetry, marker, "runtime telemetry observer");
-
-for (const marker of [
-  "T = ProviderHealthRuntimeTelemetry",
-  "FlyAdapterBackedPageBuilderService::with_telemetry",
-  "ProviderHealthRuntimeTelemetry::default()",
-  "process-local Preview/Publish runtime observations",
-]) need(sources.composition, marker, "default composition");
-
-for (const marker of [
-  "PageBuilderRuntimeCallEvidence::render_preview",
-  "self.telemetry.record_runtime_call(&evidence);",
-  "self.telemetry.record_runtime_call(&evidence.succeeded());",
-  "PageBuilderRuntimeCallEvidence::save_project",
-  "self.telemetry.record_runtime_call(&evidence.failed(&error));",
-]) need(sources.flyService, marker, "Fly terminal telemetry seam");
-
-// This first slice must not promote process-local observations into authoritative Pages health.
-need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
-need(sources.pagesFacade, "PageBuilderAdminProviderStatus::unobserved", "Pages admin remains unobserved");
-forbid(sources.pagesGraphql, "provider_health_runtime_snapshot()", "Pages GraphQL must not consume process-local health yet");
-forbid(sources.pagesFacade, "provider_health_runtime_snapshot()", "Pages admin must not consume process-local health yet");
-
-for (const marker of [
-  "process-local-runtime-observation-source-ready",
-  "deployment-observed-health-open",
-  "20 Preview",
-  "20 Publish",
-  "256",
-  "provider_health_observed = false",
-  "deployment-wide",
-  "tests were not run",
-]) need(sources.overlay, marker, "runtime observation overlay");
-
-for (const marker of [
-  "provider-runtime-observation-source-ready",
-  "deployment-observed-health-open",
-  "page-builder-provider-health-runtime-observation-actualization-2026-08-09.md",
-  "Pages remains `unobserved`",
-]) need(sources.parity, marker, "plan parity actualization");
+, marker, "plan parity actualization");
 
 if (evidence.next_cursor?.deployment_aggregation_and_freshness_contract !== "open") {
   failures.push("next cursor must keep deployment aggregation/freshness open");

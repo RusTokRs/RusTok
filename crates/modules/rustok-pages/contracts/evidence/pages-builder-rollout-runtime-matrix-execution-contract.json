@@ -155,8 +155,7 @@
     "apps/server/src/modules/manifest/mod.rs",
     "crates/modules/rustok-modules/src/settings.rs",
     "crates/modules/rustok-modules/src/lifecycle_writer.rs",
-    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-    "docs/modules/pages-page-builder-rollout-runtime-matrix-harness-actualization-2026-08-08.md"
+    "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json"
   ],
   "forbidden_retained_data": [
     "tenant slugs",

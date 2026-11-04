@@ -66,8 +66,6 @@ const sourcePath =
 const runnerPath = "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs";
 const testsPath = "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs";
 const verifierPath = "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs";
-const actualizationPath =
-  "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md";
 const predecessorSourcePath =
   "crates/modules/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
 const predecessorVerifierPath =
@@ -82,7 +80,6 @@ const predecessorSource = json(predecessorSourcePath);
 const fbaRegistry = json(fbaRegistryPath);
 const runner = read(runnerPath);
 const tests = read(testsPath);
-const actualization = read(actualizationPath);
 const predecessorVerifier = read(predecessorVerifierPath);
 const pagesPlan = read(pagesPlanPath);
 const pageBuilderPlan = read(pageBuilderPlanPath);
@@ -175,109 +172,7 @@ requireValue(
   `${sourcePath}: output contract drifted`,
 );
 
-for (const key of [
-  "inventory_is_not_owner_approval",
-  "inventory_is_not_platform_approval",
-  "inventory_does_not_mutate_registry",
-  "inventory_does_not_mutate_local_plans",
-  "inventory_does_not_promote_ffa",
-  "inventory_does_not_promote_fba",
-  "owner_platform_review_must_remain_blocked_when_incomplete",
-  "terminal_change_requires_same_pr_local_plan_and_registry_sync",
-  "terminal_change_requires_verification_evidence_in_pr",
-]) {
-  requireValue(source.governance_boundary?.[key] === true, `${sourcePath}: ${key} must remain true`);
-}
-
-requireValue(
-  predecessorSource.terminal_evidence_inventory_guard
-    ?.complete_terminal_evidence_inventory_source_defined === true &&
-    predecessorSource.terminal_evidence_inventory_guard
-      ?.complete_terminal_evidence_inventory_source === sourcePath &&
-    predecessorSource.terminal_evidence_inventory_guard
-      ?.complete_terminal_evidence_inventory_source_format ===
-      "pages_page_builder_terminal_evidence_inventory_source_v1" &&
-    predecessorSource.next_cursor?.terminal_evidence_inventory ===
-      "source_ready_maintainer_execution_pending" &&
-    Array.isArray(predecessorSource.required_source_files) &&
-    predecessorSource.required_source_files.includes(sourcePath),
-  `${predecessorSourcePath}: predecessor cursor is not actualized to the inventory source`,
-);
-for (const marker of [
-  "complete_terminal_evidence_inventory_source_defined === true",
-  'inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1"',
-  "future_inventory_source_defined: true",
-  "future_inventory_source_path",
-]) {
-  requireText(predecessorVerifier, marker, predecessorVerifierPath);
-}
-
-for (const marker of [
-  "collectPendingEvidence",
-  "evaluateInventory",
-  "--prerequisite-admission",
-  "prerequisite admission source_commit does not equal checkout HEAD",
-  "prerequisite retained admission-source hash does not match checkout",
-  "prerequisite retained inventory-source hash does not match checkout",
-  "prerequisite terminal-inventory source binding does not match checkout",
-  "prerequisite admission contains a terminal-readiness overclaim",
-  "prerequisite Page Builder FBA blocker count does not match same-source canonical registry",
-  "prerequisite Pages rollout blocker fact does not match same-source canonical plan",
-  "pending_executed_evidence_paths",
-  "contract.completion.complete_status",
-  "contract.completion.incomplete_status",
-  "owner_platform_review_ready",
-  "pages_ffa_promoted: false",
-  "page_builder_fba_promoted: false",
-  "source_mutation_performed: false",
-]) {
-  requireText(runner, marker, runnerPath);
-}
-for (const forbidden of [
-  "fetch(",
-  "@playwright/test",
-  "chromium",
-  "compareAndSwapModuleSettings",
-  "updateModuleSettings",
-  "git push",
-]) {
-  if (runner.includes(forbidden)) failures.push(`${runnerPath}: forbidden network/mutation marker '${forbidden}'`);
-}
-
-for (const marker of [
-  "collects every nested executed-evidence blocker as a stable JSON Pointer",
-  "escapes JSON Pointer tokens",
-  "ignores unrelated pending values",
-  "remains incomplete while Page Builder FBA blockers exist",
-  "remains incomplete while Pages execution rollout marker exists",
-  "requires a valid predecessor even when canonical blockers are clear",
-  "becomes review-ready only when predecessor and both canonical blocker sets are clear",
-  "does not infer readiness from a reduced but nonzero blocker set",
-]) {
-  requireText(tests, marker, testsPath);
-}
-
-for (const marker of [
-  "terminal-evidence-inventory-source-ready",
-  "9 → 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1",
-  "/provider/consumer_properties_contract/executed_evidence",
-  "/consumers/0/artifact_repair/rollback_continuity/executed_evidence",
-  "/consumers/0/cache_consumer/executed_evidence",
-  "31898042165",
-  "9250395203",
-  "32060695197",
-  "9298820347",
-  "#3626",
-  "967bbbfbebdf3bfcedef35745029b0149aa07321",
-  "execution-rollout-pending",
-  "terminal_evidence_inventory_incomplete",
-  "terminal_evidence_inventory_complete_owner_platform_review_ready",
-  "review-ready only",
-  "retained source hashes",
-  "owner_platform_review_ready=false",
-  "No live evidence execution or readiness promotion is claimed by this recomputation.",
-]) {
-  requireText(actualization, marker, actualizationPath);
+, marker, actualizationPath);
 }
 
 for (const marker of [

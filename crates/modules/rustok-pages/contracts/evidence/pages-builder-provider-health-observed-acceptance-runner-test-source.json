@@ -57,8 +57,7 @@
     "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
     "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
     "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs",
-    ".github/workflows/pages-page-builder-provider-health.yml",
-    "docs/modules/pages-page-builder-provider-health-owner-runner-tests-actualization-2026-08-12.md"
+    ".github/workflows/pages-page-builder-provider-health.yml"
   ],
   "next_cursor": {
     "observed_health_owner_acceptance_runner": "synthetic_fail_closed_ci_coverage_source_ready",

@@ -62,6 +62,5 @@
     ],
     "backend": "sqlite_in_memory"
   },
-  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs",
-  "packet": "docs/modules/pages-page-builder-delete-route-tombstone-packet-2026-08-06.md"
+  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-delete-route-tombstone.mjs"
 }

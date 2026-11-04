@@ -50,8 +50,7 @@
     "crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
     "crates/modules/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs",
     "crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
-    "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs",
-    "docs/modules/pages-cache-consumer-exact-main-evidence-actualization-2026-08-15.md"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs"
   ],
   "output": {
     "format": "pages_cache_consumer_execution_v1",

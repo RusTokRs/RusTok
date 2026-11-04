@@ -12,8 +12,6 @@ const files = {
   runner: "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs",
   test: "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",
-  overlay:
-    "docs/modules/pages-page-builder-provider-health-owner-runner-tests-actualization-2026-08-12.md",
 };
 
 function absolute(relativePath) {
@@ -163,16 +161,6 @@ for (const marker of [
   need(sources.workflow, marker, "focused provider-health workflow");
 }
 
-for (const marker of [
-  "provider-health-observed-acceptance-runner-tested",
-  "seven synthetic fail-closed cases",
-  files.test,
-  files.workflow,
-  "Live provider-health execution remains pending",
-  "Pages reference-consumer gate remains unaccepted",
-]) {
-  need(sources.overlay, marker, "runner-test actualization");
-}
 
 if (
   contract.next_cursor?.observed_health_owner_acceptance_runner !==

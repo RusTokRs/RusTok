@@ -15,7 +15,10 @@
   "observation_input": {
     "format": "pages_inline_edit_rollout_observation_v1",
     "status": "maintainer_observation_recorded",
-    "phases": ["ffa", "fba"],
+    "phases": [
+      "ffa",
+      "fba"
+    ],
     "same_source_commit_required": true,
     "deployment_digest_required": true,
     "flag_key": "pages.builder.inline_edit.enabled",
@@ -70,7 +73,12 @@
   },
   "cli": {
     "script": "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
-    "required_arguments": ["--phase", "--browser", "--observation", "--output"],
+    "required_arguments": [
+      "--phase",
+      "--browser",
+      "--observation",
+      "--output"
+    ],
     "fba_only_argument": "--ffa"
   },
   "required_source_files": [
@@ -79,7 +87,6 @@
     "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
     "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
     "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs",
-    "docs/modules/pages-page-builder-inline-edit-rollout-evidence-harness-packet-2026-08-06.md",
     "docs/modules/pages-page-builder-inline-edit-execution-plan.md"
   ],
   "privacy_boundary": {

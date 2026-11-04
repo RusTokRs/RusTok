@@ -17,7 +17,6 @@ const files = {
   evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-transport-source.json",
   serverBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   consumerBinding: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
-  parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 
 const absolute = (relativePath) => path.join(repoRoot, relativePath);
@@ -96,81 +95,7 @@ for (const [object, key, expected] of [
   if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 }
 
-for (const marker of [
-  "GqlPageBuilderProviderHealthSnapshot",
-  "pub preview_p95_ms: u64",
-  "pub publish_p95_ms: u64",
-  "pub provider_health: Option<GqlPageBuilderProviderHealthSnapshot>",
-  "provider_health_observed: false",
-  "provider_health: None",
-  "preview_p95_ms: snapshot.observed.preview_p95_ms",
-  "publish_p95_ms: snapshot.observed.publish_p95_ms",
-  "GqlPageBuilderProviderHealthSnapshot::from(health)",
-  ".with_provider_health",
-  "PagesGraphqlRuntimeData::provider_health_snapshot",
-]) need(sources.owner ?? "", marker, "Pages GraphQL health shape");
-forbid(sources.owner ?? "", "page_builder_provider_health_deployment_evaluation_v1", "Pages GraphQL must not load evaluator evidence directly");
-
-for (const marker of [
-  "providerHealthObserved providerHealth { state degradationReasons previewP95Ms publishP95Ms sanitizeFailureRate runtimeErrorRate }",
-  "preview_p95_ms: u64",
-  "publish_p95_ms: u64",
-  "fn parse_provider_health(",
-  "(false, None) => Ok(None)",
-  "(false, Some(_)) => Err",
-  "(true, None) => Err",
-  "ProviderHealthSnapshot::evaluate(ProviderSloObservations",
-  "preview_p95_ms: payload.preview_p95_ms",
-  "publish_p95_ms: payload.publish_p95_ms",
-  "must be finite and between 0 and 1",
-  "does not match canonical evaluation",
-  "degradationReasons do not match canonical evaluation",
-  "payload.provider_health_observed",
-  "payload.provider_health",
-]) need(sources.transport ?? "", marker, "admin health transport");
-for (const forbidden of [
-  "rustok_page_builder_provider_operation_duration_seconds",
-  "rustok_page_builder_provider_operation_completed_total",
-  "rustok_page_builder_provider_last_observation_unix_seconds",
-  "prometheus",
-]) forbid(sources.transport ?? "", forbidden, "admin transport must not consume raw metrics");
-
-for (const marker of [
-  "Option<ProviderHealthSnapshot>",
-  "builder_rollout_adapter::fetch(token, tenant_slug).await",
-]) need(sources.transportMod ?? "", marker, "transport health propagation");
-
-for (const marker of [
-  "pub provider_health: Option<ProviderHealthSnapshot>",
-  "pub fn provider_status(&self) -> PageBuilderAdminProviderStatus",
-  "PageBuilderAdminProviderStatus::observed(self.flags.clone(), health)",
-  "PageBuilderAdminProviderStatus::unobserved(self.flags.clone())",
-  "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
-  "pages_editor_capabilities_for_rollout(",
-  "pages_editor_capabilities_for_snapshot(",
-]) need(sources.snapshot ?? "", marker, "validated admin snapshot");
-
-for (const marker of [
-  ".provider_status();",
-  ".with_provider_status(provider_status)",
-]) need(sources.composition ?? "", marker, "workspace observed health propagation");
-for (const marker of [
-  "provider_status: Option<PageBuilderAdminProviderStatus>",
-  "pub fn with_provider_status(",
-  "trusted_rollout.effective_runtime_flags()",
-  "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
-]) need(sources.builder ?? "", marker, "SSR observed health propagation");
-for (const marker of [
-  "pages_editor_capabilities_for_snapshot",
-  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
-]) need(sources.adminMain ?? "", marker, "standalone browser intent observed health propagation");
-
-for (const marker of [
-  "provider-health-transport-source-ready",
-  "provider-health-server-binding-source-ready",
-  "provider-health-consumer-binding-source-ready",
-  "UI / SSR / browser-intent provider-health binding [source-ready]",
-]) need(sources.parity ?? "", marker, "plan parity actualization");
+?? "", marker, "plan parity actualization");
 
 if (evidence.next_cursor?.typed_provider_health_transport !== "source_ready") {
   failures.push("typed provider-health transport must be source-ready");

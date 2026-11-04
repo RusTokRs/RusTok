@@ -12,8 +12,6 @@ const files = {
     "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
   recorder: "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
   workflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
-  actualization:
-    "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md",
   consumer: "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
   registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
   revision:
@@ -92,7 +90,6 @@ const published = json(files.published);
 const browser = json(files.browser);
 const recorder = read(files.recorder);
 const workflow = read(files.workflow);
-const actualization = read(files.actualization);
 const metadata = read(files.metadata);
 const standalone = read(files.standalone);
 const panel = read(files.panel);
@@ -335,22 +332,11 @@ for (const marker of [
   requireText(panel, marker, files.panel);
 }
 
-for (const required of [files.contract, files.recorder, files.workflow, files.actualization]) {
+for (const required of [files.contract, files.recorder, files.workflow]) {
   requireValue(
     Array.isArray(contract.required_source_files) && contract.required_source_files.includes(required),
     `${files.contract}: required_source_files missing ${required}`,
   );
-}
-for (const marker of [
-  "source-ready / exact-main-rust-execution-pending / browser-evidence-pending",
-  "rust_source_execution_passed_browser_evidence_pending",
-  "four focused Rust regressions",
-  "does not execute Chromium",
-  "consumer properties executed evidence remains `pending`",
-  "manual exact-main revalidation",
-  "pages-consumer-properties-source-evidence-index",
-]) {
-  requireText(actualization, marker, files.actualization);
 }
 requireValue(
   contract.next_cursor?.rust_source_execution ===

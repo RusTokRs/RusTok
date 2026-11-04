@@ -53,8 +53,7 @@
     "scripts/evidence/accept-pages-reference-consumer-gate.mjs",
     "scripts/evidence/accept-pages-reference-consumer-gate.test.mjs",
     "scripts/verify/verify-pages-reference-consumer-gate-owner-runner-tests.mjs",
-    ".github/workflows/pages-page-builder-provider-health.yml",
-    "docs/modules/pages-page-builder-reference-consumer-gate-owner-runner-tests-actualization-2026-08-12.md"
+    ".github/workflows/pages-page-builder-provider-health.yml"
   ],
   "next_cursor": {
     "reference_consumer_gate_acceptance_runner": "synthetic_fail_closed_ci_coverage_source_ready",

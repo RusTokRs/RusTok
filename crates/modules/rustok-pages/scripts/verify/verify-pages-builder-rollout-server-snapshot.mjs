@@ -18,7 +18,6 @@ const files = {
   evidence: "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-server-snapshot-source.json",
   health: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   gate: "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json",
-  actualization: "docs/modules/pages-page-builder-rollout-server-snapshot-actualization-2026-08-08.md",
 };
 const read = (name) => {
   const file = path.join(root, files[name]);

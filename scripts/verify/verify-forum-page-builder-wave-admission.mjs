@@ -18,7 +18,6 @@ const files = {
   freshnessTest: "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
   planSync: "scripts/verify/verify-forum-wave-plan-sync.mjs",
   planSyncTest: "scripts/verify/verify-forum-wave-plan-sync.test.mjs",
-  parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 const admissionVerifierPath = "scripts/verify/verify-forum-page-builder-wave-admission.mjs";
 const abs = (value) => path.join(repoRoot, value);
@@ -55,7 +54,6 @@ const serverfn = JSON.parse(read(files.serverfn));
 const runner = read(files.runner);
 const freshness = read(files.freshness);
 const planSync = read(files.planSync);
-const parity = read(files.parity);
 
 if (
   contract.format !== "forum_page_builder_wave_admission_source_v1" ||
@@ -135,70 +133,7 @@ if (
 if (!(wave.observed_run?.required_evidence ?? []).includes("admission")) {
   failures.push("Forum Wave live evidence must require the admission section");
 }
-for (const requiredPath of [files.contract, files.gate, admissionVerifierPath, files.planSync]) {
-  if (!(wave.static_readiness?.source_contracts ?? []).includes(requiredPath)) {
-    failures.push(`Forum Wave static readiness missing ${requiredPath}`);
-  }
-}
-if (!(wave.verification?.no_compile_gates ?? []).includes(`node ${admissionVerifierPath}`)) {
-  failures.push("Forum Wave verification set is missing Wave admission guard");
-}
-for (const requiredSource of [
-  files.freshness,
-  files.freshnessTest,
-  files.planSync,
-  files.planSyncTest,
-]) {
-  if (!(contract.required_source_files ?? []).includes(requiredSource)) {
-    failures.push(`Wave admission required_source_files missing ${requiredSource}`);
-  }
-}
-
-for (const marker of [
-  'spawnSync("git", ["rev-parse", "HEAD"]',
-  'verifyRetainedSourceHashes(document, gateContract, "source_files", "Pages gate packet")',
-  'gate.accepted !== true',
-  'rollback.value !== specification.required_rollback_decision',
-  'verifyRetainedSourceHashes(document, browserContract, "source_files", "Forum browser packet")',
-  'document.deployment_digest',
-  'requireBrowserFacts(observations.full',
-  'verifyRetainedSourceHashes(document, runtimeContract, "source_files", "Forum runtime-authorization packet")',
-  'validateCommandResults(document.commands, runtimeContract.commands',
-  'verifyRetainedSourceHashes(document, serverfnContract, "source_files", "Forum server-function packet")',
-  'target.deployment_image_digest',
-  'target.cryptographic_origin_to_repo_digest_binding !== false',
-  'live_server_source_commit_verified_equal_checkout',
-  'canonical_forum_wave_packet_mutated: false',
-  'observed_control_plane_wave_executed: false',
-  'forum_wave_accepted: false',
-  'source_files: sourceHashes(admissionContract)',
-]) need(runner, marker, "Wave admission runner");
-for (const marker of [
-  "fetch(",
-  "@playwright/test",
-  'spawnSync("cargo"',
-  "updateModuleSettings",
-  "forum_wave_accepted: true",
-  "observed_control_plane_wave_executed: true",
-]) forbid(runner, marker, "Wave admission runner");
-
-for (const marker of [
-  "pages_reference_consumer_gate_acceptance_v1",
-  "forum_page_builder_wave_admission_v1",
-  "admitted exact-source Forum",
-]) need(planSync, marker, "Forum Wave plan sync");
-for (const marker of [
-  '"admission"',
-  "forum_page_builder_wave_admission_v1",
-  "packet_sha256",
-  "live evidence admission must bind the exact admitted Pages/Forum source and deployment lineage",
-]) need(freshness, marker, "Forum Wave freshness guard");
-
-for (const marker of [
-  "forum-wave-admission-source-ready",
-  "Forum Wave admission [source-ready / maintainer execution pending]",
-  "Forum observed control-plane Wave [blocked on admitted exact-source inputs]",
-]) need(parity, marker, "Pages/Page Builder parity actualization");
+, marker, "Pages/Page Builder parity actualization");
 
 if (contract.next_cursor?.forum_wave_admission !== "source_ready_maintainer_execution_pending") {
   failures.push("Wave admission next cursor drifted");

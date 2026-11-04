@@ -14,7 +14,6 @@ const files = {
   test: "scripts/evidence/admit-pages-consumer-properties.test.mjs",
   sourceWorkflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
   browserWorkflow: ".github/workflows/pages-published-metadata-browser-evidence.yml",
-  actualization: "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md",
   consumer: "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
   registry: "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
 };
@@ -71,7 +70,6 @@ const runner = read(files.runner);
 const test = read(files.test);
 const sourceWorkflow = read(files.sourceWorkflow);
 const browserWorkflow = read(files.browserWorkflow);
-const actualization = read(files.actualization);
 
 ok(
   admission.format === "pages_consumer_properties_admission_source_v1" &&
@@ -167,7 +165,7 @@ for (const key of [
   "admission_output_is_not_fba_registry_update",
 ]) ok(admission.admission_boundary?.[key] === true, `${files.admission}: ${key} must be true`);
 
-for (const required of [files.admission, files.runner, files.test, files.actualization, files.source, files.sourceWorkflow, files.browser, files.browserWorkflow, files.consumer, files.registry]) {
+for (const required of [files.admission, files.runner, files.test, files.source, files.sourceWorkflow, files.browser, files.browserWorkflow, files.consumer, files.registry]) {
   ok(admission.required_source_files?.includes(required), `${files.admission}: missing ${required}`);
   ok(source.required_source_files?.includes(required), `${files.source}: successor receipt source set missing ${required}`);
 }
@@ -207,17 +205,6 @@ for (const marker of [
 
 for (const marker of ["pages-consumer-properties-source-evidence-index", 'state="failure"', "statuses: write"]) has(sourceWorkflow, marker, files.sourceWorkflow);
 for (const marker of ["pages-published-metadata-browser-evidence-index", "deployment provenance and admission pending"]) has(browserWorkflow, marker, files.browserWorkflow);
-for (const marker of [
-  "32177516104",
-  "c0a7bd91fc68b5462996a6d4e929bad6e7d6a208",
-  "de5eec28762b29ead4389d740e3b3aa3e9743de9",
-  "ancestor",
-  "byte-identical",
-  "maintainer_reviewed_external_fact",
-  "does not query GitHub",
-  "does not change `executed_evidence`",
-  "successor exact-main source receipt",
-]) has(actualization, marker, files.actualization);
 
 if (failures.length) {
   console.error("[verify-pages-consumer-properties-admission] FAIL");

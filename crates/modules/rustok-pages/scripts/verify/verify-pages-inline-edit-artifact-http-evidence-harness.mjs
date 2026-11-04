@@ -19,8 +19,6 @@ const files = {
     "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
   assetRoute: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
   auth: "apps/server/src/middleware/auth_context.rs",
-  packet:
-    "docs/modules/pages-page-builder-inline-edit-artifact-http-evidence-harness-packet-2026-08-06.md",
   executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
   canonicalPlan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",

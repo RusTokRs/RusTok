@@ -60,9 +60,7 @@
     "crates/modules/rustok-pages/src/services/page/rollback.rs",
     "crates/modules/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
     "crates/modules/rustok-pages/docs/implementation-plan.md",
-    "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md",
-    "docs/modules/pages-artifact-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
+    "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
   ],
   "non_claims": {
     "historical_source_contract_mutated": false,

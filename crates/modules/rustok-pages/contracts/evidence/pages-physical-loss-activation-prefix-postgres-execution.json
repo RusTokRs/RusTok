@@ -18,10 +18,7 @@
     "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
     "crates/modules/rustok-pages/docs/implementation-plan.md",
     "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "docs/modules/pages-page-builder-multilocale-rollback-evidence-actualization-2026-08-07.md",
-    "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
     "crates/modules/rustok-pages/contracts/evidence/pages-physical-loss-activation-prefix-postgres-execution.json",
-    "docs/modules/pages-physical-loss-activation-prefix-postgres-evidence-actualization-2026-08-15.md",
     ".github/workflows/pages-physical-loss-activation-prefix-postgres-evidence.yml"
   ],
   "execution": {

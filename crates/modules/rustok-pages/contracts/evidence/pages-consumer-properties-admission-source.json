@@ -140,7 +140,6 @@
     "scripts/evidence/admit-pages-consumer-properties.mjs",
     "scripts/verify/verify-pages-consumer-properties-admission.mjs",
     "scripts/evidence/admit-pages-consumer-properties.test.mjs",
-    "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md",
     "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
     "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
     "scripts/verify/verify-pages-consumer-properties-source-execution.mjs",

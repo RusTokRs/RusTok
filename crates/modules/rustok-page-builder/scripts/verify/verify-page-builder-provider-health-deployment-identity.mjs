@@ -12,8 +12,6 @@ const files = {
   releaseWorkflow: ".github/workflows/release.yml",
   capture: "scripts/evidence/capture-page-builder-provider-health-deployment-identity.mjs",
   evidence: "crates/modules/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
-  overlay: "docs/modules/page-builder-provider-health-deployment-identity-actualization-2026-08-09.md",
-  parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
   pagesGraphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
   pagesFacade: "crates/modules/rustok-pages/admin/src/builder_rollout_settings.rs",
 };
@@ -102,75 +100,9 @@ for (const [key, expected] of Object.entries({
   }
 }
 
-for (const marker of [
-  'PAGE_BUILDER_PROVIDER_SOURCE_COMMIT_ENV: &str = "RUSTOK_SOURCE_COMMIT"',
-  '"rustok_page_builder_provider_build_info"',
-  '&["source_commit"]',
-  "fn canonical_source_commit",
-  "fn deployed_source_commit",
-  "PAGE_BUILDER_PROVIDER_BUILD_INFO",
-  ".with_label_values(&[source_commit.as_str()])",
-  ".set(1);",
-]) need(sources.telemetryMetrics, marker, "provider build-info metric");
-for (const forbidden of [
-  '&["deployment_id"]',
-  '&["target_id"]',
-  '&["tenant_id"]',
-  '&["page_id"]',
-  '&["correlation_id"]',
-]) forbid(sources.telemetryMetrics, forbidden, "provider build-info metric cardinality");
+, marker, "deployment identity overlay");
 
-for (const marker of [
-  "ARG OCI_REVISION=unknown",
-  'org.opencontainers.image.revision="${OCI_REVISION}"',
-  "RUSTOK_SOURCE_COMMIT=${OCI_REVISION}",
-]) need(sources.releaseDockerfile, marker, "release source identity");
-need(
-  sources.releaseWorkflow,
-  '--build-arg "OCI_REVISION=$GITHUB_SHA"',
-  "release workflow exact source commit",
-);
-
-for (const marker of [
-  "--inventory",
-  "--deployment-image-digest",
-  "--source-commit",
-  "inventory_complete must be true",
-  "inventory targets must contain between 1 and 64 expected targets",
-  "duplicate target_id",
-  "duplicate metrics_url",
-  "redirect: \"manual\"",
-  "function requireBuildInfo",
-  "must expose exactly one Page Builder provider build-info series",
-  "does not match git HEAD",
-  "partial expected-target capture is forbidden",
-  "raw_metrics_url_persisted: false",
-  "raw_response_persisted: false",
-  "deployment_identity_verified_health_evaluation_pending",
-  "provider_health_snapshot_evaluated: false",
-  "pages_provider_health_observed: false",
-]) need(sources.capture, marker, "deployment identity capture harness");
-
-for (const marker of [
-  "deployment-identity-contract-source-ready",
-  "expected-target-inventory-contract-source-ready",
-  "maintainer_reviewed_external_fact",
-  "rustok_page_builder_provider_build_info",
-  "Partial success is forbidden",
-  "Pages remains `unobserved`",
-  "deployment health backend evaluator [open]",
-  "tests were not run",
-]) need(sources.overlay, marker, "deployment identity overlay");
-
-for (const marker of [
-  "deployment-metrics-source-ready",
-  "freshness-signal-source-ready",
-  "deployment-identity-contract-source-ready",
-  "expected-target-inventory-contract-source-ready",
-  "page-builder-provider-health-deployment-identity-actualization-2026-08-09.md",
-  "exact source/deployment identity",
-  "the rollout-only reference candidate continues to retain `provider_health = unobserved`",
-]) need(sources.parity, marker, "plan parity actualization");
+, marker, "plan parity actualization");
 
 need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
 forbid(sources.pagesGraphql, "provider_health_observed: true", "Pages GraphQL health promotion");

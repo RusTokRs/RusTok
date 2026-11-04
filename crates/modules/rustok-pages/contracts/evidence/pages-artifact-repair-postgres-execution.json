@@ -17,7 +17,6 @@
     "crates/modules/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
     "crates/modules/rustok-outbox/src/transactional.rs",
     "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md",
     "crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json",
     ".github/workflows/pages-artifact-repair-postgres-evidence.yml"
   ],

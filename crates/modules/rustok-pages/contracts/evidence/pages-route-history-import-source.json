@@ -70,8 +70,16 @@
   },
   "provenance": {
     "table": "page_route_history_imports",
-    "key": ["tenant_id", "source", "source_record_id"],
-    "payload": ["page_id", "locale", "slug"],
+    "key": [
+      "tenant_id",
+      "source",
+      "source_record_id"
+    ],
+    "payload": [
+      "page_id",
+      "locale",
+      "slug"
+    ],
     "request_hash": "sha256",
     "page_foreign_key": false
   },
@@ -84,6 +92,5 @@
     ],
     "backend": "sqlite_in_memory"
   },
-  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs",
-  "packet": "docs/modules/pages-page-builder-route-history-import-packet-2026-08-06.md"
+  "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-route-history-import.mjs"
 }

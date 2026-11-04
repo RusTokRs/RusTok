@@ -106,7 +106,6 @@
     "scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
     ".github/workflows/pages-consumer-properties-source-evidence.yml",
     ".github/workflows/pages-published-metadata-browser-evidence.yml",
-    "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md",
     "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json",
     "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
     "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json",
@@ -124,8 +123,7 @@
     "crates/modules/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
     "scripts/evidence/admit-pages-consumer-properties.mjs",
     "scripts/verify/verify-pages-consumer-properties-admission.mjs",
-    "scripts/evidence/admit-pages-consumer-properties.test.mjs",
-    "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
+    "scripts/evidence/admit-pages-consumer-properties.test.mjs"
   ],
   "governance_boundary": {
     "execution_packet_is_not_consumer_contract_update": true,

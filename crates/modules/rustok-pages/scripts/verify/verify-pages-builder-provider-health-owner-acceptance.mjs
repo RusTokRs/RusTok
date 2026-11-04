@@ -13,7 +13,6 @@ const files = {
   server: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   consumer: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   graphql: "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
-  parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 const read = (name) => {
   const file = path.join(root, files[name]);

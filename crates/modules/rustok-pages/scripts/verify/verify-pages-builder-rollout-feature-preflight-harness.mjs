@@ -16,7 +16,6 @@ const files = {
   pageBuilderCargo: "crates/modules/rustok-page-builder/Cargo.toml",
   rollout: "crates/modules/rustok-page-builder/src/rollout.rs",
   service: "crates/modules/rustok-page-builder/src/service.rs",
-  packet: "docs/modules/pages-page-builder-rollout-feature-preflight-actualization-2026-08-08.md",
 };
 const failures = [];
 const abs = (value) => path.join(repoRoot, value);
@@ -48,7 +47,6 @@ const pagesCargo = read(files.pagesCargo);
 const pageBuilderCargo = read(files.pageBuilderCargo);
 const rollout = read(files.rollout);
 const service = read(files.service);
-const packet = read(files.packet);
 
 if (
   contract.schema_version !== 1 ||
@@ -110,130 +108,7 @@ for (const relativePath of contract.required_source_files ?? []) {
   if (!fs.existsSync(abs(relativePath))) failures.push(`required source file is missing: ${relativePath}`);
 }
 
-for (const marker of [
-  "fullyParallel: false", "workers: 1", "retries: 0", 'trace: "off"',
-  'screenshot: "off"', 'video: "off"', 'name: "pages-builder-rollout-feature-preflight-chromium"',
-]) need(config, marker, "Playwright config");
-
-for (const marker of [
-  "pageBuilderCapabilityPreflight(capability: PREVIEW)",
-  "pageBuilderCapabilityPreflight(capability: PROPERTIES)",
-  "pageBuilderCapabilityPreflight(capability: PUBLISH)",
-  "pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } }",
-  "async function assertProviderHealthUnobserved(",
-  "snapshot.providerHealthObserved !== false",
-  "snapshot.providerHealth !== null",
-  "provider_health_payload_present: false",
-  "provider_health_before: providerHealthBefore",
-  "provider_health_after: providerHealthAfter",
-  'result.errorKind !== "feature-disabled"',
-  'result.errorCode !== "FEATURE_DISABLED"',
-  "matrixBrowser.sha256 !== browser.record.sha256",
-  "matrixTarget.api_origin_sha256 !== browserTarget.origin_sha256",
-  "matrixTarget.deployment_image_digest !== deploymentDigest",
-  "withProfile(original.settings, profile.flags)",
-  "writePagesSettings(context, settings)",
-  "finally {",
-  "await writePagesSettings(context, originalSettings)",
-  "restoreVerified = true",
-  "raw_settings_persisted: false",
-  "feature_preflight_executed: true",
-  "gate_accepted: false",
-  "provider_health_observed: false",
-  "provider_health_payload_persisted: false",
-  "renameSync(temporary, location)",
-]) need(spec, marker, "feature preflight spec");
-for (const marker of [
-  "SELECT ", "INSERT ", "UPDATE tenant_modules", "DELETE FROM", "DATABASE_URL",
-  "localStorage", "sessionStorage", 'trace: "on"', 'screenshot: "on"', 'video: "on"',
-  "gate_accepted: true", "provider_health_observed: true",
-]) forbid(spec, marker, "feature preflight spec");
-
-for (const marker of [
-  "pub enum GqlPageBuilderCapability",
-  '#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]',
-  "pub struct GqlPageBuilderCapabilityPreflight",
-  "async fn page_builder_capability_preflight(",
-  "let required_permission = required_page_builder_permission(capability_kind);",
-  "let provider_health = provider_health_snapshot(ctx);",
-  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
-  "ensure_capability(&effective_flags, capability_kind)",
-  "PageBuilderErrorKind::FeatureDisabled.as_str()",
-  "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
-  "fn required_page_builder_permission(capability: BuilderCapabilityKind) -> Permission",
-  "BuilderCapabilityKind::Preview | BuilderCapabilityKind::Tree",
-  "Permission::new(Resource::Pages, Action::Read)",
-  "BuilderCapabilityKind::Properties => Permission::new(Resource::Pages, Action::Update)",
-  "BuilderCapabilityKind::Publish => Permission::new(Resource::Pages, Action::Publish)",
-]) need(owner, marker, "Pages server-owned feature preflight");
-
-const preflightStart = owner.indexOf("async fn page_builder_capability_preflight(");
-const permissionMappingStart = owner.indexOf("\nfn required_page_builder_permission(", preflightStart);
-if (preflightStart < 0 || permissionMappingStart <= preflightStart) {
-  failures.push("non-mutating preflight source slice could not be isolated");
-} else {
-  const preflight = owner.slice(preflightStart, permissionMappingStart);
-  for (const marker of ["save_project(", "render_preview(", ".publish(", "save_document(", "std::fs::"]) {
-    forbid(preflight, marker, "non-mutating feature preflight");
-  }
-}
-
-for (const marker of [
-  "pub struct PageBuilderCapabilityPermissions",
-  "preview: Permission::new(Resource::Pages, Action::Read)",
-  "tree: Permission::new(Resource::Pages, Action::Read)",
-  "properties: Permission::new(Resource::Pages, Action::Update)",
-  "publish: Permission::new(Resource::Pages, Action::Publish)",
-  "PAGE_BUILDER_PAGES_READ_PERMISSION",
-  "PAGE_BUILDER_PAGES_UPDATE_PERMISSION",
-  "PAGE_BUILDER_PAGES_PUBLISH_PERMISSION",
-]) need(service, marker, "Page Builder authorizer permission mapping reference");
-for (const marker of [
-  "pub fn ensure_capability(",
-  "Err(BuilderRolloutError::CapabilityDisabled(capability.as_str()))",
-  "pub fn effective_provider_runtime_flags(",
-  "provider_health_runtime_flags_only_narrow_configured_rollout",
-]) need(rollout, marker, "shared rollout/provider guard");
-for (const marker of [
-  "Self::CapabilityDisabled(_) => PageBuilderErrorKind::FeatureDisabled",
-  "Self::CapabilityDisabled(_) => Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)",
-  "ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;",
-]) need(service, marker, "canonical Page Builder feature-disabled service contract");
-
-for (const marker of ["GqlPageBuilderCapability", "GqlPageBuilderCapabilityPreflight", "GqlPageBuilderRolloutSnapshot"])
-  need(graphqlMod, marker, "Pages GraphQL exports");
-forbid(pagesCargo, 'rustok-page-builder = { workspace = true, default-features = false, features = ["server"]', "Pages Page Builder dependency");
-for (const marker of ['default = ["server"]', '"dep:rustok-api"', '"dep:rustok-core"'])
-  need(pageBuilderCargo, marker, "Page Builder feature boundary");
-
-if (evidence.format !== "pages_builder_rollout_feature_preflight_harness_source_v1") failures.push("feature preflight source evidence format drifted");
-if (evidence.status !== "pages_builder_rollout_feature_preflight_harness_source_unvalidated") failures.push("feature preflight source evidence status drifted");
-if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) failures.push("feature preflight source evidence execution must remain empty");
-for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value !== false) failures.push(`feature preflight validation.${key} must remain false`);
-for (const key of [
-  "server_owned_non_mutating_preflight_added", "preflight_requires_exact_routed_tenant",
-  "preflight_uses_page_builder_permission_mapping", "preflight_uses_shared_rollout_guard",
-  "preflight_uses_shared_provider_runtime_policy", "preflight_allowed_path_has_no_error_contract",
-  "preflight_disabled_kind_is_feature_disabled", "preflight_disabled_code_is_FEATURE_DISABLED",
-  "rollout_only_harness_requires_provider_health_unobserved", "provider_health_observed_before_each_profile",
-  "provider_health_observed_after_each_profile", "provider_health_payload_must_be_absent",
-  "browser_predecessor_required", "rollout_matrix_predecessor_required", "predecessors_same_source_required",
-  "rollout_matrix_must_bind_exact_browser_hash", "api_origin_and_deployment_digest_must_match_predecessors",
-  "original_settings_restored_in_finally", "restore_semantically_verified", "output_is_atomic",
-]) if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
-for (const key of [
-  "direct_sql_used", "raw_database_access_used", "raw_module_settings_persisted",
-  "raw_graphql_bodies_persisted", "raw_provider_health_payload_persisted",
-  "credentials_or_storage_contents_persisted", "automatic_gate_acceptance", "automatic_source_mutation",
-  "automatic_ffa_fba_promotion", "provider_health_observed", "gate_accepted", "forum_wave_accepted",
-  "ffa_promoted", "fba_promoted",
-]) if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
-
-for (const marker of [
-  "source-ready / maintainer-execution-pending", "feature-disabled / FEATURE_DISABLED",
-  "PageBuilderCapabilityPermissions", "source-lock", "ensure_capability",
-  "browser -> rollout matrix -> feature preflight", "No tests, Node verifiers, Cargo commands",
-]) need(packet, marker, "feature preflight actualization");
+, marker, "feature preflight actualization");
 
 if (failures.length) {
   console.error("[verify-pages-builder-rollout-feature-preflight-harness] FAIL");

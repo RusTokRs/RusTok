@@ -36,7 +36,10 @@
     "required_status": "owner_approved_ffa_fba_promotion_review_execution_pending",
     "source_commit_must_equal_checkout_head": true,
     "decision_must_equal": "approve_ffa_fba_promotion_review",
-    "targets_must_equal": ["ffa", "fba"],
+    "targets_must_equal": [
+      "ffa",
+      "fba"
+    ],
     "must_not_claim_ffa_or_fba_promoted": true,
     "maximum_bytes": 1048576,
     "must_be_regular_non_symlink_file": true
@@ -65,7 +68,10 @@
     "source_contract": "crates/modules/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
     "source_commit_must_equal_checkout_head": true,
     "deployment_digest_must_equal_promotion_execution": true,
-    "required_profiles": ["full", "read_only"],
+    "required_profiles": [
+      "full",
+      "read_only"
+    ],
     "all_profiles_must_pass": true,
     "critical_failures_must_be_zero": true,
     "owner_review_required_must_be_true": true,
@@ -159,8 +165,7 @@
     "crates/modules/rustok-pages/docs/implementation-plan.md",
     "crates/modules/rustok-page-builder/docs/implementation-plan.md",
     "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json",
-    "docs/modules/registry.md",
-    "docs/modules/pages-page-builder-terminal-readiness-admission-actualization-2026-08-13.md"
+    "docs/modules/registry.md"
   ],
   "non_claims": {
     "live_promotion_execution_run_by_this_slice": false,

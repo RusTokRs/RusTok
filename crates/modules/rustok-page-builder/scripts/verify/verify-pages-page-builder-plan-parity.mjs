@@ -12,9 +12,6 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
 const sharedPlanPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const localPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
 const centralPlanPath = "docs/modules/page-builder-implementation-plan.md";
-const parityActualizationPath = "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md";
-const basePlanReconciliationPath = "docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md";
-const rolloutActualizationPath = "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md";
 const gatePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
 const gateAcceptancePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
 const forumManifestPath = "crates/modules/rustok-forum/rustok-module.toml";
@@ -72,9 +69,6 @@ function section(source, startMarker, endMarker) {
 const sharedPlan = read(sharedPlanPath);
 const localPlan = read(localPlanPath);
 const centralPlan = read(centralPlanPath);
-const parityActualization = read(parityActualizationPath);
-const basePlanReconciliation = read(basePlanReconciliationPath);
-const rolloutActualization = read(rolloutActualizationPath);
 const gate = parseJson(read(gatePath), gatePath);
 const gateAcceptance = parseJson(read(gateAcceptancePath), gateAcceptancePath);
 const forumManifest = read(forumManifestPath);
@@ -195,63 +189,6 @@ for (const stale of [
   "Connect a real provider-health observation source to the admin status seam",
 ]) forbidText(centralPlan, stale, `${centralPlanPath}: stale current state`);
 
-for (const marker of [
-  "pages-reference-consumer-rollout-source-ready",
-  "forum-wave-admission-source-ready",
-  "base-plan-reconciliation-source-ready",
-  "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md",
-  "docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md",
-  "shared/local/central base plans expose the same provider-health",
-  "server-owned rollout state",
-  "FLY_CAPABILITY_DENIED",
-  "FEATURE_DISABLED",
-  "artifact/HTTP",
-  "rollout runtime matrix",
-  "owner sign-off + explicit rollback decision",
-  "Forum Wave admission [source-ready / maintainer execution pending]",
-  "Forum observed control-plane Wave [blocked on admitted exact-source inputs]",
-  "No additional Pages/Page Builder rollout architecture slice",
-]) requireText(parityActualization, marker, parityActualizationPath);
-
-for (const marker of [
-  "base-plan-reconciliation-source-ready",
-  "shared-local-central-cursors-synchronized",
-  "provider-health source architecture [ready]",
-  "current provider health is not asserted by source inspection",
-  "pages_reference_consumer_gate.accepted = false",
-  "Forum Wave admission [source-ready / maintainer execution pending]",
-  "Tests were not run",
-]) requireText(basePlanReconciliation, marker, basePlanReconciliationPath);
-for (const stale of [
-  "observed-health-open",
-  "no live SLO source exists yet",
-  "current Pages composition has no live SLO snapshot source",
-  "Live SLO health remains a separate open cursor",
-]) requireText(basePlanReconciliation, stale, `${basePlanReconciliationPath}: documented stale marker`);
-
-for (const marker of [
-  "source-parity-current",
-  "PR #3333",
-  "PR #3337",
-  "PR #3345",
-  "PR #3353",
-  "server-owned persisted rollout state",
-  "FLY_CAPABILITY_DENIED",
-  "feature-disabled / FEATURE_DISABLED",
-  "artifact/HTTP",
-  "rollout runtime matrix",
-  "canonical rollout feature preflight",
-  "reference-consumer candidate",
-  "There is no additional source-only rollout architecture task",
-  "pages_reference_consumer_gate` remains `accepted = false`",
-  "Forum Wave remains blocked",
-  "FFA/FBA promotion remains unclaimed",
-]) requireText(rolloutActualization, marker, rolloutActualizationPath);
-forbidText(
-  rolloutActualization,
-  "FLY_CAPABILITY_DENIED` is accepted as evidence for the provider `FEATURE_DISABLED",
-  rolloutActualizationPath,
-);
 
 if (gate.artifact !== "pages_reference_consumer_gate_source") {
   failures.push(`${gatePath}: gate artifact identity drifted`);

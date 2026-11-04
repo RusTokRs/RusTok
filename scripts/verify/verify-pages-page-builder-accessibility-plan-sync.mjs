@@ -11,8 +11,6 @@ const paths = {
   shared: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   central: "docs/modules/page-builder-implementation-plan.md",
   local: "crates/modules/rustok-page-builder/docs/implementation-plan.md",
-  actualization: "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md",
-  accessibilityActualization: "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md",
   accessibilityGuard: "scripts/verify/verify-page-builder-admin-accessibility.mjs",
   accessibilityBrowserGuard:
     "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs",
@@ -55,7 +53,6 @@ function forbidText(source, marker, label) {
 const shared = read(paths.shared);
 const central = read(paths.central);
 const local = read(paths.local);
-const actualization = read(paths.actualization);
 const accessibilityActualization = read(paths.accessibilityActualization);
 const accessibilityGuard = read(paths.accessibilityGuard);
 const accessibilityBrowserGuard = read(paths.accessibilityBrowserGuard);
@@ -65,78 +62,7 @@ const accessibilityPacketVerifierRunner = read(paths.accessibilityPacketVerifier
 const accessibilityPacketVerifierTest = read(paths.accessibilityPacketVerifierTest);
 const accessibilityPacketVerifierGuard = read(paths.accessibilityPacketVerifierGuard);
 
-for (const marker of [
-  "Date: 2026-08-12",
-  "generic-editor-accessibility-source-ready",
-  "generic-accessibility-browser-packet-verifier-source-ready",
-  "PR #3444",
-  "PR #3453",
-  "PR #3456",
-  "PR #3458",
-  "Generic Page Builder editor accessibility: source-ready / execution-open",
-  "Generic editor control accessibility | Source-ready + SSR/browser/verifier source | Real browser/owner/screen-reader evidence pending",
-  paths.accessibilityActualization,
-  paths.actualization,
-  "generic editor accessibility semantics is complete at this cursor",
-  "verify-page-builder-admin-accessibility.mjs",
-  "verify-page-builder-accessibility-browser-evidence-harness.mjs",
-  "verify-page-builder-accessibility-browser-packet-verifier.mjs",
-]) requireText(shared, marker, paths.shared);
-
-for (const marker of [
-  "through PR #3444 on 2026-08-12",
-  "Generic editor control accessibility semantics: source-ready",
-  "Generic editor executable accessibility evidence: pending",
-  "Generic editor programmatic accessibility semantics and static anti-drift guard are source-ready",
-  "Complete generic typed asset/control surfaces and programmatic accessibility semantics at source level",
-  "Retain executable keyboard/focus/accessibility-tree/browser/screen-reader evidence for the built editor",
-  paths.actualization,
-  "verify-page-builder-admin-accessibility.mjs",
-  "verify-pages-page-builder-accessibility-plan-sync.mjs",
-]) requireText(central, marker, paths.central);
-forbidText(
-  central,
-  "Complete remaining generic typed asset/control surfaces and accessibility\n  evidence.",
-  paths.central,
-);
-
-for (const marker of [
-  "2026-08-12 parity/accessibility reconciliation",
-  "generic-editor-accessibility-source-ready",
-  "browser-accessibility-evidence-pending",
-  "Generic editor control semantics are also source-ready after PR #3444",
-  "Retain generic editor keyboard/focus/accessible-name/state/browser/screen-reader evidence",
-  paths.actualization,
-  "verify-page-builder-admin-accessibility.mjs",
-  "verify-pages-page-builder-accessibility-plan-sync.mjs",
-]) requireText(local, marker, paths.local);
-
-for (const marker of [
-  "source-parity-rechecked",
-  "generic-editor-accessibility-source-ready",
-  "focused-ci-gate-ready",
-  "generic-accessibility-browser-harness-source-ready",
-  "generic-accessibility-browser-packet-verifier-source-ready",
-  "browser-accessibility-evidence-pending",
-  "main@21004ce4d5fe9d63e804319eae5dc3b0e8f9c5b5",
-  "PR #3444",
-  "PR #3453",
-  "PR #3456",
-  ".github/workflows/pages-page-builder-parity.yml",
-  paths.accessibilityBrowserGuard,
-  paths.accessibilityBrowserContract,
-  paths.accessibilityPacketVerifierContract,
-  paths.accessibilityPacketVerifierRunner,
-  paths.accessibilityPacketVerifierTest,
-  paths.accessibilityPacketVerifierGuard,
-  "browser_packet_verified_owner_review_ready_screen_reader_pending",
-  "maintainer browser execution pending",
-  "owner_review_required = true",
-  "deployment_provenance_verified_by_this_packet = false",
-  "screen_reader_execution_pending = true",
-  "wcag_conformance_not_claimed = true",
-  "synthetic test creates no deployment claim",
-]) requireText(actualization, marker, paths.actualization);
+, marker, paths.actualization);
 
 for (const marker of [
   "generic-editor-control-accessibility-source-ready",
