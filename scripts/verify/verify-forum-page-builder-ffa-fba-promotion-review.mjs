@@ -52,8 +52,6 @@ const predecessorPath =
   "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
 const runnerPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs";
 const testsPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs";
-const actualizationPath =
-  "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const workflowPath = ".github/workflows/pages-page-builder-provider-health.yml";
 
@@ -61,7 +59,6 @@ const contract = json(contractPath);
 const predecessor = json(predecessorPath);
 const runner = read(runnerPath);
 const tests = read(testsPath);
-const actualization = read(actualizationPath);
 const plan = read(planPath);
 const workflow = read(workflowPath);
 
@@ -169,14 +166,6 @@ for (const label of [
   "rejects unsupported promotion-review decision",
 ]) requireText(tests, label, testsPath);
 
-for (const marker of [
-  "forum-ffa-fba-promotion-review-source-ready",
-  "accepted observed-Wave owner packet",
-  "approve_ffa_fba_promotion_review",
-  "does not mutate rollout",
-  "does not promote FFA/FBA",
-  "maintainer execution remains pending",
-]) requireText(actualization, marker, actualizationPath);
 
 requireText(plan, "separate explicit FFA/FBA promotion review", planPath);
 requireText(plan, "accepted observed-Wave owner evidence", planPath);

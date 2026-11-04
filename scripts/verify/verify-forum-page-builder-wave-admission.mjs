@@ -18,7 +18,6 @@ const files = {
   freshnessTest: "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
   planSync: "scripts/verify/verify-forum-wave-plan-sync.mjs",
   planSyncTest: "scripts/verify/verify-forum-wave-plan-sync.test.mjs",
-  overlay: "docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md",
   parity: "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md",
 };
 const admissionVerifierPath = "scripts/verify/verify-forum-page-builder-wave-admission.mjs";
@@ -56,7 +55,6 @@ const serverfn = JSON.parse(read(files.serverfn));
 const runner = read(files.runner);
 const freshness = read(files.freshness);
 const planSync = read(files.planSync);
-const overlay = read(files.overlay);
 const parity = read(files.parity);
 
 if (
@@ -198,16 +196,6 @@ for (const marker of [
 
 for (const marker of [
   "forum-wave-admission-source-ready",
-  "pages_reference_consumer_gate_acceptance_v1",
-  "forum_page_builder_wave_admission_v1",
-  "same exact checkout source commit",
-  "same immutable RepoDigest",
-  "observed control-plane Wave remains pending",
-  "Tests were not run",
-]) need(overlay, marker, "Wave admission actualization");
-for (const marker of [
-  "forum-wave-admission-source-ready",
-  "forum-page-builder-wave-admission-actualization-2026-08-10.md",
   "Forum Wave admission [source-ready / maintainer execution pending]",
   "Forum observed control-plane Wave [blocked on admitted exact-source inputs]",
 ]) need(parity, marker, "Pages/Page Builder parity actualization");

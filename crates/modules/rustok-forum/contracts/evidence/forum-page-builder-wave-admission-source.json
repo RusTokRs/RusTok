@@ -139,7 +139,6 @@
     "scripts/verify/verify-forum-wave-plan-sync.test.mjs",
     "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
     "scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
-    "docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md",
     "docs/modules/pages-page-builder-plan-parity-actualization-2026-08-08.md"
   ],
   "next_cursor": {

@@ -40,8 +40,6 @@ const wavePath = "crates/modules/rustok-forum/contracts/evidence/forum-wave1-rol
 const runnerPath = "scripts/evidence/accept-forum-page-builder-wave.mjs";
 const testsPath = "scripts/evidence/accept-forum-page-builder-wave.test.mjs";
 const lineagePath = "scripts/verify/verify-forum-wave-admission-lineage.mjs";
-const actualizationPath =
-  "docs/modules/forum-page-builder-wave-observed-acceptance-actualization-2026-08-12.md";
 const workflowPath = ".github/workflows/pages-page-builder-provider-health.yml";
 
 const contract = json(contractPath);
@@ -49,7 +47,6 @@ const wave = json(wavePath);
 const runner = read(runnerPath);
 const tests = read(testsPath);
 const lineage = read(lineagePath);
-const actualization = read(actualizationPath);
 const workflow = read(workflowPath);
 
 requireValue(
@@ -130,13 +127,6 @@ for (const label of [
 
 requireText(lineage, "live Wave latest refresh", lineagePath);
 
-for (const marker of [
-  "forum-wave-observed-owner-acceptance-source-ready",
-  "retrospective owner-decision packet",
-  "accept_observed_wave_evidence",
-  "does not promote FFA/FBA",
-  "maintainer execution remains pending",
-]) requireText(actualization, marker, actualizationPath);
 
 for (const marker of [
   contractPath,

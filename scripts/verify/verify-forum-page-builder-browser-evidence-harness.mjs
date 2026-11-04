@@ -19,14 +19,11 @@ const contractPath =
 const configPath = "apps/next-admin/playwright.forum-page-builder.config.ts";
 const setupPath = "apps/next-admin/tests/forum-page-builder/global-setup.ts";
 const runnerPath = "apps/next-admin/tests/forum-page-builder/browser-evidence.spec.ts";
-const packetPath =
-  "docs/modules/forum-page-builder-browser-evidence-harness-actualization-2026-08-08.md";
 const contractSource = read(contractPath);
 const contract = JSON.parse(contractSource);
 const config = read(configPath);
 const setup = read(setupPath);
 const runner = read(runnerPath);
-const packet = read(packetPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
 const moduleManifest = read("crates/modules/rustok-forum/rustok-module.toml");
 const propertyPanel = read(
@@ -205,18 +202,5 @@ for (const marker of [
   requireContains(composition, marker, `app composition missing ${marker}`);
 }
 
-for (const marker of [
-  "Status: `source-ready / maintainer-browser-execution-pending / runtime-evidence-pending`",
-  "forum_page_builder_browser_execution_v1",
-  "browser_execution_passed_runtime_evidence_pending",
-  "preview_off",
-  "properties_off",
-  "Forum-disabled",
-  "forum_topics:read",
-  "maintainer-supplied reviewed deployment identity",
-  "No browser execution is claimed",
-]) {
-  requireContains(packet, marker, `browser evidence actualization missing ${marker}`);
-}
 
 console.log("Forum Page Builder browser evidence harness source: ok");

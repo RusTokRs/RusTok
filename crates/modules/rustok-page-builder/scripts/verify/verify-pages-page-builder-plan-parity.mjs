@@ -200,7 +200,6 @@ for (const marker of [
   "forum-wave-admission-source-ready",
   "base-plan-reconciliation-source-ready",
   "docs/modules/pages-page-builder-rollout-plan-actualization-2026-08-08.md",
-  "docs/modules/forum-page-builder-wave-admission-actualization-2026-08-10.md",
   "docs/modules/pages-page-builder-base-plan-reconciliation-actualization-2026-08-10.md",
   "shared/local/central base plans expose the same provider-health",
   "server-owned rollout state",

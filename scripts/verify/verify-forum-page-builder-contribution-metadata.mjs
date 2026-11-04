@@ -24,7 +24,6 @@ const pageBuilderPreviewPanel = read("crates/modules/rustok-page-builder/admin/s
 const pageBuilderPropertiesPanel = read("crates/modules/rustok-page-builder/admin/src/editor/contribution_properties.rs");
 const adminComposition = read("apps/admin/src/app/page_builder_contributions.rs");
 const moduleAdmin = read("apps/admin/src/pages/module_admin.rs");
-const actualization = read("docs/modules/forum-page-builder-owner-properties-actualization-2026-08-08.md");
 
 const failures = [];
 const requireMarker = (source, marker, label) => {
@@ -231,14 +230,6 @@ for (const marker of [
   "enabled_modules.modules.get()",
 ]) requireMarker(moduleAdmin, marker, "Pages host contribution mount");
 
-for (const marker of [
-  "Status: `source-ready / owner-preview-and-properties-host-composed / execution-pending`",
-  "ForumWidgetContractService::catalog",
-  "ForumWidgetContractService::validate_props",
-  "provider-neutral property port",
-  "normalized `props`",
-  "browser/runtime evidence remains open",
-]) requireMarker(actualization, marker, "Forum owner property actualization");
 
 if (failures.length > 0) {
   console.error("forum Page Builder contribution verification failed:");

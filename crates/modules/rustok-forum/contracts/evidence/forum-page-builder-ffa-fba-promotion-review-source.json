@@ -78,8 +78,7 @@
     "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
     "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs",
     "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs",
-    "scripts/verify/verify-forum-page-builder-ffa-fba-promotion-review.mjs",
-    "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md"
+    "scripts/verify/verify-forum-page-builder-ffa-fba-promotion-review.mjs"
   ],
   "next_cursor": {
     "live_pages_forum_and_observed_wave_evidence": "maintainer_execution_pending",

@@ -43,8 +43,7 @@
     "scripts/evidence/admit-forum-page-builder-wave.mjs",
     "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
     "scripts/verify/verify-forum-wave-admission-lineage.mjs",
-    "scripts/verify/verify-forum-wave-admission-lineage.test.mjs",
-    "docs/modules/forum-page-builder-wave-live-admission-lineage-actualization-2026-08-12.md"
+    "scripts/verify/verify-forum-wave-admission-lineage.test.mjs"
   ],
   "next_cursor": {
     "live_pages_and_forum_inputs": "maintainer_execution_pending",

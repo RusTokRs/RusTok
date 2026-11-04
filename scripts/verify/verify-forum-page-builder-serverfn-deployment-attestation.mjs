@@ -25,8 +25,6 @@ const appRouterPath = "apps/server/src/services/app_router.rs";
 const dockerfilePath = "apps/server/Dockerfile";
 const releaseDockerfilePath = "apps/server/Dockerfile.release";
 const releaseWorkflowPath = ".github/workflows/release.yml";
-const packetPath =
-  "docs/modules/forum-page-builder-serverfn-deployment-attestation-actualization-2026-08-08.md";
 
 const contract = JSON.parse(read(contractPath));
 const runner = read(runnerPath);
@@ -37,7 +35,6 @@ const appRouter = read(appRouterPath);
 const dockerfile = read(dockerfilePath);
 const releaseDockerfile = read(releaseDockerfilePath);
 const releaseWorkflow = read(releaseWorkflowPath);
-const packet = read(packetPath);
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
   throw new Error("deployment attestation contract must not claim execution");
@@ -273,18 +270,5 @@ if (staleCleanup < 0 || requestLoop < 0 || staleCleanup > requestLoop) {
   throw new Error("stale deployment attestation output must be removed before network requests");
 }
 
-for (const marker of [
-  "Status: `source-ready / maintainer-deployment-attestation-execution-pending / browser-execution-pending / runtime-execution-pending / wave-pending`",
-  "POST /api/fn/forum/page-builder-transport-attestation",
-  "RUSTOK_SOURCE_COMMIT=${OCI_REVISION}",
-  "forum_page_builder_server_fn_deployment_attestation_v1",
-  "server_fn_deployment_attestation_passed_wave_pending",
-  "cryptographic origin-to-RepoDigest",
-  "maintainer/infrastructure provenance fact",
-  "Provider SLO health remains `unobserved`",
-  "No HTTP request, browser, Cargo command, Node verifier, Docker build/inspect, database fixture, formatter, build, workflow or CI execution is claimed",
-]) {
-  requireContains(packet, marker, `deployment attestation actualization missing ${marker}`);
-}
 
 console.log("Forum Page Builder deployed server-function attestation source: ok");

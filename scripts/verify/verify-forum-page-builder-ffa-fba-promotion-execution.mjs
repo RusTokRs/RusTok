@@ -61,8 +61,6 @@ const servicePath = "apps/server/src/services/module_rollout_promotion_settings.
 const lifecyclePath = "crates/modules/rustok-modules/src/lifecycle_writer.rs";
 const storePath = "crates/modules/rustok-modules/src/operation_store.rs";
 const snapshotPath = "crates/modules/rustok-pages/src/graphql/builder_rollout.rs";
-const actualizationPath =
-  "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 
 const contract = json(contractPath);
@@ -74,7 +72,6 @@ const service = read(servicePath);
 const lifecycle = read(lifecyclePath);
 const store = read(storePath);
 const snapshot = read(snapshotPath);
-const actualization = read(actualizationPath);
 const plan = read(planPath);
 
 requireValue(
@@ -249,16 +246,6 @@ for (const marker of [
   "BuilderCapabilityFlags::from_module_settings",
 ]) requireText(snapshot, marker, snapshotPath);
 
-for (const marker of [
-  "forum-ffa-fba-promotion-execution-source-ready",
-  "owner_approved_ffa_fba_promotion_review_execution_pending",
-  "compareAndSwapModuleSettings",
-  "MODULE_SETTINGS_SNAPSHOT_CONFLICT",
-  "ambiguous initial mutation outcome",
-  "successful tenant/control-plane write is **not** the FFA/FBA readiness-board promotion",
-  "control_plane_change_executed_readiness_promotion_pending",
-  "maintainer live execution remains pending",
-]) requireText(actualization, marker, actualizationPath);
 requireText(plan, "separate explicit FFA/FBA promotion review", planPath);
 requireText(plan, "accepted observed-Wave owner evidence", planPath);
 

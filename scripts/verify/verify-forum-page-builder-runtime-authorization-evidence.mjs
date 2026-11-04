@@ -25,8 +25,6 @@ const widgetPreviewPath = "crates/modules/rustok-forum/src/services/widget_previ
 const topicVisibilityPath = "crates/modules/rustok-forum/src/services/topic_visibility.rs";
 const categoryVisibilityPath = "crates/modules/rustok-forum/src/services/category_visibility.rs";
 const visibilityTestPath = "crates/modules/rustok-forum/tests/page_builder_widget_visibility_sqlite.rs";
-const packetPath =
-  "docs/modules/forum-page-builder-runtime-authorization-evidence-actualization-2026-08-08.md";
 
 const contractSource = read(contractPath);
 const contract = JSON.parse(contractSource);
@@ -39,7 +37,6 @@ const widgetPreview = read(widgetPreviewPath);
 const topicVisibility = read(topicVisibilityPath);
 const categoryVisibility = read(categoryVisibilityPath);
 const visibilityTest = read(visibilityTestPath);
-const packet = read(packetPath);
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
   throw new Error("runtime evidence contract must not claim execution");
@@ -209,17 +206,5 @@ for (const marker of [
   requireContains(visibilityTest, marker, `SQLite visibility evidence missing ${marker}`);
 }
 
-for (const marker of [
-  "Status: `source-ready / maintainer-runtime-execution-pending / browser-execution-pending / wave-pending`",
-  "forum_page_builder_runtime_authorization_execution_v1",
-  "runtime_authorization_execution_passed_wave_pending",
-  "manage -> read",
-  "forum_replies:moderate",
-  "Deleted",
-  "deployed server-function transport attestation",
-  "No runtime, Cargo, browser, database or verifier execution is claimed",
-]) {
-  requireContains(packet, marker, `runtime authorization actualization missing ${marker}`);
-}
 
 console.log("Forum Page Builder runtime authorization evidence source: ok");

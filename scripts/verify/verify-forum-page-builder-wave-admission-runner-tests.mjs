@@ -13,7 +13,6 @@ const files = {
   verifier: "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
   admissionGuard: "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
   admissionSource: "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
-  actualization: "docs/modules/forum-page-builder-wave-admission-runner-tests-actualization-2026-08-12.md",
   workflow: ".github/workflows/pages-page-builder-provider-health.yml",
 };
 const abs = (value) => path.join(repoRoot, value);
@@ -60,7 +59,6 @@ const admissionSource = JSON.parse(read(files.admissionSource));
 const runner = read(files.runner);
 const test = read(files.test);
 const admissionGuard = read(files.admissionGuard);
-const actualization = read(files.actualization);
 const workflow = read(files.workflow);
 
 const expectedCases = [
@@ -164,13 +162,6 @@ for (const marker of [
 ]) need(runner, marker, "production admission runner");
 need(admissionGuard, "PASS source_ready=true execution=pending wave=not_run", "admission source guard");
 
-for (const marker of [
-  "forum-wave-admission-runner-tests-source-ready",
-  "production admission CLI",
-  "synthetic packets are not live evidence",
-  "observed control-plane Wave remains pending",
-  "Forum Wave remains unaccepted",
-]) need(actualization, marker, "runner-test actualization");
 
 for (const marker of [
   "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",

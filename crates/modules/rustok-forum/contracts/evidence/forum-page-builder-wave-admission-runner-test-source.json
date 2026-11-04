@@ -51,7 +51,6 @@
     "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-runner-test-source.json",
     "scripts/evidence/admit-forum-page-builder-wave.test.mjs",
     "scripts/verify/verify-forum-page-builder-wave-admission-runner-tests.mjs",
-    "docs/modules/forum-page-builder-wave-admission-runner-tests-actualization-2026-08-12.md",
     ".github/workflows/pages-page-builder-provider-health.yml"
   ]
 }
