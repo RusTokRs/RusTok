@@ -655,6 +655,26 @@ impl CatalogService {
         let fulfillment_requirement =
             ProductFulfillmentRequirement::from_product_type(product.product_type.as_deref());
 
+        let product_brands = entities::product_brand::Entity::find()
+            .filter(entities::product_brand::Column::TenantId.eq(tenant_id))
+            .filter(entities::product_brand::Column::ProductId.eq(product_id))
+            .order_by_desc(entities::product_brand::Column::IsPrimary)
+            .order_by_asc(entities::product_brand::Column::Position)
+            .order_by_asc(entities::product_brand::Column::CreatedAt)
+            .all(conn)
+            .await?;
+
+        let brand_responses: Vec<crate::dto::ProductBrandResponse> = product_brands
+            .into_iter()
+            .map(|brand| crate::dto::ProductBrandResponse {
+                id: brand.id,
+                brand_id: brand.brand_id,
+                is_primary: brand.is_primary,
+                role: brand.role,
+                position: brand.position,
+            })
+            .collect();
+
         let response = ProductResponse {
             id: product.id,
             tenant_id: product.tenant_id,
@@ -668,6 +688,7 @@ impl CatalogService {
                 .clone()
                 .or_else(|| extract_shipping_profile_slug(&product.metadata)),
             primary_category_id: product.primary_category_id,
+            brands: brand_responses,
             tags: product_tags.tags,
             metadata: resolved_metadata,
             created_at: product.created_at.into(),
