@@ -71,6 +71,9 @@ pub trait BrandPort: Send + Sync {
     ) -> BrandResult<Vec<BrandCategoryDto>>;
 
     // Product associations (transitional during hybrid cutover)
+    #[deprecated(
+        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort / ProductReadPort."
+    )]
     async fn get_brand_for_product(
         &self,
         tenant_id: Uuid,
@@ -78,6 +81,9 @@ pub trait BrandPort: Send + Sync {
         locale: Option<&str>,
     ) -> BrandResult<Option<BrandDto>>;
 
+    #[deprecated(
+        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort::update_product or create_product with brands."
+    )]
     async fn assign_product_brand(
         &self,
         tenant_id: Uuid,
@@ -86,6 +92,9 @@ pub trait BrandPort: Send + Sync {
         is_primary: bool,
     ) -> BrandResult<()>;
 
+    #[deprecated(
+        note = "Product-to-brand binding is canonically owned by rustok-product::product_brands. Use ProductPort::update_product."
+    )]
     async fn unassign_product_brand(
         &self,
         tenant_id: Uuid,
