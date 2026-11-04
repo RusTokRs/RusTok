@@ -173,63 +173,70 @@ pub fn HomePage(
 
             {after_hero_views.into_iter().collect_view()}
 
-            // Catalog Showcase Section
-            <section id="catalog" class="container-app px-4 sm:px-6">
-                <div class="mx-auto max-w-7xl space-y-8">
-                    // Section Header
-                    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-border/60 pb-6">
-                        <div class="space-y-2">
-                            <div class="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                                <svg class="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                                    <line x1="3" y1="6" x2="21" y2="6" />
-                                </svg>
-                                <span>"CURATED HARDWARE & ACCESSORIES"</span>
+            // Catalog Showcase Section (rendered only when product/commerce is available)
+            {if !products.is_empty() {
+                view! {
+                    <section id="catalog" class="container-app px-4 sm:px-6">
+                        <div class="mx-auto max-w-7xl space-y-8">
+                            // Section Header
+                            <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-border/60 pb-6">
+                                <div class="space-y-2">
+                                    <div class="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
+                                        <svg class="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                                            <line x1="3" y1="6" x2="21" y2="6" />
+                                        </svg>
+                                        <span>"CURATED HARDWARE & ACCESSORIES"</span>
+                                    </div>
+                                    <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+                                        {featured_title}
+                                    </h2>
+                                    <p class="text-sm sm:text-base text-muted-foreground max-w-2xl">
+                                        {featured_subtitle}
+                                    </p>
+                                </div>
+
+                                // Category Chips
+                                <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                                    <span class="rounded-xl bg-primary text-primary-foreground px-3.5 py-1.5 font-semibold cursor-pointer shadow-xs">
+                                        "All Products"
+                                    </span>
+                                    <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
+                                        "Smart Tech"
+                                    </span>
+                                    <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
+                                        "Hi-Fi Audio"
+                                    </span>
+                                    <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
+                                        "Power & Desk"
+                                    </span>
+                                </div>
                             </div>
-                            <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-                                {featured_title}
-                            </h2>
-                            <p class="text-sm sm:text-base text-muted-foreground max-w-2xl">
-                                {featured_subtitle}
-                            </p>
-                        </div>
 
-                        // Category Chips
-                        <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-                            <span class="rounded-xl bg-primary text-primary-foreground px-3.5 py-1.5 font-semibold cursor-pointer shadow-xs">
-                                "All Products"
-                            </span>
-                            <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
-                                "Smart Tech"
-                            </span>
-                            <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
-                                "Hi-Fi Audio"
-                            </span>
-                            <span class="rounded-xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-secondary px-3.5 py-1.5 font-medium cursor-pointer transition-colors">
-                                "Power & Desk"
-                            </span>
+                            // Products 3-Column Responsive Grid
+                            <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                                {products
+                                    .into_iter()
+                                    .map(|product| {
+                                        let badge_new = badge_new.clone();
+                                        let cta_view = cta_view.clone();
+                                        view! {
+                                            <ProductCard
+                                                product=product
+                                                badge_new=badge_new
+                                                cta_view=cta_view
+                                            />
+                                        }
+                                    })
+                                    .collect_view()}
+                            </div>
                         </div>
-                    </div>
-
-                    // Products 3-Column Responsive Grid
-                    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {products
-                            .into_iter()
-                            .map(|product| {
-                                let badge_new = badge_new.clone();
-                                let cta_view = cta_view.clone();
-                                view! {
-                                    <ProductCard
-                                        product=product
-                                        badge_new=badge_new
-                                        cta_view=cta_view
-                                    />
-                                }
-                            })
-                            .collect_view()}
-                    </div>
-                </div>
-            </section>
+                    </section>
+                }
+                .into_any()
+            } else {
+                ().into_any()
+            }}
 
             {after_catalog_views.into_iter().collect_view()}
 

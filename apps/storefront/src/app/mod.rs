@@ -57,8 +57,14 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
 #[component]
 fn StorefrontShellContent(locale: String) -> impl IntoView {
     let strings = locale_strings(locale.as_str());
-    let products = featured_products(locale.as_str());
     let enabled_modules = use_enabled_modules().get_untracked();
+    let has_products = enabled_modules.contains(&"product".to_string())
+        || enabled_modules.contains(&"commerce".to_string());
+    let products = if has_products {
+        featured_products(locale.as_str())
+    } else {
+        Vec::new()
+    };
     let after_hero_views =
         components_for_slot(StorefrontSlot::HomeAfterHero, Some(&enabled_modules))
             .into_iter()
