@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type React from 'react';
+import React from 'react';
 import { redirect } from 'next/navigation';
 
 import { auth } from '@/auth';
@@ -15,24 +15,17 @@ import {
   CardTitle
 } from '@/shared/ui/shadcn/card';
 import { PageContainer } from '@/widgets/app-shell';
+import { StatCard } from '@/widgets/stats-card';
+import { getAdminComponentsForSlot, type AdminRenderContext } from '@/modules';
 import {
-  IconActivity,
   IconArrowUpRight,
-  IconDatabase,
   IconPackage,
-  IconReceipt,
   IconUsers
 } from '@tabler/icons-react';
 
 type DashboardStats = {
   totalUsers: number;
-  totalPosts: number;
-  totalOrders: number;
-  totalRevenue: number;
   usersChange: number;
-  postsChange: number;
-  ordersChange: number;
-  revenueChange: number;
 };
 
 type ActivityItem = {
@@ -62,13 +55,7 @@ const DASHBOARD_STATS_QUERY = `
 query DashboardStats {
   dashboardStats {
     totalUsers
-    totalPosts
-    totalOrders
-    totalRevenue
     usersChange
-    postsChange
-    ordersChange
-    revenueChange
   }
 }
 `;
@@ -143,11 +130,6 @@ async function loadOverviewData(
   }
 }
 
-function formatChange(value: number | undefined): string {
-  const next = Number.isFinite(value) ? (value ?? 0) : 0;
-  return `${next >= 0 ? '+' : ''}${next.toFixed(1)}%`;
-}
-
 function formatTimeAgo(value: string): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) return value;
@@ -169,40 +151,6 @@ function formatTimeAgo(value: string): string {
   }).format(timestamp);
 }
 
-function StatCard({
-  title,
-  value,
-  change,
-  helper,
-  icon
-}: {
-  title: string;
-  value: string;
-  change: number | undefined;
-  helper: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <Card className='from-primary/5 to-card @container/card bg-gradient-to-t shadow-xs'>
-      <CardHeader>
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className='text-2xl font-semibold tabular-nums @[250px]/card:text-3xl'>
-          {value}
-        </CardTitle>
-        <div className='bg-muted text-muted-foreground col-start-2 row-span-2 row-start-1 self-start justify-self-end rounded-lg p-3'>
-          {icon}
-        </div>
-      </CardHeader>
-      <CardFooter className='flex-col items-start gap-1.5 text-sm'>
-        <div className='line-clamp-1 flex items-center gap-2 font-medium'>
-          <Badge variant='outline'>{formatChange(change)}</Badge>
-          <span>{helper}</span>
-        </div>
-      </CardFooter>
-    </Card>
-  );
-}
-
 export default async function DashboardPage() {
   const session = await auth();
   if (!session) redirect('/auth/sign-in');
@@ -212,6 +160,21 @@ export default async function DashboardPage() {
   const userName = session.user?.name ?? session.user?.email ?? 'Admin';
   const { stats, recentActivity, enabledModules, error } =
     await loadOverviewData(token, tenantSlug);
+
+  const renderContext: AdminRenderContext = {
+    token,
+    tenantSlug,
+    enabledModules
+  };
+
+  const metricComponents = getAdminComponentsForSlot(
+    'dashboard:metric',
+    enabledModules
+  );
+  const sectionComponents = getAdminComponentsForSlot(
+    'dashboard:section',
+    enabledModules
+  );
 
   return (
     <PageContainer
@@ -236,28 +199,22 @@ export default async function DashboardPage() {
             helper='vs previous period'
             icon={<IconUsers className='size-5' />}
           />
-          <StatCard
-            title='Content nodes'
-            value={(stats?.totalPosts ?? 0).toLocaleString()}
-            change={stats?.postsChange}
-            helper='vs previous period'
-            icon={<IconDatabase className='size-5' />}
-          />
-          <StatCard
-            title='Orders'
-            value={(stats?.totalOrders ?? 0).toLocaleString()}
-            change={stats?.ordersChange}
-            helper='vs previous period'
-            icon={<IconReceipt className='size-5' />}
-          />
-          <StatCard
-            title='Revenue snapshot'
-            value={`$${(stats?.totalRevenue ?? 0).toLocaleString()}`}
-            change={stats?.revenueChange}
-            helper='from order events'
-            icon={<IconActivity className='size-5' />}
-          />
+          {metricComponents.map((comp) => (
+            <React.Fragment key={comp.id}>
+              {comp.render(renderContext)}
+            </React.Fragment>
+          ))}
         </div>
+
+        {sectionComponents.length > 0 && (
+          <div className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
+            {sectionComponents.map((comp) => (
+              <React.Fragment key={comp.id}>
+                {comp.render(renderContext)}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
 
         <div className='grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]'>
           <Card>

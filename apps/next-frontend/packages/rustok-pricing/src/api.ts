@@ -13,7 +13,7 @@ import {
   assertPricingGraphqlSuccess,
   assertPricingQuoteResponse,
   normalizePricingQuery,
-} from "./core";
+} from "./core.ts";
 import type {
   PricingChannelOption,
   PricingPriceListOption,
@@ -21,7 +21,7 @@ import type {
   PricingProductList,
   StorefrontPricingData,
   StorefrontPricingQuery,
-} from "./types";
+} from "./types.ts";
 
 type GraphqlExecutor = typeof storefrontGraphql;
 

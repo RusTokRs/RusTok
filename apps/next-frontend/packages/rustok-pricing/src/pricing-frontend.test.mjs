@@ -17,7 +17,7 @@ test("fetchStorefrontPricing aggregates product list, channels and price lists",
     if (query === STOREFRONT_PRODUCTS_QUERY) {
       return {
         data: {
-          storefrontProducts: {
+          storefrontPricingCatalog: {
             items: [
               {
                 id: "prod-1",
@@ -77,7 +77,7 @@ test("fetchStorefrontPricing resolves selected product when selectedHandle is pr
     if (query === STOREFRONT_PRODUCTS_QUERY) {
       return {
         data: {
-          storefrontProducts: { items: [], total: 0, page: 1, perPage: 20, hasNext: false },
+          storefrontPricingCatalog: { items: [], total: 0, page: 1, perPage: 20, hasNext: false },
           storefrontPricingChannels: [],
           storefrontActivePriceLists: []
         }

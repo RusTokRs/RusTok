@@ -65,20 +65,17 @@ const createApiModule = (mockGraphqlRequest) => {
   return exports;
 };
 
-// Load index.ts by stripping registry import and exports
-const indexSource = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-const cleanIndexSource = stripTypeScriptTypes(
-  indexSource
-    .replace(/import\s+\{\s*registerAdminModule\s*\}\s+from\s+'@\/modules\/registry';/g, '')
+// Load commerceNavItems from nav.ts
+const navSource = readFileSync(new URL('./nav.ts', import.meta.url), 'utf8');
+const cleanNavSource = stripTypeScriptTypes(
+  navSource
     .replace(/import\s+type\s+\{\s*NavItem\s*\}\s+from\s+'@\/types';/g, '')
-    .replace(/registerAdminModule\(\{[^}]*\}\);/gs, '')
-    .replace(/export\s+\*\s+from\s+'[^']+';/g, '')
     .replaceAll('export ', '')
 );
 
 const indexModule = {};
 compileFunction(
-  `${cleanIndexSource}\nindexModule.commerceNavItems = commerceNavItems;`,
+  `${cleanNavSource}\nindexModule.commerceNavItems = commerceNavItems;`,
   ['indexModule']
 )(indexModule);
 const { commerceNavItems } = indexModule;

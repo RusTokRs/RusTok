@@ -7,15 +7,11 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-product-relations migrations require PostgreSQL".to_owned(),
-            ));
-        }
+        let db = manager.get_connection();
+        let is_postgres = manager.get_database_backend() == DatabaseBackend::Postgres;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
+        if is_postgres {
+            db.execute_unprepared(
                 r#"
 CREATE TABLE IF NOT EXISTS product_relations (
     id UUID PRIMARY KEY,
@@ -39,6 +35,38 @@ CREATE INDEX IF NOT EXISTS idx_product_relations_reverse
 "#,
             )
             .await?;
+        } else {
+            db.execute_unprepared(
+                r#"
+CREATE TABLE IF NOT EXISTS product_relations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    related_product_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id, product_id)
+        REFERENCES products (tenant_id, id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id, related_product_id)
+        REFERENCES products (tenant_id, id)
+        ON DELETE CASCADE,
+    CHECK (product_id <> related_product_id),
+    UNIQUE (tenant_id, product_id, related_product_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_relations_lookup
+    ON product_relations (tenant_id, product_id, relation_type, position ASC);
+
+CREATE INDEX IF NOT EXISTS idx_product_relations_reverse
+    ON product_relations (tenant_id, related_product_id, relation_type);
+"#,
+            )
+            .await?;
+        }
 
         Ok(())
     }

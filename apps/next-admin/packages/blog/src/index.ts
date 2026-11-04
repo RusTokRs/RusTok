@@ -1,3 +1,4 @@
+import React from 'react';
 import { registerAdminModule } from '@/modules/registry';
 import { blogNavItems } from './nav';
 import { BlogMetricsWidget } from './widgets/blog-dashboard-widgets';
@@ -11,7 +12,7 @@ registerAdminModule({
       id: 'blog:metrics',
       slot: 'dashboard:metric',
       order: 30,
-      render: (context) => <BlogMetricsWidget context={context} />
+      render: (context) => React.createElement(BlogMetricsWidget, { context })
     }
   ]
 });
