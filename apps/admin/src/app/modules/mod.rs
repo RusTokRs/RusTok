@@ -10,8 +10,9 @@ use std::sync::OnceLock;
 pub use generated_ui_codegen::core_module_slugs;
 pub use generated_ui_codegen::module_navigation_entries;
 pub use registry::{
-    AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,
-    components_for_slot, page_for_route_segment, register_component, register_page,
+    AdminChildPageRegistration, AdminComponentRegistration, AdminPageLookup, AdminPageRegistration,
+    AdminSlot, components_for_slot, lookup_page_for_route_segment, page_for_route_segment,
+    register_component, register_page,
 };
 pub use search_composition::SearchAdminComposition;
 

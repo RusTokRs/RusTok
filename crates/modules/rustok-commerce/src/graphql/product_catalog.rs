@@ -735,6 +735,7 @@ impl ProductCatalogQuery {
                 rustok_brand::dto::BrandFilter {
                     search: f.search,
                     is_active: f.is_active,
+                    category_id: None,
                 },
                 page.unwrap_or(1),
                 per_page.unwrap_or(20),

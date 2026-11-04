@@ -18,7 +18,7 @@ pub(super) fn ProductBuyerIsland(snapshot: ProductBuyerSnapshot) -> impl IntoVie
     let tenant_slug = snapshot.tenant_slug.clone();
     view! {
         <div data-product-buyer-island="true" data-product-buyer-snapshot=encoded data-product-buyer-client-error-label=buyer::labels(locale.as_deref()).javascript>
-            <leptos_auth::AuthProvider tenant_slug=Some(tenant_slug.clone())><ProductBuyerInteraction snapshot /></leptos_auth::AuthProvider>
+            <leptos_auth::AuthProvider tenant_slug=tenant_slug.clone()><ProductBuyerInteraction snapshot /></leptos_auth::AuthProvider>
         </div>
     }.into_any()
 }
@@ -205,7 +205,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
             return;
         };
         let submitted_cycle = cycle.get_untracked();
-        spawn_local(async move {
+        leptos::task::spawn_local(async move {
             if cart
                 .add_variant(request.variant_id, context, request.locale)
                 .await
@@ -215,7 +215,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
         });
     };
     view! {
-        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.loading().get() || cart.busy.get()>
+        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.get().is_none() || cart.busy.get()>
             {move || (!interactive.get()).then(|| view! { <Alert>{labels.get_value().javascript}</Alert> })}
             <div class="space-y-3">
                 <For each=move || snapshot.with_value(|snapshot| snapshot.product.variant_axes.clone()) key=|axis| axis.attribute_id.clone()
@@ -241,7 +241,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
                     {move || view_model.get().selected_sku.map(|sku| view! { <p class="text-sm">{labels.get_value().sku}": "<span class="font-mono">{sku}</span></p> })}
                     {move || view_model.get().price.map(|price| view! { <p class="text-2xl font-semibold">{price}</p> })}
                     <p id="product-buyer-status" class="text-sm text-muted-foreground">{move || view_model.get().status}</p>
-                    {move || view_model.get().observed_at.map(|time| view! { <p class="text-xs text-muted-foreground">{labels.get_value().observation}" "<time datetime=time.clone()>{time}</time></p> })}
+                    {move || view_model.get().observed_at.map(|time| view! { <p class="text-xs text-muted-foreground">{labels.get_value().observation}" "<time datetime=time.clone()>{time.clone()}</time></p> })}
                 </div> }
                 })}
             </Suspense>

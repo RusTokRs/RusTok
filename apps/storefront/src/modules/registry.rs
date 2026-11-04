@@ -67,7 +67,8 @@ pub fn components_for_slot(
         .filter(|component| component.slot == slot)
         .filter(|component| match (component.module_slug, enabled_modules) {
             (Some(module_slug), Some(enabled)) => enabled.contains(module_slug),
-            _ => true,
+            (Some(_), None) => false,
+            (None, _) => true,
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -102,10 +103,12 @@ pub fn page_for_route_segment(
         return StorefrontPageLookup::Missing;
     };
 
-    if enabled_modules
-        .map(|enabled| enabled.contains(page.module_slug))
-        .unwrap_or(true)
-    {
+    let is_enabled = match enabled_modules {
+        Some(enabled) => enabled.contains(page.module_slug),
+        None => false,
+    };
+
+    if is_enabled {
         StorefrontPageLookup::Found(page)
     } else {
         StorefrontPageLookup::Disabled
@@ -115,7 +118,9 @@ pub fn page_for_route_segment(
 #[cfg(test)]
 mod tests {
     use super::{
-        page_for_route_segment, register_page, StorefrontPageLookup, StorefrontPageRegistration,
+        components_for_slot, page_for_route_segment, register_component, register_page,
+        StorefrontComponentRegistration, StorefrontPageLookup, StorefrontPageRegistration,
+        StorefrontSlot,
     };
     use leptos::prelude::*;
     use std::collections::HashSet;
@@ -145,9 +150,42 @@ mod tests {
             StorefrontPageLookup::Disabled
         ));
 
+        // When enabled_modules is None (fail closed), existing page is Disabled
+        assert!(matches!(
+            page_for_route_segment("blog", None),
+            StorefrontPageLookup::Disabled
+        ));
+
         assert!(matches!(
             page_for_route_segment("missing", Some(&enabled)),
             StorefrontPageLookup::Missing
         ));
+    }
+
+    #[test]
+    fn components_for_slot_fails_closed_when_enabled_modules_is_none() {
+        register_component(StorefrontComponentRegistration {
+            id: "blog_banner",
+            module_slug: Some("blog"),
+            slot: StorefrontSlot::HomeAfterHero,
+            order: 10,
+            render: render_stub,
+        });
+        register_component(StorefrontComponentRegistration {
+            id: "core_banner",
+            module_slug: None,
+            slot: StorefrontSlot::HomeAfterHero,
+            order: 5,
+            render: render_stub,
+        });
+
+        let enabled = HashSet::from(["blog".to_string()]);
+        let active = components_for_slot(StorefrontSlot::HomeAfterHero, Some(&enabled));
+        assert_eq!(active.len(), 2);
+
+        // When None is passed, only core component without module_slug is returned
+        let without_policy = components_for_slot(StorefrontSlot::HomeAfterHero, None);
+        assert_eq!(without_policy.len(), 1);
+        assert_eq!(without_policy[0].id, "core_banner");
     }
 }

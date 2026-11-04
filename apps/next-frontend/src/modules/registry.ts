@@ -1,7 +1,16 @@
 import type { ReactNode } from "react";
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 
-export type StorefrontSlot = "home:afterHero";
+export type StorefrontSlot =
+  | "header:navigation"
+  | "header:actions"
+  | "home:afterHero"
+  | "home:afterCatalog"
+  | "home:beforeFooter"
+  | "footer:navigation"
+  | "checkout:paymentHandoff"
+  | "checkout:resultHandoff"
+  | "checkout:shippingHandoff";
 
 export type StorefrontRenderContext = {
   locale: string;
@@ -35,7 +44,8 @@ export function getModulesForSlot(
   return Array.from(registry.values())
     .filter((module) => {
       if (module.slot !== slot) return false;
-      if (!module.moduleSlug || enabled === null) return true;
+      if (!module.moduleSlug) return true;
+      if (enabled === null) return false;
       return enabled.has(module.moduleSlug);
     })
     .sort((left, right) => {

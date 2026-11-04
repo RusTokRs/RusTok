@@ -8,7 +8,7 @@ use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostAuthorProfile,
-    BlogPostDetail, BlogPostList, BlogPostListItem,
+    BlogPostList, BlogPostListItem,
 };
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
@@ -91,8 +91,10 @@ async fn fetch_preview_post_native(
         };
 
         let db = runtime_ctx.db_clone();
-        if !tenant_has_module_enabled(&db, tenant_id, MODULE_SLUG).await? {
-            return Ok(None);
+        match rustok_api::is_tenant_module_enabled(&db, tenant_id, MODULE_SLUG).await {
+            Ok(true) => {}
+            Ok(false) => return Ok(None),
+            Err(_) => return Err(public_internal_error()),
         }
 
         let preview_service = PreviewTokenService::new(db.clone(), event_bus.clone());
@@ -111,15 +113,14 @@ async fn fetch_preview_post_native(
             return Ok(None);
         };
 
-        let mut authors = std::collections::HashSet::new();
-        authors.insert(post.author_id);
-        let mut author_profiles = load_author_profiles_by_user_ids(
+        let authors = [post.author_id];
+        let mut author_profiles = load_author_profiles(
             &runtime_ctx,
             tenant_id,
             &authors,
             &post.effective_locale,
             &fallback_locale,
-            rustok_profiles::ProfileSummaryAudience::Public,
+            rustok_profiles::ProfileSummaryAudience::Anonymous,
         )
         .await;
 

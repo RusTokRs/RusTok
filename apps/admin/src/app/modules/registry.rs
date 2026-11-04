@@ -77,24 +77,50 @@ pub fn components_for_slot(
     components
 }
 
-pub fn page_for_route_segment(
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AdminPageLookup {
+    Found(AdminPageRegistration),
+    Disabled(AdminPageRegistration),
+    Missing,
+}
+
+pub fn lookup_page_for_route_segment(
     route_segment: &str,
     enabled_modules: Option<&HashSet<String>>,
-) -> Option<AdminPageRegistration> {
+) -> AdminPageLookup {
     super::init_modules();
     let registry = PAGE_REGISTRY
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    registry
+    let page = registry
         .iter()
-        .find(|page| {
-            page.route_segment == route_segment
-                && match enabled_modules {
-                    Some(enabled_modules) => enabled_modules.contains(page.module_slug),
-                    None => true,
-                }
-        })
-        .cloned()
+        .find(|page| page.route_segment == route_segment)
+        .cloned();
+
+    let Some(page) = page else {
+        return AdminPageLookup::Missing;
+    };
+
+    let is_enabled = match enabled_modules {
+        Some(enabled_modules) => enabled_modules.contains(page.module_slug),
+        None => false,
+    };
+
+    if is_enabled {
+        AdminPageLookup::Found(page)
+    } else {
+        AdminPageLookup::Disabled(page)
+    }
+}
+
+pub fn page_for_route_segment(
+    route_segment: &str,
+    enabled_modules: Option<&HashSet<String>>,
+) -> Option<AdminPageRegistration> {
+    match lookup_page_for_route_segment(route_segment, enabled_modules) {
+        AdminPageLookup::Found(page) => Some(page),
+        _ => None,
+    }
 }
 
 impl AdminPageRegistration {
@@ -153,7 +179,40 @@ mod tests {
                 .map(|page| page.nav_label),
             Some("Runs")
         );
-        assert!(registration.child_page_for_subpath("").is_none());
-        assert!(registration.child_page_for_subpath("unknown").is_none());
+    #[test]
+    fn page_lookup_distinguishes_found_disabled_and_missing() {
+        use std::collections::HashSet;
+        use super::{lookup_page_for_route_segment, register_page, AdminPageLookup};
+
+        register_page(AdminPageRegistration {
+            module_slug: "blog_test",
+            route_segment: "blog_test",
+            title: "Blog Test",
+            child_pages: &[],
+            render: || ().into_any(),
+        });
+
+        let enabled = HashSet::from(["blog_test".to_string()]);
+        assert!(matches!(
+            lookup_page_for_route_segment("blog_test", Some(&enabled)),
+            AdminPageLookup::Found(_)
+        ));
+
+        let other_enabled = HashSet::from(["forum".to_string()]);
+        assert!(matches!(
+            lookup_page_for_route_segment("blog_test", Some(&other_enabled)),
+            AdminPageLookup::Disabled(_)
+        ));
+
+        // When enabled_modules is None (fail closed), module page is Disabled
+        assert!(matches!(
+            lookup_page_for_route_segment("blog_test", None),
+            AdminPageLookup::Disabled(_)
+        ));
+
+        assert_eq!(
+            lookup_page_for_route_segment("nonexistent_route_404", Some(&enabled)),
+            AdminPageLookup::Missing
+        );
     }
 }

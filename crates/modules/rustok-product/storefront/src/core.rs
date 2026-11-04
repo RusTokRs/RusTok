@@ -775,7 +775,7 @@ pub fn build_catalog_rail_view_model(
                 .unwrap_or_else(|| product.created_at.clone()),
             href: apply_ui_query_pairs(
                 module_route_base,
-                &[("handle", Some(product.handle.as_str()))],
+                &[("handle", Some(product.handle.clone()))],
             ),
             image_url: product
                 .primary_image

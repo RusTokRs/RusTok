@@ -20,10 +20,16 @@ pub fn ProductView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let route_input = match crate::core::buyer::route_input(&route_context) {
         Ok(input) => input,
-        Err(_) => return view! {
-            <rustok_ui_leptos::Alert>{crate::core::buyer::error_message(crate::core::buyer::BuyerError::Request, route_context.locale.as_deref())}</rustok_ui_leptos::Alert>
-            <a class="text-sm underline" href=crate::core::buyer::reset_href(&route_context)>{crate::core::buyer::labels(route_context.locale.as_deref()).reset}</a>
-        }.into_any(),
+        Err(_) => {
+            let locale = route_context.locale.as_deref();
+            let msg = crate::core::buyer::error_message(crate::core::buyer::BuyerError::Request, locale);
+            let labels = crate::core::buyer::labels(locale);
+            let href = crate::core::buyer::reset_href(&route_context);
+            return view! {
+                <rustok_ui_leptos::Alert>{msg}</rustok_ui_leptos::Alert>
+                <a class="text-sm underline" href=href>{labels.reset}</a>
+            }.into_any();
+        }
     };
     let catalog_input = build_catalog_list_input(
         read_route_query_value(&route_context, "search"),
@@ -486,10 +492,16 @@ fn SelectedProductCard(
             }}
             {match buyer {
                 Some(snapshot) => view! { <super::buyer::ProductBuyerIsland snapshot /> }.into_any(),
-                None => view! {
-                    <rustok_ui_leptos::Alert>{crate::core::buyer::error_message(crate::core::buyer::BuyerError::Projection, locale.as_deref())}</rustok_ui_leptos::Alert>
-                    <a class="text-sm underline" href=crate::core::buyer::reset_href(&route_context)>{crate::core::buyer::labels(locale.as_deref()).reset}</a>
-                }.into_any(),
+                None => {
+                    let loc = locale.as_deref();
+                    let msg = crate::core::buyer::error_message(crate::core::buyer::BuyerError::Projection, loc);
+                    let labels = crate::core::buyer::labels(loc);
+                    let href = crate::core::buyer::reset_href(&route_context);
+                    view! {
+                        <rustok_ui_leptos::Alert>{msg}</rustok_ui_leptos::Alert>
+                        <a class="text-sm underline" href=href>{labels.reset}</a>
+                    }.into_any()
+                }
             }}
         </article>
     }.into_any()

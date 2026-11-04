@@ -3,7 +3,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 
-use crate::app::modules::page_for_route_segment;
+use crate::app::modules::{lookup_page_for_route_segment, AdminPageLookup};
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::shared::context::module_request::ModuleRequestProvider;
@@ -41,10 +41,9 @@ pub fn ModuleAdminPage() -> impl IntoView {
         })
     });
 
-    let any_page = Signal::derive(move || page_for_route_segment(&route_segment.get(), None));
-    let enabled_page = Signal::derive(move || {
+    let page_lookup = Signal::derive(move || {
         let enabled = enabled_modules.modules.get();
-        page_for_route_segment(&route_segment.get(), Some(&enabled))
+        lookup_page_for_route_segment(&route_segment.get(), Some(&enabled))
     });
     let is_loading = Signal::derive(move || enabled_modules.is_loading.get());
 
@@ -66,8 +65,8 @@ pub fn ModuleAdminPage() -> impl IntoView {
                 let seg = route_segment.get();
                 let sub = module_subpath.get();
                 leptos::logging::log!("ModuleAdminPage view closure: seg={:?}, sub={:?}", seg, sub);
-                match (any_page.get(), enabled_page.get()) {
-                    (_, Some(page)) => {
+                match page_lookup.get() {
+                    AdminPageLookup::Found(page) => {
                         let route_segment_value = route_segment.get();
                         let subpath_value = module_subpath.get();
                         let page_for_render = page.clone();
@@ -98,7 +97,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                         }
                         .into_any()
                     }
-                    (Some(page), None) => view! {
+                    AdminPageLookup::Disabled(page) => view! {
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                             <div class="max-w-2xl space-y-3">
                                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -112,7 +111,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                         </div>
                     }
                     .into_any(),
-                    (None, None) => view! {
+                    AdminPageLookup::Missing => view! {
                         <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                             <div class="max-w-2xl space-y-3">
                                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
