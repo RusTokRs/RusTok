@@ -16,9 +16,16 @@ import '@rustok/search-admin';
 import '@rustok/translation-admin';
 import '@rustok/workflow-admin';
 
-export type { AdminModule } from './types';
+export type {
+  AdminModule,
+  AdminSlot,
+  AdminRenderContext,
+  AdminComponentRegistration
+} from './types';
 export {
   registerAdminModule,
+  registerAdminComponent,
   getAdminModules,
-  getAdminNavItems
+  getAdminNavItems,
+  getAdminComponentsForSlot
 } from './registry';

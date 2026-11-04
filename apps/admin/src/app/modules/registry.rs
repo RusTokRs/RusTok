@@ -5,6 +5,7 @@ use leptos::prelude::AnyView;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AdminSlot {
+    DashboardMetric,
     DashboardSection,
     NavItem,
 }
