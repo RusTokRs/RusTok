@@ -6,6 +6,10 @@ use crate::{
     dto::{BrandDto, CreateBrandInput, UpdateBrandInput},
     entities::{
         brand::{ActiveModel as BrandActiveModel, Column as BrandColumn, Entity as Brand},
+        brand_category::{
+            ActiveModel as BrandCategoryActiveModel, Column as BrandCategoryColumn,
+            Entity as BrandCategory,
+        },
         brand_product::{
             ActiveModel as BrandProductActiveModel, Column as BrandProductColumn,
             Entity as BrandProduct,
@@ -382,6 +386,95 @@ impl BrandService {
 
         if let Some(link) = link {
             BrandProduct::delete_by_id(link.id).exec(&self.db).await?;
+        }
+
+        Ok(())
+    }
+
+    pub(super) async fn assign_brand_category(
+        &self,
+        tenant_id: Uuid,
+        brand_id: Uuid,
+        category_id: Uuid,
+        is_featured: bool,
+    ) -> BrandResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
+        }
+        if brand_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
+        }
+        if category_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Category ID cannot be nil".to_string(),
+            ));
+        }
+
+        // Ensure brand exists for tenant
+        let _ = self.get_brand(tenant_id, brand_id, None).await?;
+
+        let existing = BrandCategory::find()
+            .filter(BrandCategoryColumn::TenantId.eq(tenant_id))
+            .filter(BrandCategoryColumn::BrandId.eq(brand_id))
+            .filter(BrandCategoryColumn::CategoryId.eq(category_id))
+            .one(&self.db)
+            .await?;
+
+        if let Some(existing) = existing {
+            let mut active: BrandCategoryActiveModel = existing.into();
+            active.is_featured = Set(is_featured);
+            active.update(&self.db).await?;
+        } else {
+            BrandCategoryActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                brand_id: Set(brand_id),
+                category_id: Set(category_id),
+                is_featured: Set(is_featured),
+                created_at: Set(Utc::now().into()),
+            }
+            .insert(&self.db)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub(super) async fn unassign_brand_category(
+        &self,
+        tenant_id: Uuid,
+        brand_id: Uuid,
+        category_id: Uuid,
+    ) -> BrandResult<()> {
+        if tenant_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Tenant ID cannot be nil".to_string(),
+            ));
+        }
+        if brand_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Brand ID cannot be nil".to_string(),
+            ));
+        }
+        if category_id.is_nil() {
+            return Err(BrandError::InvalidInput(
+                "Category ID cannot be nil".to_string(),
+            ));
+        }
+
+        let link = BrandCategory::find()
+            .filter(BrandCategoryColumn::TenantId.eq(tenant_id))
+            .filter(BrandCategoryColumn::BrandId.eq(brand_id))
+            .filter(BrandCategoryColumn::CategoryId.eq(category_id))
+            .one(&self.db)
+            .await?;
+
+        if let Some(link) = link {
+            BrandCategory::delete_by_id(link.id).exec(&self.db).await?;
         }
 
         Ok(())

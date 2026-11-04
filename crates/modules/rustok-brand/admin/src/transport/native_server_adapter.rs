@@ -74,6 +74,7 @@ async fn brand_directory_native(
                 BrandFilter {
                     search: filters.search,
                     is_active: filters.is_active,
+                    category_id: None,
                 },
                 page,
                 per_page,

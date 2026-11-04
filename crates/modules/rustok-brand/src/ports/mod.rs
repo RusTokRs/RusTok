@@ -1,3 +1,3 @@
 mod brand;
 
-pub use brand::BrandPort;
+pub use brand::{BrandPort, BrandReadPort};

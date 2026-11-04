@@ -60,6 +60,7 @@ pub struct BrandDto {
 pub struct BrandFilter {
     pub search: Option<String>,
     pub is_active: Option<bool>,
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -68,6 +69,16 @@ pub struct BrandListResponse {
     pub total: u64,
     pub page: u64,
     pub per_page: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BrandCategoryDto {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub brand_id: Uuid,
+    pub category_id: Uuid,
+    pub is_featured: bool,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -1,7 +1,7 @@
 //! # RusToK Brand Module
 //!
 //! Provides brand catalogs, manufacturer metadata, media asset attachments,
-//! localized translations, and product-brand associations.
+//! localized translations, brand category scoping, and product-brand associations.
 
 pub mod dto;
 mod entities;
@@ -12,12 +12,12 @@ pub mod ports;
 pub mod services;
 
 pub use dto::{
-    BrandDto, BrandFilter, BrandListResponse, BrandProductDto, BrandTranslationDto,
-    BrandTranslationInput, CreateBrandInput, UpdateBrandInput,
+    BrandCategoryDto, BrandDto, BrandFilter, BrandListResponse, BrandProductDto,
+    BrandTranslationDto, BrandTranslationInput, CreateBrandInput, UpdateBrandInput,
 };
 pub use error::{BrandError, BrandResult};
 pub use module::BrandModule;
-pub use ports::BrandPort;
+pub use ports::{BrandPort, BrandReadPort};
 pub use services::BrandService;
 
 #[cfg(test)]

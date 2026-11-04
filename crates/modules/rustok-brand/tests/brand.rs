@@ -123,7 +123,7 @@ async fn assert_migration_cycle(db: &DatabaseConnection) {
         .await
         .expect("roll back test migration");
     let schema = SchemaManager::new(db);
-    for table in ["brands", "brand_translations", "brand_products"] {
+    for table in ["brands", "brand_translations", "brand_products", "brand_categories"] {
         assert!(
             !schema.has_table(table).await.unwrap(),
             "{table} survived rollback"
@@ -498,6 +498,7 @@ async fn lists_brands_with_filter() {
             BrandFilter {
                 search: None,
                 is_active: Some(true),
+                category_id: None,
             },
             1,
             10,
@@ -514,6 +515,7 @@ async fn lists_brands_with_filter() {
             BrandFilter {
                 search: Some("alp".to_string()),
                 is_active: None,
+                category_id: None,
             },
             1,
             10,
@@ -539,6 +541,7 @@ async fn lists_brands_with_filter() {
             BrandFilter {
                 search: Some(unicode),
                 is_active: None,
+                category_id: None,
             },
             1,
             10,
@@ -740,4 +743,190 @@ async fn rejects_invalid_bounds_and_lengths() {
         .await
         .unwrap_err();
     assert!(matches!(err, BrandError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn assigns_and_filters_brand_categories() {
+    use rustok_brand::ports::{BrandPort, BrandReadPort};
+
+    let db = setup_test_db().await;
+    let service = BrandService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    let clothing_cat = Uuid::new_v4();
+    let electronics_cat = Uuid::new_v4();
+
+    // Create 3 brands: Nike (clothing), Apple (electronics), Xiaomi (both)
+    let nike = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "nike".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Nike".to_string(),
+                    description: Some("Sportswear brand".to_string()),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    let apple = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "apple".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Apple".to_string(),
+                    description: Some("Electronics brand".to_string()),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    let xiaomi = service
+        .create_brand(
+            tenant_id,
+            CreateBrandInput {
+                slug: "xiaomi".to_string(),
+                logo_media_id: None,
+                banner_media_id: None,
+                website_url: None,
+                is_active: Some(true),
+                metadata: None,
+                translations: vec![BrandTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Xiaomi".to_string(),
+                    description: Some("Tech & lifestyle".to_string()),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Assign categories
+    service
+        .assign_brand_category(tenant_id, nike.id, clothing_cat, true)
+        .await
+        .unwrap();
+    service
+        .assign_brand_category(tenant_id, apple.id, electronics_cat, true)
+        .await
+        .unwrap();
+    service
+        .assign_brand_category(tenant_id, xiaomi.id, clothing_cat, false)
+        .await
+        .unwrap();
+    service
+        .assign_brand_category(tenant_id, xiaomi.id, electronics_cat, true)
+        .await
+        .unwrap();
+
+    // Verify categories for brand
+    let nike_cats = service
+        .list_categories_for_brand(tenant_id, nike.id)
+        .await
+        .unwrap();
+    assert_eq!(nike_cats.len(), 1);
+    assert_eq!(nike_cats[0].category_id, clothing_cat);
+    assert!(nike_cats[0].is_featured);
+
+    let xiaomi_cats = service
+        .list_categories_for_brand(tenant_id, xiaomi.id)
+        .await
+        .unwrap();
+    assert_eq!(xiaomi_cats.len(), 2);
+
+    // Filter brands by category (BrandFilter)
+    let clothing_brands = service
+        .list_brands(
+            tenant_id,
+            BrandFilter {
+                category_id: Some(clothing_cat),
+                ..Default::default()
+            },
+            1,
+            20,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(clothing_brands.total, 2);
+    let slugs: Vec<_> = clothing_brands
+        .items
+        .iter()
+        .map(|b| b.slug.as_str())
+        .collect();
+    assert!(slugs.contains(&"nike"));
+    assert!(slugs.contains(&"xiaomi"));
+    assert!(!slugs.contains(&"apple"));
+
+    let electronics_brands = service
+        .list_brands(
+            tenant_id,
+            BrandFilter {
+                category_id: Some(electronics_cat),
+                ..Default::default()
+            },
+            1,
+            20,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(electronics_brands.total, 2);
+    let elec_slugs: Vec<_> = electronics_brands
+        .items
+        .iter()
+        .map(|b| b.slug.as_str())
+        .collect();
+    assert!(elec_slugs.contains(&"apple"));
+    assert!(elec_slugs.contains(&"xiaomi"));
+    assert!(!elec_slugs.contains(&"nike"));
+
+    // Test BrandReadPort: validate_brand_ids
+    let non_existent = Uuid::new_v4();
+    let validated = service
+        .validate_brand_ids(tenant_id, &[nike.id, non_existent, apple.id])
+        .await
+        .unwrap();
+    assert_eq!(validated.len(), 2);
+    assert!(validated.contains(&nike.id));
+    assert!(validated.contains(&apple.id));
+    assert!(!validated.contains(&non_existent));
+
+    // Test BrandReadPort: list_brands_for_category
+    let cat_brands = service
+        .list_brands_for_category(tenant_id, clothing_cat, None)
+        .await
+        .unwrap();
+    assert_eq!(cat_brands.len(), 2);
+    // Nike is featured, so it comes first
+    assert_eq!(cat_brands[0].id, nike.id);
+    assert_eq!(cat_brands[1].id, xiaomi.id);
+
+    // Unassign category
+    service
+        .unassign_brand_category(tenant_id, xiaomi.id, clothing_cat)
+        .await
+        .unwrap();
+    let updated_clothing_brands = service
+        .list_brands_for_category(tenant_id, clothing_cat, None)
+        .await
+        .unwrap();
+    assert_eq!(updated_clothing_brands.len(), 1);
+    assert_eq!(updated_clothing_brands[0].id, nike.id);
 }

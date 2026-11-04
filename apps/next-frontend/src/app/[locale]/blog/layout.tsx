@@ -8,3 +8,4 @@ export default function BlogLayout({
 }) {
   return <ModuleGuard slug="blog">{children}</ModuleGuard>;
 }
+

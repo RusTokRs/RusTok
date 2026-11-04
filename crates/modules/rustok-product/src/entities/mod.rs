@@ -1,5 +1,6 @@
 pub mod product;
 pub mod product_attribute_group;
+pub mod product_brand;
 pub mod product_image;
 pub mod product_image_translation;
 pub mod product_tag;
@@ -11,6 +12,7 @@ pub mod variant_translation;
 
 pub use product::Entity as Product;
 pub use product_attribute_group::Entity as ProductAttributeGroup;
+pub use product_brand::Entity as ProductBrand;
 pub use product_image::Entity as ProductImage;
 pub use product_image_translation::Entity as ProductImageTranslation;
 pub use product_tag::Entity as ProductTag;

@@ -7,9 +7,12 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    dto::{BrandDto, BrandFilter, BrandListResponse, CreateBrandInput, UpdateBrandInput},
+    dto::{
+        BrandCategoryDto, BrandDto, BrandFilter, BrandListResponse, CreateBrandInput,
+        UpdateBrandInput,
+    },
     error::BrandResult,
-    ports::BrandPort,
+    ports::{BrandPort, BrandReadPort},
 };
 
 #[derive(Clone)]
@@ -75,6 +78,33 @@ impl BrandPort for BrandService {
         Self::delete_brand(self, tenant_id, id).await
     }
 
+    async fn assign_brand_category(
+        &self,
+        tenant_id: Uuid,
+        brand_id: Uuid,
+        category_id: Uuid,
+        is_featured: bool,
+    ) -> BrandResult<()> {
+        Self::assign_brand_category(self, tenant_id, brand_id, category_id, is_featured).await
+    }
+
+    async fn unassign_brand_category(
+        &self,
+        tenant_id: Uuid,
+        brand_id: Uuid,
+        category_id: Uuid,
+    ) -> BrandResult<()> {
+        Self::unassign_brand_category(self, tenant_id, brand_id, category_id).await
+    }
+
+    async fn list_categories_for_brand(
+        &self,
+        tenant_id: Uuid,
+        brand_id: Uuid,
+    ) -> BrandResult<Vec<BrandCategoryDto>> {
+        Self::list_categories_for_brand(self, tenant_id, brand_id).await
+    }
+
     async fn get_brand_for_product(
         &self,
         tenant_id: Uuid,
@@ -101,5 +131,47 @@ impl BrandPort for BrandService {
         product_id: Uuid,
     ) -> BrandResult<()> {
         Self::unassign_product_brand(self, tenant_id, brand_id, product_id).await
+    }
+}
+
+#[async_trait]
+impl BrandReadPort for BrandService {
+    async fn validate_brand_ids(
+        &self,
+        tenant_id: Uuid,
+        brand_ids: &[Uuid],
+    ) -> BrandResult<Vec<Uuid>> {
+        Self::validate_brand_ids(self, tenant_id, brand_ids).await
+    }
+
+    async fn get_brand(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        locale: Option<&str>,
+    ) -> BrandResult<Option<BrandDto>> {
+        match Self::get_brand(self, tenant_id, id, locale).await {
+            Ok(b) => Ok(Some(b)),
+            Err(crate::error::BrandError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn get_brands_batch(
+        &self,
+        tenant_id: Uuid,
+        brand_ids: &[Uuid],
+        locale: Option<&str>,
+    ) -> BrandResult<Vec<BrandDto>> {
+        Self::get_brands_batch(self, tenant_id, brand_ids, locale).await
+    }
+
+    async fn list_brands_for_category(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        locale: Option<&str>,
+    ) -> BrandResult<Vec<BrandDto>> {
+        Self::list_brands_for_category(self, tenant_id, category_id, locale).await
     }
 }

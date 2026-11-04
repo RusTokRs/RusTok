@@ -89,13 +89,21 @@ mod tests {
     #[test]
     fn brand_module_migrations_configured() {
         let module = BrandModule;
-        assert_eq!(module.migrations().len(), 1);
+        assert_eq!(module.migrations().len(), 2);
         let deps = module.migration_dependencies();
-        assert_eq!(deps.len(), 1);
+        assert_eq!(deps.len(), 2);
         assert_eq!(deps[0].migration, "m20260915_000001_create_brands");
         assert_eq!(
             deps[0].after,
             vec!["m20250130_000012_create_commerce_products"]
+        );
+        assert_eq!(
+            deps[1].migration,
+            "m20261104_000002_create_brand_categories"
+        );
+        assert_eq!(
+            deps[1].after,
+            vec!["m20260915_000001_create_brands"]
         );
     }
 }

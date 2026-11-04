@@ -65,6 +65,8 @@ pub enum Relation {
     VariantAxes,
     #[sea_orm(has_many = "super::product_image::Entity")]
     Images,
+    #[sea_orm(has_many = "super::product_brand::Entity")]
+    Brands,
 }
 
 impl Related<super::product_translation::Entity> for Entity {
@@ -88,6 +90,12 @@ impl Related<super::product_variant_axis::Entity> for Entity {
 impl Related<super::product_image::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Images.def()
+    }
+}
+
+impl Related<super::product_brand::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Brands.def()
     }
 }
 

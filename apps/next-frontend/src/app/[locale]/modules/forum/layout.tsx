@@ -8,3 +8,4 @@ export default function ForumLayout({
 }) {
   return <ModuleGuard slug="forum">{children}</ModuleGuard>;
 }
+
