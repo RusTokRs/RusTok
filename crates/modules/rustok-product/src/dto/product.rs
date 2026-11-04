@@ -84,6 +84,9 @@ pub struct CreateProductInput {
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
     #[serde(default)]
+    #[validate(nested)]
+    pub brands: Vec<ProductBrandInput>,
+    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub metadata: serde_json::Value,
@@ -128,6 +131,9 @@ pub struct UpdateProductInput {
     #[serde(default, skip_serializing_if = "Patch::is_keep")]
     #[schema(value_type = Option<Uuid>)]
     pub primary_category_id: Patch<Uuid>,
+    #[serde(default)]
+    #[validate(nested)]
+    pub brands: Option<Vec<ProductBrandInput>>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
     pub status: Option<ProductStatus>,
@@ -147,6 +153,7 @@ impl UpdateProductInput {
     pub fn changes_document(&self) -> bool {
         !self.attribute_values.is_empty()
             || self.translations.is_some()
+            || self.brands.is_some()
             || self.tags.is_some()
             || self.metadata.is_some()
             || self.seller_id.is_changed()
@@ -173,6 +180,8 @@ pub struct ProductResponse {
     pub fulfillment_requirement: ProductFulfillmentRequirement,
     pub shipping_profile_slug: Option<String>,
     pub primary_category_id: Option<Uuid>,
+    #[serde(default)]
+    pub brands: Vec<ProductBrandResponse>,
     pub tags: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
