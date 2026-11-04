@@ -35,10 +35,15 @@ Deliberate public modules and exports:
 
 ## Primary entry points
 
-- [`ProductRelationsPort`](src/ports.rs): Primary trait for reading and mutating product relations.
+- [`ProductRelationsPort`](src/ports/mod.rs): Primary trait for reading and mutating product relations.
 - [`ProductRelationService`](src/services/relation_service.rs): Domain application service.
 - [`ProductRelationsModule`](src/module.rs): RusToK platform module and migration registration.
-- [`scoped_caller_idempotency_key`](src/lib.rs): Derives stable owner receipt identity for ingress callers.
+- [`scoped_caller_idempotency_key`](src/services/receipts.rs): Derives stable owner receipt identity for ingress callers.
+
+## Multi-Database and Storage Invariants
+
+1. **Dual database support**: All migrations support both PostgreSQL and SQLite. Foreign keys cascade deletions cleanly on both database backends.
+2. **Schema sovereignty**: The module does not alter or touch tables owned by other domain modules (such as `products`). Foreign keys reference canonical tenant consistency keys (`uq_products_tenant_id`) without duplicating schema definitions.
 
 ## Ordering and reordering contract
 
