@@ -40,32 +40,18 @@ CREATE TABLE products (
     revision INTEGER NOT NULL DEFAULT 1,
     UNIQUE (tenant_id, id)
 );
-
-CREATE TABLE product_relations (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    product_id TEXT NOT NULL,
-    related_product_id TEXT NOT NULL,
-    relation_type TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
-    metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (tenant_id, product_id)
-        REFERENCES products (tenant_id, id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (tenant_id, related_product_id)
-        REFERENCES products (tenant_id, id)
-        ON DELETE CASCADE,
-    CHECK (product_id <> related_product_id),
-    CHECK (position >= 0),
-    UNIQUE (tenant_id, product_id, related_product_id, relation_type),
-    UNIQUE (tenant_id, product_id, relation_type, position)
-);
 "#,
     )
     .await
-    .expect("Failed to create relation test tables");
+    .expect("Failed to create products test table");
+
+    let schema = SchemaManager::new(&db);
+    for migration in rustok_product_relations::migrations::migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("relation migration must succeed on SQLite");
+    }
 
     db
 }
@@ -496,4 +482,25 @@ async fn idempotent_relation_commands_replay_each_supported_response() {
         .expect("remaining relation list must be readable");
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].id, second.id);
+}
+
+#[tokio::test]
+async fn migrations_rollback_and_reapply_cleanly_on_sqlite() {
+    let db = setup_test_db().await;
+    let schema = SchemaManager::new(&db);
+    let migrations = rustok_product_relations::migrations::migrations();
+
+    for migration in migrations.iter().rev() {
+        migration
+            .down(&schema)
+            .await
+            .expect("relation migration rollback should succeed on SQLite");
+    }
+
+    for migration in &migrations {
+        migration
+            .up(&schema)
+            .await
+            .expect("relation migration re-apply should succeed on SQLite");
+    }
 }

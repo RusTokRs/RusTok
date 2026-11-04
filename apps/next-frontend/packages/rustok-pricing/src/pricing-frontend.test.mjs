@@ -24,7 +24,8 @@ test("fetchStorefrontPricing aggregates product list, channels and price lists",
                 title: "Premium Widget",
                 handle: "premium-widget",
                 productType: "Physical",
-                createdAt: "2026-01-01T00:00:00Z"
+                createdAt: "2026-01-01T00:00:00Z",
+                currencies: ["EUR"]
               }
             ],
             total: 1,
@@ -53,6 +54,42 @@ test("fetchStorefrontPricing aggregates product list, channels and price lists",
         }
       };
     }
+    if (query === STOREFRONT_PRODUCT_QUERY) {
+      return {
+        data: {
+          storefrontPricingProduct: {
+            id: "prod-1",
+            status: "active",
+            translations: [{ locale: "en", title: "Premium Widget", handle: "premium-widget" }],
+            variants: [
+              {
+                id: "var-1",
+                title: "Standard",
+                sku: "WID-STD",
+                prices: [{ currencyCode: "EUR", amount: "50.00", onSale: false }],
+                effectivePrice: {
+                  source: { priceId: "p-2", kind: "base", ruleKind: null, adjustmentPercent: null },
+                  currencyCode: "EUR",
+                  amount: "50.00",
+                  compareAtAmount: null,
+                  discountPercent: null,
+                  onSale: false
+                }
+              }
+            ],
+            resolutionContext: {
+              currencyCode: "EUR",
+              quantity: 2,
+              regionId: null,
+              priceListId: null,
+              channelId: null,
+              channelSlug: null
+            },
+            resolvedAt: "2026-01-01T00:00:00Z"
+          }
+        }
+      };
+    }
     return { data: {} };
   };
 
@@ -69,7 +106,8 @@ test("fetchStorefrontPricing aggregates product list, channels and price lists",
   assert.equal(result.activePriceLists.length, 1);
   assert.equal(result.resolutionContext.currencyCode, "EUR");
   assert.equal(result.resolutionContext.quantity, 2);
-  assert.equal(result.selectedProduct, null);
+  assert.ok(result.selectedProduct);
+  assert.equal(result.selectedProduct.id, "prod-1");
 });
 
 test("fetchStorefrontPricing resolves selected product when selectedHandle is provided", async () => {
@@ -99,6 +137,7 @@ test("fetchStorefrontPricing resolves selected product when selectedHandle is pr
                 sku: "GAD-STD",
                 prices: [{ currencyCode: "USD", amount: "99.00", onSale: false }],
                 effectivePrice: {
+                  source: { priceId: "p-1", kind: "base", ruleKind: null, adjustmentPercent: null },
                   currencyCode: "USD",
                   amount: "79.00",
                   compareAtAmount: "99.00",
@@ -106,7 +145,16 @@ test("fetchStorefrontPricing resolves selected product when selectedHandle is pr
                   onSale: true
                 }
               }
-            ]
+            ],
+            resolutionContext: {
+              currencyCode: "USD",
+              quantity: 1,
+              regionId: null,
+              priceListId: null,
+              channelId: null,
+              channelSlug: null
+            },
+            resolvedAt: "2026-01-01T00:00:00Z"
           }
         }
       };
@@ -142,8 +190,7 @@ test("fetchStorefrontPricing throws when GraphQL query reports execution error (
     },
     {
       name: "Error",
-      message: "Database connection failed"
+      message: "Pricing request could not be completed"
     }
   );
 });
-

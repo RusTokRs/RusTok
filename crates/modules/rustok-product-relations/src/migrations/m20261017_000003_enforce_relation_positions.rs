@@ -7,18 +7,15 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-product-relations migrations require PostgreSQL".to_owned(),
-            ));
-        }
+        let is_postgres = manager.get_database_backend() == DatabaseBackend::Postgres;
 
-        // Historical rows may have duplicate or gapped positions. Compact each ordered relation
-        // group before adding the durable invariant used by create, move, delete, and reorder.
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        if is_postgres {
+            // Historical rows may have duplicate or gapped positions. Compact each ordered relation
+            // group before adding the durable invariant used by create, move, delete, and reorder.
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
 WITH normalized AS (
     SELECT
         id,
@@ -58,30 +55,60 @@ BEGIN
     END IF;
 END $$;
 "#,
-            )
-            .await?;
+                )
+                .await?;
+        } else {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+WITH normalized AS (
+    SELECT
+        id,
+        ROW_NUMBER() OVER (
+            PARTITION BY tenant_id, product_id, relation_type
+            ORDER BY position ASC, created_at ASC, id ASC
+        ) - 1 AS normalized_position
+    FROM product_relations
+)
+UPDATE product_relations
+SET position = (SELECT normalized.normalized_position FROM normalized WHERE normalized.id = product_relations.id)
+WHERE id IN (SELECT id FROM normalized);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_product_relations_tenant_product_type_position
+    ON product_relations (tenant_id, product_id, relation_type, position);
+"#,
+                )
+                .await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Err(DbErr::Custom(
-                "rustok-product-relations migrations require PostgreSQL".to_owned(),
-            ));
-        }
+        let is_postgres = manager.get_database_backend() == DatabaseBackend::Postgres;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+        if is_postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
 ALTER TABLE product_relations
     DROP CONSTRAINT IF EXISTS uq_product_relations_tenant_product_type_position;
 ALTER TABLE product_relations
     DROP CONSTRAINT IF EXISTS chk_product_relations_position_non_negative;
 "#,
-            )
-            .await?;
+                )
+                .await?;
+        } else {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "DROP INDEX IF EXISTS uq_product_relations_tenant_product_type_position;",
+                )
+                .await?;
+        }
+
         Ok(())
     }
 }

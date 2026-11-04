@@ -6,7 +6,7 @@ description = "Product relations, merchandising associations (cross-sells, up-se
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "admin_only"
-recommended_admin_surfaces = ["leptos-admin"]
+recommended_admin_surfaces = ["leptos-admin", "next-admin"]
 
 [dependencies]
 product = { version_req = ">=0.1.0" }
@@ -16,6 +16,7 @@ entry_type = "ProductRelationsModule"
 
 [provides.admin_ui]
 leptos_crate = "rustok-product-relations-admin"
+next_package = "@rustok/product-admin"
 route_segment = "product-relations"
 nav_label = "Product Relations"
 nav_group = "Commerce"

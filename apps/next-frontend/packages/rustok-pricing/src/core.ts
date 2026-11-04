@@ -364,15 +364,7 @@ export function assertPricingGraphqlSuccess(response: {
   errors?: readonly unknown[];
 }): void {
   if (response.errors?.length) {
-    const first = response.errors[0];
-    const message =
-      typeof first === "object" &&
-      first !== null &&
-      "message" in first &&
-      typeof (first as { message?: unknown }).message === "string"
-        ? (first as { message: string }).message
-        : "Pricing request could not be completed";
-    throw new Error(message);
+    throw new Error("Pricing request could not be completed");
   }
 }
 

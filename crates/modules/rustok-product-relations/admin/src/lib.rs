@@ -37,7 +37,7 @@ pub mod transport;
 pub mod ui;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;
 
 pub use core::{
     ProductRelationsTransportProfile, build_product_relations_panel_copy, filter_relations,

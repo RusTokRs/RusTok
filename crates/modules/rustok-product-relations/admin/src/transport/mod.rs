@@ -1,6 +1,4 @@
-#[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
-#[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
 use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};

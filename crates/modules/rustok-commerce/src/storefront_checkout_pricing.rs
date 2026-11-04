@@ -422,9 +422,9 @@ pub(crate) fn cart_quote_matches(
         quote.compare_at_amount.unwrap_or(quote.amount),
     ] {
         if amount < Decimal::ZERO
-            || rustok_core::money::to_fixed_point_units(amount, exponent).is_err()
+            || rustok_core::money::to_fixed_point_units_exact(amount, exponent).is_err()
             || amount.checked_mul(quantity).is_none_or(|total| {
-                rustok_core::money::to_fixed_point_units(total, exponent).is_err()
+                rustok_core::money::to_fixed_point_units_exact(total, exponent).is_err()
             })
         {
             return false;
