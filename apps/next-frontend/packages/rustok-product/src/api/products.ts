@@ -12,7 +12,7 @@ import {
   assertPricingGraphqlSuccess,
   assertPricingQuoteResponse,
   normalizePricingQuery,
-} from "@rustok/pricing-frontend";
+} from "@rustok/pricing-frontend/core";
 import type { storefrontGraphql } from "@/shared/lib/graphql";
 import type {
   ProductCatalogFacet,
@@ -318,7 +318,10 @@ export async function fetchStorefrontProducts(
     tenant: tenantSlug ?? undefined,
   });
 
-  if (response.errors?.length || !response.data?.storefrontProductCatalog)
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Product catalog query failed");
+  }
+  if (!response.data?.storefrontProductCatalog)
     throw new Error("Product catalog response is unavailable");
   return response.data.storefrontProductCatalog;
 }
@@ -394,11 +397,10 @@ export async function fetchStorefrontProduct(
   });
 
   // A failed/partial catalog read is not an authoritative "not found" or a usable tuple matrix.
-  if (
-    response.errors?.length ||
-    !response.data ||
-    response.data.storefrontProduct === undefined
-  )
+  if (response.errors?.length) {
+    throw new Error(response.errors[0]?.message ?? "Product query failed");
+  }
+  if (!response.data || response.data.storefrontProduct === undefined)
     throw new Error("Product catalog response is unavailable");
   return response.data.storefrontProduct;
 }

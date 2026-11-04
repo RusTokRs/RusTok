@@ -1,10 +1,19 @@
 import { registerAdminModule } from '@/modules/registry';
 import { blogNavItems } from './nav';
+import { BlogMetricsWidget } from './widgets/blog-dashboard-widgets';
 
 registerAdminModule({
   id: 'blog',
   name: 'Blog',
-  navItems: blogNavItems
+  navItems: blogNavItems,
+  components: [
+    {
+      id: 'blog:metrics',
+      slot: 'dashboard:metric',
+      order: 30,
+      render: (context) => <BlogMetricsWidget context={context} />
+    }
+  ]
 });
 
 // Re-export everything consumers might need

@@ -50,10 +50,29 @@ export const commerceNavItems: NavItem[] = [
   }
 ];
 
+import {
+  CommerceMetricsWidget,
+  CommerceRecentOrdersWidget
+} from './widgets/commerce-dashboard-widgets';
+
 registerAdminModule({
   id: 'commerce',
   name: 'Commerce Management',
-  navItems: commerceNavItems
+  navItems: commerceNavItems,
+  components: [
+    {
+      id: 'commerce:metrics',
+      slot: 'dashboard:metric',
+      order: 20,
+      render: (context) => <CommerceMetricsWidget context={context} />
+    },
+    {
+      id: 'commerce:recent-orders',
+      slot: 'dashboard:section',
+      order: 10,
+      render: (context) => <CommerceRecentOrdersWidget context={context} />
+    }
+  ]
 });
 
 export * from './types';

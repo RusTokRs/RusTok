@@ -69,46 +69,6 @@ const coreNavItems: NavItem[] = [
     isActive: false,
     items: [
       {
-        title: 'Search',
-        url: '/dashboard/search',
-        i18nKey: 'search',
-        shortcut: ['s', 's'],
-        access: { role: 'admin' }
-      },
-      {
-        title: 'SEO',
-        url: '/dashboard/seo',
-        shortcut: ['s', 'o'],
-        access: { role: 'admin' }
-      },
-      {
-        title: 'AI',
-        url: '/dashboard/ai',
-        i18nKey: 'ai',
-        shortcut: ['a', 'i'],
-        access: { role: 'admin' }
-      },
-      {
-        title: 'Email',
-        url: '/dashboard/email',
-        i18nKey: 'email',
-        shortcut: ['e', 'm'],
-        access: { role: 'admin' }
-      },
-      {
-        title: 'Cache',
-        url: '/dashboard/cache',
-        i18nKey: 'cache',
-        shortcut: ['c', 'h'],
-        access: { role: 'admin' }
-      },
-      {
-        title: 'Events',
-        url: '/dashboard/events',
-        i18nKey: 'events',
-        access: { role: 'admin' }
-      },
-      {
         title: 'Design System',
         url: '/dashboard/design-system',
         i18nKey: 'designSystem',

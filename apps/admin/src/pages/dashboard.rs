@@ -45,6 +45,11 @@ pub fn Dashboard() -> impl IntoView {
 
     let enabled_modules = use_enabled_modules();
 
+    let module_metrics = Signal::derive(move || {
+        let enabled = enabled_modules.get();
+        components_for_slot(AdminSlot::DashboardMetric, Some(&enabled))
+    });
+
     let module_sections = Signal::derive(move || {
         let enabled = enabled_modules.get();
         components_for_slot(AdminSlot::DashboardSection, Some(&enabled))
@@ -76,64 +81,32 @@ pub fn Dashboard() -> impl IntoView {
                 }
             >
                 {move || {
-                    let stats = dashboard_stats
+                    let (users_value, users_hint, users_trend_up) = dashboard_stats
                         .get()
                         .and_then(|res| res.ok())
                         .and_then(|res| res.dashboard_stats)
                         .map(|stats| {
-                            vec![
-                                (
-                                    i18n.translate("app.dashboard.stats.users"),
-                                    stats.total_users.to_string(),
-                                    format!("{:+.1}%", stats.users_change),
-                                    stats.users_change >= 0.0,
-                                ),
-                                (
-                                    i18n.translate("app.dashboard.stats.posts"),
-                                    stats.total_posts.to_string(),
-                                    format!("{:+.1}%", stats.posts_change),
-                                    stats.posts_change >= 0.0,
-                                ),
-                                (
-                                    i18n.translate("app.dashboard.stats.orders"),
-                                    stats.total_orders.to_string(),
-                                    format!("{:+.1}%", stats.orders_change),
-                                    stats.orders_change >= 0.0,
-                                ),
-                                (
-                                    i18n.translate("app.dashboard.stats.revenue"),
-                                    format!("${}", stats.total_revenue),
-                                    format!("{:+.1}%", stats.revenue_change),
-                                    stats.revenue_change >= 0.0,
-                                ),
-                            ]
+                            (
+                                stats.total_users.to_string(),
+                                format!("{:+.1}%", stats.users_change),
+                                stats.users_change >= 0.0,
+                            )
                         })
                         .unwrap_or_else(|| {
-                            vec![
-                                (i18n.translate("app.dashboard.stats.users"), "-".to_string(), "0.0%".to_string(), true),
-                                (i18n.translate("app.dashboard.stats.posts"), "-".to_string(), "0.0%".to_string(), true),
-                                (i18n.translate("app.dashboard.stats.orders"), "-".to_string(), "0.0%".to_string(), true),
-                                (i18n.translate("app.dashboard.stats.revenue"), "-".to_string(), "0.0%".to_string(), true),
-                            ]
+                            ("-".to_string(), "0.0%".to_string(), true)
                         });
 
                     view! {
                         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            {stats
-                                .into_iter()
-                                .map(|(title, value, hint, trend_up)| {
-                                    view! {
-                                        <StatsCard
-                                            title=title
-                                            value=value
-                                            icon=view! { <span class="size-5 text-center text-base leading-5">"•"</span> }.into_any()
-                                            trend=hint
-                                            trend_label=i18n.translate("app.dashboard.stats.vsLastMonth")
-                                            trend_up=trend_up
-                                        />
-                                    }
-                                })
-                                .collect_view()}
+                            <StatsCard
+                                title=i18n.translate("app.dashboard.stats.users")
+                                value=users_value
+                                icon=view! { <span class="size-5 text-center text-base leading-5">"•"</span> }.into_any()
+                                trend=users_hint
+                                trend_label=i18n.translate("app.dashboard.stats.vsLastMonth")
+                                trend_up=users_trend_up
+                            />
+                            {move || module_metrics.get().into_iter().map(|module| (module.render)()).collect_view()}
                         </div>
                     }
                 }}

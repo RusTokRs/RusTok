@@ -11,6 +11,22 @@
 'use client';
 
 import React from 'react';
+import { registerAdminModule } from '@/modules/registry';
+
+registerAdminModule({
+  id: 'ai',
+  name: 'AI',
+  navItems: [
+    {
+      title: 'AI',
+      url: '/dashboard/ai',
+      i18nKey: 'ai',
+      shortcut: ['a', 'i'],
+      access: { role: 'admin' },
+      group: 'modulePlugins'
+    }
+  ]
+});
 
 type AiAdminPageProps = {
   graphql: AdminGraphqlExecutor;

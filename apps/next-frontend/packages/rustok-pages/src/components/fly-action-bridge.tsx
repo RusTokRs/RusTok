@@ -12,7 +12,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useCart } from "@rustok/cart-frontend";
+import {
+  useCart,
+  pricingExpectationFromCart,
+  type CartPricingExpectation,
+} from "@rustok/cart-frontend";
 import { initFlyActions } from "./fly-actions-runtime";
 
 export interface FlyActionDetail {
@@ -51,7 +55,18 @@ export function FlyActionBridge() {
         const variantId = (data.variantId || data.productId || data.id) as string | undefined;
         const quantity = Number(data.quantity) || 1;
         if (variantId) {
-          cart.addItem(variantId, quantity).then((success) => {
+          const expectation: CartPricingExpectation = cart.cart
+            ? pricingExpectationFromCart(cart.cart, quantity)
+            : {
+                locale: "en",
+                currencyCode: "USD",
+                regionId: null,
+                priceListId: null,
+                channelId: null,
+                channelSlug: null,
+                quantity,
+              };
+          cart.addItem(variantId, quantity, expectation).then((success) => {
             if (success) {
               cart.openCart();
             }

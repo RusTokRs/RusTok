@@ -180,6 +180,8 @@ mod tests {
                 .map(|page| page.nav_label),
             Some("Runs")
         );
+    }
+
     #[test]
     fn page_lookup_distinguishes_found_disabled_and_missing() {
         use std::collections::HashSet;
@@ -215,5 +217,45 @@ mod tests {
             lookup_page_for_route_segment("nonexistent_route_404", Some(&enabled)),
             AdminPageLookup::Missing
         );
+    }
+
+    #[test]
+    fn components_for_slot_filters_by_slot_and_module_availability() {
+        use std::collections::HashSet;
+        use super::{components_for_slot, register_component, AdminComponentRegistration, AdminSlot};
+
+        register_component(AdminComponentRegistration {
+            id: "test_kpi",
+            module_slug: Some("commerce"),
+            slot: AdminSlot::DashboardMetric,
+            order: 10,
+            render: || ().into_any(),
+        });
+
+        register_component(AdminComponentRegistration {
+            id: "test_section",
+            module_slug: Some("commerce"),
+            slot: AdminSlot::DashboardSection,
+            order: 20,
+            render: || ().into_any(),
+        });
+
+        // Fail-closed when enabled_modules is None
+        assert!(components_for_slot(AdminSlot::DashboardMetric, None).is_empty());
+        assert!(components_for_slot(AdminSlot::DashboardSection, None).is_empty());
+
+        // When commerce is disabled
+        let blog_only = HashSet::from(["blog".to_string()]);
+        assert!(components_for_slot(AdminSlot::DashboardMetric, Some(&blog_only)).is_empty());
+
+        // When commerce is enabled
+        let commerce_enabled = HashSet::from(["commerce".to_string()]);
+        let metrics = components_for_slot(AdminSlot::DashboardMetric, Some(&commerce_enabled));
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].id, "test_kpi");
+
+        let sections = components_for_slot(AdminSlot::DashboardSection, Some(&commerce_enabled));
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].id, "test_section");
     }
 }
