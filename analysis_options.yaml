@@ -2,3 +2,7 @@ analyzer:
   exclude:
     - "target/**"
     - "**/target/**"
+    - "build/**"
+    - "**/build/**"
+    - "node_modules/**"
+    - "**/node_modules/**"

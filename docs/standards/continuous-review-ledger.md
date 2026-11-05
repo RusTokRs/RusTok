@@ -762,271 +762,271 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 117 | 26,892 | None |  |
+| [ ] | [admin](../../apps/admin) | `apps` | 101 | 24,586 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 562 | 91,477 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 18 | 3,120 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 573 | 91,886 | None |  |
+| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 19 | 3,148 | None |  |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 528 | None |  |
-| [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 11 | 2,737 | None |  |
+| [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 13 | 2,822 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 363 | None |  |
 | [ ] | [events](../../apps/next-admin/packages/events) | `apps` | 7 | 423 | None |  |
 | [ ] | [forms](../../apps/next-admin/packages/forms) | `apps` | 5 | 234 | None |  |
-| [ ] | [forum](../../apps/next-admin/packages/forum) | `apps` | 19 | 4,900 | None |  |
+| [ ] | [forum](../../apps/next-admin/packages/forum) | `apps` | 19 | 4,927 | None |  |
 | [ ] | [iggy-connector](../../apps/next-admin/packages/iggy-connector) | `apps` | 6 | 389 | None |  |
 | [ ] | [media](../../apps/next-admin/packages/media) | `apps` | 5 | 281 | None |  |
 | [ ] | [pages](../../apps/next-admin/packages/pages) | `apps` | 6 | 532 | None |  |
+| [ ] | [pricing](../../apps/next-admin/packages/pricing) | `apps` | 3 | 53 | None |  |
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 13 | 2,249 | None |  |
-| [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,055 | None |  |
+| [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,071 | None |  |
 | [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | None |  |
-| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 51 | 16,811 | None |  |
+| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 55 | 17,627 | None |  |
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 2 | 2,952 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,606 | None |  |
-| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 170 | 28,533 | None |  |
-| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 18 | 2,184 | None |  |
-| [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,553 | None |  |
+| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 189 | 28,716 | None |  |
+| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 20 | 2,835 | None |  |
+| [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,564 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 23 | 4,775 | None |  |
 | [ ] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | None |  |
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
-| [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 801 | None |  |
+| [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 816 | None |  |
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 9 | 1,424 | None |  |
-| [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 13 | 3,357 | None |  |
+| [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 13 | 3,359 | None |  |
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 8 | 803 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 6 | 1,551 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 2 | 718 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 498 | 207,544 | None |  |
-| [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,431 | None |  |
-| [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 7 | 1,257 | None |  |
-| [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,690 | 2026-11-02 21:39 | Audited in Round 2; resolved SQLite in-memory transaction connection deadlock in runtime test; standardized Cargo metadata (rust-version, repository, readme); implemented Debug for HostRuntimeContext, SharedEventDeliveryControl, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader, SharedTenantRbacCatalog, AuthContext, AuthPrincipalContext, and extensions; added artifact_permissions unit tests; 135/135 tests passed across all feature profiles; clippy clean, gatekeeper approved. |
+| [ ] | [server](../../apps/server) | `apps` | 498 | 207,679 | None |  |
+| [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,521 | None |  |
+| [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 7 | 1,256 | None |  |
+| [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,691 | 2026-11-02 21:39 | Audited in Round 2; resolved SQLite in-memory transaction connection deadlock in runtime test; standardized Cargo metadata (rust-version, repository, readme); implemented Debug for HostRuntimeContext, SharedEventDeliveryControl, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader, SharedTenantRbacCatalog, AuthContext, AuthPrincipalContext, and extensions; added artifact_permissions unit tests; 135/135 tests passed across all feature profiles; clippy clean, gatekeeper approved. |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 12 | 1,476 | None |  |
-| [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 66 | 18,481 | 2026-11-02 21:49 | Audited in Round 2; verified 6 Universal Logic Dimensions across kernel primitives (id, rbac, money, field_schema, cache_atomic, events, resilience, error); standardized Cargo metadata (rust-version, repository, readme); verified 291 unit tests and 13 integration test binaries; clippy clean on all targets; remediation gate approved. |
-| [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 37 | 12,729 | 2026-11-02 22:14 | Audited in Round 2; regenerated canonical event-contract digests via canonical generator; standardized Cargo metadata (readme); verified 82 unit tests and 44 integration tests (126 total); clippy clean on all targets; remediation gate approved. |
+| [x] | [rustok-core](../../crates/libs/rustok-core) | `libs` | 66 | 18,566 | 2026-11-02 21:49 | Audited in Round 2; verified 6 Universal Logic Dimensions across kernel primitives (id, rbac, money, field_schema, cache_atomic, events, resilience, error); standardized Cargo metadata (rust-version, repository, readme); verified 291 unit tests and 13 integration test binaries; clippy clean on all targets; remediation gate approved. |
+| [x] | [rustok-events](../../crates/libs/rustok-events) | `libs` | 37 | 12,825 | 2026-11-02 22:14 | Audited in Round 2; regenerated canonical event-contract digests via canonical generator; standardized Cargo metadata (readme); verified 82 unit tests and 44 integration tests (126 total); clippy clean on all targets; remediation gate approved. |
 | [x] | [rustok-fba](../../crates/libs/rustok-fba) | `libs` | 2 | 186 | 2026-11-02 22:21 | Audited in Round 2; verified FBA descriptors, topologies, and transport profiles; standardized Cargo metadata (rust-version, repository, readme); 5/5 tests passed; clippy clean on all targets; remediation gate approved. |
 | [ ] | [rustok-manifest](../../crates/libs/rustok-manifest) | `libs` | 7 | 1,045 | None |  |
-| [x] | ~~[rustok-pricing-persistence](../../crates/libs/rustok-pricing-persistence)~~ | `libs` | 0 | 0 | 2026-11-05 11:45 | Eliminated per ADR `2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md`. Sovereign persistence moved to `rustok-pricing`. |
-| [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 5 | 2,546 | 2026-11-02 22:46 | Round 2: Exhaustively audited all source files (lib, deployment, layout, module_cache, contract_tests). Derived/implemented Debug for RuntimeComposition, RegisteredModuleWork, ModuleWorkScheduler, and ModuleWorkRegistrations. Added unit tests for scheduler duplicate registration rejection, ModuleWorkRegistrations lifecycle, and composition Debug formatting. Standardized Cargo.toml metadata (rust-version, repository, readme). 23/23 tests passed, clippy clean, gatekeeper approved. |
+| [x] | [rustok-runtime](../../crates/libs/rustok-runtime) | `libs` | 5 | 2,548 | 2026-11-02 22:46 | Round 2: Exhaustively audited all source files (lib, deployment, layout, module_cache, contract_tests). Derived/implemented Debug for RuntimeComposition, RegisteredModuleWork, ModuleWorkScheduler, and ModuleWorkRegistrations. Added unit tests for scheduler duplicate registration rejection, ModuleWorkRegistrations lifecycle, and composition Debug formatting. Standardized Cargo.toml metadata (rust-version, repository, readme). 23/23 tests passed, clippy clean, gatekeeper approved. |
 | [ ] | [rustok-seo-targets](../../crates/libs/rustok-seo-targets) | `libs` | 2 | 1,516 | None |  |
-| [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,380 | 2026-11-02 23:16 | Round 2: Exhaustively inspected all 11 source files across src/ and all 4 test suites. Standardized Cargo.toml metadata (rust-version, repository, readme). Derived PartialEq and Eq on LogFormat. Added contract tests for MetricsHandle default/render and TelemetryHandles debug format. 49/49 tests passed, clippy clean, gatekeeper approved. |
+| [x] | [rustok-telemetry](../../crates/libs/rustok-telemetry) | `libs` | 15 | 3,383 | 2026-11-02 23:16 | Round 2: Exhaustively inspected all 11 source files across src/ and all 4 test suites. Standardized Cargo.toml metadata (rust-version, repository, readme). Derived PartialEq and Eq on LogFormat. Added contract tests for MetricsHandle default/render and TelemetryHandles debug format. 49/49 tests passed, clippy clean, gatekeeper approved. |
 | [ ] | [rustok-translation-targets](../../crates/libs/rustok-translation-targets) | `libs` | 4 | 1,780 | None |  |
 | [x] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 3 | 992 | 2026-11-02 23:31 | Round 2: Exhaustively inspected all source files (lib, browser_assets, contract_tests). Standardized Cargo.toml metadata (rust-version, repository, readme). Added HttpError status constructors (conflict, service_unavailable, gateway_timeout). Derived PartialEq and Eq for ReleaseAssetSet. Added contract tests for new constructors and json_response. 14/14 tests passed, clippy clean, gatekeeper approved. |
 | [x] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,285 | 2026-11-03 00:06 | Round 2: Exhaustively inspected all 60+ source files across src/ (api, bridge, controllers, engine, execution_log, graphql, integration, migrations, model, runner, scheduler, storage) and static runtime contracts. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for default engine compilation and AlloyAuthoringError display/equality. Remediated collapsible-if and clone-on-copy in rustok-modules dependency. 128/128 tests passed, verify-alloy-runtime-contract passed, clippy clean with -D warnings, gatekeeper approved. |
 | [x] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,264 | 2026-11-03 00:18 | Round 2: Exhaustively inspected all 40+ source files across src/ (attached, standalone, schema translation, field policies, cache generation, graphql, migrations) and test suites. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for FlexModule descriptor metadata and donor entity type validation/normalization. Verified multilingual and standalone contracts via verify-flex-multilingual-contract and verify-flex-standalone-contract. 91/91 tests passed, clippy clean with -D warnings, gatekeeper approved. |
 | [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | None |  |
-| [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,515 | 2026-11-03 01:04 | Fixed missing catalog_categories table in direct.rs SQLite test fixture, added contract tests for AgentKind and AiModule descriptor, verified all 174 tests, zero clippy warnings, gatekeeper passed. |
-| [x] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 424 | 2026-11-03 01:36 | Verified all 9 tests, clippy clean with -D warnings on all targets, added contract tests for AlloyOperation slugs and defaults, gatekeeper approved. |
-| [x] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 594 | 2026-11-03 02:05 | Verified all tests including athanor snapshot integration, clippy clean with -D warnings, added contract tests for AthanorRagConfig and constants, gatekeeper approved. |
-| [x] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 2 | 372 | 2026-11-03 02:09 | Verified all 12 tests, clippy clean with -D warnings, added contract tests for content AI constants and descriptors, gatekeeper approved. |
-| [x] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 2 | 117 | 2026-11-03 02:12 | Verified all 3 tests, clippy clean with -D warnings, added contract tests for media AI constants and descriptors, gatekeeper approved. |
-| [x] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 2 | 306 | 2026-11-03 02:15 | Verified all 11 tests, clippy clean with -D warnings, added contract tests for order AI constants and descriptors, gatekeeper approved. |
-| [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 357 | 2026-11-03 02:19 | Verified all 8 tests, clippy clean with -D warnings, added contract tests for product AI constants and descriptors, gatekeeper approved. |
-| [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,701 | 2026-11-03 02:31 | Verified all 20 tests, clippy clean with -D warnings, added contract tests for machine translation constants, descriptors, and policy digest, gatekeeper approved. |
-| [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,567 | 2026-11-03 01:33 | Verified all 27 unit and SSR tests, clippy clean with -D warnings on all targets, cleaned Cargo.toml, gatekeeper approved. |
-| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,027 | 2026-11-03 02:42 | Verified all 79 unit/graphql tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
+| [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,513 | 2026-11-03 01:04 | Fixed missing catalog_categories table in direct.rs SQLite test fixture, added contract tests for AgentKind and AiModule descriptor, verified all 174 tests, zero clippy warnings, gatekeeper passed. |
+| [x] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 423 | 2026-11-03 01:36 | Verified all 9 tests, clippy clean with -D warnings on all targets, added contract tests for AlloyOperation slugs and defaults, gatekeeper approved. |
+| [x] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 595 | 2026-11-03 02:05 | Verified all tests including athanor snapshot integration, clippy clean with -D warnings, added contract tests for AthanorRagConfig and constants, gatekeeper approved. |
+| [x] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 2 | 370 | 2026-11-03 02:09 | Verified all 12 tests, clippy clean with -D warnings, added contract tests for content AI constants and descriptors, gatekeeper approved. |
+| [x] | [rustok-ai-media](../../crates/modules/rustok-ai-media) | `modules` | 2 | 113 | 2026-11-03 02:12 | Verified all 3 tests, clippy clean with -D warnings, added contract tests for media AI constants and descriptors, gatekeeper approved. |
+| [x] | [rustok-ai-order](../../crates/modules/rustok-ai-order) | `modules` | 2 | 303 | 2026-11-03 02:15 | Verified all 11 tests, clippy clean with -D warnings, added contract tests for order AI constants and descriptors, gatekeeper approved. |
+| [x] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 358 | 2026-11-03 02:19 | Verified all 8 tests, clippy clean with -D warnings, added contract tests for product AI constants and descriptors, gatekeeper approved. |
+| [x] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,702 | 2026-11-03 02:31 | Verified all 20 tests, clippy clean with -D warnings, added contract tests for machine translation constants, descriptors, and policy digest, gatekeeper approved. |
+| [x] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,566 | 2026-11-03 01:33 | Verified all 27 unit and SSR tests, clippy clean with -D warnings on all targets, cleaned Cargo.toml, gatekeeper approved. |
+| [x] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,026 | 2026-11-03 02:42 | Verified all 79 unit/graphql tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
 | [x] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 21 | 7,373 | 2026-11-03 02:55 | Verified all 25 unit/SSR tests, clippy clean with -D warnings on all targets, standardized Cargo.toml metadata, gatekeeper approved. |
-| [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 377 | 2026-11-03 03:07 | Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved. |
+| [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 376 | 2026-11-03 03:07 | Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved. |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
-| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 184 | 48,353 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
-| [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 24 | 9,468 | 2026-11-03 03:28 | Fixed transport profile selection test under ssr/hydrate features, verified all 45 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
-| [ ] | [rustok-blog-cli](../../crates/modules/rustok-blog/cli) | `modules` | 2 | 580 | None |  |
-| [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 20 | 4,020 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
-| [x] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 25 | 3,998 | 2026-11-03 03:48 | Verified BrandModule, BrandService, SQLite integration tests, 12 tests passed, clippy clean with -D warnings on all targets, gatekeeper approved |
-| [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,215 | 2026-11-03 04:26 | Verified Leptos FFA admin package, core validation, i18n, dual-path transport, 15 tests passed under default and ssr features, clippy clean with -D warnings on all targets, gatekeeper approved |
-| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,750 | 2026-11-03 05:29 | Fixed invalidation failure test contract assertion to expect SharedTransport on unavailable Redis while verifying local delivery and failure metrics; standardized Cargo.toml; 239 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
-| [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 8 | 1,243 | None |  |
-| [ ] | [rustok-calendar](../../crates/modules/rustok-calendar) | `modules` | 24 | 1,111 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-calendar/admin) | `modules` | 6 | 325 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-calendar/storefront) | `modules` | 6 | 123 | None |  |
-| [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,103 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 322 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 123 | None |  |
-| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 66 | 20,105 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
-| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,893 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
-| [x] | [rustok-channel](../../crates/modules/rustok-channel) | modules | 51 | 11,858 | 2026-11-04 02:50 | Round 2: Exhaustively audited all source files across src/ (lib, error, module, policy, ports, resolution, services, target_type, entities, migrations, contract_tests). Derived Debug for ChannelModule, ChannelResolver, ChannelService. Added PartialEq/Eq to all DTOs and projections. Eliminated anti-swallowing error suppression in SQLite index revision migration. Added strict bounds/precondition validation rejecting nil UUIDs and empty slugs/names. Hardened ChannelReadPort with uniform Ok(None) on missing or foreign channel IDs and transactional primary target demotion/updates. Added comprehensive contract and port integration tests; 56 tests passed; clippy clean on all targets; gatekeeper approved; zero defects. |
-| [x] | [admin](../../crates/modules/rustok-channel/admin) | modules | 15 | 5,231 | 2026-11-04 03:50 | Round 2: Exhaustively audited all 15 source and contract files across crates/modules/rustok-channel/admin (lib, core, model, transport, ui, i18n, contract_tests, tenant_scope_contract). Added PartialEq/Eq to all DTOs and payloads in model.rs and ApiError. Fixed hardcoded Postgres SQL dialect in channel_bind_oauth_app_native to properly support Postgres, MySQL, and SQLite. Added fallback to slug for OAuth app translations to avoid failing bootstrap when translations for requested locale are missing. Updated CRATE_API.md to reflect canonical public API and types. Added FFA core boundary invariant tests locking 0 framework imports in core.rs, ApiError traits, serde roundtrips, and reorder bounds tests; 16 tests passed (14 unit + 2 integration); clippy clean with -D warnings on default and ssr features; zero defects. |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 10,932 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,690 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 265 | None |  |
-| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,066 | None |  |
-| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 20 | 1,844 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,232 | None |  |
+| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 198 | 50,443 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
+| [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 24 | 9,586 | 2026-11-03 03:28 | Fixed transport profile selection test under ssr/hydrate features, verified all 45 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
+| [ ] | [rustok-blog-cli](../../crates/modules/rustok-blog/cli) | `modules` | 2 | 606 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 25 | 4,557 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
+| [x] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 33 | 4,996 | 2026-11-03 03:48 | Verified BrandModule, BrandService, SQLite integration tests, 12 tests passed, clippy clean with -D warnings on all targets, gatekeeper approved |
+| [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,226 | 2026-11-03 04:26 | Verified Leptos FFA admin package, core validation, i18n, dual-path transport, 15 tests passed under default and ssr features, clippy clean with -D warnings on all targets, gatekeeper approved |
+| [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,760 | 2026-11-03 05:29 | Fixed invalidation failure test contract assertion to expect SharedTransport on unavailable Redis while verifying local delivery and failure metrics; standardized Cargo.toml; 239 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
+| [ ] | [admin](../../crates/modules/rustok-cache/admin) | `modules` | 8 | 1,248 | None |  |
+| [ ] | [rustok-calendar](../../crates/modules/rustok-calendar) | `modules` | 24 | 1,109 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-calendar/admin) | `modules` | 6 | 324 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-calendar/storefront) | `modules` | 6 | 122 | None |  |
+| [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,101 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 321 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 122 | None |  |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 67 | 20,150 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
+| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,892 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
+| [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 12,794 | 2026-11-04 02:50 | Round 2: Exhaustively audited all source files across src/ (lib, error, module, policy, ports, resolution, services, target_type, entities, migrations, contract_tests). Derived Debug for ChannelModule, ChannelResolver, ChannelService. Added PartialEq/Eq to all DTOs and projections. Eliminated anti-swallowing error suppression in SQLite index revision migration. Added strict bounds/precondition validation rejecting nil UUIDs and empty slugs/names. Hardened ChannelReadPort with uniform Ok(None) on missing or foreign channel IDs and transactional primary target demotion/updates. Added comprehensive contract and port integration tests; 56 tests passed; clippy clean on all targets; gatekeeper approved; zero defects. |
+| [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,527 | 2026-11-04 03:50 | Round 2: Exhaustively audited all 15 source and contract files across crates/modules/rustok-channel/admin (lib, core, model, transport, ui, i18n, contract_tests, tenant_scope_contract). Added PartialEq/Eq to all DTOs and payloads in model.rs and ApiError. Fixed hardcoded Postgres SQL dialect in channel_bind_oauth_app_native to properly support Postgres, MySQL, and SQLite. Added fallback to slug for OAuth app translations to avoid failing bootstrap when translations for requested locale are missing. Updated CRATE_API.md to reflect canonical public API and types. Added FFA core boundary invariant tests locking 0 framework imports in core.rs, ApiError traits, serde roundtrips, and reorder bounds tests; 16 tests passed (14 unit + 2 integration); clippy clean with -D warnings on default and ssr features; zero defects. |
+| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,029 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,689 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 264 | None |  |
+| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,251 | None |  |
+| [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 1,677 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,231 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,740 | None |  |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,224 | None |  |
-| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,325 | None |  |
-| [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 29 | 5,641 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 2,803 | None |  |
-| [ ] | [rustok-deal](../../crates/modules/rustok-deal) | `modules` | 18 | 971 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-deal/admin) | `modules` | 6 | 313 | None |  |
-| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 41 | 17,092 | None |  |
+| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,230 | None |  |
+| [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 29 | 5,640 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 2,802 | None |  |
+| [ ] | [rustok-deal](../../crates/modules/rustok-deal) | `modules` | 18 | 970 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-deal/admin) | `modules` | 6 | 312 | None |  |
+| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 41 | 17,090 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 23 | 3,821 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | None |  |
-| [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 887 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 9 | 782 | None |  |
-| [ ] | [rustok-finance](../../crates/modules/rustok-finance) | `modules` | 18 | 979 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-finance/admin) | `modules` | 6 | 316 | None |  |
+| [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 883 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 9 | 781 | None |  |
+| [ ] | [rustok-finance](../../crates/modules/rustok-finance) | `modules` | 18 | 978 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-finance/admin) | `modules` | 6 | 315 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 21 | 2,419 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 6 | 582 | None |  |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 641 | 179,856 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 36 | 13,480 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 27 | 7,841 | None |  |
-| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 86 | 31,436 | None |  |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 641 | 180,098 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 36 | 13,498 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 27 | 7,840 | None |  |
+| [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 86 | 31,434 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 9 | 2,077 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 13 | 1,731 | None |  |
-| [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 116 | 34,167 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 35 | 9,116 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 18 | 3,358 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 13 | 1,730 | None |  |
+| [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 116 | 34,165 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 35 | 9,115 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 18 | 3,357 | None |  |
 | [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,363 | None |  |
-| [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,767 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 703 | None |  |
-| [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 142 | 60,079 | None |  |
+| [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,769 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 705 | None |  |
+| [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 142 | 60,081 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | None |  |
-| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 65 | 21,996 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 11 | 4,909 | None |  |
-| [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 12 | 2,143 | None |  |
-| [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 14 | 1,796 | None |  |
-| [ ] | [rustok-marketplace-balance](../../crates/modules/rustok-marketplace-balance) | `modules` | 31 | 7,109 | None |  |
-| [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 18 | 3,099 | None |  |
-| [ ] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 34 | 6,902 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 10 | 2,008 | None |  |
-| [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 15 | 2,050 | None |  |
-| [ ] | [rustok-marketplace-seller](../../crates/modules/rustok-marketplace-seller) | `modules` | 51 | 11,035 | None |  |
+| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 65 | 22,001 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 11 | 4,908 | None |  |
+| [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 12 | 2,144 | None |  |
+| [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 14 | 1,797 | None |  |
+| [ ] | [rustok-marketplace-balance](../../crates/modules/rustok-marketplace-balance) | `modules` | 31 | 7,110 | None |  |
+| [ ] | [rustok-marketplace-commission](../../crates/modules/rustok-marketplace-commission) | `modules` | 18 | 3,101 | None |  |
+| [ ] | [rustok-marketplace-listing](../../crates/modules/rustok-marketplace-listing) | `modules` | 34 | 6,905 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-marketplace-listing/admin) | `modules` | 10 | 2,010 | None |  |
+| [ ] | [rustok-marketplace-payout](../../crates/modules/rustok-marketplace-payout) | `modules` | 15 | 2,051 | None |  |
+| [ ] | [rustok-marketplace-seller](../../crates/modules/rustok-marketplace-seller) | `modules` | 51 | 11,036 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 14 | 2,508 | None |  |
-| [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 27 | 7,103 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 8 | 1,967 | None |  |
-| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 48 | 14,241 | None |  |
+| [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 27 | 7,106 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 8 | 1,970 | None |  |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 48 | 14,247 | None |  |
 | [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 7 | 2,393 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 11 | 2,442 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 2 | 419 | None |  |
-| [ ] | [rustok-messenger](../../crates/modules/rustok-messenger) | `modules` | 64 | 11,402 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 10 | 1,223 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 10 | 1,969 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 11 | 2,445 | None |  |
+| [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 2 | 422 | None |  |
+| [ ] | [rustok-messenger](../../crates/modules/rustok-messenger) | `modules` | 64 | 11,408 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 10 | 1,226 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 10 | 1,972 | None |  |
 | [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 40 | 10,727 | None |  |
-| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 283 | 157,886 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 2 | 1,902 | None |  |
+| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 284 | 158,871 | None |  |
+| [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 2 | 1,905 | None |  |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 43 | 5,855 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 10 | 652 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 26 | 3,376 | None |  |
-| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,128 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 290 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,297 | None |  |
-| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,875 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 15 | 3,203 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,330 | None |  |
-| [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 29 | 5,526 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 9 | 578 | None |  |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 37,809 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 67 | 20,466 | None |  |
+| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,134 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 293 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,300 | None |  |
+| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,881 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 15 | 3,206 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,333 | None |  |
+| [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 29 | 5,559 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 9 | 580 | None |  |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 37,807 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 67 | 20,464 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 7 | 1,846 | None |  |
 | [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 204 | 59,680 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 28 | 9,341 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 18 | 5,076 | None |  |
-| [ ] | [rustok-party](../../crates/modules/rustok-party) | `modules` | 22 | 1,731 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-party/admin) | `modules` | 6 | 322 | None |  |
-| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,530 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,394 | None |  |
-| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 55 | 23,287 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 15 | 8,374 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 11 | 2,776 | None |  |
-| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 231 | 99,782 | None |  |
-| [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,119 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,958 | None |  |
-| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 532 | None |  |
-| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 27 | 4,440 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 10 | 1,852 | None |  |
+| [ ] | [rustok-party](../../crates/modules/rustok-party) | `modules` | 22 | 1,734 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-party/admin) | `modules` | 6 | 325 | None |  |
+| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,533 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,397 | None |  |
+| [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 89 | 24,150 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 27 | 8,619 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 12 | 2,777 | None |  |
+| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 235 | 101,016 | None |  |
+| [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,122 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,961 | None |  |
+| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 534 | None |  |
+| [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 30 | 4,491 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 11 | 1,851 | None |  |
 | [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 1,728 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,520 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,570 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,526 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,584 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 59 | 9,706 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-profiles/cli) | `modules` | 2 | 484 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-profiles/storefront) | `modules` | 10 | 1,492 | None |  |
-| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 15,493 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 9 | 981 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 2 | 369 | None |  |
-| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 19 | 5,357 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-reactions/storefront) | `modules` | 7 | 768 | None |  |
-| [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 43 | 9,228 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 9 | 3,092 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 10 | 1,780 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 94 | 33,175 | None |  |
+| [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 15,499 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 9 | 984 | None |  |
+| [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 2 | 372 | None |  |
+| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 19 | 5,360 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-reactions/storefront) | `modules` | 7 | 771 | None |  |
+| [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 54 | 9,791 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 9 | 3,095 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 10 | 1,783 | None |  |
+| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 94 | 33,226 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 21 | 8,346 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 10 | 3,251 | None |  |
-| [ ] | [rustok-security](../../crates/modules/rustok-security) | `modules` | 33 | 3,019 | None |  |
-| [ ] | [rustok-security-admin](../../crates/modules/rustok-security/admin) | `modules` | 6 | 319 | None |  |
-| [ ] | [rustok-security-storefront](../../crates/modules/rustok-security/storefront) | `modules` | 6 | 123 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 10 | 3,267 | None |  |
+| [ ] | [rustok-security](../../crates/modules/rustok-security) | `modules` | 33 | 3,028 | None |  |
+| [ ] | [rustok-security-admin](../../crates/modules/rustok-security/admin) | `modules` | 6 | 322 | None |  |
+| [ ] | [rustok-security-storefront](../../crates/modules/rustok-security/storefront) | `modules` | 6 | 126 | None |  |
 | [ ] | [rustok-seo](../../crates/modules/rustok-seo) | `modules` | 87 | 36,931 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-seo/admin) | `modules` | 16 | 4,606 | None |  |
 | [ ] | [panel](../../crates/modules/rustok-seo/panel) | `modules` | 7 | 2,834 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-seo/storefront) | `modules` | 7 | 979 | None |  |
-| [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 40 | 9,809 | None |  |
-| [ ] | [cli](../../crates/modules/rustok-social-graph/cli) | `modules` | 2 | 503 | None |  |
-| [ ] | [rustok-tasks](../../crates/modules/rustok-tasks) | `modules` | 18 | 980 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-tasks/admin) | `modules` | 6 | 322 | None |  |
-| [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 7 | 1,748 | None |  |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 55 | 15,098 | None |  |
-| [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 31 | 4,573 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 864 | None |  |
-| [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,673 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,265 | None |  |
-| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,814 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,530 | None |  |
-| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 44,563 | None |  |
-| [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 13 | 1,687 | None |  |
+| [ ] | [rustok-social-graph](../../crates/modules/rustok-social-graph) | `modules` | 40 | 9,812 | None |  |
+| [ ] | [cli](../../crates/modules/rustok-social-graph/cli) | `modules` | 2 | 506 | None |  |
+| [ ] | [rustok-tasks](../../crates/modules/rustok-tasks) | `modules` | 18 | 983 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-tasks/admin) | `modules` | 6 | 325 | None |  |
+| [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 15 | 1,847 | None |  |
+| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 55 | 15,102 | None |  |
+| [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 32 | 4,633 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 867 | None |  |
+| [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,676 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,268 | None |  |
+| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,817 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,533 | None |  |
+| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 44,606 | None |  |
+| [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 13 | 1,707 | None |  |
 | [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 3 | 462 | None |  |
-| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,957 | None |  |
-| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,397 | None |  |
-| [ ] | [web](../../crates/ui/fly/web) | `ui` | 7 | 2,302 | None |  |
-| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,965 | None |  |
-| [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 6 | 508 | None |  |
-| [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 2 | 370 | None |  |
-| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 501 | None |  |
-| [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 30 | 7,091 | None |  |
-| [ ] | [rustok-grid-dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 9 | 1,789 | None |  |
-| [ ] | [rustok-grid-leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 9 | 1,544 | None |  |
-| [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 49 | 5,490 | None |  |
-| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 2 | 159 | None |  |
-| [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 10 | 2,480 | None |  |
-| [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 24 | 9,559 | None |  |
-| [ ] | [rustok-forms-dioxus](../../crates/ui/rustok-ui-forms/dioxus) | `ui` | 7 | 2,298 | None |  |
-| [ ] | [rustok-forms-leptos](../../crates/ui/rustok-ui-forms/leptos) | `ui` | 7 | 3,208 | None |  |
-| [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 33 | 6,833 | None |  |
-| [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 2 | 595 | None |  |
-| [ ] | [rustok-ui-dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 21 | 1,374 | None |  |
-| [ ] | [rustok-ui-leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 21 | 2,155 | None |  |
-| [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 14 | 3,159 | None |  |
-| [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 5 | 1,007 | None |  |
-| [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 3 | 1,866 | None |  |
-| [ ] | [rustok-cli](../../crates/utils/rustok-cli) | `utils` | 4 | 1,544 | None |  |
-| [ ] | [rustok-cli-core](../../crates/utils/rustok-cli-core) | `utils` | 2 | 294 | None |  |
-| [ ] | [rustok-cli-platform](../../crates/utils/rustok-cli-platform) | `utils` | 4 | 593 | None |  |
-| [ ] | [rustok-cli-registry](../../crates/utils/rustok-cli-registry) | `utils` | 3 | 241 | None |  |
-| [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 12 | 4,931 | None |  |
-| [ ] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 2 | 986 | None |  |
-| [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 10 | 2,092 | None |  |
-| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 58 | 12,267 | None |  |
-| [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 3 | 126 | None |  |
-| [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 3 | 428 | None |  |
-| [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 4 | 1,698 | None |  |
-| [ ] | [rustok-starter](../../crates/utils/rustok-starter) | `utils` | 12 | 1,490 | None |  |
-| [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 5 | 982 | None |  |
+| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,956 | None |  |
+| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,407 | None |  |
+| [ ] | [web](../../crates/ui/fly/web) | `ui` | 7 | 2,307 | None |  |
+| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,967 | None |  |
+| [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 6 | 504 | None |  |
+| [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 2 | 383 | None |  |
+| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 508 | None |  |
+| [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 30 | 7,084 | None |  |
+| [ ] | [rustok-grid-dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 9 | 1,786 | None |  |
+| [ ] | [rustok-grid-leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 9 | 1,541 | None |  |
+| [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 49 | 5,494 | None |  |
+| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 2 | 158 | None |  |
+| [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 10 | 2,476 | None |  |
+| [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 24 | 9,549 | None |  |
+| [ ] | [rustok-forms-dioxus](../../crates/ui/rustok-ui-forms/dioxus) | `ui` | 7 | 2,296 | None |  |
+| [ ] | [rustok-forms-leptos](../../crates/ui/rustok-ui-forms/leptos) | `ui` | 7 | 3,207 | None |  |
+| [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 33 | 6,832 | None |  |
+| [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 2 | 598 | None |  |
+| [ ] | [rustok-ui-dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 21 | 1,373 | None |  |
+| [ ] | [rustok-ui-leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 21 | 2,154 | None |  |
+| [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 14 | 3,158 | None |  |
+| [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 5 | 1,006 | None |  |
+| [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 3 | 1,882 | None |  |
+| [ ] | [rustok-cli](../../crates/utils/rustok-cli) | `utils` | 4 | 1,548 | None |  |
+| [ ] | [rustok-cli-core](../../crates/utils/rustok-cli-core) | `utils` | 2 | 288 | None |  |
+| [ ] | [rustok-cli-platform](../../crates/utils/rustok-cli-platform) | `utils` | 4 | 602 | None |  |
+| [ ] | [rustok-cli-registry](../../crates/utils/rustok-cli-registry) | `utils` | 3 | 244 | None |  |
+| [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 12 | 4,940 | None |  |
+| [ ] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 2 | 984 | None |  |
+| [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 10 | 2,098 | None |  |
+| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 64 | 15,072 | None |  |
+| [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 3 | 124 | None |  |
+| [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 3 | 436 | None |  |
+| [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 4 | 1,697 | None |  |
+| [ ] | [rustok-starter](../../crates/utils/rustok-starter) | `utils` | 12 | 1,481 | None |  |
+| [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 5 | 1,034 | None |  |
 | [ ] | [rustok-test-utils](../../crates/utils/rustok-test-utils) | `utils` | 7 | 1,952 | None |  |
-| [ ] | [serde-columnar-vendored](../../crates/utils/serde-columnar-vendored) | `utils` | 17 | 2,547 | None |  |
-| [ ] | [utoipa-swagger-ui-vendored](../../crates/utils/utoipa-swagger-ui-vendored) | `utils` | 3 | 63 | None |  |
-| [ ] | [rustok-artifact-node-agent](../../crates/workers/rustok-artifact-node-agent) | `workers` | 9 | 2,548 | None |  |
-| [ ] | [rustok-artifact-node-controller](../../crates/workers/rustok-artifact-node-controller) | `workers` | 4 | 203 | None |  |
-| [ ] | [rustok-artifact-node-reconciler](../../crates/workers/rustok-artifact-node-reconciler) | `workers` | 4 | 228 | None |  |
-| [ ] | [rustok-artifact-node-transport](../../crates/workers/rustok-artifact-node-transport) | `workers` | 7 | 1,115 | None |  |
-| [ ] | [rustok-module-build-dispatcher](../../crates/workers/rustok-module-build-dispatcher) | `workers` | 4 | 621 | None |  |
-| [ ] | [rustok-module-build-transport](../../crates/workers/rustok-module-build-transport) | `workers` | 7 | 497 | None |  |
+| [ ] | [serde-columnar-vendored](../../crates/utils/serde-columnar-vendored) | `utils` | 17 | 2,550 | None |  |
+| [ ] | [utoipa-swagger-ui-vendored](../../crates/utils/utoipa-swagger-ui-vendored) | `utils` | 3 | 62 | None |  |
+| [ ] | [rustok-artifact-node-agent](../../crates/workers/rustok-artifact-node-agent) | `workers` | 9 | 2,557 | None |  |
+| [ ] | [rustok-artifact-node-controller](../../crates/workers/rustok-artifact-node-controller) | `workers` | 4 | 204 | None |  |
+| [ ] | [rustok-artifact-node-reconciler](../../crates/workers/rustok-artifact-node-reconciler) | `workers` | 4 | 227 | None |  |
+| [ ] | [rustok-artifact-node-transport](../../crates/workers/rustok-artifact-node-transport) | `workers` | 7 | 1,120 | None |  |
+| [ ] | [rustok-module-build-dispatcher](../../crates/workers/rustok-module-build-dispatcher) | `workers` | 4 | 626 | None |  |
+| [ ] | [rustok-module-build-transport](../../crates/workers/rustok-module-build-transport) | `workers` | 7 | 509 | None |  |
 | [ ] | [rustok-module-build-worker](../../crates/workers/rustok-module-build-worker) | `workers` | 9 | 4,297 | None |  |
-| [ ] | [rustok-registry-validation-worker](../../crates/workers/rustok-registry-validation-worker) | `workers` | 3 | 1,071 | None |  |
-| [ ] | [rustok-sandbox](../../crates/workers/rustok-sandbox) | `workers` | 28 | 8,423 | None |  |
-| [ ] | [rustok-sandbox-transport](../../crates/workers/rustok-sandbox-transport) | `workers` | 6 | 1,469 | None |  |
-| [ ] | [rustok-sandbox-worker](../../crates/workers/rustok-sandbox-worker) | `workers` | 4 | 981 | None |  |
-| [ ] | [rustok-static-distribution-worker](../../crates/workers/rustok-static-distribution-worker) | `workers` | 11 | 3,695 | None |  |
-| [ ] | [rustok-verification-transport](../../crates/workers/rustok-verification-transport) | `workers` | 5 | 409 | None |  |
-| [ ] | [rustok-verification-worker](../../crates/workers/rustok-verification-worker) | `workers` | 6 | 1,354 | None |  |
-| [ ] | [rustok-worker-transport](../../crates/workers/rustok-worker-transport) | `workers` | 2 | 836 | None |  |
+| [ ] | [rustok-registry-validation-worker](../../crates/workers/rustok-registry-validation-worker) | `workers` | 3 | 1,082 | None |  |
+| [ ] | [rustok-sandbox](../../crates/workers/rustok-sandbox) | `workers` | 28 | 8,426 | None |  |
+| [ ] | [rustok-sandbox-transport](../../crates/workers/rustok-sandbox-transport) | `workers` | 6 | 1,470 | None |  |
+| [ ] | [rustok-sandbox-worker](../../crates/workers/rustok-sandbox-worker) | `workers` | 4 | 980 | None |  |
+| [ ] | [rustok-static-distribution-worker](../../crates/workers/rustok-static-distribution-worker) | `workers` | 11 | 3,692 | None |  |
+| [ ] | [rustok-verification-transport](../../crates/workers/rustok-verification-transport) | `workers` | 5 | 408 | None |  |
+| [ ] | [rustok-verification-worker](../../crates/workers/rustok-verification-worker) | `workers` | 6 | 1,365 | None |  |
+| [ ] | [rustok-worker-transport](../../crates/workers/rustok-worker-transport) | `workers` | 2 | 838 | None |  |
 
 ---
 

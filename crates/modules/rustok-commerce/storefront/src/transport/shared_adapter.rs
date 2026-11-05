@@ -365,6 +365,7 @@ mod tests {
             adjustment_total: "0.00".into(),
             shipping_total: "10.00".into(),
             total_amount: "110.00".into(),
+            channel_id: Some("channel-1".into()),
             channel_slug: Some("web".into()),
             email: Some("user@example.com".into()),
             customer_id: None,

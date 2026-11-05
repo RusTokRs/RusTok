@@ -214,7 +214,7 @@ impl TemplatedSmtpMailerAdapter {
 impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
     async fn send_password_reset(
         &self,
-        email: PasswordResetEmail,
+        _email: PasswordResetEmail,
     ) -> std::result::Result<(), EmailError> {
         tracing::info!("Password reset email provider disabled; skipping outbound send");
         record_email_send_skipped();
@@ -223,7 +223,7 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
 
     async fn send_email_verification(
         &self,
-        email: EmailVerificationEmail,
+        _email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
         tracing::info!("Email verification provider disabled; skipping outbound send");
         record_email_send_skipped();

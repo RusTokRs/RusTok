@@ -707,6 +707,12 @@ fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateMo
         | ModuleOperationStoreError::UniqueViolation(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
         }
+        ModuleOperationStoreError::UnverifiableSqliteIdentity => {
+            UpdateModuleSettingsError::Database(DbErr::Custom(
+                "unverifiable SQLite tenant or module operation identity during settings persistence"
+                    .to_string(),
+            ))
+        }
         ModuleOperationStoreError::OperationNotFound(_)
         | ModuleOperationStoreError::InvalidStatusTransition { .. } => {
             UpdateModuleSettingsError::Policy(

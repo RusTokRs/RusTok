@@ -20,7 +20,7 @@ mod blog_public_comments_snapshot;
 /// Whether this composition registered module event listeners. A missing
 /// snapshot is not equivalent to an intentionally empty listener set.
 #[derive(Clone, Copy)]
-pub(crate) struct ModuleEventDispatcherRequirement(pub bool);
+pub struct ModuleEventDispatcherRequirement(pub bool);
 
 /// Host-owned lifecycle handle for the module event dispatcher.
 ///

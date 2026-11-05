@@ -374,7 +374,7 @@ async fn validate_authorization_code(
         ));
     }
     if code.used_at.is_some() {
-        revoke_authorization_code_family(db, code).await?;
+        revoke_authorization_code_family(db, &code).await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Authorization code is invalid, expired, or already used",
         ));

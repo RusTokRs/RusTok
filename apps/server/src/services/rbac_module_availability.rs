@@ -121,8 +121,8 @@ impl rustok_rbac::graphql::RbacModuleAvailabilityProvider for ServerRbacModuleAv
     }
 }
 
-fn fail_closed_availability(ownership: &RbacPermissionOwnership) -> PermissionAvailability {
-    PermissionAvailability::new((*ownership.0).clone(), BTreeSet::new())
+fn fail_closed_availability(ownership: &BTreeMap<String, String>) -> PermissionAvailability {
+    PermissionAvailability::new(ownership.clone(), BTreeSet::new())
 }
 
 pub fn rbac_module_availability_handle(

@@ -1,5 +1,5 @@
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;

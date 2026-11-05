@@ -1,4 +1,4 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -6,7 +6,6 @@ use rustok_api::Patch;
 use rustok_blog::{
     CategoryService as BlogCategoryService, CreateCategoryInput, CreatePostInput,
     ListCategoriesFilter, PostService, UpdatePostInput,
-    ports::{blog_post, blog_post_translation},
 };
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
@@ -91,17 +90,15 @@ pub async fn import_blog_posts(
     let mut skipped = 0;
 
     for post in posts {
-        // Idempotency: check by slug in tenant scope
-        let existing = blog_post::Entity::find()
-            .filter(blog_post::Column::TenantId.eq(tenant_id))
-            .filter(blog_post::Column::Slug.eq(&post.slug))
-            .one(db)
+        // Idempotency: check by slug in tenant scope via canonical PostService
+        let existing = post_service
+            .get_post_by_slug(tenant_id, security.clone(), locale, &post.slug)
             .await?;
 
-        let (post_id, mut current_version) = if let Some(existing) = existing {
+        let (post_id, mut current_version, available_locales) = if let Some(existing) = existing {
             tracing::info!(slug = %post.slug, "Blog post already exists, skipping creation");
             skipped += 1;
-            (existing.id, existing.version)
+            (existing.id, existing.version, existing.available_locales)
         } else {
             let category_id = post
                 .category_slug
@@ -135,53 +132,45 @@ pub async fn import_blog_posts(
                 .await?;
 
             created += 1;
-            (new_id, 1)
+            (new_id, 1, vec![locale.to_string()])
         };
 
         // Import additional translations declared on the post
         for (trans_locale, translation) in &post.translations {
-            if trans_locale == locale {
+            if trans_locale == locale || available_locales.iter().any(|l| l == trans_locale) {
                 continue;
             }
 
-            let trans_exists = blog_post_translation::Entity::find()
-                .filter(blog_post_translation::Column::PostId.eq(post_id))
-                .filter(blog_post_translation::Column::Locale.eq(trans_locale.as_str()))
-                .one(db)
+            let content = rustok_blog::richtext::article_document_from_plain_text(
+                &translation.content_markdown,
+            );
+            let update_input = UpdatePostInput {
+                locale: Some(trans_locale.clone()),
+                title: Some(translation.title.clone()),
+                content: Some(content),
+                excerpt: match translation.excerpt.clone() {
+                    Some(e) => Patch::Set(e),
+                    None => Patch::Keep,
+                },
+                slug: None,
+                tags: None,
+                category_id: Patch::Keep,
+                featured_image_url: Patch::Keep,
+                seo_title: Patch::Set(translation.title.clone()),
+                seo_description: match translation.excerpt.clone() {
+                    Some(e) => Patch::Set(e),
+                    None => Patch::Keep,
+                },
+                channel_slugs: None,
+                metadata: None,
+                version: current_version,
+                scheduled_at: Patch::Keep,
+            };
+
+            post_service
+                .update_post(tenant_id, post_id, security.clone(), update_input)
                 .await?;
-
-            if trans_exists.is_none() {
-                let content = rustok_blog::richtext::article_document_from_plain_text(
-                    &translation.content_markdown,
-                );
-                let update_input = UpdatePostInput {
-                    locale: Some(trans_locale.clone()),
-                    title: Some(translation.title.clone()),
-                    content: Some(content),
-                    excerpt: match translation.excerpt.clone() {
-                        Some(e) => Patch::Set(e),
-                        None => Patch::Keep,
-                    },
-                    slug: None,
-                    tags: None,
-                    category_id: Patch::Keep,
-                    featured_image_url: Patch::Keep,
-                    seo_title: Patch::Set(translation.title.clone()),
-                    seo_description: match translation.excerpt.clone() {
-                        Some(e) => Patch::Set(e),
-                        None => Patch::Keep,
-                    },
-                    channel_slugs: None,
-                    metadata: None,
-                    version: current_version,
-                    scheduled_at: Patch::Keep,
-                };
-
-                post_service
-                    .update_post(tenant_id, post_id, security.clone(), update_input)
-                    .await?;
-                current_version += 1;
-            }
+            current_version += 1;
         }
     }
 
