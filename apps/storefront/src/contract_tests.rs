@@ -83,6 +83,7 @@ fn test_storefront_page_registry_lookup_contract() {
         module_slug: "contract-test-module",
         route_segment: "contract-test-route",
         title: "Contract Test Page",
+        full_width: false,
         render: || ().into_any(),
     });
 

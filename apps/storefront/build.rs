@@ -55,6 +55,8 @@ struct LeptosUiContract {
     #[serde(default)]
     page_title: Option<String>,
     #[serde(default)]
+    full_width: Option<bool>,
+    #[serde(default)]
     components: Vec<StorefrontUiComponentContract>,
 }
 
@@ -78,6 +80,7 @@ struct StorefrontUiEntry {
     slot: StorefrontSlot,
     route_segment: String,
     page_title: String,
+    full_width: bool,
     components: Vec<StorefrontUiComponentEntry>,
 }
 
@@ -226,6 +229,7 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
             slot: storefront_slot_from_manifest(storefront_ui.slot.as_deref())?,
             route_segment: storefront_ui.route_segment.unwrap_or_else(|| slug.clone()),
             page_title: storefront_ui.page_title.unwrap_or(name),
+            full_width: storefront_ui.full_width.unwrap_or(false),
             components,
         });
     }
@@ -302,10 +306,11 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
             fn_name = storefront_render_fn_name(&entry.slug),
         ));
         out.push_str(&format!(
-            "    register_page(StorefrontPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", render: {fn_name} }});\n",
+            "    register_page(StorefrontPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", full_width: {full_width}, render: {fn_name} }});\n",
             slug = entry.slug,
             route_segment = entry.route_segment,
             title = entry.page_title,
+            full_width = entry.full_width,
             fn_name = storefront_render_fn_name(&entry.slug),
         ));
         for component in &entry.components {

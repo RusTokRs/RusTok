@@ -114,7 +114,7 @@ fn StorefrontModulePageContent(locale: String, route_segment: String) -> impl In
     let enabled_modules = use_enabled_modules().get_untracked();
     let body = match page_for_route_segment(route_segment.as_str(), Some(&enabled_modules)) {
         StorefrontPageLookup::Found(page) => {
-            if page.module_slug == "messenger" || route_segment == "messages" {
+            if page.full_width {
                 view! {
                     <main class="w-full px-2 sm:px-6 py-4">
                         {(page.render)()}

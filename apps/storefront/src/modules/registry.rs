@@ -30,6 +30,7 @@ pub struct StorefrontPageRegistration {
     pub module_slug: &'static str,
     pub route_segment: &'static str,
     pub title: &'static str,
+    pub full_width: bool,
     pub render: fn() -> AnyView,
 }
 
@@ -135,6 +136,7 @@ mod tests {
             module_slug: "blog",
             route_segment: "blog",
             title: "Blog",
+            full_width: false,
             render: render_stub,
         });
 

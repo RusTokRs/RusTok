@@ -41,6 +41,7 @@ leptos_crate = "rustok-messenger-storefront"
 slot = "home_before_footer"
 route_segment = "messages"
 page_title = "Messenger"
+full_width = true
 
 [[provides.storefront_ui.components]]
 id = "messenger-floating-widget"

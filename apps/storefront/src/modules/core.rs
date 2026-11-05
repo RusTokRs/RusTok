@@ -24,6 +24,7 @@ pub fn register_components() {
         module_slug: "pages",
         route_segment: PAGES_AUTHORING_ROUTE_SEGMENT,
         title: "Pages inline editor",
+        full_width: false,
         render: pages_authoring_surface,
     });
 }
