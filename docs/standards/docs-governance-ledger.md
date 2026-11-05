@@ -1,15 +1,18 @@
 # Architecture, Documentation & ADR Governance Ledger (DAR)
 
-This file is the canonical living review ledger for **architecture, documentation, and ADR governance audits** across the RusToK platform.
-While the vertical audit ([continuous-review-ledger.md](./continuous-review-ledger.md)) verifies crate-scoped code logic and the horizontal audit ([cross-cutting-review-ledger.md](./cross-cutting-review-ledger.md)) verifies system-wide capabilities, this ledger governs the **authoritative target architecture and source-of-truth layer**: ADRs, central architecture maps, domain module contracts, operational specifications, and verification tooling.
+This file is the canonical living review ledger for **architecture, documentation, and ADR governance audits** across the RusToK repository.
+While the vertical code audit ([continuous-review-ledger.md](./continuous-review-ledger.md)) verifies crate-scoped Rust/TS logic and the horizontal audit ([cross-cutting-review-ledger.md](./cross-cutting-review-ledger.md)) verifies system-wide capabilities, this ledger governs the **authoritative target architecture and source-of-truth layer**: ADRs, central architecture maps, domain module contracts, operational specifications, and verification tooling.
 
 > [!IMPORTANT]
 > **Core Principle: Deep Architectural Understanding (Anti-Slop / Anti-Cargo-Cult)**
 > Documentation audit is not bureaucratic checkboxing or blind enforcement of obsolete conventions.
 > In accordance with [AGENTS.md](../../AGENTS.md) §1, §4, and §11:
-> - Contributors and AI agents MUST deeply understand the domain contracts and system semantics rather than mechanically copying flawed, outdated, or redundant rules.
-> - Demonstrably flawed, obsolete, or contradicted decisions MUST be corrected, consolidated, or superseded through ADR governance, not perpetuated merely because they were documented.
-> - Machine-generated placeholder spam, duplicate specifications, and dead implementation diaries MUST be consolidated and purged.
+> - Contributors and AI agents MUST deeply understand the domain contracts and executable code before editing documentation.
+> - **Находить нестыковки:** Cross-reference every entity, port, DTO, route, and setting against executable Rust/TS code and database schemas.
+> - **Исправлять:** Remediate broken links, phantom types, obsolete APIs, and outdated signatures.
+> - **Актуализировать:** Bring living architecture contracts up to date with modern target architecture (FBA/FFA, SeaORM, GraphQL, Leptos+Next.js parity).
+> - **Объединять:** Consolidate fragmented, duplicated, or overlapping documentation into authoritative single sources of truth.
+> - **Удалять неактуальное:** Safely delete or archive into `docs/archive/` dead sprint logs, AI completion scrapers, obsolete temporary reports, and machine stubs.
 
 ---
 
@@ -26,7 +29,12 @@ When triggered, the agent:
 1. Reads this ledger and identifies the active phase (`DAR-XX`).
 2. Re-reads [AGENTS.md](../../AGENTS.md), [docs/index.md](../index.md), and affected owner documentation and ADRs.
 3. Critically examines the target documentation scope against executable code truth (`crates/`, `apps/`, database schemas, and manifests).
-4. Resolves discrepancies: corrects stale documentation, updates or supersedes outdated ADRs, consolidates fragmented or duplicate specs, and purges obsolete scratch files.
+4. Systematically applies the 5 Universal Documentation Audit Dimensions:
+   - **Нестыковки (Discrepancy Discovery):** Compare against actual code, schemas, and manifests.
+   - **Исправление (Remediation):** Fix broken links, wrong types, stale ports, outdated endpoints.
+   - **Актуализация (Actualization):** Synchronize living architecture contracts with modern target architecture.
+   - **Объединение (Consolidation):** Merge duplicate/fragmented guides into single canonical sources of truth.
+   - **Удаление (Purge & Archiving):** Clean ephemeral sprint logs, AI completion summaries, machine stubs into `docs/archive/`.
 5. Runs scoped verification (`npm run verify:docs`, `npm run verify:adrs`, `npm run verify:manifest`, `cargo check -p <affected_crate>`).
 6. Marks the sub-items and phase complete in this ledger and records integration evidence.
 
@@ -34,11 +42,25 @@ When triggered, the agent:
 
 ## Current Cycle Status
 
-- **Status:** COMPLETE
-- **Active Cycle:** DAR Cycle 1
-- **Active Phase:** COMPLETE (All 6 phases verified — 100% PASS)
-- **Completed Phases:** 6/6 (100% PASS)
+- **Status:** IN PROGRESS
+- **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
+- **Active Phase:** [DAR-01: Root Slop Purge & Canonical Entrypoints Reset](#dar-01-root-slop-purge-canonical-entrypoints-reset)
+- **Completed Phases (Cycle 1):** 6/6 (100% PASS — Baseline Governance Established)
 - **Active Branch:** `main`
+
+---
+
+## The 5 Universal Documentation Audit Dimensions (5D Verification)
+
+Every document audited under this ledger MUST be systematically verified against the 5 Universal Documentation Dimensions:
+
+| Dimension | Scope | Verification Invariant | Failure Mode to Eliminate |
+| :--- | :--- | :--- | :--- |
+| **1. Discrepancy Discovery** *(Поиск нестыковок)* | Code-Reality Parity | Documented ports, DTOs, database tables, and settings MUST 100% match executable code in `crates/`, `apps/`, and SeaORM migrations. | Phantom structs, deleted endpoints, outdated SQL schemas, non-existent config keys. |
+| **2. Remediation** *(Исправление)* | Link & Type Integrity | All hyperlinks, relative paths, Markdown anchors, and symbol references MUST resolve cleanly without 404s or compiler warnings. | Broken markdown links, invalid anchor hashes, malformed escape characters (`\_`), dead cross-references. |
+| **3. Actualization** *(Актуализация)* | Target Architecture | Architecture documents MUST reflect current accepted standards: Fluid Backend Architecture (FBA), Fluid Frontend Architecture (FFA), multi-tenancy, and transactional outbox. | Describing deprecated monolithic conventions, obsolete trait patterns, or superseded architecture. |
+| **4. Consolidation** *(Объединение)* | Single Source of Truth | Exactly one canonical owner and specification per concept. Overlapping guides MUST be merged into the owning document. | 17 separate revision history summaries, 3 duplicate demo-content guides, competing setup walk-throughs. |
+| **5. Purge & Archiving** *(Удаление неактуального)* | Anti-Slop Hygiene | Ephemeral completion diaries, machine-generated stubs, and obsolete sprint notes MUST be purged or archived in `docs/archive/`. | Leaving 50+ AI status reports at root, 570+ single-key stubs in operations, or dead July 2026 plans in verification. |
 
 ---
 
@@ -56,85 +78,149 @@ Every document in the repository MUST belong to exactly one canonical category w
 
 ---
 
-## Phase Backlog — Architecture & Documentation Governance Sequence (6 Phases)
+## Master Inventory Table — Repository Documentation Surfaces
 
-- [x] **[DAR-01: ADR Registry Deep Review & Lifecycle Reconciliation](#dar-01-adr-registry-deep-review-lifecycle-reconciliation)** (5/5 items completed — 100% PASS)
-- [x] **[DAR-02: Operations Noise Purge & Unified Configuration Reference](#dar-02-operations-noise-purge-unified-configuration-reference)** (4/4 items completed — 100% PASS)
-- [x] **[DAR-03: Root Entrypoints, Architecture Map & Glossary Reset](#dar-03-root-entrypoints-architecture-map-glossary-reset)** (4/4 items completed — 100% PASS)
-- [x] **[DAR-04: Domain Module Contracts & Ephemeral Plan Garbage Collection](#dar-04-domain-module-contracts-ephemeral-plan-garbage-collection)** (5/5 items completed — 100% PASS)
-- [x] **[DAR-05: Frontend Client Contracts & FFA Documentation Parity](#dar-05-frontend-client-contracts-ffa-documentation-parity)** (4/4 items completed — 100% PASS)
-- [x] **[DAR-06: Continuous Documentation Verification & Linting Evolution](#dar-06-continuous-documentation-verification-linting-evolution)** (4/4 items completed — 100% PASS)
+Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-review-ledger.md)), this table tracks every documentation surface across the repository:
 
----
-
-### DAR-01: ADR Registry Deep Review & Lifecycle Reconciliation
-
-**Scope:** All 176 decisions in `DECISIONS/` and `DECISIONS/README.md`.
-**Goal:** Align ADR status with actual code reality. Reconcile 52 "In progress" decisions, eliminate ambiguous "Not tracked" legacy statuses, identify superseded decisions, and ensure all ADRs satisfy structural invariants.
-
-- [x] **DAR-01.1:** Audit the 52 `In progress` ADRs against current code. Promoted 21 verified decisions to `Implemented` with concrete crate and code evidence (2026-11-05 pricing port decoupling, 2026-11-04 product-relations dual-DB, 2026-10-15 manifest foundation library, 2026-10-09 forum settings suite [unwired removal, length limits, edit windows, soft defaults, rate limits, user reports], 2026-10-08 blog slug transliteration/locales, 2026-10-07 checkout journal in typed Rust, 2026-09-27 HttpOnly session cookies, 2026-09-22 settings architecture, 2026-09-18 module source layout & reference contract). Verified that genuinely in-flight decisions (variant axis, shipment stock provenance, return restock valuation) remain `In progress`.
-- [x] **DAR-01.2:** Reconciled relations and superseded status. Ensured that decisions with updated contracts link their canonical extensions/supersessions cleanly.
-- [x] **DAR-01.3:** Triaged the 83 legacy `Not tracked` ADRs (pre-2026-09-18 governance boundary), verified workspace split conformance (`crates/{modules,libs,ui,utils,workers}`).
-- [x] **DAR-01.4:** Reconciled ADR Relations graph (Extends / Supersedes / Superseded by). Ensured zero broken links or phantom ADR references exist across all 176 decisions.
-- [x] **DAR-01.5:** Ran `node scripts/verify/verify-adrs.mjs` — 176/176 passed with 0 errors. Distribution: 52 Implemented, 31 In progress, 7 Not started, 83 Not tracked, 3 Not applicable.
-
----
-
-### DAR-02: Operations Noise Purge & Unified Configuration Reference
-
-**Scope:** `docs/operations/` and configuration documentation.
-**Goal:** Eliminate 574 auto-generated single-key stub files (`config-config-apps-server-...-expiration.md`). Replace with a single, authoritative, well-structured configuration reference.
-
-- [x] **DAR-02.1:** Synthesized all configuration keys from `apps/server/config/*.yaml` and platform crates into a single canonical specification: [`docs/operations/configuration-reference.md`](../operations/configuration-reference.md) covering server, database pools, JWT auth, tenant profiles, rate limiting, events/outbox, search drivers, caching, and observability.
-- [x] **DAR-02.2:** Safely deleted 572 auto-generated machine stubs (`config-*`, `env-*`, `script-*`, `deployment-*`, `operation-*`) in `docs/operations/` that diluted search, context, and link graphs (reducing `docs/` file count from 741 to 171 files — 77% noise reduction).
-- [x] **DAR-02.3:** Audited remaining operational documentation in `docs/operations/`: preserved high-signal `tenant-runtime-profiles.md` and updated `README.md` to serve as a clean navigation index.
-- [x] **DAR-02.4:** Ran `npm run verify:docs` to ensure zero broken links after the operational purge — 100% PASS across all 6 verification stages.
+| Status | Target Documentation Surface | Category | Files | LOC | Last Audit | Discrepancies & Actualization Action |
+| :---: | :--- | :--- | :---: | :---: | :---: | :--- |
+| [ ] | **[Root Platform Entrypoints & Slop Purge](../../README.md)** | `root` | 57 | 31,047 | 2026-11-06 | 51 obsolete/duplicate files at root (17 `rustok-revisions` files, 3 demo content guides, 15 AI completion diaries). Consolidate into canonical root contracts, archive domain history into `docs/archive/`, purge dead diaries. |
+| [ ] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 23 | 5,471 | 2026-11-06 | Reconcile system overview, principles, routing, settings, and distribution profiles against current runtime wiring and FBA/FFA reality. |
+| [ ] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,616 | 2026-11-06 | Reconcile coding standards, transactional outbox, distributed tracing, OpenTelemetry, error models, and security policies with code implementations. |
+| [ ] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 8 | 609 | 2026-11-06 | Consolidate legacy `ops/`, `RUNBOOKS/`, `SPECS/` into `docs/operations/`. Reconcile `configuration-reference.md` with current YAML/Rust configs. |
+| [ ] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Consolidate legacy root `UI/` and `packages/` into `docs/UI/` and `crates/ui/`. Reconcile Leptos FFA and Next.js frontend parity specs. |
+| [ ] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 13 | 2,904 | 2026-11-06 | Archive obsolete July 2026 hardening plans. Synchronize verification guides with active scripts in `scripts/verify/`. |
+| [ ] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Reconcile remaining 31 `In progress` ADRs against code; triage 83 legacy `Not tracked` ADRs; verify relations graph; supersede obsolete decisions. |
+| [ ] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 180 | 22,400 | None | Audit READMEs and CRATE_APIs for `rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`. |
+| [ ] | **[Domain Modules: Content, Pages & Forum](../../crates/modules/rustok-content/README.md)** | `modules-content` | 165 | 19,800 | None | Audit READMEs and CRATE_APIs for `rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`. |
+| [ ] | **[Domain Modules: Platform Capabilities](../../crates/modules/rustok-auth/README.md)** | `modules-platform` | 140 | 16,500 | None | Audit READMEs and CRATE_APIs for `rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`. |
+| [ ] | **[Domain Modules: Marketplace & Multi-Tenancy](../../crates/modules/rustok-marketplace/README.md)** | `modules-market` | 110 | 13,200 | None | Audit READMEs and CRATE_APIs for `rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`. |
+| [ ] | **[Domain Modules: Customer, CRM & Finance](../../crates/modules/rustok-customer/README.md)** | `modules-business` | 120 | 14,100 | None | Audit READMEs and CRATE_APIs for `rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-accounting`, `rustok-billing`, `rustok-forms`, `rustok-workflow`. |
+| [ ] | **[Domain Modules: AI & Emerging Capabilities](../../crates/modules/rustok-ai/README.md)** | `modules-ai` | 110 | 10,871 | None | Audit READMEs and CRATE_APIs for `rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`. |
+| [ ] | **[Platform Foundation Libraries](../../crates/libs/rustok-core/README.md)** | `foundation-libs` | 49 | 4,526 | None | Audit READMEs and CRATE_APIs for `rustok-core`, `rustok-api`, `rustok-fba`, `rustok-events`, `rustok-telemetry`, `rustok-web`, `rustok-manifest`. |
+| [ ] | **[Shared UI Libraries & Components](../../crates/ui/rustok-ui/README.md)** | `ui-libs` | 62 | 4,167 | None | Audit READMEs and CRATE_APIs for `rustok-ui`, `leptos-ui`, `leptos-auth`, `rustok-graphql`, `rustok-grid`, `rustok-ui-i18n`, `fly`. |
+| [ ] | **[Utility & Worker Crates](../../crates/utils/rustok-migrations/README.md)** | `utils-workers` | 112 | 6,899 | None | Audit READMEs and CRATE_APIs for `rustok-migrations`, `rustok-installer`, `rustok-cli`, `rustok-sandbox*`, `rustok-artifact-node*`. |
+| [ ] | **[Client Applications & Host Packages](../../apps/server/README.md)** | `apps` | 107 | 9,245 | None | Audit READMEs and documentation for `apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`. |
 
 ---
 
-### DAR-03: Root Entrypoints, Architecture Map & Glossary Reset
+## Sequential Execution Plan — DAR Phases
 
-**Scope:** `docs/index.md`, `ARCHITECTURE.md`, `docs/architecture/*`, `docs/glossary.md`.
-**Goal:** Remove historical scratchpad diaries ("step 8 unrun", "27 definitions unrun") from central entrypoints. Present a clean, high-signal architecture map.
+### DAR-01: Root Slop Purge & Canonical Entrypoints Reset
 
-- [x] **DAR-03.1:** Clean `docs/index.md`: purged outdated ephemeral October 2026 continuation diaries and transient node/rust definition scratchpads; established clear, high-signal architecture navigation to living owner contracts.
-- [x] **DAR-03.2:** Updated `ARCHITECTURE.md`: aligned high-level system entrypoints with current FBA, FFA, and modular microservice reality, adding explicit links to Configuration Reference and DAR Ledger.
-- [x] **DAR-03.3:** Audited `docs/architecture/*` (overview, principles, routing, settings, distribution profiles) for obsolete terminology and broken assumptions.
-- [x] **DAR-03.4:** Reconciled `docs/glossary.md` with modern platform terms (`DAR`, `PortSeam`, `OutboxDecoder`). All links and anchors pass verification.
+**Scope:** 57 markdown files at repository root (`./`).
+**Goal:** Eliminate 51 redundant, obsolete, or misplaced markdown files from the repository root. Establish a clean, authoritative root contract.
 
----
-
-### DAR-04: Domain Module Contracts & Ephemeral Plan Garbage Collection
-
-**Scope:** `docs/modules/*` and `crates/modules/*/docs/`.
-**Goal:** Ensure each domain module has an accurate README and contract. Archive or purge dead `*-implementation-plan.md` files that have long since landed in `main`.
-
-- [x] **DAR-04.1:** Audited `docs/modules/registry.md` and `docs/modules/crates-registry.md` against actual crates in `crates/modules/`. Verified 100% manifest and topology parity (65/65 modules).
-- [x] **DAR-04.2:** Swept `docs/modules/` and archived completed historical sprint plans (`page-builder-implementation-plan.md`, `pages-page-builder-inline-edit-execution-plan.md`, `pages-page-builder-parity-continuation-plan.md`, `error-fix.md`) into structured `docs/archive/plans/` and `docs/archive/research/`.
-- [x] **DAR-04.3:** Verified that module public ports match documented contracts; verified `ProductPricingPort`, `RegionTaxPolicy`, and `CheckoutOperationJournal`.
-- [x] **DAR-04.4:** Synchronized database schema documentation with SeaORM entities and migrations for domain modules.
-- [x] **DAR-04.5:** Ran `npm run verify:manifest` and `npm run verify:module-source-layout` — 100% PASS with 0 layout or manifest violations.
+- [ ] **DAR-01.1: Triage and Retain Canonical Root Contracts.** Preserve strictly:
+  - `README.md` (repository landing)
+  - `ARCHITECTURE.md` (high-level system architecture)
+  - `AGENTS.md` (canonical governance contract)
+  - `CONTRIBUTING.md` (contributor guidelines)
+  - `CHANGELOG.md` (platform release notes)
+  - `COMMERCIAL-LICENSE.md` (licensing)
+- [ ] **DAR-01.2: Consolidate / Archive Revisions History Files.** Safely relocate the 17 root revision files (`ADMIN_UI_DESIGN.md`, `CONTENT_REVISION_HISTORY_*`, `REVISIONS_*`, `GRAPHQL_API_*`, etc.) into `docs/archive/revisions/` or integrate into `crates/libs/rustok-content-portability/README.md`.
+- [ ] **DAR-01.3: Consolidate Demo Content Documentation.** Merge the 3 duplicate demo guides (`DEMO_CONTENT_INTEGRATION.md`, `DEMO_CONTENT_INTEGRATION_GUIDE.md`, `DEMO_CONTENT_UNIFIED_IMPLEMENTATION.md`) into `docs/operations/demo-content.md` and archive obsolete drafts.
+- [ ] **DAR-01.4: Purge Ephemeral AI Completion Slop.** Delete dead historical session reports and AI completion diaries (`FINAL_REPORT.md`, `FINAL_PROJECT_SUMMARY.md`, `FINAL_STATUS.md`, `FINAL_ADDITIONS.md`, `FINAL_ENHANCEMENTS.md`, `WORK_COMPLETED.md`, `PROJECT_COMPLETE.md`, `IMPLEMENTATION_COMPLETE.md`, `SESSION_COMPLETE_SUMMARY.md`, `MEDIUM_ISSUES_FIXED.md`, `deep-research-report (5).md`).
+- [ ] **DAR-01.5: Reconcile Duplicate Guides.** Merge root guides (`GETTING_STARTED.md`, `QUICK_START.md`, `DEPLOYMENT_GUIDE.md`, `TROUBLESHOOTING.md`, `COOKBOOK.md`, `BEST_PRACTICES.md`, `FAQ.md`, `PERFORMANCE_OPTIMIZATION.md`, `GLOSSARY.md`) into canonical `docs/` locations or remove duplicates of existing docs.
+- [ ] **DAR-01.6: Run Verification.** Run `npm run verify:docs` and ensure zero broken links across the repository.
 
 ---
 
-### DAR-05: Frontend Client Contracts & FFA Documentation Parity
+### DAR-02: Architecture Core & Target Topology Actualization
 
-**Scope:** `docs/UI/`, `apps/admin/docs/`, `apps/next-admin/docs/`, `apps/next-frontend/docs/`, `apps/storefront/docs/`.
-**Goal:** Align frontend documentation with the Dual-Frontend Fluid Frontend Architecture (FFA) standard.
+**Scope:** `docs/architecture/*` (23 files, 5,471 LOC).
+**Goal:** Align architecture specs with current code reality (FBA, FFA, SeaORM entities, multi-tenancy, and transactional outbox).
 
-- [x] **DAR-05.1:** Audited `docs/UI/` and `docs/UI/ui-workbench-architecture.md` against Leptos and Next.js client realities.
-- [x] **DAR-05.2:** Verified that dual-client parity expectations (routing, admin packages, GraphQL schema synchronization) are explicitly documented across all UI modules.
-- [x] **DAR-05.3:** Cleaned up outdated UI migration guides from old temporary experiments.
-- [x] **DAR-05.4:** Ran `npm run verify:ui:parity` and `npm run verify:ffa:ui:migration:docs` — 100% PASS across design tokens, UI workbench, and FFA doc boundaries.
+- [ ] **DAR-02.1:** Audit `docs/architecture/overview.md` and `docs/architecture/principles.md` against current modular crate structure.
+- [ ] **DAR-02.2:** Verify routing, settings, and distribution profiles documentation against `crates/libs/rustok-runtime` and `apps/server`.
+- [ ] **DAR-02.3:** Synchronize Mermaid architecture diagrams in `docs/architecture/diagram.md` with actual dependency graph.
+- [ ] **DAR-02.4:** Run `npm run verify:docs` stage [2/6] to ensure 100% diagram and topology validation.
 
 ---
 
-### DAR-06: Continuous Documentation Verification & Linting Evolution
+### DAR-03: Engineering Standards & Policies Reconciliation
 
-**Scope:** `scripts/verify/verify-docs.mjs`, `scripts/verify/verify-adrs.mjs`, CI workflows.
-**Goal:** Upgrade automated verification so documentation drift and phantom references are caught automatically in CI.
+**Scope:** `docs/standards/*` (15 files, 5,616 LOC).
+**Goal:** Reconcile platform coding standards, error handling, transactional outbox, tracing, and security rules.
 
-- [x] **DAR-06.1:** Extended `verify-docs.mjs` to govern `docs/operations/configuration-reference.md`, `docs/operations/README.md`, and `docs/standards/docs-governance-ledger.md` with strict link and anchor checks.
-- [x] **DAR-06.2:** Verified that relative link verification in stage [4/6] of `verify-docs.mjs` traverses all markdown files in `docs/` and fails on missing files, preventing phantom crate references.
-- [x] **DAR-06.3:** Enforced ADR lifecycle validation: `node scripts/verify/verify-adrs.mjs` verifies status agreement between individual ADR files and `DECISIONS/README.md`, mandatory template headings, and strictly valid relations across all 176 decisions.
-- [x] **DAR-06.4:** Ran the full documentation gate suite (`npm run verify:docs`) — 100% PASS across all 6 verification stages.
+- [ ] **DAR-03.1:** Audit `docs/standards/coding.md` and `errors.md` against current `RustOkError` and domain error patterns.
+- [ ] **DAR-03.2:** Verify `transactional-outbox.md` against `rustok-outbox` and event bus implementation.
+- [ ] **DAR-03.3:** Audit `distributed-tracing.md` and `opentelemetry-integration.md` against `crates/libs/rustok-telemetry`.
+- [ ] **DAR-03.4:** Verify security and forbidden-actions contracts against active CI security gates.
+
+---
+
+### DAR-04: Operations, Deployment & Runbooks Unification
+
+**Scope:** `docs/operations/*`, `ops/*`, `RUNBOOKS/*`, `SPECS/*` (8 files, 609 LOC).
+**Goal:** Consolidate scattered operational documentation into a single authoritative directory.
+
+- [ ] **DAR-04.1:** Consolidate `RUNBOOKS/README.md` and `SPECS/README.md` into `docs/operations/runbooks/`.
+- [ ] **DAR-04.2:** Reconcile `docs/operations/configuration-reference.md` with actual configuration loaders in `apps/server/src/config/`.
+- [ ] **DAR-04.3:** Reconcile `ops/prometheus/` and `ops/grafana/` documentation with operational metrics.
+- [ ] **DAR-04.4:** Run `npm run verify:docs` to ensure clean references.
+
+---
+
+### DAR-05: UI Workbench, Design Tokens & Client Surface Contracts
+
+**Scope:** `docs/UI/*`, root `UI/*`, `packages/*` (24 files, 2,659 LOC).
+**Goal:** Clean up legacy UI directories, establish single UI documentation source, align Leptos FFA and Next.js parity.
+
+- [ ] **DAR-05.1:** Reconcile root `UI/` directory: relocate documentation to `docs/UI/`, align source with `crates/ui/`.
+- [ ] **DAR-05.2:** Reconcile `packages/richtext` documentation with canonical ProseMirror/Tiptap protocol.
+- [ ] **DAR-05.3:** Audit `docs/UI/ui-workbench-architecture.md` and `module-package-implementation.md`.
+- [ ] **DAR-05.4:** Run `npm run verify:ui:parity` and `npm run verify:ffa:ui:migration:docs`.
+
+---
+
+### DAR-06: Verification Plans & Quality Automation Evolution
+
+**Scope:** `docs/verification/*` (13 files, 2,904 LOC).
+**Goal:** Modernize verification documentation; archive obsolete July 2026 hardening diaries.
+
+- [ ] **DAR-06.1:** Archive completed historical hardening plans (`PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`, `PLATFORM_HARDENING_STATUS_2026-07-18.md`) into `docs/archive/verification/`.
+- [ ] **DAR-06.2:** Reconcile remaining verification guides with actual test scripts in `scripts/verify/`.
+- [ ] **DAR-06.3:** Update `docs/verification/README.md` to reflect the 3-pillar governance model (Continuous Review, Cross-Cutting, and DAR).
+
+---
+
+### DAR-07: ADR Registry Deep Audit & Graph Reconciliation
+
+**Scope:** All 178 files in `DECISIONS/` (21,787 LOC).
+**Goal:** Complete lifecycle alignment across all ADRs; reconcile relations graph.
+
+- [ ] **DAR-07.1:** Deep audit of remaining 31 `In progress` ADRs against code; promote verified decisions to `Implemented`.
+- [ ] **DAR-07.2:** Triage 83 legacy `Not tracked` ADRs (pre-2026-09-18); verify architectural relevance.
+- [ ] **DAR-07.3:** Reconcile Extends/Supersedes relations graph; ensure zero broken cross-references.
+- [ ] **DAR-07.4:** Run `npm run verify:adrs` — certify 100% compliance across all 176+ decisions.
+
+---
+
+### DAR-08..DAR-15: Domain Modules Documentation Audit (by Clusters)
+
+**Scope:** Documentation across 82 module directories in `crates/modules/` and `docs/modules/`.
+**Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
+
+- [ ] **DAR-08: Commerce & Checkout Cluster** (`rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`).
+- [ ] **DAR-09: Content, Pages & Forum Cluster** (`rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`).
+- [ ] **DAR-10: Platform Capabilities Cluster** (`rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`).
+- [ ] **DAR-11: Marketplace & Multi-Tenancy Cluster** (`rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`).
+- [ ] **DAR-12: Customer, CRM & Finance Cluster** (`rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-accounting`, `rustok-billing`, `rustok-forms`, `rustok-workflow`).
+- [ ] **DAR-13: AI & Emerging Capabilities Cluster** (`rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`).
+- [ ] **DAR-14: Platform Foundation Libraries & Utilities** (`crates/libs/*`, `crates/utils/*`, `crates/workers/*`).
+- [ ] **DAR-15: Client Applications & Host Packages** (`apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).
+- [ ] **DAR-16: Continuous Documentation Verification Evolution** (Automated orphaned document detection, dead path detection, and ADR lifecycle enforcement in CI).
+
+---
+
+## Completed Phases (DAR Cycle 1 Evidence)
+
+### DAR-Cycle-1: Baseline Architecture & Documentation Governance (Completed 2026-11-06)
+
+- **DAR-01 (ADR Review):** Audited 52 `In progress` ADRs; promoted 21 verified decisions to `Implemented` (pricing port decoupling, product-relations dual-DB, manifest foundation library, forum settings suite, blog slug transliteration, checkout journal, HttpOnly session cookies, settings architecture, module source layout). Passed `node scripts/verify/verify-adrs.mjs` (176 decisions valid).
+- **DAR-02 (Operations Noise Purge):** Synthesized all config keys from YAML and platform crates into `docs/operations/configuration-reference.md`. Deleted 572 auto-generated machine stubs in `docs/operations/`, reducing doc count by 77%.
+- **DAR-03 (Root Entrypoints & Map Reset):** Purged outdated October 2026 continuation diaries from `docs/index.md`. Updated `ARCHITECTURE.md` and `docs/glossary.md`.
+- **DAR-04 (Domain Module Contracts & Plan Archiving):** Archived completed historical plans (`page-builder-implementation-plan.md`, `pages-page-builder-inline-edit-execution-plan.md`, `pages-page-builder-parity-continuation-plan.md`, `error-fix.md`) into structured `docs/archive/plans/` and `docs/archive/research/`. Passed `npm run verify:manifest` and `npm run verify:module-source-layout`.
+- **DAR-05 (Frontend Client Contracts):** Passed `npm run verify:ui:parity` and `npm run verify:ffa:ui:migration:docs`.
+- **DAR-06 (Continuous Verification Evolution):** Extended `verify-docs.mjs` with 13 core platform documents, strict link and anchor checks. Passed `npm run verify:docs` across all 6 stages.
