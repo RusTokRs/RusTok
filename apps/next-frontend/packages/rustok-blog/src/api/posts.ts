@@ -152,7 +152,7 @@ export interface BlogPublicComment {
 
 export interface BlogPostDetail extends BlogPostSummary {
   effectiveLocale: string;
-  version?: number;
+  version: number;
   seoTitle: string | null;
   seoDescription: string | null;
   updatedAt: string;

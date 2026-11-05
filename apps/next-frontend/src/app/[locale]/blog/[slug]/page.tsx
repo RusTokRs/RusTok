@@ -161,7 +161,6 @@ export default async function BlogPostPage({
     <BlogPostDetailView
       post={post}
       locale={locale}
-      isRu={isRu}
       slug={slug}
       tenantSlug={tenantSlug}
       tenantId={tenantId}

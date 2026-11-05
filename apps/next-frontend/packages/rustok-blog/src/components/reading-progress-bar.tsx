@@ -1,3 +1,5 @@
+'use client';
+import { Button } from '@/shared/ui/base/button';
 /*
  * Copyright (c) 2026 RusTokRs.
  *
@@ -8,19 +10,19 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-'use client';
 
+
+import { useTranslations } from '@rustok/next-fluent';
 import React, { useEffect, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 
 export function ReadingProgressBar({
-  locale = 'en',
 }: {
   locale?: string;
 }): React.JSX.Element {
+  const t = useTranslations('Blog');
   const [progress, setProgress] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const isRu = locale === 'ru';
 
   useEffect(() => {
     function handleScroll() {
@@ -75,15 +77,15 @@ export function ReadingProgressBar({
 
       {/* Floating Scroll To Top Button */}
       {showScrollTop && (
-        <button
+        <Button
           type="button"
           onClick={scrollToTop}
-          aria-label={isRu ? 'Наверх страницы' : 'Scroll to top'}
-          title={isRu ? 'Наверх страницы' : 'Scroll to top'}
+          aria-label={t('article.scrollTop')}
+          title={t('article.scrollTop')}
           className="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-200"
         >
           <ArrowUp className="h-5 w-5" />
-        </button>
+        </Button>
       )}
     </>
   );

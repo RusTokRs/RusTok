@@ -50,6 +50,8 @@ interface UseDataTableProps<TData extends RowData = any>
     >,
     Required<Pick<TableOptions<StockFeatures, TData>, 'pageCount'>> {
   columns: ColumnDef<StockFeatures, TData, any>[];
+  /** The supplied collection is complete and the canonical grid owns its page slice. */
+  clientPagination?: boolean;
   initialState?: Omit<Partial<TableState<StockFeatures>>, 'sorting'> & {
     sorting?: ExtendedColumnSort<TData>[];
   };
@@ -68,6 +70,7 @@ export function useDataTable<TData extends RowData = any>(
 ) {
   const {
     columns,
+    clientPagination = false,
     pageCount = -1,
     initialState,
     history = 'replace',
@@ -292,7 +295,7 @@ export function useDataTable<TData extends RowData = any>(
     onSortingChange,
     onColumnFiltersChange,
     onColumnVisibilityChange: setColumnVisibility,
-    manualPagination: true,
+    manualPagination: !clientPagination,
     manualSorting: true,
     manualFiltering: true
   });

@@ -4,19 +4,9 @@ pub fn calculate_reading_time(plain_text: &str) -> u32 {
     (minutes as u32).max(1)
 }
 
+/// Format through the canonical catalog, including locale-specific plural rules.
 pub fn format_reading_time(minutes: u32, locale: Option<&str>) -> String {
-    if locale.is_some_and(|l| l.starts_with("ru")) {
-        let mod10 = minutes % 10;
-        let mod100 = minutes % 100;
-        let suffix = if mod10 == 1 && mod100 != 11 {
-            "минута"
-        } else if (2..=4).contains(&mod10) && !(10..=20).contains(&mod100) {
-            "минуты"
-        } else {
-            "минут"
-        };
-        format!("{minutes} {suffix} чтения")
-    } else {
-        format!("{minutes} min read")
-    }
+    let mut args = rustok_ui_i18n::FluentArgs::new();
+    args.set("minutes", minutes as f64);
+    crate::i18n::format(locale, "blog.readingTime", Some(&args), "")
 }

@@ -64,7 +64,7 @@ pub fn blog_post_admin_table_row_view(
 ) -> BlogPostAdminTableRowViewModel {
     let post_id = post.id;
     let is_editing = is_editing_post(editing_post_id, post_id.as_str());
-    let is_busy = row_is_busy_for_post(busy_key, post_id.as_str());
+    let is_busy = busy_key.is_some();
     let is_published = is_published_status(post.status.as_str());
     let is_archived = is_archived_status(post.status.as_str());
     let show_publish_action = should_show_publish_action(is_archived);
@@ -847,108 +847,25 @@ pub fn submit_action_label(
     }
 }
 
-pub fn blog_post_grid_columns(locale: Option<&str>) -> Vec<GridColumnDef> {
-    let is_ru = locale.map(|l| l.starts_with("ru")).unwrap_or(false);
+/// Column responsibility stays in core; the host supplies catalog-resolved copy.
+pub fn blog_post_grid_columns(label: impl Fn(&str, &str) -> String) -> Vec<GridColumnDef> {
+    let text_column = |id: &str, key: &str, fallback: &str, width| {
+        GridColumnDef::new(id, label(&format!("blog.grid.{key}"), fallback))
+            .min_width(width)
+            .align(ColumnAlign::Left)
+            .filter(GridFilterType::Text {
+                placeholder: Some(label("blog.grid.filter", "Filter...")),
+            })
+    };
     vec![
-        GridColumnDef::new("title", if is_ru { "Заголовок" } else { "Title" })
-            .min_width(260)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр заголовка..."
-                    } else {
-                        "Filter title..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new("slug", if is_ru { "Слаг" } else { "Slug" })
-            .min_width(160)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр слага..."
-                    } else {
-                        "Filter slug..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new("status", if is_ru { "Статус" } else { "Status" })
-            .min_width(120)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр статуса..."
-                    } else {
-                        "Filter status..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new("locale", if is_ru { "Язык" } else { "Locale" })
-            .min_width(100)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр языка..."
-                    } else {
-                        "Filter locale..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new("author", if is_ru { "Автор" } else { "Author" })
-            .min_width(140)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр автора..."
-                    } else {
-                        "Filter author..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new("createdAt", if is_ru { "Создан" } else { "Created" })
-            .min_width(110)
-            .align(ColumnAlign::Left)
-            .filter(GridFilterType::Text {
-                placeholder: Some(
-                    if is_ru {
-                        "Фильтр даты..."
-                    } else {
-                        "Filter date..."
-                    }
-                    .into(),
-                ),
-            }),
-        GridColumnDef::new(
-            "publishedAt",
-            if is_ru {
-                "Опубликован"
-            } else {
-                "Published"
-            },
-        )
-        .min_width(110)
-        .align(ColumnAlign::Left)
-        .filter(GridFilterType::Text {
-            placeholder: Some(
-                if is_ru {
-                    "Фильтр даты..."
-                } else {
-                    "Filter date..."
-                }
-                .into(),
-            ),
-        }),
-        GridColumnDef::new("actions", if is_ru { "Действия" } else { "Actions" })
+        text_column("title", "title", "Title", 260),
+        text_column("slug", "slug", "Slug", 160),
+        text_column("status", "status", "Status", 120),
+        text_column("locale", "locale", "Locale", 100),
+        text_column("author", "author", "Author", 140),
+        text_column("createdAt", "created", "Created", 110),
+        text_column("publishedAt", "published", "Published", 110),
+        GridColumnDef::new("actions", label("blog.grid.actions", "Actions"))
             .width(260)
             .not_sortable()
             .align(ColumnAlign::Right),
@@ -962,67 +879,39 @@ pub fn matches_blog_post_filter(
     for (col_id, filter_val) in filters.iter() {
         match (col_id.as_str(), filter_val) {
             ("title", FilterValue::Text(q)) => {
-                if !row
-                    .title
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                    && !row
-                        .excerpt
-                        .to_ascii_lowercase()
-                        .contains(&q.to_ascii_lowercase())
+                if !row.title.to_lowercase().contains(&q.to_lowercase())
+                    && !row.excerpt.to_lowercase().contains(&q.to_lowercase())
                 {
                     return false;
                 }
             }
             ("slug", FilterValue::Text(q)) => {
-                if !row
-                    .slug
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
+                if !row.slug.to_lowercase().contains(&q.to_lowercase()) {
                     return false;
                 }
             }
             ("status", FilterValue::Text(q)) => {
-                if !row
-                    .status
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
+                if !row.status.to_lowercase().contains(&q.to_lowercase()) {
                     return false;
                 }
             }
             ("locale", FilterValue::Text(q))
-                if !row
-                    .locale
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase()) =>
+                if !row.locale.to_lowercase().contains(&q.to_lowercase()) =>
             {
                 return false;
             }
             ("author", FilterValue::Text(q)) => {
-                if !row
-                    .author
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
+                if !row.author.to_lowercase().contains(&q.to_lowercase()) {
                     return false;
                 }
             }
             ("createdAt", FilterValue::Text(q)) => {
-                if !row
-                    .created_at
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase())
-                {
+                if !row.created_at.to_lowercase().contains(&q.to_lowercase()) {
                     return false;
                 }
             }
             ("publishedAt", FilterValue::Text(q))
-                if !row
-                    .published_at
-                    .to_ascii_lowercase()
-                    .contains(&q.to_ascii_lowercase()) =>
+                if !row.published_at.to_lowercase().contains(&q.to_lowercase()) =>
             {
                 return false;
             }
@@ -1040,16 +929,16 @@ pub fn filter_blog_posts(
     rows.iter()
         .filter(|row| {
             if let Some(q) = search {
-                let term = q.trim().to_ascii_lowercase();
+                let term = q.trim().to_lowercase();
                 if !term.is_empty()
-                    && !row.title.to_ascii_lowercase().contains(&term)
-                    && !row.slug.to_ascii_lowercase().contains(&term)
-                    && !row.excerpt.to_ascii_lowercase().contains(&term)
-                    && !row.status.to_ascii_lowercase().contains(&term)
-                    && !row.locale.to_ascii_lowercase().contains(&term)
-                    && !row.author.to_ascii_lowercase().contains(&term)
-                    && !row.created_at.to_ascii_lowercase().contains(&term)
-                    && !row.published_at.to_ascii_lowercase().contains(&term)
+                    && !row.title.to_lowercase().contains(&term)
+                    && !row.slug.to_lowercase().contains(&term)
+                    && !row.excerpt.to_lowercase().contains(&term)
+                    && !row.status.to_lowercase().contains(&term)
+                    && !row.locale.to_lowercase().contains(&term)
+                    && !row.author.to_lowercase().contains(&term)
+                    && !row.created_at.to_lowercase().contains(&term)
+                    && !row.published_at.to_lowercase().contains(&term)
                 {
                     return false;
                 }
@@ -1058,4 +947,21 @@ pub fn filter_blog_posts(
         })
         .cloned()
         .collect()
+}
+
+/// Parse adapter input without introducing sorting policy into the render layer.
+pub fn sort_field_change(token: &str, order: BlogPostSortOrder) -> Option<BlogPostAdminSort> {
+    BlogPostSortField::from_graphql(token).map(|field| {
+        BlogPostAdminSort::default()
+            .with_field(field)
+            .with_order(order)
+    })
+}
+
+pub fn sort_order_change(token: &str, field: BlogPostSortField) -> Option<BlogPostAdminSort> {
+    BlogPostSortOrder::from_graphql(token).map(|order| {
+        BlogPostAdminSort::default()
+            .with_field(field)
+            .with_order(order)
+    })
 }

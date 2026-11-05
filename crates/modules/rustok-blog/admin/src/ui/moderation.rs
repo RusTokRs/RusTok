@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui::{Button, ButtonVariant, Size};
 use leptos_ui_routing::use_route_query_value;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use uuid::Uuid;
@@ -235,22 +236,20 @@ fn ModerationQueue(
                 })
                 .collect_view()}
             <div class="flex items-center justify-end gap-2 pt-2">
-                <button
-                    type="button"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=!can_previous
-                    on:click=move |_| on_previous.run(())
+                    on_click=Box::new(move || on_previous.run(()))
                 >
                     {t(locale.as_deref(), "blog.moderation.previous", "Previous")}
-                </button>
-                <button
-                    type="button"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                </Button>
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=!can_next
-                    on:click=move |_| on_next.run(())
+                    on_click=Box::new(move || on_next.run(()))
                 >
                     {t(locale.as_deref(), "blog.moderation.next", "Next")}
-                </button>
+                </Button>
             </div>
         </div>
     }
@@ -289,30 +288,27 @@ fn ModerationCommentCard(
                 {comment.content_preview}
             </p>
             <div class="mt-4 flex flex-wrap gap-2">
-                <button
-                    type="button"
-                    class="rounded-lg border border-emerald-500/40 px-3 py-1.5 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:text-emerald-300"
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=is_busy
-                    on:click=move |_| on_moderate.run((approve_id.clone(), BlogModerationStatus::Approved))
+                    on_click=Box::new(move || on_moderate.run((approve_id.clone(), BlogModerationStatus::Approved)))
                 >
                     {t(locale.as_deref(), "blog.moderation.approve", "Approve")}
-                </button>
-                <button
-                    type="button"
-                    class="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-50 dark:text-amber-300"
+                </Button>
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=is_busy
-                    on:click=move |_| on_moderate.run((spam_id.clone(), BlogModerationStatus::Spam))
+                    on_click=Box::new(move || on_moderate.run((spam_id.clone(), BlogModerationStatus::Spam)))
                 >
                     {t(locale.as_deref(), "blog.moderation.spam", "Mark spam")}
-                </button>
-                <button
-                    type="button"
-                    class="rounded-lg border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive disabled:opacity-50"
+                </Button>
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=is_busy
-                    on:click=move |_| on_moderate.run((trash_id.clone(), BlogModerationStatus::Trash))
+                    on_click=Box::new(move || on_moderate.run((trash_id.clone(), BlogModerationStatus::Trash)))
                 >
                     {t(locale.as_deref(), "blog.moderation.trash", "Move to trash")}
-                </button>
+                </Button>
             </div>
         </article>
     }

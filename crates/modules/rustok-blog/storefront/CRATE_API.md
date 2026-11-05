@@ -5,7 +5,8 @@
 ### UI Components
 - `BlogView`: Root storefront component rendering published blog posts and post details.
 - `BlogDraftPreview`: Storefront draft preview screen resolving unpublished drafts via token fragments or input.
-- `BlogCommentComposer`: Storefront comment composer island component.
+- `BlogDiscussion`: Storefront discussion island composing the Comments-owned reply editor, approved threaded comments and Reactions-owned controls. Exported with `comment-island`.
+- `BlogDiscussionProps`: Serializable exact SSR owner snapshot for that island, including positive post revision, content locale and UI locale.
 
 ### Feed Transports
 - `render_rss_feed`: Renders native RSS 2.0 feed xml for published posts.
@@ -16,6 +17,7 @@
 - Internationalization via `rustok-ui-i18n` with package-owned translations (`en`, `ru`).
 - Comments integration via `rustok-comments-storefront-support`.
 - Search integration via `rustok-search-storefront`.
+- Reactions integration via `rustok-reactions-storefront`; Blog supplies its exact producer revision and does not maintain a shadow counter.
 
 ## Domain Collaborations
 - Collaborates with `rustok-blog` domain services for post catalog queries.

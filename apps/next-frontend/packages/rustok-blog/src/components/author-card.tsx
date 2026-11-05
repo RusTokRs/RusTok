@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { getTranslations } from '@rustok/next-fluent/server';
 import React from 'react';
 import Link from 'next/link';
 import { User } from 'lucide-react';
@@ -48,15 +49,15 @@ export function AuthorMiniBadge({
   );
 }
 
-export function AuthorBioCard({
+export async function AuthorBioCard({
   author,
   locale = 'en',
 }: {
   author: BlogPostAuthorProfile;
   locale?: string;
-}): React.JSX.Element {
+}): Promise<React.JSX.Element> {
+  const t = await getTranslations('Blog');
   const initials = getInitials(author.displayName, author.handle);
-  const isRu = locale === 'ru';
 
   return (
     <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -78,7 +79,7 @@ export function AuthorBioCard({
               href={`/${locale}/profiles/${encodeURIComponent(author.handle)}`}
               className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:bg-accent transition"
             >
-              {isRu ? 'Профиль автора' : 'View Profile'}
+              {t('author.profile')}
             </Link>
           </div>
           {author.tags && author.tags.length > 0 && (

@@ -70,6 +70,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     /// Accessible name of the table, announced by screen readers.
     #[props(default)]
     aria_label: Option<String>,
+    #[props(default)] messages: rustok_grid::GridMessages,
     /// Emitted when a row (outside the checkbox cell) is clicked.
     #[props(default)]
     on_row_click: Option<EventHandler<T>>,
@@ -114,6 +115,8 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     #[props(default)]
     bulk_actions: Option<Callback<usize, Element>>,
 ) -> Element {
+    let message_context = messages.clone();
+    use_context_provider(move || message_context);
     // ── state ──────────────────────────────────────────────────────────────
     // Hooks first, unconditionally, and seeded from the props so that the very
     // first (server-rendered) paint is already correct.
@@ -198,8 +201,8 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let selected_count = current_selection.count();
     let has_active_filters = !current_filters.is_empty();
 
-    let empty_msg = empty_message.unwrap_or_else(|| "No records found.".to_string());
-    let table_label = aria_label.unwrap_or_else(|| "Data grid".to_string());
+    let empty_msg = empty_message.unwrap_or_else(|| messages.text("grid.empty"));
+    let table_label = aria_label.unwrap_or_else(|| messages.text("grid.name"));
 
     // ── intents ────────────────────────────────────────────────────────────
     // Shared snapshots: one clone per render instead of one clone per row.
@@ -299,7 +302,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
                                 class: "h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent",
                                 "aria-hidden": "true",
                             }
-                            span { "Loading data..." }
+                            span { {messages.text("grid.loading")} }
                         }
                     } else {
                         p { "{empty_msg}" }

@@ -1,5 +1,7 @@
 'use client';
+import { Button } from '@/shared/ui/base/button';
 
+import { useTranslations } from '@rustok/next-fluent';
 import { useMemo } from 'react';
 import { Reply, User } from 'lucide-react';
 import type { BlogPublicComment } from '../api/posts';
@@ -24,15 +26,13 @@ export function ThreadedCommentsList({
   locale = 'ru',
   onReply
 }: ThreadedCommentsProps) {
-  const isRu = locale.startsWith('ru');
+  const t = useTranslations('Blog');
   const orderedComments = useMemo(() => orderThreadedComments(items), [items]);
 
   if (items.length === 0) {
     return (
       <div className='rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground'>
-        {isRu
-          ? 'Пока нет комментариев. Оставьте отзыв первым!'
-          : 'No comments yet. Be the first to share your thoughts!'}
+        {t('comments.empty')}
       </div>
     );
   }
@@ -48,8 +48,8 @@ export function ThreadedCommentsList({
             <div className='flex items-center gap-1.5 font-medium text-foreground/80'>
               <User className='h-3.5 w-3.5 text-muted-foreground' />
               <span>{depth > 0
-                ? isRu ? 'Ответ' : 'Reply'
-                : isRu ? 'Пользователь' : 'User'}</span>
+                ? t('comments.reply')
+                : t('comments.user')}</span>
             </div>
             <time dateTime={comment.createdAt}>
               {new Date(comment.createdAt).toLocaleDateString(locale, {
@@ -64,14 +64,14 @@ export function ThreadedCommentsList({
           </p>
           {onReply && (
             <div className='pt-1'>
-              <button
+              <Button
                 type='button'
                 onClick={() => onReply(comment.id)}
                 className='inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline'
               >
                 <Reply className='h-3.5 w-3.5' />
-                <span>{isRu ? 'Ответить' : 'Reply'}</span>
-              </button>
+                <span>{t('comments.reply')}</span>
+              </Button>
             </div>
           )}
         </article>

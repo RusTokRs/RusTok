@@ -24,6 +24,7 @@ pub mod column;
 pub mod facet;
 pub mod facet_panel;
 pub mod filter;
+pub mod messages;
 pub mod pagination;
 pub mod resize;
 pub mod selection;
@@ -46,6 +47,7 @@ pub use facet_panel::{
     selection_after_toggle, selection_entry, selection_for_key, split_selection,
 };
 pub use filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
+pub use messages::GridMessages;
 pub use pagination::{
     DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS, GridPagination, PaginationMode,
 };
@@ -72,6 +74,7 @@ pub mod prelude {
         split_selection,
     };
     pub use crate::filter::{ColumnFilters, FilterOption, FilterValue, GridFilterType};
+    pub use crate::messages::GridMessages;
     pub use crate::pagination::{
         DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS, GridPagination, PaginationMode,
     };

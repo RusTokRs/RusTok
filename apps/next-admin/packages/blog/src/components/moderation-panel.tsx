@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@rustok/next-fluent';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ export function BlogModerationPanel({
   locale: string;
   gqlOpts: GqlOpts;
 }) {
+  const t = useTranslations('blog');
   const { token, tenantSlug, tenantId } = gqlOpts;
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
@@ -54,10 +56,10 @@ export function BlogModerationPanel({
         }
         setData(result);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!active) return;
         setData(null);
-        setLoadError(error instanceof Error ? error.message : 'Moderation queue is unavailable');
+        setLoadError('unavailable');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -70,7 +72,7 @@ export function BlogModerationPanel({
     setPendingId(commentId);
     try {
       await moderateBlogComment(commentId, status, locale, { token, tenantSlug, tenantId });
-      toast.success('Comment status updated');
+      toast.success(t('moderation.updated'));
       setRevision((value) => value + 1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to moderate comment');
@@ -85,20 +87,17 @@ export function BlogModerationPanel({
   return (
     <Card className='mt-8'>
       <CardHeader>
-        <CardTitle>Comment moderation</CardTitle>
-        <CardDescription>
-          Review non-deleted comments on this post. Changes use the Blog/Comments owner permissions.
-        </CardDescription>
+        <CardTitle>{t('moderation.title')}</CardTitle>
+        <CardDescription>{t('moderation.subtitle')}</CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
-        {loading && <p className='text-muted-foreground text-sm'>Loading moderation queue...</p>}
+        {loading && <p className='text-muted-foreground text-sm'>{t('moderation.loading')}</p>}
         {loadError && (
-          <p role='alert' className='text-destructive text-sm'>
-            Moderation is unavailable: {loadError}
+          <p role='alert' className='text-destructive text-sm'>{t('moderation.unavailable')}
           </p>
         )}
         {!loading && !loadError && data?.items.length === 0 && (
-          <p className='text-muted-foreground text-sm'>No comments to moderate.</p>
+          <p className='text-muted-foreground text-sm'>{t('moderation.empty')}</p>
         )}
         {!loading && !loadError && data?.items.map((comment) => (
           <article key={comment.id} className='space-y-3 rounded-lg border p-4'>
@@ -120,23 +119,19 @@ export function BlogModerationPanel({
                   disabled={pendingId !== null}
                   onClick={() => void moderate(comment.id, action.value)}
                 >
-                  {pendingId === comment.id ? 'Saving...' : action.label}
+                  {pendingId === comment.id ? t('moderation.saving') : t(`moderation.${action.value.toLowerCase()}`)}
                 </Button>
               ))}
             </div>
           </article>
         ))}
         {!loading && !loadError && (
-          <nav aria-label='Comment moderation pages' className='flex items-center justify-end gap-3 text-sm'>
-            <span>{total} comments · Page {page} of {totalPages}</span>
+          <nav aria-label={t('moderation.pages')} className='flex items-center justify-end gap-3 text-sm'>
+            <span>{t('moderation.pageSummary', { total, page, pages: totalPages })}</span>
             <Button type='button' size='sm' variant='outline' disabled={page <= 1 || pendingId !== null}
-              onClick={() => setPage((value) => Math.max(1, value - 1))}>
-              Previous
-            </Button>
+              onClick={() => setPage((value) => Math.max(1, value - 1))}>{t('pagination.previous')}</Button>
             <Button type='button' size='sm' variant='outline' disabled={page >= totalPages || pendingId !== null}
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
-              Next
-            </Button>
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>{t('pagination.next')}</Button>
           </nav>
         )}
       </CardContent>

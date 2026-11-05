@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/shared/ui/base/button';
 
 /*
  * Copyright (c) 2026 RusTokRs.
@@ -10,20 +11,20 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { useTranslations } from '@rustok/next-fluent';
 import React, { useState } from 'react';
 import { Check, Copy, Share2 } from 'lucide-react';
 
 export function BlogShareButtons({
   title,
   url,
-  locale = 'en',
 }: {
   title: string;
   url: string;
   locale?: string;
 }): React.JSX.Element {
+  const t = useTranslations('Blog');
   const [copied, setCopied] = useState(false);
-  const isRu = locale === 'ru';
 
   const shareTitle = encodeURIComponent(title);
   const shareUrl = encodeURIComponent(url);
@@ -49,7 +50,7 @@ export function BlogShareButtons({
     <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-border">
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground mr-1">
         <Share2 className="h-3.5 w-3.5 text-primary" />
-        <span>{isRu ? 'Поделиться:' : 'Share:'}</span>
+        <span>{t('share.title')}</span>
       </span>
 
       <a
@@ -79,7 +80,7 @@ export function BlogShareButtons({
         X (Twitter)
       </a>
 
-      <button
+      <Button
         type="button"
         onClick={copyToClipboard}
         className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted transition cursor-pointer"
@@ -88,16 +89,16 @@ export function BlogShareButtons({
           <>
             <Check className="h-3.5 w-3.5 text-green-500" />
             <span className="text-green-600 dark:text-green-400 font-semibold">
-              {isRu ? 'Ссылка скопирована!' : 'Copied!'}
+              {t('share.copied')}
             </span>
           </>
         ) : (
           <>
             <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>{isRu ? 'Копировать ссылку' : 'Copy link'}</span>
+            <span>{t('share.copy')}</span>
           </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }

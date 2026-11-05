@@ -17,24 +17,11 @@ export function calculateReadingTime(plainText: string, wordsPerMinute = 200): n
     return 1;
   }
   const words = plainText.trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(1, Math.ceil(words / wordsPerMinute));
+  return Math.max(1, Math.ceil(words / (Number.isFinite(wordsPerMinute) && wordsPerMinute > 0 ? wordsPerMinute : 200)));
 }
 
-/**
- * Returns a formatted, localized reading time string.
- */
-export function formatReadingTime(minutes: number, locale = 'en'): string {
-  const safeMinutes = Math.max(1, Math.round(minutes || 1));
-  if (locale === 'ru') {
-    const mod10 = safeMinutes % 10;
-    const mod100 = safeMinutes % 100;
-    let suffix = 'минут';
-    if (mod10 === 1 && mod100 !== 11) {
-      suffix = 'минута';
-    } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
-      suffix = 'минуты';
-    }
-    return `${safeMinutes} ${suffix} чтения`;
-  }
-  return `${safeMinutes} min read`;
+/** Format through the host's canonical Fluent translator, never a language branch. */
+export function formatReadingTime(minutes: number, translate: (key: string, args: { minutes: number }) => string): string {
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(1, Math.round(minutes)) : 1;
+  return translate('readingTime', { minutes: safeMinutes });
 }

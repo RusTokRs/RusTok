@@ -24,6 +24,7 @@ pub fn GridHeader(
     on_filter_change: Callback<(String, FilterValue)>,
     on_clear_filters: Callback<()>,
 ) -> impl IntoView {
+    let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     view! {
         <thead class="bg-muted/50 text-muted-foreground text-xs font-medium border-b border-border select-none">
             // Row 1: column titles + sort + resize handles
@@ -87,7 +88,7 @@ pub fn GridHeader(
                                             view! {
                                                 <input
                                                     type="checkbox"
-                                                    aria-label="Select all rows on this page"
+                                                    aria-label=messages.get_value().text("grid.selectAll")
                                                     prop:checked=move || all_selected.get()
                                                     prop:indeterminate=move || some_selected.get()
                                                     on:change=move |ev| on_toggle_all.run(event_target_checked(&ev))
@@ -102,7 +103,7 @@ pub fn GridHeader(
                                                 <button
                                                     type="button"
                                                     class="cursor-pointer hover:text-foreground flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 rounded"
-                                                    title=format!("Sort by {sort_label}")
+                                                    title=messages.get_value().column_label("grid.sortColumn", &sort_label)
                                                     on:click=move |_| on_sort.run(sort_id.clone())
                                                 >
                                                     <span>{title.clone()}</span>
@@ -179,8 +180,8 @@ pub fn GridHeader(
                                             view! {
                                                 <button
                                                     type="button"
-                                                    title="Reset all filters"
-                                                    aria-label="Reset all filters"
+                                                    title=messages.get_value().text("grid.filters")
+                                                    aria-label=messages.get_value().text("grid.filters")
                                                     on:click=move |_| on_clear_filters.run(())
                                                     class="text-[10px] text-muted-foreground hover:text-foreground px-1 py-0.5 rounded hover:bg-muted font-medium transition-colors"
                                                 >

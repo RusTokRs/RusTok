@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@rustok/next-fluent';
 import { useEffect, useState } from 'react';
 import { parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import {
@@ -29,6 +30,7 @@ import { SORT_FIELD_OPTIONS, SORT_ORDER_OPTIONS, STATUS_OPTIONS } from './option
  * stale position. The shell re-renders on the server because the update is not shallow.
  */
 export function PostSortSelect() {
+  const t = useTranslations('blog');
   const [sort, setSort] = useQueryStates(
     {
       sortBy: parseAsStringLiteral(BLOG_POST_SORT_FIELDS).withDefault(
@@ -55,13 +57,13 @@ export function PostSortSelect() {
           })
         }
       >
-        <SelectTrigger className='h-8 w-[170px]' aria-label='Sort by'>
+        <SelectTrigger className='h-8 w-[170px]' aria-label={t('table.sortField')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {SORT_FIELD_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              {t(`sort.${option.value.toLowerCase()}`)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -77,13 +79,13 @@ export function PostSortSelect() {
           })
         }
       >
-        <SelectTrigger className='h-8 w-[140px]' aria-label='Sort order'>
+        <SelectTrigger className='h-8 w-[140px]' aria-label={t('table.sortOrder')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {SORT_ORDER_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              {t(`sort.${option.value.toLowerCase()}`)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -94,6 +96,7 @@ export function PostSortSelect() {
 
 /** Blog owner accepts exactly one post status. Changing it invalidates keyset cursors. */
 export function PostStatusSelect() {
+  const t = useTranslations('blog');
   const [filters, setFilters] = useQueryStates(
     {
       status: parseAsStringLiteral(['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const),
@@ -114,14 +117,14 @@ export function PostStatusSelect() {
         })
       }
     >
-      <SelectTrigger className='h-8 w-[150px]' aria-label='Filter by status'>
+      <SelectTrigger className='h-8 w-[150px]' aria-label={t('table.filterStatus')}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value='ALL'>All statuses</SelectItem>
+        <SelectItem value='ALL'>{t('table.allStatuses')}</SelectItem>
         {STATUS_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            {t(`status.${option.value.toLowerCase()}`)}
           </SelectItem>
         ))}
       </SelectContent>

@@ -1,9 +1,10 @@
 use super::*;
 use leptos::prelude::*;
 use leptos_ui::RichTextHtml;
+use leptos_ui::{Button, ButtonVariant, Input, Size};
 use rustok_ui_core::UiRouteContext;
 
-#[allow(unused_imports)]
+#[cfg(target_arch = "wasm32")]
 use crate::core::parse_preview_token_from_fragment;
 use crate::core::{calculate_reading_time, format_reading_time};
 use crate::model::BlogPostDetail;
@@ -186,21 +187,16 @@ pub fn BlogDraftPreview() -> impl IntoView {
                                     load_preview.run(token);
                                 }
                             >
-                                <input
-                                    type="text"
-                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    placeholder=copy.token_placeholder.clone()
-                                    prop:value=move || token_input.get()
-                                    on:input=move |ev| token_input.set(event_target_value(&ev))
-                                    disabled=move || loading.get()
-                                />
-                                <button
-                                    type="submit"
+                                <Input placeholder=copy.token_placeholder.clone()
+                                    value=token_input.read_only() set_value=token_input.write_only()
+                                    disabled=Signal::derive(move || loading.get()) />
+                                <Button
+                                    r#type="submit"
                                     class="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-                                    disabled=move || loading.get() || token_input.get().trim().is_empty()
+                                    disabled=Signal::derive(move || loading.get())
                                 >
                                     {move || if loading.get() { copy.button_loading.clone() } else { copy.button_open.clone() }}
-                                </button>
+                                </Button>
                             </form>
 
                             {move || if not_found.get() {

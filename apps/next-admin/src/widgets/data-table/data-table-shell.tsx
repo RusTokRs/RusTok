@@ -31,6 +31,8 @@ export interface DataTableShellProps<TData extends RowData = any> {
    * so a client-paginated table needs no second source of truth.
    */
   totalItems?: number;
+  /** Paginate a complete owner collection locally, rather than a fetched server page. */
+  clientPagination?: boolean;
   /** Rows per page before the user changes it; the route keeps the choice across reloads. */
   defaultPageSize?: number;
   /** Filter-input debounce before the route is rewritten. */
@@ -51,6 +53,7 @@ export function DataTableShell<TData extends RowData = any>({
   data,
   columns,
   totalItems,
+  clientPagination = false,
   defaultPageSize = 20,
   debounceMs = 500,
   isLoading,
@@ -72,7 +75,8 @@ export function DataTableShell<TData extends RowData = any>({
     data,
     columns,
     pageCount,
-    shallow: false,
+    clientPagination,
+    shallow: clientPagination,
     debounceMs
   });
 

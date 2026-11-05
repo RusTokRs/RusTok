@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@rustok/next-fluent';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare } from 'lucide-react';
@@ -31,9 +32,9 @@ export function BlogCommentsSection({
   degradedMessage,
   locale = 'ru'
 }: BlogCommentsSectionProps) {
+  const t = useTranslations('Blog');
   const router = useRouter();
   const [replyToId, setReplyToId] = useState<string | null>(null);
-  const isRu = locale === 'ru';
   const disabled = comments.availability === 'DISABLED';
   const outageWithoutSnapshot =
     (comments.availability === 'UNAVAILABLE' || comments.availability === 'TIMEOUT') &&
@@ -61,13 +62,13 @@ export function BlogCommentsSection({
         <div className='flex items-center gap-2'>
           <MessageSquare className='h-5 w-5 text-primary' />
           <h2 className='text-xl font-bold text-foreground'>
-            {isRu ? 'Комментарии и обсуждение' : 'Comments & Discussion'}
+            {t('comments.title')}
           </h2>
         </div>
         {comments.total > 0 && (
           <span className='text-xs text-muted-foreground font-medium'>
             {comments.total}{' '}
-            {isRu ? 'комментариев' : 'total comments'}
+            {t('comments.totalSuffix')}
           </span>
         )}
       </div>

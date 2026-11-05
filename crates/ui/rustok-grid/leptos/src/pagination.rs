@@ -26,6 +26,7 @@ pub fn GridPaginationBar(
     #[prop(default = None)]
     page_size_options: Option<Vec<usize>>,
 ) -> impl IntoView {
+    let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     let sentinel_ref = NodeRef::<Div>::new();
     // An unset list stays empty here; the core's normalizer is what turns "unset" into the default
     // choices, exactly like every other page-size decision in the grid.
@@ -64,16 +65,13 @@ pub fn GridPaginationBar(
             // Range summary & page size
             <div class="flex items-center gap-3">
                 <div class="flex items-center gap-1.5" aria-live="polite">
-                    <span>"Showing"</span>
-                    <span class="font-semibold text-foreground">{from_item} "-" {to_item}</span>
-                    <span>"of"</span>
-                    <span class="font-semibold text-foreground">{total_items}</span>
+                    {move || messages.get_value().range(from_item(), to_item(), total_items())}
                 </div>
 
                 <div class="h-3 w-px bg-border/60" aria-hidden="true"></div>
 
                 <label class="flex items-center gap-1.5">
-                    <span>"Rows per page:"</span>
+                    <span>{messages.get_value().text("grid.rowsPerPage")}</span>
                     <select
                         prop:value=move || page_size().to_string()
                         on:change=move |ev: Event| {
@@ -103,7 +101,7 @@ pub fn GridPaginationBar(
             </div>
 
             // Mode switch & page navigation
-            <nav class="flex items-center gap-2" aria-label="Pagination">
+            <nav class="flex items-center gap-2" aria-label=messages.get_value().text("grid.pagination")>
                 <button
                     type="button"
                     on:click=move |_| {
@@ -115,16 +113,16 @@ pub fn GridPaginationBar(
                         on_mode_change.run(next_mode);
                     }
                     class="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium transition-colors text-foreground/80 flex items-center gap-1"
-                    title="Toggle between classic pagination and infinite scrolling"
+                    title=messages.get_value().text("grid.modeHint")
                 >
-                    {move || if is_infinite() { "Mode: Infinite ⤓" } else { "Mode: Paged 📄" }}
+                    {move || if is_infinite() { messages.get_value().text("grid.modeInfinite") } else { messages.get_value().text("grid.modePaged") }}
                 </button>
 
                 <Show when=move || !is_infinite()>
                     <div class="flex items-center gap-1 ml-2">
                         <button
                             type="button"
-                            aria-label="Previous page"
+                            aria-label=messages.get_value().text("grid.previous")
                             disabled=move || !has_prev()
                             on:click=move |_| {
                                 let page = current_page();
@@ -134,14 +132,14 @@ pub fn GridPaginationBar(
                             }
                             class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
                         >
-                            "‹ Previous"
+                            {messages.get_value().text("grid.previous")}
                         </button>
                         <span class="px-2 font-medium text-foreground">
                             {move || current_page()} " / " {move || total_pages()}
                         </span>
                         <button
                             type="button"
-                            aria-label="Next page"
+                            aria-label=messages.get_value().text("grid.next")
                             disabled=move || !has_next()
                             on:click=move |_| {
                                 if has_next() {
@@ -150,7 +148,7 @@ pub fn GridPaginationBar(
                             }
                             class="px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors"
                         >
-                            "Next ›"
+                            {messages.get_value().text("grid.next")}
                         </button>
                     </div>
                 </Show>
@@ -162,7 +160,7 @@ pub fn GridPaginationBar(
                 <div class="flex items-center gap-2">
                     <button
                         type="button"
-                        aria-label="Load more rows"
+                        aria-label=messages.get_value().text("grid.loadMore")
                         on:click=move |_| {
                             if is_infinite() && has_next() {
                                 on_load_more.run(());
@@ -170,7 +168,7 @@ pub fn GridPaginationBar(
                         }
                         class="text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium text-foreground transition-colors"
                     >
-                        "Load more"
+                        {messages.get_value().text("grid.loadMore")}
                     </button>
                     <div
                         node_ref=sentinel_ref

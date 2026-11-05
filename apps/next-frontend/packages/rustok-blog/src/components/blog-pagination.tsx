@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { getTranslations } from '@rustok/next-fluent/server';
 import React from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -17,7 +18,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
  * there are no page numbers and no total. "First page" resets the cursor; the
  * previous cursor is not kept, so there is no step-back control.
  */
-export function BlogPagination({
+export async function BlogPagination({
   nextCursor,
   currentCursor,
   baseUrl,
@@ -33,12 +34,11 @@ export function BlogPagination({
   selectedCategory?: string;
   searchQuery?: string;
   locale?: string;
-}): React.JSX.Element | null {
+}): Promise<React.JSX.Element | null> {
+  const t = await getTranslations('Blog');
   if (!nextCursor && !currentCursor) {
     return null;
   }
-
-  const isRu = locale === 'ru';
 
   function makeUrl(after: string | null): string {
     const params = new URLSearchParams();
@@ -65,29 +65,29 @@ export function BlogPagination({
 
   return (
     <nav
-      aria-label={isRu ? 'Навигация по записям' : 'Posts pagination'}
+      aria-label={t('pagination.posts')}
       className="flex flex-wrap items-center justify-center gap-2 pt-8"
     >
       {currentCursor ? (
         <Link href={makeUrl(null)} className={linkClass}>
           <ChevronLeft className="h-3.5 w-3.5" />
-          <span>{isRu ? 'В начало' : 'First page'}</span>
+          <span>{t('pagination.first')}</span>
         </Link>
       ) : (
         <span className={disabledClass}>
           <ChevronLeft className="h-3.5 w-3.5" />
-          <span>{isRu ? 'В начало' : 'First page'}</span>
+          <span>{t('pagination.first')}</span>
         </span>
       )}
 
       {nextCursor ? (
         <Link href={makeUrl(nextCursor)} className={linkClass}>
-          <span>{isRu ? 'Вперед' : 'Next'}</span>
+          <span>{t('pagination.next')}</span>
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       ) : (
         <span className={disabledClass}>
-          <span>{isRu ? 'Вперед' : 'Next'}</span>
+          <span>{t('pagination.next')}</span>
           <ChevronRight className="h-3.5 w-3.5" />
         </span>
       )}

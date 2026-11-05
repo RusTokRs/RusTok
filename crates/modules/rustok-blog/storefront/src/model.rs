@@ -1,14 +1,12 @@
 use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontBlogData {
     pub selected_post: Option<BlogPostDetail>,
     pub posts: BlogPostList,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,
@@ -19,7 +17,6 @@ pub struct BlogPostList {
     pub next_cursor: Option<String>,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostListItem {
     pub id: String,
@@ -42,7 +39,6 @@ pub struct BlogPostListItem {
     pub category_name: Option<String>,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BlogCommentsAvailability {
@@ -54,7 +50,6 @@ pub enum BlogCommentsAvailability {
     Timeout,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BlogCommentList {
     #[serde(default)]
@@ -65,7 +60,6 @@ pub struct BlogCommentList {
     pub total: u64,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogCommentListItem {
     pub id: String,
@@ -119,7 +113,6 @@ pub struct BlogCommentDetail {
     pub updated_at: String,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlogPostAuthorProfile {
@@ -131,10 +124,10 @@ pub struct BlogPostAuthorProfile {
     pub avatar_media_id: Option<String>,
 }
 
-#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDetail {
     pub id: String,
+    pub version: i32,
     #[serde(rename = "effectiveLocale")]
     pub effective_locale: String,
     pub title: String,
@@ -158,4 +151,15 @@ pub struct BlogPostDetail {
     pub category_name: Option<String>,
     #[serde(default, rename = "publicComments")]
     pub public_comments: BlogCommentList,
+}
+
+/// Exact owner snapshot passed from SSR to the isolated interactive discussion.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlogDiscussionProps {
+    pub post_id: String,
+    pub version: i32,
+    pub content_locale: String,
+    pub ui_locale: Option<String>,
+    pub comments: BlogCommentList,
+    pub comments_page: u64,
 }

@@ -69,3 +69,21 @@ blog-preview-button-open = Открыть
 blog-preview-button-loading = Загрузка…
 blog-preview-error-not-found = Токен недействителен, истёк или был отозван.
 blog-preview-error-load = Не удалось загрузить черновик.
+
+blog-readingTime = { $minutes ->
+    [one] { $minutes } минута чтения
+    [few] { $minutes } минуты чтения
+   *[many] { $minutes } минут чтения
+    }
+blog-share-title = Поделиться
+blog-feed-title = Блог RusToK
+blog-feed-description = Последние статьи и публикации RusToK
+
+blog-comments-cancelReply = Отменить ответ
+blog-comments-replying = Ответ на комментарий
+blog-comments-replyAction = Ответить
+
+blog-search-pages = Страницы поиска
+blog-search-results = Страница { $page } · Найдено: { $total }
+
+blog-reactions-invalid = Реакции для этой статьи недоступны.

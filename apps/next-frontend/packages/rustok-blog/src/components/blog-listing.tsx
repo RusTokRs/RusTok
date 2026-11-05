@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { getTranslations } from '@rustok/next-fluent/server';
 import React from 'react';
 import Link from 'next/link';
 import { BookOpen, Newspaper, Rss, Search } from 'lucide-react';
@@ -17,7 +18,6 @@ import { BlogPagination } from './blog-pagination';
 
 export interface BlogListingViewProps {
   locale: string;
-  isRu: boolean;
   searchQuery?: string;
   selectedCategory?: string;
   selectedTag?: string;
@@ -32,9 +32,8 @@ export interface BlogListingViewProps {
   searchPageHref: (page: number) => string;
 }
 
-export function BlogListingView({
+export async function BlogListingView({
   locale,
-  isRu,
   searchQuery,
   selectedCategory,
   selectedTag,
@@ -48,6 +47,7 @@ export function BlogListingView({
   nextCursor,
   searchPageHref,
 }: BlogListingViewProps) {
+  const t = await getTranslations('Blog');
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -56,15 +56,13 @@ export function BlogListingView({
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-primary text-xs font-semibold uppercase tracking-wider">
               <BookOpen className="h-4 w-4" />
-              <span>{isRu ? 'Блог проекта' : 'Project Blog'}</span>
+              <span>{t('listing.badge')}</span>
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              {isRu ? 'Статьи и анонсы' : 'Stories & Announcements'}
+              {t('listing.title')}
             </h1>
             <p className="text-sm text-muted-foreground max-w-2xl">
-              {isRu
-                ? 'Актуальные публикации, технические обзоры и обновления платформы RusToK.'
-                : 'Read about platform updates, engineering notes, and best practices.'}
+              {t('listing.description')}
             </p>
           </div>
 
@@ -72,7 +70,7 @@ export function BlogListingView({
             href={`/${locale}/blog/feed.xml`}
             target="_blank"
             className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors shadow-sm"
-            title={isRu ? 'RSS-лента блога' : 'Blog RSS Feed'}
+            title={t('listing.feed')}
           >
             <Rss className="h-3.5 w-3.5 text-orange-500" />
             <span>RSS</span>
@@ -99,7 +97,7 @@ export function BlogListingView({
                 type="search"
                 name="q"
                 defaultValue={searchQuery ?? ''}
-                placeholder={isRu ? 'Поиск по статьям и тегам...' : 'Search articles and tags...'}
+                placeholder={t('listing.search')}
                 className="w-full rounded-full border border-border bg-card pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-sm"
               />
             </div>
@@ -109,7 +107,7 @@ export function BlogListingView({
           {allCategories.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-muted-foreground mr-1">
-                {isRu ? 'Рубрики:' : 'Categories:'}
+                {t('listing.categories')}
               </span>
               <Link
                 href={`/${locale}/blog${selectedTag ? `?tag=${encodeURIComponent(selectedTag)}` : ''}${searchQuery ? `${selectedTag ? '&' : '?'}q=${encodeURIComponent(searchQuery)}` : ''}`}
@@ -119,7 +117,7 @@ export function BlogListingView({
                     : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
                 }`}
               >
-                {isRu ? 'Все рубрики' : 'All Categories'}
+                {t('listing.allCategories')}
               </Link>
               {allCategories.map((cat) => {
                 const active = selectedCategory === cat.id;
@@ -150,7 +148,7 @@ export function BlogListingView({
                   : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
               }`}
             >
-              {isRu ? 'Все статьи' : 'All Posts'}
+              {t('listing.allPosts')}
             </Link>
             {selectedTag && !allTags.includes(selectedTag) && (
               <Link
@@ -182,15 +180,15 @@ export function BlogListingView({
           {(selectedCategory || selectedTag || searchQuery) && (
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/50 text-xs">
               <span className="text-muted-foreground font-medium">
-                {isRu ? 'Активные фильтры:' : 'Active filters:'}
+                {t('listing.activeFilters')}
               </span>
               {selectedCategory && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground">
-                  <span>{isRu ? 'Рубрика' : 'Category'}</span>
+                  <span>{t('listing.category')}</span>
                   <Link
                     href={`/${locale}/blog${selectedTag ? `?tag=${encodeURIComponent(selectedTag)}` : ''}${searchQuery ? `${selectedTag ? '&' : '?'}q=${encodeURIComponent(searchQuery)}` : ''}`}
                     className="ml-1 font-bold text-muted-foreground hover:text-foreground"
-                    title={isRu ? 'Убрать фильтр по рубрике' : 'Remove category filter'}
+                    title={t('listing.removeCategory')}
                   >
                     ×
                   </Link>
@@ -202,7 +200,7 @@ export function BlogListingView({
                   <Link
                     href={`/${locale}/blog${selectedCategory ? `?category=${encodeURIComponent(selectedCategory)}` : ''}${searchQuery ? `${selectedCategory ? '&' : '?'}q=${encodeURIComponent(searchQuery)}` : ''}`}
                     className="ml-1 font-bold text-muted-foreground hover:text-foreground"
-                    title={isRu ? 'Убрать фильтр по тегу' : 'Remove tag filter'}
+                    title={t('listing.removeTag')}
                   >
                     ×
                   </Link>
@@ -210,11 +208,11 @@ export function BlogListingView({
               )}
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 font-medium text-primary">
-                  <span>{isRu ? `Поиск: «${searchQuery}»` : `Search: "${searchQuery}"`}</span>
+                  <span>{t('listing.searchLabel', { searchQuery: searchQuery })}</span>
                   <Link
                     href={`/${locale}/blog${selectedCategory ? `?category=${encodeURIComponent(selectedCategory)}` : ''}${selectedTag ? `${selectedCategory ? '&' : '?'}tag=${encodeURIComponent(selectedTag)}` : ''}`}
                     className="ml-1 font-bold text-muted-foreground hover:text-foreground"
-                    title={isRu ? 'Сбросить поиск' : 'Clear search'}
+                    title={t('listing.clearSearch')}
                   >
                     ×
                   </Link>
@@ -224,7 +222,7 @@ export function BlogListingView({
                 href={`/${locale}/blog`}
                 className="ml-auto text-xs text-muted-foreground hover:text-foreground underline"
               >
-                {isRu ? 'Сбросить все' : 'Clear all'}
+                {t('listing.clearFilters')}
               </Link>
             </div>
           )}
@@ -236,28 +234,20 @@ export function BlogListingView({
             <Newspaper className="mx-auto h-10 w-10 text-muted-foreground/60 mb-3" />
             <h3 className="text-base font-semibold text-foreground">
               {searchQuery
-                ? isRu
-                  ? `По запросу «${searchQuery}» ничего не найдено`
-                  : `No articles found matching "${searchQuery}"`
-                : isRu
-                  ? 'Нет опубликованных статей'
-                  : 'No articles found'}
+                ? t('listing.emptyQuery', { searchQuery: searchQuery })
+                : t('listing.emptyTitle')}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {searchQuery
-                ? isRu
-                  ? 'Попробуйте изменить поисковый запрос или сбросить фильтры.'
-                  : 'Try different search terms or clear active filters.'
-                : isRu
-                  ? 'В данный момент статьи отсутствуют или не соответствуют фильтру.'
-                  : 'Check back later or clear the selected filter.'}
+                ? t('listing.emptySearch')
+                : t('listing.emptyBody')}
             </p>
             {searchQuery && searchTotal > 0 && searchPage > 1 && (
               <Link
                 href={searchPageHref(1)}
                 className="mt-4 inline-flex rounded-full border px-4 py-2 text-sm"
               >
-                {isRu ? 'Вернуться к первым результатам' : 'Back to first results'}
+                {t('listing.firstResults')}
               </Link>
             )}
             {(searchQuery || selectedCategory || selectedTag) && (
@@ -266,7 +256,7 @@ export function BlogListingView({
                   href={`/${locale}/blog`}
                   className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm"
                 >
-                  {isRu ? 'Сбросить все фильтры' : 'Reset all filters'}
+                  {t('listing.resetFilters')}
                 </Link>
               </div>
             )}
@@ -297,7 +287,7 @@ export function BlogListingView({
                 retains Blog's independent keyset cursor. */}
             {searchQuery ? (
               <nav
-                aria-label={isRu ? 'Страницы поиска' : 'Search pages'}
+                aria-label={t('listing.searchPages')}
                 className="flex items-center justify-center gap-4 py-6"
               >
                 {searchPage > 1 && (
@@ -305,20 +295,18 @@ export function BlogListingView({
                     href={searchPageHref(searchPage - 1)}
                     className="rounded-full border px-4 py-2 text-sm"
                   >
-                    {isRu ? 'Назад' : 'Previous'}
+                    {t('pagination.previous')}
                   </Link>
                 )}
                 <span className="text-sm text-muted-foreground">
-                  {isRu
-                    ? `Страница ${searchPage} · Найдено: ${searchTotal}`
-                    : `Page ${searchPage} · ${searchTotal} results`}
+                  {t('listing.searchResults', { searchPage: searchPage, searchTotal: searchTotal })}
                 </span>
                 {searchPage * pageSize < searchTotal && (
                   <Link
                     href={searchPageHref(searchPage + 1)}
                     className="rounded-full border px-4 py-2 text-sm"
                   >
-                    {isRu ? 'Далее' : 'Next'}
+                    {t('pagination.next')}
                   </Link>
                 )}
               </nav>

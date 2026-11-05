@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { getTranslations } from '@rustok/next-fluent/server';
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -29,7 +30,7 @@ function blogFilterHref(locale: string, state: BlogCardFilters): string {
   return query ? `/${locale}/blog?${query}` : `/${locale}/blog`;
 }
 
-export function PostCard({
+export async function PostCard({
   post,
   href,
   locale = 'en',
@@ -39,8 +40,8 @@ export function PostCard({
   href: string | null;
   locale?: string;
   filters?: BlogCardFilters;
-}): React.JSX.Element {
-  const isRu = locale === 'ru';
+}): Promise<React.JSX.Element> {
+  const t = await getTranslations('Blog');
   const date = post.publishedAt
     ? new Date(post.publishedAt).toLocaleDateString(locale, {
         year: 'numeric',
@@ -163,7 +164,7 @@ export function PostCard({
               href={href}
               className="text-xs font-semibold text-primary hover:underline ml-auto"
             >
-              {isRu ? 'Читать →' : 'Read →'}
+              {t('article.read')}
             </Link>
           )}
         </div>

@@ -34,6 +34,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 ## Entry Points
 
 - `BlogView` — root storefront view rendered from the host storefront slot registry.
+- `BlogDiscussion` / `BlogDiscussionProps` — isolated interactive discussion and its serialized SSR snapshot (`comment-island`). The snapshot carries the exact post revision and both content/UI locale identities; malformed island payloads return a stable startup error before replacing the server markup.
 
 ## Interactions
 
@@ -41,7 +42,9 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Uses native `#[server] -> HostRuntimeContext -> PostService/CommentService -> owner ports` on the SSR/hydrate path and the `rustok-blog` GraphQL post adapter on the headless/CSR path.
 - GraphQL exposes approved public comments as the nested `GqlPost.publicComments` field, while the native adapter maps the same owner projection into `BlogPostDetail.publicComments`.
 - Both transports receive the normalized comment page and use the same fixed page size. GraphQL serializes bounded `commentsPage/commentsPerPage`; native passes the same values into the owner list filter.
-- The `rustok-comments-storefront-support` component owns editor/form state and submits a canonical `RichTextDocument`; Blog supplies only its exact post-bound action.
+- The `rustok-comments-storefront-support` component owns editor/form state and submits a canonical `RichTextDocument`; Blog supplies only its exact post-bound action and selected reply parent.
+- Discussion ordering is iterative and cycle-safe; orphaned replies remain visible, indentation is bounded, and cached outage snapshots never enable replies. Those decisions live in `core/discussion.rs`.
+- Reactions are rendered by the canonical `rustok-reactions-storefront::ReactionBar` using the exact positive Blog revision supplied by both native and GraphQL post details. Counts/revisions remain decimal strings and every mutation outcome is followed by a canonical owner read.
 - Consumes the host-provided effective locale from `UiRouteContext`, reads the stable selected-post query key `slug`, and reacts to `commentsPage` through the shared route writer without losing the selected post.
 - Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 
@@ -49,3 +52,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).
+
+## Verification boundary
+
+This continuation adds pure discussion/search policies, canonical controls and the actual SSR-to-WASM discussion mount path. The Next Blog utility tests exercise exact reaction wire values and uncertain-write reload ordering. Mounted browser accessibility, authenticated Leptos persistence/reload and cross-client end-to-end parity still require runtime evidence; source checks do not certify those outcomes.

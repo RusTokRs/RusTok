@@ -30,6 +30,7 @@ pub fn GridRow<T: Clone + PartialEq + 'static>(
     /// Renders the content of a single cell.
     cell_renderer: Callback<GridCell<T>, Element>,
 ) -> Element {
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let clickable = on_row_click.is_some();
     let row_class = if is_selected {
         "border-b border-border/60 hover:bg-muted/40 transition-colors text-sm text-foreground bg-primary/5"
@@ -57,7 +58,7 @@ pub fn GridRow<T: Clone + PartialEq + 'static>(
             rsx! {
                 input {
                     r#type: "checkbox",
-                    "aria-label": "Select row",
+                    "aria-label": messages.text("grid.selectRow"),
                     checked: is_selected,
                     class: "rounded border-border text-primary focus:ring-primary/30 h-4 w-4 cursor-pointer",
                     // Keep the row click handler out of the way: ticking a

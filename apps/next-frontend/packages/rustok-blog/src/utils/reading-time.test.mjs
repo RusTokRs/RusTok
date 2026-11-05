@@ -18,27 +18,28 @@ test('calculateReadingTime calculates correct minutes for larger word counts', (
   assert.equal(calculateReadingTime(words201), 2);
 });
 
-test('formatReadingTime formats English reading times', () => {
-  assert.equal(formatReadingTime(1, 'en'), '1 min read');
-  assert.equal(formatReadingTime(5, 'en'), '5 min read');
-  assert.equal(formatReadingTime(0, 'en'), '1 min read');
-  assert.equal(formatReadingTime(-3, 'en'), '1 min read');
+test('reading-time copy uses real Fluent catalogs and plural rules', async () => {
+  const { createFluentBundle, createTranslator } = await import('@rustok/next-fluent');
+  const { readFile } = await import('node:fs/promises');
+  const translator = async locale => createTranslator(createFluentBundle(locale,
+    await readFile(new URL(`../../../../messages/${locale}.ftl`, import.meta.url), 'utf8')), { namespace: 'Blog' });
+  const visible = text => text.replace(/[\u2068\u2069]/g, '');
+  const en = await translator('en'); const ru = await translator('ru');
+  assert.equal(visible(formatReadingTime(1, en)), '1 min read');
+  for (const [minutes, expected] of [[1, '1 минута чтения'], [2, '2 минуты чтения'], [5, '5 минут чтения'], [11, '11 минут чтения'], [21, '21 минута чтения']]) {
+    assert.equal(visible(formatReadingTime(minutes, ru)), expected);
+  }
+  const fr = createTranslator(createFluentBundle('fr', `Blog-readingTime = { $minutes ->
+    [one] { $minutes } minute de lecture
+   *[other] { $minutes } minutes de lecture
+}`), { namespace: 'Blog' });
+  assert.equal(visible(formatReadingTime(1, fr)), '1 minute de lecture');
+  assert.equal(visible(formatReadingTime(3, fr)), '3 minutes de lecture');
 });
 
-test('formatReadingTime handles Russian pluralization correctly across boundaries', () => {
-  assert.equal(formatReadingTime(1, 'ru'), '1 минута чтения');
-  assert.equal(formatReadingTime(2, 'ru'), '2 минуты чтения');
-  assert.equal(formatReadingTime(3, 'ru'), '3 минуты чтения');
-  assert.equal(formatReadingTime(4, 'ru'), '4 минуты чтения');
-  assert.equal(formatReadingTime(5, 'ru'), '5 минут чтения');
-  assert.equal(formatReadingTime(11, 'ru'), '11 минут чтения');
-  assert.equal(formatReadingTime(12, 'ru'), '12 минут чтения');
-  assert.equal(formatReadingTime(14, 'ru'), '14 минут чтения');
-  assert.equal(formatReadingTime(20, 'ru'), '20 минут чтения');
-  assert.equal(formatReadingTime(21, 'ru'), '21 минута чтения');
-  assert.equal(formatReadingTime(22, 'ru'), '22 минуты чтения');
-  assert.equal(formatReadingTime(24, 'ru'), '24 минуты чтения');
-  assert.equal(formatReadingTime(25, 'ru'), '25 минут чтения');
-  assert.equal(formatReadingTime(101, 'ru'), '101 минута чтения');
-  assert.equal(formatReadingTime(111, 'ru'), '111 минут чтения');
+test('reading time bounds non-finite inputs and invalid rates', () => {
+  assert.equal(calculateReadingTime('word '.repeat(201), 0), 2);
+  assert.equal(calculateReadingTime('word '.repeat(201), NaN), 2);
+  const t = (_key, { minutes }) => String(minutes);
+  for (const input of [NaN, Infinity, -3, 0]) assert.equal(formatReadingTime(input, t), '1');
 });

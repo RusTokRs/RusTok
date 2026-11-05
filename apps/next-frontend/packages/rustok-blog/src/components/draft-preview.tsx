@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/shared/ui/base/button';
 
 /*
  * Copyright (c) 2026 RusTokRs.
@@ -10,6 +11,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { useTranslations } from '@rustok/next-fluent';
 import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Calendar, Clock, Eye, Tag } from 'lucide-react';
@@ -47,7 +49,7 @@ function tokenFromHash(hash: string): string | null {
 }
 
 export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) {
-  const isRu = locale === 'ru';
+  const t = useTranslations('Blog');
   const [tokenInput, setTokenInput] = useState('');
   const [post, setPost] = useState<BlogPreviewPostDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,20 +76,16 @@ export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) 
           return;
         }
         setPost(resolved);
-      } catch (error) {
+      } catch {
         setPost(null);
         setFailure(
-          error instanceof Error
-            ? error.message
-            : isRu
-              ? 'Не удалось загрузить черновик'
-              : 'Failed to load the draft'
+          t('preview.loadError')
         );
       } finally {
         setLoading(false);
       }
     },
-    [isRu, locale, loading, tenantSlug]
+    [locale, loading, tenantSlug, t]
   );
 
   useEffect(() => {
@@ -118,7 +116,7 @@ export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) 
       })
     : null;
   const readingMinutes = post ? calculateReadingTime(post.contentPlainText) : 0;
-  const readingTimeLabel = post ? formatReadingTime(readingMinutes, locale) : null;
+  const readingTimeLabel = post ? formatReadingTime(readingMinutes, t) : null;
 
   if (post) {
     return (
@@ -126,12 +124,10 @@ export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) 
         <div className='rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400'>
           <span className='inline-flex items-center gap-2 font-medium'>
             <Eye className='h-4 w-4' />
-            {isRu ? 'Предпросмотр черновика' : 'Draft preview'}
+            {t('preview.title')}
           </span>
           <p className='mt-1 text-muted-foreground'>
-            {isRu
-              ? 'Эта статья ещё не опубликована. Ссылка перестанет работать после публикации, архивации или истечения срока действия токена.'
-              : 'This article is not published yet. The link stops working once the post is published, archived or the token expires.'}
+            {t('preview.banner')}
           </p>
         </div>
 
@@ -209,12 +205,10 @@ export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) 
   return (
     <div className='mx-auto max-w-xl px-4 sm:px-6 py-16 space-y-6'>
       <h1 className='text-2xl font-bold tracking-tight text-foreground'>
-        {isRu ? 'Предпросмотр черновика' : 'Draft preview'}
+        {t('preview.title')}
       </h1>
       <p className='text-sm text-muted-foreground'>
-        {isRu
-          ? 'Вставьте токен предпросмотра или откройте ссылку с фрагментом #token=…'
-          : 'Paste a preview token, or open the link containing the #token=… fragment.'}
+        {t('preview.hint')}
       </p>
       <form
         className='flex items-center gap-2'
@@ -232,25 +226,19 @@ export function BlogDraftPreview({ locale, tenantSlug }: BlogDraftPreviewProps) 
           spellCheck={false}
           className='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         />
-        <button
+        <Button
           type='submit'
           disabled={loading || !tokenInput.trim()}
           className='inline-flex h-10 items-center justify-center whitespace-nowrap rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors disabled:pointer-events-none disabled:opacity-50'
         >
           {loading
-            ? isRu
-              ? 'Загрузка…'
-              : 'Loading…'
-            : isRu
-              ? 'Открыть'
-              : 'Open preview'}
-        </button>
+            ? t('preview.loading')
+            : t('preview.open')}
+        </Button>
       </form>
       {notFound && (
         <p className='text-sm text-destructive'>
-          {isRu
-            ? 'Токен недействителен, истёк или был отозван.'
-            : 'The token is invalid, expired or has been revoked.'}
+          {t('preview.invalid')}
         </p>
       )}
       {failure && <p className='text-sm text-destructive'>{failure}</p>}

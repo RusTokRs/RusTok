@@ -1,4 +1,5 @@
 'use client';
+import { Button } from '@/shared/ui/base/button';
 
 import { CommentComposer } from '@rustok/comments-frontend';
 import type { RichTextDocument } from '@rustok/richtext';
@@ -56,13 +57,13 @@ export function BlogCommentComposer({
         <div className='flex items-center justify-between rounded-lg bg-muted/60 px-3 py-1.5 text-xs text-muted-foreground'>
           <span>Replying to comment</span>
           {onCancelReply && (
-            <button
+            <Button
               type='button'
               onClick={onCancelReply}
               className='inline-flex items-center gap-1 text-xs hover:text-foreground'
             >
               <X className='h-3 w-3' /> Cancel
-            </button>
+            </Button>
           )}
         </div>
       )}

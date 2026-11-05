@@ -67,3 +67,20 @@ blog-preview-button-open = Open preview
 blog-preview-button-loading = Loading…
 blog-preview-error-not-found = The token is invalid, expired or has been revoked.
 blog-preview-error-load = Failed to load the draft.
+
+blog-readingTime = { $minutes } min read
+blog-share-title = Share
+blog-feed-title = RusToK Blog
+blog-feed-description = Latest stories and articles from RusToK
+
+blog-comments-cancelReply = Cancel reply
+blog-comments-replying = Replying to a comment
+blog-comments-replyAction = Reply
+
+blog-search-pages = Search pages
+blog-search-results = { $total ->
+    [one] Page { $page } · { $total } result
+   *[other] Page { $page } · { $total } results
+    }
+
+blog-reactions-invalid = Reactions are unavailable for this article.

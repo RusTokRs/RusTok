@@ -43,46 +43,40 @@ pub mod widgets;
 
 #[cfg(all(feature = "blog-comment-island", target_arch = "wasm32"))]
 #[wasm_bindgen::prelude::wasm_bindgen]
-pub fn start_blog_comment_client() {
+pub fn start_blog_comment_client() -> Result<(), wasm_bindgen::JsValue> {
     use leptos::prelude::*;
     use wasm_bindgen::JsCast;
 
     let Some(document) = web_sys::window().and_then(|window| window.document()) else {
-        return;
+        return Ok(());
     };
     let Some(root) = document
         .query_selector("[data-blog-comment-island='true']")
         .ok()
         .flatten()
     else {
-        return;
+        return Ok(());
     };
-    let Some(post_id) = root
-        .get_attribute("data-post-id")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    else {
-        return;
-    };
-    let content_locale = root
-        .get_attribute("data-content-locale")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "en".to_string());
-    let Ok(root) = root.dyn_into::<web_sys::HtmlElement>() else {
-        return;
-    };
+    let serialized = root
+        .get_attribute("data-discussion")
+        .ok_or_else(|| wasm_bindgen::JsValue::from_str("Blog discussion payload is missing"))?;
+    let props = serde_json::from_str::<rustok_blog_storefront::BlogDiscussionProps>(&serialized)
+        .map_err(|_| wasm_bindgen::JsValue::from_str("Blog discussion payload is invalid"))?;
+    let root = root
+        .dyn_into::<web_sys::HtmlElement>()
+        .map_err(|_| wasm_bindgen::JsValue::from_str("Blog discussion mount point is invalid"))?;
 
     console_error_panic_hook::set_once();
     root.set_inner_html("");
     mount_to(root, move || {
         view! {
             <leptos_auth::AuthProvider>
-                <rustok_blog_storefront::BlogCommentComposer post_id content_locale />
+                <rustok_blog_storefront::BlogDiscussion props />
             </leptos_auth::AuthProvider>
         }
     })
     .forget();
+    Ok(())
 }
 
 #[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]

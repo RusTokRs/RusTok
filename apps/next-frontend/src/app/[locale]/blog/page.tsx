@@ -176,7 +176,6 @@ export default async function BlogListingPage({
   return (
     <BlogListingView
       locale={locale}
-      isRu={isRu}
       searchQuery={searchQuery}
       selectedCategory={selectedCategory}
       selectedTag={selectedTag}

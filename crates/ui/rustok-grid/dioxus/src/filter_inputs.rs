@@ -94,6 +94,7 @@ pub fn GridFilterCell(
     /// Emitted with `(column_id, value)` whenever a new value is published.
     on_change: EventHandler<(String, FilterValue)>,
 ) -> Element {
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     // Hooks are called unconditionally, before the match: the rules of hooks
     // do not allow the number of hooks to depend on the filter type.
     let text_draft = use_signal(TextDraft::default);
@@ -102,9 +103,9 @@ pub fn GridFilterCell(
     let title = column_title.unwrap_or_default();
     let label = |suffix: &str| {
         if title.trim().is_empty() {
-            format!("Filter{suffix}")
+            format!("{}{suffix}", messages.text("grid.filter"))
         } else {
-            format!("Filter by {title}{suffix}")
+            format!("{}: {title}{suffix}", messages.text("grid.filter"))
         }
     };
 
@@ -122,7 +123,7 @@ pub fn GridFilterCell(
             };
 
             let live = commit_mode.is_live();
-            let placeholder = placeholder.unwrap_or_else(|| "Search...".to_string());
+            let placeholder = placeholder.unwrap_or_else(|| messages.text("grid.search"));
             let aria_label = label("");
 
             let id_input = column_id.clone();
@@ -254,10 +255,10 @@ pub fn GridFilterCell(
                 .filter(|s| s.is_finite() && *s > 0.0)
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "any".to_string());
-            let min_ph = min_placeholder.unwrap_or_else(|| "From".to_string());
-            let max_ph = max_placeholder.unwrap_or_else(|| "To".to_string());
-            let min_label = label(" (minimum)");
-            let max_label = label(" (maximum)");
+            let min_ph = min_placeholder.unwrap_or_else(|| messages.text("grid.from"));
+            let max_ph = max_placeholder.unwrap_or_else(|| messages.text("grid.to"));
+            let min_label = label(&format!(" ({})", messages.text("grid.minimum")));
+            let max_label = label(&format!(" ({})", messages.text("grid.maximum")));
 
             // Publishing needs both bounds, so every handler goes through the
             // same place: whatever is on screen, parsed and normalized.
@@ -351,10 +352,10 @@ pub fn GridFilterCell(
                 ),
                 _ => (String::new(), String::new()),
             };
-            let from_ph = from_placeholder.unwrap_or_else(|| "From".to_string());
-            let to_ph = to_placeholder.unwrap_or_else(|| "To".to_string());
-            let from_label = label(" (from)");
-            let to_label = label(" (to)");
+            let from_ph = from_placeholder.unwrap_or_else(|| messages.text("grid.from"));
+            let to_ph = to_placeholder.unwrap_or_else(|| messages.text("grid.to"));
+            let from_label = label(&format!(" ({})", messages.text("grid.from")));
+            let to_label = label(&format!(" ({})", messages.text("grid.to")));
 
             let id_from = column_id.clone();
             let id_to = column_id;

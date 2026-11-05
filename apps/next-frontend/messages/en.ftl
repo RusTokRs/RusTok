@@ -24,12 +24,12 @@ Storefront-alertTitle = Localization
 Storefront-alertDescription = Localization is wired via Project Fluent (ru/en).
 Blog-latest-title = Latest from the Blog
 Blog-latest-subtitle = Recent posts and updates
-Blog-comments-title = Comments
-Blog-comments-empty = No approved comments have been published yet.
-Blog-comments-unavailableCached = Comments are temporarily unavailable. Showing a recent cached snapshot.
-Blog-comments-unavailable = Comments are temporarily unavailable. The article is still available.
-Blog-comments-timeoutCached = Comments took too long to load. Showing a recent cached snapshot.
-Blog-comments-timeout = Comments took too long to load. The article is still available.
+Blog-comments-title = Comments & Discussion
+Blog-comments-empty = No comments yet. Be the first to share your thoughts!
+Blog-comments-unavailableCached = Comments are temporarily unavailable. Showing a recent snapshot.
+Blog-comments-unavailable = Comments are temporarily unavailable. The article is still readable.
+Blog-comments-timeoutCached = Comments request timed out. Showing a recent cached snapshot.
+Blog-comments-timeout = Comments request timed out. The article is still available.
 Comments-composer-title = Join the discussion
 Comments-composer-editorLabel = Comment
 Comments-composer-hint = Write a useful, respectful comment.
@@ -389,3 +389,63 @@ Product-buyerLinkError = The selection link could not be saved. Purchases are di
 Product-buyerCartLocale = The cart uses an unsupported or unverified locale. Inspect it or explicitly forget its local reference; no locale is silently substituted.
 
 Product-buyerAuthRefused = The browser session is unavailable or belongs to another tenant. Open this storefront with the correct session before changing the cart.
+
+Blog-author-profile = View Profile
+Blog-comments-totalSuffix = total comments
+Blog-article-back = Back to all articles
+Blog-article-related = Related Articles
+Blog-listing-badge = Project Blog
+Blog-listing-title = Stories & Announcements
+Blog-listing-description = Read about platform updates, engineering notes, and best practices.
+Blog-listing-feed = Blog RSS Feed
+Blog-listing-search = Search articles and tags...
+Blog-listing-categories = Categories:
+Blog-listing-allCategories = All Categories
+Blog-listing-allPosts = All Posts
+Blog-listing-activeFilters = Active filters:
+Blog-listing-category = Category
+Blog-listing-removeCategory = Remove category filter
+Blog-listing-removeTag = Remove tag filter
+Blog-listing-searchLabel = Search: "{ $searchQuery }"
+Blog-listing-clearSearch = Clear search
+Blog-listing-clearFilters = Clear all
+Blog-pagination-previous = Previous
+Blog-listing-searchResults = { $searchTotal ->
+    [one] Page { $searchPage } · { $searchTotal } result
+   *[other] Page { $searchPage } · { $searchTotal } results
+    }
+Blog-pagination-next = Next
+Blog-listing-searchPages = Search pages
+Blog-listing-emptyTitle = No articles found
+Blog-listing-emptyQuery = No articles found matching "{ $searchQuery }"
+Blog-listing-emptyBody = Check back later or clear the selected filter.
+Blog-listing-emptySearch = Try different search terms or clear active filters.
+Blog-listing-firstResults = Back to first results
+Blog-listing-resetFilters = Reset all filters
+Blog-pagination-first = First page
+Blog-pagination-posts = Posts pagination
+Blog-share-title = Share:
+Blog-share-copy = Copy link
+Blog-share-copied = Copied!
+Blog-pagination-position = Page { $currentPage } of { $totalPages }
+Blog-pagination-comments = Comments pagination
+Blog-preview-loadError = Failed to load the draft
+Blog-preview-title = Draft preview
+Blog-preview-banner = This article is not published yet. The link stops working once the post is published, archived or the token expires.
+Blog-preview-hint = Paste a preview token, or open the link containing the #token=… fragment.
+Blog-preview-open = Open preview
+Blog-preview-loading = Loading…
+Blog-preview-invalid = The token is invalid, expired or has been revoked.
+Blog-article-read = Read →
+Blog-article-scrollTop = Scroll to top
+Blog-comments-user = User
+Blog-comments-reply = Reply
+
+Blog-readingTime = { $minutes } min read
+
+Blog-reactions-title = Reactions
+Blog-reactions-like = Like
+Blog-reactions-signIn = Sign in to react.
+Blog-reactions-loading = Loading reactions...
+Blog-reactions-unavailable = Reactions are temporarily unavailable.
+Blog-reactions-updateError = Could not update this reaction.

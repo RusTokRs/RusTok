@@ -5,6 +5,7 @@
 //! Provides producer-neutral reaction bars, like/reaction action buttons,
 //! and reaction count presentations.
 
+pub mod core;
 pub mod i18n;
 pub mod model;
 pub mod transport;

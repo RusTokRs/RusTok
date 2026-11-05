@@ -9,6 +9,7 @@
 - Collaborates with content producers (`rustok-blog`, `rustok-forum`) via `ReactionSubjectUiRef`.
 
 ## Public surface
+- `pub mod core`: Framework-independent validation, control projection and mutation/read settlement.
 - `pub mod i18n`: Project Fluent localization helpers.
 - `pub mod model`: Public view models (`ReactionAction`, `ReactionSnapshotView`, `ReactionSubjectUiRef`).
 - `pub mod transport`: GraphQL reaction transport adapter.
@@ -20,13 +21,15 @@
 
 ### Input DTOs/Commands
 - `ReactionSubjectUiRef`: Subject reference carrying source, kind, subject UUID, and positive owner revision.
-- `ReactionAction`: Reaction mutation action (Add, Remove, Toggle).
+- `ReactionAction`: Reaction mutation action (Add, Remove).
 - `ReactionSnapshotView`: Snapshot view model carrying reactions, counts, and active actor states.
 
 ### Domain Invariants
 - Producer neutrality: does not depend directly on producer storage or internal entity state.
 - Tenant and actor identity derived from trusted UI auth context, never accepted as variables.
 - Write mutations generate fresh UUID command identity for owner idempotency.
+- Counts and revisions remain canonical decimal strings, including full-width u64 values.
+- Every write outcome is followed by a canonical read; controls remain locked until the read settles, and failed reads remove stale interactive state.
 
 ### Events / Outbox Side Effects
 - Storefront UI adapter; reactions mutations delegate event dispatch to `rustok-reactions`.

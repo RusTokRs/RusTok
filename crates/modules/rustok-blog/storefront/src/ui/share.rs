@@ -31,14 +31,7 @@ pub fn BlogStatusBadge(status: String, unknown_label: String) -> impl IntoView {
 pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
     let route = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route.locale.clone();
-    let is_ru = locale
-        .as_deref()
-        .is_some_and(|value| value.starts_with("ru"));
-    let share_label = if is_ru {
-        "Поделиться"
-    } else {
-        "Share"
-    };
+    let share_label = crate::i18n::t(locale.as_deref(), "blog.share.title", "Share");
 
     // Keep the module's actual route contract, not Next's /blog/{slug} URL.
     let route_segment = core::route_segment_or_default(

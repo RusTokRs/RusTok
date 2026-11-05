@@ -475,3 +475,37 @@ pub fn build_draft_preview_copy(locale: Option<&str>) -> DraftPreviewCopy {
         ),
     }
 }
+
+/// Compute category choices and related items once, outside render bindings.
+pub fn showcase_posts(
+    data: &crate::model::StorefrontBlogData,
+    searching: bool,
+) -> (
+    Option<String>,
+    std::collections::BTreeMap<String, String>,
+    Vec<crate::model::BlogPostListItem>,
+) {
+    let selected_slug = data
+        .selected_post
+        .as_ref()
+        .and_then(|post| post.slug.clone());
+    let mut categories = std::collections::BTreeMap::new();
+    for post in &data.posts.items {
+        if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
+            categories.entry(id.clone()).or_insert_with(|| name.clone());
+        }
+    }
+    if let Some(post) = &data.selected_post {
+        if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
+            categories.entry(id.clone()).or_insert_with(|| name.clone());
+        }
+    }
+    let posts = data
+        .posts
+        .items
+        .iter()
+        .filter(|post| searching || selected_slug.is_none() || post.slug != selected_slug)
+        .cloned()
+        .collect();
+    (selected_slug, categories, posts)
+}

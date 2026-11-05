@@ -33,6 +33,7 @@ pub fn GridPaginationBar(
     #[props(default)]
     page_size_options: Option<Vec<usize>>,
 ) -> Element {
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let current_page = pagination.page;
     let total_pages = pagination.total_pages();
     let total_items = pagination.total;
@@ -50,12 +51,14 @@ pub fn GridPaginationBar(
         page_size,
     );
 
+    let pager_messages = messages.clone();
     let pager: Option<Element> = (!is_infinite).then(|| {
+        let messages = &pager_messages;
         rsx! {
             div { class: "flex items-center gap-1 ml-2",
                 button {
                     r#type: "button",
-                    "aria-label": "Previous page",
+                    "aria-label": messages.text("grid.previous"),
                     disabled: !has_prev,
                     class: "px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors",
                     onclick: move |_| {
@@ -63,12 +66,12 @@ pub fn GridPaginationBar(
                             on_page_change.call(current_page - 1);
                         }
                     },
-                    "‹ Previous"
+                    {messages.text("grid.previous")}
                 }
                 span { class: "px-2 font-medium text-foreground", "{current_page} / {total_pages}" }
                 button {
                     r#type: "button",
-                    "aria-label": "Next page",
+                    "aria-label": messages.text("grid.next"),
                     disabled: !has_next,
                     class: "px-2 py-1 rounded border border-border disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted font-medium text-foreground transition-colors",
                     onclick: move |_| {
@@ -76,22 +79,24 @@ pub fn GridPaginationBar(
                             on_page_change.call(current_page.saturating_add(1));
                         }
                     },
-                    "Next ›"
+                    {messages.text("grid.next")}
                 }
             }
         }
     });
 
+    let loader_messages = messages.clone();
     let loader: Option<Element> = (is_infinite && has_next).then(|| {
+        let messages = &loader_messages;
         rsx! {
             button {
                 r#type: "button",
                 // The visible text alone does not say what is loaded; the Leptos bar names the
                 // same action, so both hosts announce it identically.
-                "aria-label": "Load more rows",
+                "aria-label": messages.text("grid.loadMore"),
                 class: "text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium text-foreground transition-colors",
                 onclick: move |_| on_load_more.call(()),
-                "Load more"
+                {messages.text("grid.loadMore")}
             }
             // Sentinel: Dioxus wires this up to an intersection observer, so no
             // JavaScript and no `web-sys` are involved.
@@ -114,14 +119,11 @@ pub fn GridPaginationBar(
             // Range summary & page size
             div { class: "flex items-center gap-3",
                 div { class: "flex items-center gap-1.5", "aria-live": "polite",
-                    span { "Showing" }
-                    span { class: "font-semibold text-foreground", "{from_item}-{to_item}" }
-                    span { "of" }
-                    span { class: "font-semibold text-foreground", "{total_items}" }
+                    {messages.range(from_item, to_item, total_items)}
                 }
                 div { class: "h-3 w-px bg-border/60", "aria-hidden": "true" }
                 label { class: "flex items-center gap-1.5",
-                    span { "Rows per page:" }
+                    span { {messages.text("grid.rowsPerPage")} }
                     select {
                         value: "{page_size}",
                         class: "text-xs rounded border border-border bg-background px-1.5 py-0.5 text-foreground focus:border-primary focus:outline-none",
@@ -145,11 +147,11 @@ pub fn GridPaginationBar(
             }
 
             // Mode switch & page navigation
-            nav { class: "flex items-center gap-2", "aria-label": "Pagination",
+            nav { class: "flex items-center gap-2", "aria-label": messages.text("grid.pagination"),
                 button {
                     r#type: "button",
                     class: "text-[11px] px-2 py-1 rounded border border-border hover:bg-muted font-medium transition-colors text-foreground/80 flex items-center gap-1",
-                    title: "Toggle between classic pagination and infinite scrolling",
+                    title: messages.text("grid.modeHint"),
                     onclick: move |_| {
                         let next_mode = if is_infinite {
                             PaginationMode::Paged
@@ -159,9 +161,9 @@ pub fn GridPaginationBar(
                         on_mode_change.call(next_mode);
                     },
                     if is_infinite {
-                        "Mode: Infinite ⤓"
+                        {messages.text("grid.modeInfinite")}
                     } else {
-                        "Mode: Paged 📄"
+                        {messages.text("grid.modePaged")}
                     }
                 }
                 {pager}

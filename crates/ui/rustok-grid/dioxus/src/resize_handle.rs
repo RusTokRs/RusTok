@@ -45,9 +45,12 @@ pub fn ColumnResizeHandle(
     let drag_origin: Option<DragOrigin> = *drag.read();
     let is_dragging = drag_origin.is_some();
 
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let label = match column_title {
-        Some(ref title) if !title.trim().is_empty() => format!("Resize column {title}"),
-        _ => "Resize column".to_string(),
+        Some(ref title) if !title.trim().is_empty() => {
+            messages.column_label("grid.resizeColumn", title.as_str())
+        }
+        _ => messages.text("grid.resize"),
     };
 
     // The core never trusts the order of the bounds, and neither do we.

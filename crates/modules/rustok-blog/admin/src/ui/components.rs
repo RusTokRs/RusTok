@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_ui::{Button, ButtonVariant, Input, Select, SelectOption, Size};
 use rustok_api::RichTextDocument;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
@@ -92,13 +93,13 @@ pub(super) fn BlogEditBanner(
             <div class="text-sm text-muted-foreground">
                 {move || banner_view.get().banner_text}
             </div>
-            <button
-                type="button"
+            <Button
+                size=Size::Sm variant=ButtonVariant::Outline
                 class="text-xs font-medium text-primary hover:underline"
-                on:click=move |_| on_reset.run(())
+                on_click=Box::new(move || on_reset.run(()))
             >
                 {move || banner_view.get().create_new_label}
-            </button>
+            </Button>
         </div>
     }
 }
@@ -155,7 +156,7 @@ pub(super) fn BlogPostsTable(
             preview_link: t(locale.as_deref(), "blog.table.previewLink", "Preview link"),
         },
     );
-    let columns = core::blog_post_grid_columns(locale.as_deref());
+    let columns = core::blog_post_grid_columns(|key, fallback| t(locale.as_deref(), key, fallback));
     let search = RwSignal::new(String::new());
     let filters = RwSignal::new(ColumnFilters::default());
     let selection = RwSignal::new(RowSelection::default());
@@ -164,10 +165,6 @@ pub(super) fn BlogPostsTable(
     let load_more_label = t(locale.as_deref(), "blog.table.loadMore", "Load more");
     let pin_label = t(locale.as_deref(), "blog.table.pin", "Pin");
     let unpin_label = t(locale.as_deref(), "blog.table.unpin", "Unpin");
-    let is_ru = locale
-        .as_deref()
-        .map(|l| l.starts_with("ru"))
-        .unwrap_or(false);
     let sort_label = t(locale.as_deref(), "blog.table.sort", "Sort");
     let sort_field_options = core::BLOG_POST_ADMIN_SORT_FIELDS
         .into_iter()
@@ -202,22 +199,7 @@ pub(super) fn BlogPostsTable(
         let rows = rows_store.get_value();
         let q = search.get();
         let f = filters.get();
-        core::filter_blog_posts(&rows, &f, if q.trim().is_empty() { None } else { Some(&q) })
-    });
-
-    Effect::new(move |_| {
-        let count = filtered_rows.get().len() as u64;
-        pagination.update(|p| p.set_total(count));
-    });
-
-    let paged_rows = Memo::new(move |_| {
-        let list = filtered_rows.get();
-        let p = pagination.get();
-        let start = (p.page.saturating_sub(1)) * p.page_size;
-        list.into_iter()
-            .skip(start)
-            .take(p.page_size)
-            .collect::<Vec<_>>()
+        core::filter_blog_posts(&rows, &f, Some(&q))
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -268,32 +250,29 @@ pub(super) fn BlogPostsTable(
                 }.into_any(),
                 "actions" => view! {
                     <div class=tc.actions_group>
-                        <button
-                            type="button"
-                            class=tc.primary_action_button
+                        <Button
+                            size=Size::Sm variant=ButtonVariant::Outline
+
                             disabled=row.is_busy
-                            on:click={
-                                move |_| on_edit.run((post_id_edit.clone(), post_locale_edit.clone()))
-                            }
+                            on_click=Box::new(move || on_edit.run((post_id_edit.clone(), post_locale_edit.clone())))
                         >
                             {row.edit_label.clone()}
-                        </button>
+                        </Button>
                         {if row.show_publish_action {
                             view! {
-                                <button
-                                    type="button"
-                                    class=tc.primary_action_button
+                                <Button
+                                    size=Size::Sm variant=ButtonVariant::Outline
+
                                     disabled=row.is_busy
-                                    on:click={
-                                        move |_| on_toggle_publish.run((
+                                    on_click=Box::new(move || on_toggle_publish.run((
                                             post_id_publish.clone(),
                                             row.next_publish_state,
                                             post_locale_publish.clone(),
                                         ))
-                                    }
+                                    )
                                 >
                                     {row.publish_label.clone()}
-                                </button>
+                                </Button>
                             }
                             .into_any()
                         } else {
@@ -301,34 +280,32 @@ pub(super) fn BlogPostsTable(
                         }}
                         {if row.show_pin_action {
                             view! {
-                                <button
-                                    type="button"
-                                    class=tc.primary_action_button
+                                <Button
+                                    size=Size::Sm variant=ButtonVariant::Outline
+
                                     disabled=row.is_busy
-                                    on:click={move |_| on_toggle_pin.run((
+                                    on_click=Box::new(move || on_toggle_pin.run((
                                         post_id_pin.clone(),
                                         row.next_pin_state,
                                         post_locale_pin.clone(),
-                                    ))}
+                                    )))
                                 >
                                     {if row.is_pinned { unpin_label.clone() } else { pin_label.clone() }}
-                                </button>
+                                </Button>
                             }.into_any()
                         } else {
                             ().into_any()
                         }}
                         {if row.show_archive_action {
                             view! {
-                                <button
-                                    type="button"
-                                    class=tc.primary_action_button
+                                <Button
+                                    size=Size::Sm variant=ButtonVariant::Outline
+
                                     disabled=row.is_busy
-                                    on:click={
-                                        move |_| on_archive.run((post_id_archive.clone(), post_locale_archive.clone()))
-                                    }
+                                    on_click=Box::new(move || on_archive.run((post_id_archive.clone(), post_locale_archive.clone())))
                                 >
                                     {row.archive_label.clone()}
-                                </button>
+                                </Button>
                             }
                             .into_any()
                         } else {
@@ -336,16 +313,14 @@ pub(super) fn BlogPostsTable(
                         }}
                         {if row.show_restore_action {
                             view! {
-                                <button
-                                    type="button"
-                                    class=tc.primary_action_button
+                                <Button
+                                    size=Size::Sm variant=ButtonVariant::Outline
+
                                     disabled=row.is_busy
-                                    on:click={
-                                        move |_| on_restore.run((post_id_restore.clone(), post_locale_restore.clone()))
-                                    }
+                                    on_click=Box::new(move || on_restore.run((post_id_restore.clone(), post_locale_restore.clone())))
                                 >
                                     {row.restore_label.clone()}
-                                </button>
+                                </Button>
                             }
                             .into_any()
                         } else {
@@ -353,29 +328,26 @@ pub(super) fn BlogPostsTable(
                         }}
                         {if row.show_preview_action {
                             view! {
-                                <button
-                                    type="button"
-                                    class=tc.primary_action_button
+                                <Button
+                                    size=Size::Sm variant=ButtonVariant::Outline
+
                                     disabled=row.is_busy
-                                    on:click={move |_| on_preview.run(post_id_preview.clone())}
+                                    on_click=Box::new(move || on_preview.run(post_id_preview.clone()))
                                 >
                                     {row.preview_label.clone()}
-                                </button>
+                                </Button>
                             }
                             .into_any()
                         } else {
                             ().into_any()
                         }}
-                        <button
-                            type="button"
-                            class=tc.destructive_action_button
+                        <Button
+                            size=Size::Sm variant=ButtonVariant::Destructive
                             disabled=row.is_busy
-                            on:click={
-                                move |_| on_delete.run(post_id_delete.clone())
-                            }
+                            on_click=Box::new(move || on_delete.run(post_id_delete.clone()))
                         >
                             {row.delete_label.clone()}
-                        </button>
+                        </Button>
                     </div>
                 }.into_any(),
                 _ => ().into_any(),
@@ -384,67 +356,42 @@ pub(super) fn BlogPostsTable(
         )
     };
 
-    let select_class = "text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary font-normal";
+    let sort_field_value = RwSignal::new(sort_field.as_graphql().to_string());
+    let sort_order_value = RwSignal::new(sort_order.as_graphql().to_string());
+    let sort_field_options = sort_field_options
+        .into_iter()
+        .map(|(field, label)| SelectOption::new(field.as_graphql(), label))
+        .collect::<Vec<_>>();
+    let sort_order_options = sort_order_options
+        .into_iter()
+        .map(|(order, label)| SelectOption::new(order.as_graphql(), label))
+        .collect::<Vec<_>>();
 
     view! {
         <div class="space-y-4">
             <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
                 <div class="flex flex-col sm:flex-row gap-3 items-center">
-                    <input
-                        type="text"
-                        placeholder=if is_ru { "Поиск по статьям блога..." } else { "Search blog posts..." }
-                        prop:value=move || search.get()
-                        on:input=move |ev| search.set(event_target_value(&ev))
-                        class="text-xs rounded-lg border border-border bg-background px-2.5 py-1 text-foreground outline-none focus:border-primary w-64 font-normal"
-                    />
+                    <Input placeholder=t(locale.as_deref(), "blog.grid.search", "Search blog posts...") value=search.read_only() set_value=search.write_only() class="w-64" />
                     // The sort is a request, not a view filter: it reloads the list
                     // from the server instead of reordering the loaded rows.
                     <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <span>{sort_label.clone()}</span>
-                        <select
-                            class=select_class
-                            aria-label=sort_label.clone()
-                            prop:value=move || sort_field.as_graphql()
-                            on:change=move |ev| {
-                                let token = event_target_value(&ev);
-                                if let Some(field) = crate::model::BlogPostSortField::from_graphql(token.as_str()) {
-                                    on_sort_change.run(core::BlogPostAdminSort::default().with_field(field).with_order(sort_order));
+                        <Select options=Signal::derive(move || sort_field_options.clone())
+                            value=sort_field_value.read_only() set_value=sort_field_value.write_only()
+                            on_change=Callback::new(move |token: String| {
+                                if let Some(sort) = core::sort_field_change(&token, sort_order) {
+                                    on_sort_change.run(sort);
                                 }
-                            }
-                        >
-                            {sort_field_options
-                                .into_iter()
-                                .map(|(field, label)| {
-                                    view! {
-                                        <option value=field.as_graphql()>
-                                            {label}
-                                        </option>
-                                    }
-                                })
-                                .collect_view()}
-                        </select>
-                        <select
-                            class=select_class
-                            aria-label=sort_label.clone()
-                            prop:value=move || sort_order.as_graphql()
-                            on:change=move |ev| {
-                                let token = event_target_value(&ev);
-                                if let Some(order) = crate::model::BlogPostSortOrder::from_graphql(token.as_str()) {
-                                    on_sort_change.run(core::BlogPostAdminSort::default().with_field(sort_field).with_order(order));
+                            })
+                        />
+                        <Select options=Signal::derive(move || sort_order_options.clone())
+                            value=sort_order_value.read_only() set_value=sort_order_value.write_only()
+                            on_change=Callback::new(move |token: String| {
+                                if let Some(sort) = core::sort_order_change(&token, sort_field) {
+                                    on_sort_change.run(sort);
                                 }
-                            }
-                        >
-                            {sort_order_options
-                                .into_iter()
-                                .map(|(order, label)| {
-                                    view! {
-                                        <option value=order.as_graphql()>
-                                            {label}
-                                        </option>
-                                    }
-                                })
-                                .collect_view()}
-                        </select>
+                            })
+                        />
                     </label>
                 </div>
                 <div class=table_classes.total_label>
@@ -453,8 +400,9 @@ pub(super) fn BlogPostsTable(
             </div>
 
             <DataGrid
+                messages=rustok_grid::GridMessages::for_locale(locale.as_deref())
                 columns=columns
-                data=Signal::derive(move || paged_rows.get())
+                data=Signal::derive(move || filtered_rows.get())
                 key_fn=|row: &core::BlogPostAdminTableRowViewModel| row.post_id.clone()
                 cell_renderer=cell_renderer
                 empty_message=table.empty_message
@@ -462,19 +410,18 @@ pub(super) fn BlogPostsTable(
                 pagination=pagination
                 filters=filters
                 on_filter_change=on_filters_change
-                on_row_click=Callback::new(|_| ())
             />
             {next_cursor.map(|cursor| {
                 let label = load_more_label.clone();
                 view! {
                     <div class="flex justify-center">
-                        <button
-                            type="button"
+                        <Button
+                            size=Size::Sm variant=ButtonVariant::Outline
                             class="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                            on:click=move |_| on_load_more.run(cursor.clone())
+                            on_click=Box::new(move || on_load_more.run(cursor.clone()))
                         >
                             {label}
-                        </button>
+                        </Button>
                     </div>
                 }
             })}

@@ -1059,3 +1059,10 @@ fn blog_admin_section_resolution_maps_subpaths() {
         BlogAdminSection::Posts
     );
 }
+
+#[test]
+fn grid_column_copy_and_unicode_filtering_have_no_language_branch() {
+    let columns = blog_post_grid_columns(|key, _| format!("fr:{key}"));
+    assert_eq!(columns[0].title, "fr:blog.grid.title");
+    assert!(sort_field_change("INVALID", BlogPostSortOrder::Desc).is_none());
+}

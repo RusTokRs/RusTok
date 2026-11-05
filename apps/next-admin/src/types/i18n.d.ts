@@ -194,6 +194,186 @@ export type AppMessageKey =
   | 'auth.tenantLabel'
   | 'auth-title'
   | 'auth.title'
+  | 'blog-categories-add'
+  | 'blog.categories.add'
+  | 'blog-categories-cancel'
+  | 'blog.categories.cancel'
+  | 'blog-categories-create'
+  | 'blog.categories.create'
+  | 'blog-categories-deleteConfirm'
+  | 'blog.categories.deleteConfirm'
+  | 'blog-categories-deleted'
+  | 'blog.categories.deleted'
+  | 'blog-categories-deleteError'
+  | 'blog.categories.deleteError'
+  | 'blog-categories-deleteTitle'
+  | 'blog.categories.deleteTitle'
+  | 'blog-categories-empty'
+  | 'blog.categories.empty'
+  | 'blog-categories-loadError'
+  | 'blog.categories.loadError'
+  | 'blog-categories-loading'
+  | 'blog.categories.loading'
+  | 'blog-categories-name'
+  | 'blog.categories.name'
+  | 'blog-categories-position'
+  | 'blog.categories.position'
+  | 'blog-categories-search'
+  | 'blog.categories.search'
+  | 'blog-categories-searchEmpty'
+  | 'blog.categories.searchEmpty'
+  | 'blog-categories-slug'
+  | 'blog.categories.slug'
+  | 'blog-categories-subtitle'
+  | 'blog.categories.subtitle'
+  | 'blog-categories-title'
+  | 'blog.categories.title'
+  | 'blog-grid-actions'
+  | 'blog.grid.actions'
+  | 'blog-grid-author'
+  | 'blog.grid.author'
+  | 'blog-grid-created'
+  | 'blog.grid.created'
+  | 'blog-grid-filter'
+  | 'blog.grid.filter'
+  | 'blog-grid-locale'
+  | 'blog.grid.locale'
+  | 'blog-grid-published'
+  | 'blog.grid.published'
+  | 'blog-grid-search'
+  | 'blog.grid.search'
+  | 'blog-grid-slug'
+  | 'blog.grid.slug'
+  | 'blog-grid-status'
+  | 'blog.grid.status'
+  | 'blog-grid-title'
+  | 'blog.grid.title'
+  | 'blog-moderation-approved'
+  | 'blog.moderation.approved'
+  | 'blog-moderation-empty'
+  | 'blog.moderation.empty'
+  | 'blog-moderation-loading'
+  | 'blog.moderation.loading'
+  | 'blog-moderation-pages'
+  | 'blog.moderation.pages'
+  | 'blog-moderation-pageSummary'
+  | 'blog.moderation.pageSummary'
+  | 'blog-moderation-saving'
+  | 'blog.moderation.saving'
+  | 'blog-moderation-subtitle'
+  | 'blog.moderation.subtitle'
+  | 'blog-moderation-title'
+  | 'blog.moderation.title'
+  | 'blog-moderation-unavailable'
+  | 'blog.moderation.unavailable'
+  | 'blog-moderation-updated'
+  | 'blog.moderation.updated'
+  | 'blog-pagination-next'
+  | 'blog.pagination.next'
+  | 'blog-pagination-previous'
+  | 'blog.pagination.previous'
+  | 'blog-preview-copyLink'
+  | 'blog.preview.copyLink'
+  | 'blog-preview-copyToken'
+  | 'blog.preview.copyToken'
+  | 'blog-preview-done'
+  | 'blog.preview.done'
+  | 'blog-preview-expiresLabel'
+  | 'blog.preview.expiresLabel'
+  | 'blog-preview-lifetime'
+  | 'blog.preview.lifetime'
+  | 'blog-preview-open'
+  | 'blog.preview.open'
+  | 'blog-preview-post'
+  | 'blog.preview.post'
+  | 'blog-preview-title'
+  | 'blog.preview.title'
+  | 'blog-sort-asc'
+  | 'blog.sort.asc'
+  | 'blog-sort-created_at'
+  | 'blog.sort.created_at'
+  | 'blog-sort-desc'
+  | 'blog.sort.desc'
+  | 'blog-sort-published_at'
+  | 'blog.sort.published_at'
+  | 'blog-sort-title'
+  | 'blog.sort.title'
+  | 'blog-sort-updated_at'
+  | 'blog.sort.updated_at'
+  | 'blog-status-archived'
+  | 'blog.status.archived'
+  | 'blog-status-draft'
+  | 'blog.status.draft'
+  | 'blog-status-published'
+  | 'blog.status.published'
+  | 'blog-table-actions'
+  | 'blog.table.actions'
+  | 'blog-table-allStatuses'
+  | 'blog.table.allStatuses'
+  | 'blog-table-archive'
+  | 'blog.table.archive'
+  | 'blog-table-archived'
+  | 'blog.table.archived'
+  | 'blog-table-archiveError'
+  | 'blog.table.archiveError'
+  | 'blog-table-delete'
+  | 'blog.table.delete'
+  | 'blog-table-deleted'
+  | 'blog.table.deleted'
+  | 'blog-table-deleteError'
+  | 'blog.table.deleteError'
+  | 'blog-table-edit'
+  | 'blog.table.edit'
+  | 'blog-table-filterAuthor'
+  | 'blog.table.filterAuthor'
+  | 'blog-table-filterLocale'
+  | 'blog.table.filterLocale'
+  | 'blog-table-filterSlug'
+  | 'blog.table.filterSlug'
+  | 'blog-table-filterStatus'
+  | 'blog.table.filterStatus'
+  | 'blog-table-filterTitle'
+  | 'blog.table.filterTitle'
+  | 'blog-table-openMenu'
+  | 'blog.table.openMenu'
+  | 'blog-table-pages'
+  | 'blog.table.pages'
+  | 'blog-table-pin'
+  | 'blog.table.pin'
+  | 'blog-table-pinError'
+  | 'blog.table.pinError'
+  | 'blog-table-pinned'
+  | 'blog.table.pinned'
+  | 'blog-table-publish'
+  | 'blog.table.publish'
+  | 'blog-table-published'
+  | 'blog.table.published'
+  | 'blog-table-restore'
+  | 'blog.table.restore'
+  | 'blog-table-restored'
+  | 'blog.table.restored'
+  | 'blog-table-searchAuthor'
+  | 'blog.table.searchAuthor'
+  | 'blog-table-searchLocale'
+  | 'blog.table.searchLocale'
+  | 'blog-table-searchSlug'
+  | 'blog.table.searchSlug'
+  | 'blog-table-searchTitle'
+  | 'blog.table.searchTitle'
+  | 'blog-table-sortField'
+  | 'blog.table.sortField'
+  | 'blog-table-sortOrder'
+  | 'blog.table.sortOrder'
+  | 'blog-table-statusError'
+  | 'blog.table.statusError'
+  | 'blog-table-unpin'
+  | 'blog.table.unpin'
+  | 'blog-table-unpinned'
+  | 'blog.table.unpinned'
+  | 'blog-table-unpublish'
+  | 'blog.table.unpublish'
+  | 'blog-table-unpublished'
+  | 'blog.table.unpublished'
   | 'cache-eyebrow'
   | 'cache.eyebrow'
   | 'cache-health-backend'
@@ -2190,6 +2370,186 @@ export interface AppMessageArgs {
   'auth-tenantLabel'?: Record<string, never>;
   'auth.title'?: Record<string, never>;
   'auth-title'?: Record<string, never>;
+  'blog.categories.add'?: Record<string, never>;
+  'blog-categories-add'?: Record<string, never>;
+  'blog.categories.cancel'?: Record<string, never>;
+  'blog-categories-cancel'?: Record<string, never>;
+  'blog.categories.create'?: Record<string, never>;
+  'blog-categories-create'?: Record<string, never>;
+  'blog.categories.deleteConfirm': { 'name': string | number | Date };
+  'blog-categories-deleteConfirm': { 'name': string | number | Date };
+  'blog.categories.deleted'?: Record<string, never>;
+  'blog-categories-deleted'?: Record<string, never>;
+  'blog.categories.deleteError'?: Record<string, never>;
+  'blog-categories-deleteError'?: Record<string, never>;
+  'blog.categories.deleteTitle'?: Record<string, never>;
+  'blog-categories-deleteTitle'?: Record<string, never>;
+  'blog.categories.empty'?: Record<string, never>;
+  'blog-categories-empty'?: Record<string, never>;
+  'blog.categories.loadError'?: Record<string, never>;
+  'blog-categories-loadError'?: Record<string, never>;
+  'blog.categories.loading'?: Record<string, never>;
+  'blog-categories-loading'?: Record<string, never>;
+  'blog.categories.name'?: Record<string, never>;
+  'blog-categories-name'?: Record<string, never>;
+  'blog.categories.position'?: Record<string, never>;
+  'blog-categories-position'?: Record<string, never>;
+  'blog.categories.search'?: Record<string, never>;
+  'blog-categories-search'?: Record<string, never>;
+  'blog.categories.searchEmpty'?: Record<string, never>;
+  'blog-categories-searchEmpty'?: Record<string, never>;
+  'blog.categories.slug'?: Record<string, never>;
+  'blog-categories-slug'?: Record<string, never>;
+  'blog.categories.subtitle'?: Record<string, never>;
+  'blog-categories-subtitle'?: Record<string, never>;
+  'blog.categories.title'?: Record<string, never>;
+  'blog-categories-title'?: Record<string, never>;
+  'blog.grid.actions'?: Record<string, never>;
+  'blog-grid-actions'?: Record<string, never>;
+  'blog.grid.author'?: Record<string, never>;
+  'blog-grid-author'?: Record<string, never>;
+  'blog.grid.created'?: Record<string, never>;
+  'blog-grid-created'?: Record<string, never>;
+  'blog.grid.filter'?: Record<string, never>;
+  'blog-grid-filter'?: Record<string, never>;
+  'blog.grid.locale'?: Record<string, never>;
+  'blog-grid-locale'?: Record<string, never>;
+  'blog.grid.published'?: Record<string, never>;
+  'blog-grid-published'?: Record<string, never>;
+  'blog.grid.search'?: Record<string, never>;
+  'blog-grid-search'?: Record<string, never>;
+  'blog.grid.slug'?: Record<string, never>;
+  'blog-grid-slug'?: Record<string, never>;
+  'blog.grid.status'?: Record<string, never>;
+  'blog-grid-status'?: Record<string, never>;
+  'blog.grid.title'?: Record<string, never>;
+  'blog-grid-title'?: Record<string, never>;
+  'blog.moderation.approved'?: Record<string, never>;
+  'blog-moderation-approved'?: Record<string, never>;
+  'blog.moderation.empty'?: Record<string, never>;
+  'blog-moderation-empty'?: Record<string, never>;
+  'blog.moderation.loading'?: Record<string, never>;
+  'blog-moderation-loading'?: Record<string, never>;
+  'blog.moderation.pages'?: Record<string, never>;
+  'blog-moderation-pages'?: Record<string, never>;
+  'blog.moderation.pageSummary': { 'total': string | number | Date; 'page': string | number | Date; 'pages': string | number | Date };
+  'blog-moderation-pageSummary': { 'total': string | number | Date; 'page': string | number | Date; 'pages': string | number | Date };
+  'blog.moderation.saving'?: Record<string, never>;
+  'blog-moderation-saving'?: Record<string, never>;
+  'blog.moderation.subtitle'?: Record<string, never>;
+  'blog-moderation-subtitle'?: Record<string, never>;
+  'blog.moderation.title'?: Record<string, never>;
+  'blog-moderation-title'?: Record<string, never>;
+  'blog.moderation.unavailable'?: Record<string, never>;
+  'blog-moderation-unavailable'?: Record<string, never>;
+  'blog.moderation.updated'?: Record<string, never>;
+  'blog-moderation-updated'?: Record<string, never>;
+  'blog.pagination.next'?: Record<string, never>;
+  'blog-pagination-next'?: Record<string, never>;
+  'blog.pagination.previous'?: Record<string, never>;
+  'blog-pagination-previous'?: Record<string, never>;
+  'blog.preview.copyLink'?: Record<string, never>;
+  'blog-preview-copyLink'?: Record<string, never>;
+  'blog.preview.copyToken'?: Record<string, never>;
+  'blog-preview-copyToken'?: Record<string, never>;
+  'blog.preview.done'?: Record<string, never>;
+  'blog-preview-done'?: Record<string, never>;
+  'blog.preview.expiresLabel'?: Record<string, never>;
+  'blog-preview-expiresLabel'?: Record<string, never>;
+  'blog.preview.lifetime'?: Record<string, never>;
+  'blog-preview-lifetime'?: Record<string, never>;
+  'blog.preview.open'?: Record<string, never>;
+  'blog-preview-open'?: Record<string, never>;
+  'blog.preview.post'?: Record<string, never>;
+  'blog-preview-post'?: Record<string, never>;
+  'blog.preview.title'?: Record<string, never>;
+  'blog-preview-title'?: Record<string, never>;
+  'blog.sort.asc'?: Record<string, never>;
+  'blog-sort-asc'?: Record<string, never>;
+  'blog.sort.created_at'?: Record<string, never>;
+  'blog-sort-created_at'?: Record<string, never>;
+  'blog.sort.desc'?: Record<string, never>;
+  'blog-sort-desc'?: Record<string, never>;
+  'blog.sort.published_at'?: Record<string, never>;
+  'blog-sort-published_at'?: Record<string, never>;
+  'blog.sort.title'?: Record<string, never>;
+  'blog-sort-title'?: Record<string, never>;
+  'blog.sort.updated_at'?: Record<string, never>;
+  'blog-sort-updated_at'?: Record<string, never>;
+  'blog.status.archived'?: Record<string, never>;
+  'blog-status-archived'?: Record<string, never>;
+  'blog.status.draft'?: Record<string, never>;
+  'blog-status-draft'?: Record<string, never>;
+  'blog.status.published'?: Record<string, never>;
+  'blog-status-published'?: Record<string, never>;
+  'blog.table.actions'?: Record<string, never>;
+  'blog-table-actions'?: Record<string, never>;
+  'blog.table.allStatuses'?: Record<string, never>;
+  'blog-table-allStatuses'?: Record<string, never>;
+  'blog.table.archive'?: Record<string, never>;
+  'blog-table-archive'?: Record<string, never>;
+  'blog.table.archived'?: Record<string, never>;
+  'blog-table-archived'?: Record<string, never>;
+  'blog.table.archiveError'?: Record<string, never>;
+  'blog-table-archiveError'?: Record<string, never>;
+  'blog.table.delete'?: Record<string, never>;
+  'blog-table-delete'?: Record<string, never>;
+  'blog.table.deleted'?: Record<string, never>;
+  'blog-table-deleted'?: Record<string, never>;
+  'blog.table.deleteError'?: Record<string, never>;
+  'blog-table-deleteError'?: Record<string, never>;
+  'blog.table.edit'?: Record<string, never>;
+  'blog-table-edit'?: Record<string, never>;
+  'blog.table.filterAuthor'?: Record<string, never>;
+  'blog-table-filterAuthor'?: Record<string, never>;
+  'blog.table.filterLocale'?: Record<string, never>;
+  'blog-table-filterLocale'?: Record<string, never>;
+  'blog.table.filterSlug'?: Record<string, never>;
+  'blog-table-filterSlug'?: Record<string, never>;
+  'blog.table.filterStatus'?: Record<string, never>;
+  'blog-table-filterStatus'?: Record<string, never>;
+  'blog.table.filterTitle'?: Record<string, never>;
+  'blog-table-filterTitle'?: Record<string, never>;
+  'blog.table.openMenu'?: Record<string, never>;
+  'blog-table-openMenu'?: Record<string, never>;
+  'blog.table.pages'?: Record<string, never>;
+  'blog-table-pages'?: Record<string, never>;
+  'blog.table.pin'?: Record<string, never>;
+  'blog-table-pin'?: Record<string, never>;
+  'blog.table.pinError'?: Record<string, never>;
+  'blog-table-pinError'?: Record<string, never>;
+  'blog.table.pinned'?: Record<string, never>;
+  'blog-table-pinned'?: Record<string, never>;
+  'blog.table.publish'?: Record<string, never>;
+  'blog-table-publish'?: Record<string, never>;
+  'blog.table.published'?: Record<string, never>;
+  'blog-table-published'?: Record<string, never>;
+  'blog.table.restore'?: Record<string, never>;
+  'blog-table-restore'?: Record<string, never>;
+  'blog.table.restored'?: Record<string, never>;
+  'blog-table-restored'?: Record<string, never>;
+  'blog.table.searchAuthor'?: Record<string, never>;
+  'blog-table-searchAuthor'?: Record<string, never>;
+  'blog.table.searchLocale'?: Record<string, never>;
+  'blog-table-searchLocale'?: Record<string, never>;
+  'blog.table.searchSlug'?: Record<string, never>;
+  'blog-table-searchSlug'?: Record<string, never>;
+  'blog.table.searchTitle'?: Record<string, never>;
+  'blog-table-searchTitle'?: Record<string, never>;
+  'blog.table.sortField'?: Record<string, never>;
+  'blog-table-sortField'?: Record<string, never>;
+  'blog.table.sortOrder'?: Record<string, never>;
+  'blog-table-sortOrder'?: Record<string, never>;
+  'blog.table.statusError'?: Record<string, never>;
+  'blog-table-statusError'?: Record<string, never>;
+  'blog.table.unpin'?: Record<string, never>;
+  'blog-table-unpin'?: Record<string, never>;
+  'blog.table.unpinned'?: Record<string, never>;
+  'blog-table-unpinned'?: Record<string, never>;
+  'blog.table.unpublish'?: Record<string, never>;
+  'blog-table-unpublish'?: Record<string, never>;
+  'blog.table.unpublished'?: Record<string, never>;
+  'blog-table-unpublished'?: Record<string, never>;
   'cache.eyebrow'?: Record<string, never>;
   'cache-eyebrow'?: Record<string, never>;
   'cache.health.backend'?: Record<string, never>;

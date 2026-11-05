@@ -42,13 +42,17 @@ pub fn GridFilterCell(
     current_value: Signal<Option<FilterValue>>,
     on_change: Callback<(String, FilterValue)>,
 ) -> impl IntoView {
+    let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     let column = StoredValue::new(column_id);
     let title = column_title.unwrap_or_default();
     let label = move |suffix: &str| {
         if title.trim().is_empty() {
-            format!("Filter{suffix}")
+            format!("{}{suffix}", messages.get_value().text("grid.filter"))
         } else {
-            format!("Filter by {title}{suffix}")
+            format!(
+                "{}: {title}{suffix}",
+                messages.get_value().text("grid.filter")
+            )
         }
     };
     let emit = move |value: FilterValue| {
@@ -80,7 +84,8 @@ pub fn GridFilterCell(
                 INPUT_DEBOUNCE_MS,
             );
 
-            let placeholder = placeholder.unwrap_or_else(|| "Search...".to_string());
+            let placeholder =
+                placeholder.unwrap_or_else(|| messages.get_value().text("grid.search"));
             let aria_label = label("");
 
             view! {
@@ -173,10 +178,10 @@ pub fn GridFilterCell(
                 .filter(|s| s.is_finite() && *s > 0.0)
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "any".to_string());
-            let min_ph = min_placeholder.unwrap_or_else(|| "From".to_string());
-            let max_ph = max_placeholder.unwrap_or_else(|| "To".to_string());
-            let min_label = label(" (minimum)");
-            let max_label = label(" (maximum)");
+            let min_ph = min_placeholder.unwrap_or_else(|| messages.get_value().text("grid.from"));
+            let max_ph = max_placeholder.unwrap_or_else(|| messages.get_value().text("grid.to"));
+            let min_label = label(&format!(" ({})", messages.get_value().text("grid.minimum")));
+            let max_label = label(&format!(" ({})", messages.get_value().text("grid.maximum")));
 
             let debounced_min = debounced_range.clone();
             let debounced_max = debounced_range;
@@ -224,10 +229,11 @@ pub fn GridFilterCell(
                 }
                 _ => (String::new(), String::new()),
             };
-            let from_ph = from_placeholder.unwrap_or_else(|| "From".to_string());
-            let to_ph = to_placeholder.unwrap_or_else(|| "To".to_string());
-            let from_label = label(" (from)");
-            let to_label = label(" (to)");
+            let from_ph =
+                from_placeholder.unwrap_or_else(|| messages.get_value().text("grid.from"));
+            let to_ph = to_placeholder.unwrap_or_else(|| messages.get_value().text("grid.to"));
+            let from_label = label(&format!(" ({})", messages.get_value().text("grid.from")));
+            let to_label = label(&format!(" ({})", messages.get_value().text("grid.to")));
 
             let on_from_change = move |ev: Event| {
                 let from = event_target_value(&ev);

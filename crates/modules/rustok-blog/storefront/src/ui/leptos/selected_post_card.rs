@@ -4,7 +4,6 @@ use leptos::prelude::*;
 #[component]
 pub(super) fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let token = use_token();
     let Some(post) = post else {
         let empty_state = core::selected_post_empty_state_typed_view(
             t(
@@ -96,58 +95,16 @@ pub(super) fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64)
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
-    let comment_form_available = matches!(
-        &public_comments.availability,
-        BlogCommentsAvailability::Available
-    );
-    let comment_post_id = post_id.clone();
-    let comment_locale = effective_locale.clone();
-    let submit_comment = Action::new_local(move |content: &rustok_api::RichTextDocument| {
-        let request = crate::model::BlogCommentCreateRequest::for_post(
-            comment_post_id.clone(),
-            comment_locale.clone(),
-            content.clone(),
-        );
-        let token = token.get_untracked();
-        async move {
-            transport::create_comment(token, request)
-                .await
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-        }
-    });
-    let comment_composer_copy = comment_composer_copy(locale.as_deref());
-    #[cfg(target_arch = "wasm32")]
-    let comment_composer = if comment_form_available {
-        view! {
-            <CommentComposer content_locale=effective_locale.clone() submit_action=submit_comment copy=comment_composer_copy />
-        }
-        .into_any()
-    } else {
-        ().into_any()
+    let discussion = crate::model::BlogDiscussionProps {
+        post_id: post_id.clone(),
+        version: post.version,
+        content_locale: effective_locale.clone(),
+        ui_locale: locale.clone(),
+        comments: public_comments,
+        comments_page,
     };
-    #[cfg(not(target_arch = "wasm32"))]
-    let comment_composer = if comment_form_available {
-        let _ = (submit_comment, comment_composer_copy);
-        view! {
-            <section
-                class="mt-6 rounded-2xl border border-border bg-card p-5"
-                data-blog-comment-island="true"
-                data-post-id=post_id
-                data-content-locale=effective_locale.clone()
-            >
-                <h4 class="text-base font-semibold text-foreground">
-                    {t(locale.as_deref(), "blog.comments.composer.title", "Join the discussion")}
-                </h4>
-                <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "blog.comments.composer.signInRequired", "Sign in to join the discussion.")}
-                </p>
-            </section>
-        }.into_any()
-    } else {
-        let _ = (submit_comment, comment_composer_copy);
-        ().into_any()
-    };
+    let serialized_discussion = serde_json::to_string(&discussion)
+        .expect("Blog discussion contains only serializable owner DTO values");
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
@@ -303,8 +260,9 @@ pub(super) fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64)
             } else {
                 ().into_any()
             }}
-            {comment_composer}
-            <PublicCommentsList comments=public_comments comments_page />
+            <div data-blog-comment-island="true" data-discussion=serialized_discussion>
+                <crate::ui::comment::BlogDiscussion props=discussion />
+            </div>
         </article>
     }
     .into_any()

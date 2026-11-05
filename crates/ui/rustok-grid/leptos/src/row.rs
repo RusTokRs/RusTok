@@ -15,6 +15,7 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
     on_row_click: Option<Callback<T>>,
     cell_renderer: Callback<(T, String), AnyView>,
 ) -> impl IntoView {
+    let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     // `StoredValue` keeps the row payload alive for the reactive cell closure
     // without cloning it once per column on every re-render.
     let item = StoredValue::new(item);
@@ -56,7 +57,7 @@ pub fn GridRow<T: Send + Sync + Clone + 'static>(
                             view! {
                                 <input
                                     type="checkbox"
-                                    aria-label="Select row"
+                                    aria-label=messages.get_value().text("grid.selectRow")
                                     prop:checked=move || is_selected.get()
                                     on:click=move |ev| ev.stop_propagation()
                                     on:change=move |_| on_toggle_select.run(row_id.get_value())

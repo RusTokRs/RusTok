@@ -1,7 +1,8 @@
 'use client';
 
+import { useLocale, useTranslations } from '@rustok/next-fluent';
 import { useEffect, useState } from 'react';
-import { IconCopy, IconExternalLink } from '@tabler/icons-react';
+import { Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '@/shared/ui/shadcn/modal';
 import { Button } from '@/components/ui/button';
@@ -52,12 +53,12 @@ function storefrontBaseUrl(): string | null {
   return url ? url.replace(/\/+$/, '') : null;
 }
 
-async function copyToClipboard(value: string, successMessage: string): Promise<void> {
+async function copyToClipboard(value: string, successMessage: string, failureMessage: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
     toast.success(successMessage);
   } catch {
-    toast.error('Copy failed — select the value and copy it manually');
+    toast.error(failureMessage);
   }
 }
 
@@ -68,6 +69,8 @@ export function PreviewTokenModal({
   postTitle,
   opts
 }: PreviewTokenModalProps) {
+  const t = useTranslations('blog');
+  const hostLocale = useLocale();
   const [ttlHours, setTtlHours] = useState<string>('168');
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<BlogPreviewToken | null>(null);
@@ -92,8 +95,8 @@ export function PreviewTokenModal({
         opts
       );
       setToken(minted);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to mint preview token');
+    } catch {
+      toast.error(t('preview.mintError'));
     } finally {
       setLoading(false);
     }
@@ -103,7 +106,7 @@ export function PreviewTokenModal({
   const baseUrl = storefrontBaseUrl();
   const absoluteUrl = previewPath && baseUrl ? `${baseUrl}${previewPath}` : null;
   const expiresLabel = token
-    ? new Date(token.expiresAt).toLocaleString(undefined, {
+    ? new Date(token.expiresAt).toLocaleString(hostLocale, {
         dateStyle: 'medium',
         timeStyle: 'short'
       })
@@ -111,11 +114,11 @@ export function PreviewTokenModal({
 
   return (
     <Modal
-      title='Preview link'
+      title={t('preview.title')}
       description={
         token
-          ? 'Share this one-time secret link with reviewers. It stops working as soon as the post is published, scheduled, archived or expires.'
-          : 'Generate a time-limited secret link that shows this draft post to reviewers without publishing it.'
+          ? t('preview.descriptionReady')
+          : t('preview.description')
       }
       isOpen={isOpen}
       onClose={onClose}
@@ -123,31 +126,26 @@ export function PreviewTokenModal({
       {!token ? (
         <div className='space-y-4 pt-2'>
           {postTitle ? (
-            <p className='text-sm text-muted-foreground'>
-              Draft post: <span className='font-medium text-foreground'>{postTitle}</span>
+            <p className='text-sm text-muted-foreground'>{t('preview.post')}<span className='font-medium text-foreground'>{postTitle}</span>
             </p>
           ) : null}
           <div className='space-y-2'>
-            <label className='text-sm font-medium' htmlFor='preview-token-ttl'>
-              Link lifetime
-            </label>
+            <label className='text-sm font-medium' htmlFor='preview-token-ttl'>{t('preview.lifetime')}</label>
             <Select value={ttlHours} onValueChange={setTtlHours}>
               <SelectTrigger id='preview-token-ttl' className='w-full'>
-                <SelectValue placeholder='Lifetime' />
+                <SelectValue placeholder={t('preview.lifetime')} />
               </SelectTrigger>
               <SelectContent>
                 {TTL_PRESETS.map((preset) => (
                   <SelectItem key={preset.hours} value={String(preset.hours)}>
-                    {preset.label}
+                    {t('preview.lifetimeHours', { hours: preset.hours })}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className='flex items-center justify-end space-x-2 pt-2'>
-            <Button disabled={loading} variant='outline' onClick={onClose}>
-              Cancel
-            </Button>
+            <Button disabled={loading} variant='outline' onClick={onClose}>{t('categories.cancel')}</Button>
             <Button disabled={loading} onClick={onGenerate}>
               {loading ? 'Generating…' : 'Generate link'}
             </Button>
@@ -156,14 +154,14 @@ export function PreviewTokenModal({
       ) : (
         <div className='space-y-4 pt-2'>
           <div className='space-y-1'>
-            <p className='text-sm font-medium'>Preview link</p>
+            <p className='text-sm font-medium'>{t('preview.title')}</p>
             <code className='block max-w-full overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs'>
               {absoluteUrl ?? previewPath}
             </code>
             <p className='text-xs text-muted-foreground'>
               {absoluteUrl
-                ? 'The secret travels in the URL fragment, so it is never sent to the server.'
-                : 'Storefront origin is not configured on this host — prepend your storefront domain to the copied path.'}
+                ? t('preview.linkHint')
+                : t('preview.pathHint')}
             </p>
           </div>
           <div className='flex flex-wrap items-center gap-2'>
@@ -171,34 +169,26 @@ export function PreviewTokenModal({
               size='sm'
               variant='outline'
               onClick={() =>
-                previewPath && copyToClipboard(absoluteUrl ?? previewPath, 'Preview link copied')
+                previewPath && copyToClipboard(absoluteUrl ?? previewPath, t('preview.linkCopied'), t('preview.copyError'))
               }
             >
-              <IconCopy className='mr-2 h-4 w-4' /> Copy link
-            </Button>
+              <Copy className='mr-2 h-4 w-4' />{t('preview.copyLink')}</Button>
             {absoluteUrl ? (
               <Button size='sm' variant='outline' asChild>
                 <a href={absoluteUrl} target='_blank' rel='noopener noreferrer'>
-                  <IconExternalLink className='mr-2 h-4 w-4' /> Open preview
-                </a>
+                  <ExternalLink className='mr-2 h-4 w-4' />{t('preview.open')}</a>
               </Button>
             ) : null}
             <Button
               size='sm'
               variant='ghost'
-              onClick={() => copyToClipboard(token.token, 'Token copied')}
+              onClick={() => copyToClipboard(token.token, t('preview.tokenCopied'), t('preview.copyError'))}
             >
-              <IconCopy className='mr-2 h-4 w-4' /> Copy token only
-            </Button>
+              <Copy className='mr-2 h-4 w-4' />{t('preview.copyToken')}</Button>
           </div>
-          <p className='text-xs text-muted-foreground'>
-            Expires {expiresLabel}. The token is shown only once — the backend stores a digest, not
-            the secret. Publishing, scheduling or archiving the post revokes it immediately.
-          </p>
+          <p className='text-xs text-muted-foreground'>{t('preview.expires', { at: expiresLabel ?? '' })}</p>
           <div className='flex items-center justify-end'>
-            <Button variant='outline' onClick={onClose}>
-              Done
-            </Button>
+            <Button variant='outline' onClick={onClose}>{t('preview.done')}</Button>
           </div>
         </div>
       )}

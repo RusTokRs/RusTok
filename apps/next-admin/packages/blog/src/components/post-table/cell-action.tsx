@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from '@rustok/next-fluent';
 import { AlertModal } from '@/widgets/alert-modal';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,6 +39,7 @@ export const CellAction: React.FC<CellActionProps> = ({
   data,
   gqlOpts
 }) => {
+  const t = useTranslations('blog');
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -47,10 +49,10 @@ export const CellAction: React.FC<CellActionProps> = ({
     try {
       setLoading(true);
       await deletePost(data.id, gqlOpts);
-      toast.success('Post deleted');
+      toast.success(t('table.deleted'));
       router.refresh();
     } catch {
-      toast.error('Failed to delete post');
+      toast.error(t('table.deleteError'));
     } finally {
       setLoading(false);
       setOpen(false);
@@ -63,17 +65,17 @@ export const CellAction: React.FC<CellActionProps> = ({
     try {
       if (data.status === 'ARCHIVED') {
         await restorePost(data.id, gqlOpts);
-        toast.success('Post restored to draft');
+        toast.success(t('table.restored'));
       } else if (data.status === 'PUBLISHED') {
         await unpublishPost(data.id, gqlOpts);
-        toast.success('Post unpublished');
+        toast.success(t('table.unpublished'));
       } else {
         await publishPost(data.id, gqlOpts);
-        toast.success('Post published');
+        toast.success(t('table.published'));
       }
       router.refresh();
     } catch {
-      toast.error('Failed to change post status');
+      toast.error(t('table.statusError'));
     } finally {
       setLoading(false);
     }
@@ -84,10 +86,10 @@ export const CellAction: React.FC<CellActionProps> = ({
     setLoading(true);
     try {
       await archivePost(data.id, gqlOpts);
-      toast.success('Post archived');
+      toast.success(t('table.archived'));
       router.refresh();
     } catch {
-      toast.error('Failed to archive post');
+      toast.error(t('table.archiveError'));
     } finally {
       setLoading(false);
     }
@@ -99,14 +101,14 @@ export const CellAction: React.FC<CellActionProps> = ({
     try {
       if (data.isPinned) {
         await unpinPost(data.id, gqlOpts);
-        toast.success('Post unpinned');
+        toast.success(t('table.unpinned'));
       } else {
         await pinPost(data.id, gqlOpts);
-        toast.success('Post pinned');
+        toast.success(t('table.pinned'));
       }
       router.refresh();
     } catch {
-      toast.error('Failed to change post pin state');
+      toast.error(t('table.pinError'));
     } finally {
       setLoading(false);
     }
@@ -130,56 +132,49 @@ export const CellAction: React.FC<CellActionProps> = ({
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button variant='ghost' className='h-8 w-8 p-0' disabled={loading}>
-            <span className='sr-only'>Open menu</span>
+            <span className='sr-only'>{t('table.openMenu')}</span>
             <IconDotsVertical className='h-4 w-4' />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end'>
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('table.actions')}</DropdownMenuLabel>
           <DropdownMenuItem
             disabled={loading}
             onClick={() => router.push(`/dashboard/blog/${data.id}/edit`)}
           >
-            <IconEdit className='mr-2 h-4 w-4' /> Edit
-          </DropdownMenuItem>
+            <IconEdit className='mr-2 h-4 w-4' />{t('table.edit')}</DropdownMenuItem>
           <DropdownMenuItem disabled={loading} onClick={onTogglePublish}>
             {data.status === 'ARCHIVED' ? (
               <>
-                <IconRestore className='mr-2 h-4 w-4' /> Restore to draft
-              </>
+                <IconRestore className='mr-2 h-4 w-4' />{t('table.restore')}</>
             ) : data.status === 'PUBLISHED' ? (
               <>
-                <IconWorldOff className='mr-2 h-4 w-4' /> Unpublish
-              </>
+                <IconWorldOff className='mr-2 h-4 w-4' />{t('table.unpublish')}</>
             ) : (
               <>
-                <IconWorldUpload className='mr-2 h-4 w-4' /> Publish
-              </>
+                <IconWorldUpload className='mr-2 h-4 w-4' />{t('table.publish')}</>
             )}
           </DropdownMenuItem>
           {data.status === 'PUBLISHED' && (
             <DropdownMenuItem disabled={loading} onClick={onArchive}>
-              <IconArchive className='mr-2 h-4 w-4' /> Archive
-            </DropdownMenuItem>
+              <IconArchive className='mr-2 h-4 w-4' />{t('table.archive')}</DropdownMenuItem>
           )}
           {(data.status === 'PUBLISHED' || data.isPinned) && (
             <DropdownMenuItem disabled={loading} onClick={onTogglePin}>
               {data.isPinned ? (
-                <><IconPinnedOff className='mr-2 h-4 w-4' /> Unpin</>
+                <><IconPinnedOff className='mr-2 h-4 w-4' />{t('table.unpin')}</>
               ) : (
-                <><IconPinned className='mr-2 h-4 w-4' /> Pin</>
+                <><IconPinned className='mr-2 h-4 w-4' />{t('table.pin')}</>
               )}
             </DropdownMenuItem>
           )}
           {data.status === 'DRAFT' && (
             <DropdownMenuItem disabled={loading} onClick={() => setPreviewOpen(true)}>
-              <IconEye className='mr-2 h-4 w-4' /> Preview link
-            </DropdownMenuItem>
+              <IconEye className='mr-2 h-4 w-4' />{t('preview.title')}</DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={loading} onClick={() => setOpen(true)}>
-            <IconTrash className='mr-2 h-4 w-4' /> Delete
-          </DropdownMenuItem>
+            <IconTrash className='mr-2 h-4 w-4' />{t('table.delete')}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>

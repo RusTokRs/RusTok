@@ -3,13 +3,18 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::comments_pagination;
-use crate::core;
 use crate::i18n::t;
-use crate::model::{BlogCommentList, BlogCommentListItem, BlogCommentsAvailability};
+use crate::model::{BlogCommentList, BlogCommentListItem};
+use leptos_ui::{Button, ButtonVariant, Size};
 
 #[component]
-pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl IntoView {
-    if comments.availability == BlogCommentsAvailability::Disabled {
+pub fn PublicCommentsList(
+    comments: BlogCommentList,
+    comments_page: u64,
+    #[prop(optional)] on_reply: Option<Callback<String>>,
+) -> impl IntoView {
+    let state = crate::core::discussion::comments_view(&comments, comments_page);
+    if !state.show_section {
         return ().into_any();
     }
 
@@ -17,41 +22,11 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
     let query_writer = use_route_query_writer();
     let title = t(locale.as_deref(), "blog.comments.title", "Comments");
 
-    let degraded_message = match comments.availability {
-        BlogCommentsAvailability::Available => None,
-        BlogCommentsAvailability::Disabled => None,
-        BlogCommentsAvailability::ReadOnly => Some(t(
-            locale.as_deref(),
-            "blog.comments.readOnly",
-            "Comments are closed for new replies.",
-        )),
-        BlogCommentsAvailability::Unavailable if comments.cached_snapshot => Some(t(
-            locale.as_deref(),
-            "blog.comments.unavailableCached",
-            "Comments are temporarily unavailable. Showing a recent cached snapshot.",
-        )),
-        BlogCommentsAvailability::Unavailable => Some(t(
-            locale.as_deref(),
-            "blog.comments.unavailable",
-            "Comments are temporarily unavailable. The article is still available.",
-        )),
-        BlogCommentsAvailability::Timeout if comments.cached_snapshot => Some(t(
-            locale.as_deref(),
-            "blog.comments.timeoutCached",
-            "Comments took too long to load. Showing a recent cached snapshot.",
-        )),
-        BlogCommentsAvailability::Timeout => Some(t(
-            locale.as_deref(),
-            "blog.comments.timeout",
-            "Comments took too long to load. The article is still available.",
-        )),
-    };
+    let degraded_message = state
+        .degraded_message
+        .map(|(key, fallback)| t(locale.as_deref(), key, fallback));
 
-    if matches!(
-        comments.availability,
-        BlogCommentsAvailability::Unavailable | BlogCommentsAvailability::Timeout
-    ) && !comments.cached_snapshot
-    {
+    if !state.show_snapshot {
         let message = degraded_message.unwrap_or_else(|| {
             t(
                 locale.as_deref(),
@@ -70,9 +45,11 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
         .into_any();
     }
 
-    let total_label = core::count_label(
+    let on_reply = on_reply.filter(|_| state.can_reply);
+    let total_label = format!(
+        "{} {}",
         comments.total,
-        &t(locale.as_deref(), "blog.comments.total", "total"),
+        t(locale.as_deref(), "blog.comments.total", "total")
     );
 
     if comments.total == 0 {
@@ -100,10 +77,10 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
         .into_any();
     }
 
-    let total_pages = comments_pagination::comments_total_pages(comments.total);
-    let current_page = comments_pagination::bounded_comments_page(comments_page, comments.total);
-    let can_previous = current_page > 1;
-    let can_next = current_page < total_pages;
+    let total_pages = state.total_pages;
+    let current_page = state.page;
+    let can_previous = state.can_previous;
+    let can_next = state.can_next;
     let previous_writer = query_writer.clone();
     let next_writer = query_writer;
 
@@ -127,13 +104,12 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
                     {message}
                 </p>
             })}
-            {if core::has_items(comments.items.as_slice()) {
+            {if !comments.items.is_empty() {
                 view! {
                     <div class="mt-4 space-y-3">
-                        {comments
-                            .items
+                        {crate::core::discussion::order_comments(comments.items)
                             .into_iter()
-                            .map(|comment| view! { <PublicCommentCard comment /> })
+                            .map(|(comment, depth)| view! { <PublicCommentCard comment depth on_reply /> })
                             .collect_view()}
                     </div>
                 }
@@ -151,34 +127,32 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
                 .into_any()
             }}
             <div class="mt-4 flex items-center justify-end gap-2">
-                <button
-                    type="button"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=!can_previous
-                    on:click=move |_| {
+                    on_click=Box::new(move || {
                         previous_writer.apply_query_intent(
                             comments_pagination::comments_page_query_intent(
-                                current_page.saturating_sub(1).max(1),
+                                state.previous_page,
                             ),
                         );
-                    }
+                    })
                 >
                     {t(locale.as_deref(), "blog.comments.previous", "Previous")}
-                </button>
-                <button
-                    type="button"
-                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                </Button>
+                <Button
+                    size=Size::Sm variant=ButtonVariant::Outline
                     disabled=!can_next
-                    on:click=move |_| {
+                    on_click=Box::new(move || {
                         next_writer.apply_query_intent(
                             comments_pagination::comments_page_query_intent(
-                                current_page.saturating_add(1).min(total_pages),
+                                state.next_page,
                             ),
                         );
-                    }
+                    })
                 >
                     {t(locale.as_deref(), "blog.comments.next", "Next")}
-                </button>
+                </Button>
             </div>
         </section>
     }
@@ -186,23 +160,30 @@ pub fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl
 }
 
 #[component]
-fn PublicCommentCard(comment: BlogCommentListItem) -> impl IntoView {
+fn PublicCommentCard(
+    comment: BlogCommentListItem,
+    depth: usize,
+    on_reply: Option<Callback<String>>,
+) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let locale_meta = core::label_value_pair(
-        &t(locale.as_deref(), "blog.comments.localeLabel", "locale"),
-        comment.effective_locale.as_str(),
+    let locale_meta = format!(
+        "{}: {}",
+        t(locale.as_deref(), "blog.comments.localeLabel", "locale"),
+        comment.effective_locale
     );
-    let created_meta = core::label_value_pair(
-        &t(locale.as_deref(), "blog.comments.createdLabel", "created"),
-        comment.created_at.as_str(),
+    let created_meta = format!(
+        "{}: {}",
+        t(locale.as_deref(), "blog.comments.createdLabel", "created"),
+        comment.created_at
     );
+    let comment_id = comment.id;
     let is_reply = comment.parent_comment_id.is_some();
 
     view! {
-        <article class="rounded-xl border border-border bg-card/50 p-4">
+        <article class=format!("rounded-xl border border-border bg-card/50 p-4 {}", crate::core::discussion::comment_indent(depth))>
             <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{locale_meta}</span>
-                <span>{core::meta_separator()}</span>
+                <span>{"·"}</span>
                 <span>{created_meta}</span>
                 {is_reply.then(|| view! {
                     <span class="rounded-full border border-border px-2 py-0.5">
@@ -213,6 +194,11 @@ fn PublicCommentCard(comment: BlogCommentListItem) -> impl IntoView {
             <p class="mt-2 whitespace-pre-line text-sm leading-6 text-foreground">
                 {comment.content_preview}
             </p>
+            {on_reply.map(|reply| view! {
+                <Button size=Size::Sm variant=ButtonVariant::Outline on_click=Box::new(move || reply.run(comment_id.clone()))>
+                    {t(locale.as_deref(), "blog.comments.replyAction", "Reply")}
+                </Button>
+            })}
         </article>
     }
 }

@@ -22,6 +22,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 path = "src/lib.rs"
 
 [dependencies]
+rustok-ui-i18n.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

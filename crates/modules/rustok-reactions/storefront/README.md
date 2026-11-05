@@ -35,14 +35,24 @@ The initial Forum and Blog producers currently expose only `like`, but the UI
 renders the bounded catalog returned by the owner and does not hard-code a
 single storage model.
 
+## Producer composition and write settlement
+
+Blog now composes this package from its owner-maintained discussion island and
+passes the post detail's exact positive revision. Forum composition remains a
+separate consumer boundary; this package never discovers producer identity.
+
+`core.rs` owns subject validation, action/count presentation and asynchronous
+write/read settlement. The interaction lock spans both the mutation and its
+canonical read. A mutation failure may represent a write committed before a
+network timeout, so it still triggers a read. If that read fails, stale controls
+are removed and the read failure is shown. No failed mutation is automatically
+retried and no local aggregate is incremented.
+
 ## Deliberate limits
 
-This source slice does not mount the package into Forum or Blog, add a standalone
-Reactions route, expose producer revisions through unrelated DTOs, add HTTP
-transport, change Reactions storage, change existing Forum votes, or enable
-Reactions by default. Producer composition is a later thin slice once each
-surface has the exact authorized subject revision available at its public UI
-boundary.
+There is no standalone Reactions route or HTTP transport in this UI package.
+Its source-level Blog integration and pure policy tests do not establish
+mounted browser authorization, delivery/recovery or accessibility evidence.
 
 ## Documentation
 
@@ -50,7 +60,7 @@ boundary.
 
 ## Maintainer verification
 
-No commands are executed by the implementation agent. Suggested checks:
+The current continuation passes the Reactions source boundary check. Rust compilation/tests and mounted runtime verification remain pending integration; run the following scoped checks:
 
 ```bash
 cargo test -p rustok-reactions-storefront

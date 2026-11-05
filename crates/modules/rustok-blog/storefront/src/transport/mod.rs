@@ -158,3 +158,31 @@ mod tests {
         assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
     }
 }
+
+/// Compose owner feed and Search IO behind the module transport boundary.
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+pub async fn fetch_blog_page(
+    request: crate::core::BlogPageRequest,
+) -> Result<(StorefrontBlogData, Option<u64>, usize), String> {
+    let mut data = fetch_blog(request.feed.clone(), request.comments_page)
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(query) = request.query else {
+        return Ok((data, None, request.search_page));
+    };
+    let filters = crate::core::blog_search_filters(&request.feed);
+    let result = rustok_search_storefront::transport::fetch_search_page(
+        query,
+        request.feed.locale,
+        None,
+        filters,
+        request.feed.tag,
+        crate::core::BLOG_SEARCH_PAGE_SIZE,
+        (request.search_page - 1) * crate::core::BLOG_SEARCH_PAGE_SIZE,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    let total = result.total;
+    data.posts = crate::core::map_blog_search_results(result)?;
+    Ok((data, Some(total), request.search_page))
+}

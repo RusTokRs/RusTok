@@ -6,7 +6,7 @@ For full contract specifications, public types, and invariants, see [CRATE_API.m
 
 ## Architecture
 
-Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure Rust with zero web framework dependencies. Runtime code depends only on `serde`; `serde_json` is a development-only dependency for serialization-normalization tests.
+Following Hexagonal / Ports & Adapters architecture, `rustok-grid` is 100% pure Rust with zero web framework dependencies. Runtime code uses `serde` and canonical `rustok-ui-i18n` for framework-independent grid chrome; `serde_json` is a development-only dependency for serialization-normalization tests.
 
 - **Columns**: column definitions, alignment, sizing, and pin configuration.
 - **Resize**: column resizing math with min/max clamps (pointer and keyboard).
@@ -107,11 +107,7 @@ hosts, module by module. Two gates keep the twins from drifting:
   (`docs/standards/continuous-review-ledger.md`).
 - **Module admin screens do not share a renderer.** The same six crates hand-roll their `<table>`
   markup per adapter instead of using one grid view over this state machine.
-- **Grid chrome copy is still literal English in both adapters.** "Rows per page:", "Showing", the
-  mode toggle and the resize/filter tooltips are hardcoded, while the facet panel already takes
-  `FacetPanelLabels`. The fix is one label struct in this crate (same shape, English defaults)
-  consumed by both adapters and passed down per locale — deliberately not shipped as an unverifiable
-  sweep across the two adapter crates, and tracked in the ledger.
+- **Grid chrome localization is owner-provided.** Both adapters consume `GridMessages` resolved from the host UI locale, with Fluent catalogs for English, Russian and French. Range values retain exact decimal strings; selection counts use Fluent plural branches. Column/domain labels and facet labels remain caller-owned.
 - **Page reset differs by mode between adapters.** The Leptos grid resets to page 1 on a filter or
   sort change in both pagination modes; the Dioxus grid does so only in client-side mode. It is a
   rendering-policy difference the owners of those adapters accept; this crate's `set_filter` /
@@ -119,3 +115,5 @@ hosts, module by module. Two gates keep the twins from drifting:
 - **`cargo` verification is a CI/maintainer step for this change set.** The sandbox that produced it
   has no Rust toolchain, so the new and edited Rust is grammar-checked
   (`scripts/audit/rust_syntax_check.mjs`) and structurally reviewed, not compiled or test-run here.
+
+The Blog reference continuation adds an SSR renderer regression for page 2/3 over a complete client collection, plus Fluent locale/range/plural cases. Rust execution is pending the integrated scoped verification; it does not claim mounted browser coverage.

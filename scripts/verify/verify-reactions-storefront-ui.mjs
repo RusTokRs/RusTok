@@ -20,6 +20,7 @@ function requireAbsent(text, needle, message) {
 
 const cargo = read("crates/modules/rustok-reactions/storefront/Cargo.toml");
 const model = read("crates/modules/rustok-reactions/storefront/src/model.rs");
+const core = read("crates/modules/rustok-reactions/storefront/src/core.rs");
 const transport = read("crates/modules/rustok-reactions/storefront/src/transport.rs");
 const transportRuntime = transport.split("#[cfg(test)]", 1)[0];
 const ui = read("crates/modules/rustok-reactions/storefront/src/ui/leptos.rs");
@@ -36,17 +37,17 @@ for (const field of ["source", "kind", "subject_id", "subject_revision"]) {
   requireContains(model, `pub ${field}`, `ReactionSubjectUiRef must expose ${field}`);
 }
 requireContains(
-  model,
+  core,
   "valid_segment",
   "ReactionSubjectUiRef must enforce the neutral source/kind segment contract",
 );
 requireContains(
-  model,
+  core,
   "subject_id.is_nil()",
   "ReactionSubjectUiRef must reject nil subject UUIDs",
 );
 requireContains(
-  model,
+  core,
   "revision.to_string() != subject_revision",
   "ReactionSubjectUiRef must require a canonical positive revision string",
 );
@@ -68,7 +69,7 @@ requireContains(
 );
 requireContains(
   ui,
-  "set_refresh_nonce.update",
+  "settle_reaction_mutation",
   "Every UI write attempt must reload canonical owner state",
 );
 requireAbsent(

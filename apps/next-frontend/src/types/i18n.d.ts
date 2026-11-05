@@ -38,24 +38,132 @@ export type AppMessageKey =
   | 'Account.title'
   | 'Account-trackOrder'
   | 'Account.trackOrder'
+  | 'Blog-article-back'
+  | 'Blog.article.back'
+  | 'Blog-article-read'
+  | 'Blog.article.read'
+  | 'Blog-article-related'
+  | 'Blog.article.related'
+  | 'Blog-article-scrollTop'
+  | 'Blog.article.scrollTop'
+  | 'Blog-author-profile'
+  | 'Blog.author.profile'
   | 'Blog-comments-empty'
   | 'Blog.comments.empty'
   | 'Blog-comments-readOnly'
   | 'Blog.comments.readOnly'
+  | 'Blog-comments-reply'
+  | 'Blog.comments.reply'
   | 'Blog-comments-timeout'
   | 'Blog.comments.timeout'
   | 'Blog-comments-timeoutCached'
   | 'Blog.comments.timeoutCached'
   | 'Blog-comments-title'
   | 'Blog.comments.title'
+  | 'Blog-comments-totalSuffix'
+  | 'Blog.comments.totalSuffix'
   | 'Blog-comments-unavailable'
   | 'Blog.comments.unavailable'
   | 'Blog-comments-unavailableCached'
   | 'Blog.comments.unavailableCached'
+  | 'Blog-comments-user'
+  | 'Blog.comments.user'
   | 'Blog-latest-subtitle'
   | 'Blog.latest.subtitle'
   | 'Blog-latest-title'
   | 'Blog.latest.title'
+  | 'Blog-listing-activeFilters'
+  | 'Blog.listing.activeFilters'
+  | 'Blog-listing-allCategories'
+  | 'Blog.listing.allCategories'
+  | 'Blog-listing-allPosts'
+  | 'Blog.listing.allPosts'
+  | 'Blog-listing-badge'
+  | 'Blog.listing.badge'
+  | 'Blog-listing-categories'
+  | 'Blog.listing.categories'
+  | 'Blog-listing-category'
+  | 'Blog.listing.category'
+  | 'Blog-listing-clearFilters'
+  | 'Blog.listing.clearFilters'
+  | 'Blog-listing-clearSearch'
+  | 'Blog.listing.clearSearch'
+  | 'Blog-listing-description'
+  | 'Blog.listing.description'
+  | 'Blog-listing-emptyBody'
+  | 'Blog.listing.emptyBody'
+  | 'Blog-listing-emptyQuery'
+  | 'Blog.listing.emptyQuery'
+  | 'Blog-listing-emptySearch'
+  | 'Blog.listing.emptySearch'
+  | 'Blog-listing-emptyTitle'
+  | 'Blog.listing.emptyTitle'
+  | 'Blog-listing-feed'
+  | 'Blog.listing.feed'
+  | 'Blog-listing-firstResults'
+  | 'Blog.listing.firstResults'
+  | 'Blog-listing-removeCategory'
+  | 'Blog.listing.removeCategory'
+  | 'Blog-listing-removeTag'
+  | 'Blog.listing.removeTag'
+  | 'Blog-listing-resetFilters'
+  | 'Blog.listing.resetFilters'
+  | 'Blog-listing-search'
+  | 'Blog.listing.search'
+  | 'Blog-listing-searchLabel'
+  | 'Blog.listing.searchLabel'
+  | 'Blog-listing-searchPages'
+  | 'Blog.listing.searchPages'
+  | 'Blog-listing-searchResults'
+  | 'Blog.listing.searchResults'
+  | 'Blog-listing-title'
+  | 'Blog.listing.title'
+  | 'Blog-pagination-comments'
+  | 'Blog.pagination.comments'
+  | 'Blog-pagination-first'
+  | 'Blog.pagination.first'
+  | 'Blog-pagination-next'
+  | 'Blog.pagination.next'
+  | 'Blog-pagination-position'
+  | 'Blog.pagination.position'
+  | 'Blog-pagination-posts'
+  | 'Blog.pagination.posts'
+  | 'Blog-pagination-previous'
+  | 'Blog.pagination.previous'
+  | 'Blog-preview-banner'
+  | 'Blog.preview.banner'
+  | 'Blog-preview-hint'
+  | 'Blog.preview.hint'
+  | 'Blog-preview-invalid'
+  | 'Blog.preview.invalid'
+  | 'Blog-preview-loadError'
+  | 'Blog.preview.loadError'
+  | 'Blog-preview-loading'
+  | 'Blog.preview.loading'
+  | 'Blog-preview-open'
+  | 'Blog.preview.open'
+  | 'Blog-preview-title'
+  | 'Blog.preview.title'
+  | 'Blog-reactions-like'
+  | 'Blog.reactions.like'
+  | 'Blog-reactions-loading'
+  | 'Blog.reactions.loading'
+  | 'Blog-reactions-signIn'
+  | 'Blog.reactions.signIn'
+  | 'Blog-reactions-title'
+  | 'Blog.reactions.title'
+  | 'Blog-reactions-unavailable'
+  | 'Blog.reactions.unavailable'
+  | 'Blog-reactions-updateError'
+  | 'Blog.reactions.updateError'
+  | 'Blog-readingTime'
+  | 'Blog.readingTime'
+  | 'Blog-share-copied'
+  | 'Blog.share.copied'
+  | 'Blog-share-copy'
+  | 'Blog.share.copy'
+  | 'Blog-share-title'
+  | 'Blog.share.title'
   | 'Cart-browseCatalog'
   | 'Cart.browseCatalog'
   | 'Cart-calculatedAtCheckout'
@@ -752,24 +860,132 @@ export interface AppMessageArgs {
   'Account-title'?: Record<string, never>;
   'Account.trackOrder'?: Record<string, never>;
   'Account-trackOrder'?: Record<string, never>;
+  'Blog.article.back'?: Record<string, never>;
+  'Blog-article-back'?: Record<string, never>;
+  'Blog.article.read'?: Record<string, never>;
+  'Blog-article-read'?: Record<string, never>;
+  'Blog.article.related'?: Record<string, never>;
+  'Blog-article-related'?: Record<string, never>;
+  'Blog.article.scrollTop'?: Record<string, never>;
+  'Blog-article-scrollTop'?: Record<string, never>;
+  'Blog.author.profile'?: Record<string, never>;
+  'Blog-author-profile'?: Record<string, never>;
   'Blog.comments.empty'?: Record<string, never>;
   'Blog-comments-empty'?: Record<string, never>;
   'Blog.comments.readOnly'?: Record<string, never>;
   'Blog-comments-readOnly'?: Record<string, never>;
+  'Blog.comments.reply'?: Record<string, never>;
+  'Blog-comments-reply'?: Record<string, never>;
   'Blog.comments.timeout'?: Record<string, never>;
   'Blog-comments-timeout'?: Record<string, never>;
   'Blog.comments.timeoutCached'?: Record<string, never>;
   'Blog-comments-timeoutCached'?: Record<string, never>;
   'Blog.comments.title'?: Record<string, never>;
   'Blog-comments-title'?: Record<string, never>;
+  'Blog.comments.totalSuffix'?: Record<string, never>;
+  'Blog-comments-totalSuffix'?: Record<string, never>;
   'Blog.comments.unavailable'?: Record<string, never>;
   'Blog-comments-unavailable'?: Record<string, never>;
   'Blog.comments.unavailableCached'?: Record<string, never>;
   'Blog-comments-unavailableCached'?: Record<string, never>;
+  'Blog.comments.user'?: Record<string, never>;
+  'Blog-comments-user'?: Record<string, never>;
   'Blog.latest.subtitle'?: Record<string, never>;
   'Blog-latest-subtitle'?: Record<string, never>;
   'Blog.latest.title'?: Record<string, never>;
   'Blog-latest-title'?: Record<string, never>;
+  'Blog.listing.activeFilters'?: Record<string, never>;
+  'Blog-listing-activeFilters'?: Record<string, never>;
+  'Blog.listing.allCategories'?: Record<string, never>;
+  'Blog-listing-allCategories'?: Record<string, never>;
+  'Blog.listing.allPosts'?: Record<string, never>;
+  'Blog-listing-allPosts'?: Record<string, never>;
+  'Blog.listing.badge'?: Record<string, never>;
+  'Blog-listing-badge'?: Record<string, never>;
+  'Blog.listing.categories'?: Record<string, never>;
+  'Blog-listing-categories'?: Record<string, never>;
+  'Blog.listing.category'?: Record<string, never>;
+  'Blog-listing-category'?: Record<string, never>;
+  'Blog.listing.clearFilters'?: Record<string, never>;
+  'Blog-listing-clearFilters'?: Record<string, never>;
+  'Blog.listing.clearSearch'?: Record<string, never>;
+  'Blog-listing-clearSearch'?: Record<string, never>;
+  'Blog.listing.description'?: Record<string, never>;
+  'Blog-listing-description'?: Record<string, never>;
+  'Blog.listing.emptyBody'?: Record<string, never>;
+  'Blog-listing-emptyBody'?: Record<string, never>;
+  'Blog.listing.emptyQuery'?: Record<string, never>;
+  'Blog-listing-emptyQuery'?: Record<string, never>;
+  'Blog.listing.emptySearch'?: Record<string, never>;
+  'Blog-listing-emptySearch'?: Record<string, never>;
+  'Blog.listing.emptyTitle'?: Record<string, never>;
+  'Blog-listing-emptyTitle'?: Record<string, never>;
+  'Blog.listing.feed'?: Record<string, never>;
+  'Blog-listing-feed'?: Record<string, never>;
+  'Blog.listing.firstResults'?: Record<string, never>;
+  'Blog-listing-firstResults'?: Record<string, never>;
+  'Blog.listing.removeCategory'?: Record<string, never>;
+  'Blog-listing-removeCategory'?: Record<string, never>;
+  'Blog.listing.removeTag'?: Record<string, never>;
+  'Blog-listing-removeTag'?: Record<string, never>;
+  'Blog.listing.resetFilters'?: Record<string, never>;
+  'Blog-listing-resetFilters'?: Record<string, never>;
+  'Blog.listing.search'?: Record<string, never>;
+  'Blog-listing-search'?: Record<string, never>;
+  'Blog.listing.searchLabel'?: Record<string, never>;
+  'Blog-listing-searchLabel'?: Record<string, never>;
+  'Blog.listing.searchPages'?: Record<string, never>;
+  'Blog-listing-searchPages'?: Record<string, never>;
+  'Blog.listing.searchResults': { 'searchPage': string | number | Date; 'searchTotal': string | number | Date };
+  'Blog-listing-searchResults': { 'searchPage': string | number | Date; 'searchTotal': string | number | Date };
+  'Blog.listing.title'?: Record<string, never>;
+  'Blog-listing-title'?: Record<string, never>;
+  'Blog.pagination.comments'?: Record<string, never>;
+  'Blog-pagination-comments'?: Record<string, never>;
+  'Blog.pagination.first'?: Record<string, never>;
+  'Blog-pagination-first'?: Record<string, never>;
+  'Blog.pagination.next'?: Record<string, never>;
+  'Blog-pagination-next'?: Record<string, never>;
+  'Blog.pagination.position': { 'currentPage': string | number | Date; 'totalPages': string | number | Date };
+  'Blog-pagination-position': { 'currentPage': string | number | Date; 'totalPages': string | number | Date };
+  'Blog.pagination.posts'?: Record<string, never>;
+  'Blog-pagination-posts'?: Record<string, never>;
+  'Blog.pagination.previous'?: Record<string, never>;
+  'Blog-pagination-previous'?: Record<string, never>;
+  'Blog.preview.banner'?: Record<string, never>;
+  'Blog-preview-banner'?: Record<string, never>;
+  'Blog.preview.hint'?: Record<string, never>;
+  'Blog-preview-hint'?: Record<string, never>;
+  'Blog.preview.invalid'?: Record<string, never>;
+  'Blog-preview-invalid'?: Record<string, never>;
+  'Blog.preview.loadError'?: Record<string, never>;
+  'Blog-preview-loadError'?: Record<string, never>;
+  'Blog.preview.loading'?: Record<string, never>;
+  'Blog-preview-loading'?: Record<string, never>;
+  'Blog.preview.open'?: Record<string, never>;
+  'Blog-preview-open'?: Record<string, never>;
+  'Blog.preview.title'?: Record<string, never>;
+  'Blog-preview-title'?: Record<string, never>;
+  'Blog.reactions.like'?: Record<string, never>;
+  'Blog-reactions-like'?: Record<string, never>;
+  'Blog.reactions.loading'?: Record<string, never>;
+  'Blog-reactions-loading'?: Record<string, never>;
+  'Blog.reactions.signIn'?: Record<string, never>;
+  'Blog-reactions-signIn'?: Record<string, never>;
+  'Blog.reactions.title'?: Record<string, never>;
+  'Blog-reactions-title'?: Record<string, never>;
+  'Blog.reactions.unavailable'?: Record<string, never>;
+  'Blog-reactions-unavailable'?: Record<string, never>;
+  'Blog.reactions.updateError'?: Record<string, never>;
+  'Blog-reactions-updateError'?: Record<string, never>;
+  'Blog.readingTime': { 'minutes': string | number | Date };
+  'Blog-readingTime': { 'minutes': string | number | Date };
+  'Blog.share.copied'?: Record<string, never>;
+  'Blog-share-copied'?: Record<string, never>;
+  'Blog.share.copy'?: Record<string, never>;
+  'Blog-share-copy'?: Record<string, never>;
+  'Blog.share.title'?: Record<string, never>;
+  'Blog-share-title'?: Record<string, never>;
   'Cart.browseCatalog'?: Record<string, never>;
   'Cart-browseCatalog'?: Record<string, never>;
   'Cart.calculatedAtCheckout'?: Record<string, never>;

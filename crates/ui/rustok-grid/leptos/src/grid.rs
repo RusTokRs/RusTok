@@ -54,12 +54,17 @@ pub fn DataGrid<T, K, KF>(
     /// Accessible name of the table, announced by screen readers.
     #[prop(optional)]
     aria_label: Option<String>,
+    /// Catalog copy resolved from the host effective UI locale.
+    #[prop(default = rustok_grid::GridMessages::default())]
+    messages: rustok_grid::GridMessages,
 ) -> impl IntoView
 where
     T: Send + Sync + Clone + 'static,
     K: std::fmt::Display + 'static,
     KF: Fn(&T) -> K + Send + Sync + Copy + 'static,
 {
+    provide_context(messages.clone());
+    let grid_loading = messages.text("grid.loading");
     let local_columns = RwSignal::new(columns);
     let local_widths = RwSignal::new(ColumnWidths::new());
     let local_filters = filters.unwrap_or_else(|| RwSignal::new(ColumnFilters::new()));
@@ -67,9 +72,8 @@ where
     let local_selection = selection.unwrap_or_else(|| RwSignal::new(RowSelection::new()));
     let local_pagination = pagination.unwrap_or_else(|| RwSignal::new(GridPagination::default()));
 
-    let empty_msg =
-        StoredValue::new(empty_message.unwrap_or_else(|| "No records found.".to_string()));
-    let table_label = aria_label.unwrap_or_else(|| "Data grid".to_string());
+    let empty_msg = StoredValue::new(empty_message.unwrap_or_else(|| messages.text("grid.empty")));
+    let table_label = aria_label.unwrap_or_else(|| messages.text("grid.name"));
     let loading_signal = is_loading.unwrap_or_else(|| Signal::derive(|| false));
 
     // Without `on_page_change` the caller hands us the full data set, so the
@@ -332,7 +336,7 @@ where
                                                         class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
                                                         aria-hidden="true"
                                                     />
-                                                    <span>"Loading data..."</span>
+                                                    <span>{grid_loading.clone()}</span>
                                                 </div>
                                             }
                                                 .into_any()

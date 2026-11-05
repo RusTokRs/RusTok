@@ -24,12 +24,12 @@ Storefront-alertTitle = Многоязычность
 Storefront-alertDescription = Локализация включена через Project Fluent (ru/en).
 Blog-latest-title = Latest from the Blog
 Blog-latest-subtitle = Recent posts and updates
-Blog-comments-title = Comments
-Blog-comments-empty = No approved comments have been published yet.
-Blog-comments-unavailableCached = Comments are temporarily unavailable. Showing a recent cached snapshot.
-Blog-comments-unavailable = Comments are temporarily unavailable. The article is still available.
-Blog-comments-timeoutCached = Comments took too long to load. Showing a recent cached snapshot.
-Blog-comments-timeout = Comments took too long to load. The article is still available.
+Blog-comments-title = Комментарии и обсуждение
+Blog-comments-empty = Пока нет комментариев. Оставьте отзыв первым!
+Blog-comments-unavailableCached = Комментарии временно недоступны. Отображается сохраненная копия.
+Blog-comments-unavailable = Комментарии временно недоступны. Статья доступна для чтения.
+Blog-comments-timeoutCached = Истекло время ожидания комментариев. Отображается недавняя копия.
+Blog-comments-timeout = Истекло время ожидания комментариев.
 Comments-composer-title = Join the discussion
 Comments-composer-editorLabel = Comment
 Comments-composer-hint = Write a useful, respectful comment.
@@ -392,3 +392,64 @@ Product-buyerLinkError = Не удалось сохранить ссылку н�
 Product-buyerCartLocale = Локаль корзины не поддерживается или не подтверждена. Проверьте корзину или явно сбросьте локальную ссылку: локаль не подменяется.
 
 Product-buyerAuthRefused = Сессия браузера недоступна или принадлежит другому тенанту. Откройте витрину с нужной сессией, прежде чем изменять корзину.
+
+Blog-author-profile = Профиль автора
+Blog-comments-totalSuffix = комментариев
+Blog-article-back = Назад ко всем статьям
+Blog-article-related = Читайте также
+Blog-listing-badge = Блог проекта
+Blog-listing-title = Статьи и анонсы
+Blog-listing-description = Актуальные публикации, технические обзоры и обновления платформы RusToK.
+Blog-listing-feed = RSS-лента блога
+Blog-listing-search = Поиск по статьям и тегам...
+Blog-listing-categories = Рубрики:
+Blog-listing-allCategories = Все рубрики
+Blog-listing-allPosts = Все статьи
+Blog-listing-activeFilters = Активные фильтры:
+Blog-listing-category = Рубрика
+Blog-listing-removeCategory = Убрать фильтр по рубрике
+Blog-listing-removeTag = Убрать фильтр по тегу
+Blog-listing-searchLabel = Поиск: «{ $searchQuery }»
+Blog-listing-clearSearch = Сбросить поиск
+Blog-listing-clearFilters = Сбросить все
+Blog-pagination-previous = Назад
+Blog-listing-searchResults = Страница { $searchPage } · Найдено: { $searchTotal }
+Blog-pagination-next = Вперед
+Blog-listing-searchPages = Страницы поиска
+Blog-listing-emptyTitle = Нет опубликованных статей
+Blog-listing-emptyQuery = По запросу «{ $searchQuery }» ничего не найдено
+Blog-listing-emptyBody = В данный момент статьи отсутствуют или не соответствуют фильтру.
+Blog-listing-emptySearch = Попробуйте изменить поисковый запрос или сбросить фильтры.
+Blog-listing-firstResults = Вернуться к первым результатам
+Blog-listing-resetFilters = Сбросить все фильтры
+Blog-pagination-first = В начало
+Blog-pagination-posts = Навигация по записям
+Blog-share-title = Поделиться:
+Blog-share-copy = Копировать ссылку
+Blog-share-copied = Ссылка скопирована!
+Blog-pagination-position = Страница { $currentPage } из { $totalPages }
+Blog-pagination-comments = Пагинация комментариев
+Blog-preview-loadError = Не удалось загрузить черновик
+Blog-preview-title = Предпросмотр черновика
+Blog-preview-banner = Эта статья ещё не опубликована. Ссылка перестанет работать после публикации, архивации или истечения срока действия токена.
+Blog-preview-hint = Вставьте токен предпросмотра или откройте ссылку с фрагментом #token=…
+Blog-preview-open = Открыть
+Blog-preview-loading = Загрузка…
+Blog-preview-invalid = Токен недействителен, истёк или был отозван.
+Blog-article-read = Читать →
+Blog-article-scrollTop = Наверх страницы
+Blog-comments-user = Пользователь
+Blog-comments-reply = Ответить
+
+Blog-readingTime = { $minutes ->
+    [one] { $minutes } минута чтения
+    [few] { $minutes } минуты чтения
+   *[many] { $minutes } минут чтения
+    }
+
+Blog-reactions-title = Реакции
+Blog-reactions-like = Нравится
+Blog-reactions-signIn = Войдите, чтобы оставить реакцию.
+Blog-reactions-loading = Загрузка реакций...
+Blog-reactions-unavailable = Реакции временно недоступны.
+Blog-reactions-updateError = Не удалось изменить реакцию.

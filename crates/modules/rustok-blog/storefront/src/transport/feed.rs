@@ -95,17 +95,12 @@ pub async fn render_rss_feed(
         .await
         .map_err(|_| "Blog feed cannot be loaded")?;
 
-    let is_ru = locale.starts_with("ru");
-    let title = if is_ru {
-        "Блог RusToK"
-    } else {
-        "RusToK Blog"
-    };
-    let description = if is_ru {
-        "Последние статьи и публикации RusToK"
-    } else {
-        "Latest stories and articles from RusToK"
-    };
+    let title = crate::i18n::t(Some(locale), "blog.feed.title", "RusToK Blog");
+    let description = crate::i18n::t(
+        Some(locale),
+        "blog.feed.description",
+        "Latest stories and articles from RusToK",
+    );
     let items = page.items.into_iter().map(|post| {
         let mut post_url = posts_url.clone();
         post_url.query_pairs_mut().append_pair("slug", &post.slug);
@@ -126,8 +121,8 @@ pub async fn render_rss_feed(
 
     Ok(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n  <channel>\n    <title>{}</title>\n    <link>{posts_url}</link>\n    <description>{}</description>\n    <language>{locale}</language>\n    <atom:link href=\"{feed_url}\" rel=\"self\" type=\"application/rss+xml\"/>\n{items}  </channel>\n</rss>",
-        cdata(title),
-        cdata(description),
+        cdata(&title),
+        cdata(&description),
     ))
 }
 

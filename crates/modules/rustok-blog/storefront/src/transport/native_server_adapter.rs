@@ -715,6 +715,7 @@ fn map_post_detail(
 ) -> BlogPostDetail {
     BlogPostDetail {
         id: post.id.to_string(),
+        version: post.version,
         effective_locale: post.effective_locale,
         title: post.title,
         slug: Some(post.slug),

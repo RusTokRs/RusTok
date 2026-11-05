@@ -493,15 +493,12 @@ fn reading_time_helpers_calculate_and_format_correctly() {
     let text_250_words = "word ".repeat(250);
     assert_eq!(super::calculate_reading_time(&text_250_words), 2);
 
-    assert_eq!(super::format_reading_time(1, Some("en")), "1 min read");
-    assert_eq!(super::format_reading_time(5, Some("en")), "5 min read");
-    assert_eq!(super::format_reading_time(1, Some("ru")), "1 минута чтения");
-    assert_eq!(super::format_reading_time(3, Some("ru")), "3 минуты чтения");
-    assert_eq!(
-        super::format_reading_time(3, Some("ru-RU")),
-        "3 минуты чтения"
-    );
-    assert_eq!(super::format_reading_time(5, Some("ru")), "5 минут чтения");
+    assert_eq!(visible_reading_time(1, "en"), "1 min read");
+    assert_eq!(visible_reading_time(5, "en"), "5 min read");
+    assert_eq!(visible_reading_time(1, "ru"), "1 минута чтения");
+    assert_eq!(visible_reading_time(3, "ru"), "3 минуты чтения");
+    assert_eq!(visible_reading_time(3, "ru-RU"), "3 минуты чтения");
+    assert_eq!(visible_reading_time(5, "ru"), "5 минут чтения");
 }
 
 #[test]
@@ -584,4 +581,8 @@ fn draft_preview_copy_resolves_localized_strings() {
     assert_eq!(copy_ru.badge, "Предпросмотр черновика");
     assert_eq!(copy_ru.title, "Предпросмотр черновика");
     assert_eq!(copy_ru.button_open, "Открыть");
+}
+
+fn visible_reading_time(minutes: u32, locale: &str) -> String {
+    super::format_reading_time(minutes, Some(locale)).replace(['\u{2068}', '\u{2069}'], "")
 }

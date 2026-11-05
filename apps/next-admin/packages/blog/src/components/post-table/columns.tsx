@@ -13,12 +13,6 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   ARCHIVED: 'outline'
 };
 
-const statusLabel: Record<string, string> = {
-  DRAFT: 'Draft',
-  PUBLISHED: 'Published',
-  ARCHIVED: 'Archived'
-};
-
 /**
  * ISO `YYYY-MM-DD` date cell: a deterministic slice of the owner's RFC 3339
  * timestamp, stable across server and client locales.
@@ -47,13 +41,13 @@ function authorCell(post: PostSummary): string {
  * filtering is owned by the text-filter controls next to it, which reset the
  * cursor atomically when a filter changes.
  */
-export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSummary, any>[] {
+export function createColumns(gqlOpts: GqlOpts, t: (key: string) => string): ColumnDef<StockFeatures, PostSummary, any>[] {
   return [
   {
     id: 'title',
     accessorKey: 'title',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Title' />
+      <DataTableColumnHeader column={column} title={t('grid.title')} />
     ),
     cell: ({ row }) => (
       <div className='max-w-[300px]'>
@@ -67,13 +61,13 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Title'
+      label: t('grid.title')
     }
   },
   {
     id: 'slug',
     accessorKey: 'slug',
-    header: 'Slug',
+    header: t('grid.slug'),
     cell: ({ getValue }) => (
       <span className='text-muted-foreground truncate'>
         {String(getValue() ?? '—')}
@@ -81,14 +75,14 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Slug'
+      label: t('grid.slug')
     }
   },
   {
     id: 'status',
     accessorKey: 'status',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Status' />
+      <DataTableColumnHeader column={column} title={t('grid.status')} />
     ),
     cell: ({ getValue }) => {
       const status = String(getValue() ?? '');
@@ -98,19 +92,19 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
           className='capitalize'
         >
           <CircleDot className='mr-1 h-3 w-3' />
-          {statusLabel[status] ?? status}
+          {t(`status.${status.toLowerCase()}`)}
         </Badge>
       );
     },
     enableSorting: false,
     meta: {
-      label: 'Status'
+      label: t('grid.status')
     }
   },
   {
     id: 'locale',
     accessorKey: 'effectiveLocale',
-    header: 'Locale',
+    header: t('grid.locale'),
     cell: ({ getValue }) => (
       <span className='text-muted-foreground'>
         {String(getValue() ?? '')}
@@ -118,13 +112,13 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Locale'
+      label: t('grid.locale')
     }
   },
   {
     id: 'author',
     accessorKey: 'authorId',
-    header: 'Author',
+    header: t('grid.author'),
     cell: ({ row }) => (
       <span className='text-muted-foreground truncate'>
         {authorCell(row.original)}
@@ -132,13 +126,13 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Author'
+      label: t('grid.author')
     }
   },
   {
     id: 'createdAt',
     accessorKey: 'createdAt',
-    header: 'Created',
+    header: t('grid.created'),
     cell: ({ row }) => (
       <span className='text-muted-foreground'>
         {dateCell(row.original.createdAt)}
@@ -146,13 +140,13 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Created'
+      label: t('grid.created')
     }
   },
   {
     id: 'publishedAt',
     accessorKey: 'publishedAt',
-    header: 'Published',
+    header: t('grid.published'),
     cell: ({ row }) => (
       <span className='text-muted-foreground'>
         {dateCell(row.original.publishedAt)}
@@ -160,7 +154,7 @@ export function createColumns(gqlOpts: GqlOpts): ColumnDef<StockFeatures, PostSu
     ),
     enableSorting: false,
     meta: {
-      label: 'Published'
+      label: t('grid.published')
     }
   },
   {

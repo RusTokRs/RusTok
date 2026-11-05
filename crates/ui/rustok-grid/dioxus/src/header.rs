@@ -40,6 +40,7 @@ pub fn GridHeader(
     /// Emitted when the user asks for all filters to be dropped.
     on_clear_filters: EventHandler<()>,
 ) -> Element {
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let visible = visible_columns(&columns).cloned().collect::<Vec<_>>();
     let show_filter_row = has_filter_row(&columns);
 
@@ -84,7 +85,7 @@ pub fn GridHeader(
                     r#type: "button",
                     role: "checkbox",
                     "aria-checked": all_checked_state,
-                    "aria-label": "Select all rows on this page",
+                    "aria-label": messages.text("grid.selectAll"),
                     class: "h-4 w-4 rounded border border-border flex items-center justify-center text-[10px] leading-none cursor-pointer text-primary focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
                     onclick: move |ev| {
                         ev.stop_propagation();
@@ -103,7 +104,7 @@ pub fn GridHeader(
                 button {
                     r#type: "button",
                     class: "cursor-pointer hover:text-foreground flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 rounded",
-                    title: "Sort by {sort_title}",
+                    title: messages.column_label("grid.sortColumn", &sort_title),
                     onclick: move |_| on_sort.call(sort_id.clone()),
                     span { "{label}" }
                     span {
@@ -160,8 +161,8 @@ pub fn GridHeader(
             rsx! {
                 button {
                     r#type: "button",
-                    title: "Reset all filters",
-                    "aria-label": "Reset all filters",
+                    title: messages.text("grid.filters"),
+                    "aria-label": messages.text("grid.filters"),
                     class: "text-[10px] text-muted-foreground hover:text-foreground px-1 py-0.5 rounded hover:bg-muted font-medium transition-colors",
                     onclick: move |_| on_clear_filters.call(()),
                     "✕"

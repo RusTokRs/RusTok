@@ -26,9 +26,12 @@ pub fn ColumnResizeHandle(
     let (start_x, set_start_x) = signal(0.0_f64);
     let (initial_width, set_initial_width) = signal(current_width.get_untracked());
 
+    let messages = use_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let label = match column_title {
-        Some(title) if !title.trim().is_empty() => format!("Resize column {title}"),
-        _ => "Resize column".to_string(),
+        Some(title) if !title.trim().is_empty() => {
+            messages.column_label("grid.resizeColumn", title.as_str())
+        }
+        _ => messages.text("grid.resize"),
     };
 
     let apply = move |width: u32| {

@@ -24,6 +24,7 @@ pub fn GridToolbar(
     #[props(default)]
     bulk_actions: Option<Callback<usize, Element>>,
 ) -> Element {
+    let messages = try_consume_context::<rustok_grid::GridMessages>().unwrap_or_default();
     let mut show_columns_dropdown = use_signal(|| false);
     let dropdown_open = *show_columns_dropdown.read();
 
@@ -41,14 +42,14 @@ pub fn GridToolbar(
             div {
                 class: "flex items-center gap-2 px-2.5 py-1 rounded bg-primary/10 text-primary text-xs font-semibold",
                 "aria-live": "polite",
-                span { "{selected_count} selected" }
+                span { {messages.selected(selected_count)} }
                 {actions}
             }
         }
     } else {
         rsx! {
             div { class: "flex items-center gap-2 text-muted-foreground text-xs",
-                span { "Total items:" }
+                span { {messages.text("grid.total")} }
                 span { class: "font-bold text-foreground", "{total_count}" }
             }
         }
@@ -86,7 +87,7 @@ pub fn GridToolbar(
                 class: "absolute right-0 mt-1 w-48 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg p-2 z-30 text-xs space-y-1",
                 div {
                     class: "font-semibold text-muted-foreground px-1 pb-1 border-b border-border/50",
-                    "Toggle Columns"
+                    {messages.text("grid.toggleColumns")}
                 }
                 div { class: "max-h-56 overflow-y-auto space-y-1 pt-1", {column_items} }
             }
@@ -99,7 +100,7 @@ pub fn GridToolbar(
                 r#type: "button",
                 class: "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors font-medium",
                 onclick: move |_| on_clear_filters.call(()),
-                span { "Filters active" }
+                span { {messages.text("grid.filters")} }
                 span { class: "text-[10px]", "aria-hidden": "true", "✕" }
             }
         }
@@ -129,7 +130,7 @@ pub fn GridToolbar(
                         let open = *show_columns_dropdown.peek();
                         show_columns_dropdown.set(!open);
                     },
-                    span { "Columns ⚙" }
+                    span { {messages.text("grid.columns")} }
                 }
                 {dropdown}
             }

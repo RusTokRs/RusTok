@@ -26,6 +26,9 @@ pub fn Select(
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
+    /// Receives the selected value after the controlled signal has been updated.
+    #[prop(optional)]
+    on_change: Option<Callback<String>>,
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
@@ -52,8 +55,12 @@ pub fn Select(
             name=name
             prop:value=move || value.map(|v| v.get()).unwrap_or_default()
             on:change=move |ev| {
+                let selected = event_target_value(&ev);
                 if let Some(set) = set_value {
-                    set.set(event_target_value(&ev));
+                    set.set(selected.clone());
+                }
+                if let Some(on_change) = on_change {
+                    on_change.run(selected);
                 }
             }
         >

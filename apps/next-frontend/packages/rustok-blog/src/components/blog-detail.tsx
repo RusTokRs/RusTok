@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+import { getTranslations } from '@rustok/next-fluent/server';
 import React from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -28,7 +29,6 @@ import { buildArticleJsonLd, serializeJsonLd } from "../utils/seo-json-ld";
 export interface BlogPostDetailViewProps {
   post: BlogPostDetail;
   locale: string;
-  isRu: boolean;
   slug: string;
   tenantSlug: string | null;
   tenantId: string | null;
@@ -37,10 +37,9 @@ export interface BlogPostDetailViewProps {
   siteUrl: string;
 }
 
-export function BlogPostDetailView({
+export async function BlogPostDetailView({
   post,
   locale,
-  isRu,
   slug,
   tenantSlug,
   tenantId,
@@ -48,6 +47,7 @@ export function BlogPostDetailView({
   relatedPosts,
   siteUrl,
 }: BlogPostDetailViewProps) {
+  const t = await getTranslations('Blog');
   const publishedDate = post.publishedAt
     ? new Date(post.publishedAt).toLocaleDateString(locale, {
         year: "numeric",
@@ -57,7 +57,7 @@ export function BlogPostDetailView({
     : null;
 
   const readingMinutes = calculateReadingTime(post.contentPlainText);
-  const readingTimeLabel = formatReadingTime(readingMinutes, locale);
+  const readingTimeLabel = formatReadingTime(readingMinutes, t);
 
   const articleUrl = `/${locale}/blog/${encodeURIComponent(post.slug ?? slug)}`;
   const jsonLd = buildArticleJsonLd({
@@ -69,24 +69,14 @@ export function BlogPostDetailView({
   const degradedCommentsMessage =
     comments.availability === "UNAVAILABLE"
       ? comments.cachedSnapshot
-        ? isRu
-          ? "Комментарии временно недоступны. Отображается сохраненная копия."
-          : "Comments are temporarily unavailable. Showing a recent snapshot."
-        : isRu
-          ? "Комментарии временно недоступны. Статья доступна для чтения."
-          : "Comments are temporarily unavailable. The article is still readable."
+        ? t('comments.unavailableCached')
+        : t('comments.unavailable')
       : comments.availability === "TIMEOUT"
         ? comments.cachedSnapshot
-          ? isRu
-            ? "Истекло время ожидания комментариев. Отображается недавняя копия."
-            : "Comments request timed out. Showing a recent cached snapshot."
-          : isRu
-            ? "Истекло время ожидания комментариев."
-            : "Comments request timed out. The article is still available."
+          ? t('comments.timeoutCached')
+          : t('comments.timeout')
         : comments.availability === "READ_ONLY"
-          ? isRu
-            ? "Комментарии закрыты для новых ответов."
-            : "Comments are closed for new replies."
+          ? t('comments.readOnly')
           : null;
 
   return (
@@ -107,7 +97,7 @@ export function BlogPostDetailView({
             className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>{isRu ? "Назад ко всем статьям" : "Back to all articles"}</span>
+            <span>{t('article.back')}</span>
           </Link>
         </div>
 
@@ -225,7 +215,7 @@ export function BlogPostDetailView({
             {relatedPosts.length > 0 && (
               <section className="pt-8 border-t border-border space-y-4">
                 <h3 className="text-xl font-bold text-foreground">
-                  {isRu ? "Читайте также" : "Related Articles"}
+                  {t('article.related')}
                 </h3>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {relatedPosts.map((related) => (

@@ -15,6 +15,7 @@ pub fn GridToolbar(
     on_toggle_column_visibility: Callback<String>,
     bulk_actions: Option<Callback<usize, AnyView>>,
 ) -> impl IntoView {
+    let messages = StoredValue::new(use_context::<rustok_grid::GridMessages>().unwrap_or_default());
     let (show_columns_dropdown, set_show_columns_dropdown) = signal(false);
 
     // Columns the user is allowed to hide: the synthetic checkbox column and
@@ -39,7 +40,7 @@ pub fn GridToolbar(
                                 class="flex items-center gap-2 px-2.5 py-1 rounded bg-primary/10 text-primary text-xs font-semibold"
                                 aria-live="polite"
                             >
-                                <span>{selected} " selected"</span>
+                                <span>{messages.get_value().selected(selected)}</span>
                                 {match bulk_actions {
                                     Some(actions) => actions.run(selected),
                                     None => ().into_any(),
@@ -50,7 +51,7 @@ pub fn GridToolbar(
                     } else {
                         view! {
                             <div class="flex items-center gap-2 text-muted-foreground text-xs">
-                                <span>"Total items:"</span>
+                                <span>{messages.get_value().text("grid.total")}</span>
                                 <span class="font-bold text-foreground">{move || total_count.get()}</span>
                             </div>
                         }
@@ -65,7 +66,7 @@ pub fn GridToolbar(
                         on:click=move |_| on_clear_filters.run(())
                         class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors font-medium"
                     >
-                        <span>"Filters active"</span>
+                        <span>{messages.get_value().text("grid.filters")}</span>
                         <span class="text-[10px]" aria-hidden="true">
                             "✕"
                         </span>
@@ -90,7 +91,7 @@ pub fn GridToolbar(
                     on:click=move |_| set_show_columns_dropdown.update(|open| *open = !*open)
                     class="text-xs px-2.5 py-1 rounded border border-border bg-background hover:bg-muted font-medium text-foreground transition-colors flex items-center gap-1.5 shadow-sm"
                 >
-                    <span>"Columns ⚙"</span>
+                    <span>{messages.get_value().text("grid.columns")}</span>
                 </button>
 
                 <Show when=move || show_columns_dropdown.get()>
@@ -103,7 +104,7 @@ pub fn GridToolbar(
                     />
                     <div class="absolute right-0 mt-1 w-48 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg p-2 z-30 text-xs space-y-1">
                         <div class="font-semibold text-muted-foreground px-1 pb-1 border-b border-border/50">
-                            "Toggle Columns"
+                            {messages.get_value().text("grid.toggleColumns")}
                         </div>
                         <div class="max-h-56 overflow-y-auto space-y-1 pt-1">
                             {move || {

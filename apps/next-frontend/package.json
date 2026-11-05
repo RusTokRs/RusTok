@@ -22,7 +22,7 @@
     "test:pricing": "node --experimental-strip-types --test packages/rustok-pricing/src/pricing-frontend.test.mjs",
     "test:product": "node --experimental-strip-types --test packages/rustok-product/src/catalog/pricing.test.mjs packages/rustok-product/src/product-frontend.test.mjs",
     "test:profiles": "node --experimental-strip-types --test packages/rustok-profiles/src/profiles-frontend.test.mjs",
-    "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs packages/rustok-blog/src/utils/reading-time.test.mjs",
+    "test:blog": "node --experimental-strip-types --test packages/rustok-blog/src/utils/comments-order.test.mjs packages/rustok-blog/src/utils/reading-time.test.mjs packages/rustok-blog/src/utils/reactions.test.mjs",
     "test:seo": "node --experimental-strip-types --test packages/rustok-seo/src/seo-frontend.test.mjs",
     "test:search": "node --experimental-strip-types --test packages/search/src/search-frontend.test.mjs",
     "test:e2e": "playwright test",
