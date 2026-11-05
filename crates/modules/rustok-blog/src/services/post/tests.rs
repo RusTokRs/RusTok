@@ -1,11 +1,11 @@
 use super::*;
+#[path = "../../../tests/support/schema.rs"]
+mod schema;
 use crate::dto::PublishedPostCursor;
 use std::sync::Arc;
 
-use rustok_core::MigrationSource;
 use rustok_core::{SecurityContext, UserRole};
-use rustok_outbox::{OutboxTransport, SysEventsMigration};
-use rustok_taxonomy::TaxonomyModule;
+use rustok_outbox::OutboxTransport;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 
@@ -25,55 +25,9 @@ async fn setup_test_db() -> DatabaseConnection {
 }
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
-    db.execute_raw(Statement::from_string(
-        db.get_database_backend(),
-        r#"
-        CREATE TABLE IF NOT EXISTS tenants (
-            id TEXT PRIMARY KEY NOT NULL,
-            name TEXT NOT NULL,
-            slug TEXT NOT NULL UNIQUE,
-            domain TEXT NULL UNIQUE,
-            settings TEXT NOT NULL DEFAULT '{}',
-            default_locale TEXT NOT NULL DEFAULT 'en',
-            is_active BOOLEAN NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-    ))
-    .await
-    .expect("tenants table should exist for channel foreign keys");
-
-    let manager = SchemaManager::new(db);
-    SysEventsMigration
-        .up(&manager)
+    schema::apply_blog_schema(db, crate::migrations::migrations())
         .await
-        .expect("outbox migration should apply");
-    for migration in TaxonomyModule.migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("taxonomy migration should apply");
-    }
-    for migration in rustok_channel::migrations::migrations() {
-        if db.get_database_backend() == sea_orm::DatabaseBackend::Sqlite
-            && (migration.name() == "m20260730_000010_add_channel_index_revision"
-                || migration.name() == "m20260731_000011_add_channel_index_tombstones"
-                || migration.name() == "m20260807_000012_add_channel_index_identity_generation")
-        {
-            continue;
-        }
-        migration
-            .up(&manager)
-            .await
-            .expect("channel migration should apply");
-    }
-    for migration in crate::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("blog migration should apply");
-    }
+        .expect("complete Blog prerequisite migrations should apply");
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {

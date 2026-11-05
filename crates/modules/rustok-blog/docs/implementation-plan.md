@@ -44,9 +44,6 @@ certification wording below where it implies executed or complete readiness.
 
 | Priority | Boundary and current evidence | Required result before complete reference acceptance |
 | --- | --- | --- |
-| P1 | Older `tests/comment_projection*postgres_test.rs` harnesses can return success without a configured PostgreSQL URL | Make requested database execution fail on missing prerequisites and report optional nonexecution as skipped. Preserve child-process entrypoints and synchronize the actual runner contract. |
-| P1 | `tests/integration.rs` and `services/post/tests.rs` skip three Channel migrations on SQLite. Projection-specific PostgreSQL fixtures recreate narrow tables | Prove complete shipped prerequisite migration composition and shared owner scenarios on both supported profiles. The new no-Channel-selector PostgreSQL slice does not certify Channel composition. |
-| P1 | Stale post edits and nullable patches now have owner regressions; PostgreSQL simultaneous edits remain unproven | Retain one-winner PostgreSQL CAS contention, tenant isolation, mutation/outbox rollback, duplicate/reordered delivery and restart evidence. |
 | P1 | Blog Fly metadata describes owner preview/property capabilities, but `apps/admin/src/app/page_builder_contributions.rs` mounts neither Blog preview nor property ports | Implement the Blog-owned transport facade and host bindings, then execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
 | P1 | Leptos editor hydration and Next editor updates retain requested locale while displaying fallback text | Exercise saving unrelated changes after fallback hydration. Preserve explicit localized write provenance and refuse accidental materialization of another locale's text. |
 | P2 | `admin/src/core/presentation.rs`, storefront reading-time/share helpers, and Next editor/reaction components contain Russian/English branches or literal interface copy | Resolve copy through host effective locale and canonical catalogs/formatters. Pass a third locale and parameter/plural behavior through pure core and mounted clients. |
@@ -54,6 +51,10 @@ certification wording below where it implies executed or complete readiness.
 | P2 | Next storefront mounts reaction reads/writes; Leptos storefront has no equivalent surface. Next category loading suppresses failures in `post-form.tsx` | Establish functional reaction parity and explicit category unavailable/error states, then verify both implementations' critical interactions. |
 | P2 | Next admin has no package-local test script. Next storefront currently has only utility tests. Default Rust builds omit runtime/SSR/hydration composition | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
 | P2 | `verify-module-reference-contract.mjs` is a Blog-specific source-marker guard with no negative fixture suite of its own | Keep source checks supplementary. Add executable invariant scenarios and focused negative fixtures before generalizing semantic acceptance to generated modules. |
+
+The database prerequisite, explicit-execution and PostgreSQL contention gates
+were closed by the configured scenarios recorded below. They remain regression
+requirements; SQLite does not stand in for PostgreSQL locking evidence.
 
 The complete applicable test families are owned by the
 [backend verification contract](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence).
@@ -117,16 +118,58 @@ and bounded cleanup, not a replacement owner model.
 The explicit PostgreSQL title/locale test must be selected with
 `RUSTOK_BLOG_TEST_DATABASE_URL` and
 `cargo test -p rustok-blog --locked --offline --lib services::post::tests::postgres_title_filter_and_locale_storage_contract -- --ignored --exact`.
-It creates and removes an isolated database, applies actual Blog/Taxonomy/Outbox
-migrations for its no-Channel-selector scenarios, and reconnects after width DDL
-before verifying post readback. The configured execution passed; unlike the
-older projection harnesses, an explicitly requested run fails when its database
-URL is absent. The temporary local PostgreSQL instance was stopped afterward.
+It creates and removes an isolated database and reconnects after width DDL before
+verifying post readback. The current shared schema is described below. Its first
+configured execution used the earlier no-Channel-selector composition; it was
+rerun successfully with the complete current prerequisite fixture.
 
-Full prerequisite migration composition, older PostgreSQL projection/race/restart
-harness execution, remote providers, mounted Fly, browser/accessibility and
-Leptos/Next workflow parity remain unverified. Workspace suites and long E2E
-were not run. No FFA/FBA or full reference readiness status was promoted.
+Remote providers, mounted Fly, browser/accessibility and Leptos/Next workflow
+parity remain unverified. Workspace suites and long E2E were not run. No FFA/FBA
+or full reference readiness status was promoted.
+
+### Database fixture and contention verification
+
+This continuation began at `01ea0627d6b50e64a4b4fe2aa19fb0718e5c4f55` and
+reconciled concurrent migration-library changes through
+`6c7b1e52b4971ca4abe393a4b2897f6c96976c47`. The migration library now exports
+its existing identity creation prefix without full domain composition. Both the
+production migrator and scoped fixtures consume those same implementations;
+migration identities, bodies and production ordering are unchanged.
+
+`tests/support/schema.rs` composes that prefix, actual Outbox schema and owner
+operation receipts, the Auth-owned OAuth prerequisite, and the complete Content,
+Taxonomy, Channel and Blog chains. Service, integration and PostgreSQL projection
+tests share this source. They no longer copy narrow table definitions or exclude
+three Channel migrations on SQLite. This is the complete prerequisite schema
+for these Blog scenarios, not a full Auth, Tenant or global-platform migration
+execution.
+
+All PostgreSQL commands below require an explicit
+`RUSTOK_BLOG_TEST_DATABASE_URL`. Normal test runs report opt-in scenarios as
+ignored. Explicit selection without that URL fails with an actionable error and
+never falls back to the runtime `DATABASE_URL`. A subprocess regression proves
+that failure behavior. Fixtures use isolated databases or unique schemas.
+
+| Command or scenario | Obtained result and limit |
+| --- | --- |
+| `cargo test -p rustok-blog --locked --offline --lib --test integration` | 176 library tests and 22 integration tests passed on the actual shared SQLite schema; one opt-in PostgreSQL library test ignored. |
+| `cargo test -p rustok-blog --locked --offline --test database_profiles -- --include-ignored` with the explicit URL | Both profiles passed the identical owner scenario: publication, tenant/channel isolation, requested/effective/available locale provenance and keyset pagination after visibility filtering. |
+| `cargo test -p rustok-blog --locked --offline --test comment_projection_postgres_test -- --ignored` | Seven PostgreSQL scenarios passed: lifecycle/order, tenant isolation, terminal acknowledgement after target removal, atomic outbox failure rollback, four concurrent independent deliveries and actual registered projection routing through `EventDispatcher`. |
+| `cargo test -p rustok-blog --locked --offline --test comment_projection_duplicate_race_postgres_test -- --ignored` | Two independently blocked workers acknowledged the same envelope successfully; exactly one counter change, one delivery receipt and one reindex event persisted. Replay was clean and the post business revision stayed unchanged. |
+| `cargo test -p rustok-blog --locked --offline --test comment_projection_dispatcher_duplicate_postgres_test -- --ignored` | Both dispatcher deliveries acknowledged successfully with one durable effect. |
+| `cargo test -p rustok-blog --locked --offline --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env` | Both parent scenarios passed: independent connection restart and two separate worker processes. Child execution remains private to the parent process-context contract. |
+| `cargo test -p rustok-blog --locked --offline --test post_edit_postgres -- --include-ignored` | Two tests passed: explicit missing-configuration failure and simultaneous same-revision edits blocked on the actual post lock. One edit committed coherent localized fields, one new revision and one outbox event; the loser conflicted and a foreign tenant could not mutate the post. |
+| Explicit PostgreSQL title/locale library scenario above | Passed again with the complete current prerequisite schema on PostgreSQL 16.13. |
+| `node --test scripts/verify/verify-blog-comments-event-projection.test.mjs scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs` | 49 source-guard fixture tests passed. |
+| `npm run verify:blog:fba` | Passed as a source contract. Historical `source_verified_no_compile` evidence artifacts remain source-gate records; the configured executions are recorded here, without promoting remote/full FBA status. |
+| `cargo clippy -p rustok-blog --locked --offline --all-targets -- -D warnings` | Passed, including the PostgreSQL and shared-profile targets. |
+| `cargo clippy -p rustok-migrations --no-default-features --locked --offline --lib -- -D warnings` | Passed for the lightweight migration-library boundary. Full domain composition was not compiled. |
+| `python scripts/verify/verify-remediation-gate.py --skip-cargo --files <changed reference paths>` | Passed diff invariants and architecture dependencies. Cargo checks were run explicitly above to preserve the no-default migration profile. |
+
+The duplicate-delivery expectations now match the owner contract: the post lock
+serializes the receipt check, so both deliveries acknowledge one effect. Missing
+targets are terminal acknowledged deliveries, not permanently retryable failures;
+the regression also proves that an identical ID under another tenant is untouched.
 
 ## Reference-v1 certification note
 
@@ -423,7 +466,7 @@ observes eight zero-row update results. A PostgreSQL sequence records all eight
 attempts outside transaction rollback. The written assertions require the
 terminal error, unchanged post state, no delivery or outbox row, removal of the
 probe, and successful replay of the same envelope. Its suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --ignored --exact`.
 The target is `executable_no_run`; it does not record execution or measure natural
 contention frequency.
 
@@ -446,7 +489,7 @@ module listener context, registers handlers through
 the subscriber, publishes one envelope through `EventBus`, waits for the durable
 delivery marker, and then requires one counter transition, one delivery row, and
 one outbox row. Its suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --ignored --exact`.
 The target is `executable_no_run`; no dispatcher or PostgreSQL output is recorded.
 
 The retained concurrency target is the filtered
@@ -457,7 +500,7 @@ handler per connection, releases four unique `comment.created` envelopes through
 a shared barrier, and requires the shared post to finish at `comment_count = 4`
 and `version = 5` with four delivery-ledger rows and four outbox rows. Its
 suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --ignored --exact`.
 The target is `executable_no_run`. It records a written convergence contract, not
 an observed retry count or optimistic-exhaustion result.
 
@@ -476,7 +519,7 @@ guarded by `scripts/verify/verify-blog-comments-duplicate-delivery-race.mjs` and
 focused fixture
 `scripts/verify/verify-blog-comments-duplicate-delivery-race.test.mjs`. Its
 suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --ignored --exact`.
 Exact leaf commands `verify:blog:comments-duplicate-delivery-race` and
 `test:verify:blog:comments-duplicate-delivery-race` are registered immediately
 after the main Comments event-projection leaf in both Blog FBA chains. The target
@@ -499,7 +542,7 @@ guarded by
 fixture
 `scripts/verify/verify-blog-comments-dispatcher-duplicate-delivery.test.mjs`. Its
 suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --ignored --exact`.
 Exact leaf commands `verify:blog:comments-dispatcher-duplicate-delivery` and
 `test:verify:blog:comments-dispatcher-duplicate-delivery` are registered
 immediately after the concurrent duplicate-delivery race leaf in both Blog FBA
@@ -515,7 +558,7 @@ and a one-connection pool for each direct handler. Its five direct-handler cases
 cover duplicate-envelope idempotency, deterministic delivery limit rollback/replay,
 delete-before-create ordering, missing-post replay after source creation, and
 rollback/retry when the outbox table is unavailable. The suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored`.
 The target is registered as `executable_no_run`; no PostgreSQL result is recorded.
 All four Blog projection PostgreSQL harnesses set `search_path` to the generated
 test schema only. They do not include `public`, so a deliberately missing local
@@ -528,7 +571,7 @@ one envelope, drops the first handler, opens a new PostgreSQL connection against
 the same isolated schema, creates a new handler, and replays the same envelope.
 The written assertions require one counter transition, one durable delivery row,
 and one outbox row. Its suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env`.
 This target is `executable_no_run`; it represents handler/connection
 re-instantiation inside one test process.
 
@@ -541,7 +584,7 @@ the same envelope ID from private test environment variables, creates a fresh
 PostgreSQL connection and handler, and exits before the next child starts. Final
 assertions require one counter transition, one delivery row, and one outbox row.
 Its suggested command is
-`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact`.
+`RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --ignored --exact`.
 The target is `executable_no_run`; it proves a written OS process boundary, not a
 full application server-host restart, and no execution result is recorded.
 
@@ -1186,8 +1229,9 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 3. Aligned post mutation permissions across REST, GraphQL, domain, and limiter.
 4. Added lifecycle Search projection, targeted/full reindex, module-toggle
    handling, cleanup, PostgreSQL harnesses, and active `search_path` discovery.
-5. Hardened comment projection with a durable ledger, optimistic locking,
-   retryable ordering, and transactional outbox publication.
+5. Hardened comment projection with a durable ledger, post-row locking,
+   per-comment ordering, terminal deleted-target acknowledgement, and
+   transactional outbox publication without changing the business revision.
 6. Added Comments-owned approved public reads, moderation parity, and bounded
    storefront/admin pagination.
 7. Added serialized thread positions, exact active counts, repair, and a unique
@@ -1504,14 +1548,14 @@ should run the relevant subset, including:
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_applies_success_without_retry -- --exact`
 - `cargo test -p rustok-blog --lib services::comment_projection::tests::optimistic_retry_policy_allows_seven_retries_then_stops_on_eighth_conflict -- --exact`
 - `cargo test -p rustok-blog --lib tests::module_registers_comment_projection_handler_with_host_routing`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact`
-- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test optimistic_retry_limit_rolls_back_and_replays_after_conflict_clears -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --ignored --exact`
+- `RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env`
 - `npm run verify:blog:category-search-reindex`
 - `npm run test:verify:blog:category-search-reindex`
 - `npm run verify:blog:graphql-rate-limit`

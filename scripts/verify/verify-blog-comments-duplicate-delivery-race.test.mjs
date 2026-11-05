@@ -30,13 +30,13 @@ function fixture({
   const harnessPath =
     'crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs';
   const command =
-    'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact';
+    'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --ignored --exact';
 
   write(
     root,
     harnessPath,
     `
-const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
+support::postgres_database_url()
 const WORKER_A_APPLICATION_NAME: &str = "rustok_blog_duplicate_race_a";
 const WORKER_B_APPLICATION_NAME: &str = "rustok_blog_duplicate_race_b";
 async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly()
@@ -45,9 +45,9 @@ let task_a = spawn_projection(worker_a, Arc::clone(&start), envelope.clone());
 let task_b = spawn_projection(worker_b, Arc::clone(&start), envelope.clone());
 ${missingBlockedWorkerObservation ? '' : 'wait_for_both_workers_to_block(&test_db.control).await?;'}
 lock_txn.commit().await?;
-success_count, 1,
+success_count, 2,
 assert_eq!(
-        failure_count, 1
+        failure_count, 0
 load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)
 count_delivery(&test_db.db, envelope.id).await?, 1
 count_outbox_events(&test_db.db).await?, 1
@@ -59,8 +59,7 @@ application_name IN ('{WORKER_A_APPLICATION_NAME}', '{WORKER_B_APPLICATION_NAME}
 wait_event_type = 'Lock'
 if blocked == 2
 SELECT set_config('application_name', $1, false)
-CREATE TABLE blog_comment_projection_deliveries
-CREATE TABLE sys_events
+support::apply_blog_schema(db).await
 .max_connections(1)
 SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
 `,
@@ -87,14 +86,14 @@ SET search_path TO "{schema_name}"${publicSearchPathFallback ? ', public' : ''}
         isolation:
           'unique_schema_three_independent_connections_two_named_workers_controlled_row_lock',
         scope:
-          'same_envelope_concurrent_delivery_unique_ledger_loser_rollback_and_clean_replay',
+          'same_envelope_concurrent_delivery_single_effect_successful_acknowledgements_and_clean_replay',
         non_claim:
           'does_not_record_postgresql_execution_or_full_event_dispatcher_delivery',
       },
       cases: [
-        { name: 'both_workers_pass_initial_delivery_lookup' },
-        { name: 'single_duplicate_commit' },
-        { name: 'losing_transaction_rolls_back' },
+        { name: 'both_workers_wait_before_delivery_lookup' },
+        { name: 'single_duplicate_effect' },
+        { name: 'both_deliveries_acknowledged' },
         { name: 'same_envelope_replay_is_clean' },
       ],
     }),

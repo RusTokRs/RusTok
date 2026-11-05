@@ -35,8 +35,8 @@ const projectionRevisionMigrationPath = 'crates/modules/rustok-blog/src/migratio
 const projectionPostgresHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs';
 const projectionRestartHarnessPath = 'crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs';
 const projectionHarnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
-const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
-const projectionRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
+const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored';
+const projectionRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env';
 const projectionPostgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
 const blogInitialMigrationPath = 'crates/modules/rustok-blog/src/migrations/m20261029_000001_create_blog_schema.rs';
 const removedRichtextArtifacts = [
@@ -99,7 +99,7 @@ sameSet(
   [
     'duplicate_delivery_updates_counter_and_outbox_once',
      'delete_before_create_stays_non_negative_and_replays_in_order',
-    'missing_post_replay_commits_only_after_source_appears',
+    'missing_post_delivery_is_terminal_without_cross_tenant_effects',
     'outbox_failure_rolls_back_counter_and_delivery_before_retry',
     'approval_counts_once_and_update_events_preserve_the_count',
   ],
@@ -309,22 +309,21 @@ hasAll(snapshotSource, [
   'blog-public-comments-snapshot-v3\\0',
 ], 'blog public comments snapshot invalidation');
 hasAll(projectionPostgresHarness, [
-  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'support::postgres_database_url()',
   'struct PostgresBlogProjectionTestDb',
   '.max_connections(1)',
   'SET search_path TO',
   'async fn duplicate_delivery_updates_counter_and_outbox_once()',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
-  'async fn missing_post_replay_commits_only_after_source_appears()',
+  'async fn missing_post_delivery_is_terminal_without_cross_tenant_effects()',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
   'async fn approval_counts_once_and_update_events_preserve_the_count()',
   'DROP TABLE sys_events',
-  'CREATE TABLE blog_comment_projection_deliveries',
-  'CREATE TABLE sys_events',
+  'support::apply_blog_schema(db).await',
 ], 'blog comment projection PostgreSQL target');
 hasNone(projectionPostgresHarness, ['#[ignore]', 'runtime_verified'], 'blog comment projection PostgreSQL target');
 hasAll(projectionRestartHarness, [
-  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'support::postgres_database_url()',
   'struct PostgresBlogProjectionRestartTestDb',
   'database_url: String',
   'async fn restarted_connection(&self)',

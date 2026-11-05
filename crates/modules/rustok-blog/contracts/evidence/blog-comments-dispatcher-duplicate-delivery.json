@@ -12,7 +12,7 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --ignored --exact",
     "isolation": "unique_schema_one_connection_pool_module_registered_handler_observed_two_dispatches",
     "scope": "same_envelope_published_twice_through_event_bus_dispatcher_single_projection_commit",
     "non_claim": "does_not_record_postgresql_execution_or_concurrent_duplicate_race"
@@ -28,7 +28,7 @@
     },
     {
       "name": "single_transactional_application",
-      "expected": "after both successful dispatches complete the post is count one/version two with one delivery-ledger row and one outbox row"
+      "expected": "after both successful dispatches complete the post is count one/unchanged business version one with one delivery-ledger row and one outbox row"
     }
   ],
   "runtime_promotion_requirements": [

@@ -1,3 +1,5 @@
+mod support;
+
 use std::{env, error::Error, io, process::Command, sync::Arc};
 
 use rustok_blog::services::BlogCommentProjectionHandler;
@@ -11,7 +13,6 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
 const PROCESS_WORKER_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_WORKER";
 const PROCESS_DATABASE_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_DATABASE_URL";
 const PROCESS_SCHEMA_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_SCHEMA";
@@ -29,13 +30,8 @@ struct PostgresBlogProjectionRestartTestDb {
 }
 
 impl PostgresBlogProjectionRestartTestDb {
-    async fn setup() -> TestResult<Option<Self>> {
-        let Some(database_url) = postgres_database_url() else {
-            eprintln!(
-                "{BLOG_TEST_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Blog comment projection restart test"
-            );
-            return Ok(None);
-        };
+    async fn setup() -> TestResult<Self> {
+        let database_url = postgres_database_url()?;
 
         let control = connect(&database_url).await?;
         let schema_name = format!("rustok_blog_projection_restart_{}", Uuid::new_v4().simple());
@@ -47,18 +43,24 @@ impl PostgresBlogProjectionRestartTestDb {
         set_search_path(&db, &schema_name).await?;
 
         if let Err(error) = create_projection_tables(&db).await {
-            let _ = control
+            if let Err(cleanup_error) = control
                 .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
-                .await;
+                .await
+            {
+                return Err(io::Error::other(format!(
+                    "Blog fixture migration failed: {error}; schema cleanup failed: {cleanup_error}"
+                ))
+                .into());
+            }
             return Err(error.into());
         }
 
-        Ok(Some(Self {
+        Ok(Self {
             control,
             db,
             database_url,
             schema_name,
-        }))
+        })
     }
 
     async fn restarted_connection(&self) -> TestResult<DatabaseConnection> {
@@ -79,10 +81,9 @@ impl PostgresBlogProjectionRestartTestDb {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit RUSTOK_BLOG_TEST_DATABASE_URL"]
 async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -> TestResult<()> {
-    let Some(test_db) = PostgresBlogProjectionRestartTestDb::setup().await? else {
-        return Ok(());
-    };
+    let test_db = PostgresBlogProjectionRestartTestDb::setup().await?;
 
     let tenant_id = Uuid::new_v4();
     let post_id = Uuid::new_v4();
@@ -125,10 +126,9 @@ async fn restarted_handler_reuses_delivery_ledger_without_reapplying_counter() -
 }
 
 #[tokio::test]
+#[ignore = "requires explicit RUSTOK_BLOG_TEST_DATABASE_URL"]
 async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -> TestResult<()> {
-    let Some(test_db) = PostgresBlogProjectionRestartTestDb::setup().await? else {
-        return Ok(());
-    };
+    let test_db = PostgresBlogProjectionRestartTestDb::setup().await?;
 
     let tenant_id = Uuid::new_v4();
     let post_id = Uuid::new_v4();
@@ -176,9 +176,14 @@ async fn restarted_process_reuses_delivery_ledger_without_reapplying_counter() -
 }
 
 #[tokio::test]
+#[ignore = "private child-process entrypoint; requires the parent fixture context"]
 async fn process_restart_worker_applies_envelope_from_env() -> TestResult<()> {
     if env::var_os(PROCESS_WORKER_ENV).is_none() {
-        return Ok(());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the restart worker must be launched by its parent PostgreSQL scenario",
+        )
+        .into());
     }
 
     let database_url = required_env(PROCESS_DATABASE_ENV)?;
@@ -221,6 +226,7 @@ fn run_projection_worker(
     event_id: Uuid,
 ) -> TestResult<()> {
     let status = Command::new(env::current_exe()?)
+        .arg("--ignored")
         .arg("--exact")
         .arg("process_restart_worker_applies_envelope_from_env")
         .arg("--nocapture")
@@ -266,53 +272,7 @@ fn required_uuid(name: &str) -> TestResult<Uuid> {
 }
 
 async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
-    db.execute_unprepared(
-        r#"
-        CREATE TABLE blog_posts (
-            id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL,
-            author_id UUID NOT NULL,
-            category_id UUID NULL,
-            status TEXT NOT NULL,
-            slug TEXT NOT NULL,
-            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-            featured_image_url TEXT NULL,
-            published_at TIMESTAMPTZ NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            archived_at TIMESTAMPTZ NULL,
-            comment_count INTEGER NOT NULL DEFAULT 0,
-            version INTEGER NOT NULL DEFAULT 1
-        );
-
-        CREATE TABLE blog_comment_projection_deliveries (
-            event_id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL,
-            comment_id UUID NOT NULL,
-            post_id UUID NOT NULL,
-            delta INTEGER NOT NULL,
-            projection_revision BIGINT NOT NULL DEFAULT 0,
-            processed_at TIMESTAMPTZ NOT NULL
-        );
-
-        CREATE TABLE sys_events (
-            id UUID PRIMARY KEY,
-            event_type TEXT NOT NULL,
-            schema_version SMALLINT NOT NULL,
-            payload JSONB NOT NULL,
-            status VARCHAR(32) NOT NULL,
-            retry_count INTEGER NOT NULL,
-            next_attempt_at TIMESTAMPTZ NULL,
-            last_error TEXT NULL,
-            claimed_by TEXT NULL,
-            claimed_at TIMESTAMPTZ NULL,
-            created_at TIMESTAMPTZ NOT NULL,
-            dispatched_at TIMESTAMPTZ NULL
-        );
-        "#,
-    )
-    .await?;
-    Ok(())
+    support::apply_blog_schema(db).await
 }
 
 async fn insert_post(
@@ -325,9 +285,9 @@ async fn insert_post(
         DbBackend::Postgres,
         r#"
         INSERT INTO blog_posts (
-            id, tenant_id, author_id, status, slug, metadata,
+            id, tenant_id, author_id, status, slug, metadata, published_at,
             comment_count, version
-        ) VALUES ($1, $2, $3, 'published', 'projection-restart-test', '{}'::jsonb, 0, 1)
+        ) VALUES ($1, $2, $3, 'published', 'projection-restart-test', '{}'::jsonb, NOW(), 0, 1)
         "#,
         vec![post_id.into(), tenant_id.into(), author_id.into()],
     ))
@@ -381,11 +341,8 @@ async fn count_outbox_events(db: &DatabaseConnection) -> Result<i64, sea_orm::Db
     row.try_get("", "count")
 }
 
-fn postgres_database_url() -> Option<String> {
-    env::var(BLOG_TEST_DATABASE_ENV)
-        .or_else(|_| env::var("DATABASE_URL"))
-        .ok()
-        .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
+fn postgres_database_url() -> TestResult<String> {
+    support::postgres_database_url()
 }
 
 async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {

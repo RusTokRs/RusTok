@@ -48,6 +48,14 @@ processes. Avoid adding its unconditional domain dependency tree to `xtask`.
 `pg_dump` and `pg_restore` may be invoked as pinned PostgreSQL tools from Rust.
 Domain migration contents and assertions remain owner-owned.
 
+Scoped domain verification consumes the creation migrations for the shared
+tenant/user/session/authorization identity schema through
+`rustok_migrations::identity::migrations()`, available without `composition`.
+The full `Migrator` composes that same source; fixtures must not copy foundation
+table definitions or enable unrelated modules just to satisfy foreign keys.
+This bounded schema source is not a second production migrator or permission to
+omit a selected module's prerequisite migrations.
+
 The same Rust workflow runs locally and in CI. Once the verified Rust workflow
 is operational, replace the current JavaScript source-squash entrypoint and
 update its callers in the same cutover. Existing release publication policy

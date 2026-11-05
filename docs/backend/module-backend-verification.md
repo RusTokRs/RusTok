@@ -195,6 +195,15 @@ For a persistent reference capability:
   Optional local nonexecution must be reported as skipped/unverified. An early
   successful return without connecting is not database execution evidence.
 
+Blog's current executable example is `tests/database_profiles.rs`, backed by
+`tests/support/schema.rs` in `crates/modules/rustok-blog`. It shares one owner
+scenario across both database profiles and composes real module migrations,
+including every Channel migration. Foundation identity creation comes from
+`rustok_migrations::identity::migrations()` with default features disabled;
+consumers still compose subsequent owner migrations and declared prerequisites.
+Use the Blog owner plan for exact commands and the limits of the retained
+execution evidence. This scoped fixture is not an alternate production migrator.
+
 Reuse SeaORM, `MigrationSource` and existing `rustok-test-utils` facilities.
 Dialect SQL belongs in owner persistence/migration adapters; do not introduce
 repository interfaces or a database-provider registry without a real consumer.

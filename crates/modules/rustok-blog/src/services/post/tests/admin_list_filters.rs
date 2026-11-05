@@ -206,17 +206,9 @@ async fn postgres_title_filter_and_locale_storage_contract() {
     let url = postgres_database_url(&url, &name);
     let result = tokio::spawn(async move {
         let db = connect_postgres(&url).await.unwrap();
-        let manager = SchemaManager::new(&db);
-        // These scenarios use no Channel selector. Apply the actual Blog,
-        // Taxonomy and Outbox schemas for their owner data and durable events.
-        SysEventsMigration.up(&manager).await.unwrap();
-        for migration in TaxonomyModule
-            .migrations()
-            .into_iter()
-            .chain(crate::migrations::migrations())
-        {
-            migration.up(&manager).await.unwrap();
-        }
+        schema::apply_blog_schema(&db, crate::migrations::migrations())
+            .await
+            .unwrap();
         assert_displayed_title_filter_pages(db.clone()).await;
         assert_final_title_filter_locale(db.clone()).await;
         let service = PostService::new(

@@ -1,3 +1,5 @@
+mod support;
+
 use std::{
     error::Error,
     io,
@@ -22,7 +24,6 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";
 const DISPATCHER_DUPLICATE_DELIVERIES: usize = 2;
 
 struct PostgresBlogDispatcherDuplicateTestDb {
@@ -32,13 +33,8 @@ struct PostgresBlogDispatcherDuplicateTestDb {
 }
 
 impl PostgresBlogDispatcherDuplicateTestDb {
-    async fn setup() -> TestResult<Option<Self>> {
-        let Some(database_url) = postgres_database_url() else {
-            eprintln!(
-                "{BLOG_TEST_DATABASE_ENV} is not set to a PostgreSQL URL; skipping Blog dispatcher duplicate delivery test"
-            );
-            return Ok(None);
-        };
+    async fn setup() -> TestResult<Self> {
+        let database_url = postgres_database_url()?;
 
         let control = connect(&database_url).await?;
         let schema_name = format!(
@@ -53,17 +49,23 @@ impl PostgresBlogDispatcherDuplicateTestDb {
         set_search_path(&db, &schema_name).await?;
 
         if let Err(error) = create_projection_tables(&db).await {
-            let _ = control
+            if let Err(cleanup_error) = control
                 .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
-                .await;
+                .await
+            {
+                return Err(io::Error::other(format!(
+                    "Blog fixture migration failed: {error}; schema cleanup failed: {cleanup_error}"
+                ))
+                .into());
+            }
             return Err(error.into());
         }
 
-        Ok(Some(Self {
+        Ok(Self {
             control,
             db,
             schema_name,
-        }))
+        })
     }
 
     async fn cleanup(self) -> TestResult<()> {
@@ -122,10 +124,9 @@ impl EventHandler for ObservedProjectionHandler {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit RUSTOK_BLOG_TEST_DATABASE_URL"]
 async fn event_dispatcher_replays_duplicate_envelope_without_double_commit() -> TestResult<()> {
-    let Some(test_db) = PostgresBlogDispatcherDuplicateTestDb::setup().await? else {
-        return Ok(());
-    };
+    let test_db = PostgresBlogDispatcherDuplicateTestDb::setup().await?;
 
     let tenant_id = Uuid::new_v4();
     let post_id = Uuid::new_v4();
@@ -232,53 +233,7 @@ async fn wait_for_completed_dispatches(completed: &AtomicUsize) -> TestResult<()
 }
 
 async fn create_projection_tables(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
-    db.execute_unprepared(
-        r#"
-        CREATE TABLE blog_posts (
-            id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL,
-            author_id UUID NOT NULL,
-            category_id UUID NULL,
-            status TEXT NOT NULL,
-            slug TEXT NOT NULL,
-            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-            featured_image_url TEXT NULL,
-            published_at TIMESTAMPTZ NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            archived_at TIMESTAMPTZ NULL,
-            comment_count INTEGER NOT NULL DEFAULT 0,
-            version INTEGER NOT NULL DEFAULT 1
-        );
-
-        CREATE TABLE blog_comment_projection_deliveries (
-            event_id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL,
-            comment_id UUID NOT NULL,
-            post_id UUID NOT NULL,
-            delta INTEGER NOT NULL,
-            projection_revision BIGINT NOT NULL DEFAULT 0,
-            processed_at TIMESTAMPTZ NOT NULL
-        );
-
-        CREATE TABLE sys_events (
-            id UUID PRIMARY KEY,
-            event_type TEXT NOT NULL,
-            schema_version SMALLINT NOT NULL,
-            payload JSONB NOT NULL,
-            status VARCHAR(32) NOT NULL,
-            retry_count INTEGER NOT NULL,
-            next_attempt_at TIMESTAMPTZ NULL,
-            last_error TEXT NULL,
-            claimed_by TEXT NULL,
-            claimed_at TIMESTAMPTZ NULL,
-            created_at TIMESTAMPTZ NOT NULL,
-            dispatched_at TIMESTAMPTZ NULL
-        );
-        "#,
-    )
-    .await?;
-    Ok(())
+    support::apply_blog_schema(db).await
 }
 
 async fn insert_post(
@@ -291,9 +246,9 @@ async fn insert_post(
         DbBackend::Postgres,
         r#"
         INSERT INTO blog_posts (
-            id, tenant_id, author_id, status, slug, metadata,
+            id, tenant_id, author_id, status, slug, metadata, published_at,
             comment_count, version
-        ) VALUES ($1, $2, $3, 'published', 'dispatcher-duplicate-test', '{}'::jsonb, 0, 1)
+        ) VALUES ($1, $2, $3, 'published', 'dispatcher-duplicate-test', '{}'::jsonb, NOW(), 0, 1)
         "#,
         vec![post_id.into(), tenant_id.into(), author_id.into()],
     ))
@@ -343,11 +298,8 @@ async fn count_outbox_events(db: &DatabaseConnection) -> Result<i64, sea_orm::Db
     row.try_get("", "count")
 }
 
-fn postgres_database_url() -> Option<String> {
-    std::env::var(BLOG_TEST_DATABASE_ENV)
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .ok()
-        .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
+fn postgres_database_url() -> TestResult<String> {
+    support::postgres_database_url()
 }
 
 async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {

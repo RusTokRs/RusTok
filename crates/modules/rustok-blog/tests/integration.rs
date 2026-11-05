@@ -2,6 +2,9 @@
 //!
 //! Each test uses isolated in-memory SQLite with the module migrations.
 
+#[path = "support/schema.rs"]
+mod schema;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -24,10 +27,9 @@ use rustok_core::{
     SecurityContext, UserRole,
 };
 use rustok_events::EventEnvelope;
-use rustok_outbox::{SysEventsMigration, TransactionalEventBus};
-use rustok_taxonomy::TaxonomyModule;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -812,54 +814,10 @@ async fn setup_blog_test_db() -> DatabaseConnection {
 }
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
-    db.execute_raw(sea_orm::Statement::from_string(
-        db.get_database_backend(),
-        r#"
-        CREATE TABLE IF NOT EXISTS tenants (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            slug TEXT NOT NULL,
-            settings TEXT NOT NULL DEFAULT '{}',
-            default_locale TEXT NOT NULL DEFAULT 'en',
-            is_active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        "#,
-    ))
-    .await
-    .expect("tenants table should exist for channel foreign keys");
-
-    let manager = SchemaManager::new(db);
-    SysEventsMigration
-        .up(&manager)
+    schema::apply_blog_schema(db, BlogModule.migrations())
         .await
-        .expect("outbox migration should apply");
-    for migration in TaxonomyModule.migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("taxonomy migration should apply");
-    }
-    for migration in rustok_channel::migrations::migrations() {
-        if db.get_database_backend() == sea_orm::DatabaseBackend::Sqlite
-            && (migration.name() == "m20260730_000010_add_channel_index_revision"
-                || migration.name() == "m20260731_000011_add_channel_index_tombstones"
-                || migration.name() == "m20260807_000012_add_channel_index_identity_generation")
-        {
-            continue;
-        }
-        migration
-            .up(&manager)
-            .await
-            .expect("channel migration should apply");
-    }
-    for migration in BlogModule.migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("blog migration should apply");
-    }
+        .expect("complete Blog prerequisite migrations should apply");
+    let manager = SchemaManager::new(db);
     for migration in CommentsModule.migrations() {
         migration
             .up(&manager)

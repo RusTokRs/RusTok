@@ -32,6 +32,12 @@ installer workflow.
 
 ## SQLite unit-test schema
 
+`identity::migrations()` is available without default features and returns the
+same shared tenant/user/session/authorization creation migrations consumed by
+the production composition. Scoped fixtures use it to satisfy actual foreign
+keys instead of recreating foundation tables. It is a creation prefix, not a
+replacement for later owner migrations or the production `Migrator`.
+
 `Migrator` is the only production schema composition path and always includes
 every selected migration. `SqliteTestMigrator` is restricted to repository unit
 tests that exercise portable service behavior on SQLite. It excludes the

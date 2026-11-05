@@ -58,7 +58,7 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --ignored --exact",
     "isolation": "unique_schema_one_connection_pool",
     "scope": "event_bus_dispatcher_module_registered_handler_transactional_commit",
     "cases": [
@@ -70,7 +70,7 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --ignored --exact",
     "isolation": "unique_schema_four_independent_connections_barrier",
     "scope": "concurrent_unique_envelopes_same_post_final_counter_delivery_outbox",
     "cases": [
@@ -82,12 +82,12 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored",
     "isolation": "unique_schema_one_connection_pool",
     "cases": [
       "duplicate_delivery_updates_counter_and_outbox_once",
       "delete_before_create_stays_non_negative_and_replays_in_order",
-      "missing_post_replay_commits_only_after_source_appears",
+      "missing_post_delivery_is_terminal_without_cross_tenant_effects",
       "outbox_failure_rolls_back_counter_and_delivery_before_retry",
       "approval_counts_once_and_update_events_preserve_the_count"
     ]
@@ -97,7 +97,7 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env",
     "isolation": "unique_schema_new_connection",
     "scope": "same_process_new_connection_and_handler",
     "cases": [
@@ -109,7 +109,7 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_restart_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --ignored --exact",
     "isolation": "unique_schema_two_sequential_test_processes_same_envelope",
     "scope": "os_process_reinstantiation_durable_delivery_replay",
     "non_claim": "does_not_prove_full_server_host_restart_or_record_execution",
@@ -132,8 +132,8 @@
       "expected": "the row-locked derived counter update, delivery insert, and neutral Blog reindex request share one database transaction"
     },
     {
-      "name": "missing_post_retry",
-      "expected": "a missing tenant post returns before any delivery marker or outbox record is committed so the event can retry"
+      "name": "missing_post_terminal_acknowledgement",
+      "expected": "a missing tenant post acknowledges the terminal obsolete event without a delivery or outbox record; another tenant owning the same identity is unchanged"
     },
     {
       "name": "non_negative_count",
@@ -160,8 +160,8 @@
       "expected": "the retained PostgreSQL target delivers delete before create and expects a non-negative count (a replayed pending create is recorded but not counted) while the Blog business version remains unchanged"
     },
     {
-      "name": "postgres_missing_post_recovery",
-      "expected": "the retained PostgreSQL target expects no delivery or outbox commit while the post is missing, then replays the same envelope after source creation"
+      "name": "postgres_missing_post_tenant_isolation",
+      "expected": "the retained PostgreSQL target acknowledges a missing target, then proves that the same event cannot mutate a post owned by a different tenant"
     },
     {
       "name": "postgres_outbox_rollback_recovery",

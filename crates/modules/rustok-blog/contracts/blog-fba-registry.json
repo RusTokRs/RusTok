@@ -199,14 +199,14 @@
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test"
+      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored"
     },
     "duplicate_delivery_race_harness": {
       "path": "crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact",
+      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --ignored --exact",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-duplicate-delivery-race.json"
     },
     "dispatcher_duplicate_delivery_harness": {
@@ -214,7 +214,7 @@
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact",
+      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --ignored --exact",
       "evidence": "crates/modules/rustok-blog/contracts/evidence/blog-comments-dispatcher-duplicate-delivery.json"
     },
     "restart_harness": {
@@ -222,7 +222,7 @@
       "status": "executable_no_run",
       "runtime_status": "not_run",
       "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test"
+      "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env"
     },
     "snapshot_invalidation": {
       "owner": "rustok-blog",

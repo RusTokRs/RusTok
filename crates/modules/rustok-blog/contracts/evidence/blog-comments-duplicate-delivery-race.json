@@ -12,23 +12,23 @@
     "runtime_status": "not_run",
     "path": "crates/modules/rustok-blog/tests/comment_projection_duplicate_race_postgres_test.rs",
     "environment": "RUSTOK_BLOG_TEST_DATABASE_URL",
-    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --exact",
+    "command": "RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_duplicate_race_postgres_test concurrent_duplicate_envelope_commits_once_and_replays_cleanly -- --ignored --exact",
     "isolation": "unique_schema_three_independent_connections_two_named_workers_controlled_row_lock",
-    "scope": "same_envelope_concurrent_delivery_unique_ledger_loser_rollback_and_clean_replay",
+    "scope": "same_envelope_concurrent_delivery_single_effect_successful_acknowledgements_and_clean_replay",
     "non_claim": "does_not_record_postgresql_execution_or_full_event_dispatcher_delivery"
   },
   "cases": [
     {
-      "name": "both_workers_pass_initial_delivery_lookup",
+      "name": "both_workers_wait_before_delivery_lookup",
       "expected": "a control transaction holds the Blog post row until pg_stat_activity reports both named worker sessions blocked on a lock"
     },
     {
-      "name": "single_duplicate_commit",
-      "expected": "after the control lock is released exactly one handler succeeds and exactly one handler fails"
+      "name": "single_duplicate_effect",
+      "expected": "after the control lock is released both handlers acknowledge successfully but only the first delivery changes the derived state"
     },
     {
-      "name": "losing_transaction_rolls_back",
-      "expected": "the final post state is comment_count one and version two with one delivery row and one outbox row"
+      "name": "both_deliveries_acknowledged",
+      "expected": "the final post state is comment_count one and unchanged business version one with one delivery row and one outbox row"
     },
     {
       "name": "same_envelope_replay_is_clean",

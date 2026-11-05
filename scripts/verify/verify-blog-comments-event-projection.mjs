@@ -62,11 +62,11 @@ const registryPath = 'crates/modules/rustok-blog/contracts/blog-fba-registry.jso
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessCommand = 'cargo test -p rustok-blog --lib services::comment_projection::tests';
 const hostRegistrationHarnessCommand = 'cargo test -p rustok-blog --lib module::tests::module_registers_comment_projection_handler_with_host_routing';
-const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --exact';
-const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --exact';
-const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
-const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
-const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --exact';
+const dispatcherHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test event_dispatcher_routes_registered_handler_and_commits_projection -- --ignored --exact';
+const concurrencyHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test concurrent_created_events_converge_without_lost_updates -- --ignored --exact';
+const postgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test -- --ignored';
+const restartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test -- --ignored --skip process_restart_worker_applies_envelope_from_env';
+const processRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test restarted_process_reuses_delivery_ledger_without_reapplying_counter -- --ignored --exact';
 const postgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
 
 const handler = read(handlerPath);
@@ -254,7 +254,7 @@ if (
 }
 
 for (const marker of [
-  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'support::postgres_database_url()',
   'const CONCURRENT_PROJECTION_DELIVERIES: usize = 4;',
   'struct PostgresBlogProjectionTestDb',
   'database_url: String',
@@ -272,7 +272,8 @@ for (const marker of [
   'fail_fast: true',
   'max_concurrent: 1',
   'retry_count: 0',
-  'dispatcher.register_boxed(handler);',
+  'handler.name() == "blog_comment_projection"',
+  'dispatcher.register_boxed(projection);',
   'assert_eq!(dispatcher.handler_count(), 1);',
   'let running = dispatcher.start();',
   'running.bus().publish_envelope(envelope.clone())?;',
@@ -286,15 +287,14 @@ for (const marker of [
   'count_all_deliveries(&test_db.db).await?',
   'async fn delete_before_create_stays_non_negative_and_replays_in_order()',
   'DomainEvent::CommentDeleted',
-  'async fn missing_post_replay_commits_only_after_source_appears()',
-  'missing Blog post must keep the delivery retryable',
+  'async fn missing_post_delivery_is_terminal_without_cross_tenant_effects()',
+  'let other_tenant_id = Uuid::new_v4();',
   'async fn outbox_failure_rolls_back_counter_and_delivery_before_retry()',
   'async fn approval_counts_once_and_update_events_preserve_the_count()',
   'DROP TABLE sys_events',
   'missing outbox table must fail the projection transaction',
   'create_outbox_table(&test_db.db).await?;',
-  'CREATE TABLE blog_comment_projection_deliveries',
-  'CREATE TABLE sys_events',
+  'support::apply_blog_schema(db).await',
   'count_delivery(&test_db.db, envelope.id)',
   'count_outbox_events(&test_db.db)',
 ]) {
@@ -319,7 +319,7 @@ requireNoMarker(
 );
 
 for (const marker of [
-  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'support::postgres_database_url()',
   'const PROCESS_WORKER_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_WORKER";',
   'const PROCESS_EVENT_ENV: &str = "RUSTOK_BLOG_PROCESS_RESTART_EVENT_ID";',
   'struct PostgresBlogProjectionRestartTestDb',
@@ -348,8 +348,7 @@ for (const marker of [
   'load_post_state(&test_db.db, tenant_id, post_id).await?',
   'count_delivery(&test_db.db, envelope.id).await?, 1',
   'count_outbox_events(&test_db.db).await?, 1',
-  'CREATE TABLE blog_comment_projection_deliveries',
-  'CREATE TABLE sys_events',
+  'support::apply_blog_schema(db).await',
 ]) {
   requireMarker(restartHarness, marker, restartHarnessPath);
 }
@@ -516,7 +515,7 @@ if (evidence) {
     [
       'duplicate_delivery_updates_counter_and_outbox_once',
       'delete_before_create_stays_non_negative_and_replays_in_order',
-      'missing_post_replay_commits_only_after_source_appears',
+      'missing_post_delivery_is_terminal_without_cross_tenant_effects',
       'outbox_failure_rolls_back_counter_and_delivery_before_retry',
       'approval_counts_once_and_update_events_preserve_the_count',
     ].sort().join('|')
@@ -586,14 +585,14 @@ if (evidence) {
     'atomic_counter_delivery_outbox',
     'tenant_scoped_row_lock',
     'comment_lifecycle_ordering',
-    'missing_post_retry',
+    'missing_post_terminal_acknowledgement',
     'non_negative_count',
     'host_registration_routing_harness',
     'postgres_event_dispatcher_delivery',
     'postgres_concurrent_unique_deliveries',
     'postgres_duplicate_delivery',
     'postgres_out_of_order_delete_create',
-    'postgres_missing_post_recovery',
+    'postgres_missing_post_tenant_isolation',
     'postgres_outbox_rollback_recovery',
     'postgres_restart_replay',
     'postgres_process_restart_replay',

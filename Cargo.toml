@@ -397,7 +397,7 @@ rustok-cli-core = { path = "crates/utils/rustok-cli-core" }
 rustok-cli-registry = { path = "crates/utils/rustok-cli-registry" }
 rustok-cli-platform = { path = "crates/utils/rustok-cli-platform" }
 rustok-distribution = { path = "crates/modules/rustok-distribution", default-features = false }
-rustok-migrations = { path = "crates/utils/rustok-migrations" }
+rustok-migrations = { path = "crates/utils/rustok-migrations", default-features = false }
 rustok-installer = { path = "crates/utils/rustok-installer" }
 rustok-installer-persistence = { path = "crates/utils/rustok-installer-persistence" }
 rustok-installer-cli = { path = "crates/utils/rustok-installer-cli" }

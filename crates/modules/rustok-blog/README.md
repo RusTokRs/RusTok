@@ -386,11 +386,14 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 
 ## Known Limitations / Pending Implementation
 
-Complete reference certification remains pending. Older PostgreSQL projection
-harnesses can return success without a configured database; ordinary SQLite
-fixtures skip some Channel prerequisite migrations and cannot prove PostgreSQL
-row locks. The new explicit PostgreSQL title/locale test requires its database
-when selected, but covers only that bounded owner slice.
+Complete reference certification remains pending. Blog's shared test schema now
+applies actual identity creation, OAuth prerequisites, Outbox, Content, Taxonomy,
+all Channel migrations and Blog migrations on SQLite and PostgreSQL. The same
+publication/channel/locale pagination scenario passes on both profiles.
+Explicit PostgreSQL scenarios require `RUSTOK_BLOG_TEST_DATABASE_URL`; an ordinary
+run reports them as ignored. Configured tests cover simultaneous edits, atomic
+outbox rollback, duplicate/reordered delivery and connection/process restart.
+These scoped results do not certify the full platform migrator or remote FBA.
 
 Leptos Page Builder registers Blog widgets without preview/property transport
 ports. Hardcoded interface language branches, canonical UI primitive/form/grid

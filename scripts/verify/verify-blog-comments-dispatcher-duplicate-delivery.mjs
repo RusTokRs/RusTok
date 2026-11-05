@@ -14,7 +14,7 @@ const harnessPath =
   'crates/modules/rustok-blog/tests/comment_projection_dispatcher_duplicate_postgres_test.rs';
 const planPath = 'crates/modules/rustok-blog/docs/implementation-plan.md';
 const harnessCommand =
-  'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --exact';
+  'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_dispatcher_duplicate_postgres_test event_dispatcher_replays_duplicate_envelope_without_double_commit -- --ignored --exact';
 
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);
@@ -44,7 +44,7 @@ try {
 
 for (const marker of [
   'use async_trait::async_trait;',
-  'const BLOG_TEST_DATABASE_ENV: &str = "RUSTOK_BLOG_TEST_DATABASE_URL";',
+  'support::postgres_database_url()',
   'const DISPATCHER_DUPLICATE_DELIVERIES: usize = 2;',
   'struct ObservedProjectionHandler',
   'inner: Arc<dyn EventHandler>',
@@ -79,8 +79,7 @@ for (const marker of [
   'count_outbox_events(&test_db.db).await?, 1',
   'async fn wait_for_completed_dispatches(completed: &AtomicUsize)',
   'event dispatcher did not complete both duplicate deliveries',
-  'CREATE TABLE blog_comment_projection_deliveries',
-  'CREATE TABLE sys_events',
+  'support::apply_blog_schema(db).await',
   '.max_connections(1)',
   'SET search_path TO "{schema_name}"',
 ]) {

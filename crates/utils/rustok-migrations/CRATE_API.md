@@ -36,6 +36,11 @@
 - `apply_installer_owner_schema(db: &DatabaseConnection) -> Result<(), DbErr>`: Minimal bootstrap prefix ensuring tenants, publish tables, install sessions, and static distribution tables exist before base distribution import.
 - `apply_installer_remaining_schema(db: &DatabaseConnection) -> Result<(), DbErr>`: Completes full platform schema execution after base distribution admission.
 
+`identity::migrations() -> Vec<Box<dyn MigrationTrait>>` is available without
+`composition`. It supplies canonical platform identity creation migrations for
+scoped component schemas; `Migrator` consumes the same source. Callers remain
+responsible for subsequent owner changes and declared migration prerequisites.
+
 ### Schema Diff & Safety Classification (`schema_diff`)
 
 `schema_diff`, `execution` and `verification` are available with

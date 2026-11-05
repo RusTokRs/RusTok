@@ -5,6 +5,7 @@
 //! supplied-operation assessment, and independent PostgreSQL verification.
 
 pub mod execution;
+pub mod identity;
 pub mod schema_diff;
 pub mod verification;
 pub use schema_diff::{
@@ -24,12 +25,9 @@ mod composition {
     // Platform-core migrations — tables that are always present regardless of which
     // optional modules are installed: tenants, users, sessions, roles, permissions,
     // tenant-module registry, tenant locales, builds/releases, platform settings.
-    mod m20250101_000001_create_tenants;
-    mod m20250101_000002_create_users;
-    mod m20250101_000004_create_sessions;
-    mod m20250101_000005_create_roles_and_permissions;
-    mod m20250101_000006_add_metadata_to_tenants_and_users;
-    mod m20250130_000004_create_tenant_locales;
+    #[cfg(test)]
+    use super::identity::m20250101_000002_create_users;
+    use super::identity::{m20250101_000001_create_tenants, m20250101_000004_create_sessions};
     mod m20250201_000001_alter_status_to_enums;
     mod m20250212_000001_create_builds;
     mod m20260211_000001_add_event_versioning;
@@ -439,13 +437,8 @@ mod composition {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
             // Platform-core migrations plus module-owned migrations, sorted together
             // by migration name so test/runtime schema matches chronological intent.
-            let mut all: Vec<Box<dyn MigrationTrait>> = vec![
-                Box::new(m20250101_000001_create_tenants::Migration),
-                Box::new(m20250101_000002_create_users::Migration),
-                Box::new(m20250130_000004_create_tenant_locales::Migration),
-                Box::new(m20250101_000004_create_sessions::Migration),
-                Box::new(m20250101_000005_create_roles_and_permissions::Migration),
-                Box::new(m20250101_000006_add_metadata_to_tenants_and_users::Migration),
+            let mut all = super::identity::migrations();
+            all.extend::<Vec<Box<dyn MigrationTrait>>>(vec![
                 Box::new(m20250201_000001_alter_status_to_enums::Migration),
                 Box::new(m20250212_000001_create_builds::Migration),
                 Box::new(m20260211_000001_add_event_versioning::Migration),
@@ -469,7 +462,7 @@ mod composition {
                 Box::new(m20260723_000001_create_event_delivery_settings::Migration),
                 Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
                 Box::new(m20260928_000001_create_install_http_jobs::Migration),
-            ];
+            ]);
 
             // Pull module-owned migrations from the domain crates and merge them into
             // the server migrator in chronological order.
