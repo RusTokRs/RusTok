@@ -162,8 +162,13 @@ The native tax-policy continuation was rechecked on 2026-11-05 from local
 The earlier successful remote refresh matched the recorded base. The final
 pre-commit refresh failed with an empty server reply and then DNS resolution
 failure for GitHub. Local `main` and the last fetched `origin/main` still
-matched that base before the scoped local commit. No remote integration or push
-was performed; refresh remote history before subsequent integration.
+matched that base at the last comparison. Concurrent local commit `0d9ad94c42`
+then captured the reviewed task changes together with independent Pricing and
+migration work. The subsequent comparison found no Region, Cart, or Commerce
+production-source changes; the shared Commerce support change only reformats
+imports. The scoped follow-up records this integration evidence. No remote
+integration or push was performed; refresh remote history before subsequent
+integration.
 
 ## Update rules
 
