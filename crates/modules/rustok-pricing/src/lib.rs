@@ -6,7 +6,7 @@
 
 #![deny(clippy::float_arithmetic)]
 
-pub mod entities;
+pub(crate) mod entities;
 
 pub mod dto;
 pub mod error;
@@ -21,22 +21,22 @@ mod tests;
 
 pub use error::{PricingPublicError, map_pricing_port_error, map_pricing_service_error};
 pub use integrations::{
-    PriceListTranslationChangeLifecycle, PriceListTranslationChangeRecord,
-    PriceListTranslationTargetProvider, PricingProductPricingPortAdapter,
-    in_process_product_pricing_port, register_price_list_translation_target_provider,
+    InProcessPricingReadPort, InProcessPricingWritePort, PriceListTranslationChangeLifecycle,
+    PriceListTranslationChangeRecord, PriceListTranslationTargetProvider,
+    PricingProductPricingPortAdapter, in_process_price_list_owner_port,
+    in_process_pricing_read_port, in_process_pricing_write_port, in_process_product_pricing_port,
+    register_price_list_translation_target_provider,
 };
 pub use module::PricingModule;
 pub use ports::{
     ActivePriceListProjectionRequest, ActivePriceListProjectionSnapshot,
     AdminProductPricingProjectionRequest, ApplyVariantDiscountRequest,
-    InProcessPricingReadPort, InProcessPricingWritePort, MAX_PRICE_RESOLUTION_VARIANTS,
-    PreviewVariantDiscountRequest, PriceListOwnerPort, PriceListProjectionRequest,
-    PriceListProjectionSnapshot, PricingReadPort, PricingWritePort, ProductPriceResolutionSnapshot,
-    ResolveProductPriceRequest, ResolveProductPricesRequest, ResolvedProductPriceSnapshot,
-    ResolvedProductPricesSnapshot, SetPriceListPercentageRuleRequest, SetPriceListScopeRequest,
-    StorefrontProductPricingListRequest, StorefrontProductPricingProjectionRequest,
-    UpsertVariantPriceRequest, in_process_price_list_owner_port, in_process_pricing_read_port,
-    in_process_pricing_write_port,
+    MAX_PRICE_RESOLUTION_VARIANTS, PreviewVariantDiscountRequest, PriceListOwnerPort,
+    PriceListProjectionRequest, PriceListProjectionSnapshot, PricingReadPort, PricingWritePort,
+    ProductPriceResolutionSnapshot, ResolveProductPriceRequest, ResolveProductPricesRequest,
+    ResolvedProductPriceSnapshot, ResolvedProductPricesSnapshot, SetPriceListPercentageRuleRequest,
+    SetPriceListScopeRequest, StorefrontProductPricingListRequest,
+    StorefrontProductPricingProjectionRequest, UpsertVariantPriceRequest,
 };
 pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,

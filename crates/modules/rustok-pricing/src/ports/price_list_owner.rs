@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_commerce_foundation::error::CommerceError;
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
@@ -31,10 +28,6 @@ pub trait PriceListOwnerPort: Send + Sync {
         context: PortContext,
         price_list_id: Uuid,
     ) -> Result<(), PortError>;
-}
-
-pub fn in_process_price_list_owner_port(db: DatabaseConnection) -> Arc<dyn PriceListOwnerPort> {
-    Arc::new(PriceListOwnerService::new(db))
 }
 
 #[async_trait]

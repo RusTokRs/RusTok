@@ -1,11 +1,7 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
-use rustok_outbox::TransactionalEventBus;
 use uuid::Uuid;
 
 use crate::dto::pricing::*;
@@ -67,15 +63,6 @@ pub trait PricingReadPort: Send + Sync {
         context: PortContext,
         request: PreviewVariantDiscountRequest,
     ) -> Result<crate::PriceAdjustmentPreview, PortError>;
-}
-
-/// Builds the owner-managed in-process pricing read provider for explicit consumers.
-pub fn in_process_pricing_read_port(
-    db: sea_orm::DatabaseConnection,
-    event_bus: TransactionalEventBus,
-    product_runtime: rustok_product::ProductCatalogReadRuntime,
-) -> Arc<dyn PricingReadPort> {
-    crate::ports::read_context::in_process_pricing_read_port(db, event_bus, product_runtime)
 }
 
 #[async_trait]

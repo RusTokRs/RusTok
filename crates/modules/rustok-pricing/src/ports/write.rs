@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
-use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::pricing::*;
 use crate::ports::diagnostics::{
@@ -35,14 +32,6 @@ pub trait PricingWritePort: Send + Sync {
         context: PortContext,
         request: SetPriceListPercentageRuleRequest,
     ) -> Result<crate::ActivePriceListOption, PortError>;
-}
-
-pub fn in_process_pricing_write_port(
-    db: sea_orm::DatabaseConnection,
-    event_bus: TransactionalEventBus,
-    product_runtime: rustok_product::ProductCatalogReadRuntime,
-) -> Arc<dyn PricingWritePort> {
-    crate::ports::write_context::in_process_pricing_write_port(db, event_bus, product_runtime)
 }
 
 #[async_trait]
