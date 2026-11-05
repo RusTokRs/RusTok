@@ -22,4 +22,4 @@ pub use core::{
 };
 pub use model::PricingResolutionContext;
 #[cfg(test)]
-mod contract_tests;
+mod tests;

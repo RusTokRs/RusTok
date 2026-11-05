@@ -15,6 +15,19 @@
 ## 2. Public Surface & Data Structures
 
 ### Primary Migrators & Migration Control
+- `execution::StepRunner` (also with `--no-default-features`): owns a single,
+  non-reconnecting PostgreSQL session and its migration writer lock.
+  `connect(url, migrations)` validates a nonempty unique transactional plan and
+  the committed journal prefix; `apply_next()` executes at most one step and
+  verifies its exact committed prefix before returning its identity. Callers
+  may run independent checks through `database()` before the following step.
+  `pending_migrations()` exposes the validated pending range; `close()` releases
+  resources on both success and failure paths. Errors/cancellation invalidate
+  further execution in that instance. Plans containing nontransactional steps
+  fail admission until owner-defined recovery is supported. No replacement
+  authority is granted.
+- `execution::ExecutionError`: distinguishes invalid plans/journals, unsupported
+  recovery, a competing writer, an interrupted runner and database/step failures.
 - `Migrator`: Authoritative global migrator implementing `sea_orm_migration::MigratorTrait`.
   - `Migrator::migrations() -> Vec<Box<dyn MigrationTrait>>`
 - `SqliteTestMigrator`: Test-only portable schema migrator implementing `sea_orm_migration::MigratorTrait`.

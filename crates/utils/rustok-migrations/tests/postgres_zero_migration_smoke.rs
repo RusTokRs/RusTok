@@ -37,6 +37,110 @@ async fn postgres_zero_migration_smoke_applies_from_empty_database() {
     }
 }
 
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
+async fn postgres_backfill_assertion_stops_at_its_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
+    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")?;
+    assert_postgres_url(&admin_url);
+    let name = unique_postgres_database_name("rustok_backfill_boundary");
+    let url = database_url_from_admin_url(&admin_url, &name);
+    let admin = connect_postgres(&admin_url).await?;
+    create_database(&admin, &name).await?;
+    let result = async {
+        // Exercise one real owner fixture against its explicitly retained draft
+        // boundary. This is not evidence for a released-predecessor upgrade.
+        let contracts: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../docs/migrations/backfill-contracts.json"
+        ))?;
+        let target = "m20260726_000001_enforce_tenant_locale_policy";
+        let contract = contracts["contracts"]
+            .as_array()
+            .ok_or("missing contracts")?
+            .iter()
+            .find(|contract| contract["migration"].as_str() == Some(target))
+            .ok_or("missing tenant locale backfill contract")?;
+        let field = |name: &str| {
+            contract[name]
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("missing fixture field {name}"))
+        };
+        let fixture = BackfillFixture {
+            id: field("id")?,
+            migration: target.into(),
+            setup_sql: field("setup_sql")?,
+            assertion_sql: field("assertion_sql")?,
+        };
+        let plan = Migrator::migrations();
+        let index = plan
+            .iter()
+            .position(|migration| migration.name() == target)
+            .ok_or("fixture target missing from composed plan")?;
+        let following = plan
+            .get(index + 1)
+            .ok_or("fixture needs a following step")?
+            .name()
+            .to_owned();
+        let mut runner = StepRunner::connect(&url, plan).await?;
+        let prefix = async {
+            while runner.pending_migrations()?.next() != Some(target) {
+                if runner.apply_next().await?.is_none() {
+                    return Err("fixture boundary was not reached".into());
+                }
+            }
+            Ok::<_, Box<dyn std::error::Error>>(())
+        }
+        .await;
+        runner.close().await?;
+        prefix?;
+
+        let mut rejected = fixture.clone();
+        rejected.assertion_sql = "SELECT false AS passed".into();
+        let error = apply_migrations_and_assert_schema(&url, true, false, &[rejected])
+            .await
+            .err()
+            .ok_or("a failing boundary assertion was accepted")?;
+        if !error
+            .to_string()
+            .contains(&format!("failed after migration {target}"))
+        {
+            return Err(format!("unexpected boundary failure: {error}").into());
+        }
+        let db = connect_postgres(&url).await?;
+        let check = async {
+            if !migration_is_applied(&db, target).await?
+                || migration_is_applied(&db, &following).await?
+            {
+                return Err("executor advanced beyond the failing fixture boundary".into());
+            }
+            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            // A completed target cannot silently count as pending fixture coverage.
+            if apply_migrations_and_assert_schema(&url, true, false, std::slice::from_ref(&fixture))
+                .await
+                .is_ok()
+            {
+                return Err("already-applied fixture target was accepted".into());
+            }
+            apply_migrations_and_assert_schema(&url, true, false, &[]).await?;
+            assert_backfill_results(&db, std::slice::from_ref(&fixture)).await?;
+            Ok::<_, Box<dyn std::error::Error>>(())
+        }
+        .await;
+        db.close().await?;
+        check
+    }
+    .await;
+    let cleanup = drop_database_if_exists(&admin, &name).await;
+    admin.close().await?;
+    match (result, cleanup) {
+        (Err(error), Err(cleanup)) => Err(format!("{error}; fixture cleanup: {cleanup}").into()),
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error.into()),
+        _ => Ok(()),
+    }
+}
+
 struct ProductMigrator;
 
 #[async_trait::async_trait]

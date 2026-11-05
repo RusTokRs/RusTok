@@ -5,6 +5,185 @@
 /// the title through the same locale chain the projection displays, and
 /// normalizes whitespace/length instead of silently dropping a broken needle.
 
+fn filter_post_input(locale: &str, title: &str, slug: &str) -> CreatePostInput {
+    CreatePostInput {
+        locale: locale.into(),
+        title: title.into(),
+        content: crate::richtext::article_document_from_plain_text("Body"),
+        excerpt: None,
+        slug: Some(slug.into()),
+        publish: true,
+        tags: vec![],
+        category_id: None,
+        featured_image_url: None,
+        seo_title: None,
+        seo_description: None,
+        channel_slugs: None,
+        metadata: None,
+        scheduled_at: None,
+    }
+}
+
+fn filter_translation_input(locale: &str, title: &str, version: i32) -> UpdatePostInput {
+    UpdatePostInput {
+        locale: Some(locale.into()),
+        title: Some(title.into()),
+        content: Some(crate::richtext::article_document_from_plain_text(
+            "Translated body",
+        )),
+        excerpt: Patch::Keep,
+        slug: None,
+        tags: None,
+        category_id: Patch::Keep,
+        featured_image_url: Patch::Keep,
+        seo_title: Patch::Keep,
+        seo_description: Patch::Keep,
+        channel_slugs: None,
+        metadata: None,
+        version,
+        scheduled_at: Patch::Keep,
+    }
+}
+
+#[tokio::test]
+async fn title_filter_uses_the_displayed_translation_before_keyset_pagination() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let mut ids = Vec::new();
+    for (slug, en, ru) in [
+        ("hidden-match", "Orange", "Apple"),
+        ("first-match", "Apple one", "Other one"),
+        ("second-match", "Apple two", "Other two"),
+    ] {
+        let id = service
+            .create_post(tenant_id, admin.clone(), filter_post_input("en", en, slug))
+            .await
+            .unwrap();
+        let post = service
+            .get_post(tenant_id, admin.clone(), id, "en")
+            .await
+            .unwrap();
+        service
+            .update_post(
+                tenant_id,
+                id,
+                admin.clone(),
+                filter_translation_input("ru", ru, post.version),
+            )
+            .await
+            .unwrap();
+        ids.push(id);
+    }
+    let query = PostListQuery {
+        locale: Some("en".into()),
+        title: Some("apple".into()),
+        per_page: Some(1),
+        sort_by: Some(PostSortField::CreatedAt),
+        sort_order: Some(PostSortOrder::Asc),
+        ..Default::default()
+    };
+    let first = service
+        .list_posts_with_locale_fallback(tenant_id, admin.clone(), query.clone(), Some("ru"))
+        .await
+        .unwrap();
+    assert_eq!(first.items.len(), 1);
+    assert_eq!(first.items[0].id, ids[1]);
+    assert_eq!(first.items[0].title, "Apple one");
+    assert!(first.next_cursor.is_some());
+    let second = service
+        .list_posts_with_locale_fallback(
+            tenant_id,
+            admin.clone(),
+            PostListQuery {
+                after: first.next_cursor,
+                ..query.clone()
+            },
+            Some("ru"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.items[0].id, ids[2]);
+    assert!(second.next_cursor.is_none());
+
+    let reversed = service
+        .list_posts_with_locale_fallback(
+            tenant_id,
+            admin,
+            PostListQuery {
+                locale: Some("ru".into()),
+                ..query
+            },
+            Some("en"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reversed.items.len(), 1);
+    assert_eq!(reversed.items[0].id, ids[0]);
+    assert_eq!(reversed.items[0].effective_locale, "ru");
+    assert!(reversed.next_cursor.is_none());
+}
+
+#[tokio::test]
+async fn title_filter_uses_the_same_final_locale_fallback_as_the_projection() {
+    let db = setup_test_db().await;
+    ensure_blog_schema(&db).await;
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let service = PostService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let id = service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            filter_post_input("ent", "Hidden fallback", "last-fallback"),
+        )
+        .await
+        .unwrap();
+    let post = service
+        .get_post(tenant_id, admin.clone(), id, "ent")
+        .await
+        .unwrap();
+    // Rust orders en-US before ent. The database's language collation must not
+    // change which remaining translation the projection and filter choose.
+    service
+        .update_post(
+            tenant_id,
+            id,
+            admin.clone(),
+            filter_translation_input("en-US", "Displayed fallback", post.version),
+        )
+        .await
+        .unwrap();
+    for (needle, matches) in [("Displayed", true), ("Hidden", false)] {
+        let result = service
+            .list_posts_with_locale_fallback(
+                tenant_id,
+                admin.clone(),
+                PostListQuery {
+                    locale: Some("it".into()),
+                    title: Some(needle.into()),
+                    ..Default::default()
+                },
+                Some("es"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.items.len(), usize::from(matches));
+        if matches {
+            assert_eq!(result.items[0].id, id);
+            assert_eq!(result.items[0].effective_locale, "en-US");
+            assert_eq!(result.items[0].title, "Displayed fallback");
+        }
+    }
+}
+
 #[tokio::test]
 async fn admin_list_title_filter_matches_case_insensitively() {
     let db = setup_test_db().await;

@@ -19,6 +19,7 @@ entry_type = "PricingModule"
 leptos_crate = "rustok-pricing-admin"
 route_segment = "pricing"
 nav_label = "Pricing"
+next_package = "@rustok/pricing-admin"
 
 [provides.admin_ui.i18n]
 default_locale = "en"
@@ -30,6 +31,7 @@ leptos_crate = "rustok-pricing-storefront"
 slot = "home_after_catalog"
 route_segment = "pricing"
 page_title = "Pricing"
+next_package = "@rustok/pricing-frontend"
 
 [provides.storefront_ui.i18n]
 default_locale = "en"

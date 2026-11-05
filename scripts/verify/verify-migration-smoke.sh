@@ -12,7 +12,8 @@ set -euo pipefail
 #   RUSTOK_MIGRATION_SMOKE_DB_NAME    Optional temporary or existing database name.
 #   RUSTOK_MIGRATION_SMOKE_KEEP_DB    Set to 1 to skip cleanup after the run.
 #   RUSTOK_MIGRATION_SMOKE_INCREMENTAL
-#                                     Set to 1 to apply migrations one-by-one.
+#                                     All modes apply one step at a time. Set to 1
+#                                     to restart the executor after every step.
 #   RUSTOK_MIGRATION_SMOKE_REUSE_DB   Set to 1 to require and reuse an existing database.
 #   RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST
 #                                     Set to 1 to roll back and reapply the latest migration.
@@ -48,14 +49,14 @@ do
   fi
 done
 
-mode="fresh-apply-all"
+mode="fresh-stepwise"
 if [[ "$RUSTOK_MIGRATION_SMOKE_INCREMENTAL" == "1" ]]; then
-  mode="fresh-incremental"
+  mode="fresh-stepwise-restart"
 fi
 if [[ "$RUSTOK_MIGRATION_SMOKE_REUSE_DB" == "1" ]]; then
-  mode="reuse-upgrade-all"
+  mode="reuse-upgrade-stepwise"
   if [[ "$RUSTOK_MIGRATION_SMOKE_INCREMENTAL" == "1" ]]; then
-    mode="reuse-upgrade-incremental"
+    mode="reuse-upgrade-stepwise-restart"
   fi
 fi
 if [[ "$RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST" == "1" ]]; then

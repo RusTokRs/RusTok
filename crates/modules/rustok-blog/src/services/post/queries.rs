@@ -1,6 +1,8 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_core::PermissionScope;
+use sea_orm::ConnectionTrait;
 
+mod filters;
 mod ordering;
 mod related;
 mod single;
@@ -8,6 +10,7 @@ mod single;
 pub(crate) use ordering::*;
 
 use super::*;
+use filters::{apply_post_slug_filter, apply_post_title_filter, prepare_post_list_text_filters};
 
 impl PostService {
     #[instrument(skip(self, security))]
@@ -140,7 +143,12 @@ impl PostService {
             select = apply_post_slug_filter(select, needle);
         }
         if let Some(ref needle) = text_filters.title {
-            select = apply_post_title_filter(select, needle, &text_filters.title_locales);
+            select = apply_post_title_filter(
+                select,
+                needle,
+                &text_filters.title_locales,
+                self.db.get_database_backend(),
+            );
         }
 
         let (sort_by, sort_order) = query.sort();

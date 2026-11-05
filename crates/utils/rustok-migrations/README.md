@@ -122,10 +122,17 @@ tables, 1 MiB per row, 64 MiB schema output, 30-second SQL statements and a
 source root against a newly created fixture database and login. It observes and
 removes the original fixture before creating the candidate fixture. Both use
 the same generated names so ownership and grants can be compared directly.
-`up` loads the plan once and accepts only a journal that is a prefix of that
-plan. It applies one migration at a time using SeaORM's transaction policy,
-reads back the committed journal entry and emits a confirmation before the next
-step. Concurrent PostgreSQL `up` commands coordinate through an advisory lock.
+`up` uses `execution::StepRunner`, which loads the plan once and accepts only a
+duplicate-free journal matching a prefix of that plan. It applies one migration
+at a time and checks the complete committed journal prefix before emitting a
+confirmation. A dedicated single-connection PostgreSQL pool holds the session
+advisory lock on the execution backend itself. Connection replacement is
+forbidden: session loss cannot leave a migration running on an unlocked backend
+or silently reconnect midway through a step. A failed or cancelled step poisons
+the runner; callers close it before reconciling through a new session.
+Plans containing nontransactional steps are rejected before connecting until
+their owner-proven recovery contract is supported. No step is implicitly made
+transactional.
 `status` reads the journal without creating it. Fresh verification requires
 the ordered confirmations from both runners and checks each final journal
 against its executable plan.
@@ -143,6 +150,15 @@ databases. Run `verify-migrations --help` for explicit arguments. Reports contai
 digests and difference categories rather than fixture row values. A successful
 comparison is scoped evidence; `replacement_admission` always remains blocked.
 
+The PostgreSQL smoke test uses this same executor. Both modes apply individual
+steps; incremental mode additionally closes and recreates the executor after
+every committed step to exercise journal-based resumption. Backfill setup stays
+on the predecessor, before the pending range. Every selected fixture must target
+a pending migration. Its assertion runs in a read-only, repeatable-read
+transaction immediately after that migration and again at the end of the range.
+Missing, NULL, nonboolean or multiple assertion results fail verification.
+This is not yet complete owner-assertion or crash-recovery coverage of the chain.
+
 The ignored PostgreSQL regression is explicit about its required environment:
 
 ```powershell
@@ -150,7 +166,17 @@ $env:RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL = 'postgres://verifier@localhost:543
 $env:RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP = 'C:/Program Files/PostgreSQL/16/bin/pg_dump.exe'
 cargo test --locked -p rustok-migrations --no-default-features --lib postgres_detects_schema_data_privilege_and_enforcement_changes -- --ignored
 cargo test --locked -p rustok-migrations --no-default-features --bin verify-migrations -- --include-ignored
+cargo test --locked -p rustok-migrations --no-default-features --test stepwise_recovery -- --include-ignored
 ```
 
 See [the database architecture](../../../docs/architecture/database.md) and the
 [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).
+
+### Known Limitations / Pending Implementation
+
+The stepwise runner currently supports PostgreSQL transactional plans only.
+Nontransactional recovery, complete owner assertions at every retained boundary,
+released-prefix/installer coverage and trusted replacement admission remain
+pending in the [canonical plan](../../../docs/guides/safe-database-migrations-and-squashing.md).
+Fresh-session restart tests cover committed boundaries; they do not establish
+process-crash recovery for every production migration or external side effect.

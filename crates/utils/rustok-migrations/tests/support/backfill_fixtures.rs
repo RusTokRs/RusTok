@@ -32,11 +32,11 @@ pub fn validate_pending(
 }
 
 pub fn load_from_environment() -> Result<Vec<BackfillFixture>, Box<dyn Error>> {
-    let Some(path) = std::env::var("RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-    else {
-        return Ok(Vec::new());
+    let path = match std::env::var("RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES") {
+        Ok(path) if path.trim().is_empty() => return Ok(Vec::new()),
+        Ok(path) => path,
+        Err(std::env::VarError::NotPresent) => return Ok(Vec::new()),
+        Err(error) => return Err(format!("invalid backfill fixture environment: {error}").into()),
     };
 
     let content = fs::read_to_string(&path)
@@ -198,11 +198,16 @@ mod tests {
         use sea_orm_migration::sea_orm::{Database, DbBackend, Statement};
         let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
         let mut url = url::Url::parse(&admin_url)?;
-        assert!(matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1")));
+        assert!(matches!(
+            url.host_str(),
+            Some("127.0.0.1" | "localhost" | "::1")
+        ));
         let name = format!("rustok_assert_{}", uuid::Uuid::new_v4().simple());
         url.set_path(&name);
         let admin = Database::connect(&admin_url).await?;
-        admin.execute_unprepared(&format!("CREATE DATABASE {name} TEMPLATE template0")).await?;
+        admin
+            .execute_unprepared(&format!("CREATE DATABASE {name} TEMPLATE template0"))
+            .await?;
         let result = async {
             let db = Database::connect(url.as_str()).await?;
             let check = async {
@@ -230,10 +235,14 @@ mod tests {
             db.close().await?;
             check
         }.await;
-        let cleanup = admin.execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)")).await;
+        let cleanup = admin
+            .execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
+            .await;
         admin.close().await?;
         match (result, cleanup) {
-            (Err(error), Err(cleanup)) => Err(format!("{error}; fixture cleanup: {cleanup}").into()),
+            (Err(error), Err(cleanup)) => {
+                Err(format!("{error}; fixture cleanup: {cleanup}").into())
+            }
             (Err(error), _) => Err(error),
             (_, Err(error)) => Err(error.into()),
             _ => Ok(()),

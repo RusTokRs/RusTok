@@ -123,6 +123,11 @@ async fn rejects_unsupported_plans_before_connecting() {
 #[tokio::test]
 #[ignore = "requires isolated loopback PostgreSQL and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL"]
 async fn postgres_stepwise_failure_cancellation_and_restart() -> Result {
+    match std::env::var("RUSTOK_STEPWISE_PROCESS_FIXTURE_URL") {
+        Ok(url) => return process_fixture(&url).await,
+        Err(std::env::VarError::NotPresent) => {}
+        Err(error) => return Err(error.into()),
+    }
     let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
     let mut url = url::Url::parse(&admin_url)?;
     assert!(matches!(
@@ -145,23 +150,10 @@ async fn postgres_stepwise_failure_cancellation_and_restart() -> Result {
     let outcome = async {
         admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
         admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0")).await?;
-        let db = Database::connect(fixture_url).await?;
-        let result = async {
-            transaction_failure_and_restart(fixture_url, &db).await?;
-            reset(&db).await?;
-            cancellation(fixture_url, &db).await?;
-            reset(&db).await?;
-            session_loss(fixture_url, &db, &admin, true).await?;
-            reset(&db).await?;
-            session_loss(fixture_url, &db, &admin, false).await?;
-            reset(&db).await?;
-            journal_corruption(fixture_url, &db).await?;
-            reset(&db).await?;
-            duplicate_journal(fixture_url, &db).await?;
-            Ok::<_, Box<dyn Error + Send + Sync>>(())
-        }.await;
-        db.close().await?;
-        result
+        // JoinError captures assertion panics so outer fixture cleanup still runs.
+        tokio::spawn(run_recovery_scenarios(fixture_url.to_owned(), admin.clone()))
+            .await.map_err(|error| format!("recovery assertions failed: {error}"))?
+
     }.await;
     let cleanup = async {
         admin
@@ -179,6 +171,96 @@ async fn postgres_stepwise_failure_cancellation_and_restart() -> Result {
         (Err(error), _) | (_, Err(error)) => Err(error),
         _ => Ok(()),
     }
+}
+
+async fn run_recovery_scenarios(url: String, admin: DatabaseConnection) -> Result {
+    let db = Database::connect(&url).await?;
+    let result = async {
+        transaction_failure_and_restart(&url, &db).await?;
+        reset(&db).await?;
+        cancellation(&url, &db).await?;
+        reset(&db).await?;
+        session_loss(&url, &db, &admin, true).await?;
+        reset(&db).await?;
+        session_loss(&url, &db, &admin, false).await?;
+        reset(&db).await?;
+        process_interruption(&url, &db).await?;
+        reset(&db).await?;
+        journal_corruption(&url, &db).await?;
+        reset(&db).await?;
+        duplicate_journal(&url, &db).await?;
+        Ok::<_, Box<dyn Error + Send + Sync>>(())
+    }
+    .await;
+    let close = db.close().await;
+    match (result, close) {
+        (Err(error), Err(cleanup)) => Err(format!("{error}; connection close: {cleanup}").into()),
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error.into()),
+        _ => Ok(()),
+    }
+}
+
+async fn process_fixture(url: &str) -> Result {
+    let parsed = url::Url::parse(url)?;
+    if !parsed.path().starts_with("/rustok_step_") {
+        return Err("process fixture requires its private test database".into());
+    }
+    let mut steps = plan(false);
+    steps[1] = Box::new(Script {
+        name: "backfill",
+        sql: "UPDATE effects SET value = value + 1; SELECT pg_sleep(2)",
+        started: None,
+        wait: true,
+        transaction: None,
+    });
+    let mut runner = StepRunner::connect(url, steps).await?;
+    while runner.apply_next().await?.is_some() {}
+    runner.close().await?;
+    Err("process fixture unexpectedly completed".into())
+}
+
+async fn process_interruption(url: &str, db: &DatabaseConnection) -> Result {
+    let mut child = tokio::process::Command::new(std::env::current_exe()?)
+        .args([
+            "--exact",
+            "postgres_stepwise_failure_cancellation_and_restart",
+            "--ignored",
+        ])
+        .env("RUSTOK_STEPWISE_PROCESS_FIXTURE_URL", url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()?;
+    let result = async {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if child.try_wait()?.is_some() { return Err("fixture process exited before interruption".into()); }
+                if scalar(db, "SELECT count(*) AS value FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state<>'idle' AND query LIKE '%pg_sleep(2)%'").await? == 1 { break; }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, Box<dyn Error + Send + Sync>>(())
+        }).await??;
+        child.kill().await?;
+        // PostgreSQL may finish the active query before observing socket loss.
+        // Never force-clear the journal or steal an advisory lock to continue.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while scalar(db, "SELECT count(*) AS value FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() AND state<>'idle' AND query LIKE '%pg_sleep(2)%'").await? != 0 {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, Box<dyn Error + Send + Sync>>(())
+        }).await??;
+        assert_state(db, 1, 1, 1).await?;
+        let mut runner = StepRunner::connect(url, plan(false)).await?;
+        assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+        assert_state(db, 2, 2, 1).await?;
+        runner.close().await?;
+        Ok::<_, Box<dyn Error + Send + Sync>>(())
+    }.await;
+    if child.try_wait()?.is_none() {
+        child.kill().await?;
+    }
+    result
 }
 
 async fn reset(db: &DatabaseConnection) -> Result {

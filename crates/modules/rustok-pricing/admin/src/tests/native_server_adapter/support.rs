@@ -102,7 +102,7 @@ pub fn test_catalog(db: sea_orm::DatabaseConnection) -> CatalogService {
         )
     }
 
-    pub(crate) async pub fn load_base_price_full(
+    pub async fn load_base_price_full(
         db: &sea_orm::DatabaseConnection,
         variant_id: Uuid,
     ) -> (

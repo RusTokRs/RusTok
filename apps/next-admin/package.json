@@ -97,6 +97,7 @@
     "@rustok/media-admin": "file:./packages/media",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
     "@rustok/pages-admin": "file:./packages/pages",
+    "@rustok/pricing-admin": "file:./packages/pricing",
     "@rustok/product-admin": "file:./packages/rustok-product",
     "@rustok/rbac-admin": "file:./packages/rbac",
     "@rustok/richtext": "file:../../packages/richtext",

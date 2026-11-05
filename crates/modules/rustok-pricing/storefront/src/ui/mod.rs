@@ -1,1 +1,1 @@
-pub(crate) mod leptos;
+pub mod leptos;

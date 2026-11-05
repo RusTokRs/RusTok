@@ -10,6 +10,7 @@ import '@rustok/forum-admin';
 import '@rustok/forms-admin';
 import '@rustok/iggy-connector-admin';
 import '@rustok/rbac-admin';
+import '@rustok/pricing-admin';
 import '@rustok/product-admin';
 import '@rustok/media-admin';
 import '@rustok/pages-admin';

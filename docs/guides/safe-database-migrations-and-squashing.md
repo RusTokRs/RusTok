@@ -56,7 +56,7 @@ the current implementation after the first Rust tooling changes.
 | [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
 | [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
 | [PostgreSQL observer](../../crates/utils/rustok-migrations/src/verification.rs) | Compares real schema, privileges, enforcement, sequences, row multisets and each plan's journal | PostgreSQL 16, supported fixture limits and extensions; requires quiescent writers and complete read privileges |
-| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Runs declared setup and strict boolean assertions | One case per migration, all setup precedes the pending range |
+| [Backfill fixtures](../../crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs) | Validates pending targets, seeds the predecessor and runs read-only strict boolean assertions at each selected target and at range completion | One case per migration; full range/multiple-case and owner coverage remain pending |
 | [Schema summaries](../../crates/utils/rustok-migrations/src/schema_diff.rs) | Classifies supplied operations and computes summary/plan digests | No actual PostgreSQL catalog observation |
 | [Release workflow](../../.github/workflows/release.yml) | Validates signed tags, immutable releases and artifact provenance | No sealed migration manifest or exact-release migration evidence gate |
 
@@ -254,6 +254,17 @@ journal entry before advancing. The verifier checks the full sequence of
 confirmations against the executable plan for each fixture, then independently
 checks its final journal and database state. A replacement still requires an
 independent review of every removed migration and its disposition.
+
+The shared stepwise executor binds its advisory lock to the same PostgreSQL
+backend that executes migrations. It forbids connection replacement and poisons
+itself after an error or cancellation. Each step validates the full journal
+prefix, including duplicate rejection, before the next boundary is exposed.
+Plans containing nontransactional steps are rejected before connecting until a
+proven recovery contract is available; no transaction policy is silently changed.
+The PostgreSQL smoke uses the same executor, with fresh-session resumption after
+every committed step in incremental mode. Selected backfill assertions now run
+immediately after their own step as well as at the end. Assertions are read-only;
+targets outside the pending range fail before fixture setup.
 
 Current status is implementation in progress. Existing-check corrections, Rust
 source planning and the bounded fresh-install observer/runner are implemented.
