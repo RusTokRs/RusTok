@@ -77,6 +77,12 @@ principal bound to the current tenant, the enabled Blog module, and
 Read/List authority. Post preview retains PostService's editorial/public/Own
 scope and channel policy rather than elevating the caller.
 
+Each `schema_id` equals its `widget_type`; owner format discriminators and catalog
+payloads have one current shape without independent version selectors. Module
+semver owns evolution. A new post-detail block has no invented record ID and is
+reported incomplete until the author selects an existing post; the two list
+blocks have valid empty/default props.
+
 | Widget | Props | Preview |
 | --- | --- | --- |
 | `blog.post_list` | Optional `category_id`, `after`, `locale`; `per_page` defaults to 12 and is bounded to 1..100 | Deterministic owner post page with `next_cursor`, resolved locale and existing read policy. The cursor is bound to the default owner sort. |
@@ -84,7 +90,9 @@ scope and channel policy rather than elevating the caller.
 | `blog.category_list` | `page` defaults to 1 and is bounded to 1..100000; `per_page` defaults to 20 and is bounded to 1..100; optional `locale` | A deterministic owner Category page with canonical Taxonomy projection. |
 
 Props must be an object. Unknown fields, including tenant/user/channel identity,
-are rejected. Optional empty UI strings are omitted; UUIDs, cursors and content
+are rejected. Explicit JSON null is rejected; optional empty UI strings are
+omitted so cleared optional controls have one canonical representation. UUIDs,
+cursors and content
 locales use the canonical owner validators. All schemas explicitly forbid
 additional properties and use flat string/integer fields supported by Fly's
 live property editor. Caller-supplied schema references must exactly match the

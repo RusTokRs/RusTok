@@ -126,6 +126,10 @@ The Blog reference provides `blog.post_list`, `blog.post_detail` and
 `blog.category_list`; their concrete props and transport contract are owned by
 `crates/modules/rustok-blog/CRATE_API.md`.
 
+Widget schema identity equals the current widget type. Owner catalog payloads,
+schema IDs and format discriminators do not introduce independent versions;
+module semver owns their evolution under the Fly architecture decision.
+
 Property schema references are compared with registered contribution metadata,
 not followed as caller-supplied network locations. The owner publishes schemas
 supported by the live Fly property editor, validates before any data read, and

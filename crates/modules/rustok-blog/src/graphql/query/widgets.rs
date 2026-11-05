@@ -24,7 +24,8 @@ async fn authorize<'a>(ctx: &'a Context<'_>) -> Result<(&'a TenantContext, &'a A
             "Permission denied: blog_posts:read required",
         ));
     }
-    ctx.data::<sea_orm::DatabaseConnection>().map_err(|_| missing_runtime())?;
+    ctx.data::<sea_orm::DatabaseConnection>()
+        .map_err(|_| missing_runtime())?;
     require_module_enabled(ctx, "blog").await?;
     Ok((tenant, auth))
 }
@@ -57,8 +58,19 @@ pub(super) async fn preview(
             "Widget preview requires request context",
         ))
     })?;
-    let db = ctx.data::<sea_orm::DatabaseConnection>().map_err(|_| missing_runtime())?;
-    let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>().map_err(|_| missing_runtime())?;
+    if request.tenant_id != tenant.id || request.user_id != Some(auth.user_id) {
+        return Err(crate::error::public::to_graphql_error(
+            crate::BlogError::forbidden(
+                "Widget preview request context does not match the authenticated principal",
+            ),
+        ));
+    }
+    let db = ctx
+        .data::<sea_orm::DatabaseConnection>()
+        .map_err(|_| missing_runtime())?;
+    let event_bus = ctx
+        .data::<rustok_outbox::TransactionalEventBus>()
+        .map_err(|_| missing_runtime())?;
     BlogWidgetService::new(db.clone(), event_bus.clone())
         .preview(
             tenant.id,
@@ -74,5 +86,7 @@ pub(super) async fn preview(
 }
 
 fn missing_runtime() -> async_graphql::Error {
-    crate::error::public::to_graphql_error(crate::BlogError::invariant("Blog widget runtime context is unavailable"))
+    crate::error::public::to_graphql_error(crate::BlogError::invariant(
+        "Blog widget runtime context is unavailable",
+    ))
 }

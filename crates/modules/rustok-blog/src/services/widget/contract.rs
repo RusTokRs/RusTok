@@ -23,15 +23,14 @@ pub(super) fn catalog() -> BlogWidgetCatalog {
     let size = |default| json!({"type": "integer", "minimum": 1, "maximum": MAX_PAGE_SIZE, "default": default});
     let schema = |widget_type: &str, properties: Value, required: Value| BlogWidgetSchema {
         widget_type: widget_type.into(),
-        schema_id: format!("{widget_type}.v1"),
+        schema_id: widget_type.into(),
         props_schema: json!({"type": "object", "additionalProperties": false, "properties": properties, "required": required}),
     };
     BlogWidgetCatalog {
-        catalog_version: "v1".into(),
         items: vec![
             schema(
                 POST_LIST,
-                json!({"category_id": uuid, "after": {"type": "string", "maxLength": 512}, "per_page": size(POST_PAGE_SIZE), "locale": locale}),
+                json!({"category_id": {"type": "string", "maxLength": 36}, "after": {"type": "string", "maxLength": 512}, "per_page": size(POST_PAGE_SIZE), "locale": locale}),
                 json!([]),
             ),
             schema(
@@ -192,7 +191,7 @@ fn optional_text<'a>(
     issues: &mut Vec<BlogWidgetIssue>,
 ) -> Option<&'a str> {
     match object.get(field) {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::String(value)) => (!value.trim().is_empty()).then(|| value.trim()),
         Some(_) => {
             issue(issues, field, "invalid_type", "Field must be a string");

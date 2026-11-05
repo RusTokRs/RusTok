@@ -44,7 +44,7 @@ certification wording below where it implies executed or complete readiness.
 
 | Priority | Boundary and current evidence | Required result before complete reference acceptance |
 | --- | --- | --- |
-| P1 | Blog Fly metadata describes owner preview/property capabilities, but `apps/admin/src/app/page_builder_contributions.rs` mounts neither Blog preview nor property ports | Implement the Blog-owned transport facade and host bindings, then execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
+| P1 | Blog-owned catalog/validation/preview services, REST/GraphQL/native adapters and host preview/property bindings are implemented in source; mounted editor behavior remains unexecuted | Execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
 | P1 | Leptos editor hydration and Next editor updates retain requested locale while displaying fallback text | Exercise saving unrelated changes after fallback hydration. Preserve explicit localized write provenance and refuse accidental materialization of another locale's text. |
 | P2 | `admin/src/core/presentation.rs`, storefront reading-time/share helpers, and Next editor/reaction components contain Russian/English branches or literal interface copy | Resolve copy through host effective locale and canonical catalogs/formatters. Pass a third locale and parameter/plural behavior through pure core and mounted clients. |
 | P2 | Blog UI still includes styled raw controls and a manual Category table | Adopt canonical primitives, forms and grid contracts. Keep command construction, validation and state transitions in pure core with meaningful tests. |
@@ -64,6 +64,57 @@ Test-file counts do not establish coverage or execution. Blog already includes
 domain property tests, owner-service regressions, integration/transport checks,
 projection replay tests and pure UI tests. The missing evidence is specific to
 the gates above.
+
+### Fly owner continuation (2026-11-05)
+
+This source continuation started from `01ea0627d6b50e64a4b4fe2aa19fb0718e5c4f55`
+and reused the subsequent canonical database-fixture change. `BlogWidgetService`
+now owns catalog, strict configuration validation and read-only preview through
+the existing Post/Category services. REST and GraphQL routes plus both selected
+Leptos transport paths reach that owner. The admin host binds the real Blog
+preview/property ports. Schema references must exactly match registered metadata;
+request tenant/principal identity must agree with authenticated context.
+
+Owner schema IDs equal widget types, and owner format discriminators/catalog
+payloads carry no independent version selectors. The shared Page Builder FBA
+registry/validators still model independent interoperability versions; Blog
+retains its existing `[fba.builder_consumer]` version metadata but is not enrolled
+in that registry. `node scripts/verify/verify-page-builder-contract-registry.mjs blog`
+therefore fails with the explicit missing-consumer diagnostic. This admission
+gap and the mismatch with Fly's module-only evolution policy require a Page
+Builder-owned contract/registry/validator reconciliation before complete
+reference acceptance. The Blog-local cutover is not an exception to, or
+completion of, that platform correction.
+
+New scenario sources exercise migrated owner reads, locale fallback, tenant and
+channel isolation, pagination before limits, unchanged rows/outbox, actual
+GraphQL execution, the real Axum REST router and native Leptos HTTP dispatch.
+The native tests share one canonical migration-backed fixture. The explicit
+PostgreSQL widget scenario uses a disposable database and the required test URL.
+New post-detail blocks correctly remain incomplete until a real post is selected;
+no fake default ID is generated.
+
+Source-layout, architecture dependencies, semantic reference guard and the full
+`verify:blog:fba` source chain passed during this continuation. Cargo checks were
+not completed: the shared target was locked by an unrelated IDE build, and the
+waiting scoped command was stopped so the combined integration tree can be
+verified once. The new Rust tests are currently unrun. Required scoped commands:
+
+```powershell
+cargo test -p rustok-blog --locked --offline --lib services::widget::tests
+cargo test -p rustok-blog --locked --offline --test widgets
+cargo test -p rustok-blog-admin --locked --offline --features ssr --lib
+cargo clippy -p rustok-blog --locked --offline --all-targets -- -D warnings
+cargo clippy -p rustok-blog-admin --locked --offline --features ssr --lib --tests -- -D warnings
+# Set RUSTOK_BLOG_TEST_DATABASE_URL explicitly before selecting this opt-in scenario.
+cargo test -p rustok-blog --locked --offline --test widgets postgres_widget_owner_preview_contract -- --ignored --exact
+```
+
+The editor currently presents bounded JSON owner data rather than a rendered
+Blog widget canvas. Mounted property edits/preview/save/reload, localized property
+labels, browser accessibility and deployed native/GraphQL behavior remain open
+Page Builder/client evidence gates. No complete reference or FFA/FBA readiness
+status is promoted by this source work.
 
 ### Scaffold extraction sequence
 

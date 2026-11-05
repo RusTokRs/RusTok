@@ -31,7 +31,7 @@ pub(super) fn extension(auth: leptos_auth::AuthContext) -> PageBuilderContributi
 }
 
 fn ensure_provider(provider: &str) -> Result<(), &'static str> {
-    if provider == "rustok.blog" {
+    if provider == rustok_blog_admin::blog_contribution_manifest().owner_provider {
         Ok(())
     } else {
         Err("Blog widget provider mismatch")

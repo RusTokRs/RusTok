@@ -20,6 +20,7 @@ fn validate(widget_type: &str, props: Value) -> crate::BlogWidgetValidation {
 fn catalog_defaults_are_accepted_and_normalization_is_idempotent() {
     let id = Uuid::new_v4().to_string();
     for schema in BlogWidgetService::catalog().items {
+        assert_eq!(schema.schema_id, schema.widget_type);
         assert_eq!(schema.props_schema["additionalProperties"], false);
         let props = if schema.widget_type == "blog.post_detail" {
             json!({"post_id": id})
@@ -96,6 +97,17 @@ fn ids_cursors_and_locale_keep_the_canonical_owner_contract() {
     assert!(result.normalized_props.get("category_id").is_none());
     assert!(!validate("blog.post_list", json!({"locale": "en-*"})).valid);
     assert!(!validate("blog.post_list", json!({"locale": "a".repeat(33)})).valid);
+}
+
+#[test]
+fn optional_text_controls_use_omission_and_reject_explicit_null() {
+    for field in ["locale", "after", "category_id"] {
+        let omitted = validate("blog.post_list", json!({}));
+        let cleared = validate("blog.post_list", json!({field: "  "}));
+        assert!(cleared.valid, "{:?}", cleared.issues);
+        assert_eq!(cleared.normalized_props, omitted.normalized_props);
+        assert!(!validate("blog.post_list", json!({field: null})).valid);
+    }
 }
 
 #[test]

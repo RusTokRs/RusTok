@@ -3,6 +3,8 @@ use crate::model::{
     BlogWidgetValidation, BlogWidgetValidationRequest,
 };
 use leptos::prelude::*;
+#[cfg(all(test, feature = "ssr"))]
+mod tests;
 
 pub(in crate::transport) async fn schema(
     request: BlogWidgetPropertyRequest,
@@ -120,6 +122,11 @@ async fn blog_widget_preview_native(
         let current = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(|_| super::public_internal_error())?;
+        if current.tenant_id != context.tenant.id || current.user_id != Some(context.auth.user_id) {
+            return Err(ServerFnError::new(
+                "Widget preview request context does not match the authenticated principal",
+            ));
+        }
         let response = rustok_blog::BlogWidgetService::new(context.db, context.event_bus)
             .preview(
                 context.tenant.id,

@@ -63,3 +63,16 @@ toml.workspace = true
 [package.metadata.cargo-udeps.ignore]
 normal = ["leptos-ui"]
 
+[dev-dependencies]
+axum.workspace = true
+rustok-auth.workspace = true
+rustok-channel.workspace = true
+rustok-content.workspace = true
+rustok-migrations = { workspace = true, default-features = false }
+rustok-modules = { workspace = true, default-features = false }
+rustok-taxonomy.workspace = true
+rustok-test-utils.workspace = true
+sea-orm-migration.workspace = true
+serde_qs.workspace = true
+tokio.workspace = true
+

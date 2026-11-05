@@ -14,7 +14,7 @@ const BLOG_MODULE_ID: &str = "blog";
 const BLOG_OWNER_PROVIDER: &str = "rustok.blog";
 const WIDGET_CATALOG_ROLE: &str = "widget_catalog";
 const WIDGET_PREVIEW_ROLE: &str = "widget_preview";
-const OWNER_SCHEMA_REF_FORMAT: &str = "blog_widget_owner_schema_ref_v1";
+const OWNER_SCHEMA_REF_FORMAT: &str = "blog_widget_owner_schema_ref";
 
 fn main() {
     println!("cargo:rerun-if-changed={MODULE_MANIFEST_RELATIVE_PATH}");

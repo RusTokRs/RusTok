@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 
 include!(concat!(env!("OUT_DIR"), "/blog_contribution_manifest.rs"));
 
-const OWNER_SCHEMA_REF_FORMAT: &str = "blog_widget_owner_schema_ref_v1";
+const OWNER_SCHEMA_REF_FORMAT: &str = "blog_widget_owner_schema_ref";
 const COMPONENT_PROPS_FIELD: &str = "props";
 const BLOG_BLOCK_CATEGORY: &str = "blog";
 
@@ -133,7 +133,7 @@ pub fn build_blog_admin_contribution_registry(
 /// Register Blog widget component/block definitions into a Fly registry set.
 ///
 /// Block ids intentionally equal component types (`blog.*`) so canonical module metadata remains
-/// the only mapping authority. The Fly component persists only versioned widget configuration in
+/// the only mapping authority. The Fly component persists only current widget configuration in
 /// `props`; Blog owner data is never copied into the builder document.
 pub fn register_blog_fly_widgets(registries: &mut RegistrySet) -> FlyResult<()> {
     let catalog = generated_contribution(BLOG_WIDGET_CONTRIBUTION_ID);
@@ -204,6 +204,10 @@ fn generated_contribution(id: &str) -> &'static ContributionDescriptor {
 }
 
 fn owner_schema_for_component(component_type: &str) -> UiResult<BlogWidgetOwnerSchemaRef> {
+    owner_schema_ref(property_schema_for_component(component_type)?)
+}
+
+fn property_schema_for_component(component_type: &str) -> UiResult<&'static Value> {
     let editor = generated_contribution(BLOG_WIDGET_CONTRIBUTION_ID)
         .property_editors
         .iter()
@@ -213,17 +217,21 @@ fn owner_schema_for_component(component_type: &str) -> UiResult<BlogWidgetOwnerS
                 "Blog widget `{component_type}` has no owner-backed property contract"
             ))
         })?;
-    owner_schema_ref(&editor.property_schema)
+    Ok(&editor.property_schema)
 }
 
 /// Validate identity against registered metadata. Endpoint fields are never fetched as URLs.
-pub(crate) fn resolve_widget_schema_reference(component_type: &str, reference: &Value) -> UiResult<BlogWidgetOwnerSchemaRef> {
-    let expected = owner_schema_for_component(component_type)?;
-    let actual = owner_schema_ref(reference)?;
-    if expected != actual {
-        return Err(UiError::AdapterRejected("Blog widget schema reference differs from its registered contract".into()));
+pub(crate) fn resolve_widget_schema_reference(
+    component_type: &str,
+    reference: &Value,
+) -> UiResult<BlogWidgetOwnerSchemaRef> {
+    let expected = property_schema_for_component(component_type)?;
+    if expected != reference {
+        return Err(UiError::AdapterRejected(
+            "Blog widget schema reference differs from its registered contract".into(),
+        ));
     }
-    Ok(actual)
+    owner_schema_ref(reference)
 }
 
 fn ensure_blog_provider(provider: &str) -> UiResult<()> {
@@ -443,13 +451,78 @@ mod tests {
     fn owner_schema_reference_rejects_endpoint_and_identity_substitution() {
         let descriptor = blog_widget_contribution();
         let editor = &descriptor.property_editors[0];
-        assert!(resolve_widget_schema_reference(&editor.component_type, &editor.property_schema).is_ok());
+        assert!(
+            resolve_widget_schema_reference(&editor.component_type, &editor.property_schema)
+                .is_ok()
+        );
         let mut altered = editor.property_schema.clone();
         altered["catalog_endpoint"] = "https://other-owner.invalid/catalog".into();
         assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
         altered = editor.property_schema.clone();
-        altered["schema_id"] = "blog.category_list.v1".into();
+        altered["schema_id"] = "blog.category_list".into();
         assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
-        assert!(resolve_widget_schema_reference("other.post_list", &editor.property_schema).is_err());
+        altered = editor.property_schema.clone();
+        altered["unregistered_endpoint"] = "https://other-owner.invalid".into();
+        assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
+        altered = editor.property_schema.clone();
+        altered["format"] = "blog_widget_owner_schema_ref_v1".into();
+        assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
+        assert!(
+            resolve_widget_schema_reference("other.post_list", &editor.property_schema).is_err()
+        );
+    }
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn owner_catalog_matches_every_advertised_property_contract() {
+        let contribution = blog_widget_contribution();
+        let catalog = rustok_blog::BlogWidgetService::catalog();
+        assert_eq!(catalog.items.len(), contribution.property_editors.len());
+        for item in catalog.items {
+            let editor = contribution
+                .property_editors
+                .iter()
+                .find(|editor| editor.component_type == item.widget_type)
+                .unwrap();
+            let reference =
+                resolve_widget_schema_reference(&item.widget_type, &editor.property_schema)
+                    .unwrap();
+            assert_eq!(reference.schema_id, item.schema_id);
+            assert_eq!(item.props_schema["type"], "object");
+            assert_eq!(item.props_schema["additionalProperties"], false);
+            for property in item.props_schema["properties"]
+                .as_object()
+                .unwrap()
+                .values()
+            {
+                assert!(matches!(
+                    property["type"].as_str(),
+                    Some("string" | "integer" | "boolean")
+                ));
+            }
+        }
+    }
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn registered_block_defaults_use_owner_validation_without_inventing_a_post() {
+        let registries = blog_fly_registry_set().unwrap();
+        for id in &blog_widget_contribution().blocks {
+            let block = registries.blocks.get(id).unwrap();
+            let component = serde_json::to_value(&block.component).unwrap();
+            let result = rustok_blog::BlogWidgetService::validate(rustok_blog::BlogWidgetInput {
+                widget_type: id.clone(),
+                props: component_props(&component).unwrap(),
+            });
+            if id == "blog.post_detail" {
+                // A new detail block remains incomplete until the editor selects an owner ID.
+                assert!(!result.valid);
+                assert!(result.issues.iter().any(|issue| {
+                    issue.path.as_deref() == Some("post_id") && issue.code == "required"
+                }));
+            } else {
+                assert!(result.valid, "{id}: {:?}", result.issues);
+            }
+        }
     }
 }

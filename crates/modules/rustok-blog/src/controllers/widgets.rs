@@ -67,6 +67,7 @@ pub async fn preview(
     Json(input): Json<BlogWidgetInput>,
 ) -> HttpResult<(StatusCode, Json<BlogWidgetPreview>)> {
     authorize(&runtime, &tenant, &auth).await?;
+    ensure_request_context(tenant.id, auth.user_id, &request)?;
     let response = BlogWidgetService::new(runtime.db_clone(), runtime.event_bus())
         .preview(
             tenant.id,
@@ -84,4 +85,57 @@ pub async fn preview(
         StatusCode::UNPROCESSABLE_ENTITY
     };
     Ok((status, Json(response)))
+}
+
+fn ensure_request_context(
+    tenant: uuid::Uuid,
+    user: uuid::Uuid,
+    request: &RequestContext,
+) -> HttpResult<()> {
+    if request.tenant_id != tenant || request.user_id != Some(user) {
+        return Err(rustok_web::HttpError::forbidden(
+            "blog_widget_context_mismatch",
+            "Widget preview request context does not match the authenticated principal",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn preview_context_must_match_both_tenant_and_principal() {
+        let tenant = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let mut request = RequestContext {
+            tenant_id: tenant,
+            user_id: Some(user),
+            channel_id: None,
+            channel_slug: None,
+            channel_resolution_source: None,
+            locale: "en".into(),
+            correlation_id: "widget-context-test".into(),
+        };
+        assert!(ensure_request_context(tenant, user, &request).is_ok());
+        request.tenant_id = Uuid::new_v4();
+        assert_eq!(
+            ensure_request_context(tenant, user, &request)
+                .unwrap_err()
+                .status,
+            StatusCode::FORBIDDEN
+        );
+        request.tenant_id = tenant;
+        request.user_id = Some(Uuid::new_v4());
+        assert_eq!(
+            ensure_request_context(tenant, user, &request)
+                .unwrap_err()
+                .status,
+            StatusCode::FORBIDDEN
+        );
+        request.user_id = None;
+        assert!(ensure_request_context(tenant, user, &request).is_err());
+    }
 }

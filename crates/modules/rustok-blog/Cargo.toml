@@ -46,6 +46,8 @@ url = "2.5"
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-modules = { workspace = true, default-features = false }
+tower = { workspace = true, features = ["util"] }
 proptest.workspace = true
 rustok-auth.workspace = true
 rustok-comments = { workspace = true, features = ["server"] }

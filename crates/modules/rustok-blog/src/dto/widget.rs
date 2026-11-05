@@ -14,7 +14,6 @@ pub struct BlogWidgetInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BlogWidgetCatalog {
-    pub catalog_version: String,
     pub items: Vec<BlogWidgetSchema>,
 }
 

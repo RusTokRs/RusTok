@@ -91,7 +91,6 @@ contract = "grapesjs"
 contract_version = "1.0"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
-catalog_version = "v1"
 capabilities = ["preview", "tree", "properties", "publish"]
 
 # Canonical Fly contracts for the Blog Page Builder consumer. Block ids intentionally equal
@@ -124,8 +123,8 @@ description_message_id = "blog.builder.widget.postList.description"
 keyboard_hint_message_id = ""
 
 [fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
-format = "blog_widget_owner_schema_ref_v1"
-schema_id = "blog.post_list.v1"
+format = "blog_widget_owner_schema_ref"
+schema_id = "blog.post_list"
 catalog_endpoint = "/api/blog/widgets/catalog"
 validate_endpoint = "/api/blog/widgets/validate"
 owner_data_state = "owner_property_editor_ready"
@@ -141,8 +140,8 @@ description_message_id = "blog.builder.widget.postDetail.description"
 keyboard_hint_message_id = ""
 
 [fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
-format = "blog_widget_owner_schema_ref_v1"
-schema_id = "blog.post_detail.v1"
+format = "blog_widget_owner_schema_ref"
+schema_id = "blog.post_detail"
 catalog_endpoint = "/api/blog/widgets/catalog"
 validate_endpoint = "/api/blog/widgets/validate"
 owner_data_state = "owner_property_editor_ready"
@@ -158,8 +157,8 @@ description_message_id = "blog.builder.widget.categoryList.description"
 keyboard_hint_message_id = ""
 
 [fba.builder_consumer.contribution_manifest.admin.property_editors.property_schema]
-format = "blog_widget_owner_schema_ref_v1"
-schema_id = "blog.category_list.v1"
+format = "blog_widget_owner_schema_ref"
+schema_id = "blog.category_list"
 catalog_endpoint = "/api/blog/widgets/catalog"
 validate_endpoint = "/api/blog/widgets/validate"
 owner_data_state = "owner_property_editor_ready"
@@ -174,10 +173,8 @@ owner_data_state = "owner_property_editor_ready"
 "blog.builder.widget.categoryList.description" = "Configure a Blog-owned category list widget."
 
 [fba.builder_consumer.contribution_manifest.admin.metadata]
-format = "blog_widget_catalog_v1"
+format = "blog_widget_catalog"
 surface = "admin"
-catalog_version = "v1"
-contract_version = "1.0"
 catalog_endpoint = "/api/blog/widgets/catalog"
 validate_endpoint = "/api/blog/widgets/validate"
 preview_endpoint = "/api/blog/widgets/preview"
@@ -237,7 +234,7 @@ keyboard_hint_message_id = ""
 "blog.builder.widget.categoryList.description" = "Preview a Blog-owned category list widget."
 
 [fba.builder_consumer.contribution_manifest.admin.metadata]
-format = "blog_widget_preview_v1"
+format = "blog_widget_preview"
 surface = "admin"
 catalog_endpoint = "/api/blog/widgets/catalog"
 validate_endpoint = "/api/blog/widgets/validate"

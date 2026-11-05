@@ -1,4 +1,6 @@
 use leptos::prelude::*;
+#[cfg(all(test, feature = "ssr"))]
+mod test_support;
 pub(super) mod widget;
 
 #[cfg(feature = "ssr")]

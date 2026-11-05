@@ -36,6 +36,25 @@ Leptos admin UI package for the `rustok-blog` module.
 - The backend requires `blog_posts:manage`, current-tenant binding, and the Blog field-aware rate-limit policy before trusted owner-side comment reads or status changes.
 - Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel` for explicit post SEO authoring.
 - Native and GraphQL adapters call the same Blog owner services and must keep their DTO, authorization, tenant, locale, and error semantics aligned.
+- The host mounts Blog Fly preview and property ports through this package's selected transport facade. Property requests compare the complete schema reference with the registered contribution; configuration and owner-data preview execute in `BlogWidgetService`.
+
+## Known Limitations / Pending Implementation
+
+The Fly contribution exposes owner data as the editor's bounded JSON preview.
+Mounted property editing, preview and draft save/reload still require browser
+evidence on the deployed host; manifest and pure adapter tests do not establish
+that result. The Blog reference readiness plan tracks the remaining client and
+runtime gates. The shared Page Builder currently displays raw schema field
+labels and bounded JSON data, so localized property labels and visual widget
+canvas rendering require separate Page Builder-owned implementation/evidence.
+
+The shared Page Builder FBA registry/validators still model independent
+interoperability versions. Blog retains its existing `[fba.builder_consumer]`
+version metadata, but is not enrolled in that registry. The policy mismatch with
+Fly's module-only evolution and the missing registry admission need an owner-wide
+contract/registry/validator reconciliation before full reference acceptance.
+Blog's owner widget payloads and schema references are already unversioned;
+that bounded correction does not resolve the shared policy mismatch.
 
 ## Documentation
 
