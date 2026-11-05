@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Typed gRPC transport adapter for RusToK Media ports"
+description = "FBA microservice extraction: typed gRPC transport adapter for RusToK Media ports"
 repository.workspace = true
 readme = "README.md"
 

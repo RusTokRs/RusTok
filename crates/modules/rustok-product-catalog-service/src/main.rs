@@ -1,6 +1,8 @@
 //! # RusToK Product Catalog Service
 //!
-//! Standalone authenticated gRPC service host for the RusToK Product catalog read port.
+//! FBA microservice extraction: standalone authenticated gRPC service host for the
+//! RusToK Product catalog read port. This is a domain-owned deployment unit, not a
+//! platform host application — see `AGENTS.md` §5 and `docs/modules/registry.md`.
 //!
 //! Provides out-of-process `ProductCatalogReadPort` access over TLS/loopback gRPC.
 

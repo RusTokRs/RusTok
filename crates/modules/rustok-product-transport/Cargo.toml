@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Typed gRPC transport adapter for the RusToK Product catalog read port"
+description = "FBA microservice extraction: typed gRPC transport adapter for the RusTok Product catalog read port"
 repository.workspace = true
 readme = "README.md"
 

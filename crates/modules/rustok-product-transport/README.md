@@ -1,5 +1,7 @@
 # rustok-product-transport
 
+> **FBA microservice extraction** — typed gRPC transport adapter for `rustok-product-catalog-service`. Part of the Product domain FBA extraction; MUST NOT be collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+
 Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`.
 
 ## Public surface

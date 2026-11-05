@@ -21,7 +21,8 @@ const productRuntime =
 const catalog = read('crates/modules/rustok-product/src/services/catalog.rs');
 const commands = read('crates/modules/rustok-product/src/services/catalog/commands.rs');
 const inventoryBootstrap = read('crates/modules/rustok-inventory/src/services/bootstrap.rs');
-const pricingBootstrap = read('crates/libs/rustok-pricing-persistence/src/lib.rs');
+const pricingPort = read('crates/modules/rustok-product/src/ports/pricing.rs');
+const pricingAdapter = read('crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs');
 const manifestCorequisites = read('apps/server/src/modules/manifest/corequisites.rs');
 const manifestManager = read('apps/server/src/modules/manifest/mod.rs');
 const tenantLifecycle = read('apps/server/src/services/module_lifecycle.rs');
@@ -123,16 +124,16 @@ for (const [source, value, label] of [
   [pricingDependencySection, 'product = { version_req = ">=0.1.0" }', 'Pricing Product dependency'],
   [productRuntime, '&["taxonomy"]', 'Product runtime dependency'],
   [productCargo, 'rustok-inventory.workspace = true', 'Inventory owner crate dependency'],
-  [productCargo, 'rustok-pricing-persistence.workspace = true', 'Pricing persistence dependency'],
   [catalog, 'use rustok_inventory::{BootstrapService, InitialInventory};', 'Inventory bootstrap import'],
-  [catalog, 'use rustok_pricing_persistence::{BootstrapService as PricingBootstrapService, InitialPrice};', 'Pricing bootstrap import'],
+  [catalog, 'pub fn with_pricing_port(', 'Product pricing port configuration'],
+  [pricingPort, 'pub trait ProductPricingPort: Send + Sync', 'Product pricing port contract'],
+  [pricingAdapter, 'impl ProductPricingPort for PricingProductPricingPortAdapter', 'Pricing adapter port implementation'],
   [commands, 'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)', 'default inventory location collaboration'],
   [commands, 'BootstrapService::create_initial_records_in_tx(', 'initial inventory collaboration'],
-  [commands, 'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)', 'initial price collaboration'],
-  [commands, 'BootstrapService::delete_records_for_variants_in_tx(&txn, tenant_id, &variant_ids)', 'inventory cleanup collaboration'],
-  [commands, 'PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &variant_ids)', 'price cleanup collaboration'],
+  [commands, 'port.create_initial_prices_in_tx(&txn, initial_prices)', 'initial price collaboration'],
+  [commands, 'BootstrapService::delete_records_for_variants_in_tx(', 'inventory cleanup collaboration'],
+  [commands, 'port.delete_prices_for_variants_in_tx(&txn, &variant_ids)', 'price cleanup collaboration'],
   [inventoryBootstrap, 'Owner-owned, transaction-aware inventory bootstrap operations.', 'Inventory owner contract'],
-  [pricingBootstrap, 'Pricing-owned transaction-aware operations required by Product lifecycle writes.', 'Pricing owner contract'],
 
   [manifestCorequisites, 'pub(crate) fn module_policy_corequisites', 'owner co-requisite input entrypoint'],
   [manifestCorequisites, 'pub(super) fn validate_default_corequisite_selection', 'deployment selection preflight'],
@@ -161,7 +162,7 @@ for (const [source, value, label] of [
   [recovery, 'read_tenant_override_enabled(db, plan.tenant_id, &plan.module_slug)', 'retry rereads persisted override under the claim'],
   [recovery, 'current_override_enabled != plan.requested_override_enabled', 'retry exact override state match'],
   [recovery.replace(/\s+/g, ''), 'plan.previous_override_enabled,plan.requested_override_enabled', 'retry predecessor retention'],
-  [recovery, 'UPDATE tenant_modules SET enabled = NULL', 'inherited override restoration'],
+  [recovery, 'TenantModuleStateStore::clear(db, tenant_id, module_slug)', 'inherited override restoration'],
   [lifecycleExecutor, 'pub previous_override_enabled: Option<bool>', 'executor exact override predecessor'],
   [lifecycleExecutor, 'pub requested_override_enabled: Option<bool>', 'executor exact override target'],
   [lifecycleExecutor, 'record_operation_override_state(', 'executor recovery-state retention'],
@@ -173,7 +174,7 @@ for (const [source, value, label] of [
   [compensationBlock, 'current_override_enabled != plan.requested_override_enabled', 'compensation exact current-state match'],
   [tenantLifecycle, 'explicit module toggle did not persist a tenant override row', 'normal explicit-row server assertion'],
   [tenantLifecycle, 'enabled,\n            settings: result.settings,', 'explicit compensation response state'],
-  [tenantLifecycle, 'None => (policy.contains(&module_slug), serde_json::json!({}))', 'inherited compensation availability fallback'],
+  [tenantLifecycle, 'None => (policy.contains(&module_slug), result.settings)', 'inherited compensation availability fallback'],
 
   [recoveryMigration, 'module_operation_override_states', 'recovery side-table migration'],
   [recoveryMigration, 'PreviousOverrideEnabled', 'nullable predecessor migration column'],

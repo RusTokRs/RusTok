@@ -135,8 +135,8 @@ Contributors and AI agents MUST NOT merge, glue, or collapse `rustok-product-cat
   published catalog discovery, handle-based product selection, and
   channel-aware inventory visibility.
 - Keep generic catalog price snapshots available for product-owned CRUD and
-  discovery flows through the transaction-aware `rustok-pricing-persistence`
-  owner contract, while treating pricing-authoritative reads as the
+  discovery flows through the decoupled consumer-owned `ProductPricingPort`
+  contract, while treating pricing-authoritative reads as the
   responsibility of `rustok-pricing` surfaces (`adminPricingProduct` /
   `storefrontPricingProduct`).
 - Keep product-owned admin/storefront UI aligned with that split by rendering
@@ -169,8 +169,8 @@ Contributors and AI agents MUST NOT merge, glue, or collapse `rustok-product-cat
 
 - Owns Product DTOs, ORM entities, errors, tables, and migration history without
   a `rustok-commerce-foundation` or `rustok-index` dependency.
-- Depends on `rustok-pricing-persistence` for pricing-owned ORM projections and
-  atomic initial-price lifecycle operations.
+- Uses `ProductPricingPort` for decoupled pricing projections and
+  atomic price lifecycle operations without direct persistence coupling.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
   operations.
 - Depends on `flex` for shared attached localized-value storage helpers used by

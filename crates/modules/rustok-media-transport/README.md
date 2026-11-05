@@ -1,5 +1,7 @@
 # rustok-media-transport
 
+> **FBA microservice extraction** — typed gRPC transport adapter for `rustok-media` whole-module extraction. Part of the Media domain FBA extraction; MUST NOT be collapsed into `rustok-media`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+
 ## Purpose
 
 `rustok-media-transport` maps the Media-owned read, public-image presentation,

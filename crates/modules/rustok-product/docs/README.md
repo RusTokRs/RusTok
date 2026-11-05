@@ -42,9 +42,9 @@
   `storefront/src/ui/leptos.rs` as a thin host-context/render layer over
   prepared core state;
 - Product DTOs, product ORM entities, and Product errors are owner-local.
-  Pricing ORM projections and atomic initial-price lifecycle operations come
-  from the owner-owned `rustok-pricing-persistence` support crate; Product does
-  not depend on `rustok-commerce-foundation`.
+  Pricing ORM projections and atomic price lifecycle operations come
+  from the consumer-owned `ProductPricingPort` port boundary; Product does
+  not depend on `rustok-commerce-foundation` or foreign pricing persistence.
 - FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
   no-compile runtime contract smoke, source-locked runtime fallback smoke, and

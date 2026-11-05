@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Standalone authenticated gRPC host for the RusTok Product catalog read port"
+description = "FBA microservice extraction: standalone authenticated gRPC host for the RusTok Product catalog read port"
 repository.workspace = true
 readme = "README.md"
 

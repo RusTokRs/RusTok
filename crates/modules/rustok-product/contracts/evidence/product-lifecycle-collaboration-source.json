@@ -40,13 +40,15 @@
     "transport_contract_published": false
   },
   "pricing_collaboration": {
-    "owner_crate": "rustok-pricing-persistence",
-    "contract": "BootstrapService",
+    "owner_crate": "rustok-pricing",
+    "contract": "ProductPricingPort",
     "input": "InitialPrice",
     "operations": [
       "create_initial_prices_in_tx",
-      "load_prices_for_variants",
-      "delete_prices_for_variants_in_tx"
+      "replace_catalog_base_prices_in_tx",
+      "delete_prices_for_variants_in_tx",
+      "load_catalog_base_prices_for_variants",
+      "load_storefront_list_prices"
     ],
     "same_transaction_connection": true,
     "transport_contract_published": false

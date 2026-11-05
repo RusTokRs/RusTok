@@ -16973,18 +16973,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-pricing-persistence"
-version = "0.1.0"
-dependencies = [
- "rust_decimal",
- "rustok-core",
- "sea-orm",
- "serde",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "rustok-pricing-storefront"
 version = "0.1.0"
 dependencies = [
