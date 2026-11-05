@@ -21,7 +21,14 @@
     "storefront_native": "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
     "storefront_ui": "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
     "host_snapshot_adapter": "apps/server/src/services/blog_public_comments_snapshot.rs",
-    "host_runtime_composition": "apps/server/src/services/module_event_dispatcher.rs"
+    "host_runtime_composition": "apps/server/src/services/module_event_dispatcher.rs",
+    "storefront_availability_policy": "crates/modules/rustok-blog/storefront/src/core/discussion.rs",
+    "storefront_comments_list": "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
+    "storefront_discussion_ui": "crates/modules/rustok-blog/storefront/src/ui/comment.rs",
+    "storefront_catalogs": [
+      "crates/modules/rustok-blog/storefront/locales/en.ftl",
+      "crates/modules/rustok-blog/storefront/locales/ru.ftl"
+    ]
   },
   "storefront_read_degradation": {
     "status": "source_verified_no_compile",

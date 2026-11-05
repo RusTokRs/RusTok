@@ -56,6 +56,12 @@ const storefrontModelPath = 'crates/modules/rustok-blog/storefront/src/model.rs'
 const storefrontGraphqlPath = 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs';
 const storefrontNativePath = 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs';
 const storefrontUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs';
+const storefrontPolicyPath = 'crates/modules/rustok-blog/storefront/src/core/discussion.rs';
+const storefrontCorePath = 'crates/modules/rustok-blog/storefront/src/core.rs';
+const storefrontCommentsListPath = 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs';
+const storefrontDiscussionPath = 'crates/modules/rustok-blog/storefront/src/ui/comment.rs';
+const storefrontCatalogPaths = ['en', 'ru'].map((locale) =>
+  `crates/modules/rustok-blog/storefront/locales/${locale}.ftl`);
 const hostSnapshotAdapterPath = 'apps/server/src/services/blog_public_comments_snapshot.rs';
 const hostRuntimeCompositionPath = 'apps/server/src/services/module_event_dispatcher.rs';
 const providerRegistryPath = 'crates/modules/rustok-comments/contracts/comments-fba-registry.json';
@@ -87,10 +93,11 @@ const graphqlOwner = read(graphqlOwnerPath);
 const storefrontModel = read(storefrontModelPath);
 const storefrontGraphql = read(storefrontGraphqlPath);
 const storefrontNative = read(storefrontNativePath);
-const storefrontCommentsListPath = 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs';
-const storefrontSelectedPostPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs';
-const storefrontUi = read(storefrontUiPath) + '\n' + read(storefrontCommentsListPath)
-  + (existsSync(repoPath(storefrontSelectedPostPath)) ? '\n' + read(storefrontSelectedPostPath) : '');
+const storefrontPolicy = read(storefrontPolicyPath);
+const storefrontCore = read(storefrontCorePath);
+const storefrontCommentsList = read(storefrontCommentsListPath);
+const storefrontDiscussion = read(storefrontDiscussionPath);
+const storefrontCatalogs = storefrontCatalogPaths.map((catalogPath) => [catalogPath, read(catalogPath)]);
 const hostSnapshotAdapter = read(hostSnapshotAdapterPath);
 const hostRuntimeComposition = read(hostRuntimeCompositionPath);
 const plan = read(planPath);
@@ -168,6 +175,9 @@ if (fallbackEvidence) {
     storefront_graphql: storefrontGraphqlPath,
     storefront_native: storefrontNativePath,
     storefront_ui: storefrontUiPath,
+    storefront_availability_policy: storefrontPolicyPath,
+    storefront_comments_list: storefrontCommentsListPath,
+    storefront_discussion_ui: storefrontDiscussionPath,
     host_snapshot_adapter: hostSnapshotAdapterPath,
     host_runtime_composition: hostRuntimeCompositionPath,
   };
@@ -175,6 +185,9 @@ if (fallbackEvidence) {
     if (fallbackEvidence.source_contract?.[key] !== expected) {
       failures.push(`${fallbackEvidencePath}: ${key} source path drift`);
     }
+  }
+  if (!sameSet(fallbackEvidence.source_contract?.storefront_catalogs ?? [], storefrontCatalogPaths)) {
+    failures.push(`${fallbackEvidencePath}: storefront catalog source path drift`);
   }
   const readDegradation = fallbackEvidence.storefront_read_degradation ?? {};
   if (
@@ -358,16 +371,49 @@ for (const marker of [
 ]) requireMarker(storefrontNative, marker, storefrontNativePath);
 requireNoMarker(storefrontNative, 'fn comments_read_availability(', storefrontNativePath);
 
+// Bounded source checks follow the actual FFA owner: availability decisions
+// live in the pure policy, while adapters consume its state and localized copy.
+// This is source evidence, not a Rust parser or behavioral/runtime proof.
+requireMarker(storefrontCore, 'pub mod discussion;', storefrontCorePath);
+const policyStart = storefrontPolicy.indexOf('pub fn comments_view(');
+const policyTail = policyStart < 0 ? '' : storefrontPolicy.slice(policyStart);
+const nextTestModule = policyTail.indexOf('\n#[cfg(test)]');
+const policyFunction = (nextTestModule < 0 ? policyTail : policyTail.slice(0, nextTestModule))
+  .replace(/\s+/g, ' ');
 for (const marker of [
-  'BlogCommentsAvailability::Disabled',
-  'BlogCommentsAvailability::ReadOnly',
-  'BlogCommentsAvailability::Unavailable | BlogCommentsAvailability::Timeout',
-  'BlogCommentsAvailability::Unavailable if comments.cached_snapshot',
-  'BlogCommentsAvailability::Timeout if comments.cached_snapshot',
-  'Showing a recent cached snapshot.',
-  'Comments are temporarily unavailable. The article is still available.',
-  'Comments took too long to load. The article is still available.',
-]) requireMarker(storefrontUi, marker, storefrontUiPath);
+  'use BlogCommentsAvailability::*;',
+  'match (comments.availability, comments.cached_snapshot)',
+  '(Available | Disabled, _) => None',
+  '(ReadOnly, _) => Some(( "blog.comments.readOnly"',
+  '(Unavailable, true) => Some(( "blog.comments.unavailableCached"',
+  '(Unavailable, false) => Some(( "blog.comments.unavailable"',
+  '(Timeout, true) => Some(( "blog.comments.timeoutCached"',
+  '(Timeout, false) => Some(( "blog.comments.timeout"',
+  'show_section: comments.availability != Disabled',
+  'show_snapshot: !matches!(comments.availability, Disabled) && (!matches!(comments.availability, Unavailable | Timeout) || comments.cached_snapshot)',
+  'can_reply: comments.availability == Available',
+]) requireMarker(policyFunction, marker, storefrontPolicyPath);
+
+const commentsRenderer = storefrontCommentsList.replace(/\s+/g, ' ');
+for (const marker of [
+  'crate::core::discussion::comments_view(&comments, comments_page)',
+  'if !state.show_section',
+  'if !state.show_snapshot',
+  'state .degraded_message .map(|(key, fallback)| t(locale.as_deref(), key, fallback))',
+  'on_reply.filter(|_| state.can_reply)',
+  '{degraded_message.map(|message| view!',
+]) requireMarker(commentsRenderer, marker, storefrontCommentsListPath);
+requireMarker(storefrontDiscussion.replace(/\s+/g, ' '),
+  'crate::core::discussion::comments_view(&props.comments, props.comments_page).can_reply',
+  storefrontDiscussionPath);
+for (const [catalogPath, catalog] of storefrontCatalogs) {
+  for (const key of ['readOnly', 'unavailable', 'unavailableCached', 'timeout', 'timeoutCached']) {
+    const entry = new RegExp(`^blog-comments-${key} =([^\\r\\n]*)$`, 'm').exec(catalog);
+    if (!entry?.[1].trim()) {
+      failures.push(`${catalogPath}: missing nonempty Blog comments ${key} disclosure`);
+    }
+  }
+}
 
 for (const marker of [
   'CACHE_PREFIX: &str = "blog-public-comments-snapshot-v1"',

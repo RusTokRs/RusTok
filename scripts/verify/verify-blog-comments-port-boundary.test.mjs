@@ -44,6 +44,11 @@ const files = {
   storefrontNative: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   storefrontUi: 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
   storefrontCommentsList: 'crates/modules/rustok-blog/storefront/src/ui/comments_list.rs',
+  storefrontPolicy: 'crates/modules/rustok-blog/storefront/src/core/discussion.rs',
+  storefrontCore: 'crates/modules/rustok-blog/storefront/src/core.rs',
+  storefrontDiscussion: 'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
+  storefrontEnglish: 'crates/modules/rustok-blog/storefront/locales/en.ftl',
+  storefrontRussian: 'crates/modules/rustok-blog/storefront/locales/ru.ftl',
   adminNative: 'crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs',
   hostSnapshot: 'apps/server/src/services/blog_public_comments_snapshot.rs',
   hostComposition: 'apps/server/src/services/module_event_dispatcher.rs',
@@ -87,17 +92,27 @@ function run(root) {
   });
 }
 
+function cleanup(root) {
+  const resolved = path.resolve(root);
+  assert.equal(path.dirname(resolved), path.resolve(tmpdir()));
+  assert.ok(path.basename(resolved).startsWith('rustok-blog-comments-port-'));
+  rmSync(resolved, { recursive: true, force: true });
+}
+
 function rejects(mutator) {
   const root = fixture(mutator);
   try {
     return run(root);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 }
 
 function removeMarker(file, marker) {
-  return (root) => mutate(root, file, (source) => source.replaceAll(marker, ''));
+  return (root) => mutate(root, file, (source) => {
+    assert.ok(source.includes(marker), `negative fixture marker is missing: ${file}: ${marker}`);
+    return source.replaceAll(marker, '');
+  });
 }
 
 test('accepts the canonical Blog Comments consumer and cached snapshot boundary', () => {
@@ -106,7 +121,7 @@ test('accepts the canonical Blog Comments consumer and cached snapshot boundary'
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    cleanup(root);
   }
 });
 
@@ -155,11 +170,79 @@ test('rejects removal of the native snapshot store lookup', () => {
   assert.notEqual(result.status, 0);
 });
 
-test('rejects removal of stale snapshot UI disclosure', () => {
+test('rejects removal of cached outage disclosure from the actual Fluent catalog', () => {
   const result = rejects(
-    removeMarker(files.storefrontCommentsList, 'Showing a recent cached snapshot.'),
+    removeMarker(files.storefrontEnglish,
+      'blog-comments-unavailableCached = Comments are temporarily unavailable. Showing a recent cached snapshot.'),
   );
   assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /en\.ftl: missing nonempty Blog comments unavailableCached disclosure/);
+});
+
+test('rejects the removal of an outage catalog entry in the second locale', () => {
+  const result = rejects((root) => mutate(root, files.storefrontRussian, (source) =>
+    source.replace(/^blog-comments-timeoutCached = .+$/m, '')));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ru\.ftl: missing nonempty Blog comments timeoutCached disclosure/);
+});
+
+test('rejects a whitespace-only cached outage catalog disclosure', () => {
+  const result = rejects((root) => mutate(root, files.storefrontEnglish, (source) =>
+    source.replace(/^blog-comments-timeoutCached = .+$/m, 'blog-comments-timeoutCached =   ')));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /en\.ftl: missing nonempty Blog comments timeoutCached disclosure/);
+});
+
+test('rejects a pure availability policy that enables replies during an outage', () => {
+  const result = rejects((root) => mutate(root, files.storefrontPolicy, (source) => {
+    const marker = 'can_reply: comments.availability == Available';
+    assert.ok(source.includes(marker));
+    return source.replace(marker, 'can_reply: true');
+  }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /core\/discussion\.rs: missing can_reply/);
+});
+
+test('rejects policy drift that drops the cached-outage snapshot gate', () => {
+  const result = rejects(removeMarker(files.storefrontPolicy, '|| comments.cached_snapshot'));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /core\/discussion\.rs: missing show_snapshot/);
+});
+
+test('rejects removal of the disabled discussion section policy', () => {
+  const result = rejects(removeMarker(files.storefrontPolicy,
+    'show_section: comments.availability != Disabled'));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /core\/discussion\.rs: missing show_section/);
+});
+
+test('rejects detaching the pure discussion policy from the actual core module', () => {
+  const result = rejects(removeMarker(files.storefrontCore, 'pub mod discussion;'));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /core\.rs: missing pub mod discussion/);
+});
+
+test('rejects a comments renderer that exposes replies for cached read-only data', () => {
+  const result = rejects(removeMarker(files.storefrontCommentsList,
+    'on_reply.filter(|_| state.can_reply)'));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /comments_list\.rs: missing on_reply\.filter/);
+});
+
+test('rejects a comments renderer that stops localizing policy disclosures', () => {
+  const result = rejects(removeMarker(files.storefrontCommentsList,
+    '.map(|(key, fallback)| t(locale.as_deref(), key, fallback))'));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /comments_list\.rs: missing state \.degraded_message/);
+});
+
+test('rejects a composer that uses snapshot readability as write availability', () => {
+  const result = rejects((root) => mutate(root, files.storefrontDiscussion, (source) => {
+    assert.ok(source.includes(').can_reply'));
+    return source.replace(').can_reply', ').show_snapshot');
+  }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ui\/comment\.rs: missing crate::core::discussion::comments_view/);
 });
 
 test('rejects a host snapshot adapter that creates a Redis client directly', () => {
