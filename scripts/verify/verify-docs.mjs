@@ -46,6 +46,9 @@ const governedDocs = [
   'docs/architecture/diagram.md',
   'docs/modules/overview.md',
   'docs/verification/README.md',
+  'docs/operations/README.md',
+  'docs/operations/configuration-reference.md',
+  'docs/standards/docs-governance-ledger.md',
   'README.md',
 ];
 

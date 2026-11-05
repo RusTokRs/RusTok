@@ -1863,5 +1863,5 @@ FFA/FBA status without provider/transport/runtime evidence.
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
 - [AI capability documentation](../../crates/modules/rustok-ai/docs/README.md)
 - [Richtext implementation plan](./rich-text-implementation-plan.md)
-- [Page Builder implementation plan](./page-builder-implementation-plan.md)
+- [Page Builder backlog](./page-builder-backlog.md)
 - [Proposed translation boundary ADR](../../DECISIONS/2026-07-26-translation-control-plane-boundary.md)
