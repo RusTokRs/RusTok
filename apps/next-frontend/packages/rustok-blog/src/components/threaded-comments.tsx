@@ -1,7 +1,7 @@
 'use client';
 import { Button } from '@/shared/ui/base/button';
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useLocale, useTranslations } from '@rustok/next-fluent';
 import { useMemo } from 'react';
 import { Reply, User } from 'lucide-react';
 import type { BlogPublicComment } from '../api/posts';
@@ -23,10 +23,11 @@ function depthMarginClass(depth: number): string {
 
 export function ThreadedCommentsList({
   items,
-  locale = 'ru',
+  locale,
   onReply
 }: ThreadedCommentsProps) {
   const t = useTranslations('Blog');
+  const hostLocale = useLocale();
   const orderedComments = useMemo(() => orderThreadedComments(items), [items]);
 
   if (items.length === 0) {
@@ -52,7 +53,7 @@ export function ThreadedCommentsList({
                 : t('comments.user')}</span>
             </div>
             <time dateTime={comment.createdAt}>
-              {new Date(comment.createdAt).toLocaleDateString(locale, {
+              {new Date(comment.createdAt).toLocaleDateString(locale ?? hostLocale, {
                 year: 'numeric',
                 month: 'short',
                 day: 'numeric'

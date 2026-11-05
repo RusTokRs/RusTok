@@ -104,18 +104,18 @@ export async function BlogPostDetailView({
         {/* Article Header */}
         <header className="space-y-4 border-b border-border pb-6">
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-            {post.categoryName && (
+            {post.categoryName && (post.categoryId ? (
               <Link
-                href={
-                  post.categoryId
-                    ? `/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`
-                    : `/${locale}/blog?category=${encodeURIComponent(post.categoryName)}`
-                }
+                href={`/${locale}/blog?category=${encodeURIComponent(post.categoryId)}`}
                 className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-xs hover:bg-secondary/80 transition-colors"
               >
                 {post.categoryName}
               </Link>
-            )}
+            ) : (
+              <span className="rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground text-xs">
+                {post.categoryName}
+              </span>
+            ))}
 
             {post.authorProfile && (
               <AuthorMiniBadge author={post.authorProfile} locale={locale} />
@@ -238,6 +238,7 @@ export async function BlogPostDetailView({
             {tenantSlug && tenantId && (
               <div className="space-y-4">
                 <BlogCommentsSection
+                  key={`${post.id}:${post.effectiveLocale}`}
                   tenantId={tenantId}
                   tenantSlug={tenantSlug}
                   postId={post.id}

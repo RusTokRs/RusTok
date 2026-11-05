@@ -43,3 +43,11 @@ test('never hides cyclic or self-parented projections', () => {
   assert.deepEqual(new Set(ordered.map(({ comment: item }) => item.id)), new Set(['a', 'b', 'self']));
   assert.equal(ordered.length, 3);
 });
+
+test('deep owner threads stay visible without recursion and use bounded indentation', () => {
+  const items = Array.from({ length: 10000 }, (_, index) => comment(String(index), index === 0 ? null : String(index - 1)));
+  const ordered = orderThreadedComments(items);
+  assert.equal(ordered.length, items.length);
+  assert.equal(ordered[9999].comment.id, '9999');
+  assert.equal(ordered[9999].depth, 3);
+});

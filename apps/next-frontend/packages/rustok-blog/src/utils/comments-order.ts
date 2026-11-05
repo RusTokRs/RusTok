@@ -28,19 +28,19 @@ export function orderThreadedComments(items: BlogPublicComment[]): DisplayedComm
 
   const result: DisplayedComment[] = [];
   const seen = new Set<string>();
-  const visit = (comment: BlogPublicComment, depth: number) => {
-    if (seen.has(comment.id)) return;
+  const pending = roots.slice().reverse().map((comment) => ({ comment, depth: 0 }));
+  let remaining = 0;
+  // An explicit stack keeps deep projections out of the JavaScript call stack.
+  // Fetched-page order also determines cycle roots and bounded indentation.
+  while (pending.length > 0 || remaining < items.length) {
+    const { comment, depth } = pending.pop() ?? { comment: items[remaining++], depth: 0 };
+    if (seen.has(comment.id)) continue;
     seen.add(comment.id);
-    result.push({ comment, depth });
-    children.get(comment.id)?.forEach((reply) => visit(reply, depth + 1));
-  };
-  roots.forEach((root) => visit(root, 0));
-  // Defend against pre-existing cycles or malformed projections: any comment
-  // not yet reached (e.g. an orphan whose parent is missing from the page)
-  // still renders once, so nothing is silently dropped.
-  items
-    .filter((comment) => !seen.has(comment.id))
-    .forEach((comment) => visit(comment, 0));
+    result.push({ comment, depth: Math.min(depth, 3) });
+    const replies = children.get(comment.id) ?? [];
+    for (let index = replies.length - 1; index >= 0; index--) {
+      pending.push({ comment: replies[index], depth: depth + 1 });
+    }
+  }
   return result;
 }
-

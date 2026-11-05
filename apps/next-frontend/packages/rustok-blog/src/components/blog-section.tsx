@@ -58,6 +58,7 @@ export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }
           />
           {tenantSlug && (
             <BlogCommentsSection
+              key={`${selectedPost.id}:${selectedPost.effectiveLocale}`}
               tenantId={tenantId}
               tenantSlug={tenantSlug}
               postId={selectedPost.id}

@@ -30,7 +30,7 @@ export function BlogCommentsSection({
   contentLocale,
   comments,
   degradedMessage,
-  locale = 'ru'
+  locale
 }: BlogCommentsSectionProps) {
   const t = useTranslations('Blog');
   const router = useRouter();
