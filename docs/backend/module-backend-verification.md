@@ -134,6 +134,13 @@ nullable patches, predecessor CAS, tenant authority, lifecycle enforcement,
 derived-revision isolation, safe public errors, private persistence entities,
 owner-service integration seams, and FBA write command identity.
 
+The reference-contract command also runs its positive/negative fixture suite.
+It snapshots current owner sources and rejects deliberate CAS, Patch, locale,
+tenant, projection-revision, public-error, private-entity, listener-registration
+and unresolved-export regressions. Mutation admission is checked per resolver
+rather than satisfied by a marker in a different method. These remain source
+checks, not a Rust parser or proof of runtime authorization and readiness.
+
 A clean layout with a failing reference-contract guard is not a canonical module.
 
 ### Applicable reference evidence

@@ -50,11 +50,13 @@ certification wording below where it implies executed or complete readiness.
 | P2 | Blog UI still includes styled raw controls and a manual Category table | Adopt canonical primitives, forms and grid contracts. Keep command construction, validation and state transitions in pure core with meaningful tests. |
 | P2 | Next storefront mounts reaction reads/writes; Leptos storefront has no equivalent surface. Next category loading suppresses failures in `post-form.tsx` | Establish functional reaction parity and explicit category unavailable/error states, then verify both implementations' critical interactions. |
 | P2 | Next admin has no package-local test script. Next storefront currently has only utility tests. Default Rust builds omit runtime/SSR/hydration composition | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
-| P2 | `verify-module-reference-contract.mjs` is a Blog-specific source-marker guard with no negative fixture suite of its own | Keep source checks supplementary. Add executable invariant scenarios and focused negative fixtures before generalizing semantic acceptance to generated modules. |
 
 The database prerequisite, explicit-execution and PostgreSQL contention gates
 were closed by the configured scenarios recorded below. They remain regression
 requirements; SQLite does not stand in for PostgreSQL locking evidence.
+The semantic source guard now has its own fixture suite; it remains supplementary
+and Blog-specific. Generalizing semantic acceptance still requires real generated
+owner operations and their executable invariant scenarios.
 
 The complete applicable test families are owned by the
 [backend verification contract](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence).
@@ -170,6 +172,21 @@ The duplicate-delivery expectations now match the owner contract: the post lock
 serializes the receipt check, so both deliveries acknowledge one effect. Missing
 targets are terminal acknowledged deliveries, not permanently retryable failures;
 the regression also proves that an identical ID under another tenant is untouched.
+
+### Reference guard rejection evidence
+
+`npm run verify:module-reference-contract` now executes the live source guard and
+13 fixture tests. The fixtures snapshot current owner sources, accept the unchanged
+snapshot, and reject deliberate loss of Patch semantics, mandatory revisions,
+predecessor CAS, explicit write locales, tenant admission, projection/business
+revision separation, error redaction, persistence privacy, owner port privacy,
+projection listener composition and valid service exports.
+
+The tenant negative case exposed a false pass: removing admission from one
+mutation still passed while another method retained the marker. The guard now
+checks each rustfmt-shaped mutation method individually and rejects an absent
+mutation surface. These checks supplement the executed owner/database tests;
+they do not parse arbitrary Rust or certify all runtime security paths.
 
 ## Reference-v1 certification note
 

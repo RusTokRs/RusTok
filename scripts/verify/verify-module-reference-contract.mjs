@@ -3,7 +3,9 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hasBlogProjectionRegistration } from "./blog-comment-projection-wiring.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const failures = [];
 
 function read(path) {
@@ -497,6 +499,19 @@ requireAll("crates/modules/rustok-blog/src/graphql/mutation.rs", [
   "mutation_tenant_id(tenant, &auth, tenant_id)?",
   '"Blog mutations must use the current tenant"',
 ]);
+// A marker in another resolver cannot protect a mutation that bypassed tenant
+// admission. Check each rustfmt-shaped Object method as a source guard; actual
+// transport tests still own behavioral authority and error semantics.
+const mutationPath = "crates/modules/rustok-blog/src/graphql/mutation.rs";
+const mutationMethods = [...read(mutationPath).matchAll(
+  /^ {4}async fn\s+(\w+)\b([\s\S]*?)(?=^ {4}async fn\s+|^\})/gm,
+)];
+if (mutationMethods.length === 0) fail(`${mutationPath}: expected GraphQL mutation methods`);
+for (const method of mutationMethods) {
+  if (!method[2].includes("mutation_tenant_id(tenant, &auth, tenant_id)?")) {
+    fail(`${mutationPath}: mutation ${method[1]} must resolve current tenant authority`);
+  }
+}
 
 for (const path of rustFiles("crates/modules/rustok-blog/src/graphql")) {
   forbid(path, [
