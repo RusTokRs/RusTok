@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+pub(super) mod widget;
 
 #[cfg(feature = "ssr")]
 use std::sync::Arc;

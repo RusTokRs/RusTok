@@ -3,6 +3,9 @@ mod category_command;
 mod comment;
 mod post;
 mod tag;
+mod widget;
+
+pub use widget::{BlogWidgetCatalog, BlogWidgetInput, BlogWidgetIssue, BlogWidgetPayload, BlogWidgetPreview, BlogWidgetSchema, BlogWidgetValidation};
 
 pub use category::{
     CategoryListItem, CategoryListResponse, CategoryResponse, CreateCategoryInput,

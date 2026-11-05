@@ -216,6 +216,16 @@ fn owner_schema_for_component(component_type: &str) -> UiResult<BlogWidgetOwnerS
     owner_schema_ref(&editor.property_schema)
 }
 
+/// Validate identity against registered metadata. Endpoint fields are never fetched as URLs.
+pub(crate) fn resolve_widget_schema_reference(component_type: &str, reference: &Value) -> UiResult<BlogWidgetOwnerSchemaRef> {
+    let expected = owner_schema_for_component(component_type)?;
+    let actual = owner_schema_ref(reference)?;
+    if expected != actual {
+        return Err(UiError::AdapterRejected("Blog widget schema reference differs from its registered contract".into()));
+    }
+    Ok(actual)
+}
+
 fn ensure_blog_provider(provider: &str) -> UiResult<()> {
     if provider.trim() == BLOG_OWNER_PROVIDER {
         Ok(())
@@ -427,5 +437,19 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == "contribution_permission_missing")
         );
+    }
+
+    #[test]
+    fn owner_schema_reference_rejects_endpoint_and_identity_substitution() {
+        let descriptor = blog_widget_contribution();
+        let editor = &descriptor.property_editors[0];
+        assert!(resolve_widget_schema_reference(&editor.component_type, &editor.property_schema).is_ok());
+        let mut altered = editor.property_schema.clone();
+        altered["catalog_endpoint"] = "https://other-owner.invalid/catalog".into();
+        assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
+        altered = editor.property_schema.clone();
+        altered["schema_id"] = "blog.category_list.v1".into();
+        assert!(resolve_widget_schema_reference(&editor.component_type, &altered).is_err());
+        assert!(resolve_widget_schema_reference("other.post_list", &editor.property_schema).is_err());
     }
 }

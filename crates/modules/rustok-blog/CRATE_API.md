@@ -66,6 +66,40 @@ Primary entry points:
 - **`rustok-channel`**: Channel module binding and public post visibility allowlists.
 - **`rustok-outbox`**: Transactional outbox event publishing for post lifecycle changes.
 
+## Page Builder widget contract
+
+Blog owns the schema, normalization and read-only preview of three Fly widgets.
+The module manifest owns widget/contribution identities; `BlogWidgetService`
+owns their behavior. The editor persists configuration under `props`, never
+copied Blog records. All transports independently require an authenticated
+principal bound to the current tenant, the enabled Blog module, and
+`blog_posts:read`. Category preview additionally uses the canonical Category
+Read/List authority. Post preview retains PostService's editorial/public/Own
+scope and channel policy rather than elevating the caller.
+
+| Widget | Props | Preview |
+| --- | --- | --- |
+| `blog.post_list` | Optional `category_id`, `after`, `locale`; `per_page` defaults to 12 and is bounded to 1..100 | Deterministic owner post page with `next_cursor`, resolved locale and existing read policy. The cursor is bound to the default owner sort. |
+| `blog.post_detail` | Required non-nil `post_id`; optional `locale` | One owner post, including requested/effective/available locale provenance and canonical richtext projection. |
+| `blog.category_list` | `page` defaults to 1 and is bounded to 1..100000; `per_page` defaults to 20 and is bounded to 1..100; optional `locale` | A deterministic owner Category page with canonical Taxonomy projection. |
+
+Props must be an object. Unknown fields, including tenant/user/channel identity,
+are rejected. Optional empty UI strings are omitted; UUIDs, cursors and content
+locales use the canonical owner validators. All schemas explicitly forbid
+additional properties and use flat string/integer fields supported by Fly's
+live property editor. Caller-supplied schema references must exactly match the
+registered contribution, and are never fetched as URLs.
+
+`GET /api/blog/widgets/catalog`, `POST /api/blog/widgets/validate` and
+`POST /api/blog/widgets/preview` expose this contract; invalid props return a
+structured validation result and HTTP 422, without executing a data query.
+GraphQL exposes the same catalog/validation/preview through `blogWidgetCatalog`,
+`validateBlogWidget` and `previewBlogWidget`. Native admin server functions and
+the GraphQL facade call these same owner operations. Preview never mutates
+Blog state, revisions, events or the Fly draft. Only owner-validated normalized
+props are subsequently applied by the Page Builder through its ordinary Fly
+commands. Missing runtime and infrastructure errors use `BlogPublicError`.
+
 ## Category owner contract
 
 Category update prepares its canonical response in the same transaction as

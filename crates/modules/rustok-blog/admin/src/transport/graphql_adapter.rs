@@ -1,4 +1,5 @@
 use rustok_api::RichTextDocument;
+pub(super) mod widget;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 

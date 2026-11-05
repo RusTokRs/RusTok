@@ -13,6 +13,7 @@ use std::collections::HashSet;
 #[cfg(feature = "ssr")]
 use std::str::FromStr;
 use std::sync::Arc;
+mod blog;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct ForumPageBuilderPreviewPort;
@@ -291,13 +292,7 @@ fn ResolvedPageBuilderContributionScope(
         );
     }
     if enabled_modules.contains("blog") {
-        extensions.push(PageBuilderContributionHostExtension::new(
-            rustok_blog_admin::blog_contribution_manifest(),
-            |registries| {
-                rustok_blog_admin::register_blog_fly_widgets(registries)
-                    .map_err(|error| error.to_string())
-            },
-        ));
+        extensions.push(blog::extension(leptos_auth::use_auth()));
     }
 
     match PageBuilderContributionHostContext::new(extensions) {

@@ -115,6 +115,25 @@ type/dependency names.
 - Provider errors remain typed across the port boundary.
 - Degraded/fallback behavior is explicitly described and separately evidenced.
 
+### Owner-backed Page Builder contributions
+
+An advertised widget catalog, property validator or preview must execute through
+the domain owner's services. Contribution metadata is discovery, never runtime
+evidence. Widget props carry configuration only; tenant, principal, effective
+channel and default locale come from the canonical request context. Preview is
+read-only and retains each underlying resource's authorization and read policy.
+The Blog reference provides `blog.post_list`, `blog.post_detail` and
+`blog.category_list`; their concrete props and transport contract are owned by
+`crates/modules/rustok-blog/CRATE_API.md`.
+
+Property schema references are compared with registered contribution metadata,
+not followed as caller-supplied network locations. The owner publishes schemas
+supported by the live Fly property editor, validates before any data read, and
+returns normalized configuration for ordinary Fly document commands. Native and
+GraphQL UI adapters call the same owner implementation. Missing provider/module,
+tenant mismatch and permission denial fail explicitly; an empty successful
+preview must never mask missing runtime composition.
+
 ### Module-owned UI adapter profile
 
 Module-owned `admin/` and `storefront/` crates are adapters, not second domain

@@ -19,6 +19,8 @@ pub use core::page_builder::{
     register_blog_fly_widgets,
 };
 pub use ui::BlogAdmin;
+pub use model::{BlogWidgetIssue, BlogWidgetPreviewRequest, BlogWidgetPropertyRequest, BlogWidgetPropertySchema, BlogWidgetValidation, BlogWidgetValidationRequest};
+pub use transport::{load_blog_page_builder_widget_property_schema, preview_blog_page_builder_widget, validate_blog_page_builder_widget_properties};
 
 #[cfg(test)]
 mod tests;

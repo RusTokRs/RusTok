@@ -62,6 +62,8 @@ pub use services::{
     canonical_post_route, remove_post_tag_links_in_tx, replace_post_tag_links_in_tx,
 };
 pub use state_machine::BlogPostStatus;
+pub use dto::{BlogWidgetCatalog, BlogWidgetInput, BlogWidgetIssue, BlogWidgetPayload, BlogWidgetPreview, BlogWidgetSchema, BlogWidgetValidation};
+pub use services::BlogWidgetService;
 
 #[cfg(test)]
 mod tests;

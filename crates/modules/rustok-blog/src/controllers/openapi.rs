@@ -3,6 +3,9 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        crate::controllers::widgets::catalog,
+        crate::controllers::widgets::validate,
+        crate::controllers::widgets::preview,
         crate::controllers::posts::list_posts,
         crate::controllers::posts::get_post,
         crate::controllers::posts::create_post,
@@ -43,6 +46,13 @@ use utoipa::OpenApi;
     ),
     components(
         schemas(
+            crate::dto::BlogWidgetInput,
+            crate::dto::BlogWidgetCatalog,
+            crate::dto::BlogWidgetSchema,
+            crate::dto::BlogWidgetValidation,
+            crate::dto::BlogWidgetIssue,
+            crate::dto::BlogWidgetPreview,
+            crate::dto::BlogWidgetPayload,
             crate::dto::CreatePostInput,
             crate::dto::UpdatePostInput,
             crate::dto::ArchivePostInput,

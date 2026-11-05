@@ -1,5 +1,7 @@
 use rustok_api::{Patch, RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
+pub(crate) mod widget;
+pub use widget::{BlogWidgetIssue, BlogWidgetPreviewRequest, BlogWidgetPropertyRequest, BlogWidgetPropertySchema, BlogWidgetValidation, BlogWidgetValidationRequest};
 
 /// Sort column of the admin post list, spelled as the Blog GraphQL enum.
 ///

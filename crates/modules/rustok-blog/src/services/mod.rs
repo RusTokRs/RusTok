@@ -17,6 +17,9 @@ pub(crate) mod scheduler;
 pub mod search_projection;
 pub(crate) mod tag;
 mod taxonomy_translation_owner;
+mod widget;
+
+pub use widget::BlogWidgetService;
 
 pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;

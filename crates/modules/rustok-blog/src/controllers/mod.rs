@@ -37,6 +37,7 @@ pub mod openapi;
 pub mod posts;
 mod preview_token;
 pub mod tags;
+pub mod widgets;
 
 #[derive(Clone)]
 pub struct BlogHttpRuntime {
@@ -112,6 +113,9 @@ pub(super) async fn ensure_blog_module_enabled(
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
     let state = BlogHttpRuntime::from_host(runtime)?;
     let router = Router::new()
+        .route("/api/blog/widgets/catalog", get(widgets::catalog))
+        .route("/api/blog/widgets/validate", post(widgets::validate))
+        .route("/api/blog/widgets/preview", post(widgets::preview))
         .route(
             "/api/blog/posts",
             get(posts::list_posts).post(posts::create_post),

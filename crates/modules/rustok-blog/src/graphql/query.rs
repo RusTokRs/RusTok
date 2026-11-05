@@ -20,12 +20,37 @@ use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
 
 const MODULE_SLUG: &str = "blog";
+mod widgets;
 
 #[derive(Default)]
 pub struct BlogQuery;
 
 #[Object]
 impl BlogQuery {
+    async fn blog_widget_catalog(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<async_graphql::Json<crate::BlogWidgetCatalog>> {
+        widgets::catalog(ctx).await
+    }
+
+    async fn validate_blog_widget(
+        &self,
+        ctx: &Context<'_>,
+        widget_type: String,
+        props: async_graphql::Json<serde_json::Value>,
+    ) -> Result<async_graphql::Json<crate::BlogWidgetValidation>> {
+        widgets::validate(ctx, widget_type, props.0).await
+    }
+
+    async fn preview_blog_widget(
+        &self,
+        ctx: &Context<'_>,
+        widget_type: String,
+        props: async_graphql::Json<serde_json::Value>,
+    ) -> Result<async_graphql::Json<crate::BlogWidgetPreview>> {
+        widgets::preview(ctx, widget_type, props.0).await
+    }
     async fn post(
         &self,
         ctx: &Context<'_>,
