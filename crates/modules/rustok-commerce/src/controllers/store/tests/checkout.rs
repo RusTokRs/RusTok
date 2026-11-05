@@ -19,7 +19,7 @@ async fn store_payment_collection_transport_reuses_active_collection_and_preserv
     };
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -264,7 +264,7 @@ async fn store_checkout_transport_end_to_end_preserves_updated_cart_context() {
         .expect("shipping option should be created");
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -593,7 +593,7 @@ async fn store_checkout_transport_completes_guest_cart_with_existing_payment_and
     };
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -972,7 +972,7 @@ async fn store_checkout_transport_rejects_payment_collection_for_completed_cart(
     let actor_id = Uuid::new_v4();
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -1068,7 +1068,7 @@ async fn store_checkout_transport_carries_cart_channel_snapshot_into_order() {
     };
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -1266,7 +1266,7 @@ async fn store_order_transport_returns_customer_owned_order_after_checkout() {
         create_customer_for_user(&db, tenant_id, actor_id, "customer@example.com").await;
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -1503,7 +1503,7 @@ async fn store_order_transport_rejects_order_for_another_customer() {
     let actor_id = owner_user_id;
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await

@@ -181,6 +181,11 @@ async fn set_stock_location_channel_visibility(
     .expect("stock location visibility should be updated");
 }
 
+pub(crate) fn test_catalog_service(db: sea_orm::DatabaseConnection) -> CatalogService {
+    CatalogService::new(db.clone(), mock_transactional_event_bus())
+        .with_pricing_port(rustok_pricing::in_process_product_pricing_port(db))
+}
+
 pub(crate) fn storefront_product_input() -> CreateProductInput {
     CreateProductInput {
         attribute_values: Default::default(),

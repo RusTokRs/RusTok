@@ -4,8 +4,7 @@ use rustok_inventory::{
 };
 use rustok_pricing::ResolveProductPriceRequest;
 use rustok_product::{
-    ProductCatalogReadPort, ProductFulfillmentRequirement,
-    StorefrontVariantProductProjectionRequest,
+    ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest,
 };
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;

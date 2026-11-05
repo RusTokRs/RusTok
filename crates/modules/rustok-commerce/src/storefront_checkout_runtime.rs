@@ -590,13 +590,6 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
-fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
 fn runtime_error(error: impl std::fmt::Debug) -> StorefrontCheckoutRuntimeError {
     StorefrontCheckoutRuntimeError::new(format!("{error:?}"))
 }

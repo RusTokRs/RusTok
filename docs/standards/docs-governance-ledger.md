@@ -44,8 +44,8 @@ When triggered, the agent:
 
 - **Status:** IN PROGRESS
 - **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
-- **Active Phase:** [DAR-02: Architecture Core & Target Topology Actualization](#dar-02-architecture-core-target-topology-actualization)
-- **Completed Phases (Cycle 2):** 1/16 (DAR-01 PASS — Root Slop Purge Complete)
+- **Active Phase:** [DAR-03: Engineering Standards & Policies Reconciliation](#dar-03-engineering-standards-policies-reconciliation)
+- **Completed Phases (Cycle 2):** 2/16 (DAR-01, DAR-02 PASS)
 - **Active Branch:** `main`
 
 ---
@@ -87,7 +87,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | Status | Target Documentation Surface | Category | Files | LOC | Last Audit | Discrepancies & Actualization Action |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- |
 | [x] | **[Root Platform Entrypoints & Slop Purge](../../README.md)** | `root` | 7 | 1,480 | 2026-11-06 | Cleaned: purged 50 obsolete/duplicate root files (17 revisions scratchpads, 3 demo content notes, 15 AI diaries). Preserved 7 canonical platform contracts (README, README.ru, ARCHITECTURE, AGENTS, CONTRIBUTING, CHANGELOG, COMMERCIAL-LICENSE). Zero root slop. |
-| [ ] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 23 | 5,471 | 2026-11-06 | Reconcile system overview, principles, routing, settings, and distribution profiles against current runtime wiring and FBA/FFA reality. |
+| [x] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 22 | 5,273 | 2026-11-06 | Reconciled system overview, routing, settings, and distribution profiles. Eliminated displaced ADR subfolder (relocated newsletter ADR to canonical DECISIONS/), purged obsolete multilingual transport drift notes. Diagram & verify-docs: 100% PASS. |
 | [ ] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,616 | 2026-11-06 | Reconcile coding standards, transactional outbox, distributed tracing, OpenTelemetry, error models, and security policies with code implementations. |
 | [ ] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 8 | 609 | 2026-11-06 | Consolidate legacy `ops/`, `RUNBOOKS/`, `SPECS/` into `docs/operations/`. Reconcile `configuration-reference.md` with current YAML/Rust configs. |
 | [ ] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Consolidate legacy root `UI/` and `packages/` into `docs/UI/` and `crates/ui/`. Reconcile Leptos FFA and Next.js frontend parity specs. |
@@ -131,13 +131,14 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ### DAR-02: Architecture Core & Target Topology Actualization
 
-**Scope:** `docs/architecture/*` (23 files, 5,471 LOC).
-**Goal:** Align architecture specs with current code reality (FBA, FFA, SeaORM entities, multi-tenancy, and transactional outbox).
+**Scope:** `docs/architecture/*` (22 files, 5,273 LOC).
+**Goal:** Align architecture specs with current code reality (FBA, FFA, SeaORM entities, multi-tenancy, and transactional outbox). Eliminate displaced ADR directories and obsolete transport drift notes.
 
-- [ ] **DAR-02.1:** Audit `docs/architecture/overview.md` and `docs/architecture/principles.md` against current modular crate structure.
-- [ ] **DAR-02.2:** Verify routing, settings, and distribution profiles documentation against `crates/libs/rustok-runtime` and `apps/server`.
-- [ ] **DAR-02.3:** Synchronize Mermaid architecture diagrams in `docs/architecture/diagram.md` with actual dependency graph.
-- [ ] **DAR-02.4:** Run `npm run verify:docs` stage [2/6] to ensure 100% diagram and topology validation.
+- [x] **DAR-02.1: Audit Central Architecture Maps.** Verified `docs/architecture/overview.md` and `docs/architecture/principles.md` against current modular crate structure, `PortContext` zero-trust boundaries, agent permission intersection, and dual-database topology.
+- [x] **DAR-02.2: Verify Routing, Settings & Profiles.** Verified routing boundaries (`routing.md`), settings hierarchy (`settings.md`), and distribution profiles (`distribution-profiles.md`) against `crates/libs/rustok-runtime` and `apps/server`.
+- [x] **DAR-02.3: Relocate Displaced ADR to Canonical Registry.** Identified and relocated misplaced `docs/architecture/decisions/2026-10-09-newsletter-module-architecture.md` into canonical `DECISIONS/`, brought into full 13-heading structural compliance, and registered in `DECISIONS/README.md`. Removed obsolete `docs/architecture/decisions/` directory.
+- [x] **DAR-02.4: Purge Obsolete Transport Drift Notes.** Deleted obsolete `docs/architecture/database-multilingual-transport-drift.md` (resolved July 2026 notes) in accordance with the strict no-archives/no-histories policy.
+- [x] **DAR-02.5: Synchronize Diagrams and Run Verification.** Verified Mermaid architecture diagrams in `docs/architecture/diagram.md` against Cargo workspace topology. Ran `npm run verify:docs` (all 6 stages 100% PASS) and `npm run verify:adrs` (177 decisions 100% PASS).
 
 ---
 
