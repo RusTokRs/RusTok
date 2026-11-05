@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`dto/settings.rs`, `rustok-module.toml`, `README.md`), `apps/next-admin` (`module-settings-fields/forum.tsx`, which drops the subscription toggle and the anonymous-reading toggle, neither of which was read)
 - Extends: `DECISIONS/2026-10-09-forum-soft-default-settings.md`, `DECISIONS/2026-10-09-forum-remove-edit-grace-period-setting.md`
 - Supersedes: None

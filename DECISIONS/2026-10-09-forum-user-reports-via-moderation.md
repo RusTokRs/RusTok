@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`moderation_report.rs` port contract, `services/moderation_report.rs` service, `graphql/mutation.rs`, `graphql/runtime_data.rs`), `rustok-moderation-api` (subject and reason vocabulary, unchanged), `rustok-moderation` (report owner, unchanged), `apps/server` (`services/forum_moderation_report.rs` host adapter, `services/mod.rs` composition, `graphql/forum_principal_security.rs` policy)
 - Extends: `DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`, `DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`
 - Supersedes: None

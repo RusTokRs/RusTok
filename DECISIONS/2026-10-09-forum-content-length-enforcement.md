@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`services/content_limits.rs`, topic create, topic translation upsert, reply create and update)
 - Extends: `DECISIONS/2026-10-09-forum-soft-default-settings.md`
 - Supersedes: None

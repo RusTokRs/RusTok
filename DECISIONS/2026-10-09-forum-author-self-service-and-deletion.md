@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-core` (`rbac.rs`: Customer permissions and scope mapping), `rustok-forum` (`services/rbac.rs`, `services/topic_owner.rs`, `services/reply_owner.rs`, `dto/settings.rs`, `rustok-module.toml`, `README.md`), `apps/next-admin` (`module-settings-fields/forum.tsx`)
 - Extends: `DECISIONS/2026-10-09-forum-wire-author-edit-window-and-locked-list-settings.md`, `DECISIONS/2026-10-09-forum-vote-policy-settings.md`
 - Supersedes: None

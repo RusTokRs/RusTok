@@ -2,7 +2,7 @@
 
 - Date: 2026-09-18
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform architecture / module owners
 - Extends: [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md)
 - Supersedes: None

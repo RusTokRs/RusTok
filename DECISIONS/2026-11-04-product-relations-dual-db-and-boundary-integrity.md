@@ -2,7 +2,7 @@
 
 - Date: 2026-11-04
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-product-relations, rustok-product
 - Extends: [2026-03-25-commerce-module-split-product-pricing-inventory.md](./2026-03-25-commerce-module-split-product-pricing-inventory.md)
 - Supersedes: None

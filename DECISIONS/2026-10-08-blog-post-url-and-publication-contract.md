@@ -2,7 +2,7 @@
 
 - Date: 2026-10-08
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-blog` (post lifecycle, slug column, featured image contract); `rustok-content` (canonical URL and alias registry, including the Blog post route); `apps/next-frontend` storefront consumes the contract
 - Extends: `DECISIONS/2026-03-28-multilingual-content-contract.md`
 - Supersedes: None

@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`services/edit_window.rs`, topic and reply update paths in `services/topic_inline.rs` and `services/reply_inline.rs`, storefront list in `services/topic_visibility_list.rs`, `rustok-module.toml`, `README.md`)
 - Extends: `DECISIONS/2026-10-09-forum-remove-vote-undo-window-setting.md`, `DECISIONS/2026-10-09-forum-soft-default-settings.md`
 - Supersedes: None

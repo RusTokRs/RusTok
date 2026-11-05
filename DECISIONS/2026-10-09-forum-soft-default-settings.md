@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`ForumModuleSettings` defaults, `rustok-module.toml`); `apps/next-admin` (Forum settings fields in `module-settings-fields/forum.tsx`)
 - Extends: `DECISIONS/2026-10-09-forum-vote-policy-settings.md`
 - Supersedes: None

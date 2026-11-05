@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`ForumWidgetPreviewService`, topic widget list, controllers, admin native transport); `rustok-api` (`PortContext`, `ForumTopicReadOperation`)
 - Extends: `DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`
 - Supersedes: None

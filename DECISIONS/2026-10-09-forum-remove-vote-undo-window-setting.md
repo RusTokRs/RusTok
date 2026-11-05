@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`dto/settings.rs`, `rustok-module.toml`, `README.md`); `apps/next-admin` is not changed because the Forum admin form does not expose this field
 - Extends: `DECISIONS/2026-10-09-forum-vote-policy-settings.md`, `DECISIONS/2026-10-09-forum-soft-default-settings.md`
 - Supersedes: None

@@ -2,7 +2,7 @@
 
 - Date: 2026-09-18
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform architecture / module owners
 - Extends: [Categorized workspace layout for crates](./2026-09-06-crates-workspace-layout-split.md)
 - Supersedes: None

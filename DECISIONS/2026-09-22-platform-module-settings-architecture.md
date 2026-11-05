@@ -2,7 +2,7 @@
 
 - Date: 2026-09-22
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform-architecture, rustok-modules, configuration-owning modules
 - Extends: 2026-08-20-static-module-lifecycle-revision, 2026-08-06-module-release-rollback-safety, 2026-04-05-multilingual-db-storage-parallel-localized-records
 - Supersedes: None
