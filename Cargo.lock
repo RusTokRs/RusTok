@@ -16917,7 +16917,6 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
- "rustok-pricing-persistence",
  "rustok-product",
  "rustok-region",
  "rustok-translation-targets",

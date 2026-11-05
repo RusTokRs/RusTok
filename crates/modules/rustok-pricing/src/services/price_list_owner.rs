@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use rustok_api::TenantLocale;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::generate_id;
-use rustok_pricing_persistence::entities::{price_list, price_list_translation};
+use crate::entities::{price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set, TransactionTrait,
@@ -12,7 +12,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::translation_changes::{
+use crate::integrations::{
     PriceListTranslationChangeLifecycle, record_price_list_translation_change_in_tx,
 };
 

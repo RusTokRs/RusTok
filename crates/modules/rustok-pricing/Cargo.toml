@@ -24,7 +24,6 @@ rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
 rustok-product.workspace = true
 rustok-region.workspace = true
-rustok-pricing-persistence.workspace = true
 rustok-translation-targets.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -24,7 +24,7 @@ use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
 mod entities {
     pub use rustok_commerce_foundation::entities::product_variant;
-    pub use rustok_pricing_persistence::entities::{price, price_list, price_list_translation};
+    pub(crate) use crate::entities::{price, price_list, price_list_translation};
 }
 
 mod resolution;
@@ -1041,9 +1041,9 @@ impl PricingService {
                 price_active.amount = Set(amount);
                 price_active.compare_at_amount = Set(compare_at_amount);
                 price_active.legacy_amount =
-                    Set(rustok_pricing_persistence::legacy_amount_units(amount));
+                    Set(crate::services::bootstrap::legacy_amount_units(amount));
                 price_active.legacy_compare_at_amount = Set(
-                    compare_at_amount.and_then(rustok_pricing_persistence::legacy_amount_units)
+                    compare_at_amount.and_then(crate::services::bootstrap::legacy_amount_units)
                 );
                 price_active.price_list_id = Set(price_list_id);
                 price_active.channel_id = Set(channel_id);
@@ -1063,9 +1063,9 @@ impl PricingService {
                     region_id: Set(None),
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
-                    legacy_amount: Set(rustok_pricing_persistence::legacy_amount_units(amount)),
+                    legacy_amount: Set(crate::services::bootstrap::legacy_amount_units(amount)),
                     legacy_compare_at_amount: Set(
-                        compare_at_amount.and_then(rustok_pricing_persistence::legacy_amount_units)
+                        compare_at_amount.and_then(crate::services::bootstrap::legacy_amount_units)
                     ),
                     min_quantity: Set(min_quantity),
                     max_quantity: Set(max_quantity),
@@ -1176,11 +1176,11 @@ impl PricingService {
                     price_active.channel_slug =
                         Set(normalize_channel_slug(price_input.channel_slug.as_deref()));
                     price_active.legacy_amount = Set(
-                        rustok_pricing_persistence::legacy_amount_units(price_input.amount),
+                        crate::services::bootstrap::legacy_amount_units(price_input.amount),
                     );
                     price_active.legacy_compare_at_amount = Set(price_input
                         .compare_at_amount
-                        .and_then(rustok_pricing_persistence::legacy_amount_units));
+                        .and_then(crate::services::bootstrap::legacy_amount_units));
                     price_active.update(&txn).await?;
                 }
                 None => {
@@ -1196,12 +1196,12 @@ impl PricingService {
                         region_id: Set(None),
                         amount: Set(price_input.amount),
                         compare_at_amount: Set(price_input.compare_at_amount),
-                        legacy_amount: Set(rustok_pricing_persistence::legacy_amount_units(
+                        legacy_amount: Set(crate::services::bootstrap::legacy_amount_units(
                             price_input.amount,
                         )),
                         legacy_compare_at_amount: Set(price_input
                             .compare_at_amount
-                            .and_then(rustok_pricing_persistence::legacy_amount_units)),
+                            .and_then(crate::services::bootstrap::legacy_amount_units)),
                         min_quantity: Set(None),
                         max_quantity: Set(None),
                     };
@@ -1977,7 +1977,7 @@ impl PricingService {
         } else {
             entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.is_in(variant_ids))
-                .filter(rustok_pricing_persistence::catalog_base_scope())
+                .filter(crate::services::bootstrap::catalog_base_scope())
                 .limit((MAX_PUBLIC_PRICE_CATALOG_ROWS + 1) as u64)
                 .all(&self.db)
                 .await

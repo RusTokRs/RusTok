@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use rustok_product::ports::pricing::{
     CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
 };
-use rustok_product::dto::StorefrontProductListPrice;
+use rustok_product::StorefrontProductListPrice;
 use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -74,14 +74,14 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
                     .filter(catalog_base_scope())
-                    .all(*c)
+                    .all(c)
                     .await?
             }
             PricingConnection::Transaction(tx) => {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
                     .filter(catalog_base_scope())
-                    .all(*tx)
+                    .all(tx)
                     .await?
             }
         };
@@ -114,13 +114,13 @@ impl ProductPricingPort for PricingProductPricingPortAdapter {
             PricingConnection::Connection(c) => {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
-                    .all(*c)
+                    .all(c)
                     .await?
             }
             PricingConnection::Transaction(tx) => {
                 price::Entity::find()
                     .filter(price::Column::VariantId.is_in(variant_ids.iter().copied()))
-                    .all(*tx)
+                    .all(tx)
                     .await?
             }
         };

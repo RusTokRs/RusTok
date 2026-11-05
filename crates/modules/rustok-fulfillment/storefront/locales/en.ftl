@@ -9,3 +9,5 @@ fulfillment-shipping-select = Select
 fulfillment-shipping-selected = Selected
 fulfillment-shipping-subtitle = Choose shipping options for each delivery group.
 fulfillment-shipping-title = Delivery options
+
+fulfillment-shipping-handoff = Shipping options and fulfillment details stay in fulfillment-owned UI.

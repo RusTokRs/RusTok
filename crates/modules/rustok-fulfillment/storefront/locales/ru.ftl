@@ -9,3 +9,5 @@ fulfillment-shipping-select = Выбрать
 fulfillment-shipping-selected = Выбрано
 fulfillment-shipping-subtitle = Выберите вариант доставки для каждой группы отправки.
 fulfillment-shipping-title = Варианты доставки
+
+fulfillment-shipping-handoff = Параметры доставки и детали выполнения заказа остаются в интерфейсе модуля доставки.

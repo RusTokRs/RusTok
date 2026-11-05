@@ -18,7 +18,7 @@ use rustok_core::{
     error::{ErrorKind, RichError},
     money,
 };
-use rustok_pricing_persistence::entities::{price, price_list};
+use crate::entities::{price, price_list};
 
 use super::{
     PriceListRule, PriceListRuleKind, PriceResolutionContext, PriceResolutionSource, ResolvedPrice,

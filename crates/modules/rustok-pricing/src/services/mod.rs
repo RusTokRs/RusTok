@@ -1,7 +1,10 @@
+pub mod bootstrap;
 mod price_list_owner;
 pub mod pricing;
 pub mod translation;
 mod translation_progress;
+
+pub use bootstrap::*;
 
 pub use price_list_owner::{
     CreatePriceListOwnerInput, PriceListOwnerService, PriceListOwnerSnapshot,

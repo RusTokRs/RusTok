@@ -89,7 +89,6 @@ struct AdminNestedPageContract {
 #[derive(Debug)]
 struct AdminUiEntry {
     slug: String,
-    name: String,
     crate_ident: String,
     component_name: String,
     route_segment: String,
@@ -268,7 +267,6 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
                 })
                 .collect(),
             slug,
-            name,
             crate_ident: leptos_crate.replace('-', "_"),
         });
     }

@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Write as _};
 use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_core::generate_id;
 use rustok_outbox::idempotency;
-use rustok_pricing_persistence::entities::{price_list, price_list_translation};
+use crate::entities::{price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::translation_changes::{
+use crate::integrations::{
     PriceListTranslationChangeLifecycle, record_price_list_translation_change_in_tx,
 };
 
