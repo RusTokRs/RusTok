@@ -1,5 +1,20 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-05 `rustok-comments` audit — 2026-11-05 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across all source files in `crates/modules/rustok-comments` (`src/lib.rs`, `src/dto.rs`, `src/error.rs`, `src/module.rs`, `src/ports.rs`, `src/public_read.rs`, `src/remote.rs`, `src/richtext.rs`, `src/services.rs`, `src/target_lifecycle.rs`, `src/tcp_auth.rs`, `src/tcp_channel.rs`, `src/tcp_delegation.rs`, `src/tcp_delegation_reload.rs`, `src/tcp_delegation_schedule.rs`, `src/tcp_protocol.rs`, `src/tcp_server.rs`, `src/tcp_transport.rs`, `src/tcp_transport_reload.rs`, `src/entities/*.rs`, `src/migrations/*.rs`, `src/contract_tests.rs`, `tests/*.rs`).
+- **Multi-Tenancy Isolation Invariant**: Remediated tenant filtering in `comment::ActiveModelBehavior::before_save` and `CommentsService::next_position_in_tx` by explicitly binding `.filter(Column::TenantId.eq(tenant_id))` to guarantee comment sequence numbers are strictly tenant-isolated without cross-tenant interference.
+- **Informative Debug Formatting**: Implemented `std::fmt::Debug` for `CommentsService`, `RemoteCommentsThreadPort`, `InProcessCommentsThreadProvider`, `CommentTargetDeletionHandler`, and `TcpJsonCommentsServerAdapter`.
+- **Contract Verification & Zero Defects**: Added contract unit tests verifying debug implementations, error invariant handling, and trait metadata conformance.
+- **Verification Evidence**:
+  - `cargo test -p rustok-comments --all-features`: 58/58 tests passed (0 failures).
+  - `cargo clippy -p rustok-comments --all-targets --all-features`: 0 warnings.
+  - `node scripts/verify/verify-comments-fba.mjs`: PASSED.
+  - `node scripts/verify/verify-comments-port-boundary.mjs`: PASSED.
+  - `node scripts/verify/verify-comments-thread-write-invariants.mjs`: PASSED.
+  - `node scripts/verify/verify-comments-admin-boundary.mjs`: PASSED.
+  - `python scripts/verify/verify-remediation-gate.py`: ALL GATES PASSED.
+
 ## FS-01 `apps/server` audit — 2026-11-01 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically verified the 6 Universal Logic Dimensions across `apps/server` host composition root.
@@ -845,7 +860,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,892 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 12,794 | 2026-11-04 02:50 | Round 2: Exhaustively audited all source files across src/ (lib, error, module, policy, ports, resolution, services, target_type, entities, migrations, contract_tests). Derived Debug for ChannelModule, ChannelResolver, ChannelService. Added PartialEq/Eq to all DTOs and projections. Eliminated anti-swallowing error suppression in SQLite index revision migration. Added strict bounds/precondition validation rejecting nil UUIDs and empty slugs/names. Hardened ChannelReadPort with uniform Ok(None) on missing or foreign channel IDs and transactional primary target demotion/updates. Added comprehensive contract and port integration tests; 56 tests passed; clippy clean on all targets; gatekeeper approved; zero defects. |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,527 | 2026-11-04 03:50 | Round 2: Exhaustively audited all 15 source and contract files across crates/modules/rustok-channel/admin (lib, core, model, transport, ui, i18n, contract_tests, tenant_scope_contract). Added PartialEq/Eq to all DTOs and payloads in model.rs and ApiError. Fixed hardcoded Postgres SQL dialect in channel_bind_oauth_app_native to properly support Postgres, MySQL, and SQLite. Added fallback to slug for OAuth app translations to avoid failing bootstrap when translations for requested locale are missing. Updated CRATE_API.md to reflect canonical public API and types. Added FFA core boundary invariant tests locking 0 framework imports in core.rs, ApiError traits, serde roundtrips, and reorder bounds tests; 16 tests passed (14 unit + 2 integration); clippy clean with -D warnings on default and ssr features; zero defects. |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,029 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,194 | 2026-11-05 18:10 | Round 2: Exhaustively audited all source files across src/ (lib, dto, error, module, ports, public_read, remote, richtext, services, target_lifecycle, tcp_*, entities, migrations, contract_tests) and tests. Remediated multi-tenancy tenant isolation by adding missing tenant_id filtering in comment position allocation and next_position_in_tx. Implemented Debug for CommentsService, RemoteCommentsThreadPort, InProcessCommentsThreadProvider, CommentTargetDeletionHandler, and TcpJsonCommentsServerAdapter. Added comprehensive contract tests for debug formatting and provider invariants; 58 tests passed across all feature profiles; clippy clean on all targets; all verification scripts passed; gatekeeper approved; zero defects. |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,689 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 264 | None |  |
 | [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,251 | None |  |

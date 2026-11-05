@@ -88,6 +88,7 @@ impl ActiveModelBehavior for ActiveModel {
         }
 
         let next_position = Entity::find()
+            .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::ThreadId.eq(thread_id))
             .order_by_desc(Column::Position)
             .one(db)

@@ -112,6 +112,12 @@ pub struct RemoteCommentsThreadPort {
     transport: Arc<dyn CommentsThreadTransport>,
 }
 
+impl std::fmt::Debug for RemoteCommentsThreadPort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteCommentsThreadPort").finish_non_exhaustive()
+    }
+}
+
 impl RemoteCommentsThreadPort {
     pub fn new(transport: Arc<dyn CommentsThreadTransport>) -> Self {
         Self { transport }

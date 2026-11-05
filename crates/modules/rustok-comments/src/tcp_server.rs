@@ -140,6 +140,14 @@ pub struct TcpJsonCommentsServerAdapter {
     max_frame_bytes: usize,
 }
 
+impl std::fmt::Debug for TcpJsonCommentsServerAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TcpJsonCommentsServerAdapter")
+            .field("max_frame_bytes", &self.max_frame_bytes)
+            .finish_non_exhaustive()
+    }
+}
+
 impl TcpJsonCommentsServerAdapter {
     pub fn new(
         provider: Arc<dyn CommentsThreadPort>,

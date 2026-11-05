@@ -9,6 +9,12 @@ pub(crate) struct CommentTargetDeletionHandler {
     db: DatabaseConnection,
 }
 
+impl std::fmt::Debug for CommentTargetDeletionHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommentTargetDeletionHandler").finish_non_exhaustive()
+    }
+}
+
 impl CommentTargetDeletionHandler {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
         Self { db }

@@ -27,6 +27,14 @@ pub struct CommentsService {
     event_bus: Option<TransactionalEventBus>,
 }
 
+impl std::fmt::Debug for CommentsService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommentsService")
+            .field("has_event_bus", &self.event_bus.is_some())
+            .finish()
+    }
+}
+
 struct CommentEventContext {
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
@@ -241,7 +249,7 @@ impl CommentsService {
         }
 
         let now = Utc::now();
-        let position = self.next_position_in_tx(txn, thread.id).await?;
+        let position = self.next_position_in_tx(txn, tenant_id, thread.id).await?;
         let comment_id = Uuid::new_v4();
         let locale = normalize_locale(&input.locale)?;
 
@@ -1210,9 +1218,11 @@ impl CommentsService {
     async fn next_position_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         thread_id: Uuid,
     ) -> CommentsResult<i64> {
         match comment::Entity::find()
+            .filter(comment::Column::TenantId.eq(tenant_id))
             .filter(comment::Column::ThreadId.eq(thread_id))
             .order_by_desc(comment::Column::Position)
             .one(txn)

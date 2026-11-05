@@ -88,6 +88,12 @@ mod in_process {
         service: CommentsService,
     }
 
+    impl std::fmt::Debug for InProcessCommentsThreadProvider {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("InProcessCommentsThreadProvider").finish_non_exhaustive()
+        }
+    }
+
     /// Builds the owner-managed in-process comments thread provider for consumers.
     pub fn in_process_comments_thread_port(
         db: DatabaseConnection,
@@ -865,6 +871,18 @@ mod in_process {
 
             assert_eq!(first, retry);
             assert_ne!(first, other);
+        }
+
+        #[tokio::test]
+        async fn in_process_provider_debug_formatting() {
+            use sea_orm::Database;
+            let db = Database::connect("sqlite::memory:").await.unwrap();
+            let provider = InProcessCommentsThreadProvider {
+                service: CommentsService::new(db.clone()),
+                db,
+            };
+            let debug = format!("{provider:?}");
+            assert!(debug.contains("InProcessCommentsThreadProvider"));
         }
     }
 }
