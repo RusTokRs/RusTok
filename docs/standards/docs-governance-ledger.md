@@ -44,8 +44,8 @@ When triggered, the agent:
 
 - **Status:** IN PROGRESS
 - **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
-- **Active Phase:** [DAR-03: Engineering Standards & Policies Reconciliation](#dar-03-engineering-standards-policies-reconciliation)
-- **Completed Phases (Cycle 2):** 2/16 (DAR-01, DAR-02 PASS)
+- **Active Phase:** [DAR-04: Operations, Deployment & Runbooks Unification](#dar-04-operations-deployment-runbooks-unification)
+- **Completed Phases (Cycle 2):** 3/16 (DAR-01, DAR-02, DAR-03 PASS)
 - **Active Branch:** `main`
 
 ---
@@ -88,7 +88,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- |
 | [x] | **[Root Platform Entrypoints & Slop Purge](../../README.md)** | `root` | 7 | 1,480 | 2026-11-06 | Cleaned: purged 50 obsolete/duplicate root files (17 revisions scratchpads, 3 demo content notes, 15 AI diaries). Preserved 7 canonical platform contracts (README, README.ru, ARCHITECTURE, AGENTS, CONTRIBUTING, CHANGELOG, COMMERCIAL-LICENSE). Zero root slop. |
 | [x] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 22 | 5,273 | 2026-11-06 | Reconciled system overview, routing, settings, and distribution profiles. Eliminated displaced ADR subfolder (relocated newsletter ADR to canonical DECISIONS/), purged obsolete multilingual transport drift notes. Diagram & verify-docs: 100% PASS. |
-| [ ] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,616 | 2026-11-06 | Reconcile coding standards, transactional outbox, distributed tracing, OpenTelemetry, error models, and security policies with code implementations. |
+| [x] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,617 | 2026-11-06 | Reconciled coding standards, error frameworks (rustok-core error & typed_error), transactional outbox, distributed tracing, and security policies. Zero broken links across 15 documents. |
 | [ ] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 8 | 609 | 2026-11-06 | Consolidate legacy `ops/`, `RUNBOOKS/`, `SPECS/` into `docs/operations/`. Reconcile `configuration-reference.md` with current YAML/Rust configs. |
 | [ ] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Consolidate legacy root `UI/` and `packages/` into `docs/UI/` and `crates/ui/`. Reconcile Leptos FFA and Next.js frontend parity specs. |
 | [ ] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 13 | 2,904 | 2026-11-06 | Archive obsolete July 2026 hardening plans. Synchronize verification guides with active scripts in `scripts/verify/`. |
@@ -144,13 +144,14 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ### DAR-03: Engineering Standards & Policies Reconciliation
 
-**Scope:** `docs/standards/*` (15 files, 5,616 LOC).
-**Goal:** Reconcile platform coding standards, error handling, transactional outbox, tracing, and security rules.
+**Scope:** `docs/standards/*` (15 files, 5,617 LOC).
+**Goal:** Reconcile platform coding standards, error handling, transactional outbox, tracing, and security rules with executable libraries.
 
-- [ ] **DAR-03.1:** Audit `docs/standards/coding.md` and `errors.md` against current `RustOkError` and domain error patterns.
-- [ ] **DAR-03.2:** Verify `transactional-outbox.md` against `rustok-outbox` and event bus implementation.
-- [ ] **DAR-03.3:** Audit `distributed-tracing.md` and `opentelemetry-integration.md` against `crates/libs/rustok-telemetry`.
-- [ ] **DAR-03.4:** Verify security and forbidden-actions contracts against active CI security gates.
+- [x] **DAR-03.1: Reconcile Coding Standards and Error Guidelines.** Audited `docs/standards/coding.md` and `errors.md`. Reconciled dual error architecture in `rustok-core`: rich context errors (`rustok_core::error::{RichError, ErrorResponse}`) and typed machine-readable errors (`rustok_core::typed_error::{ErrorCode, DomainError, TypedResult}`).
+- [x] **DAR-03.2: Verify Transactional Outbox Standard.** Verified `docs/standards/transactional-outbox.md` against `rustok-outbox` and SeaORM `publish_in_tx(&txn, event)` semantics. Confirmed zero uncommitted event publishing in core flows.
+- [x] **DAR-03.3: Verify Distributed Tracing and OpenTelemetry.** Verified `distributed-tracing.md` and `opentelemetry-integration.md` against `crates/libs/rustok-telemetry` and W3C trace context propagation.
+- [x] **DAR-03.4: Verify Security and Forbidden Actions.** Audited `security.md`, `forbidden-actions.md`, and `patterns-vs-antipatterns.md`. Confirmed 0 broken links and full synchronization with platform invariants.
+- [x] **DAR-03.5: Run Scoped Verification.** Ran `npm run verify:docs` — 100% PASS across all 6 stages. Zero broken relative links or missing anchors in `docs/standards/`.
 
 ---
 
