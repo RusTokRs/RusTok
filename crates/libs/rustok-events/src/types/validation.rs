@@ -1,5 +1,6 @@
 use super::domain_event::DomainEvent;
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
+use rustok_api::locale::MAX_LOCALE_TAG_LEN;
 
 impl ValidateEvent for DomainEvent {
     /// Validates the event data according to business rules using the validation framework.
@@ -30,7 +31,7 @@ impl ValidateEvent for DomainEvent {
             Self::NodeTranslationUpdated { node_id, locale } => {
                 validators::validate_not_nil_uuid("node_id", node_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 Ok(())
             }
             Self::NodePublished { node_id, kind }
@@ -44,7 +45,7 @@ impl ValidateEvent for DomainEvent {
             Self::BodyUpdated { node_id, locale } => {
                 validators::validate_not_nil_uuid("node_id", node_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 Ok(())
             }
 
@@ -184,7 +185,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_max_length("handle", handle, 64)?;
                 if let Some(locale) = locale {
                     validators::validate_not_empty("locale", locale)?;
-                    validators::validate_max_length("locale", locale, 16)?;
+                    validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 }
                 Ok(())
             }
@@ -450,7 +451,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("post_id", post_id)?;
                 validators::validate_optional_uuid("author_id", author_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 Ok(())
             }
             Self::BlogPostPublished { post_id, author_id } => {
@@ -465,7 +466,7 @@ impl ValidateEvent for DomainEvent {
             Self::BlogPostUpdated { post_id, locale } => {
                 validators::validate_not_nil_uuid("post_id", post_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 Ok(())
             }
             Self::BlogPostArchived { post_id, reason } => {
@@ -554,7 +555,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("category_id", category_id)?;
                 validators::validate_optional_uuid("author_id", author_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 Ok(())
             }
             Self::ForumTopicReplied {
@@ -628,7 +629,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("topic_id", topic_id)?;
                 validators::validate_not_nil_uuid("post_id", post_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 if let Some(reason) = reason {
                     validators::validate_max_length("reason", reason, 500)?;
                 }
@@ -644,7 +645,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("post_id", post_id)?;
                 validators::validate_not_nil_uuid("topic_id", topic_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 10)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 if let Some(reason) = reason {
                     validators::validate_max_length("reason", reason, 500)?;
                 }
@@ -695,7 +696,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("target_kind", target_kind)?;
                 validators::validate_max_length("target_kind", target_kind, 64)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 16)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 validators::validate_not_empty("new_canonical_url", new_canonical_url)?;
                 validators::validate_max_length("new_canonical_url", new_canonical_url, 512)?;
                 if !new_canonical_url.starts_with('/') {
@@ -726,7 +727,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("target_kind", target_kind)?;
                 validators::validate_max_length("target_kind", target_kind, 64)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 16)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 if urls.is_empty() {
                     return Err(EventValidationError::InvalidValue(
                         "urls",
@@ -760,7 +761,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_max_length("target_kind", target_kind, 64)?;
                 validators::validate_not_nil_uuid("target_id", target_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 32)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 validators::validate_not_empty("source", source)?;
                 validators::validate_max_length("source", source, 64)?;
                 validators::validate_not_empty("idempotency_key", idempotency_key)?;
@@ -883,7 +884,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_empty("target_kind", target_kind)?;
                 validators::validate_max_length("target_kind", target_kind, 64)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 32)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 validators::validate_not_empty("status", status)?;
                 validators::validate_max_length("status", status, 32)?;
                 validators::validate_range(
@@ -1905,7 +1906,7 @@ impl ValidateEvent for DomainEvent {
             | Self::LocaleDisabled { tenant_id, locale } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("locale", locale)?;
-                validators::validate_max_length("locale", locale, 32)?;
+                validators::validate_max_length("locale", locale, MAX_LOCALE_TAG_LEN)?;
                 let normalized =
                     rustok_api::TenantLocale::new(locale.as_str()).map_err(|error| {
                         EventValidationError::InvalidValue("locale", error.to_string())

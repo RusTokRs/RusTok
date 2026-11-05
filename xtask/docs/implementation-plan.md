@@ -105,6 +105,17 @@ This comparison records static checks and verifier fixtures. The Blog and
 reference-tooling owners track execution of the Rust, database and browser
 suites and the remaining semantic gaps.
 
+The [2026-11-05 Blog acceptance review](../../crates/modules/rustok-blog/docs/implementation-plan.md#reference-readiness-review-2026-11-05)
+is the current prerequisite for full Blog-derived scaffold extraction. It
+confirmed source-layout/reference guards but found executable locale-filter,
+category response-atomicity and long-locale event/rollback defects. The owner
+has corrected those bounded paths and records exact tests separately. Mounted
+Fly preview/property ports, UI localization and canonical controls, reaction
+parity, fallback-editor provenance, complete prerequisite migrations and
+PostgreSQL contention/restart evidence remain acceptance gates. Do not copy
+the complete Blog or promote generated capability readiness until those gates
+are closed. The existing generic file-layout lint remains reusable now.
+
 The same source-layout lint was run against the existing `pages` module.
 Publish metadata validation passed. Layout lint reported 41 diagnostics,
 including follow-on errors from missing files. The main gaps were exposed

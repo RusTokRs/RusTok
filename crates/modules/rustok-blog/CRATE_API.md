@@ -58,7 +58,7 @@ Primary entry points:
 
 ## Domain Collaborations
 
-- **`rustok-content`**: Canonical URL registry and routing (`CanonicalUrlWriter`) for blog post slug mappings.
+- **`rustok-content`**: Shared locale, richtext and route-resolution contracts. Blog derives canonical post routes from its slug and owns retired-route redirects through `BlogPostRouteOwner`.
 - **`rustok-taxonomy`**: Shared taxonomy terms and category localization projection for blog category and tag relations.
 - **`rustok-comments`**: Consumed through `CommentsThreadPort` facade; provides thread moderation, comment counts, and public comment snapshots.
 - **`rustok-reactions`**: Provides reaction subject metadata and reaction availability checks.
@@ -67,6 +67,11 @@ Primary entry points:
 - **`rustok-outbox`**: Transactional outbox event publishing for post lifecycle changes.
 
 ## Category owner contract
+
+Category update prepares its canonical response in the same transaction as
+localized copy, settings, revision, and the reindex event. A projection failure
+rolls back those effects. An unchanged update returns the current projection
+without rewriting state or publishing an event.
 
 Blog Category localized names are bounded by the canonical Taxonomy Category owner contract: a name is at most 120 characters. The Blog DTO/OpenAPI schema and service validation use the same bound, so invalid names fail as Blog input validation before any Taxonomy mutation is attempted.
 
@@ -93,7 +98,9 @@ exact-locale Translation-target applies.
 The Blog Post DTO length contracts use Unicode character counts for title,
 excerpt, SEO title, SEO description, and archive reason. The owner service uses
 the same character-count semantics. ASCII-normalized slug and channel-slug
-limits are byte-bounded by their storage/route contracts.\n\n## Post owner contract
+limits are byte-bounded by their storage/route contracts.
+
+## Post owner contract
 
 ### Create
 
@@ -187,8 +194,10 @@ escaped literally, with trimmed needles capped at 255 characters (an oversized
 needle is a validation error, never a silently dropped filter). `slug` matches
 the post's own slug column; `title` matches the translation the projection
 would display for the requested locale chain (requested, explicit fallback,
-platform fallback), so a post whose displayed title comes from the resolver's
-final unordered fallback is outside a title search's reach.
+platform fallback, then the lexicographically smallest canonical stored locale).
+The database selects that translation before matching and before keyset
+pagination. PostgreSQL uses the `C` collation and SQLite uses binary ordering
+for the final locale choice, matching the projection's Rust ordering.
 
 Full-text search remains the Search capability's responsibility.
 

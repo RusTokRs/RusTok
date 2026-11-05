@@ -49,10 +49,13 @@ fn filter_translation_input(locale: &str, title: &str, version: i32) -> UpdatePo
 async fn title_filter_uses_the_displayed_translation_before_keyset_pagination() {
     let db = setup_test_db().await;
     ensure_blog_schema(&db).await;
+    assert_displayed_title_filter_pages(db).await;
+}
+
+async fn assert_displayed_title_filter_pages(db: DatabaseConnection) {
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let service = PostService::new(db.clone(), event_bus);
     let tenant_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let mut ids = Vec::new();
     for (slug, en, ru) in [
@@ -133,10 +136,13 @@ async fn title_filter_uses_the_displayed_translation_before_keyset_pagination() 
 async fn title_filter_uses_the_same_final_locale_fallback_as_the_projection() {
     let db = setup_test_db().await;
     ensure_blog_schema(&db).await;
+    assert_final_title_filter_locale(db).await;
+}
+
+async fn assert_final_title_filter_locale(db: DatabaseConnection) {
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let service = PostService::new(db.clone(), event_bus);
     let tenant_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id).await;
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let id = service
         .create_post(
@@ -181,6 +187,98 @@ async fn title_filter_uses_the_same_final_locale_fallback_as_the_projection() {
             assert_eq!(result.items[0].effective_locale, "en-US");
             assert_eq!(result.items[0].title, "Displayed fallback");
         }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires RUSTOK_BLOG_TEST_DATABASE_URL and permission to create a disposable database"]
+async fn postgres_title_filter_and_locale_storage_contract() {
+    use rustok_test_utils::db::{
+        assert_postgres_url, connect_postgres, create_postgres_database,
+        drop_postgres_database_if_exists, postgres_database_url, unique_postgres_database_name,
+    };
+    let url = std::env::var("RUSTOK_BLOG_TEST_DATABASE_URL")
+        .expect("set RUSTOK_BLOG_TEST_DATABASE_URL to a PostgreSQL test instance");
+    assert_postgres_url(&url);
+    let control = connect_postgres(&url).await.unwrap();
+    let name = unique_postgres_database_name("blog_title_filter");
+    create_postgres_database(&control, &name).await.unwrap();
+    let url = postgres_database_url(&url, &name);
+    let result = tokio::spawn(async move {
+        let db = connect_postgres(&url).await.unwrap();
+        let manager = SchemaManager::new(&db);
+        // These scenarios use no Channel selector. Apply the actual Blog,
+        // Taxonomy and Outbox schemas for their owner data and durable events.
+        SysEventsMigration.up(&manager).await.unwrap();
+        for migration in TaxonomyModule
+            .migrations()
+            .into_iter()
+            .chain(crate::migrations::migrations())
+        {
+            migration.up(&manager).await.unwrap();
+        }
+        drop(manager);
+        assert_displayed_title_filter_pages(db.clone()).await;
+        assert_final_title_filter_locale(db.clone()).await;
+        let service = PostService::new(
+            db.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone()))),
+        );
+        let tenant_id = Uuid::new_v4();
+        let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+        let locale = "sl-Latn-SI-rozaj-biske";
+        assert!(locale.len() > 16);
+        let id = service
+            .create_post(
+                tenant_id,
+                admin.clone(),
+                filter_post_input(locale, "Long locale", "long-locale"),
+            )
+            .await
+            .unwrap();
+        crate::migrations::m20261030_000001_widen_blog_translation_columns::Migration
+            .down(&SchemaManager::new(&db))
+            .await
+            .unwrap();
+        let column = db
+            .query_one_raw(Statement::from_string(
+                db.get_database_backend(),
+                "SELECT character_maximum_length FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'blog_post_translations'
+               AND column_name = 'locale'"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            column
+                .try_get::<i32>("", "character_maximum_length")
+                .unwrap(),
+            32
+        );
+        // Width DDL changes PostgreSQL result descriptors. Reconnect as a
+        // restarted application would, rather than reusing pre-DDL plans.
+        drop(service);
+        db.close().await.unwrap();
+        let db = connect_postgres(&url).await.unwrap();
+        let service = PostService::new(
+            db.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db))),
+        );
+        let post = service
+            .get_post(tenant_id, admin, id, locale)
+            .await
+            .unwrap();
+        assert_eq!(post.effective_locale, locale);
+        assert_eq!(post.title, "Long locale");
+    })
+    .await;
+    drop_postgres_database_if_exists(&control, &name)
+        .await
+        .unwrap();
+    if let Err(error) = result {
+        std::panic::resume_unwind(error.into_panic());
     }
 }
 

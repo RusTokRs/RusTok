@@ -12,7 +12,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::domain::BLOG_CATEGORY_SETTINGS_MAX_BYTES;
-use crate::dto::{CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput};
+use crate::dto::{
+    CategoryResponse, CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
+};
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
@@ -173,7 +175,7 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
         input: UpdateCategoryInput,
-    ) -> BlogResult<()> {
+    ) -> BlogResult<CategoryResponse> {
         if tenant_id.is_nil() {
             return Err(BlogError::validation("Tenant ID must not be nil"));
         }
@@ -280,8 +282,15 @@ impl CategoryService {
         // breaks every revision-based consumer). Returning the current state is
         // the idempotent answer a PUT owes its caller.
         if copy_unchanged && settings == category.settings {
+            let response = super::category_owner::load_category_response(
+                &txn,
+                tenant_id,
+                category_id,
+                &locale,
+            )
+            .await?;
             txn.rollback().await.map_err(BlogError::from)?;
-            return Ok(());
+            return Ok(response);
         }
 
         let resource_updated = blog_category::Entity::update_many()
@@ -315,7 +324,7 @@ impl CategoryService {
             category_id,
             parent_id,
             position,
-            locale,
+            locale.clone(),
             canonical_name,
             canonical_slug,
             canonical_description,
@@ -324,8 +333,14 @@ impl CategoryService {
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
+        // The canonical projection is part of command success. Read it through
+        // this transaction so a broken projection also rolls back copy, revision,
+        // settings, and the durable reindex event before returning an error.
+        let response =
+            super::category_owner::load_category_response(&txn, tenant_id, category_id, &locale)
+                .await?;
         txn.commit().await.map_err(BlogError::from)?;
-        Ok(())
+        Ok(response)
     }
 
     pub(crate) async fn ensure_exists_in_tx(

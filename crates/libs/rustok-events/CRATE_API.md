@@ -2,6 +2,11 @@
 
 ## Public Modules
 
+Localized root payloads and Forms submission events share the platform's
+`rustok_api::locale::MAX_LOCALE_TAG_LEN` length bound. Empty locales remain invalid.
+Grammar and canonicalization remain publishing-owner policy unless a specific
+event additionally requires canonical identity.
+
 - Does not expose implementation modules; the crate re-exports canonical event contracts.
 
 ## Primary Public Types and Signatures

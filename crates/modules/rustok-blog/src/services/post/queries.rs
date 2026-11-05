@@ -1,6 +1,5 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_core::PermissionScope;
-use sea_orm::ConnectionTrait;
 
 mod filters;
 mod ordering;
@@ -105,9 +104,9 @@ impl PostService {
                 PermissionScope::Own
             );
         if can_read_own {
-            select = select.filter(blog_post::Column::AuthorId.eq(
-                security.user_id.expect("user_id checked above"),
-            ));
+            select = select.filter(
+                blog_post::Column::AuthorId.eq(security.user_id.expect("user_id checked above")),
+            );
         }
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
@@ -119,7 +118,8 @@ impl PostService {
                 .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)))
                 .filter(blog_post::Column::PublishedAt.is_not_null());
         }
-        if !can_read_non_public && !can_read_own
+        if !can_read_non_public
+            && !can_read_own
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
         {
             return Ok(PostListResponse::new(Vec::new(), None, query.per_page()));
@@ -148,7 +148,7 @@ impl PostService {
                 needle,
                 &text_filters.title_locales,
                 self.db.get_database_backend(),
-            );
+            )?;
         }
 
         let (sort_by, sort_order) = query.sort();

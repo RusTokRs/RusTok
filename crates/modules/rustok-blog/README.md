@@ -219,10 +219,10 @@ copy must use the canonical Taxonomy owner contract.
 - Post slugs are global canonical identifiers, not locale-aware. They are
   normalized through the shared Taxonomy route-key primitive, so non-ASCII titles
   are transliterated.
-- Post routes are owned by the canonical URL registry of `rustok-content`. Blog
-  writes them through `CanonicalUrlWriter` and defines the route once in
-  `canonical_post_route` (`/modules/blog?slug={slug}`). Renaming a post keeps the
-  previous route as an alias. Public reads resolve it to the current post, and the
+- Blog derives a post's canonical route from its slug through
+  `canonical_post_route` (`/modules/blog?slug={slug}`). `BlogPostRouteOwner`
+  owns retired-route redirects in `blog_post_routes`. Renaming a post keeps the
+  previous route as a redirect. Public reads resolve it to the current post, and the
   storefront redirects permanently to the current slug. Creating a post may take
   a retired slug. Deleting a post purges its routes.
 - Route cleanup does not depend on that delete path: Blog consumes `TargetDeleted` for
@@ -231,8 +231,8 @@ copy must use the canonical Taxonomy owner contract.
   read returns "not found" and records the `dangling_route_redirect` module metric — and the
   `blog_route_reconciliation` module-work registration sweeps the remaining rows in bounded,
   tenant-scoped batches.
-- Post routes are stored under `CANONICAL_POST_ROUTE_LOCALE` (the platform
-  fallback locale), because Blog slugs are global canonical identifiers.
+- Route event metadata uses `CANONICAL_POST_ROUTE_LOCALE` (the platform fallback
+  locale). Blog slugs and persisted redirect sources are locale-neutral.
 - `published_at` is the first publication time. It is preserved across
   unpublish, archive, and restore. `updated_at` tracks the last change.
 - `featured_image_url` must be an absolute `http`/`https` URL or a root-relative
@@ -242,7 +242,7 @@ copy must use the canonical Taxonomy owner contract.
   (the final fallback is deterministic; it cannot depend on query order).
 - Translations are stored one row per `(post, locale)` under a unique index.
   A locale is the platform-normalized, extension-free BCP-47 identity accepted
-  by `TenantLocale` — up to 32 characters (`rustok_api::MAX_LOCALE_TAG_LEN`).
+  by `TenantLocale` — up to 32 characters (`rustok_api::locale::MAX_LOCALE_TAG_LEN`).
   `m20261030_000001_widen_blog_translation_columns` aligned the PostgreSQL
   `locale`, `title` and `seo_description` column widths with that contract
   (512-char titles, 1000-char SEO descriptions); SQLite never enforced the old
@@ -386,14 +386,20 @@ See [`DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`](../../../
 
 ## Known Limitations / Pending Implementation
 
-Reference verification is incomplete. PostgreSQL harnesses can return success
-without a configured database; the SQLite harness skips some Channel prerequisite
-migrations and cannot prove PostgreSQL row locks. Next admin has no package-local
-test suite, and the Next storefront's seven utility tests do not establish
-functional/browser parity. The translation-width migration's locale-narrowing
-rollback also conflicts with the platform storage contract. These reference gaps
-are tracked in the
-[scaffold reference assessment](../../../xtask/docs/implementation-plan.md#blog-reference-transfer-assessment).
+Complete reference certification remains pending. Older PostgreSQL projection
+harnesses can return success without a configured database; ordinary SQLite
+fixtures skip some Channel prerequisite migrations and cannot prove PostgreSQL
+row locks. The new explicit PostgreSQL title/locale test requires its database
+when selected, but covers only that bounded owner slice.
+
+Leptos Page Builder registers Blog widgets without preview/property transport
+ports. Hardcoded interface language branches, canonical UI primitive/form/grid
+adoption, reaction parity, and fallback-editor write provenance remain open.
+Next admin has no package-local test suite, and Next storefront utility tests
+do not establish functional/browser parity. The
+[reference acceptance plan](docs/implementation-plan.md#reference-readiness-review-2026-11-05)
+records the findings, execution evidence, and the sequence before scaffold
+extraction.
 
 The following limitations are tracked in the module backlog:
 

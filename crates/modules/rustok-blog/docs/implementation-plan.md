@@ -1,5 +1,100 @@
 # rustok-blog implementation plan
 
+## Reference readiness review (2026-11-05)
+
+Blog is enrolled as the physical/source reference. Complete reference acceptance
+and extraction into the scaffold remain pending. This review started on local
+`main` at `730ecb6b3975ed363f6d2a56a1240d3b961d7f1d` and continued against
+`046ff1a50f3a23dba93b5201d889d18711b847d5` after concurrent commits captured
+the initial title-filter changes. It activates no repository-wide audit ledger.
+This section owns the current reference findings and supersedes older source-only
+certification wording below where it implies executed or complete readiness.
+
+### Owner corrections in this review
+
+- Title filtering used to match any translation in the requested/fallback locale
+  set. An English `Orange` post could match its Russian `Apple` translation while
+  still displaying `Orange`. `services/post/queries/filters.rs` now selects the
+  displayed translation first, including the deterministic final fallback, before
+  matching and keyset pagination. Both database dialects use bytewise locale
+  ordering, so PostgreSQL language collation cannot change that last choice.
+- Category update used to commit its command and then read its response through
+  a separate pooled connection. The shared canonical response loader now accepts
+  the current transaction. Projection failure rolls back copy, settings, revision
+  and durable reindex events. Update-only authority receives the prepared response
+  without acquiring a separate Read permission. No-op responses use that same
+  snapshot without advancing state.
+- New service regressions cover stale-edit refusal with unchanged base rows,
+  localized rows and outbox, persisted `Keep / Set / Clear`, and rejection of a
+  partial new locale without copying fallback text. The complete fallback-editor
+  save workflow still needs client evidence.
+- PostgreSQL exposed a shared event validation mismatch: Blog accepted a valid
+  long locale while `rustok-events` rejected it at a former 10-character limit.
+  Root localized events and Forms now reuse `rustok_api::locale::MAX_LOCALE_TAG_LEN`.
+  The owner record lives in the
+  [Events plan](../../../libs/rustok-events/docs/implementation-plan.md#locale-length-validation-2026-11-05).
+- Translation-width rollback retains `VARCHAR(32)` locale storage. Narrowing that
+  column violated the platform locale contract. Title/description downgrades still
+  refuse values above their earlier bounds.
+- The Comments GraphQL source guard now accepts rustfmt import ordering and
+  multiline import groups while still rejecting either missing required type.
+  This removes a formatting false failure without changing the owner contract.
+
+### Remaining acceptance gates
+
+| Priority | Boundary and current evidence | Required result before complete reference acceptance |
+| --- | --- | --- |
+| P1 | Older `tests/comment_projection*postgres_test.rs` harnesses can return success without a configured PostgreSQL URL | Make requested database execution fail on missing prerequisites and report optional nonexecution as skipped. Preserve child-process entrypoints and synchronize the actual runner contract. |
+| P1 | `tests/integration.rs` and `services/post/tests.rs` skip three Channel migrations on SQLite. Projection-specific PostgreSQL fixtures recreate narrow tables | Prove complete shipped prerequisite migration composition and shared owner scenarios on both supported profiles. The new no-Channel-selector PostgreSQL slice does not certify Channel composition. |
+| P1 | Stale post edits and nullable patches now have owner regressions; PostgreSQL simultaneous edits remain unproven | Retain one-winner PostgreSQL CAS contention, tenant isolation, mutation/outbox rollback, duplicate/reordered delivery and restart evidence. |
+| P1 | Blog Fly metadata describes owner preview/property capabilities, but `apps/admin/src/app/page_builder_contributions.rs` mounts neither Blog preview nor property ports | Implement the Blog-owned transport facade and host bindings, then execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
+| P1 | Leptos editor hydration and Next editor updates retain requested locale while displaying fallback text | Exercise saving unrelated changes after fallback hydration. Preserve explicit localized write provenance and refuse accidental materialization of another locale's text. |
+| P2 | `admin/src/core/presentation.rs`, storefront reading-time/share helpers, and Next editor/reaction components contain Russian/English branches or literal interface copy | Resolve copy through host effective locale and canonical catalogs/formatters. Pass a third locale and parameter/plural behavior through pure core and mounted clients. |
+| P2 | Blog UI still includes styled raw controls and a manual Category table | Adopt canonical primitives, forms and grid contracts. Keep command construction, validation and state transitions in pure core with meaningful tests. |
+| P2 | Next storefront mounts reaction reads/writes; Leptos storefront has no equivalent surface. Next category loading suppresses failures in `post-form.tsx` | Establish functional reaction parity and explicit category unavailable/error states, then verify both implementations' critical interactions. |
+| P2 | Next admin has no package-local test script. Next storefront currently has only utility tests. Default Rust builds omit runtime/SSR/hydration composition | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
+| P2 | `verify-module-reference-contract.mjs` is a Blog-specific source-marker guard with no negative fixture suite of its own | Keep source checks supplementary. Add executable invariant scenarios and focused negative fixtures before generalizing semantic acceptance to generated modules. |
+
+The complete applicable test families are owned by the
+[backend verification contract](../../../../docs/backend/module-backend-verification.md#applicable-reference-evidence).
+Test-file counts do not establish coverage or execution. Blog already includes
+domain property tests, owner-service regressions, integration/transport checks,
+projection replay tests and pure UI tests. The missing evidence is specific to
+the gates above.
+
+### Scaffold extraction sequence
+
+1. Close the owner correctness and database gates, then the effective-locale,
+   FFA/client parity and mounted Builder gates. Record exact scenario commands,
+   revision/profile and results here. Keep the current readiness state until
+   applicable evidence passes.
+2. Extract the existing canonical file responsibilities and naming from the
+   [backend guide](../../../../docs/backend/module-backend-implementation.md),
+   using the same generic layout lint for generated and existing modules.
+   Keep Blog's routes, permissions, schemas and Comments policy owner-local.
+3. Extend the current renderer only from an explicit real operation and schema.
+   A persisted capability needs private entities/migrations and actual
+   `services/<entity>/mod.rs`, `commands.rs`, `queries.rs`, `repository.rs`.
+   Split complex commands and queries further by responsibility when necessary.
+   A capability without storage omits persistence. Fly contributions require
+   working preview/property transports and host bindings.
+4. Transfer the applicable invariant tests with those operations, including
+   failure/rollback and locale provenance. Generate comments beside real
+   integration seams describing authority, transaction ordering, provider
+   binding and failure behavior. Empty capability folders and placeholder tests
+   are not acceptance evidence.
+5. Prove the extracted pattern with a second owner operation and isolated
+   generated crates, using the Tax/Region variants already tracked by the
+   [scaffold plan](../../../../xtask/docs/implementation-plan.md).
+   Assert that generated identities contain no Blog schema, permission, route
+   or integration names before expanding the generator's supported modes.
+
+### Verification record
+
+Exact local results for this review are recorded below after scoped execution.
+Source checks, configured database execution, native UI unit tests and mounted
+client workflows remain separate evidence classes.
+
 ## Reference-v1 certification note
 
 The canonical Blog reference is now hardened beyond the original physical-layout
@@ -1349,7 +1444,8 @@ permission gating. Source composition and Fly registry installation are complete
 Execution is intentionally not recorded by this source-only update. Maintainers
 should run the relevant subset, including:
 
-- Contract tests cover every public use case.
+- Execute the applicable public-use-case contract scenarios and record coverage
+  gaps explicitly in the current reference acceptance gates.
 - `npm run verify:blog:comments-port-boundary`
 - `npm run test:verify:blog:comments-port-boundary`
 - `cargo test -p rustok-blog --lib services::comment::port_injection_tests::comment_service_accepts_an_injected_comments_thread_port -- --exact`

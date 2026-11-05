@@ -170,8 +170,15 @@ requireMarker(
   serverSchemaPath,
 );
 
+const runtimeApiImports = [...runtimeData.matchAll(/^\s*use\s+rustok_api::\{([^}]+)\}\s*;/gm)]
+  .flatMap((match) => match[1].split(',').map((item) => item.trim()));
+for (const requiredImport of ['SharedStaticModuleSettingsReader', 'graphql::GraphqlRuntimeInputs']) {
+  if (!runtimeApiImports.includes(requiredImport)) {
+    failures.push(`${runtimeDataPath}: missing rustok_api import ${requiredImport}`);
+  }
+}
+
 for (const marker of [
-  'use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};',
   'use rustok_comments::CommentsThreadPort;',
   'comments_thread_port: Option<Arc<dyn CommentsThreadPort>>',
   'settings_reader: Option<SharedStaticModuleSettingsReader>',

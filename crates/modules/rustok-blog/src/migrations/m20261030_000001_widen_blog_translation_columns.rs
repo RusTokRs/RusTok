@@ -18,9 +18,9 @@
 //! instead of a 400. SQLite never enforced the width (TEXT affinity), which is
 //! also why the mismatch escaped backend-parity checks.
 //!
-//! Widening is metadata-only on PostgreSQL and lossless in both directions for
-//! existing data: PostgreSQL could never have stored more than the old bound.
-//! SQLite needs no change and intentionally gets none.
+//! Widening preserves existing data. A later title/description downgrade may
+//! refuse when new values exceed the old bounds. Locale storage retains the
+//! platform's 32-character contract on rollback. SQLite needs no width change.
 
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend};
@@ -53,8 +53,9 @@ ALTER TABLE blog_post_translations
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Narrowing refuses to run while values above the old bound exist;
-        // that failure is the correct signal that the downgrade would lose data.
+        // Title/description narrowing refuses values above the old bounds.
+        // Locale widening is retained even on rollback, per the platform
+        // storage contract, so valid longer locale identities remain storable.
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Ok(());
         }
@@ -68,8 +69,6 @@ ALTER TABLE blog_post_translations
 ALTER TABLE blog_post_translations
     ALTER COLUMN seo_description TYPE varchar(500);
 
-ALTER TABLE blog_post_translations
-    ALTER COLUMN locale TYPE varchar(16);
 "#,
             )
             .await?;

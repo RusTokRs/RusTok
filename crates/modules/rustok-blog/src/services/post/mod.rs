@@ -1,7 +1,7 @@
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     Order, QueryFilter, QueryOrder, QuerySelect, Select, Set, TransactionTrait,
-    sea_query::{Expr, ExprTrait, Query, SelectStatement},
+    sea_query::{Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;

@@ -1,8 +1,8 @@
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use sea_orm::{
     ColumnTrait, DbBackend, QueryFilter, Select,
     sea_query::{CaseStatement, Expr, ExprTrait, Func, LikeExpr, Query},
 };
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 use crate::dto::PostListQuery;
 use crate::entities::{blog_post, blog_post_translation};
@@ -64,11 +64,7 @@ pub(super) fn prepare_post_list_text_filters(
     let mut title_locales = Vec::new();
     rustok_api::push_locale_candidate(&mut title_locales, Some(locale), false);
     rustok_api::push_locale_candidate(&mut title_locales, fallback_locale, false);
-    rustok_api::push_locale_candidate(
-        &mut title_locales,
-        Some(PLATFORM_FALLBACK_LOCALE),
-        false,
-    );
+    rustok_api::push_locale_candidate(&mut title_locales, Some(PLATFORM_FALLBACK_LOCALE), false);
     Ok(PostListTextFilters {
         slug,
         title,
@@ -97,11 +93,14 @@ pub(super) fn apply_post_title_filter(
     needle: &str,
     locales: &[String],
     backend: DbBackend,
-) -> Select<blog_post::Entity> {
+) -> BlogResult<Select<blog_post::Entity>> {
     let pattern = format!("%{}%", escape_like_pattern(needle)).to_lowercase();
     let mut priority = CaseStatement::new();
     for (rank, locale) in locales.iter().enumerate() {
-        priority = priority.case(blog_post_translation::Column::Locale.eq(locale), rank as i32);
+        priority = priority.case(
+            blog_post_translation::Column::Locale.eq(locale),
+            rank as i32,
+        );
     }
     // Owner writes persist canonical locale tags. Their last-resort order must
     // match Rust's bytewise order even on a PostgreSQL linguistic collation.
@@ -109,20 +108,30 @@ pub(super) fn apply_post_title_filter(
     let locale_order = match backend {
         DbBackend::Postgres => Expr::cust_with_exprs("$1 COLLATE \"C\"", [locale]),
         DbBackend::Sqlite => Expr::cust_with_exprs("$1 COLLATE BINARY", [locale]),
-        DbBackend::MySql => Expr::cust_with_exprs("BINARY $1", [locale]),
+        _ => {
+            return Err(BlogError::invariant(
+                "Blog title filtering requires a supported database backend",
+            ));
+        }
     };
     let displayed_title = Query::select()
         .column(blog_post_translation::Column::Title)
         .from(blog_post_translation::Entity)
         .and_where(
-            Expr::col((blog_post_translation::Entity, blog_post_translation::Column::PostId))
-                .equals((blog_post::Entity, blog_post::Column::Id)),
+            Expr::col((
+                blog_post_translation::Entity,
+                blog_post_translation::Column::PostId,
+            ))
+            .equals((blog_post::Entity, blog_post::Column::Id)),
         )
-        .order_by_expr(priority.finally(locales.len() as i32).into(), sea_orm::Order::Asc)
+        .order_by_expr(
+            priority.finally(locales.len() as i32).into(),
+            sea_orm::Order::Asc,
+        )
         .order_by_expr(locale_order, sea_orm::Order::Asc)
         .limit(1)
         .to_owned();
 
-    select.filter(Func::lower(Expr::from(displayed_title)).like(LikeExpr::new(pattern).escape('\\')))
+    Ok(select
+        .filter(Func::lower(Expr::from(displayed_title)).like(LikeExpr::new(pattern).escape('\\'))))
 }
-

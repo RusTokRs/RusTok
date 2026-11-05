@@ -1,7 +1,101 @@
+use rustok_api::locale::MAX_LOCALE_TAG_LEN;
 use uuid::Uuid;
 
 use super::{DomainEvent, EventEnvelope, EventEnvelopeError};
 use crate::validation::{EventValidationError, ValidateEvent};
+
+#[test]
+fn localized_events_share_the_platform_locale_length_bound() {
+    // Grammar/canonicalization belongs to the publishing owner. These cases
+    // pin the shared nonempty/length validation independently of that policy.
+    for locale in [
+        "sl-Latn-SI-rozaj-biske".to_string(),
+        "a".repeat(32),
+        "a".repeat(33),
+        String::new(),
+    ] {
+        let id = Uuid::new_v4();
+        let events = [
+            DomainEvent::NodeTranslationUpdated {
+                node_id: id,
+                locale: locale.clone(),
+            },
+            DomainEvent::BodyUpdated {
+                node_id: id,
+                locale: locale.clone(),
+            },
+            DomainEvent::ProfileUpdated {
+                user_id: id,
+                handle: "author".into(),
+                locale: Some(locale.clone()),
+            },
+            DomainEvent::BlogPostCreated {
+                post_id: id,
+                author_id: Some(id),
+                locale: locale.clone(),
+            },
+            DomainEvent::BlogPostUpdated {
+                post_id: id,
+                locale: locale.clone(),
+            },
+            DomainEvent::ForumTopicCreated {
+                topic_id: id,
+                category_id: id,
+                author_id: Some(id),
+                locale: locale.clone(),
+            },
+            DomainEvent::TopicPromotedToPost {
+                topic_id: id,
+                post_id: id,
+                moved_comments: 0,
+                locale: locale.clone(),
+                reason: None,
+            },
+            DomainEvent::PostDemotedToTopic {
+                topic_id: id,
+                post_id: id,
+                moved_comments: 0,
+                locale: locale.clone(),
+                reason: None,
+            },
+            DomainEvent::CanonicalUrlChanged {
+                target_id: id,
+                target_kind: "post".into(),
+                locale: locale.clone(),
+                new_canonical_url: "/post".into(),
+                old_urls: vec![],
+            },
+            DomainEvent::UrlAliasPurged {
+                target_id: id,
+                target_kind: "post".into(),
+                locale: locale.clone(),
+                urls: vec!["/old".into()],
+            },
+        ];
+        let expected = if locale.is_empty() {
+            Err(EventValidationError::EmptyField("locale"))
+        } else if locale.len() > MAX_LOCALE_TAG_LEN {
+            Err(EventValidationError::FieldTooLong(
+                "locale",
+                MAX_LOCALE_TAG_LEN,
+            ))
+        } else {
+            Ok(())
+        };
+        for event in events {
+            assert_eq!(event.validate(), expected, "{}", event.event_type());
+        }
+        let submission = crate::FormSubmissionEvent::SubmissionReceived {
+            submission_id: id,
+            tenant_id: id,
+            form_id: "contact".into(),
+            page_id: None,
+            locale,
+            state: "new".into(),
+        };
+        assert_eq!(submission.validate(), expected);
+    }
+}
 
 #[test]
 fn target_deleted_event_is_registered_and_validates() {
@@ -316,12 +410,14 @@ fn test_tenant_module_toggled_rejects_empty_module_slug() {
 #[test]
 fn tenant_locale_events_require_canonical_runtime_locale() {
     let tenant_id = Uuid::new_v4();
-    assert!(DomainEvent::LocaleEnabled {
-        tenant_id,
-        locale: "pt-BR".to_string(),
-    }
-    .validate()
-    .is_ok());
+    assert!(
+        DomainEvent::LocaleEnabled {
+            tenant_id,
+            locale: "pt-BR".to_string(),
+        }
+        .validate()
+        .is_ok()
+    );
     for locale in ["pt_br", "PT-br", "und"] {
         assert!(
             DomainEvent::LocaleDisabled {

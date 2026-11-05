@@ -6,7 +6,7 @@
 - Owners: `rustok-blog` (post lifecycle, slug column, featured image contract); `rustok-content` (canonical URL and alias registry, including the Blog post route); `apps/next-frontend` storefront consumes the contract
 - Extends: `DECISIONS/2026-03-28-multilingual-content-contract.md`
 - Supersedes: None
-- Superseded by: None
+- Superseded by: [Owner-held routes](2026-10-08-owner-routes-and-batched-conversion.md) for the route-registry decision. The lifecycle, timestamp, image and locale decisions remain active.
 
 ## Context
 

@@ -14,6 +14,23 @@ Last reconciled with `main`: 2026-07-28.
 families, schema metadata, semantic validation, and versioning policy.
 `rustok-core::events` is a compatibility re-export only.
 
+### Locale length validation (2026-11-05)
+
+The Blog reference PostgreSQL scenario reproduced a valid owner locale being
+rejected at event publication by a former 10-character limit. Root localized
+events and Forms submission events now share `rustok_api::locale::MAX_LOCALE_TAG_LEN`
+instead of separate 10/16/32 literals. Nonempty checks and event-specific rules
+remain in place. Grammar and canonicalization remain publishing-owner policy
+unless an event already validates canonical locale identity explicitly.
+
+`types::tests::localized_events_share_the_platform_locale_length_bound` covers
+the formerly narrower Content, Profiles, Blog, Forum, conversion, route and
+Forms events with a real long locale, the 32-character boundary, an oversized
+value and empty input. Wire fields, registry metadata and schema versions are
+unchanged. Run the scoped library suite and the Blog long-locale PostgreSQL
+scenario before recording this continuation as verified. This does not admit
+unrelated pending event digests or certify transport delivery.
+
 The committed `contracts/event-contract-digests.json` gates the root registry and
 root/typed wire schemas. Digest generation is deterministic and never occurs as an
 implicit build/test side effect. The current release train intentionally allows only

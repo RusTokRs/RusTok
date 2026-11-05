@@ -34,6 +34,7 @@ function write(root, relativePath, content) {
 }
 
 function fixture({
+  runtimeApiImport = 'use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};',
   missingManifestFactory = false,
   missingHostAttachment = false,
   missingHostLookup = false,
@@ -80,7 +81,7 @@ function fixture({
     root,
     runtimeDataPath,
     `
-use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
+${runtimeApiImport}
 use rustok_comments::CommentsThreadPort;
 comments_thread_port: Option<Arc<dyn CommentsThreadPort>>
 settings_reader: Option<SharedStaticModuleSettingsReader>
@@ -230,6 +231,27 @@ test('accepts canonical Blog GraphQL Comments port injection source', () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('accepts rustfmt import ordering and multiline use groups', () => {
+  for (const runtimeApiImport of [
+    'use rustok_api::{graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader};',
+    'use rustok_api::{\n  graphql::GraphqlRuntimeInputs,\n  SharedStaticModuleSettingsReader,\n};',
+  ]) {
+    const result = rejects({ runtimeApiImport });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  }
+});
+
+test('rejects either missing runtime API import', () => {
+  for (const runtimeApiImport of [
+    'use rustok_api::{graphql::GraphqlRuntimeInputs};',
+    'use rustok_api::{SharedStaticModuleSettingsReader};',
+  ]) {
+    const result = rejects({ runtimeApiImport });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing rustok_api import/);
   }
 });
 

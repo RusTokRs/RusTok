@@ -2,10 +2,10 @@
 
 - Date: 2026-10-08
 - Decision status: Accepted
-- Implementation status: Not started
+- Implementation status: In progress
 - Owners: `rustok-blog` (post storage, post routes and redirects); `rustok-forum` (topic storage, topic routes and redirects); `rustok-content` (shared ports and the canonical route resolver contract); `rustok-content-orchestration` (Blog/Forum conversion and route resolver implementation)
 - Extends: `DECISIONS/2026-03-28-content-orchestration-port-boundary.md`, `DECISIONS/2026-03-28-multilingual-content-contract.md`
-- Supersedes: None (when accepted, this ADR supersedes the route-registry part of `DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`, namely the `Slug routes and redirects` section and the related invariants)
+- Supersedes: The route-registry part of `DECISIONS/2026-10-08-blog-post-url-and-publication-contract.md`, namely the `Slug routes and redirects` section and the related invariants
 - Superseded by: None
 
 ## Context

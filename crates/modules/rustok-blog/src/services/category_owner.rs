@@ -7,7 +7,10 @@ use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
     TaxonomyService,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use uuid::Uuid;
 
 use super::category::{
@@ -80,8 +83,7 @@ impl CategoryService {
             return Err(BlogError::validation("Category ID must not be nil"));
         }
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        self.load_category_response(tenant_id, category_id, locale)
-            .await
+        load_category_response(&self.db, tenant_id, category_id, locale).await
     }
 
     pub async fn update(
@@ -91,11 +93,8 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
-        let response_locale = input.locale.clone();
         self.commands
             .update(tenant_id, category_id, security, input)
-            .await?;
-        self.load_category_response(tenant_id, category_id, &response_locale)
             .await
     }
 
@@ -262,61 +261,61 @@ impl CategoryService {
 
         Ok((items, total))
     }
+}
 
-    async fn load_category_response(
-        &self,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        locale: &str,
-    ) -> BlogResult<CategoryResponse> {
-        let locale = normalize_locale(locale)?;
-        let category = blog_category::Entity::find_by_id(category_id)
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        let taxonomy_ids = [category_id];
-        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories_strict(
-                tenant_id,
-                TaxonomyScopeType::Module,
-                Some(BLOG_TAXONOMY_SCOPE),
-                Some(&taxonomy_ids),
-                &locale,
-                Some(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                BlogError::invariant(format!(
-                    "Blog category {category_id} points to a missing Taxonomy Category"
-                ))
-            })?;
-        if canonical.available_locales.is_empty() {
-            return Err(BlogError::invariant(format!(
-                "Blog category {category_id} Taxonomy projection has no localized copy"
-            )));
-        }
-        let parent_id = canonical.parent_id;
-        validate_persisted_category_settings(&category.settings)?;
-
-        Ok(CategoryResponse {
-            id: category.id,
-            tenant_id,
-            locale: canonical.requested_locale,
-            effective_locale: canonical.effective_locale,
-            available_locales: canonical.available_locales,
-            name: canonical.name,
-            slug: canonical.slug,
-            description: canonical.description,
-            parent_id,
-            position: canonical.position,
-            settings: category.settings,
-            created_at: category.created_at.into(),
-            updated_at: category.updated_at.into(),
-        })
+pub(super) async fn load_category_response<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+) -> BlogResult<CategoryResponse> {
+    let locale = normalize_locale(locale)?;
+    let category = blog_category::Entity::find_by_id(category_id)
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| BlogError::category_not_found(category_id))?;
+    let taxonomy_ids = [category_id];
+    let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
+        db,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some(BLOG_TAXONOMY_SCOPE),
+        Some(&taxonomy_ids),
+        &locale,
+        Some(PLATFORM_FALLBACK_LOCALE),
+    )
+    .await?
+    .into_iter()
+    .next()
+    .ok_or_else(|| {
+        BlogError::invariant(format!(
+            "Blog category {category_id} points to a missing Taxonomy Category"
+        ))
+    })?;
+    if canonical.available_locales.is_empty() {
+        return Err(BlogError::invariant(format!(
+            "Blog category {category_id} Taxonomy projection has no localized copy"
+        )));
     }
+    let parent_id = canonical.parent_id;
+    validate_persisted_category_settings(&category.settings)?;
+
+    Ok(CategoryResponse {
+        id: category.id,
+        tenant_id,
+        locale: canonical.requested_locale,
+        effective_locale: canonical.effective_locale,
+        available_locales: canonical.available_locales,
+        name: canonical.name,
+        slug: canonical.slug,
+        description: canonical.description,
+        parent_id,
+        position: canonical.position,
+        settings: category.settings,
+        created_at: category.created_at.into(),
+        updated_at: category.updated_at.into(),
+    })
 }
 
 fn hierarchical_category_order(

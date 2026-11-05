@@ -17,9 +17,9 @@ function writeFixtureFile(root, relativePath, content) {
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-ai-richtext-'));
-  const shimExports = options.exposeMigrations
+  const shimExports = options.shimExports ?? (options.exposeMigrations
     ? 'CreatePostInput, PostResponse, PostService, UpdatePostInput, migrations, richtext'
-    : 'CreatePostInput, PostResponse, PostService, UpdatePostInput, richtext';
+    : 'CreatePostInput, PostResponse, PostService, UpdatePostInput, richtext');
   writeFixtureFile(
     root,
     'crates/modules/rustok-ai/src/rustok_blog.rs',
@@ -149,6 +149,21 @@ test('Blog AI richtext verifier accepts the canonical owner-only draft boundary'
   const result = run(fixture());
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /canonical owner-only richtext boundary/);
+});
+
+test('Blog AI richtext verifier treats rustfmt re-export ordering as equivalent', () => {
+  const result = run(fixture({
+    shimExports: 'richtext, CreatePostInput, PostResponse, PostService, UpdatePostInput',
+  }));
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('Blog AI richtext verifier still rejects a missing owner re-export', () => {
+  const result = run(fixture({
+    shimExports: 'richtext, CreatePostInput, PostResponse, PostService',
+  }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /owner re-export drift/);
 });
 
 test('Blog AI richtext verifier rejects migration re-exports through the AI shim', () => {

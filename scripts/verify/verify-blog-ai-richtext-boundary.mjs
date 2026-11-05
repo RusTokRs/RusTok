@@ -39,7 +39,7 @@ function assertNotContains(text, marker, label) {
 }
 
 function sameList(actual, expected) {
-  return JSON.stringify(actual) === JSON.stringify(expected);
+  return JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
 }
 
 const evidencePath = 'crates/modules/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';

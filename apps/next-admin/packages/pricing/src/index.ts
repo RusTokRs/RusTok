@@ -9,3 +9,4 @@ registerAdminModule({
 
 export { pricingNavItems } from './nav';
 export { default as PricingPage } from './pages/pricing-page';
+

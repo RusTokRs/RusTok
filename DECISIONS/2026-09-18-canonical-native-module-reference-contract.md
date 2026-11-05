@@ -53,6 +53,10 @@ not silently replace or supplement it on privileged reads.
   Text from another locale must never be copied and relabeled.
 - UI translation bundles such as `en`/`ru` describe bundled interface copy,
   not the set of content locales tenants may store.
+- Locale bounds must agree across owner validation, persistence and emitted
+  events. Reuse the platform locale bound; a valid owner locale must not be
+  rejected by a shorter event-field limit. Rollback retains widened locale
+  storage according to the database contract.
 
 ### Mutation and concurrency semantics
 

@@ -54,6 +54,12 @@ Root envelopes use the nil tenant UUID only for explicitly platform-capable
 `DomainEvent` variants. All other root and typed contract envelopes reject the
 sentinel before persistence or relay.
 
+Localized root events and Forms submission events use the platform locale
+length bound from `rustok_api::locale::MAX_LOCALE_TAG_LEN`. Publishing owners retain
+locale grammar and canonicalization policy. The
+[owner plan](docs/implementation-plan.md#locale-length-validation-2026-11-05)
+records the regression and its verification scope.
+
 The rebuild-only rollback and `build.rolled_back` contracts describe the
 current implementation. The accepted
 [module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
