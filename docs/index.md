@@ -128,7 +128,6 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Backlog (the one owned plan)](./modules/page-builder-backlog.md)
 - [Admin Parity: Rust FFA vs Next](./modules/admin-parity.md)
-- [Page Builder Implementation Plan (historical)](./archive/plans/page-builder-implementation-plan.md)
 - [Translation Module Implementation Plan](./modules/translation-implementation-plan.md) — owner-safe control plane, 49-operation admin contract, guarded human workflow controls, private workflow collaboration, checksum-verified expiring interchange artifacts, fixed-cardinality content-free observability, and AI machine-translation workflow
 - [Machine-readable Translation Surface Registry](./modules/translation-surfaces.json)
 - [Page Builder FBA Registry](../crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json)

@@ -203,8 +203,6 @@ println!("Deleted {} old revisions", deleted);
 
 - [API Reference](https://docs.rs/rustok-revisions)
 - [Examples](examples/)
-- [Migration Guide](../MIGRATION_GUIDE.md)
-- [Best Practices](../BEST_PRACTICES.md)
 
 ## Testing
 
@@ -224,8 +222,6 @@ The library is designed for high performance:
 - **Efficient indexing**: Optimized database indexes
 - **Batch operations**: Support for bulk operations
 - **Connection pooling**: Built-in connection pool management
-
-See [Performance Optimization Guide](../PERFORMANCE_OPTIMIZATION.md) for details.
 
 ## Contributing
 
@@ -253,14 +249,8 @@ See how rustok-revisions compares to other solutions:
 | Named versions | ✅ Yes | ❌ No | ❌ No |
 | Performance | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
 
-See [Comparison Matrix](../COMPARISON_MATRIX.md) for details.
-
 ## Support
 
 - 📚 [Documentation](https://docs.rs/rustok-revisions)
 - 💬 [Discord](https://discord.gg/rustok)
 - 🐛 [Issue Tracker](https://github.com/RusTokRs/RusTok/issues)
-
-## Roadmap
-
-See [ROADMAP.md](../ROADMAP.md) for planned features and future development.
