@@ -484,4 +484,3 @@ mod tests {
 
 #[cfg(test)]
 mod contract_tests;
-

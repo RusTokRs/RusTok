@@ -3,7 +3,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 
-use crate::app::modules::{lookup_page_for_route_segment, AdminPageLookup};
+use crate::app::modules::{AdminPageLookup, lookup_page_for_route_segment};
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::shared::context::module_request::ModuleRequestProvider;

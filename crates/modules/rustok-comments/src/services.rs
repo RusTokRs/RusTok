@@ -1658,7 +1658,11 @@ mod richtext_validation_tests {
         let author = SecurityContext::from_permissions(
             UserRole::Customer,
             Some(author_id),
-            [Permission::COMMENTS_CREATE, Permission::COMMENTS_READ, Permission::COMMENTS_LIST],
+            [
+                Permission::COMMENTS_CREATE,
+                Permission::COMMENTS_READ,
+                Permission::COMMENTS_LIST,
+            ],
         );
         let other = SecurityContext::from_permissions(
             UserRole::Customer,
@@ -1681,38 +1685,67 @@ mod richtext_validation_tests {
             .await
             .expect("comment created");
         assert_eq!(
-            service.get_comment(tenant, author, created.id, "en", None)
-                .await.expect("own read").id,
+            service
+                .get_comment(tenant, author, created.id, "en", None)
+                .await
+                .expect("own read")
+                .id,
             created.id,
             "an author can inspect their own pending comment"
         );
 
-        assert!(matches!(
-            service.get_comment(tenant, other.clone(), created.id, "en", None).await,
-            Err(CommentsError::CommentNotFound(_))
-        ), "generic read is not an authorization to fetch someone else's pending comment");
+        assert!(
+            matches!(
+                service
+                    .get_comment(tenant, other.clone(), created.id, "en", None)
+                    .await,
+                Err(CommentsError::CommentNotFound(_))
+            ),
+            "generic read is not an authorization to fetch someone else's pending comment"
+        );
 
-        let filter = ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 };
+        let filter = ListCommentsFilter {
+            locale: "en".into(),
+            page: 1,
+            per_page: 10,
+        };
         assert!(matches!(
-            service.list_comments_for_target(tenant, other.clone(), "blog_post", target, filter.clone(), None).await,
+            service
+                .list_comments_for_target(
+                    tenant,
+                    other.clone(),
+                    "blog_post",
+                    target,
+                    filter.clone(),
+                    None
+                )
+                .await,
             Err(CommentsError::Forbidden(_))
         ));
         assert!(matches!(
-            service.list_threads(tenant, other.clone(), crate::dto::ListThreadsFilter::default()).await,
+            service
+                .list_threads(
+                    tenant,
+                    other.clone(),
+                    crate::dto::ListThreadsFilter::default()
+                )
+                .await,
             Err(CommentsError::Forbidden(_))
         ));
         assert!(matches!(
-            service.get_thread_detail(
-                tenant,
-                other.clone(),
-                crate::dto::GetThreadDetailFilter {
-                    thread_id: created.thread_id,
-                    locale: "en".into(),
-                    fallback_locale: None,
-                    page: 1,
-                    per_page: 10,
-                },
-            ).await,
+            service
+                .get_thread_detail(
+                    tenant,
+                    other.clone(),
+                    crate::dto::GetThreadDetailFilter {
+                        thread_id: created.thread_id,
+                        locale: "en".into(),
+                        fallback_locale: None,
+                        page: 1,
+                        per_page: 10,
+                    },
+                )
+                .await,
             Err(CommentsError::Forbidden(_))
         ));
 
@@ -1720,31 +1753,75 @@ mod richtext_validation_tests {
         // still inspect and update the private queue.
         assert_eq!(
             crate::public_read::list_public_comments_for_target(
-                &service.db, tenant, "blog_post", target, filter, None,
-            ).await.expect("approved-only projection").1,
+                &service.db,
+                tenant,
+                "blog_post",
+                target,
+                filter,
+                None,
+            )
+            .await
+            .expect("approved-only projection")
+            .1,
             0
         );
         let moderator = SecurityContext::system();
         assert_eq!(
-            service.list_comments_for_target(
-                tenant, moderator.clone(), "blog_post", target,
-                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
-            ).await.expect("moderator queue").1,
+            service
+                .list_comments_for_target(
+                    tenant,
+                    moderator.clone(),
+                    "blog_post",
+                    target,
+                    ListCommentsFilter {
+                        locale: "en".into(),
+                        page: 1,
+                        per_page: 10
+                    },
+                    None,
+                )
+                .await
+                .expect("moderator queue")
+                .1,
             1
         );
 
-        service.set_comment_status(
-            tenant, moderator, created.id, crate::dto::CommentStatus::Approved, "en", None,
-        ).await.expect("moderation must work");
-        assert!(matches!(
-            service.get_comment(tenant, other, created.id, "en", None).await,
-            Err(CommentsError::CommentNotFound(_))
-        ), "the Comments owner cannot infer whether an approved target is public");
+        service
+            .set_comment_status(
+                tenant,
+                moderator,
+                created.id,
+                crate::dto::CommentStatus::Approved,
+                "en",
+                None,
+            )
+            .await
+            .expect("moderation must work");
+        assert!(
+            matches!(
+                service
+                    .get_comment(tenant, other, created.id, "en", None)
+                    .await,
+                Err(CommentsError::CommentNotFound(_))
+            ),
+            "the Comments owner cannot infer whether an approved target is public"
+        );
         assert_eq!(
             crate::public_read::list_public_comments_for_target(
-                &service.db, tenant, "blog_post", target,
-                ListCommentsFilter { locale: "en".into(), page: 1, per_page: 10 }, None,
-            ).await.expect("public approved projection").1,
+                &service.db,
+                tenant,
+                "blog_post",
+                target,
+                ListCommentsFilter {
+                    locale: "en".into(),
+                    page: 1,
+                    per_page: 10
+                },
+                None,
+            )
+            .await
+            .expect("public approved projection")
+            .1,
             1
         );
     }

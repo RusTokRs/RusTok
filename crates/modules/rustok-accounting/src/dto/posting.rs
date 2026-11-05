@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::{validate_transaction_balance, PostingDirection};
+use crate::domain::{PostingDirection, validate_transaction_balance};
 use crate::error::{AccountingError, AccountingResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -393,11 +393,13 @@ mod tests {
         assert_eq!(storno.lines[0].direction, PostingDirection::Credit);
         assert_eq!(storno.lines[0].amount_minor, 120_000);
         assert_eq!(storno.lines[0].party_id, Some(party_id));
-        assert!(storno.lines[0]
-            .description
-            .as_ref()
-            .unwrap()
-            .contains("STORNO (Order cancellation)"));
+        assert!(
+            storno.lines[0]
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("STORNO (Order cancellation)")
+        );
 
         // Second line was Credit 90.01, now Debit 90.01
         assert_eq!(storno.lines[1].account_code, "90.01");

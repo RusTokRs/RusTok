@@ -140,7 +140,10 @@ async fn worker_admission_lifecycle_and_shutdown() {
 
     // Close on shutdown
     admission.close();
-    let shutdown_err = admission.acquire().await.expect_err("should be shutting down");
+    let shutdown_err = admission
+        .acquire()
+        .await
+        .expect_err("should be shutting down");
     assert_eq!(shutdown_err.code(), tonic::Code::Unavailable);
 }
 

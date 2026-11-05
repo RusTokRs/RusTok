@@ -18,7 +18,8 @@ async fn sqlite_forum_read_models_are_bounded_and_cursor_stable() -> TestResult<
 }
 
 #[tokio::test]
-async fn sqlite_forum_read_model_respects_category_visibility_for_public_and_system() -> TestResult<()> {
+async fn sqlite_forum_read_model_respects_category_visibility_for_public_and_system()
+-> TestResult<()> {
     use rustok_core::{SecurityContext, UserRole};
     use rustok_forum::{
         ForumCategoryVisibility, ForumCategoryVisibilityPolicyService, ForumReadModelService,

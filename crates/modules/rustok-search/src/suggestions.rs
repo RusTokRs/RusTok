@@ -305,14 +305,14 @@ async fn authorize_suggestion_documents(
     // turn an approval for one source module into a suggestion for another.
     Ok(suggestions
         .into_iter()
-        .filter(|suggestion| {
-            match (&suggestion.source_module, suggestion.document_id) {
+        .filter(
+            |suggestion| match (&suggestion.source_module, suggestion.document_id) {
                 (Some(module), Some(document_id)) => {
                     allowed.contains(&(module.clone(), document_id))
                 }
                 _ => false,
-            }
-        })
+            },
+        )
         .collect())
 }
 

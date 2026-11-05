@@ -9,13 +9,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
-use rustok_api::{ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
+use rustok_api::{
+    ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
+};
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkScheduler};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::blog_comment_projection_delivery;
 use super::{tenant_scoped_work_item, work_item_tenant};
+use crate::entities::blog_comment_projection_delivery;
 
 /// Stable scheduler identity for Blog comment projection ledger retention.
 pub const BLOG_COMMENT_PROJECTION_RETENTION_WORKER: &str = "blog_comment_projection_retention";
@@ -125,9 +127,8 @@ impl BlogCommentProjectionRetentionWorkAdapter {
             )
             .filter(blog_comment_projection_delivery::Column::TenantId.eq(tenant_id))
             .filter(
-                blog_comment_projection_delivery::Column::CommentId.is_in(
-                    comment_ids.into_iter().collect::<Vec<_>>(),
-                ),
+                blog_comment_projection_delivery::Column::CommentId
+                    .is_in(comment_ids.into_iter().collect::<Vec<_>>()),
             )
             .group_by(blog_comment_projection_delivery::Column::CommentId)
             .into_tuple::<(Uuid, Uuid)>()

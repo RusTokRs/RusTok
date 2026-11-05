@@ -12,9 +12,9 @@ use rustok_api::{PortContext, PortError, normalize_locale_tag};
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::money;
 
+use super::PricingService;
 use super::resolution::{self, ResolutionError};
 use super::types::*;
-use super::PricingService;
 use crate::entities::{price, price_list, price_list_translation};
 
 impl PricingService {
@@ -312,10 +312,7 @@ impl PricingService {
         let invalid_window = Condition::any()
             .add(price::Column::MinQuantity.lte(0))
             .add(price::Column::MaxQuantity.lte(0))
-            .add(
-                Expr::col(price::Column::MinQuantity)
-                    .gt(Expr::col(price::Column::MaxQuantity)),
-            );
+            .add(Expr::col(price::Column::MinQuantity).gt(Expr::col(price::Column::MaxQuantity)));
         query = query.filter(Condition::any().add(active_window).add(invalid_window));
         let rows = query
             .limit((MAX_PRICE_RESOLUTION_ROWS + 1) as u64)
@@ -493,10 +490,7 @@ impl PricingService {
                 price::Column::PriceListId,
                 price_list_id,
             ))
-            .filter(optional_uuid_filter(
-                price::Column::ChannelId,
-                channel_id,
-            ))
+            .filter(optional_uuid_filter(price::Column::ChannelId, channel_id))
             .filter(optional_string_filter(
                 price::Column::ChannelSlug,
                 normalize_channel_slug(channel_slug),

@@ -54,7 +54,10 @@ impl std::fmt::Debug for SandboxWorkerGrpcService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SandboxWorkerGrpcService")
             .field("executor_kind", &self.executor.kind())
-            .field("available_permits", &self.execution_permit.available_permits())
+            .field(
+                "available_permits",
+                &self.execution_permit.available_permits(),
+            )
             .finish()
     }
 }

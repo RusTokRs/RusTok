@@ -1,7 +1,7 @@
 //! Public contract tests for `rustok-seo-panel`.
 
 use super::*;
-use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use uuid::Uuid;
 
 #[test]
@@ -18,12 +18,16 @@ fn public_surface_matches_contract() {
 
     let report = form.completeness_report();
     assert_eq!(report.score, 0);
-    assert!(report
-        .recommendations
-        .contains(&crate::model::SeoRecommendation::AddSeoTitle));
-    assert!(report
-        .recommendations
-        .contains(&crate::model::SeoRecommendation::AddMetaDescription));
+    assert!(
+        report
+            .recommendations
+            .contains(&crate::model::SeoRecommendation::AddSeoTitle)
+    );
+    assert!(
+        report
+            .recommendations
+            .contains(&crate::model::SeoRecommendation::AddMetaDescription)
+    );
 
     let valid_id = Uuid::new_v4();
     let validated = validate_target_id(&valid_id.to_string()).expect("valid target id");

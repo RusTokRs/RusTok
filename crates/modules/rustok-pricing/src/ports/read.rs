@@ -6,9 +6,9 @@ use uuid::Uuid;
 
 use crate::dto::pricing::*;
 use crate::ports::diagnostics::{
-    log_pricing_port_entry, log_pricing_port_failure, parse_port_tenant_id,
+    PricingOwnerErrorFacts, log_pricing_port_entry, log_pricing_port_failure, parse_port_tenant_id,
     pricing_error_to_port_error, read_with_deadline, resolution_error_to_port_error,
-    resolution_scope_error, validate_non_nil_uuid, PricingOwnerErrorFacts,
+    resolution_scope_error, validate_non_nil_uuid,
 };
 
 /// Transport-neutral owner boundary for pricing read projections.

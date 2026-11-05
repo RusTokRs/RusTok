@@ -103,17 +103,28 @@ pub async fn fetch_search_page(
     limit: usize,
     offset: usize,
 ) -> Result<SearchPreviewPayload, SearchTransportError> {
-    let native = (query.clone(), locale.clone(), preset_key.clone(), filters.clone(), tag.clone());
+    let native = (
+        query.clone(),
+        locale.clone(),
+        preset_key.clone(),
+        filters.clone(),
+        tag.clone(),
+    );
     execute_selected_transport(
         "search",
         selected_transport_path(),
-        move || native_server_adapter::fetch_search_page(
-            native.0, native.1, native.2, native.3, native.4, limit, offset,
-        ),
-        move || graphql_adapter::fetch_search_page(
-            query, locale, preset_key, filters, tag, limit, offset,
-        ),
-    ).await
+        move || {
+            native_server_adapter::fetch_search_page(
+                native.0, native.1, native.2, native.3, native.4, limit, offset,
+            )
+        },
+        move || {
+            graphql_adapter::fetch_search_page(
+                query, locale, preset_key, filters, tag, limit, offset,
+            )
+        },
+    )
+    .await
 }
 
 pub async fn fetch_suggestions(

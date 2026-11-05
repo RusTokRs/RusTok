@@ -37,7 +37,11 @@ fn test_transport_error_display() {
     let err_fallback = UiTransportError::fallback_failed("catalog", "native down", "graphql 503");
     assert!(err_fallback.fallback_attempted);
     assert!(err_fallback.to_string().contains("fallback failed"));
-    assert!(err_fallback.to_string().contains("native_server=native down"));
+    assert!(
+        err_fallback
+            .to_string()
+            .contains("native_server=native down")
+    );
     assert!(err_fallback.to_string().contains("graphql=graphql 503"));
 }
 

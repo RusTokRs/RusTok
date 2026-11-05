@@ -1054,5 +1054,8 @@ fn blog_admin_section_resolution_maps_subpaths() {
         blog_admin_section_for_subpath(Some("category")),
         BlogAdminSection::Posts
     );
-    assert_eq!(blog_admin_section_for_subpath(None), BlogAdminSection::Posts);
+    assert_eq!(
+        blog_admin_section_for_subpath(None),
+        BlogAdminSection::Posts
+    );
 }

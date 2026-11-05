@@ -466,7 +466,9 @@ impl SearchDictionaryService {
                 &rule.source_module,
                 &rule.entity_type,
                 storefront_channel,
-            ).await? {
+            )
+            .await?
+            {
                 pinned.push((rule.pinned_position.max(1), item));
             }
         }
@@ -734,9 +736,7 @@ fn take_matching_pinned(
 }
 
 fn has_catalog_filters(query: &SearchQuery) -> bool {
-    !query.category_ids.is_empty()
-        || !query.attribute_filters.is_empty()
-        || query.tag.is_some()
+    !query.category_ids.is_empty() || !query.attribute_filters.is_empty() || query.tag.is_some()
 }
 
 fn pinned_item_matches_query(
@@ -856,7 +856,12 @@ mod tests {
         let same_id = Uuid::new_v4();
         let item = |id: Uuid, module: &str, score: f64| crate::SearchResultItem {
             id,
-            entity_type: if module == "blog" { "blog_post" } else { "forum_topic" }.to_string(),
+            entity_type: if module == "blog" {
+                "blog_post"
+            } else {
+                "forum_topic"
+            }
+            .to_string(),
             source_module: module.to_string(),
             title: module.to_string(),
             snippet: None,

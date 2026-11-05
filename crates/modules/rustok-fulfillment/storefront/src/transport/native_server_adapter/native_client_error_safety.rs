@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::super::{
-    build_shipping_selection_updates, SelectShippingOptionRequest, ShippingSelectionTransportError,
+    SelectShippingOptionRequest, ShippingSelectionTransportError, build_shipping_selection_updates,
 };
 
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OWNER: &str = "rustok_fulfillment.storefront";
@@ -120,7 +120,7 @@ impl NativeClientErrorContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{NativeClientErrorContext, FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE};
+    use super::{FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE, NativeClientErrorContext};
     use crate::transport::ShippingSelectionTransportError;
 
     #[test]

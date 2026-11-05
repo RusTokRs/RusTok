@@ -1,8 +1,8 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-use crate::AdminCanvasController;
-use fly::{ComponentPatch, EditorCommand, InternalPageLink, FLY_PAGE_LINK_FIELD};
+use fly::{ComponentPatch, EditorCommand, FLY_PAGE_LINK_FIELD, InternalPageLink};
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
@@ -398,27 +398,31 @@ mod tests {
         controller
             .dispatch(UiIntent::Undo)
             .expect("undo link patch");
-        assert!(controller
-            .editor()
-            .document()
-            .component("link")
-            .unwrap()
-            .extensions
-            .contains_key(FLY_PAGE_LINK_FIELD));
+        assert!(
+            controller
+                .editor()
+                .document()
+                .component("link")
+                .unwrap()
+                .extensions
+                .contains_key(FLY_PAGE_LINK_FIELD)
+        );
     }
 
     #[test]
     fn missing_target_is_rejected_before_dispatch() {
         let controller = controller();
-        assert!(controller
-            .ssr_internal_page_link_intent(SsrInternalPageLinkRequest {
-                component_id: "link".to_string(),
-                page_id: "missing".to_string(),
-                base_path: String::new(),
-                query: String::new(),
-                fragment: String::new(),
-                fallback_href: String::new(),
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_internal_page_link_intent(SsrInternalPageLinkRequest {
+                    component_id: "link".to_string(),
+                    page_id: "missing".to_string(),
+                    base_path: String::new(),
+                    query: String::new(),
+                    fragment: String::new(),
+                    fallback_href: String::new(),
+                })
+                .is_err()
+        );
     }
 }

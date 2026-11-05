@@ -1,5 +1,5 @@
 //! Focused definitions only. Do not execute in the agent's source-only handoff.
-use super::snapshot::{summarize, Level};
+use super::snapshot::{Level, summarize};
 use super::*;
 use std::time::Duration;
 
@@ -101,13 +101,15 @@ fn source_snapshot_requires_complete_positive_unique_bindings_and_each_counter()
     bad.inventory_item_id = Uuid::new_v4();
     assert!(summarize(variant, parent, item, &[bad]).is_err());
     for (stocked, reserved, incoming) in [(-1, 0, 0), (0, -1, 0), (0, 0, -1)] {
-        assert!(summarize(
-            variant,
-            parent,
-            item,
-            &[level(item, stocked, reserved, incoming)]
-        )
-        .is_err());
+        assert!(
+            summarize(
+                variant,
+                parent,
+                item,
+                &[level(item, stocked, reserved, incoming)]
+            )
+            .is_err()
+        );
     }
     let mut levels: Vec<_> = (0..MAX_SOURCE_LEVELS)
         .map(|_| level(item, 0, 0, 0))

@@ -298,8 +298,7 @@ impl BlogPreviewTokenCleanupWorkAdapter {
         let mut last = self.last_claimed_tenant.lock().await;
         let now = chrono::Utc::now().fixed_offset();
         let expired_tokens = || {
-            blog_preview_token::Entity::find()
-                .filter(blog_preview_token::Column::ExpiresAt.lt(now))
+            blog_preview_token::Entity::find().filter(blog_preview_token::Column::ExpiresAt.lt(now))
         };
 
         let next = if let Some(last_tenant) = *last {
@@ -443,9 +442,7 @@ impl BlogRouteReconciliationWorkAdapter {
         // An async mutex is held over discovery to prevent concurrent local
         // claims from advancing the fairness cursor based on the same state.
         let mut last = self.last_claimed_tenant.lock().await;
-        let dangling_routes = || {
-            blog_post_route::Entity::find().filter(dangling_route_condition())
-        };
+        let dangling_routes = || blog_post_route::Entity::find().filter(dangling_route_condition());
 
         let next = if let Some(last_tenant) = *last {
             let higher = dangling_routes()

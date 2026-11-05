@@ -1,4 +1,4 @@
-use crate::{LandingSectionKind, FLY_LANDING_SECTION_FIELD};
+use crate::{FLY_LANDING_SECTION_FIELD, LandingSectionKind};
 use fly::{
     ComponentNode, ComponentObject, ComponentPatch, EditorCommand, FlyError, ProjectDocument,
     TraitOption, TraitSchema, TraitTarget, TraitValueKind,
@@ -980,10 +980,12 @@ mod tests {
             let report = LandingPropertyValidationReport::for_document(&document(kind));
             assert!(report.valid, "{kind}: {:?}", report.issues);
             assert_eq!(report.sections.len(), 1);
-            assert!(report.sections[0]
-                .properties
-                .iter()
-                .all(|property| property.target.is_some()));
+            assert!(
+                report.sections[0]
+                    .properties
+                    .iter()
+                    .all(|property| property.target.is_some())
+            );
         }
     }
 
@@ -1041,13 +1043,17 @@ mod tests {
         .expect("document");
         let report = LandingPropertyValidationReport::for_document(&document);
         assert!(!report.valid);
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.kind == LandingPropertyIssueKind::MissingRole));
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.kind == LandingPropertyIssueKind::UnknownRole));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == LandingPropertyIssueKind::MissingRole)
+        );
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == LandingPropertyIssueKind::UnknownRole)
+        );
     }
 }

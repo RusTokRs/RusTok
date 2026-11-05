@@ -103,7 +103,7 @@ fn storefront_root_for_locale(locale: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_header_links, build_search_target_url, resolve_default_scope, SearchScope};
+    use super::{SearchScope, build_header_links, build_search_target_url, resolve_default_scope};
 
     #[test]
     fn header_links_normalize_home_and_language_targets() {

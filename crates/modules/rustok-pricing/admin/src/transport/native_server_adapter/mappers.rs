@@ -95,7 +95,9 @@ pub(crate) fn map_native_list_item(
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn map_native_list(value: rustok_pricing::AdminPricingProductList) -> PricingProductList {
+pub(crate) fn map_native_list(
+    value: rustok_pricing::AdminPricingProductList,
+) -> PricingProductList {
     PricingProductList {
         items: value.items.into_iter().map(map_native_list_item).collect(),
         total: value.total,
@@ -106,7 +108,9 @@ pub(crate) fn map_native_list(value: rustok_pricing::AdminPricingProductList) ->
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn map_native_effective_price(value: rustok_pricing::ResolvedPrice) -> PricingEffectivePrice {
+pub(crate) fn map_native_effective_price(
+    value: rustok_pricing::ResolvedPrice,
+) -> PricingEffectivePrice {
     PricingEffectivePrice {
         source: crate::model::PricingPriceSource {
             price_id: value.source.price_id().to_string(),
@@ -139,7 +143,9 @@ pub(crate) fn map_native_effective_price(value: rustok_pricing::ResolvedPrice) -
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn map_native_detail(value: rustok_pricing::AdminPricingProductDetail) -> PricingProductDetail {
+pub(crate) fn map_native_detail(
+    value: rustok_pricing::AdminPricingProductDetail,
+) -> PricingProductDetail {
     PricingProductDetail {
         resolution_context: None,
         resolved_at: None,
@@ -197,7 +203,6 @@ pub(crate) fn map_native_detail(value: rustok_pricing::AdminPricingProductDetail
             .collect(),
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub(crate) fn map_resolution_context(

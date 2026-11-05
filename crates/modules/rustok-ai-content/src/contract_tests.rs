@@ -20,8 +20,8 @@ fn crate_api_defines_minimal_contract_sections() {
 #[test]
 fn content_ai_constants_and_descriptors() {
     use crate::{
-        content_ai_verticals, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
-        CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
+        BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME, CONTENT_MODERATION_TASK_SLUG,
+        CONTENT_MODERATION_TOOL_NAME, content_ai_verticals,
     };
 
     assert_eq!(CONTENT_MODERATION_TASK_SLUG, "content_moderation");

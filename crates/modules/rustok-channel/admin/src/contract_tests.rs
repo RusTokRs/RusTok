@@ -47,10 +47,7 @@ fn ffa_core_boundary_invariants() {
 fn api_error_display_and_traits() {
     let rest_err = ApiError::Rest("connection refused".to_string());
     assert_eq!(rest_err.to_string(), "connection refused");
-    assert_eq!(
-        rest_err,
-        ApiError::Rest("connection refused".to_string())
-    );
+    assert_eq!(rest_err, ApiError::Rest("connection refused".to_string()));
     assert_ne!(rest_err, ApiError::Rest("timeout".to_string()));
 
     let srv_err = ApiError::ServerFn("unauthorized".to_string());
@@ -64,8 +61,7 @@ fn api_error_display_and_traits() {
     );
 
     let serialized = serde_json::to_string(&rest_err).expect("ApiError serializes");
-    let deserialized: ApiError =
-        serde_json::from_str(&serialized).expect("ApiError deserializes");
+    let deserialized: ApiError = serde_json::from_str(&serialized).expect("ApiError deserializes");
     assert_eq!(rest_err, deserialized);
 }
 
@@ -144,7 +140,9 @@ fn model_dto_serde_roundtrips() {
                 action_channel_id: "chan-1".to_string(),
                 definition: ChannelResolutionRuleDefinitionRecord {
                     predicates: vec![
-                        ChannelResolutionPredicateRecord::HostEquals("shop.example.com".to_string()),
+                        ChannelResolutionPredicateRecord::HostEquals(
+                            "shop.example.com".to_string(),
+                        ),
                         ChannelResolutionPredicateRecord::HostSuffix(".example.com".to_string()),
                         ChannelResolutionPredicateRecord::OAuthAppEquals("app-1".to_string()),
                         ChannelResolutionPredicateRecord::SurfaceIs("http".to_string()),

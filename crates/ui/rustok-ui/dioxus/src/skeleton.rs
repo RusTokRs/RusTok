@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{skeleton_classes, SkeletonVariant};
+use rustok_ui::{SkeletonVariant, skeleton_classes};
 
 #[component]
 pub fn Skeleton(

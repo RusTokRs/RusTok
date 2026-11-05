@@ -24,4 +24,3 @@ pub use app::providers::locale::{
 
 #[cfg(test)]
 mod contract_tests;
-

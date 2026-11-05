@@ -1,8 +1,8 @@
 use crate::model::StorefrontCheckoutCart;
 use rustok_fulfillment_storefront::transport::{
-    build_select_shipping_option_request as build_fulfillment_select_shipping_option_request,
     SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest,
     ShippingSelectionDeliveryGroup,
+    build_select_shipping_option_request as build_fulfillment_select_shipping_option_request,
 };
 use rustok_order_storefront::transport::CompleteCheckoutRequest;
 use rustok_payment_storefront::transport::PaymentCollectionCreateRequest;

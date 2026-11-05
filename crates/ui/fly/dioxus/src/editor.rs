@@ -4,13 +4,13 @@
 
 use dioxus::prelude::*;
 use fly::{
-    render_page, validate_token_name, validate_token_value, DesignToken, EditorCommand, FlyEditor,
-    PageSelection, ProjectDocument, RegistrySet, RenderPolicy, ThemeCommand,
+    DesignToken, EditorCommand, FlyEditor, PageSelection, ProjectDocument, RegistrySet,
+    RenderPolicy, ThemeCommand, render_page, validate_token_name, validate_token_value,
 };
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{
-    editor_layer_items, palette_block_items_with_access, theme_token_items,
-    ContributionAssemblyResult, PaletteBlockAccess,
+    ContributionAssemblyResult, PaletteBlockAccess, editor_layer_items,
+    palette_block_items_with_access, theme_token_items,
 };
 
 /// Full editor workspace: palette, layer tree, canvas preview, design-token editor, and undo/redo, wired to a

@@ -117,11 +117,12 @@ pub async fn update_cache_settings(
     expected_schema_version: i32,
 ) -> Result<GraphqlUpdatePlatformSettingsResponse, String> {
     match selected_transport_path() {
-        UiTransportPath::NativeServer => {
-            native_server_adapter::update_cache_settings_native(settings_json, expected_schema_version)
-                .await
-                .map_err(|e| e.to_string())
-        }
+        UiTransportPath::NativeServer => native_server_adapter::update_cache_settings_native(
+            settings_json,
+            expected_schema_version,
+        )
+        .await
+        .map_err(|e| e.to_string()),
         UiTransportPath::Graphql => {
             let res: GraphqlUpdatePlatformSettingsResponse = rustok_graphql::execute(
                 &rustok_graphql::graphql_url(),
@@ -308,7 +309,12 @@ mod native_server_adapter {
             // the adapter only reports what was actually stored.
             let stored = port
                 .port()
-                .update(tenant.id, Some(auth.user_id), draft, expected_schema_version)
+                .update(
+                    tenant.id,
+                    Some(auth.user_id),
+                    draft,
+                    expected_schema_version,
+                )
                 .await
                 .map_err(ServerFnError::new)?;
             let settings = serde_json::to_string(&stored.settings)

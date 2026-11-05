@@ -14,10 +14,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    ForumTopicReadOperation, ForumTopicReadState,
-    ForumTopicReadTransport, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
-    MarkForumTopicsReadBatchResult, TopicReadModel, TopicStatus, TopicUnreadCursorQuery,
-    TopicUnreadReadModel, topic_read_audience_port_context,
+    ForumTopicReadOperation, ForumTopicReadState, ForumTopicReadTransport, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, TopicReadModel, TopicStatus,
+    TopicUnreadCursorQuery, TopicUnreadReadModel, topic_read_audience_port_context,
 };
 
 use super::ForumGraphqlRuntimeData;

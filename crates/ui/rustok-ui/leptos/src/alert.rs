@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{alert_classes, AlertVariant};
+use rustok_ui::{AlertVariant, alert_classes};
 
 #[component]
 pub fn Alert(

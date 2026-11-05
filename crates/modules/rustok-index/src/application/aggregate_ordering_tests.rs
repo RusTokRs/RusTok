@@ -95,9 +95,11 @@ fn min_asc_compiles_correlated_tagged_order_value() {
     let compiled = registry.compile_postgres_query(&query).unwrap();
     assert!(compiled.sql.contains("SELECT MIN("));
     assert!(compiled.sql.contains("FROM index_links AS \"mo_l1\""));
-    assert!(compiled
-        .sql
-        .contains("jsonb_build_object('type', 'integer'"));
+    assert!(
+        compiled
+            .sql
+            .contains("jsonb_build_object('type', 'integer'")
+    );
     assert!(compiled.sql.contains("ASC NULLS LAST"));
     assert!(compiled.sql.contains("\"t0\".entity_id ASC"));
     assert!(!compiled.sql.contains(" LEFT JOIN index_links AS \"l1\""));
@@ -123,9 +125,11 @@ fn decimal_aggregate_uses_numeric_order_and_exact_string_wire() {
 
     assert!(compiled.sql.contains("SELECT MAX("));
     assert!(compiled.sql.contains(")::numeric"));
-    assert!(compiled
-        .sql
-        .contains("jsonb_build_object('type', 'decimal', 'value', to_jsonb(((SELECT MAX("));
+    assert!(
+        compiled
+            .sql
+            .contains("jsonb_build_object('type', 'decimal', 'value', to_jsonb(((SELECT MAX(")
+    );
     assert!(compiled.sql.contains(")::text)) END AS \"__order_0\""));
     assert!(compiled.sql.contains("DESC NULLS FIRST"));
 }

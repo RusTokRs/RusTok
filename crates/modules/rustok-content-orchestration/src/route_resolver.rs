@@ -6,9 +6,7 @@
 //! errors are returned, and the resolver never falls back to another owner.
 
 use async_trait::async_trait;
-use rustok_blog::{
-    BLOG_ROUTE_PREFIX, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
-};
+use rustok_blog::{BLOG_ROUTE_PREFIX, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE};
 use rustok_content::{
     CanonicalRouteResolver, ContentError, ContentResult, ResolvedContentRoute,
     normalize_locale_code, normalize_route, resolve_by_locale,
@@ -46,9 +44,10 @@ impl OwnerCanonicalRouteResolver {
             .strip_prefix(BLOG_ROUTE_PREFIX)
             .and_then(|query| query.strip_prefix(BLOG_SLUG_PARAM))
         {
-            let live_post_id = BlogPostRouteOwner::find_live_post_by_slug(&self.db, tenant_id, slug)
-                .await
-                .map_err(blog_error_to_content_error)?;
+            let live_post_id =
+                BlogPostRouteOwner::find_live_post_by_slug(&self.db, tenant_id, slug)
+                    .await
+                    .map_err(blog_error_to_content_error)?;
             if let Some(post_id) = live_post_id {
                 return Ok(Some(ResolvedContentRoute {
                     target_kind: "blog_post".to_string(),
@@ -170,9 +169,7 @@ impl OwnerCanonicalRouteResolver {
         match target_kind {
             "blog_post" => {
                 let canonical = BlogPostRouteOwner::find_canonical_route_by_post_id(
-                    &self.db,
-                    tenant_id,
-                    target_id,
+                    &self.db, tenant_id, target_id,
                 )
                 .await
                 .map_err(blog_error_to_content_error)?;

@@ -102,4 +102,3 @@ pub use state::{InstallState, InstallStep, StateTransitionError};
 
 #[cfg(test)]
 mod contract_tests;
-

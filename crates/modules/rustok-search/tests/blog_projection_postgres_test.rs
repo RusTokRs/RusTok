@@ -301,7 +301,10 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
     // The PostgreSQL Search category predicate reads facets.category_id,
     // not payload.category_id. Regression: a post with a Category owner
     // membership must be discoverable by category-scoped full-text search.
-    assert_eq!(published.facets["category_id"], published.payload["category_id"]);
+    assert_eq!(
+        published.facets["category_id"],
+        published.payload["category_id"]
+    );
     assert_eq!(published.payload["category_name"], "Search Category");
     assert_eq!(published.payload["category_slug"], "search-category");
     // The `users` fixture still says "Search Author"; a document that carried that name

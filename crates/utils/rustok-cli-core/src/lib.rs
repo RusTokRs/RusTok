@@ -70,11 +70,7 @@ pub struct CommandOutcome {
 }
 
 impl CommandOutcome {
-    pub fn new(
-        exit_code: i32,
-        message: impl Into<String>,
-        data: serde_json::Value,
-    ) -> Self {
+    pub fn new(exit_code: i32, message: impl Into<String>, data: serde_json::Value) -> Self {
         Self {
             exit_code,
             message: message.into(),

@@ -1,5 +1,5 @@
-use rustok_core::PermissionScope;
 use super::*;
+use rustok_core::PermissionScope;
 
 impl PostService {
     #[instrument(skip(self, security))]
@@ -61,7 +61,10 @@ impl PostService {
         // is damaged state, visible only to an editor who can repair it.
         // An author with Own scope may read their own post regardless of
         // publication status; tenant-wide readers (All) may read any post.
-        let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+        let is_author = security
+            .user_id
+            .map(|u| u == post.author_id)
+            .unwrap_or(false);
         let can_read_this_post = can_read_non_public_posts(&security)
             || (is_author
                 && matches!(
@@ -201,7 +204,10 @@ impl PostService {
             return Ok(None);
         };
 
-        let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+        let is_author = security
+            .user_id
+            .map(|u| u == post.author_id)
+            .unwrap_or(false);
         let can_read_this_post = can_read_non_public_posts(&security)
             || (is_author
                 && matches!(

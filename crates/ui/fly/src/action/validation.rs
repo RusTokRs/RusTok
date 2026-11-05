@@ -1,10 +1,11 @@
 use super::model::{
-    ComponentAction, ComponentForm, FormEncoding, FormMethod, FLY_ACTION_FIELD, FLY_FORM_FIELD,
+    ComponentAction, ComponentForm, FLY_ACTION_FIELD, FLY_FORM_FIELD, FormEncoding, FormMethod,
 };
 use crate::{
-    component_visit::visit_project_components, interaction_route::InteractionRouteCatalog,
-    safe_url::validate_safe_url as validate_shared_safe_url, ComponentObject, ProjectDocument,
-    ValidationDiagnostic, ValidationSeverity, FLY_PAGE_LINK_FIELD,
+    ComponentObject, FLY_PAGE_LINK_FIELD, ProjectDocument, ValidationDiagnostic,
+    ValidationSeverity, component_visit::visit_project_components,
+    interaction_route::InteractionRouteCatalog,
+    safe_url::validate_safe_url as validate_shared_safe_url,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};

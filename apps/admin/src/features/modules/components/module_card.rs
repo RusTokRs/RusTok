@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::entities::module::{MarketplaceModule, ModuleInfo};
-use crate::{use_admin_locale, Locale};
+use crate::{Locale, use_admin_locale};
 
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;

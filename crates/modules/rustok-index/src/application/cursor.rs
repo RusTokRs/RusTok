@@ -1,5 +1,5 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -82,9 +82,7 @@ pub enum CursorValidationError {
     LocaleMismatch,
     #[error("cursor query fingerprint does not match filter/order semantics")]
     QueryFingerprintMismatch,
-    #[error(
-        "cursor contains {actual} order values but query defines {expected} order expressions"
-    )]
+    #[error("cursor contains {actual} order values but query defines {expected} order expressions")]
     OrderArityMismatch { expected: usize, actual: usize },
     #[error("cursor order field contract is missing at position {index}")]
     OrderFieldContractMissing { index: usize },

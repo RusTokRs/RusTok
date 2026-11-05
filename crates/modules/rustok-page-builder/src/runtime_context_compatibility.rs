@@ -1,6 +1,6 @@
 use fly::{
-    diff_runtime_context_contracts_with_policy, FlyResult, GrapesJsCodec,
-    RuntimeContextCompatibilityPolicy, RuntimeContextCompatibilityReport,
+    FlyResult, GrapesJsCodec, RuntimeContextCompatibilityPolicy, RuntimeContextCompatibilityReport,
+    diff_runtime_context_contracts_with_policy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

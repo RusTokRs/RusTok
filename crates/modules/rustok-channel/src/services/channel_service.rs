@@ -2401,7 +2401,9 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         // Empty slug
         let err_empty_slug = service
@@ -2480,7 +2482,9 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id")));
+        assert!(
+            matches!(err_nil_tenant, ChannelError::Validation(msg) if msg.contains("tenant_id"))
+        );
 
         let err_empty_slug = service
             .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
@@ -2524,7 +2528,9 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err_empty_module, ChannelError::Validation(msg) if msg.contains("module_slug")));
+        assert!(
+            matches!(err_empty_module, ChannelError::Validation(msg) if msg.contains("module_slug"))
+        );
 
         let err_nil_oauth = service
             .bind_oauth_app(
@@ -2536,6 +2542,8 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert!(matches!(err_nil_oauth, ChannelError::Validation(msg) if msg.contains("oauth_app_id")));
+        assert!(
+            matches!(err_nil_oauth, ChannelError::Validation(msg) if msg.contains("oauth_app_id"))
+        );
     }
 }

@@ -5,12 +5,14 @@ use async_trait::async_trait;
 use rustok_build_publication::{
     RegistryCredentialBroker, RegistryCredentialError, RegistryCredentialLease,
 };
-use rustok_modules::{ModulePublicationArtifactOrigin, OciArtifactPublicationTarget, OciArtifactReference};
+use rustok_modules::{
+    ModulePublicationArtifactOrigin, OciArtifactPublicationTarget, OciArtifactReference,
+};
 use serde_json::json;
 
 use crate::{
-    failed_validation_checks, successful_validation_checks, CredentialedOciRegistryProvider,
-    RegistryValidationPublicationPolicy,
+    CredentialedOciRegistryProvider, RegistryValidationPublicationPolicy, failed_validation_checks,
+    successful_validation_checks,
 };
 
 #[test]
@@ -67,7 +69,8 @@ fn publication_policy_command_validation() {
     let artifact = OciArtifactReference {
         registry: "registry.example.com".to_string(),
         repository: "modules/rhai".to_string(),
-        digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            .to_string(),
     };
     let alloy_cmd = policy
         .alloy_command("req-2".to_string(), artifact, actor)
@@ -77,12 +80,17 @@ fn publication_policy_command_validation() {
 
     let mut invalid_policy = sample_policy();
     invalid_policy.registry_id = "".to_string();
-    assert!(invalid_policy.command("req-3".to_string(), json!({"kind":"service"})).is_err());
+    assert!(
+        invalid_policy
+            .command("req-3".to_string(), json!({"kind":"service"}))
+            .is_err()
+    );
 }
 
 #[test]
 fn validation_checks_structure() {
-    let platform_checks = successful_validation_checks(ModulePublicationArtifactOrigin::PlatformBuilt);
+    let platform_checks =
+        successful_validation_checks(ModulePublicationArtifactOrigin::PlatformBuilt);
     assert_eq!(platform_checks.len(), 2);
     assert_eq!(platform_checks[0].key, "artifact_contract");
     assert_eq!(platform_checks[0].status, "passed");
@@ -95,15 +103,18 @@ fn validation_checks_structure() {
     assert_eq!(alloy_checks[1].key, "alloy_oci_publication");
     assert_eq!(alloy_checks[2].key, "platform_admission");
 
-    let prebuilt_checks = successful_validation_checks(ModulePublicationArtifactOrigin::ExternalPrebuilt);
+    let prebuilt_checks =
+        successful_validation_checks(ModulePublicationArtifactOrigin::ExternalPrebuilt);
     assert_eq!(prebuilt_checks.len(), 1);
 
-    let failed_checks = failed_validation_checks(ModulePublicationArtifactOrigin::AlloyAuthored, false);
+    let failed_checks =
+        failed_validation_checks(ModulePublicationArtifactOrigin::AlloyAuthored, false);
     assert_eq!(failed_checks[0].status, "failed");
     assert_eq!(failed_checks[1].status, "not_run");
     assert_eq!(failed_checks[2].status, "not_run");
 
-    let partial_failed = failed_validation_checks(ModulePublicationArtifactOrigin::PlatformBuilt, true);
+    let partial_failed =
+        failed_validation_checks(ModulePublicationArtifactOrigin::PlatformBuilt, true);
     assert_eq!(partial_failed[0].status, "passed");
     assert_eq!(partial_failed[1].status, "failed");
 }

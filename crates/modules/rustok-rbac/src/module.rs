@@ -1,6 +1,6 @@
+use crate::catalog::BuiltinTenantRbacCatalog;
 use async_trait::async_trait;
 use rustok_api::{Permission, SharedTenantRbacCatalog};
-use crate::catalog::BuiltinTenantRbacCatalog;
 use rustok_core::module::{
     HealthStatus, MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };

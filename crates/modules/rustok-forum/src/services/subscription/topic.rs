@@ -28,8 +28,8 @@ use crate::subscription::ForumSubscriptionLevel;
 use super::SubscriptionService;
 use super::helpers::{
     INITIAL_REVISION, ensure_revision_update, implicit_response, next_revision,
-    require_authenticated_user,
-    resolve_preferences, topic_response, validate_expected_revision, validate_new_revision,
+    require_authenticated_user, resolve_preferences, topic_response, validate_expected_revision,
+    validate_new_revision,
 };
 
 impl SubscriptionService {

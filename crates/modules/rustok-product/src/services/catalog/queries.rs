@@ -377,14 +377,24 @@ impl CatalogService {
         // Refuse hidden products before loading bounded dependent projections.
         let visible = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&self.db).await?;
-        if visible.as_ref().is_none_or(|product| product.status != entities::product::ProductStatus::Active
-            || product.published_at.is_none()
-            || !is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)) {
+            .one(&self.db)
+            .await?;
+        if visible.as_ref().is_none_or(|product| {
+            product.status != entities::product::ProductStatus::Active
+                || product.published_at.is_none()
+                || !is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
+        }) {
             return Ok(None);
         }
         let mut product = match self
-            .get_product_in(&self.db, tenant_id, product_id, locale, Some(fallback_locale), Some(MAX_STOREFRONT_PRODUCT_VARIANTS))
+            .get_product_in(
+                &self.db,
+                tenant_id,
+                product_id,
+                locale,
+                Some(fallback_locale),
+                Some(MAX_STOREFRONT_PRODUCT_VARIANTS),
+            )
             .await
         {
             Ok(product) => product,
@@ -399,16 +409,40 @@ impl CatalogService {
             return Ok(None);
         }
 
-        let axes = product.variant_axes.iter().map(|axis| VariantAxisInput {
-            attribute_id: axis.attribute_id, position: axis.position,
-            allowed_option_ids: axis.allowed_values.iter().map(|value| value.option_id).collect(),
-        }).collect::<Vec<_>>();
-        let tuples = product.variants.iter().map(|variant| variant.axis_values.iter().map(|value| VariantAxisValueInput {
-            attribute_id: value.attribute_id, option_id: value.option_id,
-        }).collect::<Vec<_>>()).collect::<Vec<_>>();
+        let axes = product
+            .variant_axes
+            .iter()
+            .map(|axis| VariantAxisInput {
+                attribute_id: axis.attribute_id,
+                position: axis.position,
+                allowed_option_ids: axis
+                    .allowed_values
+                    .iter()
+                    .map(|value| value.option_id)
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        let tuples = product
+            .variants
+            .iter()
+            .map(|variant| {
+                variant
+                    .axis_values
+                    .iter()
+                    .map(|value| VariantAxisValueInput {
+                        attribute_id: value.attribute_id,
+                        option_id: value.option_id,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         super::commands::validate_variant_axis_tuples(&axes, &tuples)?;
         for variant in &product.variants {
-            let mut values = variant.axis_values.iter().map(|value| format!("{}:{}", value.attribute_id, value.option_id)).collect::<Vec<_>>();
+            let mut values = variant
+                .axis_values
+                .iter()
+                .map(|value| format!("{}:{}", value.attribute_id, value.option_id))
+                .collect::<Vec<_>>();
             values.sort();
             let identity = (!values.is_empty()).then(|| values.join(";"));
             if variant.combination_identity != identity {
@@ -588,5 +622,3 @@ impl CatalogService {
             .collect())
     }
 }
-
-

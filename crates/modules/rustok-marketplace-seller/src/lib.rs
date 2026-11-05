@@ -48,11 +48,11 @@ pub use dto::{
 pub use error::{MarketplaceSellerError, MarketplaceSellerResult};
 pub use module::MarketplaceSellerModule;
 pub use ports::{
-    AddMarketplaceSellerMemberRequest, MarketplaceSellerCommandPort,
-    MarketplaceSellerListResponse, MarketplaceSellerReadPort, MarketplaceSellerRuntime,
-    ReactivateMarketplaceSellerRequest, ReviewMarketplaceSellerOnboardingRequest,
-    SubmitMarketplaceSellerOnboardingRequest, SuspendMarketplaceSellerRequest,
-    UpdateMarketplaceSellerMemberRequest, UpdateMarketplaceSellerProfileRequest,
+    AddMarketplaceSellerMemberRequest, MarketplaceSellerCommandPort, MarketplaceSellerListResponse,
+    MarketplaceSellerReadPort, MarketplaceSellerRuntime, ReactivateMarketplaceSellerRequest,
+    ReviewMarketplaceSellerOnboardingRequest, SubmitMarketplaceSellerOnboardingRequest,
+    SuspendMarketplaceSellerRequest, UpdateMarketplaceSellerMemberRequest,
+    UpdateMarketplaceSellerProfileRequest,
 };
 pub use service::MarketplaceSellerService;
 pub use translation::{

@@ -7,8 +7,8 @@ use super::{
     cursor::IndexCursor,
     planner::{ExecutableQueryPlan, PlannedField, PlannedManyProjection, PlannedOrder},
     postgres_compiler::{
-        quote_identifier, CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
-        CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError,
+        CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
+        CompiledQueryColumn, PostgresBindValue, PostgresQueryCompileError, quote_identifier,
     },
 };
 

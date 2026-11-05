@@ -27,12 +27,12 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::state_machine::TopicStatus;
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 use crate::services::topic::{order_topic_list, topic_list_after_condition, topic_list_cursor};
 use crate::services::vote::VoteService;
+use crate::state_machine::TopicStatus;
 
 const CATEGORY_CURSOR_VERSION: &str = "c1";
 const REPLY_CURSOR_VERSION: &str = "r1";
@@ -185,8 +185,9 @@ impl ForumReadModelService {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = normalized_locale(query.locale.as_deref())?;
         let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
-        let (topics, next_cursor, has_more) =
-            self.load_topic_rows(tenant_id, &security, &query, None).await?;
+        let (topics, next_cursor, has_more) = self
+            .load_topic_rows(tenant_id, &security, &query, None)
+            .await?;
         let items = self
             .materialize_topic_read_models(
                 tenant_id,
@@ -411,7 +412,10 @@ impl ForumReadModelService {
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(Expr::cust("deleted_at IS NULL"));
 
-        let hidden_category_ids = crate::services::category_visibility::ForumCategoryVisibilityPolicyService::new(self.db.clone())
+        let hidden_category_ids =
+            crate::services::category_visibility::ForumCategoryVisibilityPolicyService::new(
+                self.db.clone(),
+            )
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
         if !hidden_category_ids.is_empty() {
@@ -420,9 +424,12 @@ impl ForumReadModelService {
 
         let is_operator = security.role == rustok_core::UserRole::SuperAdmin
             || security.role == rustok_core::UserRole::Admin
-            || security.get_scope(Resource::ForumTopics, Action::Update) == rustok_core::PermissionScope::All
-            || security.get_scope(Resource::ForumTopics, Action::Manage) == rustok_core::PermissionScope::All
-            || security.get_scope(Resource::ModerationCases, Action::Manage) == rustok_core::PermissionScope::All;
+            || security.get_scope(Resource::ForumTopics, Action::Update)
+                == rustok_core::PermissionScope::All
+            || security.get_scope(Resource::ForumTopics, Action::Manage)
+                == rustok_core::PermissionScope::All
+            || security.get_scope(Resource::ModerationCases, Action::Manage)
+                == rustok_core::PermissionScope::All;
 
         if is_operator {
             if let Some(status) = query.status {

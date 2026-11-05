@@ -192,7 +192,7 @@ impl DlqDuplicateAlertPolicyError {
 mod tests {
     use uuid::Uuid;
 
-    use crate::{summarize_dlq_duplicates, DlqDuplicateObservation};
+    use crate::{DlqDuplicateObservation, summarize_dlq_duplicates};
 
     use super::*;
 

@@ -3,13 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_api::{normalize_locale_tag, PortError};
+use rustok_api::{PortError, normalize_locale_tag};
 
 use crate::domain::{
-    normalize_feature_key, normalize_group_handle, GroupAction, GroupFeatureStatus,
-    GroupJoinPolicy, GroupMembershipEffectiveStatus, GroupMembershipEnforcementSourceKind,
-    GroupMembershipEnforcementState, GroupMembershipStatus, GroupRole, GroupStatus,
-    GroupVisibility,
+    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipEffectiveStatus,
+    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState, GroupMembershipStatus,
+    GroupRole, GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -557,66 +556,86 @@ mod tests {
 
     #[test]
     fn requests_reject_nil_uuids() {
-        assert!(JoinGroupRequest {
-            group_id: Uuid::nil()
-        }
-        .validate()
-        .is_err());
-        assert!(LeaveGroupRequest {
-            group_id: Uuid::nil()
-        }
-        .validate()
-        .is_err());
-        assert!(GroupAccessRequest {
-            group_id: Uuid::nil(),
-            action: GroupAction::View
-        }
-        .validate()
-        .is_err());
-        assert!(ReadGroupMembershipRequest {
-            group_id: Uuid::nil(),
-            user_id: Uuid::new_v4()
-        }
-        .validate()
-        .is_err());
-        assert!(ReadGroupMembershipRequest {
-            group_id: Uuid::new_v4(),
-            user_id: Uuid::nil()
-        }
-        .validate()
-        .is_err());
-        assert!(ReadGroupMembershipEnforcementRequest {
-            group_id: Uuid::nil(),
-            user_id: Uuid::new_v4()
-        }
-        .validate()
-        .is_err());
-        assert!(ReadGroupMembershipEnforcementRequest {
-            group_id: Uuid::new_v4(),
-            user_id: Uuid::nil()
-        }
-        .validate()
-        .is_err());
-        assert!(ListGroupMembershipsRequest {
-            group_id: Uuid::nil(),
-            page: 1,
-            per_page: 20
-        }
-        .validate()
-        .is_err());
-        assert!(ListGroupMembershipsRequest {
-            group_id: Uuid::new_v4(),
-            page: 0,
-            per_page: 20
-        }
-        .validate()
-        .is_err());
-        assert!(ListGroupMembershipsRequest {
-            group_id: Uuid::new_v4(),
-            page: 1,
-            per_page: 101
-        }
-        .validate()
-        .is_err());
+        assert!(
+            JoinGroupRequest {
+                group_id: Uuid::nil()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            LeaveGroupRequest {
+                group_id: Uuid::nil()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            GroupAccessRequest {
+                group_id: Uuid::nil(),
+                action: GroupAction::View
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ReadGroupMembershipRequest {
+                group_id: Uuid::nil(),
+                user_id: Uuid::new_v4()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ReadGroupMembershipRequest {
+                group_id: Uuid::new_v4(),
+                user_id: Uuid::nil()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ReadGroupMembershipEnforcementRequest {
+                group_id: Uuid::nil(),
+                user_id: Uuid::new_v4()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ReadGroupMembershipEnforcementRequest {
+                group_id: Uuid::new_v4(),
+                user_id: Uuid::nil()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ListGroupMembershipsRequest {
+                group_id: Uuid::nil(),
+                page: 1,
+                per_page: 20
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ListGroupMembershipsRequest {
+                group_id: Uuid::new_v4(),
+                page: 0,
+                per_page: 20
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            ListGroupMembershipsRequest {
+                group_id: Uuid::new_v4(),
+                page: 1,
+                per_page: 101
+            }
+            .validate()
+            .is_err()
+        );
     }
 }

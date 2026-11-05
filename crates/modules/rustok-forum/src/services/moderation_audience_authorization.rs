@@ -130,13 +130,7 @@ impl ForumModerationAudienceAuthorizationService {
             .await?
             .ok_or(ForumError::TopicNotFound(expected_topic_id))?;
         let authorization = self
-            .evaluate_category_with_conn(
-                txn,
-                tenant_id,
-                topic.category_id,
-                security,
-                context,
-            )
+            .evaluate_category_with_conn(txn, tenant_id, topic.category_id, security, context)
             .await?;
         self.require_allowed(authorization)
     }
@@ -219,8 +213,7 @@ impl ForumModerationAudienceAuthorizationService {
     where
         C: ConnectionTrait,
     {
-        let policy =
-            load_category_moderation_audience_policy(db, tenant_id, category_id).await?;
+        let policy = load_category_moderation_audience_policy(db, tenant_id, category_id).await?;
         let mut evaluated_layers = 0usize;
         let mut last_reason = ForumAudienceDecisionReason::Unrestricted;
         for layer in policy.effective_layers {

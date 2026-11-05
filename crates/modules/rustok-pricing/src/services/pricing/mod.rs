@@ -12,8 +12,8 @@ pub mod resolution;
 pub mod scope;
 pub mod types;
 
-pub use types::*;
 pub(crate) use resolution::ResolutionError;
+pub use types::*;
 
 pub struct PricingService {
     pub(crate) db: DatabaseConnection,

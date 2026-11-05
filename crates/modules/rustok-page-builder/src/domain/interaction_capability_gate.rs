@@ -1,10 +1,10 @@
 use crate::{
-    evaluate_runtime_publish_gate, RuntimeContextScenario, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy,
+    RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
+    evaluate_runtime_publish_gate,
 };
 use fly::{
-    validate_interaction_capabilities, InteractionCapabilityPolicy, InteractionCapabilityRegistry,
-    ProjectDocument, ValidationDiagnostic, ValidationSeverity,
+    InteractionCapabilityPolicy, InteractionCapabilityRegistry, ProjectDocument,
+    ValidationDiagnostic, ValidationSeverity, validate_interaction_capabilities,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;

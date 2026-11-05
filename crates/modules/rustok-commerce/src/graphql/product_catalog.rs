@@ -775,14 +775,10 @@ impl ProductCatalogQuery {
         if let Some(link) = primary_brand_link {
             let service = rustok_brand::BrandService::new(db.clone());
             use rustok_brand::BrandReadPort;
-            let brand = BrandReadPort::get_brand(
-                &service,
-                tenant.id,
-                link.brand_id,
-                locale.as_deref(),
-            )
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+            let brand =
+                BrandReadPort::get_brand(&service, tenant.id, link.brand_id, locale.as_deref())
+                    .await
+                    .map_err(|e| async_graphql::Error::new(e.to_string()))?;
             return Ok(brand.map(Into::into));
         }
 

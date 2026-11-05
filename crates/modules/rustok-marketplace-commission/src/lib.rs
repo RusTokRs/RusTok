@@ -24,7 +24,8 @@ pub mod ports;
 pub use commission_service::MarketplaceCommissionService;
 pub use dto::{
     AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
-    CreateMarketplaceCommissionRuleVersionInput, ListMarketplaceCommissionAssessmentsByOrderRequest,
+    CreateMarketplaceCommissionRuleVersionInput,
+    ListMarketplaceCommissionAssessmentsByOrderRequest,
     ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
     MAX_COMMISSION_ASSESSMENTS_PER_PAGE, MAX_COMMISSION_RULES_PER_PAGE,
     MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,

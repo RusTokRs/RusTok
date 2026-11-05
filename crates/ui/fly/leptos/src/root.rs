@@ -28,14 +28,15 @@ pub use editor::{
     FlyThemeTokenEditor, FlyThemeTokens,
 };
 pub use foundation::{
-    auto_scroll_delta, hit_test_drop_targets, normalize_expected_origin, normalize_hit_targets,
-    outbound_target_origin, resolve_drop_position, AuthenticatedInlineEditGrant,
-    AuthenticatedInlineEditRequest, AutoScrollDelta, AutoScrollPolicy, BrowserDropTarget,
-    BrowserHitTarget, BrowserPoint, BrowserRect, CleanupRegistry, CoordinateTransform, DropAxis,
-    DropZonePolicy, FlyFullEditor, FlyInlineEditor, FlyPreview, FlyReadOnly, IframeBridgeEnvelope,
-    IframeBridgeMessage, InlineEditContractError, InlineEditableField, PointerKind, PointerSample,
-    FLY_IFRAME_PROTOCOL, FLY_REAL_DOM_COMPONENT_ATTRIBUTE, FLY_REAL_DOM_INLINE_ATTRIBUTE,
-    MAX_INLINE_TEXT_BYTES, OPAQUE_ORIGIN,
+    AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,
+    AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint, BrowserRect,
+    CleanupRegistry, CoordinateTransform, DropAxis, DropZonePolicy, FLY_IFRAME_PROTOCOL,
+    FLY_REAL_DOM_COMPONENT_ATTRIBUTE, FLY_REAL_DOM_INLINE_ATTRIBUTE, FlyFullEditor,
+    FlyInlineEditor, FlyPreview, FlyReadOnly, IframeBridgeEnvelope, IframeBridgeMessage,
+    InlineEditContractError, InlineEditableField, MAX_INLINE_TEXT_BYTES, OPAQUE_ORIGIN,
+    PointerKind, PointerSample, auto_scroll_delta, hit_test_drop_targets,
+    normalize_expected_origin, normalize_hit_targets, outbound_target_origin,
+    resolve_drop_position,
 };
 
 // The browser surface is re-exported through explicit, feature-gated modules rather than left to
@@ -48,8 +49,8 @@ mod browser_interaction;
 #[allow(unused_imports)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_interaction::{
-    key_stroke_from_event, prevent_editor_shortcut_default, shortcut_from_event,
-    BrowserResizeSession,
+    BrowserResizeSession, key_stroke_from_event, prevent_editor_shortcut_default,
+    shortcut_from_event,
 };
 
 #[allow(unused_imports)]
@@ -58,6 +59,6 @@ mod browser_runtime;
 #[allow(unused_imports)]
 #[cfg(all(target_arch = "wasm32", feature = "wasm-client"))]
 pub use browser_runtime::{
-    release_pointer_capture, set_pointer_capture, BrowserRuntimeError, EventListenerHandle,
-    IframeJsonSubscription, IframeMessagePort, ResizeObserverHandle, WindowMessageSubscription,
+    BrowserRuntimeError, EventListenerHandle, IframeJsonSubscription, IframeMessagePort,
+    ResizeObserverHandle, WindowMessageSubscription, release_pointer_capture, set_pointer_capture,
 };

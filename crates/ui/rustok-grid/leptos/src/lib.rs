@@ -42,11 +42,10 @@ pub use row::GridRow;
 pub use toolbar::GridToolbar;
 
 pub use rustok_grid::{
-    CHECKBOX_COLUMN_ID, CellValue, ColumnAlign, ColumnFilters, ColumnId, ColumnWidth,
-    ColumnWidths, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS as GRID_DEFAULT_PAGE_SIZE_OPTIONS,
-    FacetDomain, FacetPanel, FacetValue, FilterOption, FilterValue, GridColumnDef, GridFacet,
-    GridFilterType, GridPagination, GridState, PaginationMode, PinnedSide, RowSelection,
-    SortDirection, SortState,
+    CHECKBOX_COLUMN_ID, CellValue, ColumnAlign, ColumnFilters, ColumnId, ColumnWidth, ColumnWidths,
+    DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE_OPTIONS as GRID_DEFAULT_PAGE_SIZE_OPTIONS, FacetDomain,
+    FacetPanel, FacetValue, FilterOption, FilterValue, GridColumnDef, GridFacet, GridFilterType,
+    GridPagination, GridState, PaginationMode, PinnedSide, RowSelection, SortDirection, SortState,
 };
 
 pub mod prelude {
@@ -70,4 +69,3 @@ pub mod prelude {
 
 #[cfg(test)]
 mod contract_tests;
-

@@ -4,15 +4,14 @@ use leptos_auth::context::AuthProvider;
 use leptos_router::components::{ParentRoute, Redirect, Route, Router, Routes};
 use leptos_router::path;
 
+use crate::AdminLocaleProvider;
 use crate::app::providers::enabled_modules::ModuleGuard;
 use crate::pages::{
-    dashboard::Dashboard, design_system::DesignSystemPage,
-    email_settings::EmailSettingsPage, installer::InstallerPage, module_admin::ModuleAdminPage,
-    modules::Modules, not_found::NotFound,
+    dashboard::Dashboard, design_system::DesignSystemPage, email_settings::EmailSettingsPage,
+    installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
 };
 use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
-use crate::AdminLocaleProvider;
 use rustok_auth_admin::{
     AcceptInvite, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails,
     Users,

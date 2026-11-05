@@ -367,7 +367,9 @@ impl TenantService {
     ) -> TenantResult<TenantModuleResponse> {
         let module_slug = module_slug.trim();
         if module_slug.is_empty() {
-            return Err(TenantError::Validation("Module slug cannot be empty".to_string()));
+            return Err(TenantError::Validation(
+                "Module slug cannot be empty".to_string(),
+            ));
         }
         let Some(model) = tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))

@@ -1,6 +1,6 @@
 use super::{latest_active_registry_version, looks_like_image_url, looks_like_svg_url, tr};
-use crate::entities::module::MarketplaceModule;
 use crate::Locale;
+use crate::entities::module::MarketplaceModule;
 
 #[derive(Clone)]
 pub struct MetadataChecklistItem {

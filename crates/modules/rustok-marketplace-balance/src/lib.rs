@@ -41,7 +41,7 @@ pub use dto::{
     ReadMarketplaceSellerBalanceRequest, RebuildMarketplaceSellerBalanceInput,
 };
 pub use error::{MarketplaceLedgerError, MarketplaceLedgerResult};
-pub use module::{MarketplaceBalanceModule, Marketplace_balanceModule};
+pub use module::{Marketplace_balanceModule, MarketplaceBalanceModule};
 pub use ports::{
     MarketplaceLedgerCommandPort, MarketplaceLedgerReadPort,
     in_process_marketplace_ledger_command_port,

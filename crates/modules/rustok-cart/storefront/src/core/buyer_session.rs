@@ -1,12 +1,12 @@
 //! Cart buyer lifecycle and command planning, independent of the rendering framework.
 
 use super::{
-    add_variant_request, buyer_cart_context_matches, create_cart_request, CartAddVariantRequest,
-    CartCreateRequest,
+    CartAddVariantRequest, CartCreateRequest, add_variant_request, buyer_cart_context_matches,
+    create_cart_request,
 };
 use crate::i18n::t;
 use crate::model::StorefrontCart;
-use rustok_pricing_storefront::{parse_optional_uuid_string, PricingResolutionContext};
+use rustok_pricing_storefront::{PricingResolutionContext, parse_optional_uuid_string};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,14 +239,18 @@ mod tests {
         session.fail(BuyerCartError::Unconfirmed);
         assert!(!session.permits_write());
         assert!(!session.can_inspect());
-        assert!(session
-            .plan_add(sku.clone(), context.clone(), Some("en".into()))
-            .is_err());
+        assert!(
+            session
+                .plan_add(sku.clone(), context.clone(), Some("en".into()))
+                .is_err()
+        );
         let session = BuyerCartSession::restoring(Some(uuid::Uuid::new_v4().to_string()));
         assert!(session.plan_add(sku, context, Some("en".into())).is_err());
-        assert!(BuyerCartSession::restoring(Some(String::new()))
-            .restore_id()
-            .is_err());
+        assert!(
+            BuyerCartSession::restoring(Some(String::new()))
+                .restore_id()
+                .is_err()
+        );
     }
     fn cart(id: &str, status: &str) -> StorefrontCart {
         serde_json::from_value(serde_json::json!({
@@ -275,12 +279,16 @@ mod tests {
             assert!(session.finish_restore(Some(cart(&id, status))).is_err());
             assert_eq!(session.cart_id.as_ref(), Some(&id));
         }
-        assert!(session
-            .finish_restore(Some(cart(&uuid::Uuid::new_v4().to_string(), "active")))
-            .is_err());
-        assert!(BuyerCartSession::restoring(Some(String::new()))
-            .finish_restore(None)
-            .is_err());
+        assert!(
+            session
+                .finish_restore(Some(cart(&uuid::Uuid::new_v4().to_string(), "active")))
+                .is_err()
+        );
+        assert!(
+            BuyerCartSession::restoring(Some(String::new()))
+                .finish_restore(None)
+                .is_err()
+        );
     }
     #[test]
     fn checkpoint_scopes_are_opaque_strict_hints_not_credentials_or_authority() {
@@ -301,16 +309,20 @@ mod tests {
             mutation_pending: true,
         };
         assert!(pending.validate().is_ok());
-        assert!(BuyerCartCheckpoint {
-            cart_id: Some(uuid::Uuid::nil().to_string()),
-            mutation_pending: false
-        }
-        .validate()
-        .is_err());
-        assert!(serde_json::from_str::<BuyerCartCheckpoint>(
-            r#"{"cartId":null,"mutationPending":true,"token":"secret"}"#
-        )
-        .is_err());
+        assert!(
+            BuyerCartCheckpoint {
+                cart_id: Some(uuid::Uuid::nil().to_string()),
+                mutation_pending: false
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            serde_json::from_str::<BuyerCartCheckpoint>(
+                r#"{"cartId":null,"mutationPending":true,"token":"secret"}"#
+            )
+            .is_err()
+        );
         let mut refused = BuyerCartSession::empty();
         refused.phase = BuyerCartPhase::AuthRefused;
         assert!(!refused.permits_write());

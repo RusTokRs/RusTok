@@ -107,11 +107,13 @@ fn required_locale_coverage_gaps_block_readiness_without_strict_locale_validatio
             && issue.diagnostic.code == "landing_translation_locale_missing"
             && issue.diagnostic.severity == ValidationSeverity::Error
     }));
-    assert!(report
-        .categories
-        .iter()
-        .find(|summary| summary.category == LandingReadinessCategory::Locales)
-        .is_some_and(|summary| summary.error_count > 0));
+    assert!(
+        report
+            .categories
+            .iter()
+            .find(|summary| summary.category == LandingReadinessCategory::Locales)
+            .is_some_and(|summary| summary.error_count > 0)
+    );
 }
 
 #[test]
@@ -127,10 +129,12 @@ fn structural_readiness_does_not_require_runtime_instance_data() {
 
     let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(report.ready, "{:?}", report.issues);
-    assert!(!report
-        .issues
-        .iter()
-        .any(|issue| issue.diagnostic.code == "runtime_context_required_missing"));
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.diagnostic.code == "runtime_context_required_missing")
+    );
 }
 
 #[test]
@@ -174,10 +178,12 @@ fn structural_readiness_applies_schema_defaults_before_audit() {
 
     let report = evaluate_landing_readiness(&document, LandingReadinessPolicy::default());
     assert!(report.ready, "{:?}", report.issues);
-    assert!(!report
-        .issues
-        .iter()
-        .any(|issue| issue.diagnostic.code == "landing_empty_heading"));
+    assert!(
+        !report
+            .issues
+            .iter()
+            .any(|issue| issue.diagnostic.code == "landing_empty_heading")
+    );
 }
 
 #[test]

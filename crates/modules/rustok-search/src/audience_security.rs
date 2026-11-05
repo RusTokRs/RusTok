@@ -290,8 +290,18 @@ pub async fn resolve_audience_eligible_candidates(
     transport: StorefrontSearchTransport,
 ) -> Result<HashSet<Uuid>, PortError> {
     Ok(resolve_audience_eligible_candidates_by_module(
-        registry, tenant_id, locale, candidates, auth, request_context, transport,
-    ).await?.into_iter().map(|(_, id)| id).collect())
+        registry,
+        tenant_id,
+        locale,
+        candidates,
+        auth,
+        request_context,
+        transport,
+    )
+    .await?
+    .into_iter()
+    .map(|(_, id)| id)
+    .collect())
 }
 
 /// Preserves each owner's identity during candidate authorization.
@@ -986,7 +996,10 @@ mod tests {
     async fn identical_uuids_from_two_modules_never_share_an_audience_grant() {
         let shared_id = Uuid::new_v4();
         let mut registry = public_blog_registry();
-        registry.register(MockEventsPolicy { allowed_id: Uuid::new_v4() })
+        registry
+            .register(MockEventsPolicy {
+                allowed_id: Uuid::new_v4(),
+            })
             .expect("gated module registered");
 
         let allowed = resolve_audience_eligible_candidates_by_module(
@@ -1000,7 +1013,9 @@ mod tests {
             None,
             None,
             StorefrontSearchTransport::Graphql,
-        ).await.expect("independent modules may use the same UUID");
+        )
+        .await
+        .expect("independent modules may use the same UUID");
 
         assert_eq!(
             allowed,
@@ -1011,7 +1026,8 @@ mod tests {
             unique_candidate_descriptors(&[
                 SearchCandidateDescriptor::new(shared_id, "blog", "blog_post"),
                 SearchCandidateDescriptor::new(shared_id, "blog", "other_entity"),
-            ]).is_err(),
+            ])
+            .is_err(),
             "conflicting types inside a single owner remain a hard failure"
         );
     }

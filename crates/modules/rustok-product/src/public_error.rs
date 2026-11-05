@@ -1,10 +1,10 @@
 use uuid::Uuid;
 
+use crate::CommerceError;
 use crate::services::catalog::revision_conflict_of;
 use crate::services::catalog_schema_service::attribute_validation::{
     attribute_validation_public_message, attribute_validation_rule_of,
 };
-use crate::CommerceError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductPublicError {

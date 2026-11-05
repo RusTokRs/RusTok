@@ -1,17 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rustok_translation_targets::{
-    protected_token_multiplicities_match, whitespace_shape_matches, FieldKey,
-    TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
+    FieldKey, TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
     TranslationPatchValidation, TranslationResourceLifecycle, TranslationResourceSnapshot,
-    TranslationStrategy,
+    TranslationStrategy, protected_token_multiplicities_match, whitespace_shape_matches,
 };
 
 use crate::{
+    TranslationError, TranslationResult,
     glossary::{
         GlossaryConcept, GlossaryMatchKind, GlossaryRecord, GlossaryTermPolicy, GlossaryVariant,
     },
-    TranslationError, TranslationResult,
 };
 
 pub fn evaluate_patch_qa(
@@ -414,10 +413,12 @@ mod tests {
         assert!(codes.contains(&"translation.qa.protected_token_mismatch"));
         assert!(codes.contains(&"translation.qa.whitespace_shape_mismatch"));
         assert!(codes.contains(&"translation.qa.field_excluded"));
-        assert!(validation
-            .issues
-            .iter()
-            .all(|issue| issue.severity == TranslationPatchIssueSeverity::Error));
+        assert!(
+            validation
+                .issues
+                .iter()
+                .all(|issue| issue.severity == TranslationPatchIssueSeverity::Error)
+        );
     }
 
     #[test]

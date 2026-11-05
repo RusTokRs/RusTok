@@ -1,6 +1,4 @@
-use crate::{
-    CliCoreError, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
-};
+use crate::{CliCoreError, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest};
 
 #[test]
 fn test_command_descriptor_contract() {

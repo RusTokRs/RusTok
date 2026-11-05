@@ -33,9 +33,9 @@ pub mod textarea;
 pub mod toc;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod contract_tests;
+#[cfg(test)]
+mod tests;
 
 pub use alert::Alert;
 pub use avatar::Avatar;
@@ -61,21 +61,20 @@ pub use toc::TableOfContents;
 
 // Re-export core types and contracts
 pub use rustok_ui::{
-    AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, DialogState,
-    DISABLED_CONTROL_CLASSES, DISABLED_INPUT_CLASSES, FOCUS_RING_CLASSES,
-    INPUT_FOCUS_RING_CLASSES, InputType, Orientation, SelectOption, Size, SkeletonVariant,
-    SwitchSize, TabItem, TabsState, TocItem, TRANSITION_COLORS_CLASSES, alert_classes,
-    avatar_classes, badge_classes, button_classes, card_action_classes, card_classes,
-    card_content_classes, card_description_classes, card_footer_classes, card_header_classes,
-    card_title_classes, checkbox_classes, dialog_backdrop_classes, dialog_close_classes,
-    dialog_content_classes, dialog_description_classes, dialog_footer_classes,
-    dialog_header_classes, dialog_title_classes, extract_headings_from_html, extract_initials,
-    input_classes, label_classes, merge_classes, normalize_progress_max, normalize_progress_value,
-    normalize_progress_value_for_max, progress_classes, progress_value_percentage, radius,
-    select_classes, separator_classes, shadow, skeleton_classes, slugify_heading,
-    spinner_classes, switch_classes, tabs_content_classes, tabs_list_classes,
-    tabs_trigger_classes, textarea_classes, toc_header_classes, toc_item_classes,
-    toc_list_classes, toc_nav_classes,
+    AlertVariant, AvatarSize, BadgeVariant, ButtonVariant, CardVariant, DISABLED_CONTROL_CLASSES,
+    DISABLED_INPUT_CLASSES, DialogState, FOCUS_RING_CLASSES, INPUT_FOCUS_RING_CLASSES, InputType,
+    Orientation, SelectOption, Size, SkeletonVariant, SwitchSize, TRANSITION_COLORS_CLASSES,
+    TabItem, TabsState, TocItem, alert_classes, avatar_classes, badge_classes, button_classes,
+    card_action_classes, card_classes, card_content_classes, card_description_classes,
+    card_footer_classes, card_header_classes, card_title_classes, checkbox_classes,
+    dialog_backdrop_classes, dialog_close_classes, dialog_content_classes,
+    dialog_description_classes, dialog_footer_classes, dialog_header_classes, dialog_title_classes,
+    extract_headings_from_html, extract_initials, input_classes, label_classes, merge_classes,
+    normalize_progress_max, normalize_progress_value, normalize_progress_value_for_max,
+    progress_classes, progress_value_percentage, radius, select_classes, separator_classes, shadow,
+    skeleton_classes, slugify_heading, spinner_classes, switch_classes, tabs_content_classes,
+    tabs_list_classes, tabs_trigger_classes, textarea_classes, toc_header_classes,
+    toc_item_classes, toc_list_classes, toc_nav_classes,
 };
 
 // Canonical ui_ prefixed re-exports for module consistency

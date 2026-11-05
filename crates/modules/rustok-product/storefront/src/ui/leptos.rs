@@ -22,13 +22,15 @@ pub fn ProductView() -> impl IntoView {
         Ok(input) => input,
         Err(_) => {
             let locale = route_context.locale.as_deref();
-            let msg = crate::core::buyer::error_message(crate::core::buyer::BuyerError::Request, locale);
+            let msg =
+                crate::core::buyer::error_message(crate::core::buyer::BuyerError::Request, locale);
             let labels = crate::core::buyer::labels(locale);
             let href = crate::core::buyer::reset_href(&route_context);
             return view! {
                 <rustok_ui_leptos::Alert>{msg}</rustok_ui_leptos::Alert>
                 <a class="text-sm underline" href=href>{labels.reset}</a>
-            }.into_any();
+            }
+            .into_any();
         }
     };
     let catalog_input = build_catalog_list_input(

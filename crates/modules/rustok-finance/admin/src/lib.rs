@@ -18,7 +18,7 @@ pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::{filter_rows, FinanceAdminTableRow};
+pub use core::{FinanceAdminTableRow, filter_rows};
 pub use transport::FinanceAdminTransport;
 pub use ui::{FinanceAdmin, FinanceAdminPage};
 

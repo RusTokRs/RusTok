@@ -123,7 +123,12 @@ async fn assert_migration_cycle(db: &DatabaseConnection) {
         .await
         .expect("roll back test migration");
     let schema = SchemaManager::new(db);
-    for table in ["brands", "brand_translations", "brand_products", "brand_categories"] {
+    for table in [
+        "brands",
+        "brand_translations",
+        "brand_products",
+        "brand_categories",
+    ] {
         assert!(
             !schema.has_table(table).await.unwrap(),
             "{table} survived rollback"

@@ -1,4 +1,4 @@
-use sea_orm::{sea_query::Expr, Condition, DbBackend, Value};
+use sea_orm::{Condition, DbBackend, Value, sea_query::Expr};
 
 pub const MAX_SEARCH_QUERY_LEN: usize = 255;
 

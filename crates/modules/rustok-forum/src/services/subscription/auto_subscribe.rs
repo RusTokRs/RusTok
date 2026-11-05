@@ -14,9 +14,7 @@
 //! splits, tombstone restores) deliberately do not call these helpers.
 
 use chrono::Utc;
-use sea_orm::{
-    ActiveValue::Set, DatabaseTransaction, EntityTrait, sea_query::OnConflict,
-};
+use sea_orm::{ActiveValue::Set, DatabaseTransaction, EntityTrait, sea_query::OnConflict};
 use uuid::Uuid;
 
 use crate::entities::{forum_subscription_policy, forum_topic_subscription};
@@ -49,8 +47,7 @@ pub(crate) async fn auto_subscribe_topic_author_in_tx(
     if !enabled {
         return Ok(());
     }
-    insert_implicit_topic_subscription_in_tx(txn, tenant_id, topic_id, author_id, level, true)
-        .await
+    insert_implicit_topic_subscription_in_tx(txn, tenant_id, topic_id, author_id, level, true).await
 }
 
 /// Subscribes an author whose reply is (or just became) approved, according

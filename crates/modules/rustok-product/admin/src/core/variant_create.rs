@@ -9,7 +9,7 @@
 
 use super::initial_catalog;
 use super::write_journal::{
-    valid_uuid, JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError,
+    JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError, valid_uuid,
 };
 use crate::model::{ProductDetail, VariantCreateOutcome, VariantDraft, VariantPriceDraft};
 use serde::{Deserialize, Serialize};
@@ -507,16 +507,20 @@ mod tests {
             .unwrap()
             .begin(input(), "en".into())
             .unwrap();
-        assert!(pending
-            .settle(VariantCreateOutcome::Confirmed {
-                variant_id: "bad".into()
-            })
-            .is_err());
-        assert!(pending
-            .settle(VariantCreateOutcome::Rejected {
-                code: "forbidden".into()
-            })
-            .is_err());
+        assert!(
+            pending
+                .settle(VariantCreateOutcome::Confirmed {
+                    variant_id: "bad".into()
+                })
+                .is_err()
+        );
+        assert!(
+            pending
+                .settle(VariantCreateOutcome::Rejected {
+                    code: "forbidden".into()
+                })
+                .is_err()
+        );
         for outcome in [
             VariantCreateOutcome::Confirmed { variant_id: id(8) },
             VariantCreateOutcome::Rejected {
@@ -568,11 +572,13 @@ mod tests {
         projection["state"]["input"]["weight"] = serde_json::json!("2");
         assert!(VariantCreateRecord::decode(&projection.to_string(), &scope()).is_err());
         assert!(VariantCreateRecord::decode("{}", &scope()).is_err());
-        assert!(VariantCreateRecord::decode(
-            &" ".repeat(super::super::write_journal::MAX_JOURNAL_BYTES + 1),
-            &scope()
-        )
-        .is_err());
+        assert!(
+            VariantCreateRecord::decode(
+                &" ".repeat(super::super::write_journal::MAX_JOURNAL_BYTES + 1),
+                &scope()
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@ use rustok_api::RichTextView;
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
+use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use uuid::Uuid;
 
 pub(crate) const DEFAULT_PAGE_SIZE: u64 = 20;

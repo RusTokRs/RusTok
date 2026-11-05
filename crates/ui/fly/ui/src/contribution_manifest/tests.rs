@@ -59,10 +59,12 @@ fn owner_provider_is_the_only_implicit_target() {
     );
     assert!(!result.is_valid());
     assert!(result.registry.is_empty());
-    assert!(result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "contribution_target_provider_forbidden" }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_target_provider_forbidden" })
+    );
 }
 
 #[test]
@@ -89,10 +91,11 @@ fn target_provider_version_mismatch_is_rejected() {
     );
     assert!(!result.is_valid());
     assert!(result.registry.is_empty());
-    assert!(result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "contribution_target_provider_version_mismatch" }));
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "contribution_target_provider_version_mismatch"
+        })
+    );
 }
 
 #[test]
@@ -105,10 +108,12 @@ fn missing_provider_version_is_rejected() {
     );
     assert!(!result.is_valid());
     assert!(result.registry.is_empty());
-    assert!(result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "contribution_provider_version_missing" }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_provider_version_missing" })
+    );
 }
 
 #[test]
@@ -123,10 +128,12 @@ fn target_provider_must_be_tenant_enabled() {
     assert!(result.is_valid());
     assert!(result.registry.is_empty());
     assert_eq!(result.skipped_contributions, 1);
-    assert!(result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "contribution_target_provider_disabled" }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_target_provider_disabled" })
+    );
 }
 
 #[test]
@@ -167,10 +174,12 @@ fn admin_and_storefront_surfaces_remain_separate() {
     );
     assert!(admin.registry.get("pages.admin.blocks").is_some());
     assert!(admin.registry.get("pages.storefront.renderer").is_none());
-    assert!(storefront
-        .registry
-        .get("pages.storefront.renderer")
-        .is_some());
+    assert!(
+        storefront
+            .registry
+            .get("pages.storefront.renderer")
+            .is_some()
+    );
     assert!(storefront.registry.get("pages.admin.blocks").is_none());
 }
 
@@ -187,10 +196,12 @@ fn target_provider_health_can_block_cross_provider_extensions() {
         },
     );
     assert!(result.registry.is_empty());
-    assert!(result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "contribution_target_provider_unavailable" }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_target_provider_unavailable" })
+    );
 }
 
 #[test]

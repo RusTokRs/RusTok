@@ -1,9 +1,9 @@
 //! Typed streaming transport for the separately deployed sandbox worker.
 
 mod client;
-mod server;
 #[cfg(test)]
 mod contract_tests;
+mod server;
 #[cfg(test)]
 mod tests;
 

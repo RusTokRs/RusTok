@@ -10,8 +10,8 @@
 
 use rustok_api::{RichTextDocument, RichTextView};
 use rustok_content::richtext::{
-    canonical_json, parse_json, plain_text, project, validate_and_normalize, RichTextError,
-    RichTextProfile,
+    RichTextError, RichTextProfile, canonical_json, parse_json, plain_text, project,
+    validate_and_normalize,
 };
 
 use crate::error::{CommentsError, CommentsResult};

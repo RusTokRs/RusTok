@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use rustok_ui::{button_classes, ButtonVariant, Size};
+use rustok_ui::{ButtonVariant, Size, button_classes};
 
 use crate::spinner::Spinner;
 

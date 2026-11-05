@@ -8,9 +8,9 @@ use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_commerce_foundation::error::CommerceError;
 use rustok_product::dto::{ProductResponse, ProductTranslationResponse};
 
+use super::PricingService;
 use super::resolution;
 use super::types::*;
-use super::PricingService;
 use crate::entities::price;
 
 impl PricingService {
@@ -149,8 +149,8 @@ impl PricingService {
                 .collect::<Vec<_>>();
             let mut prices_by_variant = HashMap::<Uuid, Vec<price::Model>>::new();
             if !variant_ids.is_empty() {
-                let mut query = price::Entity::find()
-                    .filter(price::Column::VariantId.is_in(variant_ids));
+                let mut query =
+                    price::Entity::find().filter(price::Column::VariantId.is_in(variant_ids));
                 if let Some(selected_price_list_id) = selected_price_list_id {
                     query = query.filter(
                         sea_orm::Condition::any()
@@ -649,7 +649,9 @@ pub(crate) fn pick_product_translation<'a>(
         .or_else(|| translations.first())
 }
 
-pub(crate) fn map_product_status(status: rustok_product::entities::product::ProductStatus) -> ProductStatus {
+pub(crate) fn map_product_status(
+    status: rustok_product::entities::product::ProductStatus,
+) -> ProductStatus {
     match status {
         rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
         rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,

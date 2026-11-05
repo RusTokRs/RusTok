@@ -29,7 +29,7 @@ fn core_contains_no_ui_framework_dependencies() {
 
 #[test]
 fn route_filter_query_parsing_is_pure_and_deterministic() {
-    use crate::core::{parse_search_route_filters, SearchRouteFilterQuery};
+    use crate::core::{SearchRouteFilterQuery, parse_search_route_filters};
 
     let query = SearchRouteFilterQuery {
         channel_id: Some("default-channel".to_string()),

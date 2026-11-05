@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use rustok_modules::{
     ModuleBuildProtocolError, ModuleBuildRequest, ModuleBuildResult, ModuleBuildWorker,
     ModuleBuildWorkerReadiness, ModuleStaticDistributionCompletionOutcome,
@@ -6,27 +5,25 @@ use rustok_modules::{
     ModuleStaticDistributionExecutorReadiness, ModuleStaticDistributionWorkItem,
 };
 use rustok_worker_transport::WorkerAdmission;
+use std::sync::Arc;
 use tonic::Code;
 
-use crate::distribution_server::{executor_status, StaticDistributionGrpcService};
+use crate::distribution_server::{StaticDistributionGrpcService, executor_status};
 use crate::module_build_proto::{
-    ExecuteBuildRequest as MbExecuteBuildRequest,
-    ExecuteBuildResponse as MbExecuteBuildResponse,
-    ReadinessRequest as MbReadinessRequest,
-    ReadinessResponse as MbReadinessResponse,
+    ExecuteBuildRequest as MbExecuteBuildRequest, ExecuteBuildResponse as MbExecuteBuildResponse,
+    ReadinessRequest as MbReadinessRequest, ReadinessResponse as MbReadinessResponse,
 };
 use crate::server::ModuleBuildGrpcService;
 use crate::static_distribution_proto::{
-    ExecuteBuildRequest as SdExecuteBuildRequest,
-    ExecuteBuildResponse as SdExecuteBuildResponse,
-    ReadinessRequest as SdReadinessRequest,
-    ReadinessResponse as SdReadinessResponse,
+    ExecuteBuildRequest as SdExecuteBuildRequest, ExecuteBuildResponse as SdExecuteBuildResponse,
+    ReadinessRequest as SdReadinessRequest, ReadinessResponse as SdReadinessResponse,
 };
 
 #[test]
 fn cargo_manifest_contract_is_standardized() {
     let manifest_bytes = include_bytes!("../Cargo.toml");
-    let manifest_text = std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
+    let manifest_text =
+        std::str::from_utf8(manifest_bytes).expect("Cargo.toml must be valid UTF-8");
 
     assert!(manifest_text.contains(r#"name = "rustok-module-build-transport""#));
     assert!(manifest_text.contains(r#"readme = "README.md""#));
@@ -90,12 +87,14 @@ fn static_distribution_proto_structures_invariants() {
 
 #[test]
 fn static_distribution_error_status_mapping() {
-    let transport_err = ModuleStaticDistributionExecutorError::Transport("connection reset".to_string());
+    let transport_err =
+        ModuleStaticDistributionExecutorError::Transport("connection reset".to_string());
     let status = executor_status(transport_err);
     assert_eq!(status.code(), Code::Unavailable);
     assert_eq!(status.message(), "connection reset");
 
-    let rejected_err = ModuleStaticDistributionExecutorError::Rejected("policy violation".to_string());
+    let rejected_err =
+        ModuleStaticDistributionExecutorError::Rejected("policy violation".to_string());
     let status = executor_status(rejected_err);
     assert_eq!(status.code(), Code::FailedPrecondition);
     assert_eq!(status.message(), "policy violation");
@@ -105,7 +104,10 @@ struct DummyWorker;
 
 #[async_trait::async_trait]
 impl ModuleBuildWorker for DummyWorker {
-    async fn execute_build(&self, _request: ModuleBuildRequest) -> Result<ModuleBuildResult, ModuleBuildProtocolError> {
+    async fn execute_build(
+        &self,
+        _request: ModuleBuildRequest,
+    ) -> Result<ModuleBuildResult, ModuleBuildProtocolError> {
         Err(ModuleBuildProtocolError::Transport("dummy".to_string()))
     }
 }
@@ -120,8 +122,14 @@ struct DummyExecutor;
 
 #[async_trait::async_trait]
 impl ModuleStaticDistributionExecutor for DummyExecutor {
-    async fn execute(&self, _work_item: ModuleStaticDistributionWorkItem) -> Result<ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionExecutorError> {
-        Err(ModuleStaticDistributionExecutorError::Rejected("dummy".to_string()))
+    async fn execute(
+        &self,
+        _work_item: ModuleStaticDistributionWorkItem,
+    ) -> Result<ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionExecutorError>
+    {
+        Err(ModuleStaticDistributionExecutorError::Rejected(
+            "dummy".to_string(),
+        ))
     }
 }
 
@@ -133,7 +141,8 @@ impl ModuleStaticDistributionExecutorReadiness for DummyExecutor {
 
 #[test]
 fn service_adapters_debug_formatting() {
-    let admission = WorkerAdmission::new(1, std::time::Duration::from_secs(1)).expect("valid admission");
+    let admission =
+        WorkerAdmission::new(1, std::time::Duration::from_secs(1)).expect("valid admission");
     let service = ModuleBuildGrpcService::new(Arc::new(DummyWorker), admission);
     let debug = format!("{service:?}");
     assert!(debug.contains("ModuleBuildGrpcService"));

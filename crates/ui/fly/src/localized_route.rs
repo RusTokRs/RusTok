@@ -1,7 +1,7 @@
 use crate::{
-    materialize_project_locale_context, normalize_locale_tag, normalize_slug, FlyError, FlyResult,
-    PageSelection, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
-    ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD, RUNTIME_LOCALE_FIELD,
+    FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, PageSelection,
+    ProjectDocument, RUNTIME_LOCALE_FIELD, RuntimeLocaleSelection, ValidationDiagnostic,
+    ValidationSeverity, materialize_project_locale_context, normalize_locale_tag, normalize_slug,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -466,8 +466,10 @@ mod tests {
             resolve_localized_page_route(&document, "shared", &json!({ "$locale": "en" })),
             Err(FlyError::Decode(_))
         ));
-        assert!(validate_localized_page_routes(&document)
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_localized_page_slug"));
+        assert!(
+            validate_localized_page_routes(&document)
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_localized_page_slug")
+        );
     }
 }

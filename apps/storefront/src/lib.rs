@@ -332,13 +332,7 @@ async fn render_module_page_with_nonce(
         head.push('\n');
     }
     head.push_str(&modules_meta);
-    render_document(
-        locale,
-        title.as_str(),
-        head.as_str(),
-        app_html,
-        csp_nonce,
-    )
+    render_document(locale, title.as_str(), head.as_str(), app_html, csp_nonce)
 }
 
 #[cfg(feature = "ssr")]

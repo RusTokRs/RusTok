@@ -234,9 +234,11 @@ mod tests {
         let required = schema(LocaleMode::Required);
         let mut registry = SchemaRegistry::new();
         registry.register(required.clone()).unwrap();
-        assert!(registry
-            .validate_localized_entity_query(&localized_query(&required))
-            .is_ok());
+        assert!(
+            registry
+                .validate_localized_entity_query(&localized_query(&required))
+                .is_ok()
+        );
 
         let plain = schema(LocaleMode::None);
         let mut registry = SchemaRegistry::new();

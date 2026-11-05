@@ -9,9 +9,9 @@ use rustok_channel::entities::channel;
 use rustok_commerce_foundation::entities::product_variant;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
-use crate::entities;
 use super::resolution::{self, ResolutionError};
 use super::types::normalize_channel_slug;
+use crate::entities;
 
 pub(crate) async fn validate_channel_scope_in_tx(
     txn: &DatabaseTransaction,
@@ -160,9 +160,10 @@ pub(crate) async fn resolve_active_price_list_tx(
 }
 
 #[allow(clippy::result_large_err)]
-pub(crate) fn validate_active_price_list(price_list: &entities::price_list::Model) -> CommerceResult<()> {
-    validate_active_price_list_at(price_list, Utc::now())
-        .map_err(ResolutionError::into_commerce)
+pub(crate) fn validate_active_price_list(
+    price_list: &entities::price_list::Model,
+) -> CommerceResult<()> {
+    validate_active_price_list_at(price_list, Utc::now()).map_err(ResolutionError::into_commerce)
 }
 
 #[allow(clippy::result_large_err)]

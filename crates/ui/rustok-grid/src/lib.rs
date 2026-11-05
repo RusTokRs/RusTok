@@ -85,4 +85,3 @@ pub mod prelude {
 
 #[cfg(test)]
 mod contract_tests;
-

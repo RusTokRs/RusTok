@@ -96,7 +96,10 @@ async fn blog_admin_create_category_native(
         use rustok_blog::{CategoryService, CreateCategoryInput};
 
         let context = native_context().await?;
-        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_CREATE)?;
+        require_category_permission(
+            &context.auth,
+            rustok_api::Permission::BLOG_CATEGORIES_CREATE,
+        )?;
         let parent_id = match draft.parent_id.as_deref() {
             Some(raw) => Some(parse_uuid(raw, "parent_id")?),
             None => None,
@@ -138,7 +141,10 @@ async fn blog_admin_update_category_native(
         use rustok_blog::{CategoryService, UpdateCategoryInput};
 
         let context = native_context().await?;
-        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_UPDATE)?;
+        require_category_permission(
+            &context.auth,
+            rustok_api::Permission::BLOG_CATEGORIES_UPDATE,
+        )?;
         let category_id = parse_uuid(&id, "category_id")?;
         let response = CategoryService::new(context.db, context.event_bus)
             .update(
@@ -184,7 +190,10 @@ async fn blog_admin_delete_category_native(id: String) -> Result<bool, ServerFnE
         use rustok_blog::CategoryService;
 
         let context = native_context().await?;
-        require_category_permission(&context.auth, rustok_api::Permission::BLOG_CATEGORIES_DELETE)?;
+        require_category_permission(
+            &context.auth,
+            rustok_api::Permission::BLOG_CATEGORIES_DELETE,
+        )?;
         let category_id = parse_uuid(&id, "category_id")?;
         let mut service = CategoryService::new(context.db, context.event_bus);
         if let Some(cleanup) = context.category_delete_cleanup.clone() {

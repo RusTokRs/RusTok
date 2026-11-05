@@ -19,9 +19,9 @@ use rustok_core::ModuleRuntimeExtensions;
 #[cfg(feature = "ssr")]
 use rustok_tenant::TenantService;
 #[cfg(feature = "ssr")]
-use sea_orm::prelude::Uuid;
-#[cfg(feature = "ssr")]
 use sea_orm::DatabaseConnection;
+#[cfg(feature = "ssr")]
+use sea_orm::prelude::Uuid;
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "seo";

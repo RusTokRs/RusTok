@@ -219,7 +219,16 @@ async fn subscription_reconciliation_detects_clean_state_and_all_drifts_sqlite()
     // Auto-subscribe is a Rust owner rule, so a raw SQL seed must create the
     // author's watching subscription explicitly (revision 1).
     seed_topic_subscription(
-        &db, tenant_id, top_id, author_id, "watching", 1, 1, 1, "immediate", 1,
+        &db,
+        tenant_id,
+        top_id,
+        author_id,
+        "watching",
+        1,
+        1,
+        1,
+        "immediate",
+        1,
     )
     .await;
     seed_category_subscription(

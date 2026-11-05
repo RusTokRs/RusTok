@@ -242,9 +242,7 @@ pub async fn create_preview_token(
     execute_selected_transport(
         "blog/admin/create-preview-token",
         selected_transport_path(),
-        move || {
-            native_server_adapter::create_preview_token(native_post_id, ttl_hours)
-        },
+        move || native_server_adapter::create_preview_token(native_post_id, ttl_hours),
         move || graphql_adapter::create_preview_token(token, tenant_slug, post_id, ttl_hours),
     )
     .await
@@ -442,7 +440,8 @@ mod tests {
             Some(BlogAdminContractUnavailable::Moderation)
         );
 
-        let unrelated_err = UiTransportError::graphql("blog/admin/posts", "Network connection reset");
+        let unrelated_err =
+            UiTransportError::graphql("blog/admin/posts", "Network connection reset");
         assert!(!is_posts_contract_unavailable(&unrelated_err));
         assert_eq!(blog_admin_contract_unavailable(&unrelated_err), None);
     }

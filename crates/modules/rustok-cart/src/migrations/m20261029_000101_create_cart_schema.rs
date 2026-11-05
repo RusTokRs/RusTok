@@ -22,7 +22,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Carts::RegionId).uuid().null())
                     .col(ColumnDef::new(Carts::CountryCode).string_len(2).null())
                     .col(ColumnDef::new(Carts::LocaleCode).string_len(32).null())
-                    .col(ColumnDef::new(Carts::SelectedShippingOptionId).uuid().null())
+                    .col(
+                        ColumnDef::new(Carts::SelectedShippingOptionId)
+                            .uuid()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(Carts::Status)
                             .string_len(32)
@@ -231,7 +235,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(CartAdjustments::CartId).uuid().not_null())
-                    .col(ColumnDef::new(CartAdjustments::CartLineItemId).uuid().null())
+                    .col(
+                        ColumnDef::new(CartAdjustments::CartLineItemId)
+                            .uuid()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(CartAdjustments::SourceType)
                             .string_len(32)
@@ -327,7 +335,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(CartTaxLines::CartId).uuid().not_null())
                     .col(ColumnDef::new(CartTaxLines::CartLineItemId).uuid().null())
                     .col(ColumnDef::new(CartTaxLines::ShippingOptionId).uuid().null())
-                    .col(ColumnDef::new(CartTaxLines::Description).string_len(255).null())
+                    .col(
+                        ColumnDef::new(CartTaxLines::Description)
+                            .string_len(255)
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(CartTaxLines::ProviderId)
                             .string_len(64)

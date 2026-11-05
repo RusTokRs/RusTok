@@ -7,12 +7,13 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{shipping_option_list_request, shipping_profile_list_request};
 use crate::core::{
     active_badge, filter_shipping_options, format_allowed_profiles, format_selected_profiles,
     localized_active_label, profile_chip_class, profile_choice_label, shipping_option_grid_columns,
-    slug_selected, summarize_shipping_option, toggle_slug_selection, validate_shipping_option_draft,
+    slug_selected, summarize_shipping_option, toggle_slug_selection,
+    validate_shipping_option_draft,
 };
+use crate::core::{shipping_option_list_request, shipping_profile_list_request};
 use crate::i18n::t;
 use crate::model::{FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft};
 use crate::transport;

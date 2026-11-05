@@ -2,8 +2,8 @@ use crate::BrowserIntentDispatchError;
 use fly::{AssetCommand, ComponentPatch, DesignToken, EditorCommand, ThemeCommand};
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind};
 use fly_ui::{
-    resolve_editor_shortcut, CapabilityState, CommandCapabilityRequirement, EditorCapability,
-    EditorShortcut, KeyStroke,
+    CapabilityState, CommandCapabilityRequirement, EditorCapability, EditorShortcut, KeyStroke,
+    resolve_editor_shortcut,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -319,11 +319,13 @@ mod tests {
                 })
             );
         }
-        assert!(validate_browser_capability_access(
-            &envelope("select", json!({ "component_id": "hero" })),
-            capabilities,
-        )
-        .is_ok());
+        assert!(
+            validate_browser_capability_access(
+                &envelope("select", json!({ "component_id": "hero" })),
+                capabilities,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -333,11 +335,13 @@ mod tests {
             styles: false,
             ..CapabilityState::full()
         };
-        assert!(validate_browser_capability_access(
-            &envelope("patch_component_property", json!({ "kind": "field" }),),
-            capabilities,
-        )
-        .is_ok());
+        assert!(
+            validate_browser_capability_access(
+                &envelope("patch_component_property", json!({ "kind": "field" }),),
+                capabilities,
+            )
+            .is_ok()
+        );
         let error = validate_browser_capability_access(
             &envelope("patch_component_property", json!({ "kind": "style" })),
             capabilities,
@@ -459,11 +463,13 @@ mod tests {
             BrowserIntentKind::BeginSelectedMove,
             BrowserIntentKind::Drop,
         ] {
-            assert!(validate_browser_capability_access(
-                &envelope(kind.as_str(), json!({})),
-                capabilities,
-            )
-            .is_err());
+            assert!(
+                validate_browser_capability_access(
+                    &envelope(kind.as_str(), json!({})),
+                    capabilities,
+                )
+                .is_err()
+            );
         }
     }
 

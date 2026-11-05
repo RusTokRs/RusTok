@@ -1,7 +1,7 @@
 use crate::{
-    audit_page, constant_time_eq, validate_project, ContentDigest, FlyError, FlyResult,
-    GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash, RegistrySet, ValidationLimits,
-    ValidationReport,
+    ContentDigest, FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash,
+    RegistrySet, ValidationLimits, ValidationReport, audit_page, constant_time_eq,
+    validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -277,8 +277,8 @@ mod tests {
         assert_eq!(decoded.bundle.metadata.name.as_deref(), Some("Landing"));
         assert_eq!(decoded.bundle.metadata.extensions["futureMeta"], true);
         assert_eq!(
-            GrapesJsCodec::encode_value(&decoded.document).expect("encode project")
-                ["futureProjectField"]["keep"],
+            GrapesJsCodec::encode_value(&decoded.document).expect("encode project")["futureProjectField"]
+                ["keep"],
             true
         );
     }

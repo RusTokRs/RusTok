@@ -64,10 +64,10 @@ pub use media_reference::{
 pub use ports::{
     AdminCatalogFacetsRequest, AdminProductsRequest, CatalogBasePriceSnapshot,
     FilteredPublishedProductsRequest, InitialPrice, LegacyAdminProductsRequest,
-    LegacyStorefrontProductList, LegacyStorefrontProductListItem,
-    LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-    PricingConnection, ProductCatalogReadPort, ProductPricingPort, ProductProjectionRequest,
-    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    LegacyStorefrontProductList, LegacyStorefrontProductListItem, LegacyStorefrontProductsRequest,
+    MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE, PricingConnection,
+    ProductCatalogReadPort, ProductPricingPort, ProductProjectionRequest, PublishedProductsRequest,
+    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
     VariantProductProjectionRequest,
 };

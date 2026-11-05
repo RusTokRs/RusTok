@@ -326,18 +326,22 @@ mod tests {
 
         assert_eq!(input.locale, "en");
         assert_eq!(input.document, document);
-        assert!(serde_json::from_value::<PageBodyInput>(serde_json::json!({
-            "locale": "en",
-            "content": "{}",
-            "content_json": {"pages": []},
-        }))
-        .is_err());
-        assert!(serde_json::from_value::<PageBodyInput>(serde_json::json!({
-            "locale": "en",
-            "document": {"pages": []},
-            "content": "{}",
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<PageBodyInput>(serde_json::json!({
+                "locale": "en",
+                "content": "{}",
+                "content_json": {"pages": []},
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<PageBodyInput>(serde_json::json!({
+                "locale": "en",
+                "document": {"pages": []},
+                "content": "{}",
+            }))
+            .is_err()
+        );
     }
 }
 

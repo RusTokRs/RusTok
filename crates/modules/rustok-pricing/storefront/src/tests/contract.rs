@@ -17,4 +17,3 @@ fn test_crate_api_compliance() {
         );
     }
 }
-

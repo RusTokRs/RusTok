@@ -79,11 +79,11 @@ use rustok_core::generate_id;
 use crate::dto::*;
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
+use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
 use rustok_inventory::{BootstrapService, InitialInventory};
 use rustok_outbox::TransactionalEventBus;
-use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 
 use crate::ProductCatalogSchemaService;
 
@@ -158,10 +158,7 @@ impl CatalogService {
         self
     }
 
-    pub fn with_pricing_port(
-        mut self,
-        port: std::sync::Arc<dyn ProductPricingPort>,
-    ) -> Self {
+    pub fn with_pricing_port(mut self, port: std::sync::Arc<dyn ProductPricingPort>) -> Self {
         self.pricing_port = Some(port);
         self
     }

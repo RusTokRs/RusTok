@@ -25,4 +25,3 @@ fn events_module_implements_standard_traits() {
     assert_eq!(module, cloned);
     assert_eq!(format!("{module:?}"), "EventsModule");
 }
-

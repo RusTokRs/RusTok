@@ -756,9 +756,13 @@ mod in_process {
             use sea_orm::Database;
             use sea_orm_migration::{MigrationTrait, SchemaManager};
 
-            let db = Database::connect("sqlite::memory:").await.expect("sqlite database");
-            SysEventsMigration.up(&SchemaManager::new(&db))
-                .await.expect("receipts migration");
+            let db = Database::connect("sqlite::memory:")
+                .await
+                .expect("sqlite database");
+            SysEventsMigration
+                .up(&SchemaManager::new(&db))
+                .await
+                .expect("receipts migration");
             let tenant_id = Uuid::new_v4();
             let request = serde_json::json!({"actor": "commenter", "body": "same"});
             async fn admit_comment(
@@ -774,35 +778,53 @@ mod in_process {
                     key,
                     "create_comment",
                     request,
-                ).await
+                )
+                .await
             }
 
             let lease = match admit_comment(&db, tenant_id, &request, "temporarily-unavailable")
-                .await.expect("admit") {
+                .await
+                .expect("admit")
+            {
                 Admission::Run(lease) => lease,
                 _ => panic!("first admission must run"),
             };
             persist_idempotency_failure(
-                &db, lease,
+                &db,
+                lease,
                 &PortError::unavailable("comments.database", "temporary failure"),
-            ).await;
-            assert!(matches!(
-                admit_comment(&db, tenant_id, &request, "temporarily-unavailable").await.expect("re-admit"),
-                Admission::Run(_)
-            ), "a retryable failure must not poison the durable command identity");
+            )
+            .await;
+            assert!(
+                matches!(
+                    admit_comment(&db, tenant_id, &request, "temporarily-unavailable")
+                        .await
+                        .expect("re-admit"),
+                    Admission::Run(_)
+                ),
+                "a retryable failure must not poison the durable command identity"
+            );
 
-            let lease = match admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("admit") {
+            let lease = match admit_comment(&db, tenant_id, &request, "invalid-input")
+                .await
+                .expect("admit")
+            {
                 Admission::Run(lease) => lease,
                 _ => panic!("first admission must run"),
             };
             persist_idempotency_failure(
-                &db, lease,
+                &db,
+                lease,
                 &PortError::validation("comments.validation", "invalid rich text"),
-            ).await;
-            assert!(matches!(
-                admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("replay"),
-                Admission::ReplayError(error) if !error.retryable
-            ), "terminal validation failures must still replay deterministically");
+            )
+            .await;
+            assert!(
+                matches!(
+                    admit_comment(&db, tenant_id, &request, "invalid-input").await.expect("replay"),
+                    Admission::ReplayError(error) if !error.retryable
+                ),
+                "terminal validation failures must still replay deterministically"
+            );
         }
 
         #[test]

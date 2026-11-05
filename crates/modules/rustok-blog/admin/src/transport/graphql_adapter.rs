@@ -27,8 +27,7 @@ const RESTORE_POST_MUTATION: &str = "mutation RestorePost($id: UUID!) { restoreP
 const DELETE_POST_MUTATION: &str = "mutation DeletePost($id: UUID!) { deletePost(id: $id) }";
 const CREATE_PREVIEW_TOKEN_MUTATION: &str = "mutation CreatePreviewToken($input: CreatePreviewTokenInput!) { createPreviewToken(input: $input) { id token postId expiresAt createdAt } }";
 const BLOG_CATEGORY_DETAILS_QUERY: &str = "query BlogCategoryDetailsAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id locale effectiveLocale name slug description parentId position createdAt updatedAt } total } }";
-const CREATE_BLOG_CATEGORY_MUTATION: &str =
-    "mutation CreateBlogCategory($input: CreateBlogCategoryInput!) { createBlogCategory(input: $input) }";
+const CREATE_BLOG_CATEGORY_MUTATION: &str = "mutation CreateBlogCategory($input: CreateBlogCategoryInput!) { createBlogCategory(input: $input) }";
 const UPDATE_BLOG_CATEGORY_MUTATION: &str = "mutation UpdateBlogCategory($id: UUID!, $input: UpdateBlogCategoryInput!) { updateBlogCategory(id: $id, input: $input) { id locale effectiveLocale name slug description parentId position createdAt updatedAt } }";
 const DELETE_BLOG_CATEGORY_MUTATION: &str =
     "mutation DeleteBlogCategory($id: UUID!) { deleteBlogCategory(id: $id) }";
@@ -609,10 +608,7 @@ pub async fn create_preview_token(
     let response: CreatePreviewTokenResponse = request(
         CREATE_PREVIEW_TOKEN_MUTATION,
         CreatePreviewTokenVariables {
-            input: CreatePreviewTokenInputPayload {
-                post_id,
-                ttl_hours,
-            },
+            input: CreatePreviewTokenInputPayload { post_id, ttl_hours },
         },
         token,
         tenant_slug,

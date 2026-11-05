@@ -47,4 +47,3 @@ pub use ui::{
 
 #[cfg(test)]
 mod contract_tests;
-

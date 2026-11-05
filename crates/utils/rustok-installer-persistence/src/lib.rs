@@ -16,4 +16,3 @@ pub use seaorm_ports::{
 
 #[cfg(test)]
 mod contract_tests;
-

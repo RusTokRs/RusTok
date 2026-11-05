@@ -211,7 +211,10 @@ async fn test_orchestration_promote_and_demote_lifecycle() {
     let missing_res = load_post_for_demotion_in_tx(&txn, tenant_id, post_id).await;
     assert!(matches!(missing_res, Err(BlogError::PostNotFound(_))));
 
-    let post_row = blog_post::Entity::find_by_id(post_id).one(&txn).await.unwrap();
+    let post_row = blog_post::Entity::find_by_id(post_id)
+        .one(&txn)
+        .await
+        .unwrap();
     assert!(post_row.is_none());
 
     let trans_rows = blog_post_translation::Entity::find()

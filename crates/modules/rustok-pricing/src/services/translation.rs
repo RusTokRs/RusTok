@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt::Write as _};
 
+use crate::entities::{price_list, price_list_translation};
 use rustok_api::{PortError, TenantLocale, sha256_digest};
 use rustok_core::generate_id;
 use rustok_outbox::idempotency;
-use crate::entities::{price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::ExprTrait,

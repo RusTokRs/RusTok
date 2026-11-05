@@ -1,10 +1,10 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-use crate::AdminCanvasController;
 use fly::{
-    source_allowed, visit_project_components, AssetCatalog, AssetCommand, AssetDescriptor,
-    AssetPolicy, EditorCommand,
+    AssetCatalog, AssetCommand, AssetDescriptor, AssetPolicy, EditorCommand, source_allowed,
+    visit_project_components,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use fly_ui::EditorCapability;
@@ -455,13 +455,15 @@ mod tests {
     #[test]
     fn asset_apply_rejects_arbitrary_attribute_names() {
         let controller = controller();
-        assert!(controller
-            .ssr_asset_apply_intent(SsrAssetApplyRequest {
-                component_id: "image".to_string(),
-                asset_id: "hero".to_string(),
-                source_attribute: "onerror".to_string(),
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_asset_apply_intent(SsrAssetApplyRequest {
+                    component_id: "image".to_string(),
+                    asset_id: "hero".to_string(),
+                    source_attribute: "onerror".to_string(),
+                })
+                .is_err()
+        );
     }
 
     #[test]
@@ -492,24 +494,30 @@ mod tests {
             })
             .expect("remove intent");
         controller.dispatch(intent).expect("remove asset");
-        assert!(AssetCatalog::from_document(controller.editor().document())
-            .get("hero")
-            .is_none());
+        assert!(
+            AssetCatalog::from_document(controller.editor().document())
+                .get("hero")
+                .is_none()
+        );
         controller.dispatch(UiIntent::Undo).expect("undo remove");
-        assert!(AssetCatalog::from_document(controller.editor().document())
-            .get("hero")
-            .is_some());
+        assert!(
+            AssetCatalog::from_document(controller.editor().document())
+                .get("hero")
+                .is_some()
+        );
     }
 
     #[test]
     fn unsafe_asset_source_is_rejected_before_dispatch() {
         let controller = controller();
-        assert!(controller
-            .ssr_asset_upsert_intent(SsrAssetUpsertRequest {
-                asset_id: "unsafe".to_string(),
-                source: "javascript:alert(1)".to_string(),
-                name: String::new(),
-            })
-            .is_err());
+        assert!(
+            controller
+                .ssr_asset_upsert_intent(SsrAssetUpsertRequest {
+                    asset_id: "unsafe".to_string(),
+                    source: "javascript:alert(1)".to_string(),
+                    name: String::new(),
+                })
+                .is_err()
+        );
     }
 }

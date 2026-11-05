@@ -1,7 +1,7 @@
 use rustok_cli_core::{CliCoreError, CommandProvider, CommandRequest};
 use rustok_runtime::RuntimeComposition;
 
-use crate::{command_provider, PlatformCommandProvider};
+use crate::{PlatformCommandProvider, command_provider};
 
 #[test]
 fn test_platform_command_provider_descriptors() {
@@ -28,10 +28,16 @@ fn test_platform_command_provider_descriptors() {
     assert_eq!(rebuild_cmd.namespace, "core");
     assert!(rebuild_cmd.supports_dry_run);
 
-    let migrate_up_cmd = commands.iter().find(|c| c.namespace == "migrate" && c.name == "up").unwrap();
+    let migrate_up_cmd = commands
+        .iter()
+        .find(|c| c.namespace == "migrate" && c.name == "up")
+        .unwrap();
     assert!(!migrate_up_cmd.supports_dry_run);
 
-    let migrate_status_cmd = commands.iter().find(|c| c.namespace == "migrate" && c.name == "status").unwrap();
+    let migrate_status_cmd = commands
+        .iter()
+        .find(|c| c.namespace == "migrate" && c.name == "status")
+        .unwrap();
     assert!(!migrate_status_cmd.supports_dry_run);
 }
 
@@ -41,7 +47,10 @@ async fn test_version_command_outcome() {
     let provider = command_provider(&runtime);
 
     let req = CommandRequest::new("core", "version", serde_json::Value::Null, false);
-    let outcome = provider.execute(req).await.expect("version command succeeds");
+    let outcome = provider
+        .execute(req)
+        .await
+        .expect("version command succeeds");
 
     assert_eq!(outcome.exit_code, 0);
     assert_eq!(outcome.data["package"], "rustok-cli-platform");

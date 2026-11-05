@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    validate_fixed_program, CommandRegistryCredentialBroker, CosignArtifactSigner,
-    CosignAttestationPredicate,
+    CommandRegistryCredentialBroker, CosignArtifactSigner, CosignAttestationPredicate,
+    validate_fixed_program,
 };
 
 #[test]
@@ -87,10 +87,12 @@ fn cosign_predicate_types_match_spec() {
 #[test]
 fn fixed_program_validation_guards() {
     assert!(validate_fixed_program(Path::new("relative/path"), "invalid", "test").is_err());
-    assert!(validate_fixed_program(
-        Path::new("/non/existent/executable"),
-        &format!("sha256:{}", "0".repeat(64)),
-        "test"
-    )
-    .is_err());
+    assert!(
+        validate_fixed_program(
+            Path::new("/non/existent/executable"),
+            &format!("sha256:{}", "0".repeat(64)),
+            "test"
+        )
+        .is_err()
+    );
 }

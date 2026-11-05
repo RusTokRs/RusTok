@@ -539,7 +539,10 @@ pub(super) fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
 /// customer a different view of the same post than an anonymous reader.
 fn is_post_readable_for_request(ctx: &Context<'_>, post: &crate::PostResponse) -> bool {
     let security = request_security_context(ctx);
-    let is_author = security.user_id.map(|u| u == post.author_id).unwrap_or(false);
+    let is_author = security
+        .user_id
+        .map(|u| u == post.author_id)
+        .unwrap_or(false);
     let can_read_own = is_author
         && matches!(
             security.get_scope(Resource::BlogPosts, Action::Read),
@@ -571,9 +574,7 @@ pub(super) fn post_is_readable(
     }
     // An author with Own scope may read their own post regardless of
     // publication status; channel visibility still applies.
-    if can_read_own
-        && is_post_visible_for_channel(channel_slugs, channel_slug)
-    {
+    if can_read_own && is_post_visible_for_channel(channel_slugs, channel_slug) {
         return true;
     }
     status == crate::BlogPostStatus::Published

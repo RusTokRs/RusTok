@@ -16,55 +16,54 @@ mod runtime_scenario_render;
 mod runtime_scenario_snapshot;
 
 pub use context_scenario::{
-    preflight_runtime_context_scenarios, validate_runtime_context_scenarios,
     RuntimeContextScenario, RuntimeContextScenarioResult, RuntimeContextScenarioSuiteResult,
+    preflight_runtime_context_scenarios, validate_runtime_context_scenarios,
 };
 
 pub use interaction_capability_gate::evaluate_runtime_publish_gate_with_capabilities;
 
 pub use landing_contract::{
+    ComponentRegistryContract, ComponentRegistryManifest, FLY_HTML_RENDERER_ID,
+    FLY_LANDING_SECTION_FIELD, FlyHtmlLandingRenderer, LandingRenderedPage, LandingRenderer,
+    LandingRendererManifest, LandingSectionIssue, LandingSectionIssueKind, LandingSectionKind,
+    LandingSectionPageManifest, LandingSectionSnapshot, LandingSectionValidationReport,
+    RegistryCompatibilityIssue, RegistryCompatibilityIssueKind, RegistryCompatibilityReport,
+    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingBuildResult, StaticLandingPage,
     build_static_landing_artifact, build_static_landing_artifact_with_renderer,
-    ComponentRegistryContract, ComponentRegistryManifest, FlyHtmlLandingRenderer,
-    LandingRenderedPage, LandingRenderer, LandingRendererManifest, LandingSectionIssue,
-    LandingSectionIssueKind, LandingSectionKind, LandingSectionPageManifest,
-    LandingSectionSnapshot, LandingSectionValidationReport, RegistryCompatibilityIssue,
-    RegistryCompatibilityIssueKind, RegistryCompatibilityReport, StaticLandingArtifact,
-    StaticLandingBuildIdentity, StaticLandingBuildResult, StaticLandingPage, FLY_HTML_RENDERER_ID,
-    FLY_LANDING_SECTION_FIELD,
 };
 
 pub use landing_property::{
-    landing_property_schemas, LandingPropertyEditError, LandingPropertyIssue,
+    FLY_LANDING_PROPERTY_FIELD, LandingPropertyEditError, LandingPropertyIssue,
     LandingPropertyIssueKind, LandingPropertySchema, LandingPropertySnapshot,
     LandingPropertyTargetSnapshot, LandingPropertyValidationReport, LandingSectionPropertySnapshot,
-    FLY_LANDING_PROPERTY_FIELD,
+    landing_property_schemas,
 };
 
 pub use landing_readiness::{
-    evaluate_landing_readiness, evaluate_landing_readiness_with_context, LandingReadinessCategory,
-    LandingReadinessCategorySummary, LandingReadinessIssue, LandingReadinessPolicy,
-    LandingReadinessReport,
+    LandingReadinessCategory, LandingReadinessCategorySummary, LandingReadinessIssue,
+    LandingReadinessPolicy, LandingReadinessReport, evaluate_landing_readiness,
+    evaluate_landing_readiness_with_context,
 };
 
 pub use runtime_gate::{
-    evaluate_runtime_publish_gate, CurrentContextGateMode, RuntimePublishGateEvaluation,
-    RuntimePublishGatePolicy, ScenarioGateMode,
+    CurrentContextGateMode, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
+    ScenarioGateMode, evaluate_runtime_publish_gate,
 };
 
 pub use runtime_scenario_release::{
-    evaluate_runtime_scenario_release, RuntimeScenarioReleaseBaseline,
+    FLY_RUNTIME_SCENARIO_RELEASE_BASELINE, RuntimeScenarioReleaseBaseline,
     RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy,
-    RuntimeScenarioReleaseStatus, FLY_RUNTIME_SCENARIO_RELEASE_BASELINE,
+    RuntimeScenarioReleaseStatus, evaluate_runtime_scenario_release,
 };
 
 pub use runtime_scenario_render::{
-    render_runtime_scenario_matrix, render_runtime_scenario_matrix_with_providers,
-    RuntimeScenarioRenderCase, RuntimeScenarioRenderMatrix,
+    RuntimeScenarioRenderCase, RuntimeScenarioRenderMatrix, render_runtime_scenario_matrix,
+    render_runtime_scenario_matrix_with_providers,
 };
 
 pub use runtime_scenario_snapshot::{
-    diff_runtime_scenario_render_snapshots, RuntimeScenarioRegressionStatus,
+    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT, RuntimeScenarioRegressionStatus,
     RuntimeScenarioRenderChange, RuntimeScenarioRenderChangeImpact, RuntimeScenarioRenderDiff,
     RuntimeScenarioRenderSnapshot, RuntimeScenarioRenderSnapshotCase,
-    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT,
+    diff_runtime_scenario_render_snapshots,
 };

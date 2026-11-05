@@ -19,7 +19,7 @@ fn crate_api_defines_minimal_contract_sections() {
 
 #[test]
 fn media_ai_constants_and_descriptors() {
-    use crate::{media_ai_verticals, IMAGE_ASSET_TASK_SLUG, IMAGE_ASSET_TOOL_NAME};
+    use crate::{IMAGE_ASSET_TASK_SLUG, IMAGE_ASSET_TOOL_NAME, media_ai_verticals};
 
     assert_eq!(IMAGE_ASSET_TASK_SLUG, "image_asset");
     assert_eq!(IMAGE_ASSET_TOOL_NAME, "direct.media.generate_image");

@@ -2,8 +2,8 @@ use leptos::prelude::*;
 
 use crate::{filter_inputs::GridFilterCell, resize_handle::ColumnResizeHandle};
 use rustok_grid::{
-    has_filter_row, ColumnAlign, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef,
-    SortDirection, SortState,
+    ColumnAlign, ColumnFilters, ColumnWidths, FilterValue, GridColumnDef, SortDirection, SortState,
+    has_filter_row,
 };
 
 /// Table header: one row of column titles (sort + resize) and, when at least

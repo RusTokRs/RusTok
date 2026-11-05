@@ -1,8 +1,8 @@
 use std::sync::{Mutex, OnceLock};
 
+use prometheus::IntGauge;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::IntGauge;
 
 static TENANT_GENERATION_COLLECTOR: OnceLock<Mutex<Option<TenantGenerationCollector>>> =
     OnceLock::new();

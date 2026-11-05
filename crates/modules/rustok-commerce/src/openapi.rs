@@ -1,8 +1,8 @@
+use utoipa::OpenApi;
 use utoipa::openapi::path::OperationBuilder;
 use utoipa::openapi::request_body::RequestBodyBuilder;
 use utoipa::openapi::response::{ResponseBuilder, ResponsesBuilder};
 use utoipa::openapi::{Content, Ref};
-use utoipa::OpenApi;
 
 #[cfg(feature = "marketplace-financial")]
 #[path = "openapi_marketplace_financial.rs"]

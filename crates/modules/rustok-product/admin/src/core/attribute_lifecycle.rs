@@ -7,7 +7,7 @@
 //! Dictionary definition preparation/recovery. No browser, UI runtime or owner service imports.
 
 use super::write_journal::{
-    valid_uuid, JournalScope, JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError,
+    JournalScope, JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError, valid_uuid,
 };
 use crate::model::*;
 use serde::{Deserialize, Serialize};
@@ -484,9 +484,11 @@ mod tests {
         let pending = ready.begin_definition(input.clone()).unwrap();
         assert!(ready.can_transition_to(&pending));
         assert!(pending.fresh("en".into()).is_err());
-        assert!(pending
-            .settle_definition(AttributeDefinitionOutcome::Unknown)
-            .is_err());
+        assert!(
+            pending
+                .settle_definition(AttributeDefinitionOutcome::Unknown)
+                .is_err()
+        );
         let restored = DefinitionRecord::decode(&pending.encode().unwrap(), &scope).unwrap();
         assert_eq!(restored, pending);
         assert_eq!(restored.scope.locale, "ru");
@@ -545,14 +547,16 @@ mod tests {
         };
         assert!(valid_workspace(&workspace, &request));
         assert!(presentation_json(&workspace, Some(&missing)).is_none());
-        assert!(prepare(
-            &scope,
-            &workspace,
-            Some(missing.clone()),
-            AttributeDefinitionAction::Archive,
-            "ignored"
-        )
-        .is_err());
+        assert!(
+            prepare(
+                &scope,
+                &workspace,
+                Some(missing.clone()),
+                AttributeDefinitionAction::Archive,
+                "ignored"
+            )
+            .is_err()
+        );
         let options = target_options(
             &workspace,
             &missing,
@@ -561,9 +565,11 @@ mod tests {
             "Active",
             "Missing",
         );
-        assert!(options
-            .iter()
-            .any(|(id, label)| id == &missing && label.contains(&missing)));
+        assert!(
+            options
+                .iter()
+                .any(|(id, label)| id == &missing && label.contains(&missing))
+        );
         let record = DefinitionRecord::new(scope.clone()).unwrap();
         let ready = controls(Some(&record), true, true, false, false, false, true, None);
         assert!(ready.choose_target);

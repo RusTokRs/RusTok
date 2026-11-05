@@ -771,7 +771,10 @@ fn normalize_uuid_values(field_name: &str, values: Option<Vec<String>>) -> Resul
 }
 
 fn normalize_blog_tag_filter(tag: Option<String>) -> Result<Option<String>> {
-    let Some(tag) = tag.map(|tag| tag.trim().to_lowercase()).filter(|tag| !tag.is_empty()) else {
+    let Some(tag) = tag
+        .map(|tag| tag.trim().to_lowercase())
+        .filter(|tag| !tag.is_empty())
+    else {
         return Ok(None);
     };
     if tag.chars().count() > 120 || tag.chars().any(char::is_control) {

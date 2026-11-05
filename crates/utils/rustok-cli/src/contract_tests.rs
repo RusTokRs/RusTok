@@ -3,8 +3,8 @@ use rustok_cli_core::{
 };
 
 use crate::{
-    collect_commands, parse_command_args, render_command_list, render_command_list_json,
-    run_with_args, usage, BuiltInProvider, CliExit, CommandRegistry, CommandRegistryError,
+    BuiltInProvider, CliExit, CommandRegistry, CommandRegistryError, collect_commands,
+    parse_command_args, render_command_list, render_command_list_json, run_with_args, usage,
 };
 
 #[test]
@@ -25,8 +25,7 @@ fn test_cli_exit_constructors() {
     assert_eq!(custom.stderr, "err");
 
     // from_outcome with data
-    let outcome = CommandOutcome::success("done")
-        .with_data(serde_json::json!({ "status": "ok" }));
+    let outcome = CommandOutcome::success("done").with_data(serde_json::json!({ "status": "ok" }));
     let exit = CliExit::from_outcome(outcome);
     assert_eq!(exit.code, 0);
     assert!(exit.stdout.contains("done"));
@@ -84,7 +83,10 @@ fn test_duplicate_command_error_display() {
             name: "list".to_string(),
         }
     );
-    assert!(err.to_string().contains("duplicate command registered: core list"));
+    assert!(
+        err.to_string()
+            .contains("duplicate command registered: core list")
+    );
 }
 
 #[test]
@@ -92,7 +94,9 @@ fn test_parse_command_args_edge_cases() {
     // Empty options rejected
     assert!(parse_command_args(&["--".to_string()]).is_ok()); // terminator is fine
     assert_eq!(
-        parse_command_args(&["--".to_string(), "--".to_string()]).unwrap().0["positionals"][0],
+        parse_command_args(&["--".to_string(), "--".to_string()])
+            .unwrap()
+            .0["positionals"][0],
         "--"
     );
 

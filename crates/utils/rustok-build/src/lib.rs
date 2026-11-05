@@ -37,4 +37,3 @@ pub use snapshot::build_snapshot;
 
 #[cfg(test)]
 mod contract_tests;
-

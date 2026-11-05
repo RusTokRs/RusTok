@@ -393,10 +393,7 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
     );
     let error_response: serde_json::Value =
         serde_json::from_slice(&body).expect("error response should be JSON");
-    assert_eq!(
-        error_response["code"],
-        json!("commerce_store_invalid")
-    );
+    assert_eq!(error_response["code"], json!("commerce_store_invalid"));
 }
 
 #[tokio::test]

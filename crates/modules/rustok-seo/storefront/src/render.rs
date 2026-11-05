@@ -400,8 +400,11 @@ mod tests {
         let head = render_head_html(&context);
 
         assert!(!head.contains("</script><script>"));
-        assert!(head
-            .contains(r#"\u003c/script\u003e\u003cscript\u003ealert(1)\u003c/script\u003e\u0026"#));
+        assert!(
+            head.contains(
+                r#"\u003c/script\u003e\u003cscript\u003ealert(1)\u003c/script\u003e\u0026"#
+            )
+        );
     }
 
     #[test]
@@ -541,7 +544,9 @@ mod tests {
         assert!(head.contains(r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en-US/products/demo" />"#));
         assert!(head.contains(r#"<meta property="og:title" content="OG Demo" />"#));
         assert!(head.contains(r#"<meta name="twitter:card" content="summary_large_image" />"#));
-        assert!(head.contains(r#"<meta name="google-site-verification" content="google-token" />"#));
+        assert!(
+            head.contains(r#"<meta name="google-site-verification" content="google-token" />"#)
+        );
         assert!(head.contains(r#"<meta name="author" content="RusToK" />"#));
         assert!(head.contains(
             r#"<link rel="preload" href="https://cdn.example.com/font.woff2" type="font/woff2" />"#

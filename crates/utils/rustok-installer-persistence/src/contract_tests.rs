@@ -117,7 +117,11 @@ async fn session_persistence_lifecycle_and_state_transitions() {
 
     // 3. Acquire lock
     let locked = service
-        .acquire_lock(session.clone(), "worker-node-1", chrono::Duration::minutes(5))
+        .acquire_lock(
+            session.clone(),
+            "worker-node-1",
+            chrono::Duration::minutes(5),
+        )
         .await
         .expect("acquire lock");
     assert_eq!(locked.lock_owner.as_deref(), Some("worker-node-1"));
@@ -129,7 +133,11 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .await
         .expect("second session created");
     let err = service
-        .acquire_lock(session2.clone(), "worker-node-2", chrono::Duration::minutes(5))
+        .acquire_lock(
+            session2.clone(),
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
         .await
         .expect_err("competing lock must be rejected");
     assert!(err.to_string().contains("already held"));
@@ -214,4 +222,3 @@ async fn empty_or_whitespace_lock_owner_is_rejected() {
         .expect_err("empty lock owner must be rejected");
     assert!(err.to_string().contains("must not be empty"));
 }
-

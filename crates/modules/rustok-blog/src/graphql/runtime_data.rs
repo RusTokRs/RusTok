@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_api::{graphql::GraphqlRuntimeInputs, SharedStaticModuleSettingsReader};
+use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
 use rustok_comments::CommentsThreadPort;
 use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;

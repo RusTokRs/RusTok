@@ -1,5 +1,5 @@
-use crate::i18n::t;
 use super::routing::post_link_typed_view;
+use crate::i18n::t;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PostStatusTone {
@@ -420,12 +420,13 @@ pub fn parse_preview_token_from_fragment(fragment: &str) -> Option<String> {
         let key = key_val.next().map(str::trim)?;
         let val = key_val.next().map(str::trim);
         if key == "token"
-            && let Some(val) = val {
-                let token = val.trim();
-                if !token.is_empty() && token.len() <= 128 {
-                    return Some(token.to_string());
-                }
+            && let Some(val) = val
+        {
+            let token = val.trim();
+            if !token.is_empty() && token.len() <= 128 {
+                return Some(token.to_string());
             }
+        }
     }
     None
 }
@@ -467,6 +468,10 @@ pub fn build_draft_preview_copy(locale: Option<&str>) -> DraftPreviewCopy {
             "blog.preview.error.not.found",
             "The token is invalid, expired or has been revoked.",
         ),
-        error_load: t(locale, "blog.preview.error.load", "Failed to load the draft."),
+        error_load: t(
+            locale,
+            "blog.preview.error.load",
+            "Failed to load the draft.",
+        ),
     }
 }

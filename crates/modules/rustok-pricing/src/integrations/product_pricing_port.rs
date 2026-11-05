@@ -4,10 +4,10 @@
 //! exposing private Pricing persistence entities or table structures to Product.
 
 use async_trait::async_trait;
+use rustok_product::StorefrontProductListPrice;
 use rustok_product::ports::pricing::{
     CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
 };
-use rustok_product::StorefrontProductListPrice;
 use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -203,8 +203,6 @@ fn select_storefront_list_price_candidates<'a>(
 }
 
 /// Creates an in-process adapter implementing `ProductPricingPort`.
-pub fn in_process_product_pricing_port(
-    db: DatabaseConnection,
-) -> Arc<dyn ProductPricingPort> {
+pub fn in_process_product_pricing_port(db: DatabaseConnection) -> Arc<dyn ProductPricingPort> {
     Arc::new(PricingProductPricingPortAdapter::new(db))
 }

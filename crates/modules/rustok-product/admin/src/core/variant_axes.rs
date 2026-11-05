@@ -8,7 +8,7 @@
 //! live in adapters; only a canonical owner preview authorizes an application.
 
 use crate::core::write_journal::{
-    valid_uuid, JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError,
+    JournalState, RecoveryQueryKey, WriteJournal, WriteJournalError, valid_uuid,
 };
 use crate::model::{
     ProductDetail, ProductEffectiveForm, SetVariantAxesDraft, VariantAxesPreview,
@@ -700,10 +700,12 @@ mod tests {
         let mut overrides = Vec::new();
         reassign_value(&mut overrides, &source, &id(4), &id(6));
         assert_eq!(overrides[0].axis_values.len(), 2);
-        assert!(overrides[0]
-            .axis_values
-            .iter()
-            .any(|value| value.attribute_id == id(8)));
+        assert!(
+            overrides[0]
+                .axis_values
+                .iter()
+                .any(|value| value.attribute_id == id(8))
+        );
         reassign_value(&mut overrides, &source, &id(4), "");
         assert_eq!(overrides[0].axis_values.len(), 1);
         assert_eq!(normalized_refusal("UNAUTHORIZED"), None);

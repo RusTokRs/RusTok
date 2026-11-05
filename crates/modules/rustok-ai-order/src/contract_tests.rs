@@ -20,8 +20,8 @@ fn crate_api_defines_minimal_contract_sections() {
 #[test]
 fn order_ai_constants_and_descriptors() {
     use crate::{
-        order_ai_verticals, ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME,
-        ORDER_OPS_ASSISTANT_TASK_SLUG, ORDER_OPS_ASSISTANT_TOOL_NAME,
+        ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME, ORDER_OPS_ASSISTANT_TASK_SLUG,
+        ORDER_OPS_ASSISTANT_TOOL_NAME, order_ai_verticals,
     };
 
     assert_eq!(ORDER_ANALYTICS_TASK_SLUG, "order_analytics");

@@ -6,9 +6,7 @@
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 mod core;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
-pub use core::{
-    build_draft_preview_copy, comments_pagination, parse_preview_token_from_fragment,
-};
+pub use core::{build_draft_preview_copy, comments_pagination, parse_preview_token_from_fragment};
 mod i18n;
 mod model;
 mod transport;

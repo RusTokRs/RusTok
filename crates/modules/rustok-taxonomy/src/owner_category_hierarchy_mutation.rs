@@ -546,7 +546,12 @@ mod scope_isolation_tests {
 
         let txn = db.begin().await.expect("transaction");
         shift_module_category_siblings_for_insert_in_tx(
-            &txn, tenant, new_blog_root, "blog", None, 0,
+            &txn,
+            tenant,
+            new_blog_root,
+            "blog",
+            None,
+            0,
         )
         .await
         .expect("shift Blog sibling only");
@@ -575,11 +580,10 @@ mod scope_isolation_tests {
         let child = insert_category(&db, tenant, "blog", Some(root), 0).await;
 
         let txn = db.begin().await.expect("transaction");
-        let err = reorder_module_category_siblings_in_tx(
-            &txn, tenant, "blog", None, &[root, child],
-        )
-        .await
-        .expect_err("reorder must not move a child to a root");
+        let err =
+            reorder_module_category_siblings_in_tx(&txn, tenant, "blog", None, &[root, child])
+                .await
+                .expect_err("reorder must not move a child to a root");
         assert!(err.to_string().contains("must match"));
         txn.rollback().await.expect("rollback");
         let row = taxonomy_category_hierarchy::Entity::find_by_id((tenant, child))

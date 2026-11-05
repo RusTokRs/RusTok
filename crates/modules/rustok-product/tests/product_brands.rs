@@ -409,7 +409,8 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
     for migration in rustok_outbox::OutboxModule.migrations() {
         migration.up(&manager).await?;
     }
-    rustok_core::field_schema::create_field_definitions_table(&manager, "product", "products").await?;
+    rustok_core::field_schema::create_field_definitions_table(&manager, "product", "products")
+        .await?;
     // Exercise up migration
     m20261104_000039_create_product_brands::Migration
         .up(&manager)
@@ -636,7 +637,10 @@ async fn catalog_service_handles_product_brands_lifecycle() -> TestResult<()> {
     let duplicate_result = service
         .update_product(tenant_id, actor_id, created.id, duplicate_input)
         .await;
-    assert!(duplicate_result.is_err(), "Expected error on duplicate brand ID");
+    assert!(
+        duplicate_result.is_err(),
+        "Expected error on duplicate brand ID"
+    );
 
     // 4. Validation: rejecting multiple primary brands
     let multi_primary_input = UpdateProductInput {

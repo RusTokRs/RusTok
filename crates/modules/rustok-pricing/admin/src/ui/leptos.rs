@@ -1,3 +1,4 @@
+use super::detail::PricingDetailSection;
 use crate::core::{
     build_resolution_context, filter_pricing_products, normalize_channel_value,
     normalized_currency_code, normalized_price_list_id, normalized_quantity, normalized_region_id,
@@ -15,7 +16,6 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
-use super::detail::PricingDetailSection;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -400,131 +400,131 @@ pub fn PricingAdmin() -> impl IntoView {
     let load_error_prefix = StoredValue::new(load_products_error_label);
 
     view! {
-        <section class="space-y-6">
-            <header class="rounded-3xl border border-border bg-card p-6 shadow-sm">
-                <div class="space-y-3">
-                    <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        {t(ui_locale.as_deref(), "pricing.badge", "pricing")}
-                    </span>
-                    <h2 class="text-2xl font-semibold text-card-foreground">
-                        {t(ui_locale.as_deref(), "pricing.title", "Pricing Control")}
-                    </h2>
-                    <p class="max-w-3xl text-sm text-muted-foreground">
-                        {t(ui_locale.as_deref(), "pricing.subtitle", "Module-owned pricing read-side surface for price visibility, sale markers and currency coverage while dedicated pricing mutations are still being split from the umbrella transport.")}
-                    </p>
-                </div>
-            </header>
+    <section class="space-y-6">
+        <header class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+            <div class="space-y-3">
+                <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    {t(ui_locale.as_deref(), "pricing.badge", "pricing")}
+                </span>
+                <h2 class="text-2xl font-semibold text-card-foreground">
+                    {t(ui_locale.as_deref(), "pricing.title", "Pricing Control")}
+                </h2>
+                <p class="max-w-3xl text-sm text-muted-foreground">
+                    {t(ui_locale.as_deref(), "pricing.subtitle", "Module-owned pricing read-side surface for price visibility, sale markers and currency coverage while dedicated pricing mutations are still being split from the umbrella transport.")}
+                </p>
+            </div>
+        </header>
 
-            <div class="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)]">
-                <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
-                    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                        <div>
-                            <h3 class="text-lg font-semibold text-card-foreground">
-                                {t(ui_locale.as_deref(), "pricing.list.title", "Pricing Feed")}
-                            </h3>
-                            <p class="text-sm text-muted-foreground">
-                                {t(ui_locale.as_deref(), "pricing.list.subtitle", "Search the catalog and open a product to inspect variant-level price coverage owned by the pricing boundary.")}
-                            </p>
-                        </div>
-                        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
-                            <input
-                                class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                                placeholder=t(ui_locale.as_deref(), "pricing.list.search", "Search title")
-                                prop:value=move || search.get()
-                                on:input=move |ev| set_search.set(event_target_value(&ev))
-                            />
-                            <select
-                                class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
-                                prop:value=move || status_filter.get()
-                                on:change=move |ev| set_status_filter.set(event_target_value(&ev))
-                            >
-                                <option value="">{t(ui_locale.as_deref(), "pricing.filter.allStatuses", "All statuses")}</option>
-                                <option value="DRAFT">{t(ui_locale.as_deref(), "pricing.status.draft", "Draft")}</option>
-                                <option value="ACTIVE">{t(ui_locale.as_deref(), "pricing.status.active", "Active")}</option>
-                                <option value="ARCHIVED">{t(ui_locale.as_deref(), "pricing.status.archived", "Archived")}</option>
-                            </select>
-                            <button
-                                type="button"
-                                class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                disabled=move || busy.get()
-                                on:click=move |_| set_refresh_nonce.update(|value| *value += 1)
-                            >
-                                {t(ui_locale.as_deref(), "pricing.action.refresh", "Refresh")}
-                            </button>
-                        </div>
+        <div class="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.15fr)]">
+            <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-card-foreground">
+                            {t(ui_locale.as_deref(), "pricing.list.title", "Pricing Feed")}
+                        </h3>
+                        <p class="text-sm text-muted-foreground">
+                            {t(ui_locale.as_deref(), "pricing.list.subtitle", "Search the catalog and open a product to inspect variant-level price coverage owned by the pricing boundary.")}
+                        </p>
                     </div>
-
-                    <Show when=move || product_error.get().is_some()>
-                        <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            {move || format!("{}: {}", load_error_prefix.get_value(), product_error.get().unwrap_or_default())}
-                        </div>
-                    </Show>
-
-                    // Selection toolbar when items selected
-                    <Show when=move || !selection.get().is_empty()>
-                        <div class="mt-4 flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                <span class="text-xs font-semibold text-foreground">
-                                    {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
-                                on:click=move |_| selection.update(|s| s.clear())
-                            >
-                                {if is_ru { "Снять выбор" } else { "Clear" }}
-                            </button>
-                        </div>
-                    </Show>
-
-                    <div class="mt-5">
-                        <DataGrid
-                            columns=columns
-                            data=Signal::derive(move || filtered_products.get())
-                            key_fn=|item: &PricingProductListItem| item.id.clone()
-                            cell_renderer=cell_renderer
-                            is_loading=Signal::derive(move || busy.get() || products.get().is_none())
-                            empty_message=t(ui_locale_for_list.as_deref(), "pricing.list.empty", "No products match the current filters.")
-                            selection=selection
-                            pagination=pagination
-                            filters=filters
-                            on_filter_change=on_filters_change
-                            on_row_click=on_row_click
+                    <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
+                        <input
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            placeholder=t(ui_locale.as_deref(), "pricing.list.search", "Search title")
+                            prop:value=move || search.get()
+                            on:input=move |ev| set_search.set(event_target_value(&ev))
                         />
+                        <select
+                            class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary"
+                            prop:value=move || status_filter.get()
+                            on:change=move |ev| set_status_filter.set(event_target_value(&ev))
+                        >
+                            <option value="">{t(ui_locale.as_deref(), "pricing.filter.allStatuses", "All statuses")}</option>
+                            <option value="DRAFT">{t(ui_locale.as_deref(), "pricing.status.draft", "Draft")}</option>
+                            <option value="ACTIVE">{t(ui_locale.as_deref(), "pricing.status.active", "Active")}</option>
+                            <option value="ARCHIVED">{t(ui_locale.as_deref(), "pricing.status.archived", "Archived")}</option>
+                        </select>
+                        <button
+                            type="button"
+                            class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                            disabled=move || busy.get()
+                            on:click=move |_| set_refresh_nonce.update(|value| *value += 1)
+                        >
+                            {t(ui_locale.as_deref(), "pricing.action.refresh", "Refresh")}
+                        </button>
                     </div>
-                </section>
+                </div>
 
-                    <PricingDetailSection
-                        ui_locale=ui_locale
-                        effective_locale=effective_locale
-                        bootstrap=bootstrap
-                        context_active_price_lists=context_active_price_lists
-                        selected=Signal::derive(move || selected.get())
-                        applied_resolution_context=Signal::derive(move || applied_resolution_context.get())
-                        resolution_currency=resolution_currency
-                        set_resolution_currency=set_resolution_currency
-                        resolution_region_id=resolution_region_id
-                        set_resolution_region_id=set_resolution_region_id
-                        resolution_price_list_id=resolution_price_list_id
-                        set_resolution_price_list_id=set_resolution_price_list_id
-                        resolution_channel_id=resolution_channel_id
-                        set_resolution_channel_id=set_resolution_channel_id
-                        resolution_channel_slug=resolution_channel_slug
-                        set_resolution_channel_slug=set_resolution_channel_slug
-                        resolution_quantity=resolution_quantity
-                        set_resolution_quantity=set_resolution_quantity
-                        busy=busy
-                        set_busy=set_busy
-                        error=error
-                        set_error=set_error
-                        refresh_detail=refresh_detail
-                        context_query_writer=context_query_writer
-                        product_module_route_base=product_module_route_base
-                        open_product=open_product
+                <Show when=move || product_error.get().is_some()>
+                    <div class="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                        {move || format!("{}: {}", load_error_prefix.get_value(), product_error.get().unwrap_or_default())}
+                    </div>
+                </Show>
+
+                // Selection toolbar when items selected
+                <Show when=move || !selection.get().is_empty()>
+                    <div class="mt-4 flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-2 animate-in fade-in duration-150">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                            <span class="text-xs font-semibold text-foreground">
+                                {move || format!("{} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" })}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
+                            on:click=move |_| selection.update(|s| s.clear())
+                        >
+                            {if is_ru { "Снять выбор" } else { "Clear" }}
+                        </button>
+                    </div>
+                </Show>
+
+                <div class="mt-5">
+                    <DataGrid
+                        columns=columns
+                        data=Signal::derive(move || filtered_products.get())
+                        key_fn=|item: &PricingProductListItem| item.id.clone()
+                        cell_renderer=cell_renderer
+                        is_loading=Signal::derive(move || busy.get() || products.get().is_none())
+                        empty_message=t(ui_locale_for_list.as_deref(), "pricing.list.empty", "No products match the current filters.")
+                        selection=selection
+                        pagination=pagination
+                        filters=filters
+                        on_filter_change=on_filters_change
+                        on_row_click=on_row_click
                     />
                 </div>
             </section>
-        }
+
+                <PricingDetailSection
+                    ui_locale=ui_locale
+                    effective_locale=effective_locale
+                    bootstrap=bootstrap
+                    context_active_price_lists=context_active_price_lists
+                    selected=Signal::derive(move || selected.get())
+                    applied_resolution_context=Signal::derive(move || applied_resolution_context.get())
+                    resolution_currency=resolution_currency
+                    set_resolution_currency=set_resolution_currency
+                    resolution_region_id=resolution_region_id
+                    set_resolution_region_id=set_resolution_region_id
+                    resolution_price_list_id=resolution_price_list_id
+                    set_resolution_price_list_id=set_resolution_price_list_id
+                    resolution_channel_id=resolution_channel_id
+                    set_resolution_channel_id=set_resolution_channel_id
+                    resolution_channel_slug=resolution_channel_slug
+                    set_resolution_channel_slug=set_resolution_channel_slug
+                    resolution_quantity=resolution_quantity
+                    set_resolution_quantity=set_resolution_quantity
+                    busy=busy
+                    set_busy=set_busy
+                    error=error
+                    set_error=set_error
+                    refresh_detail=refresh_detail
+                    context_query_writer=context_query_writer
+                    product_module_route_base=product_module_route_base
+                    open_product=open_product
+                />
+            </div>
+        </section>
     }
+}

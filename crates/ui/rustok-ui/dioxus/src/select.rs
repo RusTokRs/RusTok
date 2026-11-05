@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{select_classes, SelectOption, Size};
+use rustok_ui::{SelectOption, Size, select_classes};
 
 #[component]
 pub fn Select(

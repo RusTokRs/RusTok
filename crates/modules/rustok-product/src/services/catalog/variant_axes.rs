@@ -417,7 +417,8 @@ fn plan(snapshot: &AxisSnapshot, input: &SetVariantAxesInput) -> CommerceResult<
             }
         }
         let identity = variant_combination_identity(&proposed_values);
-        if valid && !target_axes.is_empty()
+        if valid
+            && !target_axes.is_empty()
             && let Some(identity) = &identity
         {
             identities

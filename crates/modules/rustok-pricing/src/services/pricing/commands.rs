@@ -1,7 +1,5 @@
 use rust_decimal::Decimal;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -11,14 +9,14 @@ use rustok_core::events::ValidateEvent;
 use rustok_core::{generate_id, money};
 use rustok_events::DomainEvent;
 
+use super::PricingService;
 use super::resolution::{self, ResolutionError};
 use super::scope::*;
 use super::types::*;
-use super::PricingService;
 
 mod entities {
-    pub use rustok_commerce_foundation::entities::product_variant;
     pub(crate) use crate::entities::{price, price_list, price_list_translation};
+    pub use rustok_commerce_foundation::entities::product_variant;
 }
 
 impl PricingService {
@@ -787,7 +785,11 @@ impl PricingService {
         Ok(preview.adjusted_amount)
     }
 
-    pub(crate) async fn ensure_variant_tenant(&self, tenant_id: Uuid, variant_id: Uuid) -> CommerceResult<()> {
+    pub(crate) async fn ensure_variant_tenant(
+        &self,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<()> {
         self.require_embedded_variant_service_state()?;
         if tenant_id.is_nil() || variant_id.is_nil() {
             return Err(CommerceError::Validation(

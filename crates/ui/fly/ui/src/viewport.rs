@@ -174,15 +174,21 @@ mod tests {
     #[test]
     fn presets_cover_desktop_tablet_and_mobile() {
         let presets = builtin_viewport_presets();
-        assert!(presets
-            .iter()
-            .any(|preset| preset.device_class == DeviceClass::Desktop));
-        assert!(presets
-            .iter()
-            .any(|preset| preset.device_class == DeviceClass::Tablet));
-        assert!(presets
-            .iter()
-            .any(|preset| preset.device_class == DeviceClass::Mobile));
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.device_class == DeviceClass::Desktop)
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.device_class == DeviceClass::Tablet)
+        );
+        assert!(
+            presets
+                .iter()
+                .any(|preset| preset.device_class == DeviceClass::Mobile)
+        );
     }
 
     #[test]

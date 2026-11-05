@@ -20,7 +20,7 @@ pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::{filter_rows, PartyAdminTableRow};
+pub use core::{PartyAdminTableRow, filter_rows};
 pub use transport::PartyAdminTransport;
 pub use ui::{PartyAdmin, PartyAdminPage};
 

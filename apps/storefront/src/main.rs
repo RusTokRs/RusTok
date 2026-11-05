@@ -150,11 +150,7 @@ fn resolve_csr_enabled_modules(
     }
 
     #[cfg(debug_assertions)]
-    if query_params
-        .get("rustok_debug_modules")
-        .map(|v| v.as_str())
-        == Some("true")
-    {
+    if query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
         return vec![
             "content".into(),
             "cart".into(),
@@ -188,7 +184,8 @@ mod csr_query_parity_tests {
 
     #[test]
     fn decodes_unicode_and_form_encoded_query_values() {
-        let query = parse_query_params("?tag=%D0%BD%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8&q=hello+world");
+        let query =
+            parse_query_params("?tag=%D0%BD%D0%BE%D0%B2%D0%BE%D1%81%D1%82%D0%B8&q=hello+world");
         assert_eq!(query.get("tag").map(String::as_str), Some("новости"));
         assert_eq!(query.get("q").map(String::as_str), Some("hello world"));
     }

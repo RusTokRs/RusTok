@@ -3,7 +3,7 @@ use rustok_seo::{
     SeoBulkApplyMode, SeoDiagnosticCountRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings,
     SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
 };
-use rustok_seo_targets::{default_schema_payload_for_slug, SeoTargetSlug};
+use rustok_seo_targets::{SeoTargetSlug, default_schema_payload_for_slug};
 
 use crate::i18n::t;
 use crate::transport::ApiError;

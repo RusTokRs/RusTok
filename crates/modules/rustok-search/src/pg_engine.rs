@@ -66,7 +66,8 @@ impl SearchAudienceDocumentScope {
             *module = module.trim().to_ascii_lowercase();
             if id.is_nil() || !gated_source_modules.contains(module) {
                 return Err(Error::Internal(
-                    "Search audience scope received a foreign or nil authorized document".to_string(),
+                    "Search audience scope received a foreign or nil authorized document"
+                        .to_string(),
                 ));
             }
         }
@@ -223,7 +224,9 @@ fn build_filter_clause(
             // carrying the same UUID (or vice versa). Bind owner + id together.
             let mut permitted = vec![format!("source_module NOT IN ({gated_params})")];
             for module in scope.gated_source_modules() {
-                let ids = scope.authorized_documents().iter()
+                let ids = scope
+                    .authorized_documents()
+                    .iter()
                     .filter(|(owner, _)| owner == module)
                     .map(|(_, id)| *id)
                     .collect::<Vec<_>>();
@@ -979,7 +982,7 @@ mod tests {
                 source_modules: vec!["commerce".to_string()],
                 statuses: vec!["active".to_string()],
                 category_ids: Vec::new(),
-            tag: None,
+                tag: None,
                 attribute_filters: Vec::new(),
                 sort_attribute_code: None,
                 sort_desc: false,
@@ -1060,18 +1063,22 @@ mod tests {
         let only_blog = SearchAudienceDocumentScope::new(
             vec!["blog".to_string(), "forum".to_string()],
             vec![("blog".to_string(), shared_uuid)],
-        ).expect("blog-only approval");
-        let clause = build_filter_clause(
-            &query_with_categories(vec![]), 4, None, Some(&only_blog),
+        )
+        .expect("blog-only approval");
+        let clause = build_filter_clause(&query_with_categories(vec![]), 4, None, Some(&only_blog));
+        assert!(
+            clause
+                .clause
+                .contains("(source_module = $6 AND document_id IN ($7))")
         );
-        assert!(clause.clause.contains("(source_module = $6 AND document_id IN ($7))"));
         assert!(!clause.clause.contains("source_module = $8"));
         assert_eq!(clause.values.len(), 4);
         assert!(
             SearchAudienceDocumentScope::new(
                 vec!["blog".to_string()],
                 vec![("forum".to_string(), shared_uuid)]
-            ).is_err(),
+            )
+            .is_err(),
             "an unrelated module's authorization cannot enter the scope"
         );
     }
@@ -1107,7 +1114,8 @@ mod tests {
             SearchAudienceDocumentScope::new(
                 vec!["forum".to_string()],
                 vec![("forum".to_string(), Uuid::nil())],
-            ).is_err()
+            )
+            .is_err()
         );
     }
 

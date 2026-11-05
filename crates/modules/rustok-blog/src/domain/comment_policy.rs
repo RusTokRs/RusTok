@@ -35,7 +35,7 @@ pub(crate) fn parse_comments_mode(settings: &Value) -> Result<BlogCommentsMode, 
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_comments_mode, BlogCommentsMode, BLOG_COMMENTS_MODE_SETTING};
+    use super::{BLOG_COMMENTS_MODE_SETTING, BlogCommentsMode, parse_comments_mode};
 
     #[test]
     fn prior_normalized_documents_keep_the_open_public_comment_contract() {

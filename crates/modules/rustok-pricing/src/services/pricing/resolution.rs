@@ -12,13 +12,13 @@
 
 use std::cmp::Reverse;
 
+use crate::entities::{price, price_list};
 use rust_decimal::Decimal;
 use rustok_commerce_foundation::CommerceError;
 use rustok_core::{
     error::{ErrorKind, RichError},
     money,
 };
-use crate::entities::{price, price_list};
 
 use super::{
     PriceListRule, PriceListRuleKind, PriceResolutionContext, PriceResolutionSource, ResolvedPrice,

@@ -55,6 +55,6 @@ pub use ports::ProductRelationsPort;
 pub use services::{
     CREATE_RELATION_OPERATION, DELETE_RELATION_OPERATION, PRODUCT_RELATION_OWNER_SLUG,
     ProductRelationCommandContext, ProductRelationCommandError, ProductRelationService,
-    REORDER_RELATIONS_OPERATION, RELATION_CALLER_IDEMPOTENCY_NAMESPACE,
-    UPDATE_RELATION_OPERATION, relation_command_error, scoped_caller_idempotency_key,
+    RELATION_CALLER_IDEMPOTENCY_NAMESPACE, REORDER_RELATIONS_OPERATION, UPDATE_RELATION_OPERATION,
+    relation_command_error, scoped_caller_idempotency_key,
 };

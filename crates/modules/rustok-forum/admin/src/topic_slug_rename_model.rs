@@ -131,10 +131,12 @@ mod tests {
     fn rejects_missing_or_unsafe_ui_input() {
         assert!(build_forum_topic_slug_rename_command(&candidate(), "   ").is_err());
         assert!(build_forum_topic_slug_rename_command(&candidate(), "bad\nslug").is_err());
-        assert!(build_forum_topic_slug_rename_command(
-            &candidate(),
-            "x".repeat(MAX_FORUM_TOPIC_ROUTE_SLUG_LEN + 1).as_str(),
-        )
-        .is_err());
+        assert!(
+            build_forum_topic_slug_rename_command(
+                &candidate(),
+                "x".repeat(MAX_FORUM_TOPIC_ROUTE_SLUG_LEN + 1).as_str(),
+            )
+            .is_err()
+        );
     }
 }

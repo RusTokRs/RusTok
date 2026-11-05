@@ -83,7 +83,7 @@ fn canonical_project(document: &ProjectDocument) -> &GrapesProject {
 mod tests {
     use super::*;
     use crate::{ComponentPatch, EditorCommand, FlyEditor, RegistrySet};
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
 
     #[test]
     fn decode_preserves_frame_components_without_importing_them() {

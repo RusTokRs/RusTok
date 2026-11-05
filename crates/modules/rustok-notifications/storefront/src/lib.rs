@@ -18,8 +18,8 @@ pub use core::{
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
     NotificationStorefrontInboxSnapshot, NotificationStorefrontItem,
     NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
-    NotificationStorefrontOpenRequest, NotificationStorefrontPriority,
-    NotificationStorefrontState, NotificationStorefrontUnreadCount,
+    NotificationStorefrontOpenRequest, NotificationStorefrontPriority, NotificationStorefrontState,
+    NotificationStorefrontUnreadCount,
 };
 pub use transport::{
     NotificationNavigationTransportContext, NotificationStorefrontTransportContext,

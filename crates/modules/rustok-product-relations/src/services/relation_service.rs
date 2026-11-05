@@ -89,8 +89,8 @@ async fn lock_product_for_update(
     tenant_id: Uuid,
     product_id: Uuid,
 ) -> ProductRelationResult<()> {
-    let query = product::Entity::find_by_id(product_id)
-        .filter(product::Column::TenantId.eq(tenant_id));
+    let query =
+        product::Entity::find_by_id(product_id).filter(product::Column::TenantId.eq(tenant_id));
     match txn.get_database_backend() {
         DatabaseBackend::Postgres | DatabaseBackend::MySql => {
             query

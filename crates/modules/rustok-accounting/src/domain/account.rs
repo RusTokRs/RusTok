@@ -197,17 +197,23 @@ mod tests {
         assert_eq!(closing_liability, 1300);
 
         // Negative turnover rejected
-        assert!(AccountType::Asset
-            .calculate_closing_balance(1000, -1, 100)
-            .is_err());
-        assert!(AccountType::Asset
-            .calculate_closing_balance(1000, 100, -1)
-            .is_err());
+        assert!(
+            AccountType::Asset
+                .calculate_closing_balance(1000, -1, 100)
+                .is_err()
+        );
+        assert!(
+            AccountType::Asset
+                .calculate_closing_balance(1000, 100, -1)
+                .is_err()
+        );
 
         // Overflow rejected
-        assert!(AccountType::Asset
-            .calculate_closing_balance(i64::MAX, 1, 0)
-            .is_err());
+        assert!(
+            AccountType::Asset
+                .calculate_closing_balance(i64::MAX, 1, 0)
+                .is_err()
+        );
     }
 
     #[test]

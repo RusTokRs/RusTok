@@ -453,7 +453,8 @@ impl CatalogService {
         }
         if !initial_prices.is_empty() {
             if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices).await?;
+                port.create_initial_prices_in_tx(&txn, initial_prices)
+                    .await?;
             } else {
                 return Err(CommerceError::Validation(
                     "Product pricing port required to author variant prices".into(),
@@ -1253,7 +1254,8 @@ impl CatalogService {
         )
         .await?;
         if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &variant_ids).await?;
+            port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
+                .await?;
         }
 
         entities::variant_translation::Entity::delete_many()
@@ -1505,7 +1507,8 @@ impl CatalogService {
         }
         if !initial_prices.is_empty() {
             if let Some(port) = &self.pricing_port {
-                port.create_initial_prices_in_tx(&txn, initial_prices).await?;
+                port.create_initial_prices_in_tx(&txn, initial_prices)
+                    .await?;
             } else {
                 return Err(CommerceError::Validation(
                     "Product pricing port required to author variant prices".into(),
@@ -1702,12 +1705,8 @@ impl CatalogService {
                 });
             }
             if let Some(port) = &self.pricing_port {
-                port.replace_catalog_base_prices_in_tx(
-                    &txn,
-                    variant_id,
-                    initial_prices,
-                )
-                .await?;
+                port.replace_catalog_base_prices_in_tx(&txn, variant_id, initial_prices)
+                    .await?;
             } else if !initial_prices.is_empty() {
                 return Err(CommerceError::Validation(
                     "Product pricing port required to author variant prices".into(),
@@ -1783,7 +1782,8 @@ impl CatalogService {
         )
         .await?;
         if let Some(port) = &self.pricing_port {
-            port.delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
+            port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
+                .await?;
         }
 
         entities::variant_translation::Entity::delete_many()

@@ -281,7 +281,8 @@ fn map_cart_error(
             "cart lifecycle transition conflicts with the current state",
         ),
         CartError::PricingContextChanged => PortError::conflict(
-            "cart.pricing_context_changed", "Cart pricing context changed; refresh the cart and quote",
+            "cart.pricing_context_changed",
+            "Cart pricing context changed; refresh the cart and quote",
         ),
         CartError::Database(_) => PortError::unavailable(
             "cart.marketplace_snapshot_storage_unavailable",

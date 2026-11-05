@@ -1,8 +1,8 @@
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
+    EntityName, ModuleName, PostgresQueryEntityAdmission, SchemaRef, SchemaVersion,
     register_postgres_index_query_admission,
-    register_postgres_index_query_link_target_availability, EntityName, ModuleName,
-    PostgresQueryEntityAdmission, SchemaRef, SchemaVersion,
+    register_postgres_index_query_link_target_availability,
 };
 
 use super::PRODUCT_SCHEMA_ROUTING_KEY;

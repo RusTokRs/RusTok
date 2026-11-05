@@ -16,7 +16,7 @@ use rustok_grid::filter::GridFilterType;
 use rustok_grid::pagination::GridPagination;
 use rustok_grid_leptos::prelude::*;
 
-use crate::core::{filter_rows, CallsAdminTableRow};
+use crate::core::{CallsAdminTableRow, filter_rows};
 use crate::i18n::t;
 
 pub use CallsAdminPage as CallsAdmin;

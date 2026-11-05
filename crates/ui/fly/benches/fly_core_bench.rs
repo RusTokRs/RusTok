@@ -8,10 +8,10 @@
 #![allow(clippy::print_stdout)]
 
 use fly::{
-    render_page, ComponentPatch, EditorCommand, FlyEditor, GrapesJsCodec, PageSelection,
-    RegistrySet, RenderPolicy, ValidationLimits,
+    ComponentPatch, EditorCommand, FlyEditor, GrapesJsCodec, PageSelection, RegistrySet,
+    RenderPolicy, ValidationLimits, render_page,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::time::Instant;
 
 fn document_with_nodes(nodes: usize) -> fly::ProjectDocument {

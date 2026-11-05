@@ -1,7 +1,7 @@
-use crate::{dispatch_browser_intent, AdminCanvasController, BrowserIntentDispatchError};
+use crate::{AdminCanvasController, BrowserIntentDispatchError, dispatch_browser_intent};
 use fly::AssetCatalog;
 use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind, FLY_BROWSER_PROTOCOL};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn controller() -> AdminCanvasController {
     AdminCanvasController::new(
@@ -92,20 +92,24 @@ fn browser_dispatches_asset_upsert_apply_and_safe_remove_contracts() {
     let error = dispatch_browser_intent(&mut controller, request)
         .expect_err("referenced asset removal must fail");
     assert!(matches!(error, BrowserIntentDispatchError::Authoring(_)));
-    assert!(error
-        .to_string()
-        .contains("still referenced by component(s): image"));
+    assert!(
+        error
+            .to_string()
+            .contains("still referenced by component(s): image")
+    );
 
     let request = intent(&controller, BrowserIntentKind::Undo, json!({}));
     dispatch_browser_intent(&mut controller, request).expect("undo asset assignment");
-    assert!(controller
-        .editor()
-        .document()
-        .component("image")
-        .unwrap()
-        .attributes
-        .get("data-fly-asset-id")
-        .is_none());
+    assert!(
+        controller
+            .editor()
+            .document()
+            .component("image")
+            .unwrap()
+            .attributes
+            .get("data-fly-asset-id")
+            .is_none()
+    );
 
     let request = intent(
         &controller,
@@ -113,9 +117,11 @@ fn browser_dispatches_asset_upsert_apply_and_safe_remove_contracts() {
         json!({ "asset_id": "hero" }),
     );
     dispatch_browser_intent(&mut controller, request).expect("remove unreferenced asset");
-    assert!(AssetCatalog::from_document(controller.editor().document())
-        .get("hero")
-        .is_none());
+    assert!(
+        AssetCatalog::from_document(controller.editor().document())
+            .get("hero")
+            .is_none()
+    );
 }
 
 #[test]
@@ -131,9 +137,11 @@ fn unsafe_asset_source_is_rejected_by_browser_dispatch() {
     );
     let error = dispatch_browser_intent(&mut controller, request).expect_err("unsafe source");
     assert!(matches!(error, BrowserIntentDispatchError::Authoring(_)));
-    assert!(error
-        .to_string()
-        .contains("rejected by the default asset policy"));
+    assert!(
+        error
+            .to_string()
+            .contains("rejected by the default asset policy")
+    );
 }
 
 #[test]

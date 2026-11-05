@@ -1,4 +1,4 @@
-use sea_orm::{sea_query::NullOrdering, ColumnTrait, Condition, Order, QueryOrder, Select};
+use sea_orm::{ColumnTrait, Condition, Order, QueryOrder, Select, sea_query::NullOrdering};
 
 use crate::dto::PublishedPostCursor;
 use crate::entities::blog_post;

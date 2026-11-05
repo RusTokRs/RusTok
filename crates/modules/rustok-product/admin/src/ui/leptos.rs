@@ -9,6 +9,7 @@ use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
+use super::product_editor::ProductEditorPage;
 use crate::catalog_transport;
 use crate::core::{
     DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
@@ -41,7 +42,6 @@ use crate::model::{
     SetCategorySchemaModeDraft, UpdateProductImageDraft, VariantPriceDraft,
 };
 use crate::transport;
-use super::product_editor::ProductEditorPage;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,

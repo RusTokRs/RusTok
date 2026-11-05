@@ -125,9 +125,11 @@ mod tests {
         let command = prepare_accept_group_invitation(&format!("  {token}  "))
             .expect("bounded token must be accepted");
         assert_eq!(command.token, token);
-        assert!(command
-            .idempotency_key
-            .starts_with("groups-storefront-accept-invitation-"));
+        assert!(
+            command
+                .idempotency_key
+                .starts_with("groups-storefront-accept-invitation-")
+        );
         assert_eq!(
             prepare_accept_group_invitation("   "),
             Err(GroupsStorefrontInvitationInputError::MissingToken)
@@ -147,9 +149,11 @@ mod tests {
             command.invitation_id,
             "550e8400-e29b-41d4-a716-446655440000"
         );
-        assert!(command
-            .idempotency_key
-            .starts_with("groups-storefront-accept-targeted-invitation-"));
+        assert!(
+            command
+                .idempotency_key
+                .starts_with("groups-storefront-accept-targeted-invitation-")
+        );
         assert_eq!(
             prepare_accept_targeted_group_invitation("not-a-uuid"),
             Err(GroupsStorefrontInvitationInputError::InvalidInvitationId)

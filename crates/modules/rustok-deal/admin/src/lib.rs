@@ -18,7 +18,7 @@ pub mod i18n;
 pub mod transport;
 pub mod ui;
 
-pub use core::{filter_rows, DealAdminTableRow};
+pub use core::{DealAdminTableRow, filter_rows};
 pub use transport::DealAdminTransport;
 pub use ui::{DealAdmin, DealAdminPage};
 

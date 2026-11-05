@@ -257,17 +257,15 @@ impl BrandService {
             .all(&self.db)
             .await?;
 
-        let mut map: std::collections::HashMap<Uuid, BrandDto> = std::collections::HashMap::with_capacity(brands.len());
+        let mut map: std::collections::HashMap<Uuid, BrandDto> =
+            std::collections::HashMap::with_capacity(brands.len());
         for brand in brands {
             let translations = load_translations(&self.db, brand.id).await?;
             let dto = assemble_brand_dto(brand, translations, locale);
             map.insert(dto.id, dto);
         }
 
-        let ordered = brand_ids
-            .iter()
-            .filter_map(|id| map.remove(id))
-            .collect();
+        let ordered = brand_ids.iter().filter_map(|id| map.remove(id)).collect();
 
         Ok(ordered)
     }

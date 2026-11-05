@@ -2,10 +2,10 @@ use rustok_worker_transport::PeerCertificateFingerprint;
 use uuid::Uuid;
 
 use crate::{
-    ModuleArtifactNodeAgentIdentity, ModuleArtifactNodeReconciliationIdentity,
-    StaticModuleArtifactNodeAgentAuthenticator,
-    StaticModuleArtifactNodeReconciliationAuthenticator, ARTIFACT_NODE_AGENT_MAX_MESSAGE_SIZE,
-    ARTIFACT_NODE_AGENT_PROTOCOL_REVISION, ARTIFACT_NODE_RECONCILIATION_MAX_MESSAGE_SIZE,
+    ARTIFACT_NODE_AGENT_MAX_MESSAGE_SIZE, ARTIFACT_NODE_AGENT_PROTOCOL_REVISION,
+    ARTIFACT_NODE_RECONCILIATION_MAX_MESSAGE_SIZE, ModuleArtifactNodeAgentIdentity,
+    ModuleArtifactNodeReconciliationIdentity, StaticModuleArtifactNodeAgentAuthenticator,
+    StaticModuleArtifactNodeReconciliationAuthenticator,
 };
 
 #[test]

@@ -253,11 +253,13 @@ fn quantity_product_response_and_visible_projection_sum_without_order_dependent_
         available_by_variant(&binding, &rows).unwrap()[&variant],
         i32::MAX
     );
-    assert!(available_by_variant(
-        &binding,
-        rows.iter().filter(|row| row.reserved_quantity == 0)
-    )
-    .is_err());
+    assert!(
+        available_by_variant(
+            &binding,
+            rows.iter().filter(|row| row.reserved_quantity == 0)
+        )
+        .is_err()
+    );
     rows[0].incoming_quantity = -1;
     assert!(available_by_variant(&binding, &rows).is_err());
     assert!(available_by_variant(&std::collections::HashMap::new(), &rows).is_err());

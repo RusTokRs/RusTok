@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    notification_source_registry_from_extensions, NotificationSourceProvider,
-    NotificationSourceRegistry, NotificationSourceRegistryEntry, NotificationSourceSlug,
+    NotificationSourceProvider, NotificationSourceRegistry, NotificationSourceRegistryEntry,
+    NotificationSourceSlug, notification_source_registry_from_extensions,
 };
 use rustok_core::ModuleRuntimeExtensions;
 

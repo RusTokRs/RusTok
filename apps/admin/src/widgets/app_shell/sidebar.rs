@@ -7,7 +7,7 @@ use crate::app::modules::module_navigation_entries;
 use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::use_admin_locale;
 use crate::widgets::app_shell::core::{
-    build_module_nav_groups, href_is_active, module_group_icon, NavChild,
+    NavChild, build_module_nav_groups, href_is_active, module_group_icon,
 };
 
 #[component]

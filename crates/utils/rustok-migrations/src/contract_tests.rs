@@ -3,10 +3,10 @@ use std::collections::BTreeSet;
 use sea_orm_migration::MigratorTrait;
 
 use crate::{
-    classify_operations, compute_migration_plan_digest, compute_schema_state_digest,
-    generate_migration_dry_run_receipt, sqlite_test_migration_is_compatible, ColumnSummary,
-    LockClassification, MigrationDescriptor, MigrationSafetyClassification, Migrator,
-    SchemaOperation, SqliteTestMigrator,
+    ColumnSummary, LockClassification, MigrationDescriptor, MigrationSafetyClassification,
+    Migrator, SchemaOperation, SqliteTestMigrator, classify_operations,
+    compute_migration_plan_digest, compute_schema_state_digest, generate_migration_dry_run_receipt,
+    sqlite_test_migration_is_compatible,
 };
 
 #[test]

@@ -1,4 +1,4 @@
-use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
+use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, normalize_locale_tag};
 use rustok_ui_i18n::accept_language_catalog_locales;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

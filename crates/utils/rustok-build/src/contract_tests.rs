@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::{
     BuildCommandSpec, BuildControl, BuildEventPublicationContext, BuildEventScope,
-    BuildExecutionPlan, BuildRuntimeMode, BuildService, BuildStage, BuildStatus,
-    DeploymentProfile, EventBusBuildEventPublisher, NoopBuildEventPublisher, SharedBuildControl,
+    BuildExecutionPlan, BuildRuntimeMode, BuildService, BuildStage, BuildStatus, DeploymentProfile,
+    EventBusBuildEventPublisher, NoopBuildEventPublisher, SharedBuildControl,
 };
 
 struct DummyBuildControl;

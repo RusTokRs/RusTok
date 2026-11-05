@@ -6,8 +6,8 @@ use crate::browser_problem::{
     BROWSER_REVISION_CONFLICT_CODE,
 };
 use crate::core::{
-    compute_symbol_usage, validate_symbol_id, validate_template_key, SiteSymbolUsageInfo,
-    SymbolValidationError, TemplateValidationError,
+    SiteSymbolUsageInfo, SymbolValidationError, TemplateValidationError, compute_symbol_usage,
+    validate_symbol_id, validate_template_key,
 };
 use crate::model::PageTemplateSummary;
 use crate::starters::{instantiate_starter_preset, page_starters};

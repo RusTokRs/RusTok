@@ -466,11 +466,13 @@ mod tests {
             .apply_link_target_availability(&query, &mut compiled)
             .unwrap();
         assert!(!compiled.sql.contains("availability_link"));
-        assert!(!compiled
-            .exact_count
-            .unwrap()
-            .sql
-            .contains("availability_link"));
+        assert!(
+            !compiled
+                .exact_count
+                .unwrap()
+                .sql
+                .contains("availability_link")
+        );
     }
 
     #[test]
@@ -576,11 +578,13 @@ mod tests {
             .apply_link_target_availability(&query, &mut compiled)
             .unwrap();
         assert!(compiled.sql.contains("availability_link"));
-        assert!(compiled
-            .exact_count
-            .unwrap()
-            .sql
-            .contains("availability_link"));
+        assert!(
+            compiled
+                .exact_count
+                .unwrap()
+                .sql
+                .contains("availability_link")
+        );
     }
 
     #[test]

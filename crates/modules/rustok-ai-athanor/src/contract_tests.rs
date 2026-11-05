@@ -20,7 +20,7 @@ fn crate_api_defines_minimal_contract_sections() {
 #[cfg(feature = "athanor")]
 #[test]
 fn athanor_config_validation_and_constants() {
-    use crate::{AthanorRagConfig, ATHANOR_SOURCE_ID};
+    use crate::{ATHANOR_SOURCE_ID, AthanorRagConfig};
     use rustok_ai::RagError;
     use std::path::PathBuf;
     use uuid::Uuid;

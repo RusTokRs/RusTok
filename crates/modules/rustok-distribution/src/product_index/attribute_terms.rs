@@ -328,9 +328,11 @@ mod tests {
         assert!(option_term(attribute_id, option_id).unwrap().ends_with(
             "|option||30303030303030302d303030302d303030302d303030302d303030303030303030303032"
         ));
-        assert!(datetime_term(attribute_id, timestamp)
-            .unwrap()
-            .ends_with("|datetime||31373235303030313233343536373839"));
+        assert!(
+            datetime_term(attribute_id, timestamp)
+                .unwrap()
+                .ends_with("|datetime||31373235303030313233343536373839")
+        );
     }
 
     #[test]

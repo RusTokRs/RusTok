@@ -52,7 +52,14 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
     // Leptos route locale plays that role on the native path.
     let list_locale = default_locale.clone();
     let categories_resource = local_resource(
-        move || (token.get(), tenant.get(), list_locale.clone(), refresh_nonce.get()),
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                list_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
         move |(token_value, tenant_value, locale_value, _)| async move {
             transport::fetch_category_details(
                 token_value,
@@ -79,11 +86,19 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         "Search categories...",
     );
     let new_label = t(ui_locale.as_deref(), "blog.categories.new", "New Category");
-    let locale_header = t(ui_locale.as_deref(), "blog.categories.localeHeader", "Locale");
+    let locale_header = t(
+        ui_locale.as_deref(),
+        "blog.categories.localeHeader",
+        "Locale",
+    );
     let name_header = t(ui_locale.as_deref(), "blog.categories.nameHeader", "Name");
     let slug_header = t(ui_locale.as_deref(), "blog.categories.slugHeader", "Slug");
     let order_header = t(ui_locale.as_deref(), "blog.categories.orderHeader", "Order");
-    let actions_header = t(ui_locale.as_deref(), "blog.categories.actionsHeader", "Actions");
+    let actions_header = t(
+        ui_locale.as_deref(),
+        "blog.categories.actionsHeader",
+        "Actions",
+    );
     let edit_label = t(ui_locale.as_deref(), "blog.categories.edit", "Edit");
     let delete_label = t(ui_locale.as_deref(), "blog.categories.delete", "Delete");
     let confirm_delete_label = t(
@@ -135,19 +150,17 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
     let (categories_error, set_categories_error) = signal(Option::<String>::None);
     let (categories_resolved, set_categories_resolved) = signal(false);
     let effect_load_error_label = load_error_label.clone();
-    Effect::new(move |_| {
-        match categories_resource.get() {
-            Some(Ok(categories)) => {
-                set_categories_rows.set(categories);
-                set_categories_error.set(None);
-                set_categories_resolved.set(true);
-            }
-            Some(Err(_)) => {
-                set_categories_error.set(Some(effect_load_error_label.clone()));
-                set_categories_resolved.set(true);
-            }
-            None => {}
+    Effect::new(move |_| match categories_resource.get() {
+        Some(Ok(categories)) => {
+            set_categories_rows.set(categories);
+            set_categories_error.set(None);
+            set_categories_resolved.set(true);
         }
+        Some(Err(_)) => {
+            set_categories_error.set(Some(effect_load_error_label.clone()));
+            set_categories_resolved.set(true);
+        }
+        None => {}
     });
 
     let reset_form = Callback::new(move |_: ()| {
@@ -225,13 +238,16 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         spawn_local(async move {
             let result = match command.operation {
                 core::BlogCategorySaveOperation::Create(draft) => {
-                    transport::create_category(token_value, tenant_value, draft).await.map(|_| ())
-                }
-                core::BlogCategorySaveOperation::Update { category_id, update } => {
-                    transport::update_category(token_value, tenant_value, category_id, update)
+                    transport::create_category(token_value, tenant_value, draft)
                         .await
                         .map(|_| ())
                 }
+                core::BlogCategorySaveOperation::Update {
+                    category_id,
+                    update,
+                } => transport::update_category(token_value, tenant_value, category_id, update)
+                    .await
+                    .map(|_| ()),
             };
 
             match result {
@@ -264,9 +280,16 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         let delete_failure_message = delete_failure_message.clone();
 
         spawn_local(async move {
-            match transport::delete_category(token.get_untracked(), tenant.get_untracked(), category_id.clone()).await {
+            match transport::delete_category(
+                token.get_untracked(),
+                tenant.get_untracked(),
+                category_id.clone(),
+            )
+            .await
+            {
                 Ok(_) => {
-                    if editing_category_id.get_untracked().as_deref() == Some(category_id.as_str()) {
+                    if editing_category_id.get_untracked().as_deref() == Some(category_id.as_str())
+                    {
                         reset_form.run(());
                     }
                     set_refresh_nonce.update(|value| *value += 1);

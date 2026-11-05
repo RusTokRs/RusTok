@@ -1,11 +1,11 @@
+use crate::AdminCanvasController;
 use crate::editor::AdminEditorRuntime;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
-use crate::AdminCanvasController;
 use fly::{
-    validate_component_actions, ComponentAction, ComponentForm, ComponentPatch, EditorCommand,
-    FormEncoding, FormMethod, ValidationDiagnostic, ValidationSeverity, FLY_ACTION_FIELD,
-    FLY_FORM_FIELD, FLY_PAGE_LINK_FIELD,
+    ComponentAction, ComponentForm, ComponentPatch, EditorCommand, FLY_ACTION_FIELD,
+    FLY_FORM_FIELD, FLY_PAGE_LINK_FIELD, FormEncoding, FormMethod, ValidationDiagnostic,
+    ValidationSeverity, validate_component_actions,
 };
 use fly_ui::UiIntent;
 use leptos::prelude::*;
@@ -1262,13 +1262,15 @@ mod tests {
             "about"
         );
         controller.dispatch(UiIntent::Undo).expect("undo action");
-        assert!(!controller
-            .editor()
-            .document()
-            .component("cta")
-            .unwrap()
-            .extensions
-            .contains_key(FLY_ACTION_FIELD));
+        assert!(
+            !controller
+                .editor()
+                .document()
+                .component("cta")
+                .unwrap()
+                .extensions
+                .contains_key(FLY_ACTION_FIELD)
+        );
     }
 
     #[test]

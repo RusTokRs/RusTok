@@ -13,7 +13,10 @@ pub(crate) fn parse_required_currency_code(currency_code: String) -> Result<Stri
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn parse_decimal(value: &str, field_name: &str) -> Result<rust_decimal::Decimal, ServerFnError> {
+pub(crate) fn parse_decimal(
+    value: &str,
+    field_name: &str,
+) -> Result<rust_decimal::Decimal, ServerFnError> {
     <rust_decimal::Decimal as std::str::FromStr>::from_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
 }
@@ -32,7 +35,10 @@ pub(crate) fn parse_optional_decimal(
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn parse_optional_quantity(value: &str, field_name: &str) -> Result<Option<i32>, ServerFnError> {
+pub(crate) fn parse_optional_quantity(
+    value: &str,
+    field_name: &str,
+) -> Result<Option<i32>, ServerFnError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -51,7 +57,10 @@ pub(crate) fn parse_optional_quantity(value: &str, field_name: &str) -> Result<O
 }
 
 #[cfg(feature = "ssr")]
-pub(crate) fn parse_optional_uuid(value: &str, field_name: &str) -> Result<Option<Uuid>, ServerFnError> {
+pub(crate) fn parse_optional_uuid(
+    value: &str,
+    field_name: &str,
+) -> Result<Option<Uuid>, ServerFnError> {
     let Some(value) = text_or_none(value.to_string()) else {
         return Ok(None);
     };

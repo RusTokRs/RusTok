@@ -146,7 +146,7 @@ impl ProfileBackfillTimer {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProfileOperation, PROFILE_BACKFILL_OPERATION};
+    use super::{PROFILE_BACKFILL_OPERATION, ProfileOperation};
 
     #[test]
     fn operation_names_are_stable_and_owner_scoped() {

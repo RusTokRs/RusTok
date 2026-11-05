@@ -522,9 +522,7 @@ impl ForumNotificationSourceProvider {
             .filter(forum_category_subscription::Column::TenantId.eq(tenant_id))
             .filter(forum_category_subscription::Column::CategoryId.eq(category_id))
             .filter(forum_category_subscription::Column::NotifyReplies.eq(true))
-            .filter(
-                forum_category_subscription::Column::DigestMode.eq(ForumDigestMode::Immediate),
-            )
+            .filter(forum_category_subscription::Column::DigestMode.eq(ForumDigestMode::Immediate))
             .filter(forum_category_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
             .order_by_asc(forum_category_subscription::Column::UserId);
         if let Some(after) = after {

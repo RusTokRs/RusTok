@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use rustok_grid::{visible_columns, ColumnAlign, ColumnWidths, GridColumnDef};
+use rustok_grid::{ColumnAlign, ColumnWidths, GridColumnDef, visible_columns};
 
 use crate::grid::GridCell;
 

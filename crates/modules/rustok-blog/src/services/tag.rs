@@ -17,10 +17,10 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    entities::TaxonomyTerm,
     ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
     TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    delete_module_term_in_tx, lock_module_term_in_tx, update_module_term_in_tx,
+    delete_module_term_in_tx, entities::TaxonomyTerm, lock_module_term_in_tx,
+    update_module_term_in_tx,
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
@@ -256,9 +256,8 @@ impl TagService {
                         rustok_taxonomy::entities::taxonomy_term::Column::ScopeType
                             .ne(TaxonomyScopeType::Module),
                     )
-                    .or(rustok_taxonomy::entities::taxonomy_term::Column::ScopeValue.eq(
-                        BLOG_SCOPE_VALUE,
-                    )),
+                    .or(rustok_taxonomy::entities::taxonomy_term::Column::ScopeValue
+                        .eq(BLOG_SCOPE_VALUE)),
             )
             .to_owned();
         let paginator = blog_tag_usage::Entity::find()

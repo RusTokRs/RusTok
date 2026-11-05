@@ -4,12 +4,12 @@ pub mod leptos;
 mod moderation;
 mod richtext;
 
-use ::leptos::prelude::*;
-use rustok_ui_core::UiRouteContext;
 use self::categories::BlogCategoriesAdmin;
 use self::leptos::BlogAdmin as BlogEditor;
 use self::moderation::BlogModerationPanel;
-use crate::core::{blog_admin_section_for_subpath, BlogAdminSection};
+use crate::core::{BlogAdminSection, blog_admin_section_for_subpath};
+use ::leptos::prelude::*;
+use rustok_ui_core::UiRouteContext;
 
 /// Page composition belongs to the UI adapter, not lib.rs. The host renders
 /// one module component for every child page, so the module owns the subpath
@@ -70,6 +70,9 @@ mod tests {
             blog_admin_section_for_subpath(Some("category")),
             BlogAdminSection::Posts
         );
-        assert_eq!(blog_admin_section_for_subpath(None), BlogAdminSection::Posts);
+        assert_eq!(
+            blog_admin_section_for_subpath(None),
+            BlogAdminSection::Posts
+        );
     }
 }

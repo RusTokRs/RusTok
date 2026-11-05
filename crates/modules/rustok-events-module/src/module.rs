@@ -44,4 +44,3 @@ impl RusToKModule for EventsModule {
         HealthStatus::Degraded
     }
 }
-

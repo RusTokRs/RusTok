@@ -8,7 +8,7 @@
 //! Operation states validate their own immutable requests and terminal evidence. The common
 //! envelope keeps scope, document/generation identity, bounds and forward-only restoration.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 pub(crate) const MAX_JOURNAL_BYTES: usize = 2 * 1024 * 1024;

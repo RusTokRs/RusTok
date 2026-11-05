@@ -9,7 +9,7 @@
  */
 
 use dioxus::prelude::*;
-use rustok_ui::{spinner_classes, Size};
+use rustok_ui::{Size, spinner_classes};
 
 /// Animated progress indicator.
 ///

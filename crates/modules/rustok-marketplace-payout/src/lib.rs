@@ -18,7 +18,7 @@ pub mod ports;
 pub mod service;
 
 pub use dto::{
-    ListMarketplaceSellerPayoutsRequest, MAX_PAYOUTS_PER_PAGE, MAX_PAYOUT_ITEMS_PER_BATCH,
+    ListMarketplaceSellerPayoutsRequest, MAX_PAYOUT_ITEMS_PER_BATCH, MAX_PAYOUTS_PER_PAGE,
     MarketplacePayoutItemResponse, MarketplacePayoutListResponse, MarketplacePayoutResponse,
     MarketplacePayoutStatus, ReadMarketplacePayoutRequest, ScheduleMarketplacePayoutInput,
 };

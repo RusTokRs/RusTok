@@ -1,7 +1,7 @@
 use fly::{DocumentKind, GrapesJsCodec, ProjectDocument, UniqueIdGenerator};
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PageStarterDescriptor {
@@ -661,7 +661,7 @@ fn escape_html(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly::{validate_project, RegistrySet, ValidationLimits};
+    use fly::{RegistrySet, ValidationLimits, validate_project};
     use std::collections::HashSet;
 
     #[test]

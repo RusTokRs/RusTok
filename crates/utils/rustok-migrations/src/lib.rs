@@ -59,10 +59,10 @@ mod composition {
 
     pub mod schema_diff;
     pub use schema_diff::{
-        classify_operation, classify_operations, compute_migration_plan_digest,
-        compute_schema_state_digest, generate_migration_dry_run_receipt, ColumnSummary,
-        LockClassification, MigrationDiffError, MigrationDryRunReceipt,
-        MigrationSafetyClassification, SchemaOperation,
+        ColumnSummary, LockClassification, MigrationDiffError, MigrationDryRunReceipt,
+        MigrationSafetyClassification, SchemaOperation, classify_operation, classify_operations,
+        compute_migration_plan_digest, compute_schema_state_digest,
+        generate_migration_dry_run_receipt,
     };
 
     #[cfg(test)]
@@ -586,7 +586,7 @@ mod composition {
 
     #[cfg(test)]
     mod sqlite_test_migrator_tests {
-        use super::{Migrator, SqliteTestMigrator, SQLITE_INCOMPATIBLE_MIGRATIONS};
+        use super::{Migrator, SQLITE_INCOMPATIBLE_MIGRATIONS, SqliteTestMigrator};
         use sea_orm_migration::MigratorTrait;
 
         #[test]
@@ -602,9 +602,9 @@ mod composition {
 
             for migration_name in SQLITE_INCOMPATIBLE_MIGRATIONS {
                 assert!(
-                production_names.contains(*migration_name),
-                "SQLite test migration exclusion must name an existing production migration: {migration_name}"
-            );
+                    production_names.contains(*migration_name),
+                    "SQLite test migration exclusion must name an existing production migration: {migration_name}"
+                );
                 assert!(
                     !sqlite_names.contains(*migration_name),
                     "SQLite test migrator must exclude {migration_name}"
@@ -623,9 +623,9 @@ mod composition {
                 "m20261017_000005_remove_redundant_product_tenant_key",
             ] {
                 assert!(
-                !sqlite_names.contains(migration_name),
-                "PostgreSQL-only Product Relation migration {migration_name} must not enter SQLite tests"
-            );
+                    !sqlite_names.contains(migration_name),
+                    "PostgreSQL-only Product Relation migration {migration_name} must not enter SQLite tests"
+                );
             }
             for migration_name in [
                 "m20261017_000036_add_sqlite_tenant_identity_keys",
@@ -751,7 +751,7 @@ mod composition {
 
     #[cfg(test)]
     mod tests {
-        use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
+        use super::{MigrationDescriptor, Migrator, sort_migrations_by_dependencies};
         use rustok_test_utils::setup_test_db;
         use sea_orm_migration::MigratorTrait;
 
@@ -798,53 +798,53 @@ mod composition {
                 .collect::<Vec<_>>();
 
             assert_eq!(
-            slugs,
-            vec![
-                "modules",
-                "tenant",
-                "alloy",
-                "flex",
-                "auth",
-                "rbac",
-                "channel",
-                "navigation",
-                "cart",
-                "customer",
-                "product",
-                "product_relations",
-                "product_bundles",
-                "region",
-                "pricing",
-                "inventory",
-                "order",
-                "payment",
-                "fulfillment",
-                "commerce",
-                "marketplace_seller",
-                "marketplace_listing",
-                "marketplace_allocation",
-                "marketplace_commission",
-                "marketplace_balance",
-                "marketplace_payout",
-                "moderation",
-                "content",
-                "blog",
-                "comments",
-                "pages",
-                "seo",
-                "forum",
-                "index",
-                "search",
-                "taxonomy",
-                "workflow",
-                "media",
-                "profiles",
-                "social_graph",
-                "translation",
-                "ai",
-            ],
-            "descriptor aggregation must cover every module crate whose migrations are included in the server migrator"
-        );
+                slugs,
+                vec![
+                    "modules",
+                    "tenant",
+                    "alloy",
+                    "flex",
+                    "auth",
+                    "rbac",
+                    "channel",
+                    "navigation",
+                    "cart",
+                    "customer",
+                    "product",
+                    "product_relations",
+                    "product_bundles",
+                    "region",
+                    "pricing",
+                    "inventory",
+                    "order",
+                    "payment",
+                    "fulfillment",
+                    "commerce",
+                    "marketplace_seller",
+                    "marketplace_listing",
+                    "marketplace_allocation",
+                    "marketplace_commission",
+                    "marketplace_balance",
+                    "marketplace_payout",
+                    "moderation",
+                    "content",
+                    "blog",
+                    "comments",
+                    "pages",
+                    "seo",
+                    "forum",
+                    "index",
+                    "search",
+                    "taxonomy",
+                    "workflow",
+                    "media",
+                    "profiles",
+                    "social_graph",
+                    "translation",
+                    "ai",
+                ],
+                "descriptor aggregation must cover every module crate whose migrations are included in the server migrator"
+            );
         }
 
         #[test]
@@ -863,9 +863,9 @@ mod composition {
                 .expect("taxonomy term-status removal migration must exist");
 
             assert!(
-            translation_target < remove_term_status,
-            "taxonomy translation-change storage must exist before term-status removal updates it"
-        );
+                translation_target < remove_term_status,
+                "taxonomy translation-change storage must exist before term-status removal updates it"
+            );
         }
 
         #[test]
@@ -993,13 +993,13 @@ mod composition {
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
             assert_eq!(
-            names,
-            vec![
-                "m20250101_000002_create_users".to_string(),
-                "m20250101_000001_create_tenants".to_string(),
-            ],
-            "sorting helper must not reorder migrations when no dependency metadata is provided"
-        );
+                names,
+                vec![
+                    "m20250101_000002_create_users".to_string(),
+                    "m20250101_000001_create_tenants".to_string(),
+                ],
+                "sorting helper must not reorder migrations when no dependency metadata is provided"
+            );
         }
 
         #[test]
@@ -1022,14 +1022,14 @@ mod composition {
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
             assert_eq!(
-            names,
-            vec![
-                "m20250101_000004_create_sessions",
-                "m20250101_000001_create_tenants",
-                "m20250101_000002_create_users",
-            ],
-            "an earlier blocked migration must run immediately after its dependency becomes available"
-        );
+                names,
+                vec![
+                    "m20250101_000004_create_sessions",
+                    "m20250101_000001_create_tenants",
+                    "m20250101_000002_create_users",
+                ],
+                "an earlier blocked migration must run immediately after its dependency becomes available"
+            );
         }
 
         #[test]
@@ -1153,11 +1153,11 @@ mod composition {
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
             assert!(
-            names
-                .iter()
-                .any(|name| name == "m20260716_000001_artifact_permission_catalog"),
-            "RBAC-owned artifact permission catalog migration must run through the platform migrator"
-        );
+                names
+                    .iter()
+                    .any(|name| name == "m20260716_000001_artifact_permission_catalog"),
+                "RBAC-owned artifact permission catalog migration must run through the platform migrator"
+            );
         }
 
         #[test]
@@ -1364,11 +1364,11 @@ mod composition {
                 "server migrator must include flex schema translation split migration"
             );
             assert!(
-            names.contains(
-                &"m20260405_000003_add_is_localized_to_server_field_definitions".to_string()
-            ),
-            "server migrator must include attached-mode field definition localization semantics migration"
-        );
+                names.contains(
+                    &"m20260405_000003_add_is_localized_to_server_field_definitions".to_string()
+                ),
+                "server migrator must include attached-mode field definition localization semantics migration"
+            );
             assert!(
                 names.contains(
                     &"m20260405_000004_create_flex_attached_localized_values".to_string()

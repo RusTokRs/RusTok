@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_sandbox::{
-    SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
-    SandboxResult,
+    SandboxError, SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome,
+    SandboxRequest, SandboxResult,
 };
 use tonic::transport::Channel;
 
@@ -99,11 +99,9 @@ async fn debug_formatting_implementations() {
     let debug_executor = format!("{executor:?}");
     assert!(debug_executor.contains("GrpcRhaiExecutor"));
 
-    let service = SandboxWorkerGrpcService::new(
-        Arc::new(DummyRhaiExecutor),
-        Arc::new(DummyReadiness),
-    )
-    .expect("worker service");
+    let service =
+        SandboxWorkerGrpcService::new(Arc::new(DummyRhaiExecutor), Arc::new(DummyReadiness))
+            .expect("worker service");
     let debug_service = format!("{service:?}");
     assert!(debug_service.contains("SandboxWorkerGrpcService"));
     assert!(debug_service.contains("Rhai"));

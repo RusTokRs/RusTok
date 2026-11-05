@@ -494,7 +494,7 @@ mod tests {
     use crate::{
         AccessibilityMetadata, Presentation, PropertyEditorDescriptor, RendererDescriptor,
     };
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
 
     fn accessibility(id: &str) -> AccessibilityMetadata {
         AccessibilityMetadata {
@@ -638,10 +638,12 @@ mod tests {
             &ContributionAssemblyPolicy::default(),
         );
         assert!(!missing.is_valid());
-        assert!(missing
-            .diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.code == "contribution_dependency_missing" }));
+        assert!(
+            missing
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "contribution_dependency_missing" })
+        );
 
         let cycle = build_admin_contribution_registry(
             [
@@ -691,10 +693,12 @@ mod tests {
         );
         assert_eq!(result.registered_contributions, 1);
         assert_eq!(result.skipped_contributions, 1);
-        assert!(result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.code == "contribution_renderer_duplicate" }));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "contribution_renderer_duplicate" })
+        );
     }
 
     #[test]

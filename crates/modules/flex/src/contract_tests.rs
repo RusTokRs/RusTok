@@ -29,7 +29,7 @@ fn flex_module_metadata_matches_contract() {
 #[test]
 fn entity_type_validation_and_normalization() {
     use crate::entity_type::{
-        is_valid_flex_entity_type, normalize_flex_entity_type, TAXONOMY_CATEGORY_ENTITY_TYPE,
+        TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type, normalize_flex_entity_type,
     };
 
     assert!(is_valid_flex_entity_type("user"));

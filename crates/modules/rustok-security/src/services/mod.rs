@@ -363,10 +363,13 @@ impl SecurityService {
             }
         } else {
             let store = self.in_memory_policies.read().await;
-            Ok(store.get(&tenant_id).cloned().unwrap_or_else(|| SecurityPolicy {
-                tenant_id,
-                ..SecurityPolicy::default()
-            }))
+            Ok(store
+                .get(&tenant_id)
+                .cloned()
+                .unwrap_or_else(|| SecurityPolicy {
+                    tenant_id,
+                    ..SecurityPolicy::default()
+                }))
         }
     }
 

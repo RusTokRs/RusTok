@@ -1,9 +1,9 @@
 use rustok_forum::{
-    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecisionReason,
-    ForumPostingPolicyEvaluationInput, ForumPostingPolicyEvaluator, ForumPostingPolicyFactKind,
-    ForumPostingPolicyFacts, ForumPostingPolicyOutcome, ForumPostingPolicyRules,
-    ForumPostingPolicyUnavailableFact, ForumPostingWindowCount, ForumPostingWindowLimit,
-    FORUM_POSTING_POLICY_PRECEDENCE,
+    FORUM_POSTING_POLICY_PRECEDENCE, ForumPostingAction, ForumPostingCandidateMetrics,
+    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
+    ForumPostingPolicyEvaluator, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
+    ForumPostingPolicyOutcome, ForumPostingPolicyRules, ForumPostingPolicyUnavailableFact,
+    ForumPostingWindowCount, ForumPostingWindowLimit,
 };
 use uuid::Uuid;
 
@@ -331,10 +331,14 @@ fn invalid_noop_or_unbounded_rules_fail_closed() {
 
 #[test]
 fn reserved_future_rules_are_not_in_current_precedence() {
-    assert!(!FORUM_POSTING_POLICY_PRECEDENCE
-        .contains(&ForumPostingPolicyDecisionReason::DuplicateContent));
-    assert!(!FORUM_POSTING_POLICY_PRECEDENCE
-        .contains(&ForumPostingPolicyDecisionReason::ExternalSpamScore));
+    assert!(
+        !FORUM_POSTING_POLICY_PRECEDENCE
+            .contains(&ForumPostingPolicyDecisionReason::DuplicateContent)
+    );
+    assert!(
+        !FORUM_POSTING_POLICY_PRECEDENCE
+            .contains(&ForumPostingPolicyDecisionReason::ExternalSpamScore)
+    );
     assert_eq!(
         FORUM_POSTING_POLICY_PRECEDENCE.first(),
         Some(&ForumPostingPolicyDecisionReason::RequiredFactUnavailable)

@@ -2,8 +2,8 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::{
-    host::ModuleBuildDispatcherConfig, ModuleBuildDelivery, ModuleBuildDeliveryResult,
-    MODULE_BUILD_CONSUMER_GROUP,
+    MODULE_BUILD_CONSUMER_GROUP, ModuleBuildDelivery, ModuleBuildDeliveryResult,
+    host::ModuleBuildDispatcherConfig,
 };
 
 #[test]

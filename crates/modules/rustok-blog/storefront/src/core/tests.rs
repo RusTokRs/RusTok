@@ -354,10 +354,7 @@ fn post_status_tone_maps_semantic_variants() {
         super::post_status_tone("draft"),
         super::PostStatusTone::Default
     );
-    assert_eq!(
-        super::post_status_tone(""),
-        super::PostStatusTone::Default
-    );
+    assert_eq!(super::post_status_tone(""), super::PostStatusTone::Default);
 }
 
 #[test]
@@ -500,7 +497,10 @@ fn reading_time_helpers_calculate_and_format_correctly() {
     assert_eq!(super::format_reading_time(5, Some("en")), "5 min read");
     assert_eq!(super::format_reading_time(1, Some("ru")), "1 минута чтения");
     assert_eq!(super::format_reading_time(3, Some("ru")), "3 минуты чтения");
-    assert_eq!(super::format_reading_time(3, Some("ru-RU")), "3 минуты чтения");
+    assert_eq!(
+        super::format_reading_time(3, Some("ru-RU")),
+        "3 минуты чтения"
+    );
     assert_eq!(super::format_reading_time(5, Some("ru")), "5 минут чтения");
 }
 

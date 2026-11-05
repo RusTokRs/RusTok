@@ -1,7 +1,7 @@
 use crate::error::{BlogError, BlogResult};
 use rustok_api::{RichTextDocument, RichTextView};
 use rustok_content::{
-    canonical_json, plain_text, project, validate_and_normalize, RichTextProfile,
+    RichTextProfile, canonical_json, plain_text, project, validate_and_normalize,
 };
 
 /// Convert normalized plain text into a canonical Blog article document.

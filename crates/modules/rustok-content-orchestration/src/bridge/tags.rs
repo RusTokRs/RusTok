@@ -44,11 +44,7 @@ pub(crate) async fn load_blog_tag_names_for_post_in_tx(
 
     Ok(term_ids
         .into_iter()
-        .filter_map(|term_id| {
-            terms_by_id
-                .get(&term_id)
-                .map(|term| term.name.clone())
-        })
+        .filter_map(|term_id| terms_by_id.get(&term_id).map(|term| term.name.clone()))
         .collect())
 }
 

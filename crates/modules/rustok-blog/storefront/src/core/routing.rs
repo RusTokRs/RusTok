@@ -89,7 +89,10 @@ pub struct PostLinkView {
 }
 
 pub fn post_link(base: &str, slug: &str, open_label: &str) -> (String, String) {
-    (module_href(base, slug), self::open_link_label(open_label, slug))
+    (
+        module_href(base, slug),
+        self::open_link_label(open_label, slug),
+    )
 }
 
 pub fn post_link_typed_view(base: &str, slug: &str, open_label: &str) -> PostLinkView {

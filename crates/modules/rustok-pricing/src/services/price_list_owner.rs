@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
+use crate::entities::{price_list, price_list_translation};
 use chrono::{DateTime, Utc};
 use rustok_api::TenantLocale;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::generate_id;
-use crate::entities::{price_list, price_list_translation};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set, TransactionTrait,

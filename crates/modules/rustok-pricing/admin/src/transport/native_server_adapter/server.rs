@@ -6,32 +6,32 @@ use crate::core::{parse_optional_uuid_string, sanitize_resolution_context};
 #[cfg(feature = "ssr")]
 use rustok_api::HostRuntimeContext;
 
-
-use crate::model::{
-    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
-    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
-    PricingProductDetail, PricingProductList,
-};
 #[cfg(feature = "ssr")]
 use super::context::*;
 #[cfg(feature = "ssr")]
 use super::mappers::*;
 #[cfg(feature = "ssr")]
 use super::operations::*;
+use crate::model::{
+    PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
+    PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
+    PricingProductDetail, PricingProductList,
+};
 
 #[server(prefix = "/api/fn", endpoint = "pricing/admin/bootstrap")]
-pub(crate) async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, ServerFnError> {
+pub(crate) async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, ServerFnError>
+{
     #[cfg(feature = "ssr")]
     {
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
 
@@ -93,10 +93,10 @@ pub(crate) async fn pricing_admin_active_price_lists_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -140,12 +140,12 @@ pub(crate) async fn pricing_admin_products_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_pricing::PricingService;
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -223,15 +223,15 @@ pub(crate) async fn pricing_admin_product_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_pricing::{
             PriceResolutionContext, PricingService, ResolveProductPricesRequest,
             in_process_pricing_read_port,
         };
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -423,10 +423,10 @@ pub(crate) async fn pricing_admin_update_variant_price_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -461,10 +461,10 @@ pub(crate) async fn pricing_admin_preview_variant_discount_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -506,10 +506,10 @@ pub(crate) async fn pricing_admin_apply_variant_discount_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -541,10 +541,10 @@ pub(crate) async fn pricing_admin_update_price_list_rule_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -576,10 +576,10 @@ pub(crate) async fn pricing_admin_update_price_list_scope_native(
         use super::context::*;
         use super::mappers::*;
         use super::operations::*;
-        use rustok_api::HostRuntimeContext;
-        use uuid::Uuid;
         use leptos::prelude::expect_context;
+        use rustok_api::HostRuntimeContext;
         use rustok_api::{AuthContext, TenantContext};
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -606,5 +606,3 @@ pub(crate) async fn pricing_admin_update_price_list_scope_native(
         ))
     }
 }
-
-

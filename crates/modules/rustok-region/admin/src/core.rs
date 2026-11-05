@@ -1,4 +1,4 @@
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
+use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 
 use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList};
 

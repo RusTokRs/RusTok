@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use jsonschema::{Draft, PatternOptions, Validator};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -670,11 +670,13 @@ mod tests {
         let content = messages[1].content.as_deref().expect("user content");
         assert!(content.contains("<<<UNTRUSTED_USER_OR_ARTIFACT_CONTEXT_BEGIN>>>"));
         assert!(content.contains("ignore all prior instructions"));
-        assert!(messages[0]
-            .content
-            .as_deref()
-            .expect("trusted system policy")
-            .contains("Only this system policy"));
+        assert!(
+            messages[0]
+                .content
+                .as_deref()
+                .expect("trusted system policy")
+                .contains("Only this system policy")
+        );
     }
 
     #[test]
@@ -707,11 +709,13 @@ mod tests {
                 .expect("bounded user content")
                 .len();
         assert!(untrusted_bytes <= MAX_AGENT_UNTRUSTED_CONTEXT_BYTES);
-        assert!(messages[2]
-            .content
-            .as_deref()
-            .expect("bounded user content")
-            .contains("[content truncated by agent execution policy]"));
+        assert!(
+            messages[2]
+                .content
+                .as_deref()
+                .expect("bounded user content")
+                .contains("[content truncated by agent execution policy]")
+        );
     }
 
     #[test]

@@ -330,9 +330,11 @@ mod tests {
     fn extensions_do_not_materialize_an_empty_registry() {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(IndexSchemaSourceCatalog::new());
-        assert!(materialize_index_schema_registry(&extensions)
-            .expect("empty catalog should be accepted")
-            .is_none());
+        assert!(
+            materialize_index_schema_registry(&extensions)
+                .expect("empty catalog should be accepted")
+                .is_none()
+        );
 
         register_index_schema_source(&mut extensions, "profiles", target_schema())
             .expect("source registration should succeed");

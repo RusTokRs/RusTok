@@ -63,14 +63,16 @@ fn native_partial_restore_reconsume_requires_the_exact_outstanding_projection() 
         "cancellation status alone is not a restore receipt"
     );
     proof.restored_quantity = 1;
-    assert!(next_progress(
-        tenant,
-        &batch,
-        line,
-        Some(&proof),
-        ShipmentStockAction::Reconsume
-    )
-    .is_err());
+    assert!(
+        next_progress(
+            tenant,
+            &batch,
+            line,
+            Some(&proof),
+            ShipmentStockAction::Reconsume
+        )
+        .is_err()
+    );
     proof.restored_quantity = 2;
     assert_eq!(
         next_progress(
@@ -180,14 +182,16 @@ fn native_saved_proof_cannot_be_rebound_across_any_owner_identity_or_quantity() 
     row.location_id = None;
     bad.push(row);
     for row in bad {
-        assert!(next_progress(
-            tenant,
-            &batch,
-            &batch.lines[0],
-            Some(&row),
-            ShipmentStockAction::Restore
-        )
-        .is_err());
+        assert!(
+            next_progress(
+                tenant,
+                &batch,
+                &batch.lines[0],
+                Some(&row),
+                ShipmentStockAction::Restore
+            )
+            .is_err()
+        );
     }
 }
 

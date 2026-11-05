@@ -2,7 +2,7 @@ use crate::model::{CreatePageDraft, PageDetail};
 pub use crate::starters::{instantiate_starter_preset, page_starters};
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn slugify(value: &str) -> String {
     value
@@ -325,14 +325,18 @@ mod tests {
             header_usage.dependent_page_ids,
             vec!["page-uuid-1".to_string()]
         );
-        assert!(header_usage
-            .deletion_warning()
-            .unwrap()
-            .contains("2 template(s): default, landing"));
-        assert!(header_usage
-            .deletion_warning()
-            .unwrap()
-            .contains("1 page(s)"));
+        assert!(
+            header_usage
+                .deletion_warning()
+                .unwrap()
+                .contains("2 template(s): default, landing")
+        );
+        assert!(
+            header_usage
+                .deletion_warning()
+                .unwrap()
+                .contains("1 page(s)")
+        );
 
         let unused_usage = compute_symbol_usage("promo-banner", &templates, vec![]);
         assert!(!unused_usage.is_used());

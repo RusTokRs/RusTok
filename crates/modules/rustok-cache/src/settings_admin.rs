@@ -116,7 +116,12 @@ mod tests {
         assert_eq!(read.schema_version, updated.schema_version);
         let stale = port
             .port()
-            .update(tenant_id, None, serde_json::json!({ "mode": "in-memory" }), 0)
+            .update(
+                tenant_id,
+                None,
+                serde_json::json!({ "mode": "in-memory" }),
+                0,
+            )
             .await
             .expect_err("stale revision must conflict");
         assert!(stale.contains("concurrently"));

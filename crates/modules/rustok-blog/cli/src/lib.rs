@@ -48,7 +48,8 @@ impl BlogCommandProvider {
         let event_bus = host
             .shared_get::<rustok_outbox::TransactionalEventBus>()
             .unwrap_or_else(|| {
-                let transport = std::sync::Arc::new(rustok_outbox::OutboxTransport::new(db.clone()));
+                let transport =
+                    std::sync::Arc::new(rustok_outbox::OutboxTransport::new(db.clone()));
                 rustok_outbox::TransactionalEventBus::new(transport)
             });
         Ok(rustok_blog::PostService::new(db, event_bus))
@@ -65,7 +66,8 @@ impl BlogCommandProvider {
         let event_bus = host
             .shared_get::<rustok_outbox::TransactionalEventBus>()
             .unwrap_or_else(|| {
-                let transport = std::sync::Arc::new(rustok_outbox::OutboxTransport::new(db.clone()));
+                let transport =
+                    std::sync::Arc::new(rustok_outbox::OutboxTransport::new(db.clone()));
                 rustok_outbox::TransactionalEventBus::new(transport)
             });
         Ok(rustok_blog::PreviewTokenService::new(db, event_bus))
@@ -77,12 +79,14 @@ impl BlogCommandProvider {
 
         if request.dry_run {
             let due_count = match options.tenant_id {
-                Some(tenant_id) => service
-                    .count_due_scheduled_posts(tenant_id)
-                    .await
-                    .map_err(|error| CliCoreError::CommandFailed {
-                        message: format!("failed to count due scheduled posts: {error}"),
-                    })?,
+                Some(tenant_id) => {
+                    service
+                        .count_due_scheduled_posts(tenant_id)
+                        .await
+                        .map_err(|error| CliCoreError::CommandFailed {
+                            message: format!("failed to count due scheduled posts: {error}"),
+                        })?
+                }
                 None => {
                     let tenants = service
                         .list_tenants_with_due_scheduled_posts()
@@ -92,12 +96,11 @@ impl BlogCommandProvider {
                         })?;
                     let mut total = 0u64;
                     for tenant_id in tenants {
-                        total += service
-                            .count_due_scheduled_posts(tenant_id)
-                            .await
-                            .map_err(|error| CliCoreError::CommandFailed {
+                        total += service.count_due_scheduled_posts(tenant_id).await.map_err(
+                            |error| CliCoreError::CommandFailed {
                                 message: format!("failed to count due scheduled posts: {error}"),
-                            })?;
+                            },
+                        )?;
                     }
                     total
                 }
@@ -105,16 +108,22 @@ impl BlogCommandProvider {
 
             let message = match options.tenant_id {
                 Some(tenant_id) => {
-                    format!("DRY RUN: {due_count} scheduled posts due for publishing for tenant {tenant_id}")
+                    format!(
+                        "DRY RUN: {due_count} scheduled posts due for publishing for tenant {tenant_id}"
+                    )
                 }
-                None => format!("DRY RUN: {due_count} scheduled posts due for publishing across all tenants"),
+                None => format!(
+                    "DRY RUN: {due_count} scheduled posts due for publishing across all tenants"
+                ),
             };
 
-            return Ok(CommandOutcome::success(message).with_data(serde_json::json!({
-                "dry_run": true,
-                "due_count": due_count,
-                "tenant_id": options.tenant_id.map(|id| id.to_string()),
-            })));
+            return Ok(
+                CommandOutcome::success(message).with_data(serde_json::json!({
+                    "dry_run": true,
+                    "due_count": due_count,
+                    "tenant_id": options.tenant_id.map(|id| id.to_string()),
+                })),
+            );
         }
 
         let (published_ids, processed_tenants) = match options.tenant_id {
@@ -145,7 +154,9 @@ impl BlogCommandProvider {
                         .publish_scheduled_posts(tenant_id, remaining)
                         .await
                         .map_err(|error| CliCoreError::CommandFailed {
-                            message: format!("scheduled publish failed for tenant {tenant_id}: {error}"),
+                            message: format!(
+                                "scheduled publish failed for tenant {tenant_id}: {error}"
+                            ),
                         })?;
                     remaining = remaining.saturating_sub(ids.len() as u32);
                     all_ids.extend(ids);
@@ -183,27 +194,28 @@ impl BlogCommandProvider {
 
         if request.dry_run {
             let expired_count = match options.tenant_id {
-                Some(tenant_id) => service
-                    .count_expired(tenant_id)
-                    .await
-                    .map_err(|error| CliCoreError::CommandFailed {
+                Some(tenant_id) => service.count_expired(tenant_id).await.map_err(|error| {
+                    CliCoreError::CommandFailed {
                         message: format!("failed to count expired tokens: {error}"),
-                    })?,
+                    }
+                })?,
                 None => {
-                    let tenants = service
-                        .list_tenants_with_expired_tokens()
-                        .await
-                        .map_err(|error| CliCoreError::CommandFailed {
-                            message: format!("failed to list tenants with expired tokens: {error}"),
-                        })?;
-                    let mut total = 0u64;
-                    for tenant_id in tenants {
-                        total += service
-                            .count_expired(tenant_id)
+                    let tenants =
+                        service
+                            .list_tenants_with_expired_tokens()
                             .await
                             .map_err(|error| CliCoreError::CommandFailed {
-                                message: format!("failed to count expired tokens: {error}"),
+                                message: format!(
+                                    "failed to list tenants with expired tokens: {error}"
+                                ),
                             })?;
+                    let mut total = 0u64;
+                    for tenant_id in tenants {
+                        total += service.count_expired(tenant_id).await.map_err(|error| {
+                            CliCoreError::CommandFailed {
+                                message: format!("failed to count expired tokens: {error}"),
+                            }
+                        })?;
                     }
                     total
                 }
@@ -211,16 +223,22 @@ impl BlogCommandProvider {
 
             let message = match options.tenant_id {
                 Some(tenant_id) => {
-                    format!("DRY RUN: {expired_count} expired preview tokens found for tenant {tenant_id}")
+                    format!(
+                        "DRY RUN: {expired_count} expired preview tokens found for tenant {tenant_id}"
+                    )
                 }
-                None => format!("DRY RUN: {expired_count} expired preview tokens found across all tenants"),
+                None => format!(
+                    "DRY RUN: {expired_count} expired preview tokens found across all tenants"
+                ),
             };
 
-            return Ok(CommandOutcome::success(message).with_data(serde_json::json!({
-                "dry_run": true,
-                "expired_count": expired_count,
-                "tenant_id": options.tenant_id.map(|id| id.to_string()),
-            })));
+            return Ok(
+                CommandOutcome::success(message).with_data(serde_json::json!({
+                    "dry_run": true,
+                    "expired_count": expired_count,
+                    "tenant_id": options.tenant_id.map(|id| id.to_string()),
+                })),
+            );
         }
 
         let deleted_count = match options.tenant_id {
@@ -231,12 +249,13 @@ impl BlogCommandProvider {
                     message: format!("preview token cleanup failed: {error}"),
                 })?,
             None => {
-                let tenants = service
-                    .list_tenants_with_expired_tokens()
-                    .await
-                    .map_err(|error| CliCoreError::CommandFailed {
-                        message: format!("failed to list tenants with expired tokens: {error}"),
-                    })?;
+                let tenants =
+                    service
+                        .list_tenants_with_expired_tokens()
+                        .await
+                        .map_err(|error| CliCoreError::CommandFailed {
+                            message: format!("failed to list tenants with expired tokens: {error}"),
+                        })?;
                 let mut total = 0u64;
                 let mut remaining = options.limit;
                 for tenant_id in tenants {
@@ -247,7 +266,9 @@ impl BlogCommandProvider {
                         .cleanup_expired(tenant_id, remaining)
                         .await
                         .map_err(|error| CliCoreError::CommandFailed {
-                            message: format!("preview token cleanup failed for tenant {tenant_id}: {error}"),
+                            message: format!(
+                                "preview token cleanup failed for tenant {tenant_id}: {error}"
+                            ),
                         })?;
                     remaining = remaining.saturating_sub(deleted as u32);
                     total += deleted;
@@ -263,11 +284,13 @@ impl BlogCommandProvider {
             None => format!("Deleted {deleted_count} expired preview tokens across all tenants"),
         };
 
-        Ok(CommandOutcome::success(message).with_data(serde_json::json!({
-            "dry_run": false,
-            "deleted_count": deleted_count,
-            "tenant_id": options.tenant_id.map(|id| id.to_string()),
-        })))
+        Ok(
+            CommandOutcome::success(message).with_data(serde_json::json!({
+                "dry_run": false,
+                "deleted_count": deleted_count,
+                "tenant_id": options.tenant_id.map(|id| id.to_string()),
+            })),
+        )
     }
 }
 
@@ -331,7 +354,9 @@ pub fn parse_publish_scheduled_options(
     Ok(PublishScheduledOptions { tenant_id, limit })
 }
 
-pub fn parse_cleanup_tokens_options(request: &CommandRequest) -> CliCoreResult<CleanupTokensOptions> {
+pub fn parse_cleanup_tokens_options(
+    request: &CommandRequest,
+) -> CliCoreResult<CleanupTokensOptions> {
     let Some(options) = request
         .args
         .get("options")
@@ -557,4 +582,3 @@ mod tests {
         assert_eq!(opts.limit, 42);
     }
 }
-

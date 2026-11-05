@@ -1,7 +1,7 @@
 use crate::ComponentIndex;
 use crate::{
-    is_valid_runtime_context_path, resolve_context_path, ComponentObject, FlyError, FlyResult,
-    ProjectDocument, ValidationDiagnostic, ValidationSeverity,
+    ComponentObject, FlyError, FlyResult, ProjectDocument, ValidationDiagnostic,
+    ValidationSeverity, is_valid_runtime_context_path, resolve_context_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};

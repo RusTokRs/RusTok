@@ -4,10 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rustok_pricing_storefront::{normalize_pricing_context, parse_pricing_route_quantity};
-use rustok_ui_core::{encode_ui_query_pairs, UiRouteContext};
+use rustok_ui_core::{UiRouteContext, encode_ui_query_pairs};
 use serde::{Deserialize, Serialize};
 
-use super::{build_fetch_request, pricing_quote_matches_request, FetchRequest, RouteInput};
+use super::{FetchRequest, RouteInput, build_fetch_request, pricing_quote_matches_request};
 use crate::i18n::t;
 use crate::model::{PricingResolutionContext, ProductDetail, ProductPricingDetail, ProductVariant};
 

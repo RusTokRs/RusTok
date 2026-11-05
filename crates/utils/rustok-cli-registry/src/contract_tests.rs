@@ -1,7 +1,7 @@
 use rustok_cli_core::{CommandDescriptor, CommandProvider};
 use rustok_runtime::RuntimeComposition;
 
-use crate::{selected_distribution_registry, SelectedDistributionRegistry};
+use crate::{SelectedDistributionRegistry, selected_distribution_registry};
 
 struct TestProvider {
     namespace: &'static str,

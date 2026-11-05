@@ -197,8 +197,8 @@ mod tests {
 
     #[test]
     fn page_lookup_distinguishes_found_disabled_and_missing() {
+        use super::{AdminPageLookup, lookup_page_for_route_segment, register_page};
         use std::collections::HashSet;
-        use super::{lookup_page_for_route_segment, register_page, AdminPageLookup};
 
         register_page(AdminPageRegistration {
             module_slug: "blog_test",
@@ -234,8 +234,10 @@ mod tests {
 
     #[test]
     fn components_for_slot_filters_by_slot_and_module_availability() {
+        use super::{
+            AdminComponentRegistration, AdminSlot, components_for_slot, register_component,
+        };
         use std::collections::HashSet;
-        use super::{components_for_slot, register_component, AdminComponentRegistration, AdminSlot};
 
         register_component(AdminComponentRegistration {
             id: "test_kpi",

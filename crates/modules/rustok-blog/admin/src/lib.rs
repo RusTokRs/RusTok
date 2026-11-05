@@ -11,7 +11,6 @@ mod model;
 mod transport;
 mod ui;
 
-
 pub use core::page_builder::{
     BlogContributionAdapter, BlogWidgetOwnerSchemaRef, BlogWidgetPropertyEditorModel,
     BlogWidgetRenderModel, blog_contribution_manifest, blog_fly_registry_set,
@@ -20,7 +19,6 @@ pub use core::page_builder::{
     register_blog_fly_widgets,
 };
 pub use ui::BlogAdmin;
-
 
 #[cfg(test)]
 mod tests;

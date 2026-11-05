@@ -1,7 +1,7 @@
 use sea_orm::DbErr;
 use uuid::Uuid;
 
-use super::comment_thread::{is_thread_identity_conflict, THREAD_IDENTITY_CONFLICT_MARKER};
+use super::comment_thread::{THREAD_IDENTITY_CONFLICT_MARKER, is_thread_identity_conflict};
 use crate::error::CommentsError;
 
 fn identity_conflict_error(

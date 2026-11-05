@@ -18,4 +18,3 @@ pub use signing::{CosignArtifactSigner, CosignAttestationPredicate, CosignSignin
 
 #[cfg(test)]
 mod contract_tests;
-

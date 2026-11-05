@@ -151,8 +151,7 @@ async fn concurrent_duplicate_envelope_commits_once_and_replays_cleanly() -> Tes
     let replay_db = test_db
         .isolated_connection("rustok_blog_duplicate_race_replay")
         .await?;
-    let event_bus =
-        TransactionalEventBus::new(Arc::new(OutboxTransport::new(replay_db.clone())));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(replay_db.clone())));
     BlogCommentProjectionHandler::new(replay_db, event_bus)
         .handle(&envelope)
         .await?;
@@ -173,8 +172,7 @@ fn spawn_projection(
     envelope: EventEnvelope,
 ) -> tokio::task::JoinHandle<rustok_core::Result<()>> {
     tokio::spawn(async move {
-        let event_bus =
-            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let handler = BlogCommentProjectionHandler::new(db, event_bus);
         start.wait().await;
         handler.handle(&envelope).await

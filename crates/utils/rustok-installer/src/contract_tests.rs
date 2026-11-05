@@ -6,12 +6,12 @@ mod tests {
         InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
     };
     use crate::preflight::{
-        evaluate_preflight, evaluate_preflight_with_deployment, PreflightSeverity,
+        PreflightSeverity, evaluate_preflight, evaluate_preflight_with_deployment,
     };
-    use crate::receipt::{checksum_json, InstallReceipt, ReceiptOutcome};
+    use crate::receipt::{InstallReceipt, ReceiptOutcome, checksum_json};
     use crate::secrets::{
-        redact_install_plan, redact_secret, resolve_local_secret_value, SecretMode, SecretRef,
-        SecretValue,
+        SecretMode, SecretRef, SecretValue, redact_install_plan, redact_secret,
+        resolve_local_secret_value,
     };
     use crate::state::{InstallState, InstallStep, StateTransitionError};
     use crate::{InstancePlacement, SeedContentOutcome};
@@ -164,9 +164,11 @@ mod tests {
         let redacted_plain = redact_secret(&plain);
         assert_eq!(redacted_plain["kind"], "redacted");
         assert_eq!(redacted_plain["value"], "***");
-        assert!(!redacted_plain
-            .to_string()
-            .contains("super_secret_value_123"));
+        assert!(
+            !redacted_plain
+                .to_string()
+                .contains("super_secret_value_123")
+        );
 
         let reference = SecretValue::Reference {
             reference: SecretRef {
@@ -520,9 +522,11 @@ mod tests {
         // evaluate_preflight_with_deployment missing deployment adapter fails
         let deploy_report = evaluate_preflight_with_deployment(&plan, false);
         assert!(!deploy_report.passed());
-        assert!(deploy_report
-            .issues
-            .iter()
-            .any(|i| i.code == "distribution_deployment_unavailable"));
+        assert!(
+            deploy_report
+                .issues
+                .iter()
+                .any(|i| i.code == "distribution_deployment_unavailable")
+        );
     }
 }

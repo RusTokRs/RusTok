@@ -323,15 +323,21 @@ fn duplicate_forms_and_interaction_conflicts_are_rejected() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == "duplicate_form_id"));
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" }));
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.code == "component_form_interaction_contract_conflict" }));
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "duplicate_form_id")
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "component_navigation_contract_conflict" })
+    );
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "component_form_interaction_contract_conflict"
+        })
+    );
 }
 
 #[test]
@@ -406,9 +412,11 @@ fn anonymous_action_diagnostics_use_the_shared_canonical_path() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" }));
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.path == "project.pages[0].component.components[0]" })
+    );
 }
 
 #[test]
@@ -531,13 +539,19 @@ fn switch_tab_and_toggle_accordion_validation_rejects_empty_targets() {
     }))
     .expect("document");
     let diagnostics = validate_component_actions(&document);
-    assert!(diagnostics
-        .iter()
-        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab"));
-    assert!(diagnostics
-        .iter()
-        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion"));
-    assert!(diagnostics
-        .iter()
-        .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-slider"));
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-tab")
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-accordion")
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d.code == "action_definition_invalid" && d.path == "component:bad-slider")
+    );
 }

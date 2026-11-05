@@ -1,6 +1,6 @@
 use crate::{
-    materialize_runtime_locale_context, ProjectDocument, ValidationDiagnostic,
-    FLY_PAGE_METADATA_FIELD, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+    FLY_PAGE_METADATA_FIELD, ProjectDocument, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+    ValidationDiagnostic, materialize_runtime_locale_context,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -127,8 +127,8 @@ mod tests {
         assert_eq!(metadata.title.as_deref(), Some("Главная"));
         assert_eq!(metadata.description.as_deref(), Some("Русское описание"));
         assert_eq!(
-            materialized.document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]
-                ["providerFuture"]["enabled"],
+            materialized.document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]["providerFuture"]
+                ["enabled"],
             true
         );
         assert!(document.project.pages[0].extensions[FLY_PAGE_METADATA_FIELD]["title"].is_object());

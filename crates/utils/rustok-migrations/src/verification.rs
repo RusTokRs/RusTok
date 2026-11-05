@@ -13,8 +13,8 @@ use std::{
     path::Path,
     process::{Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -406,7 +406,7 @@ fn libpq_connection_environment(database_url: &str) -> Result<Vec<(&'static str,
         None => {
             return Err(VerificationError::Incomplete(
                 "fixture URL host missing".into(),
-            ))
+            ));
         }
     };
     let database = decode(url.path().strip_prefix('/').unwrap_or(url.path()))?;
@@ -625,13 +625,15 @@ mod tests {
             .unwrap()
             .equivalent
         );
-        assert!(compare(
-            &original,
-            &candidate,
-            &["original".into()],
-            &["wrong".into()]
-        )
-        .is_err());
+        assert!(
+            compare(
+                &original,
+                &candidate,
+                &["original".into()],
+                &["wrong".into()]
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -707,8 +709,8 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires isolated PostgreSQL 16 and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL / RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP"]
-    async fn postgres_detects_schema_data_privilege_and_enforcement_changes(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn postgres_detects_schema_data_privilege_and_enforcement_changes()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         use sea_orm_migration::sea_orm::Database;
         let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
         let pg_dump = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_PG_DUMP")?;

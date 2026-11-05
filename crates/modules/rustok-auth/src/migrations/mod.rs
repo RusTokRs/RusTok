@@ -12,9 +12,9 @@ mod m20260720_000002_enforce_oauth_tenant_integrity;
 mod m20260721_000009_move_oauth_app_copy_to_translations;
 mod m20260913_000010_add_oauth_app_translation_target;
 mod m20261025_000002_oauth_consent_partial_unique;
+mod m20261025_000004_create_auth_invites;
 mod m20261101_000002_add_oauth_token_authorization_code;
 mod m20261101_000003_add_oauth_token_kind_and_consent_epoch;
-mod m20261025_000004_create_auth_invites;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;

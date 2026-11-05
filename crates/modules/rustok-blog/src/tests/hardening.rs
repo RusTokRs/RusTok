@@ -266,8 +266,7 @@ async fn target_deleted_listener_purges_blog_routes_once() {
     )
     .await;
 
-    let event_bus =
-        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let handler = BlogTargetDeletionRouteHandler::new(db.clone(), event_bus);
     let envelope = EventEnvelope::new(
         tenant_id,
@@ -323,8 +322,7 @@ async fn target_deleted_listener_keeps_routes_of_other_target_kinds() {
     let foreign_route =
         insert_route(&db, tenant_id, "forum-slug", "forum_topic", shared_target).await;
 
-    let event_bus =
-        TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     BlogTargetDeletionRouteHandler::new(db.clone(), event_bus)
         .handle(&EventEnvelope::new(
             tenant_id,

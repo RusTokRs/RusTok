@@ -14,6 +14,7 @@ use rustok_core::search_projection::{
 use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_profiles::{ProfileSummaryAudience, ProfileSummaryReader};
 
+use crate::domain::state_machine::BlogPostStatus;
 use crate::dto::PublishedPostCursor;
 use crate::entities::{
     blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
@@ -22,7 +23,6 @@ use crate::error::{BlogError, BlogResult};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
-use crate::domain::state_machine::BlogPostStatus;
 use crate::services::post::{is_post_visible_for_channel, normalize_public_channel_slug};
 use crate::services::post::{
     order_published_post_scan, published_post_scan_after_condition, published_post_scan_cursor,

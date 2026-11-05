@@ -101,9 +101,6 @@ mod tests {
             deps[1].migration,
             "m20261104_000002_create_brand_categories"
         );
-        assert_eq!(
-            deps[1].after,
-            vec!["m20260915_000001_create_brands"]
-        );
+        assert_eq!(deps[1].after, vec!["m20260915_000001_create_brands"]);
     }
 }

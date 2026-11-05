@@ -1,6 +1,6 @@
 mod core;
 
-use self::core::{build_header_links, build_search_target_url, resolve_default_scope, SearchScope};
+use self::core::{SearchScope, build_header_links, build_search_target_url, resolve_default_scope};
 use crate::shared::ui::UiButton;
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

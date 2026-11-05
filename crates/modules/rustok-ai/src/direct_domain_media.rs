@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use rustok_ai_media::{register_media_ai_vertical_handlers, IMAGE_ASSET_TASK_SLUG};
+use rustok_ai_media::{IMAGE_ASSET_TASK_SLUG, register_media_ai_vertical_handlers};
 
 use super::{DirectExecutionRegistry, DirectTaskHandler, MediaImageAssetHandler};
 

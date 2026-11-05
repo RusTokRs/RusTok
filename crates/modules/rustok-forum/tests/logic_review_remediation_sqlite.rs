@@ -147,8 +147,7 @@ async fn auto_subscribe_never_overwrites_explicit_rows() {
     let category_service = CategoryService::new(db.clone());
     let topic_service =
         TopicService::new(db.clone(), event_bus.clone()).with_settings_providers(providers.clone());
-    let reply_service =
-        ReplyService::new(db.clone(), event_bus).with_settings_providers(providers);
+    let reply_service = ReplyService::new(db.clone(), event_bus).with_settings_providers(providers);
     let subscriptions = SubscriptionService::new(db.clone());
 
     let author_id = Uuid::new_v4();
@@ -273,8 +272,7 @@ async fn digest_selection_is_rejected() {
     let (db, event_bus, tenant_id) = setup().await;
     let providers = posting_cooldown::zero_cooldown_providers();
     let category_service = CategoryService::new(db.clone());
-    let topic_service =
-        TopicService::new(db.clone(), event_bus).with_settings_providers(providers);
+    let topic_service = TopicService::new(db.clone(), event_bus).with_settings_providers(providers);
     let subscriptions = SubscriptionService::new(db.clone());
 
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
@@ -323,10 +321,15 @@ async fn pending_parent_rejected_and_depth_capped() {
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     // Pending parent: moderated category holds the first reply.
-    let moderated_id =
-        make_category(&category_service, tenant_id, &admin, "moderated", true).await;
-    let moderated_topic =
-        make_topic(&topic_service, tenant_id, &author, moderated_id, "moderated").await;
+    let moderated_id = make_category(&category_service, tenant_id, &admin, "moderated", true).await;
+    let moderated_topic = make_topic(
+        &topic_service,
+        tenant_id,
+        &author,
+        moderated_id,
+        "moderated",
+    )
+    .await;
     let parent = reply_service
         .create(
             tenant_id,
@@ -345,10 +348,7 @@ async fn pending_parent_rejected_and_depth_capped() {
             reply_input("child of held parent", Some(parent.id)),
         )
         .await;
-    assert!(
-        child.is_err(),
-        "a pending reply must not acquire children"
-    );
+    assert!(child.is_err(), "a pending reply must not acquire children");
 
     // After approval the same child is accepted.
     moderation
@@ -411,8 +411,7 @@ async fn approved_reply_edit_returns_to_pending_in_moderated_category() {
 
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
-    let category_id =
-        make_category(&category_service, tenant_id, &admin, "reviewed", true).await;
+    let category_id = make_category(&category_service, tenant_id, &admin, "reviewed", true).await;
     let topic_id = make_topic(&topic_service, tenant_id, &author, category_id, "reviewed").await;
 
     let reply = reply_service
@@ -456,8 +455,7 @@ async fn pending_topic_rejects_votes() {
         "pre_moderation_enabled": true
     }));
     let category_service = CategoryService::new(db.clone());
-    let topic_service =
-        TopicService::new(db.clone(), event_bus).with_settings_providers(providers);
+    let topic_service = TopicService::new(db.clone(), event_bus).with_settings_providers(providers);
     let votes = VoteService::new(db.clone());
 
     let author = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));

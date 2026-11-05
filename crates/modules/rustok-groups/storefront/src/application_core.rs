@@ -176,9 +176,11 @@ mod tests {
         );
         let cancel_cmd = prepare_cancel_group_membership_application(valid_uuid).unwrap();
         assert_eq!(cancel_cmd.application_id, valid_uuid);
-        assert!(cancel_cmd
-            .idempotency_key
-            .starts_with("groups-storefront-cancel-application-"));
+        assert!(
+            cancel_cmd
+                .idempotency_key
+                .starts_with("groups-storefront-cancel-application-")
+        );
     }
 
     #[test]

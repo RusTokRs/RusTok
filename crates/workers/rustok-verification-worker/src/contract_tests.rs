@@ -94,7 +94,10 @@ fn policy_validation_catches_invalid_configuration() {
         root: policy.trust_root.active.clone(),
         retire_after_unix_seconds: 100,
     });
-    assert!(policy.validate().is_err(), "retiring root must differ from active");
+    assert!(
+        policy.validate().is_err(),
+        "retiring root must differ from active"
+    );
 }
 
 struct DummyVerifier;
@@ -118,17 +121,23 @@ impl TrustVerifier for DummyVerifier {
                 TrustEvidenceReference {
                     kind: TrustEvidenceKind::Signature,
                     reference: "oci://ghcr.io/rustok/sample#cosign-signature".to_string(),
-                    digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+                    digest:
+                        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                            .to_string(),
                 },
                 TrustEvidenceReference {
                     kind: TrustEvidenceKind::Provenance,
                     reference: "oci://ghcr.io/rustok/sample#slsa-provenance".to_string(),
-                    digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+                    digest:
+                        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                            .to_string(),
                 },
                 TrustEvidenceReference {
                     kind: TrustEvidenceKind::Sbom,
                     reference: "oci://ghcr.io/rustok/sample#cyclonedx-sbom".to_string(),
-                    digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+                    digest:
+                        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                            .to_string(),
                 },
             ],
         })
@@ -154,7 +163,8 @@ async fn worker_enforces_policy_revisions_and_fails_closed() {
         reference: OciArtifactReference {
             registry: "ghcr.io".to_string(),
             repository: "rustok/sample".to_string(),
-            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
         },
         descriptor: sample_descriptor(),
         trust_policy_revision: 999,
@@ -171,7 +181,8 @@ async fn worker_enforces_policy_revisions_and_fails_closed() {
         reference: OciArtifactReference {
             registry: "ghcr.io".to_string(),
             repository: "rustok/sample".to_string(),
-            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
         },
         descriptor: sample_descriptor(),
         trust_policy_revision: 2,
