@@ -538,7 +538,6 @@ impl PricingService {
                 "Compare at price must be greater than amount".into(),
             ));
         }
-        validate_price_precision(amount, compare_at_amount, &currency_code)?;
 
         let existing = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
@@ -673,11 +672,6 @@ impl PricingService {
                     "Compare at price must be greater than amount".into(),
                 ));
             }
-            validate_price_precision(
-                price_input.amount,
-                price_input.compare_at_amount,
-                &normalized_currency,
-            )?;
 
             let existing = entities::price::Entity::find()
                 .filter(entities::price::Column::VariantId.eq(variant_id))

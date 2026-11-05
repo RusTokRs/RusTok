@@ -67,6 +67,12 @@ retains transaction rollback on missing/foreign regions or storage failure.
 The [native Region boundary](../../../../DECISIONS/2026-11-04-region-storage-and-cart-tax-policy.md)
 defines the shared-database profile.
 
+The Region crate dependency supplies the native owner entrypoint. It does not
+make Region a mandatory runtime dependency for carts without `region_id`.
+That branch skips the policy read and works without the Region schema. A cart
+with a selected Region requires its schema and tenant-scoped record. Missing
+records and storage errors refuse the Cart command and roll back its writes.
+
 ## Fulfillment capability gap
 
 Capability evidence must cover digital-only carts with no delivery group, physical

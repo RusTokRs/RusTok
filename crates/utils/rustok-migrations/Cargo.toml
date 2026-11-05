@@ -30,7 +30,6 @@ path = "src/bin/verify_migrations.rs"
 default = ["composition"]
 composition = [
     "dep:rustok-api",
-    "dep:async-trait",
     "dep:rustok-core",
     "dep:rustok-modules",
     "dep:rustok-tenant",
@@ -90,7 +89,7 @@ hex.workspace = true
 thiserror.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
-async-trait = { workspace = true, optional = true }
+async-trait.workspace = true
 # Platform-core dependencies
 rustok-core = { workspace = true, optional = true }
 rustok-modules = { workspace = true, optional = true }

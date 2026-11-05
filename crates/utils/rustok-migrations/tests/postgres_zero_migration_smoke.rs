@@ -3,7 +3,7 @@ mod support;
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
-use rustok_migrations::Migrator;
+use rustok_migrations::{Migrator, execution::StepRunner};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
     CatalogService, ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
@@ -26,6 +26,7 @@ use sea_orm_migration::{
 use support::backfill_fixtures::{
     BackfillFixture, apply_setup as apply_backfill_setup,
     assert_results as assert_backfill_results, load_from_environment as load_backfill_fixtures,
+    validate_pending as validate_backfill_targets,
 };
 
 #[tokio::test]
@@ -1199,7 +1200,7 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
     .await;
 
     if keep_database {
-        eprintln!("Keeping migration smoke database '{database_name}' at {target_url}");
+        eprintln!("Keeping migration smoke database '{database_name}'");
     } else {
         drop_database_if_exists(&admin, &database_name).await?;
     }
@@ -1213,31 +1214,57 @@ async fn apply_migrations_and_assert_schema(
     rollback_latest: bool,
     backfill_fixtures: &[BackfillFixture],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let db = connect_postgres(target_url)
-        .await
-        .map_err(|error| format!("smoke database must be reachable: {error}"))?;
-
-    apply_backfill_setup(&db, backfill_fixtures).await?;
-
-    if incremental {
-        apply_migrations_incrementally(&db).await?;
-    } else {
-        Migrator::up(&db, None).await.map_err(|error| {
-            format!("server migrator must apply all pending PostgreSQL migrations: {error}")
-        })?;
+    let mut runner = Some(StepRunner::connect(target_url, Migrator::migrations()).await?);
+    let result = async {
+        let initial = runner.as_ref().ok_or("missing initial migration session")?;
+        let pending: std::collections::HashSet<_> =
+            initial.pending_migrations()?.map(str::to_owned).collect();
+        validate_backfill_targets(backfill_fixtures, &pending)?;
+        // Seed the predecessor once. Check each fixture immediately at its
+        // target boundary and again after the complete range.
+        apply_backfill_setup(initial.database(), backfill_fixtures).await?;
+        loop {
+            let current = runner.as_mut().ok_or("missing migration session")?;
+            let Some(name) = current.apply_next().await? else {
+                break;
+            };
+            for fixture in backfill_fixtures
+                .iter()
+                .filter(|fixture| fixture.migration == name)
+            {
+                assert_backfill_results(current.database(), std::slice::from_ref(fixture)).await?;
+            }
+            if incremental {
+                runner
+                    .take()
+                    .ok_or("missing migration session before restart")?
+                    .close()
+                    .await?;
+                runner = Some(StepRunner::connect(target_url, Migrator::migrations()).await?);
+            }
+        }
+        let current = runner.as_ref().ok_or("missing final migration session")?;
+        assert_no_pending_migrations(current.database(), "initial migration apply").await?;
+        assert_schema_contract(current.database()).await?;
+        assert_backfill_results(current.database(), backfill_fixtures).await?;
+        if rollback_latest {
+            rollback_latest_and_reapply(current.database()).await?;
+            assert_schema_contract(current.database()).await?;
+            assert_backfill_results(current.database(), backfill_fixtures).await?;
+        }
+        Ok::<_, Box<dyn std::error::Error>>(())
     }
-
-    assert_no_pending_migrations(&db, "initial migration apply").await?;
-    assert_schema_contract(&db).await?;
-    assert_backfill_results(&db, backfill_fixtures).await?;
-
-    if rollback_latest {
-        rollback_latest_and_reapply(&db).await?;
-        assert_schema_contract(&db).await?;
-        assert_backfill_results(&db, backfill_fixtures).await?;
+    .await;
+    let close = match runner {
+        Some(runner) => runner.close().await,
+        None => Ok(()),
+    };
+    match (result, close) {
+        (Err(error), Err(cleanup)) => Err(format!("{error}; session cleanup: {cleanup}").into()),
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error.into()),
+        _ => Ok(()),
     }
-
-    Ok(())
 }
 
 async fn rollback_latest_and_reapply(
@@ -1374,26 +1401,6 @@ async fn migration_is_applied(
         format!("migration presence result for {migration} must decode: {error}")
     })?;
     Ok(applied)
-}
-
-async fn apply_migrations_incrementally(
-    db: &DatabaseConnection,
-) -> Result<(), Box<dyn std::error::Error>> {
-    loop {
-        let pending = Migrator::get_pending_migrations(db)
-            .await
-            .map_err(|error| format!("pending migration list must be readable: {error}"))?;
-        let Some(next) = pending.first() else {
-            return Ok(());
-        };
-        let next_name = next.name().to_string();
-
-        Migrator::up(db, Some(1)).await.map_err(|error| {
-            format!(
-                "server migrator must apply incremental PostgreSQL migration {next_name}: {error}"
-            )
-        })?;
-    }
 }
 
 async fn assert_table_exists(

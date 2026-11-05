@@ -92,6 +92,23 @@ records the transaction and deployment profile. Complete the remaining layout
 checks and verify the declared admin and storefront clients before enrolling
 the complete module.
 
+### Remaining reference gates
+
+The retained `xtask` CLI recheck on 2026-11-05 still rejects the complete
+Region module. Continue in this order without promoting the reference status:
+
+1. Move the existing ports and translation entrypoints from the backend source
+   root into their canonical responsibility slots. Migrate every caller and
+   source-verifier path together, preserving the owner API and transaction rules.
+2. Split the 56,186-byte admin core by its existing responsibilities and place
+   admin/storefront contract tests in the canonical `src/tests/` slots. Clarify
+   the documented single-adapter transport decision against the lint contract.
+3. Verify the functional Next.js admin and storefront packages and declare the
+   corresponding manifest bindings. Retain route, locale, authorization, and
+   interaction parity with Leptos before advertising those bindings.
+4. Run the complete module lint and the applicable backend, transport, and client
+   evidence gates. Mounted FFA/FBA evidence remains separate from storage tests.
+
 ## Verification
 
 - `node scripts/verify/verify-region-owner-port-error-safety.mjs`
@@ -115,6 +132,32 @@ tests. The Cargo-built integration test binary passed the same create/read
 scenario on PostgreSQL 16.13. The Region FBA and owner-port source guards
 passed. The Commerce GraphQL error-safety verifier still expects an earlier
 adapter shape and needs separate reconciliation with Commerce's current code.
+
+The native tax-policy continuation was rechecked on 2026-11-05 from local
+`main` at `f465936127921b0f57b2165afead3456c409a7ff`:
+
+- `cargo test -p rustok-region --locked --offline --lib --test region_service_test --test module`
+  passed 19 tests. The PostgreSQL test is opt-in and was ignored in that command.
+- The freshly Cargo-built integration binary passed
+  `postgres_create_and_resolve_region_by_country --ignored --exact` on
+  PostgreSQL 16.13. The test creates and removes an isolated database. The same
+  scenario now checks the tax projection, foreign/missing regions, channel
+  selection, reads of uncommitted data through the supplied transaction, an
+  empty country-rule set, rollback, and propagated storage errors.
+- `npm run verify:region:fba`, the Region owner-port error-safety verifier,
+  and `python scripts/architecture_dependency_guard.py` passed.
+- The retained `target/debug/xtask.exe module lint region` failed on the
+  reference gates above. No full-module or client readiness was promoted.
+- Commerce's `pricing_service_test --no-run` target is blocked by its import
+  of private Pricing entities and three Product constructors missing `brands`.
+  Its older fixture tests remain unverified. The
+  [Cart record](../../rustok-cart/docs/implementation-plan.md#native-region-policy-verification-2026-11-05)
+  retains the successful Cart rollback and optional-schema evidence separately.
+- `cargo test -p rustok-commerce --locked --offline --test context_service_test`
+  passed five tests against the shared fixture applying Region migrations.
+  The explicit-region test now checks the owner port's `region.not_found`
+  boundary for both missing and foreign identities. Production error behavior
+  is unchanged. Existing unrelated Commerce warnings remain.
 
 ## Update rules
 

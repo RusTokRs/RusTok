@@ -253,25 +253,24 @@ async fn explicit_region_preserves_country_choice_but_rejects_foreign_country_an
     let (db, service, regions) = setup().await;
     let tenant_id = Uuid::new_v4();
     seed_tenant_context(&db, tenant_id).await;
+    let input = CreateRegionInput {
+        translations: vec![RegionTranslationInput {
+            locale: "en".into(),
+            name: "Europe".into(),
+        }],
+        currency_code: "EUR".into(),
+        tax_provider_id: None,
+        tax_rate: Decimal::ZERO,
+        tax_included: false,
+        country_tax_policies: None,
+        countries: vec!["DE".into(), "FR".into()],
+        metadata: serde_json::json!({}),
+    };
     let region = regions
-        .create_region(
-            tenant_id,
-            CreateRegionInput {
-                translations: vec![RegionTranslationInput {
-                    locale: "en".into(),
-                    name: "Europe".into(),
-                }],
-                currency_code: "EUR".into(),
-                tax_provider_id: None,
-                tax_rate: Decimal::ZERO,
-                tax_included: false,
-                country_tax_policies: None,
-                countries: vec!["DE".into(), "FR".into()],
-                metadata: serde_json::json!({}),
-            },
-        )
+        .create_region(tenant_id, input.clone())
         .await
         .unwrap();
+    let foreign_region = regions.create_region(Uuid::new_v4(), input).await.unwrap();
     let request = ResolveStoreContextInput {
         region_id: Some(region.id),
         country_code: Some("fr".into()),
@@ -296,17 +295,22 @@ async fn explicit_region_preserves_country_choice_but_rejects_foreign_country_an
             .unwrap_err(),
         rustok_commerce::StoreContextError::Validation(_)
     ));
-    assert!(matches!(
-        service
-            .resolve_context(
-                tenant_id,
-                ResolveStoreContextInput {
-                    region_id: Some(Uuid::new_v4()),
-                    ..request
-                }
-            )
-            .await
-            .unwrap_err(),
-        rustok_commerce::StoreContextError::Validation(_)
-    ));
+    // Explicit-ID absence retains the selected Region port's stable error.
+    // A foreign Region must produce the same outcome as an unknown identity.
+    for region_id in [Uuid::new_v4(), foreign_region.id] {
+        assert!(matches!(
+            service
+                .resolve_context(
+                    tenant_id,
+                    ResolveStoreContextInput {
+                        region_id: Some(region_id),
+                        ..request.clone()
+                    }
+                )
+                .await
+                .unwrap_err(),
+            rustok_commerce::StoreContextError::RegionBoundary { code, .. }
+                if code == "region.not_found"
+        ));
+    }
 }

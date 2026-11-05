@@ -49,6 +49,8 @@
   downstream cart/order contract.
 - Reads native Region tax policy through the Region owner service in the Cart
   write transaction, preserving rollback of line and tax snapshot changes.
+- Carts without a selected Region recalculate without accessing Region storage.
+  A configured missing or foreign Region refuses the mutation atomically.
 - Persists discounted add-to-cart snapshots atomically, so a storefront line item is
   not created in a temporary “sale-only unit price” state before pricing adjustments land.
 - Exposes a typed promotion runtime for cart-level and line-item percentage/fixed
@@ -84,6 +86,11 @@ not Cart or a digital-only checkout, and mixed/native/headless/remote behavior r
 
 
 ## Known Limitations / Pending Implementation
+
+The Region tax-policy read requires the native shared-database profile.
+Separately deployed Region providers need an explicit snapshot adoption
+contract. Scoped tests cover the local policy and rollback boundary. Mounted
+client and remote-provider parity remain open.
 
 The 2026-10-30 source continuation implements bounded Cart-material-input adoption, not a
 monotonic whole-Cart revision or durable command receipt. Priced add/change/reprice operations

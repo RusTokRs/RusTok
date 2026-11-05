@@ -4,6 +4,7 @@
 //! chain, the SQLite test migrator, installer-owned schema application, and
 //! the schema-diff safety classifier shared by operator tooling.
 
+pub mod execution;
 pub mod verification;
 
 #[cfg(feature = "composition")]

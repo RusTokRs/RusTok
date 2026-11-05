@@ -256,6 +256,16 @@ read-only and disposable-fixture verification can proceed earlier.
   The [Region owner plan](../../crates/modules/rustok-region/docs/implementation-plan.md#scaffold-reference-candidate)
   records the command/query slice and the native Cart tax projection. The
   Region mappings are private, and Cart and Commerce fixtures use owner APIs.
+  The 2026-11-05 continuation passed 19 scoped Region tests and the shared
+  tax-policy scenario on PostgreSQL 16.13. The owner plan records the remaining
+  backend layout, UI core/test layout, transport decision, and Next.js binding
+  gates. These storage results do not enroll the complete Region module.
+  Cart passed 94 existing scoped tests and the added no-Region-schema test.
+  Five Commerce context tests passed against the shared Region fixture after
+  aligning the missing/foreign Region assertion with its owner port contract.
+  The separate older Commerce Pricing target still fails compilation against
+  private Pricing mappings and the current Product input. Its tests and full
+  module/client parity remain open in the owner records.
   Keep Brand as [layout and migration evidence only](../../crates/modules/rustok-brand/docs/implementation-plan.md#product-ownership-review)
   while its Product boundary is unresolved. Use the Blog widget contribution as
   the candidate with both storage and Fly. A no-owner-storage Fly pilot needs a

@@ -1,4 +1,36 @@
 use super::*;
+use rustok_core::MigrationSource;
+use sea_orm_migration::SchemaManager;
+
+#[tokio::test]
+async fn cart_without_region_recalculates_without_region_schema() {
+    let (db, service) = setup_with_db().await;
+    let schema = SchemaManager::new(&db);
+    // Region is optional for an unscoped Cart. Remove its entire schema via
+    // the owner migration chain to catch accidental reads in that branch.
+    for migration in rustok_region::RegionModule.migrations().into_iter().rev() {
+        migration.down(&schema).await.unwrap();
+    }
+    assert!(!schema.has_table("regions").await.unwrap());
+
+    let tenant_id = support::TEST_TENANT_ID;
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let saved = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    assert_eq!(saved.subtotal_amount, Decimal::from(31));
+    assert_eq!(saved.total_amount, Decimal::from(31));
+    assert_eq!(saved.tax_total, Decimal::ZERO);
+    assert!(saved.tax_lines.is_empty());
+
+    let persisted = service.get_cart(tenant_id, cart.id).await.unwrap();
+    assert_eq!(persisted.line_items[0].id, saved.line_items[0].id);
+    assert_eq!(persisted.total_amount, saved.total_amount);
+}
 
 #[tokio::test]
 async fn region_policy_missing_or_foreign_rolls_back_cart_line() {

@@ -228,6 +228,39 @@ persisted values fail closed. Mounted commerce finalization and compensation use
 the same owner type for complete/release/replay decisions. Persisted and
 transport `status` fields remain strings for backward compatibility.
 
+## Native Region policy verification (2026-11-05)
+
+This scoped continuation started from local `main` at
+`f465936127921b0f57b2165afead3456c409a7ff`. It does not certify the full Cart
+runtime, remote providers, or client parity.
+
+- `cargo test -p rustok-cart --locked --offline --lib --test cart_service_test`
+  passed 38 crate tests and 56 integration tests. These cover country-specific
+  rates and inclusion, channel-provider precedence/normalization, discounted
+  taxable amounts, foreign/missing Region refusal, and storage-failure rollback
+  preserving the previous Cart line and tax snapshot.
+- The added `tax::cart_without_region_recalculates_without_region_schema` test
+  passed with the same integration target and `-- --exact`. It reverses the
+  shipped Region migration chain in its isolated SQLite fixture and verifies
+  committed Cart totals and line persistence without that schema.
+- The Cart storefront source-boundary verifier and architecture dependency guard
+  passed. The full Region reference lint remains open in the
+  [Region owner plan](../../rustok-region/docs/implementation-plan.md#remaining-reference-gates).
+- The scoped remediation gate passed with `--crate rustok-cart --files <changed paths>`,
+  including `cargo clippy --package rustok-cart --all-targets -- -D warnings`.
+- Commerce's focused `context_service_test` target passed all five tests after
+  correcting its obsolete missing-Region assertion to the owner port's
+  `region.not_found` code and adding the same refusal for a foreign Region.
+- `cargo test -p rustok-commerce --locked --offline --test pricing_service_test --no-run`
+  could not certify the older Pricing fixture consumers. That target imports
+  private Pricing entities and has three Product constructors missing `brands`.
+  It must migrate to the current owner contracts before its Region fixtures can
+  be executed. Region and Cart tests do not establish that target's validity.
+
+Workspace suites, long E2E, mounted client parity, and remote providers were not
+run. The Commerce context target compiled with existing unrelated unused and
+deprecated Brand API warnings; it does not establish a clean Commerce lint run.
+
 ## Accepted fulfillment-requirement cutover
 
 **Implemented on 2026-09-25:** Cart persists the Product-owned digital/physical requirement in its immutable line

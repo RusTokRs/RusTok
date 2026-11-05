@@ -33,7 +33,7 @@
 
 ## Minimum Contract Set
 - `RegionReadPort`: Decoupled read port for resolving regions, tax rates, and country associations.
-- `RegionService`: Core domain CRUD operations on regional aggregates.
+- `RegionService`: Create, update, fetch, list, and resolve-by-country operations on regional aggregates.
 - `RegionService::read_tax_policy_in_tx(&DatabaseTransaction, tenant_id, region_id, channel_id) -> Result<Option<RegionTaxPolicy>, DbErr>` returns the tenant-scoped base rate, country rules, baseline provider, and selected channel provider from one database statement. Missing and foreign regions return `None`. Storage failures propagate to the native transaction caller.
 - `RegionTranslationService`: Regional translation snapshot and exact locale applying.
 
@@ -45,7 +45,7 @@
 
 ### Domain Invariants
 - **Non-Empty Name**: Region name must not be blank.
-- **Valid Currency Code**: Currency code must be a 3-letter ISO code.
+- **Currency Code Shape**: Currency code must contain three ASCII letters and is normalized to uppercase. This does not validate ISO membership.
 - **Country Uniqueness**: The shipped integrity migration rejects duplicate country ownership within a tenant.
 - **Tax Rate Precision**: Tax rates must be valid decimal percentages.
 

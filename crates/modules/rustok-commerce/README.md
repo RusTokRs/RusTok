@@ -6,6 +6,12 @@
 
 ## Known Limitations / Pending Implementation
 
+- The native Region owner-schema continuation is verified in Region and Cart.
+  Commerce's older `pricing_service_test` target still imports private Pricing
+  entities and has Product constructors missing `brands`. Its compilation and
+  fixture execution remain blocked pending migration to the current owner APIs.
+  See the [Region consumer record](docs/implementation-plan.md#region-consumer-verification-2026-11-05).
+
 - The [Product/Inventory catalog deletion prerequisite](docs/implementation-plan.md#inventory-catalog-deletion-source-evidence)
   now preserves all referenced Inventory history and refuses individual nonzero counters through
   the existing native Product transaction. Finite HTTP/GraphQL policy and exact-effect rollback
@@ -72,7 +78,7 @@ unrun regressions, not SQL/runtime certification or completion of Product step 8
 - Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
 - Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
 - Expose admin shipping-profile management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `ShippingProfileService`.
-- Expose only commerce-owned checkout/context/shipping-profile DTOs and shipping-profile entities; owner DTO/entity/service contracts are imported directly from `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment`.
+- Expose only commerce-owned checkout/context/shipping-profile DTOs and shipping-profile entities; owner DTO/service contracts are imported directly from `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment`. Region mappings remain private to Region. Its consumer fixtures use owner migrations and commands.
 - Expose commerce-owned orchestration services such as `CheckoutService`, `StoreContextService`, `ShippingProfileService`, `PaymentOrchestrationService`, and `PostOrderOrchestrationService`.
 - Keep shared/admin product, storefront product/catalog/order/cart/checkout, admin order/change/return, admin fulfillment, admin shipping, and admin payment HTTP handlers on narrow `CommerceHttpRuntime` state; remaining admin/storefront REST adapters are still cut over in separate owner-boundary slices.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.

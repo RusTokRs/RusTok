@@ -284,6 +284,14 @@ Verification runs in isolated disposable databases and immutable checkouts with
 bounded roles and timeouts. Clone only quiescent fixture snapshots. Fence fixture
 writers while observing schema/data. Retain each path's transaction and
 nontransactional DDL boundaries, and revalidate inputs before accepting evidence.
+The stepwise verification runner owns one PostgreSQL session for both its
+advisory lock and migration execution. It must not reconnect after session loss.
+Each committed step must leave exactly the expected journal prefix before any
+following step or independent boundary assertion runs. An interrupted runner
+must be discarded and its journal reconciled through a new session. Until an
+owner-proven nontransactional recovery contract is wired, this runner rejects
+nontransactional steps before making database changes; it must never silently
+wrap them in transactions or retry their possibly committed partial effects.
 Rollback rehearsal covers only owner-declared reversible boundaries. Irreversible
 paths need tested restore/forward recovery and preserve maintenance authorization.
 

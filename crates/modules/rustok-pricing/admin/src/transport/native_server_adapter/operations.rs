@@ -118,7 +118,7 @@ pub(crate) async fn preview_variant_discount_native_with_context(
         }).await.map(map_adjustment_preview).map_err(|error| {
             tracing::warn!(boundary = "pricing_admin_native_preview", kind = ?error.kind, retryable = error.retryable,
                 code_length = error.code.len(), "pricing preview was refused");
-            ServerFnError::new(rustok_pricing::map_pricing_port_error(&error))
+            ServerFnError::new(error.message)
         })
 }
 

@@ -45,9 +45,12 @@
 
 - `rustok-commerce::dto` exposes only commerce-owned checkout/context/shipping-profile DTOs.
 - `rustok-commerce::entities` exposes only commerce-owned shipping-profile entities.
-- Owner service, DTO and entity contracts are imported directly from `rustok-product`, `rustok-region`,
+- Owner service and DTO contracts are imported directly from `rustok-product`, `rustok-region`,
   `rustok-pricing`, `rustok-inventory`, `rustok-cart`, `rustok-customer`, `rustok-order`,
   `rustok-payment` and `rustok-fulfillment`.
+- Region persistence mappings are private. Native Cart receives its tax-policy
+  projection from the Region owner inside the Cart transaction. Commerce
+  fixtures apply Region migrations and create records through the owner service.
 - `StoreContextService` remains in `rustok-commerce` as the umbrella policy layer that resolves
   region/currency/tenant locale context through owner ports.
 - `graphql`, `controllers`, and `state_machine` remain in `rustok-commerce` under explicit module paths.

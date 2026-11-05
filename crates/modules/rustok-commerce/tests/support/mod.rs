@@ -31,9 +31,9 @@ use rustok_payment::entities::{
     payment, payment_collection, provider_operation as payment_provider_operation, refund_creation,
 };
 use rustok_product::entities::{
-    product, product_attribute_group, product_brand, product_image, product_image_translation, product_tag,
-    product_translation, product_variant, product_variant_axis, product_variant_axis_value,
-    variant_translation,
+    product, product_attribute_group, product_brand, product_image, product_image_translation,
+    product_tag, product_translation, product_variant, product_variant_axis,
+    product_variant_axis_value, variant_translation,
 };
 use rustok_taxonomy::entities::{
     taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,

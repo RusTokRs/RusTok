@@ -1,5 +1,39 @@
 # RusToK ecommerce implementation plan
 
+## Region consumer verification (2026-11-05)
+
+Region mappings are private to their owner. Shared Commerce fixtures apply the
+Region migration chain, and Pricing's Region fixture creates a real record
+through `RegionService`. The native Cart tax-policy boundary and its retained
+SQLite/PostgreSQL evidence are tracked in the
+[Region plan](../../rustok-region/docs/implementation-plan.md#scaffold-reference-candidate)
+and [Cart verification record](../../rustok-cart/docs/implementation-plan.md#native-region-policy-verification-2026-11-05).
+
+On local `main` based at `f465936127921b0f57b2165afead3456c409a7ff`,
+`cargo test -p rustok-commerce --locked --offline --test pricing_service_test --no-run`
+compiled the production library but rejected the older test target. It imports
+private `rustok_pricing::entities` and has three Product constructors without
+the required `brands` field. Normalize those tests against the Pricing/Product
+owner APIs before claiming their Region fixture execution. Keep entities
+private and retain the tests' behavioral assertions. No Commerce or platform
+readiness is promoted by this continuation.
+
+`cargo test -p rustok-commerce --locked --offline --test context_service_test`
+passed all five tests with the shared fixture applying Region migrations. The
+test previously expected generic validation for a missing explicit Region.
+It now checks the canonical `RegionReadPort` error through
+`StoreContextError::RegionBoundary` with code `region.not_found` and verifies
+the same outcome for a foreign Region. Country/currency validation and locale
+policy assertions remain covered. Production error mapping is unchanged.
+
+The Cart remediation gate passed its all-target Clippy check. The changed
+Commerce test passed formatting and the remediation diff/architecture checks
+with `--skip-cargo`; only the targeted context tests were run for this crate.
+Commerce all-target Clippy was not run. Its existing unused and deprecated
+Brand API warnings remain, and the Pricing test target is still blocked as
+described above. Workspace suites, mounted client parity, and long E2E remain
+CI/maintainer verification.
+
 ## Product downstream continuation (2026-10-30)
 
 Ordinary Product step-8 work on `arena/71cd6d1f-rustok`, based on

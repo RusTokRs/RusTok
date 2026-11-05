@@ -28,7 +28,24 @@ See [CRATE_API.md](CRATE_API.md) for the verified public crate API specification
 - `rustok-tax` reads the typed region tax policy snapshot, including
   `tax_provider_id`, through commerce/cart runtime;
 - `rustok-pricing` validates quote region ownership and currency through `RegionReadPort`; it does not own region lifecycle or compute region taxes;
+- native Cart reads `RegionTaxPolicy` through `RegionService::read_tax_policy_in_tx`
+  in its current write transaction. Region owns the private mappings and reads
+  the base policy and country rules in one statement;
 - platform tenant locale tables remain platform-owned and are only read by the umbrella policy layer.
+
+## Known Limitations / Pending Implementation
+
+The create/read and Cart tax-policy slices have scoped SQLite and PostgreSQL
+coverage. The complete module remains a scaffold reference candidate. Backend
+root-file placement, UI test slots, the oversized admin core, and Next.js
+manifest bindings still fail the architecture lint. Mounted client parity and
+the full `RegionReadPort` failure-envelope matrix remain unverified. The
+[owner plan](docs/implementation-plan.md#scaffold-reference-candidate) tracks
+these gates.
+
+The transactional tax-policy entrypoint requires native composition sharing
+the Cart database. A separately deployed provider needs an explicit snapshot
+adoption contract before replacing that entrypoint.
 
 ## Entry points
 

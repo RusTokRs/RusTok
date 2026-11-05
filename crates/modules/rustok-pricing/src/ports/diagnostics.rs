@@ -338,7 +338,7 @@ pub(crate) fn parse_port_actor_id(
 pub(crate) struct PricingErrorPolicy {
     pub(crate) kind: PortErrorKind,
     pub(crate) code: &'static str,
-    message: &'static str,
+    message: std::borrow::Cow<'static, str>,
     pub(crate) retryable: bool,
 }
 
@@ -346,13 +346,13 @@ impl PricingErrorPolicy {
     fn new(
         kind: PortErrorKind,
         code: &'static str,
-        message: &'static str,
+        message: impl Into<std::borrow::Cow<'static, str>>,
         retryable: bool,
     ) -> Self {
         Self {
             kind,
             code,
-            message,
+            message: message.into(),
             retryable,
         }
     }
@@ -394,10 +394,16 @@ pub(crate) fn pricing_error_policy(error: &CommerceError) -> PricingErrorPolicy 
             "pricing SKU is already in use",
             false,
         ),
-        CommerceError::InvalidPrice(_) | CommerceError::Validation(_) => PricingErrorPolicy::new(
+        CommerceError::InvalidPrice(msg) => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.invalid_price",
+            msg.clone(),
+            false,
+        ),
+        CommerceError::Validation(msg) => PricingErrorPolicy::new(
             PortErrorKind::Validation,
             "pricing.validation",
-            "pricing request is invalid",
+            msg.clone(),
             false,
         ),
         CommerceError::InsufficientInventory { .. } => PricingErrorPolicy::new(
@@ -462,10 +468,10 @@ fn pricing_core_error_policy(error: &rustok_core::Error) -> PricingErrorPolicy {
             "pricing operation is not permitted",
             false,
         ),
-        CoreError::InvalidIdFormat(_) | CoreError::Validation(_) => PricingErrorPolicy::new(
+        CoreError::InvalidIdFormat(msg) | CoreError::Validation(msg) => PricingErrorPolicy::new(
             PortErrorKind::Validation,
             "pricing.validation",
-            "pricing request is invalid",
+            msg.clone(),
             false,
         ),
         CoreError::NotFound(_) => PricingErrorPolicy::new(
