@@ -49,8 +49,8 @@ labels and bounded JSON data, so localized property labels and visual widget
 canvas rendering require separate Page Builder-owned implementation/evidence.
 
 The shared Page Builder FBA registry/validators still model independent
-interoperability versions. Blog retains its existing `[fba.builder_consumer]`
-version metadata, but is not enrolled in that registry. The policy mismatch with
+interoperability versions. Blog removes unused independent version metadata and
+is not enrolled in that registry. The policy mismatch with
 Fly's module-only evolution and the missing registry admission need an owner-wide
 contract/registry/validator reconciliation before full reference acceptance.
 Blog's owner widget payloads and schema references are already unversioned;

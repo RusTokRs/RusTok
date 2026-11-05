@@ -78,7 +78,7 @@ request tenant/principal identity must agree with authenticated context.
 Owner schema IDs equal widget types, and owner format discriminators/catalog
 payloads carry no independent version selectors. The shared Page Builder FBA
 registry/validators still model independent interoperability versions; Blog
-retains its existing `[fba.builder_consumer]` version metadata but is not enrolled
+removes unused independent version metadata and is not enrolled
 in that registry. `node scripts/verify/verify-page-builder-contract-registry.mjs blog`
 therefore fails with the explicit missing-consumer diagnostic. This admission
 gap and the mismatch with Fly's module-only evolution policy require a Page

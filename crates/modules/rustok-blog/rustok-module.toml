@@ -88,9 +88,6 @@ degraded_modes = ["hide_comment_form", "show_cached_thread_snapshot"]
 [fba.builder_consumer]
 provider_module = "page-builder"
 contract = "grapesjs"
-contract_version = "1.0"
-builder_contract_version = "1.0"
-consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
 
 # Canonical Fly contracts for the Blog Page Builder consumer. Block ids intentionally equal
