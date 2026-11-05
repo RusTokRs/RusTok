@@ -35,6 +35,6 @@
 - Invokes parent-provided submit action closure upon successful client-side validation.
 
 ### Errors / Failure Codes
-- `CommentComposerValidationError::BlankContent`: Comment body contains no substantive text.
+- `CommentComposerValidationError::Empty`: Comment body contains no substantive text or contains only whitespace.
 - Validation failures surface accessible feedback within the composer interface.
 
