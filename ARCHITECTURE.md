@@ -71,6 +71,8 @@ with each owner manifest, runtime registration, and owner documentation.
 | Transactional outbox | [`crates/modules/rustok-outbox`](crates/modules/rustok-outbox) | durable write + event publication path |
 | Index engine | [`crates/modules/rustok-index`](crates/modules/rustok-index) | generic relational derived index/read substrate |
 | Verification entry | [`docs/verification/README.md`](docs/verification/README.md) | change-driven canonical verification routes |
+| Configuration reference | [`docs/operations/configuration-reference.md`](docs/operations/configuration-reference.md) | canonical platform runtime settings, env vars, and profiles |
+| Documentation governance | [`docs/standards/docs-governance-ledger.md`](docs/standards/docs-governance-ledger.md) | living architecture, ADR and documentation audit ledger (DAR) |
 
 ---
 

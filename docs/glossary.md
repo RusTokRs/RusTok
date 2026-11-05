@@ -48,6 +48,9 @@ The deterministic keyset cursor encoding mechanism in `rustok-index`. Converts c
 ### Destructive Command
 An administrative, maintenance, or domain command that deletes, archives, or fundamentally mutates existing persistent business state. Destructive commands require explicit typed intent, safety validation, authorization safeguards, and migration/audit receipts rather than silent cascading side-effects.
 
+### DAR (Documentation & Architecture Review)
+The platform-wide governance audit process and ledger ([`docs/standards/docs-governance-ledger.md`](./standards/docs-governance-ledger.md)) ensuring that ADRs, architecture maps, module contracts, and operational specifications reflect 100% executable code truth and are actively de-slopped and consolidated.
+
 ### Derived State
 State that is non-authoritative and deterministically rebuildable or reconcilable from the canonical source of truth (e.g. read-side projections, search indexes, cached responses, or denormalized summaries). Derived state must never silently become a competing write authority.
 
@@ -98,6 +101,9 @@ The central runtime container in `apps/server` built during startup from `module
 
 ## O
 
+### OutboxDecoder
+A typed event consumer registration contract (`crates/modules/rustok-notifications`, `rustok-search`) that claims specific domain event types and decodes their payloads through typed claims rather than hard-coded module event enumeration.
+
 ### Overlay
 A non-destructive layer of tenant-, channel-, or environment-specific customizations (such as theme tokens, email templates, or workflow rules) applied dynamically over canonical defaults without mutating persistent canonical entity definitions.
 
@@ -107,6 +113,9 @@ A non-destructive layer of tenant-, channel-, or environment-specific customizat
 
 ### PortContext
 The transport-agnostic context structure passed across every module service port (`crates/libs/rustok-api/src/ports.rs`). Carries `tenant_id`, `actor`, OpenTelemetry trace identifiers (`correlation_id`, `causation_id`, `traceparent`), `idempotency_key`, and deadline propagation (`deadline_ms`).
+
+### PortSeam
+A decoupled, owner-defined consumer port (e.g. `ProductPricingPort`, `MediaReferencePort`) that allows a foundation or adjacent module to declare required dependencies without depending directly on concrete implementation crates, eliminating Cargo circular dependency cycles.
 
 ### Projection
 A read-optimized, denormalized data model maintained deterministically from domain events (typically emitted via the transactional outbox). Projections are derived state and can be rebuilt or reindexed from event logs.

@@ -10,52 +10,23 @@ language: markdown
 
 # RusTok: Documentation Map
 
-Product Relations and Product Bundles admin composition entrypoints and their
-bounded verification gates are recorded in the [module readiness board](./modules/registry.md#ffafba-readiness-board-module-owned-ui).
-
-This file is the canonical entry point for the repository documentation.
-Start here when following the rules in [AGENTS.md](../AGENTS.md).
+This file is the canonical entry point for repository documentation.
+Follow the authority and source-of-truth hierarchy defined in [AGENTS.md](../AGENTS.md) §1.
 
 Documentation in `docs/` describes the platform as a whole.
-Local documents for applications and crates live in `apps/*/docs/`,
-`crates/{libs,modules,ui,utils,workers}/*/docs/` and `README.md` next to the code.
-
-Recent HTTP source continuation: [Commerce storefront Product HTTP policy](../crates/modules/rustok-commerce/docs/public-port-error-safety.md#storefront-product-http-policy-continuation-2026-10-19) — intentional Forbidden/Conflict 403/409 migration, bounded diagnostics and opaque owner-call correlations; source-only, no runtime/readiness promotion.
-
-Current bounded continuation: [Inventory-owned reservation adoption](../crates/modules/rustok-commerce/docs/implementation-plan.md#inventory-owned-reservation-adoption-2026-10-31)
-following [atomic Cart context and Pricing adoption](../crates/modules/rustok-commerce/docs/implementation-plan.md#atomic-cart-context-adoption-2026-10-31)
-— same selected Inventory capability, UUID lineage and explicit separate-owner handoff recovery.
-Regression sources remain unrun; compilation/runtime and step-8 readiness are not certified.
-
-Product downstream SKU continuation: [Commerce owner-contract plan](../crates/modules/rustok-commerce/docs/implementation-plan.md#product-downstream-continuation-2026-10-30)
-and [source/runtime verification gates](./verification/README.md#product-downstream-sku-contracts),
-including [selected Product identity for Pricing](../crates/modules/rustok-pricing/docs/implementation-plan.md#product-downstream-owner-continuation-2026-10-30-source-only).
-Step 8 remains in progress; this is source implementation, not runtime/readiness certification.
-
-Inventory reservation continuation first fixes the [anonymous quantity owner prerequisite](../crates/modules/rustok-inventory/docs/implementation-plan.md#anonymous-quantity-reservation-release-2026-11-01-source-only):
-exact original allocation/location effects, no keyed fallback and explicit scoped-selector refusal.
-The prerequisite's 27 Rust/10 Node definitions remain unrun. The subsequent
-[reservation-fact continuation](../crates/modules/rustok-inventory/docs/implementation-plan.md#reservation-fact-delivery-continuation-2026-11-01-source-only)
-wires quantity-free current-context facts, acknowledged existing-bus typed delivery and explicit
-Search refetch in source, with 34 additional Rust/10 Node definitions uncompiled/unrun.
-Canonical Rust digests, actual SQL/relay/Iggy/restart/Search convergence, generic Index and
-Product step 8 remain pending; no runtime/readiness status is promoted.
-
-The Inventory → generic Index continuation first adds the
-[history-preserving catalog deletion prerequisite](../crates/modules/rustok-inventory/docs/implementation-plan.md#catalog-deletion-safety-2026-11-01-source-only)
-through both real Product callers. The separate
-[source packet](../crates/modules/rustok-inventory/contracts/evidence/catalog-deletion-source.json)
-records 31 Rust/10 Node definitions, all uncompiled/unrun; no Index source/revision/tombstone,
-full-client retirement workflow or Product step-8 readiness is promoted.
+Component-local documents live in `apps/*/docs/`, `crates/{libs,modules,ui,utils,workers}/*/docs/` and `README.md` adjacent to code.
 
 ## How to Use the Map
 
-1. Open the platform overview and the relevant architecture section.
-2. For modules, use `docs/modules/*` and `docs/modules/registry.md`.
-3. For UI, use `docs/UI/*` and local app docs.
-4. For verification and quality gates, use `docs/verification/*`
-   and `docs/guides/*`.
-5. For architecture decisions, use `DECISIONS/*`.
+1. **Architecture & Foundation:** Start with [Architecture Quick Reference](../ARCHITECTURE.md) and [Platform Overview](./architecture/overview.md).
+2. **Architecture Decisions:** Consult the [ADR Registry](../DECISIONS/README.md) for authoritative accepted decisions.
+3. **Module System:** Use [Module Platform Overview](./modules/overview.md) and [Module and Owner Registry](./modules/registry.md).
+4. **UI & Frontends:** Consult [UI Architecture](./UI/README.md) and [Fluid Frontend Architecture (FFA)](./UI/module-package-architecture.md).
+5. **Operations & Config:** Use [Platform Configuration & Environment Reference](./operations/configuration-reference.md) and [Operations README](./operations/README.md).
+6. **Continuous Quality & Audits:**
+   - [Continuous Code Review (By-Module Crate Audit)](./standards/continuous-review-ledger.md)
+   - [Cross-Cutting Architectural Review (CCAR)](./standards/cross-cutting-review-ledger.md)
+   - [Architecture & Documentation Governance (DAR)](./standards/docs-governance-ledger.md)
 
 ## Required Starting Documents
 
@@ -88,20 +59,7 @@ full-client retirement workflow or Product step-8 readiness is promoted.
 
 ### Module Control Plane and Workers
 
-The control-plane and rollback plans track canonical durable object-copy
-reservations, pending namespace holds, and their remaining runtime/fleet evidence
-separately from full-snapshot serving cutover and safe orphan collection.
-The owner plan also records independent opaque secret-instance storage and
-instance-bound handles, with runtime and host-fence evidence tracked separately.
-Maintenance namespace facts and root locking are shared by the data owner;
-their use does not establish maintenance or fleet authorization.
-Structured copying uses those owner locks and mandatory transaction-backed
-policy, durable frozen-page admission before writes, database-atomic
-record/index/revision/receipt effects, and exact continuation replay.
-Shared namespace guards retain source/target between structured pages;
-reconciliation rechecks current policy using the original persisted request.
-The owner and release-safety plans track current runtime verification separately
-from complete operation safety and retention through serving cutover.
+RusToK provides a sandboxed, extensible module runtime supporting native Rust crates, isolated Rhai scripting workers, and WASM guest modules managed through `rustok-modules` and platform build/node workers.
 
 - [`rustok-modules` Control-Plane Documentation](../crates/modules/rustok-modules/docs/README.md)
 - [`rustok-manifest` Foundation Documentation](../crates/libs/rustok-manifest/docs/README.md)

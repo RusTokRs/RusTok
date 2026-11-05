@@ -265,11 +265,17 @@ pub fn CommentsAdmin() -> impl IntoView {
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
                         placeholder=target_type_placeholder
                         prop:value=target_type_filter
-                        on:input=move |ev| set_target_type_filter.set(event_target_value(&ev))
+                        on:input=move |ev| {
+                            set_target_type_filter.set(event_target_value(&ev));
+                            set_page.set(1);
+                        }
                     />
                     <select
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        on:change=move |ev| set_thread_status_filter.set(event_target_value(&ev))
+                        on:change=move |ev| {
+                            set_thread_status_filter.set(event_target_value(&ev));
+                            set_page.set(1);
+                        }
                     >
                         <option value="all">{all_thread_statuses}</option>
                         <option value="open">{open_label.clone()}</option>
@@ -277,7 +283,10 @@ pub fn CommentsAdmin() -> impl IntoView {
                     </select>
                     <select
                         class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                        on:change=move |ev| set_comment_status_filter.set(event_target_value(&ev))
+                        on:change=move |ev| {
+                            set_comment_status_filter.set(event_target_value(&ev));
+                            set_page.set(1);
+                        }
                     >
                         <option value="all">{all_comment_statuses}</option>
                         <option value="pending">{pending_label.clone()}</option>
@@ -323,7 +332,17 @@ pub fn CommentsAdmin() -> impl IntoView {
                             }}</span>
                             <button
                                 type="button"
-                                class="rounded-lg border border-border px-3 py-2 text-sm"
+                                class="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
+                                disabled=move || {
+                                    threads
+                                        .get()
+                                        .and_then(|res| res.ok())
+                                        .map(|payload| {
+                                            (page.get() * crate::core::DEFAULT_PAGE_SIZE)
+                                                >= payload.total
+                                        })
+                                        .unwrap_or(true)
+                                }
                                 on:click=move |_| set_page.update(|value| *value += 1)
                             >
                                 {next_label.clone()}
@@ -353,7 +372,8 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
                                                         on:click=move |_| {
-                                                             if let Some(intent) = comments_admin_select_thread_query_intent(&thread_id) {
+                                                            set_mutation_error.set(None);
+                                                            if let Some(intent) = comments_admin_select_thread_query_intent(&thread_id) {
                                                                 thread_query_writer.apply_query_intent(intent);
                                                             }
                                                         }
