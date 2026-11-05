@@ -210,6 +210,14 @@ reservation and never returns its migrations to draft status.
 
 ## Implementation gates
 
+The [shared assessment contract](../../DECISIONS/2026-11-05-migration-safety-assessment.md)
+is a bounded foundation for gate 2: schema summaries and module preflight share
+`rustok_core::MigrationSafetyAssessment`, with explicit maintenance and unknown
+states. Empty diagnostics cannot assert safety. It does not collect missing
+owner metadata, observe desired/current production schemas, seal releases or
+complete gates 2–5. `schema_diff` remains diagnostic and its target digest remains
+projected; consolidation replacement admission stays blocked.
+
 This is the single ordered consolidation work plan. Each gate needs executable evidence before the
 next admission capability becomes available.
 

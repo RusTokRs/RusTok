@@ -124,6 +124,24 @@ The canonical current/target contract and gap table are in
 governed by the
 [platform and module settings ADR](../../../../DECISIONS/2026-09-22-platform-module-settings-architecture.md).
 
+## Migration assessment boundary
+
+`MigrationPreflightInput` and `MigrationPreflightReceipt` carry the canonical
+`rustok_core::MigrationSafetyAssessment`, not an independent safety boolean and
+optional reasons. Maintenance/unknown facts deny automatic mode even without
+reason text; missing settings protection, irreversible effects and
+cross-revision copies also deny it. The receipt's `is_automatic_eligible()` is
+the shared consumer predicate used by governed transitions, the coordinator and
+data-upgrade evaluation. The coordinator rejects a foreign operation/module
+receipt before creating a checkpoint. Receipt bodies are not persisted in those
+checkpoints; incomplete wire bodies fail decoding rather than reconstructing
+safe facts from old flags.
+
+The [assessment ADR](../../../../DECISIONS/2026-11-05-migration-safety-assessment.md)
+does not complete native execution or consolidation admission. Dynamic
+descriptor facts and SQL-operation summaries retain their different evidence
+scope. Production authorization remains owner-derived.
+
 ## Integration
 
 Rhai and WebAssembly artifact descriptors select executors from

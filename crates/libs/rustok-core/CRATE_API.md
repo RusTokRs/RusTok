@@ -18,6 +18,15 @@ and no transport-level port declarations (which are owned by `rustok-api`).
 - `ModuleContext`, `ModuleEventListenerRegistry`, `ModuleKind` — execution context and event listener registration.
 - `ModuleMigration`, `MigrationSafetyMetadata` — phased database migration descriptors and invariants.
 
+The migration foundation also exports `MigrationSafetyAssessment`:
+`AdditiveSafe`, `MaintenanceRequired { reasons, locks_table, is_destructive }`,
+and `Unknown { reasons }`. `is_additive_safe()` examines the variant;
+`denial_reasons()` supplies a nonempty diagnostic for every rejected assessment,
+including absent or whitespace-only explanations. No unknown/missing serialized
+variant defaults to safe. The producer retains plan identity and evidence scope;
+the modules owner retains update authorization. See the
+[shared assessment decision](../../../DECISIONS/2026-11-05-migration-safety-assessment.md).
+
 ### 2. Runtime Context & Caching
 
 - `AppContext` — platform execution context providing access to database, cache, and search backends.
@@ -80,10 +89,10 @@ The prelude exports foundational types (`AppContext`, `CacheBackend`, `InMemoryC
 
 ## Primary entry points
 
-- [`RusToKModule`](src/module/mod.rs): Base trait for sovereign native domain modules.
-- [`ModuleRegistry`](src/registry/mod.rs): Central registration and lifecycle dispatch engine.
-- [`AppContext`](src/context/mod.rs): Runtime container for database connection and platform services.
-- [`InMemoryCacheBackend`](src/cache_atomic/mod.rs): Thread-safe in-memory cache backend with atomic CAS semantics.
+- [`RusToKModule`](src/module.rs): Base trait for sovereign native domain modules.
+- [`ModuleRegistry`](src/registry.rs): Central registration and lifecycle dispatch engine.
+- [`AppContext`](src/context.rs): Runtime container for database connection and platform services.
+- [`InMemoryCacheBackend`](src/cache_atomic.rs): Thread-safe in-memory cache backend with atomic CAS semantics.
 - [`EventBus`](src/events/mod.rs): Platform in-process asynchronous event bus.
 - [`money::round_to_currency`](src/money.rs): Canonical ISO 4217 rounding and exponent resolution.
 

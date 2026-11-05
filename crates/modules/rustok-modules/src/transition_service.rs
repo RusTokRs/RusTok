@@ -428,7 +428,7 @@ impl SeaOrmModuleTransitionService {
             .map(|checkpoint| checkpoint.operation_id)
             .unwrap_or_else(|| self.infrastructure.new_id());
         let preflight = derive_governed_preflight(operation_id, &candidate, predecessor.as_ref())?;
-        if preflight.mode != UpdateMode::Automatic {
+        if !preflight.is_automatic_eligible() {
             return Err(GovernedArtifactTransitionError::PreflightFailed {
                 reasons: preflight.denial_reasons.clone(),
             });
@@ -1103,8 +1103,15 @@ fn derive_governed_preflight(
         source_schema_digest,
         target_schema_digest,
         migration_plan_digest,
-        is_additive_safe: !settings_changed && !requires_cross_revision_data_copy,
-        migration_reasons,
+        migration_safety: if settings_changed || requires_cross_revision_data_copy {
+            rustok_core::MigrationSafetyAssessment::MaintenanceRequired {
+                reasons: migration_reasons,
+                locks_table: false,
+                is_destructive: false,
+            }
+        } else {
+            rustok_core::MigrationSafetyAssessment::AdditiveSafe
+        },
         settings_guard_installed: !settings_changed,
         has_irreversible_external_effects,
         requires_cross_revision_data_copy,
@@ -1299,4 +1306,108 @@ fn store_error(error: TransitionStoreError) -> ModuleTransitionServiceError {
 
 fn database_error(error: impl std::fmt::Display) -> ModuleTransitionServiceError {
     ModuleTransitionServiceError::Store(error.to_string())
+}
+
+#[cfg(test)]
+mod preflight_tests {
+    use super::*;
+    use crate::{
+        ArtifactReleaseRef, ModuleArtifactDescriptor, ModuleDependencyLockGraph,
+        OciArtifactReference,
+    };
+
+    fn installed(version: &str, marker: char) -> InstalledModuleArtifact {
+        let digest = format!("sha256:{}", marker.to_string().repeat(64));
+        let descriptor: ModuleArtifactDescriptor = serde_json::from_value(serde_json::json!({
+            "schema_version": crate::MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+            "slug": "sample_module", "version": version, "payload_kind": "rhai",
+            "module_kind": "optional", "runtime_abi": "rustok:module/runtime@1",
+            "platform_compatibility": "^0.1", "artifact_digest": digest,
+            "entrypoint": "main"
+        }))
+        .unwrap();
+        descriptor.validate().unwrap();
+        InstalledModuleArtifact {
+            installation_id: Uuid::new_v4(),
+            data_owner_id: Uuid::new_v4(),
+            namespace_instance_id: None,
+            secret_instance_id: None,
+            settings_instance_id: Uuid::new_v4(),
+            scope: ModuleInstallationScope::Platform,
+            reference: OciArtifactReference {
+                registry: "registry.example".to_owned(),
+                repository: "modules/sample_module".to_owned(),
+                digest: digest.clone(),
+            },
+            release: ArtifactReleaseRef {
+                slug: descriptor.slug.clone(),
+                version: version.to_owned(),
+                digest,
+            },
+            payload_media_type: descriptor.payload_kind.oci_layer_media_type().to_owned(),
+            descriptor,
+            dependency_lock: ModuleDependencyLockGraph::create(1, vec![]).unwrap(),
+            capability_grant_revision: 1,
+            installed_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn unchanged_admitted_contract_preserves_automatic_eligibility_and_exact_identity() {
+        let predecessor = installed("1.0.0", 'a');
+        let candidate = installed("2.0.0", 'b');
+        let operation_id = Uuid::new_v4();
+        let receipt =
+            derive_governed_preflight(operation_id, &candidate, Some(&predecessor)).unwrap();
+        assert!(receipt.is_automatic_eligible());
+        assert_eq!(receipt.operation_id, operation_id);
+        assert_eq!(receipt.module_slug, candidate.release.slug);
+        assert_eq!(receipt.source_schema_digest, EMPTY_DATA_SCHEMA_DIGEST);
+        assert_eq!(receipt.target_schema_digest, EMPTY_DATA_SCHEMA_DIGEST);
+        assert_eq!(
+            receipt.migration_plan_digest,
+            derive_governed_preflight(operation_id, &candidate, Some(&predecessor))
+                .unwrap()
+                .migration_plan_digest
+        );
+        assert!(
+            derive_governed_preflight(operation_id, &candidate, None)
+                .unwrap()
+                .is_automatic_eligible()
+        );
+    }
+
+    #[test]
+    fn admitted_settings_data_and_lifecycle_changes_cannot_bypass_preflight() {
+        let predecessor = installed("1.0.0", 'a');
+        let candidate = installed("2.0.0", 'b');
+        let changed_digest = format!("sha256:{}", "c".repeat(64));
+        let mut settings = candidate.clone();
+        settings.descriptor.settings_schema_digest = Some(changed_digest.clone());
+        let mut data = candidate.clone();
+        data.descriptor.data_schema_digest = Some(changed_digest.clone());
+        let mut persistence = candidate.clone();
+        persistence.descriptor.persistence_contract = Some(crate::ArtifactPersistenceContract {
+            revision: 1,
+            schema_digest: changed_digest.clone(),
+            indexes: vec![],
+        });
+        let mut lifecycle = candidate;
+        lifecycle.descriptor.bindings.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "enable", "kind": "post_enable", "entrypoint": "on_enable",
+                "input_schema_digest": changed_digest, "output_schema_digest": changed_digest,
+                "permission": "sample_module.manage", "idempotency": "best_effort",
+                "limit_profile": "default"
+            }))
+            .unwrap(),
+        );
+        for candidate in [settings, data, persistence, lifecycle] {
+            let receipt =
+                derive_governed_preflight(Uuid::new_v4(), &candidate, Some(&predecessor)).unwrap();
+            assert_eq!(receipt.mode, UpdateMode::Maintenance);
+            assert!(!receipt.is_automatic_eligible());
+            assert!(!receipt.denial_reasons.is_empty());
+        }
+    }
 }

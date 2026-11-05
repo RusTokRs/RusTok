@@ -2,10 +2,16 @@
 //!
 //! Neutral platform schema composition: the canonical platform migration
 //! chain, the SQLite test migrator, installer-owned schema application, and
-//! the schema-diff safety classifier shared by operator tooling.
+//! supplied-operation assessment, and independent PostgreSQL verification.
 
 pub mod execution;
+pub mod schema_diff;
 pub mod verification;
+pub use schema_diff::{
+    ColumnSummary, LockClassification, MigrationDiffError, MigrationDryRunReceipt, SchemaOperation,
+    classify_operation, classify_operations, compute_migration_plan_digest,
+    compute_schema_state_digest, generate_migration_dry_run_receipt,
+};
 
 #[cfg(feature = "composition")]
 #[path = "."]
@@ -56,14 +62,6 @@ mod composition {
     mod m20261025_000005_add_oauth_token_family;
     mod m20261028_000001_enforce_single_running_install_http_job;
     mod m20261101_000001_add_user_password_changed_at;
-
-    pub mod schema_diff;
-    pub use schema_diff::{
-        ColumnSummary, LockClassification, MigrationDiffError, MigrationDryRunReceipt,
-        MigrationSafetyClassification, SchemaOperation, classify_operation, classify_operations,
-        compute_migration_plan_digest, compute_schema_state_digest,
-        generate_migration_dry_run_receipt,
-    };
 
     #[cfg(test)]
     mod contract_tests;

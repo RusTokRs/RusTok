@@ -53,13 +53,13 @@ pub fn evaluate_data_upgrade_decision(evidence: &DataUpgradeEvidence) -> DataUpg
         };
     }
 
-    if !evidence.preflight.is_additive_safe {
+    if !evidence.preflight.is_automatic_eligible() {
         return DataUpgradeDecision {
             phase: DataUpgradePhase::MaintenancePreCutover,
             is_irreversible: false,
             rollback_allowed: true,
             can_auto_converge: false,
-            reason: "Destructive or non-additive migration steps require explicit point-of-no-return and fences before execution"
+            reason: "Migration preflight does not authorize automatic progression; maintenance evidence and fences are required"
                 .to_string(),
         };
     }

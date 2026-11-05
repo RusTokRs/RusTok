@@ -185,6 +185,15 @@ host's responsibility; the owner only enforces the facts it is given.
 
 ## Platform Capability Bindings
 
+Migration preflight consumes `rustok_core::MigrationSafetyAssessment` alongside
+source/target schema and exact plan digests. `MigrationPreflightReceipt` exposes
+`is_automatic_eligible()`; governed transition admission, coordinator admission
+and data-upgrade evaluation use that predicate. It rejects maintenance/unknown
+facts, missing settings protection, a maintenance mode or any owner denial.
+Coordinator admission also requires the same operation UUID and module slug.
+There is no boolean-to-safe compatibility adapter. Native phase authorization
+and observed-schema/production recovery evidence remain separate pending gates.
+
 This crate consumes the following platform-owned capabilities through their
 contracts:
 

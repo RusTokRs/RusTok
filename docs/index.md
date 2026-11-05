@@ -273,6 +273,7 @@ from complete operation safety and retention through serving cutover.
 - [Runtime Guardrails](./guides/runtime-guardrails.md)
 - [Safe Database Migrations and Squashing Guide](./guides/safe-database-migrations-and-squashing.md)
 - [Release-bound migration consolidation](../DECISIONS/2026-11-03-migration-consolidation.md) — stable history protection, PostgreSQL schema/data comparison and implementation gates
+- [Shared migration safety assessment](../DECISIONS/2026-11-05-migration-safety-assessment.md) — canonical additive/maintenance/unknown facts used by schema summaries and module preflight; native phase authorization and consolidation admission remain separate gates
 - [Alloy Runtime Hardening Contract](../crates/modules/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Input Validation](./guides/input-validation.md)

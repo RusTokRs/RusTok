@@ -64,6 +64,27 @@ against the exact migration identity before any retry.
 
 - `rustok_migrations::Migrator`
 
+## Shared migration assessment
+
+`schema_diff` and its supplied-operation classifier are available independently
+of `composition`, alongside the PostgreSQL observer. They consume the canonical
+`rustok_core::MigrationSafetyAssessment`; the module control plane consumes that
+same fact type without importing this crate or its domain composition.
+
+Maintenance and unknown assessments cannot become safe through missing reason
+text. Locking foreign keys retain diagnostics, opaque raw SQL and empty operation
+coverage remain unknown. Adding a column requires maintenance because the
+summary does not prove `ACCESS EXCLUSIVE` lock duration or default/rewrite safety;
+concurrent index creation requires nontransactional recovery evidence. The assessment is
+the source of truth; there is no separate automatic-eligibility boolean on
+`MigrationDryRunReceipt`. Schema/plan summary hashes encode array boundaries.
+The target schema digest is still a projection, not an observed database digest.
+These summaries grant neither deployment nor consolidation admission.
+
+```powershell
+cargo test --locked -p rustok-migrations --no-default-features --lib schema_diff
+```
+
 ## Migration consolidation design
 
 The [consolidation decision](../../../DECISIONS/2026-11-03-migration-consolidation.md)

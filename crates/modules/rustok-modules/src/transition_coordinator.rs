@@ -199,9 +199,19 @@ impl ModuleTransitionCoordinator {
         input: StartTransitionInput,
         security_registry: &SecurityEpochRegistry,
     ) -> Result<Self, TransitionCoordinatorError> {
-        // 1. Verify that automatic mode is authorized if requested
+        if input.operation_id.is_nil()
+            || input.module_slug.trim().is_empty()
+            || input.preflight_receipt.operation_id != input.operation_id
+            || input.preflight_receipt.module_slug != input.module_slug
+        {
+            return Err(TransitionCoordinatorError::PreflightFailed(
+                "Preflight receipt does not match the transition operation and module".to_string(),
+            ));
+        }
+
+        // 1. Verify the complete preflight, not only its mode projection.
         if input.requested_mode == UpdateMode::Automatic
-            && input.preflight_receipt.mode != UpdateMode::Automatic
+            && !input.preflight_receipt.is_automatic_eligible()
         {
             let reasons = input.preflight_receipt.denial_reasons.join("; ");
             return Err(TransitionCoordinatorError::PreflightFailed(format!(
@@ -508,9 +518,9 @@ impl ModuleTransitionCoordinator {
 mod tests {
     use super::*;
 
-    fn dummy_preflight_receipt(is_safe: bool) -> MigrationPreflightReceipt {
+    fn dummy_preflight_receipt(operation_id: Uuid, is_safe: bool) -> MigrationPreflightReceipt {
         MigrationPreflightReceipt {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             mode: if is_safe {
                 UpdateMode::Automatic
@@ -520,7 +530,15 @@ mod tests {
             source_schema_digest: "sha256:source".to_string(),
             target_schema_digest: "sha256:target".to_string(),
             migration_plan_digest: "sha256:plan".to_string(),
-            is_additive_safe: is_safe,
+            migration_safety: if is_safe {
+                rustok_core::MigrationSafetyAssessment::AdditiveSafe
+            } else {
+                rustok_core::MigrationSafetyAssessment::MaintenanceRequired {
+                    reasons: vec![],
+                    locks_table: true,
+                    is_destructive: true,
+                }
+            },
             settings_guard_installed: is_safe,
             evaluated_at: Utc::now(),
             denial_reasons: if is_safe {
@@ -534,14 +552,15 @@ mod tests {
     #[test]
     fn test_happy_path_transition_convergence() {
         let registry = SecurityEpochRegistry::new();
+        let operation_id = Uuid::new_v4();
         let input = StartTransitionInput {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             tenant_id: None,
             predecessor_digest: Some("sha256:v1".to_string()),
             candidate_digest: "sha256:v2".to_string(),
             affected_nodes: vec!["node-1".to_string()],
-            preflight_receipt: dummy_preflight_receipt(true),
+            preflight_receipt: dummy_preflight_receipt(operation_id, true),
             requested_mode: UpdateMode::Automatic,
         };
 
@@ -571,14 +590,15 @@ mod tests {
     #[test]
     fn test_single_attempt_recovery_invariant_and_oscillation_protection() {
         let registry = SecurityEpochRegistry::new();
+        let operation_id = Uuid::new_v4();
         let input = StartTransitionInput {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             tenant_id: None,
             predecessor_digest: Some("sha256:v1".to_string()),
             candidate_digest: "sha256:v2_faulty".to_string(),
             affected_nodes: vec!["node-1".to_string()],
-            preflight_receipt: dummy_preflight_receipt(true),
+            preflight_receipt: dummy_preflight_receipt(operation_id, true),
             requested_mode: UpdateMode::Automatic,
         };
 
@@ -608,14 +628,15 @@ mod tests {
     #[test]
     fn intervention_required_allows_one_explicit_operator_recovery() {
         let registry = SecurityEpochRegistry::new();
+        let operation_id = Uuid::new_v4();
         let input = StartTransitionInput {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             tenant_id: None,
             predecessor_digest: Some("sha256:v1".to_string()),
             candidate_digest: "sha256:v2".to_string(),
             affected_nodes: vec!["node-1".to_string()],
-            preflight_receipt: dummy_preflight_receipt(true),
+            preflight_receipt: dummy_preflight_receipt(operation_id, true),
             requested_mode: UpdateMode::Automatic,
         };
 
@@ -649,14 +670,15 @@ mod tests {
     #[test]
     fn test_security_epoch_preemption_blocks_activation() {
         let mut registry = SecurityEpochRegistry::new();
+        let operation_id = Uuid::new_v4();
         let input = StartTransitionInput {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             tenant_id: None,
             predecessor_digest: Some("sha256:v1".to_string()),
             candidate_digest: "sha256:v2".to_string(),
             affected_nodes: vec!["node-1".to_string()],
-            preflight_receipt: dummy_preflight_receipt(true),
+            preflight_receipt: dummy_preflight_receipt(operation_id, true),
             requested_mode: UpdateMode::Automatic,
         };
 
@@ -676,14 +698,15 @@ mod tests {
     #[test]
     fn test_predecessor_retention_hold_revalidation() {
         let registry = SecurityEpochRegistry::new();
+        let operation_id = Uuid::new_v4();
         let input = StartTransitionInput {
-            operation_id: Uuid::new_v4(),
+            operation_id,
             module_slug: "orders".to_string(),
             tenant_id: None,
             predecessor_digest: Some("sha256:predecessor_v1".to_string()),
             candidate_digest: "sha256:candidate_v2".to_string(),
             affected_nodes: vec!["node-1".to_string()],
-            preflight_receipt: dummy_preflight_receipt(true),
+            preflight_receipt: dummy_preflight_receipt(operation_id, true),
             requested_mode: UpdateMode::Automatic,
         };
 

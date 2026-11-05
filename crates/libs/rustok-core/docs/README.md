@@ -18,6 +18,8 @@ and other invariants that the remaining RusToK modules rely on.
 - reject invalid root envelopes at the in-memory event-bus ingress through the canonical `rustok-events` validation contract;
 - flex/custom-fields schema contracts (`field_schema`);
 - shared API surface for the foundation layer;
+- migration assessment facts shared by schema tooling and module preflight,
+  with explicit unknown evidence and conservative diagnostic projection;
 - absence of domain-owned runtime orchestration and transport-specific logic.
 - absence of neutral module-port DTO/error contracts: `Port*` belong to `rustok-api` and are not re-exported from core/prelude.
 

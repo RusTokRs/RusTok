@@ -71,11 +71,12 @@ not yet form the full product contract:
 2. The duplicate static rebuild rollback and direct `rustok-build` operator
    rollback have been removed; the remaining controller/agent and operator
    transport work must expose only the retained-predecessor owner path.
-3. `ArtifactRollbackRequest` currently accepts
-   `migration_rollback_mode` from its caller. Caller input cannot authorize
-   code rollback against live data.
-4. Native migration metadata currently describes source and ordering, not an
-   executable compatibility, phase, recovery, and finalization contract.
+3. Dynamic rollback derives migration policy from recorded owner state; callers
+   cannot select `migration_rollback_mode`. Complete compatibility and observed
+   production recovery evidence remain required beyond the selection command.
+4. Native migration descriptors and the shared typed safety assessment exist,
+   but observed-schema, exact phase authorization, recovery and finalization
+   are not yet one executable production contract.
 5. Local readiness prose and a central board do not produce an enforceable
    release decision.
 6. Sandbox and build success do not prove production health, mixed-release data
@@ -1437,6 +1438,16 @@ reconciliation is nonterminal, and an irreconcilable unknown outcome becomes
 `recovery_required` rather than successful rollback.
 
 ### Migration Contract
+
+The [shared assessment ADR](../../DECISIONS/2026-11-05-migration-safety-assessment.md)
+defines the current migration-fact seam: schema summaries and dynamic preflight
+use `rustok_core::MigrationSafetyAssessment`. Maintenance/unknown or missing
+settings protection deny automatic mode independently of explanation text.
+Coordinator admission binds the receipt to its exact operation/module, and
+transition/data-upgrade consumers recheck one owner eligibility predicate.
+This foundation neither authorizes native DDL nor replaces the observed-schema,
+phase-execution and recovery gates below. Summary hashes and schema-equivalence
+reports are not live mutation authority.
 
 Migration policy retains the existing `reversible`, `compensating`, and
 `prohibited` meanings, but eligibility is stricter:

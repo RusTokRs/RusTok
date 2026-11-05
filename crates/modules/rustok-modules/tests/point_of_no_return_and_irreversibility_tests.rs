@@ -10,9 +10,9 @@ use rustok_modules::{
 };
 use uuid::Uuid;
 
-fn sample_preflight(is_additive_safe: bool) -> MigrationPreflightReceipt {
+fn sample_preflight(operation_id: Uuid, is_additive_safe: bool) -> MigrationPreflightReceipt {
     MigrationPreflightReceipt {
-        operation_id: Uuid::new_v4(),
+        operation_id,
         module_slug: "orders".to_string(),
         mode: if is_additive_safe {
             UpdateMode::Automatic
@@ -25,7 +25,15 @@ fn sample_preflight(is_additive_safe: bool) -> MigrationPreflightReceipt {
             "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
         migration_plan_digest:
             "sha256:2222222222222222222222222222222222222222222222222222222222222222".to_string(),
-        is_additive_safe,
+        migration_safety: if is_additive_safe {
+            rustok_core::MigrationSafetyAssessment::AdditiveSafe
+        } else {
+            rustok_core::MigrationSafetyAssessment::MaintenanceRequired {
+                reasons: vec![],
+                locks_table: true,
+                is_destructive: true,
+            }
+        },
         settings_guard_installed: true,
         denial_reasons: vec![],
         evaluated_at: chrono::Utc::now(),
@@ -33,9 +41,48 @@ fn sample_preflight(is_additive_safe: bool) -> MigrationPreflightReceipt {
 }
 
 #[test]
+fn data_upgrade_cannot_bypass_an_inconsistent_or_denied_preflight() {
+    let safe = sample_preflight(Uuid::new_v4(), true);
+    let mut unsafe_migration = sample_preflight(safe.operation_id, false);
+    unsafe_migration.mode = UpdateMode::Automatic;
+    let mut unknown = safe.clone();
+    unknown.migration_safety = rustok_core::MigrationSafetyAssessment::Unknown { reasons: vec![] };
+    let mut missing_guard = safe.clone();
+    missing_guard.settings_guard_installed = false;
+    let mut denied = safe.clone();
+    denied
+        .denial_reasons
+        .push("Irreversible external effect".to_owned());
+    let mut maintenance = safe;
+    maintenance.mode = UpdateMode::Maintenance;
+    for receipt in [
+        unsafe_migration,
+        unknown,
+        missing_guard,
+        denied,
+        maintenance,
+    ] {
+        let mut evidence = DataUpgradeEvidence {
+            preflight: &receipt,
+            settings_intersection_valid: true,
+            requires_cross_revision_data_copy: false,
+            unmigrated_live_objects_count: 0,
+            point_of_no_return_committed: false,
+        };
+        let decision = evaluate_data_upgrade_decision(&evidence);
+        assert_eq!(decision.phase, DataUpgradePhase::MaintenancePreCutover);
+        assert!(!decision.can_auto_converge);
+        evidence.point_of_no_return_committed = true;
+        let decision = evaluate_data_upgrade_decision(&evidence);
+        assert_eq!(decision.phase, DataUpgradePhase::PointOfNoReturn);
+        assert!(!decision.rollback_allowed);
+    }
+}
+
+#[test]
 fn test_data_upgrade_phase_derivation_from_owner_evidence() {
     // 1. Fully reversible compatible zero-downtime evolution
-    let preflight_safe = sample_preflight(true);
+    let preflight_safe = sample_preflight(Uuid::new_v4(), true);
     let evidence_safe = DataUpgradeEvidence {
         preflight: &preflight_safe,
         settings_intersection_valid: true,
@@ -66,7 +113,7 @@ fn test_data_upgrade_phase_derivation_from_owner_evidence() {
     assert!(!decision_bad_settings.can_auto_converge);
 
     // 3. Destructive migration steps: requires explicit point of no return before execution
-    let preflight_destructive = sample_preflight(false);
+    let preflight_destructive = sample_preflight(Uuid::new_v4(), false);
     let evidence_destructive = DataUpgradeEvidence {
         preflight: &preflight_destructive,
         settings_intersection_valid: true,
@@ -114,7 +161,7 @@ fn test_commit_point_of_no_return_enforces_fences_and_strictly_forbids_rollback(
         candidate_digest: "sha256:candidate00000000000000000000000000000000000000000000000000000"
             .to_string(),
         affected_nodes: vec!["node-a".to_string()],
-        preflight_receipt: sample_preflight(true),
+        preflight_receipt: sample_preflight(operation_id, true),
         requested_mode: UpdateMode::Automatic,
     };
 

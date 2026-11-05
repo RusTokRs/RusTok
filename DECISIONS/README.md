@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-05](./2026-11-05-migration-safety-assessment.md) | Shared migration safety assessment | Accepted | In progress | Extends [migration consolidation](./2026-11-03-migration-consolidation.md), [release safety](./2026-08-06-module-release-rollback-safety.md) |
 | [2026-11-04](./2026-11-04-region-storage-and-cart-tax-policy.md) | Region storage ownership and Cart tax policy reads | Accepted | In progress | Extends [native module reference contract](./2026-09-18-canonical-native-module-reference-contract.md) |
 | [2026-11-04](./2026-11-04-hybrid-brand-catalog-and-product-binding.md) | Hybrid Brand Catalog and Product Binding Architecture | Accepted | In progress | Extends [Product catalog attributes](./2026-07-01-product-category-bound-attribute-schemas.md), [Multilingual DB storage](./2026-04-05-multilingual-db-storage-parallel-localized-records.md) |
 | [2026-11-03](./2026-11-03-native-scaffold-recovery.md) | Native scaffold workspace locking and recoverable writes | Accepted | Implemented | Extends [native source layout](./2026-09-18-canonical-native-module-source-layout.md) |

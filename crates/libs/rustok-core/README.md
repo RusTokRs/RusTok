@@ -10,6 +10,9 @@ does not define or re-export `Port*` types.
 ## Responsibilities
 
 - Define the base module traits and registry-facing contracts.
+- Own `MigrationSafetyAssessment`, the shared additive/maintenance/unknown
+  migration fact vocabulary. Diagnostics never determine safety or grant
+  deployment authority.
 - Define runtime identity, RBAC, security-context, ID, and error primitives; permission DTOs are consumed from `rustok-api`.
 - Define the shared retention-policy vocabulary and deadline validation used by evidence-owning domains.
 - Provide flex/custom-fields schema contracts and content-format helpers used by multiple domains.

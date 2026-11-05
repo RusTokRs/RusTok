@@ -18,8 +18,7 @@ fn test_end_to_end_additive_migration_preflight_and_settings_guard() {
         target_schema_digest:
             "sha256:1111111111111111111111111111111111111111111111111111111111111111".to_string(),
         migration_plan_digest: "sha256:plan_additive".to_string(),
-        is_additive_safe: true,
-        migration_reasons: vec![],
+        migration_safety: rustok_core::MigrationSafetyAssessment::AdditiveSafe,
         settings_guard_installed: true,
         has_irreversible_external_effects: false,
         requires_cross_revision_data_copy: false,
@@ -49,7 +48,7 @@ fn test_end_to_end_additive_migration_preflight_and_settings_guard() {
         ModuleSettingSpec {
             value_type: "boolean".to_string(),
             required: false,
-            default: Some(serde_json::json!(false)),
+            default: None,
             ..Default::default()
         },
     );
@@ -64,17 +63,24 @@ fn test_end_to_end_additive_migration_preflight_and_settings_guard() {
 
     // Value accepted by N and N+1
     let safe_write = serde_json::json!({ "max_sessions": 10 });
-    let normalized = guard.validate_and_normalize_write(&schema_n, &schema_n1, safe_write);
-    assert!(normalized.is_ok());
-    let value = normalized.unwrap();
+    let mut candidate_default = schema_n1.clone();
+    candidate_default.get_mut("enable_2fa").unwrap().default = Some(serde_json::json!(false));
+    assert!(
+        guard
+            .validate_and_normalize_write(&schema_n, &candidate_default, safe_write.clone())
+            .is_err(),
+        "a candidate-only default must not introduce a value the predecessor rejects"
+    );
+    let value = guard
+        .validate_and_normalize_write(&schema_n, &schema_n1, safe_write)
+        .expect("a value accepted by both schemas remains valid during rollout");
     assert_eq!(value["max_sessions"], 10);
-    assert_eq!(value["enable_2fa"], false);
+    assert!(value.get("enable_2fa").is_none());
 
     // Value with unknown key to N (breaking backward-compatibility if reverted)
     let breaking_write = serde_json::json!({
         "max_sessions": 10,
-        "enable_2fa": true,
-        "unknown_extra": "rejected"
+        "enable_2fa": true
     });
     let rejected = guard.validate_and_normalize_write(&schema_n, &schema_n1, breaking_write);
     assert!(rejected.is_err());
@@ -101,11 +107,14 @@ fn test_destructive_migration_strictly_denies_automatic_mode() {
         source_schema_digest: "sha256:source".to_string(),
         target_schema_digest: "sha256:target".to_string(),
         migration_plan_digest: "sha256:plan_destructive".to_string(),
-        is_additive_safe: false,
-        migration_reasons: vec![
-            "Destructive operation: Drop table 'legacy_invoices'".to_string(),
-            "Non-concurrent index creation on 'accounts'".to_string(),
-        ],
+        migration_safety: rustok_core::MigrationSafetyAssessment::MaintenanceRequired {
+            reasons: vec![
+                "Destructive operation: Drop table 'legacy_invoices'".to_string(),
+                "Non-concurrent index creation on 'accounts'".to_string(),
+            ],
+            locks_table: true,
+            is_destructive: true,
+        },
         settings_guard_installed: false,
         has_irreversible_external_effects: false,
         requires_cross_revision_data_copy: false,
@@ -113,7 +122,7 @@ fn test_destructive_migration_strictly_denies_automatic_mode() {
 
     let receipt = evaluate_migration_preflight(preflight_input);
     assert_eq!(receipt.mode, UpdateMode::Maintenance);
-    assert_eq!(receipt.denial_reasons.len(), 2);
+    assert_eq!(receipt.denial_reasons.len(), 3);
     assert!(receipt.denial_reasons[0].contains("Drop table"));
 }
 

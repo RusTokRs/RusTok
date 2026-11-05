@@ -24,6 +24,43 @@ The cross-component sequence and completion rules are defined by the
 - Uncertain-outcome recovery: `DataBackfillCoordinator` remains a memory-store prototype without production persistence or verified uncertain-outcome reconciliation; `ReleaseAdmissionIntentJournal` recovery scan and single-attempt predecessor recovery for operations tools have separate owner evidence. Durable backfill integration remains required.
 - Responsible module owner: Platform Foundation Team
 
+## Shared migration assessment (2026-11-05)
+
+The [shared assessment ADR](../../../../DECISIONS/2026-11-05-migration-safety-assessment.md)
+replaces the independent preflight safety boolean/reasons with the same
+foundation assessment used by schema summaries. Maintenance and unknown remain
+rejections with empty diagnostics; missing settings protection also rejects.
+Governed transitions, coordinator admission and data-upgrade evaluation use one
+receipt predicate. The coordinator binds operation/module identity before any
+checkpoint. Incomplete wire bodies have no safe default; checkpoints retain
+their existing persistence schema.
+
+This is the bounded migration-fact cutover. Native observed-schema and exact
+authorized phase execution, release sealing, consolidation replacement admission,
+full conflict exclusion and DB-aware scaffold generation remain in their existing
+plans. Source-summary receipts do not authorize those capabilities.
+
+Scoped verification on the task branch:
+
+- `cargo test --locked -p rustok-modules --no-default-features --lib`: the
+  library run passed 428 tests with two PostgreSQL tests ignored. It included
+  the actual dynamic preflight producer's unchanged-contract and changed
+  settings/data/persistence/lifecycle cases.
+- The selected integration targets `migration_and_settings_safety_tests`,
+  `transition_coordinator_tests`, `point_of_no_return_and_irreversibility_tests`,
+  `data_copier_tests` and `transition_service_tests` passed 27 tests. The settings
+  fixture was corrected to reject candidate-only defaults instead of expecting
+  a predecessor-incompatible normalized value.
+- Architecture dependency/import validation and diff whitespace checks passed.
+- The remediation gate passed, including `cargo clippy --package rustok-modules
+  --all-targets -- -D warnings`. Foundation migration-assessment tests passed
+  2/2, including incomplete and unknown serialized-state rejection.
+- Production native phase execution, PostgreSQL schema equivalence, fleet
+  exclusion and full client/deployment recovery were not exercised by this
+  change. The global ADR check reports pre-existing registry/template errors
+  in the Pricing, Product Relations and Region decisions; the new ADR is not
+  among its reported failures.
+
 ## Current state
 
 The static N/N+1 settings guard is not complete. The static distribution build

@@ -157,6 +157,14 @@ around the owner contracts.
 
 ## Known Limitations / Pending Implementation
 
+Migration preflight now shares `rustok-core::MigrationSafetyAssessment` with
+schema tooling. Automatic admission checks that fact, settings protection and
+owner denials through one receipt predicate; transition and data-upgrade
+consumers cannot override it with a mode projection. The coordinator binds the
+receipt to the exact operation/module. Native digest-bound phase authorization,
+observed schema evidence and complete production migration/recovery wiring
+remain pending; a supplied-operation summary is not that authority.
+
 Owner-level and bounded SQLite/local-storage evidence does not establish
 production readiness. The documented implementation and operational gaps include:
 

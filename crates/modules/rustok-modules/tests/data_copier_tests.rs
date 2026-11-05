@@ -408,8 +408,7 @@ fn preflight_classifies_required_data_copy_as_maintenance() {
         migration_plan_digest: digest(
             &serde_json::json!({"module_slug":"inventory","requires_data_copy":true}),
         ),
-        is_additive_safe: true,
-        migration_reasons: vec![],
+        migration_safety: rustok_core::MigrationSafetyAssessment::AdditiveSafe,
         settings_guard_installed: true,
         has_irreversible_external_effects: false,
         requires_cross_revision_data_copy: true,

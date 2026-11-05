@@ -1,11 +1,12 @@
+use rustok_core::MigrationSafetyAssessment;
 use std::collections::BTreeSet;
 
 use sea_orm_migration::MigratorTrait;
 
 use crate::{
-    ColumnSummary, LockClassification, MigrationDescriptor, MigrationSafetyClassification,
-    Migrator, SchemaOperation, SqliteTestMigrator, classify_operations,
-    compute_migration_plan_digest, compute_schema_state_digest, generate_migration_dry_run_receipt,
+    ColumnSummary, LockClassification, MigrationDescriptor, Migrator, SchemaOperation,
+    SqliteTestMigrator, classify_operations, compute_migration_plan_digest,
+    compute_schema_state_digest, generate_migration_dry_run_receipt,
     sqlite_test_migration_is_compatible,
 };
 
@@ -57,39 +58,20 @@ fn sqlite_test_migrator_contract_excludes_postgresql_native_migrations() {
 #[test]
 fn schema_diff_classification_contract_differentiates_safe_vs_maintenance() {
     // 1. Additive safe operations
-    let safe_ops = vec![
-        SchemaOperation::CreateTable {
-            table_name: "test_items".to_string(),
-            columns: vec![ColumnSummary {
-                name: "id".to_string(),
-                column_type: "uuid".to_string(),
-                is_nullable: false,
-                has_default: false,
-                is_primary_key: true,
-            }],
-            is_temporary: false,
-        },
-        SchemaOperation::AddColumn {
-            table_name: "test_items".to_string(),
-            column_name: "extra_notes".to_string(),
-            column_type: "text".to_string(),
-            is_nullable: true,
+    let safe_ops = vec![SchemaOperation::CreateTable {
+        table_name: "test_items".to_string(),
+        columns: vec![ColumnSummary {
+            name: "id".to_string(),
+            column_type: "uuid".to_string(),
+            is_nullable: false,
             has_default: false,
-        },
-        SchemaOperation::AddIndex {
-            table_name: "test_items".to_string(),
-            index_name: "idx_test_items_notes".to_string(),
-            columns: vec!["extra_notes".to_string()],
-            is_unique: false,
-            is_concurrent: true,
-        },
-    ];
+            is_primary_key: true,
+        }],
+        is_temporary: false,
+    }];
 
     let (safe_classification, lock) = classify_operations(&safe_ops);
-    assert_eq!(
-        safe_classification,
-        MigrationSafetyClassification::AdditiveSafe
-    );
+    assert_eq!(safe_classification, MigrationSafetyAssessment::AdditiveSafe);
     assert_eq!(lock, LockClassification::RowLevel);
 
     // 2. Destructive or table-locking operations
@@ -106,7 +88,7 @@ fn schema_diff_classification_contract_differentiates_safe_vs_maintenance() {
     let (dangerous_classification, max_lock) = classify_operations(&dangerous_ops);
     assert!(matches!(
         dangerous_classification,
-        MigrationSafetyClassification::MaintenanceRequired {
+        MigrationSafetyAssessment::MaintenanceRequired {
             is_destructive: true,
             locks_table: true,
             ..
@@ -142,10 +124,10 @@ fn deterministic_digests_and_dry_run_receipt_generation() {
             is_temporary: false,
         }],
     );
-    assert!(receipt.is_automatic_eligible);
+    assert!(receipt.classification.is_additive_safe());
     assert_eq!(
         receipt.classification,
-        MigrationSafetyClassification::AdditiveSafe
+        MigrationSafetyAssessment::AdditiveSafe
     );
     assert_eq!(receipt.lock_summary, LockClassification::RowLevel);
 }

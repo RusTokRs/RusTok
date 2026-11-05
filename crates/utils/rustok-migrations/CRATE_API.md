@@ -38,9 +38,9 @@
 
 ### Schema Diff & Safety Classification (`schema_diff`)
 
-These composition exports are available with the default `composition` feature.
-The independent `verification` module is also available with
-`--no-default-features`:
+`schema_diff`, `execution` and `verification` are available with
+`--no-default-features`, without composing the domain modules. `Migrator` and
+installer entrypoints retain the default `composition` feature.
 
 - `observe_database(db, database_url, pg_dump) -> Result<DatabaseSnapshot, VerificationError>`:
   PostgreSQL 16 schema/enforcement/data observation on a quiescent fixture.
@@ -66,10 +66,10 @@ observer:
 
 - `SchemaOperation`: Enumeration of granular DDL operations (`CreateTable`, `AddColumn`, `AddIndex`, `AddForeignKey`, `DropTable`, `DropColumn`, `AlterColumnType`, `AddNotNullConstraintWithoutDefault`, `RenameColumn`, `RenameTable`, `RawSql`).
 - `ColumnSummary`: Structural summary of column definitions (`name`, `column_type`, `is_nullable`, `has_default`, `is_primary_key`).
-- `LockClassification`: DDL lock severity (`None`, `RowLevel`, `TableExclusive`, `AccessExclusive`).
-- `MigrationSafetyClassification`: `AdditiveSafe` (backward-compatible, zero maintenance window required) vs `MaintenanceRequired` (destructive, table-locking, or breaking version N).
-- `MigrationDryRunReceipt`: Immutable cryptographic receipt of a migration plan dry-run (`source_schema_digest`, `target_schema_digest`, `migration_plan_digest`, `operations`, `classification`, `lock_summary`, `is_automatic_eligible`).
-- `classify_operations(ops: &[SchemaOperation]) -> (MigrationSafetyClassification, LockClassification)`
+- `LockClassification`: summary lock severity (`None`, `RowLevel`, `ShareUpdateExclusive`, `TableExclusive`, `AccessExclusive`).
+- `rustok_core::MigrationSafetyAssessment`: canonical `AdditiveSafe`, `MaintenanceRequired` and `Unknown` facts. This crate defines no parallel classification enum. Supplied operations cannot establish observed N/N+1 compatibility or authorize production execution.
+- `MigrationDryRunReceipt`: diagnostic plan summary (`source_schema_digest`, projected `target_schema_digest`, `migration_plan_digest`, `operations`, `classification`, `lock_summary`). The assessment is authoritative; no separate automatic-eligibility boolean is stored.
+- `classify_operation` / `classify_operations`: return `(MigrationSafetyAssessment, LockClassification)`. Empty coverage and opaque SQL are unknown; missing/duplicate/empty migration identities cannot produce an additive-safe receipt. Locking foreign keys retain reasons; concurrent index creation requires owner-proven nontransactional recovery. Raw destructive SQL retains its destructive fact.
 - `compute_migration_plan_digest(target_migrations: &[String], operations: &[SchemaOperation]) -> String`
 - `compute_schema_state_digest(tables: &[String], columns: &[String]) -> String`
 - `generate_migration_dry_run_receipt(...) -> MigrationDryRunReceipt`
