@@ -70,10 +70,10 @@ jobs:
           node-version: 22
       - name: Verify Blog category hierarchy source contract
         run: node scripts/verify/verify-blog-category-hierarchy-command.mjs
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
       - name: Run Blog category hierarchy unit contract
         run: cargo test --locked -p rustok-blog --lib category_command::tests -- --nocapture
       - name: Run Blog category hierarchy integration contract

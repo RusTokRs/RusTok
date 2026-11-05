@@ -32,11 +32,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
           components: rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: arena-diag2-lock-fmt-xtask
       - name: Run replicated checks
@@ -130,11 +130,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
           components: rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: arena-diag2-settings-cas
       - name: Run replicated checks
@@ -203,7 +203,7 @@ jobs:
       - name: Repair base workspace (same dedup as this PR applies to main)
         run: |
           rm -rf base/crates/utils/rustok-distribution base/crates/libs/rustok-commerce-foundation base/crates/libs/rustok-iggy
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
@@ -306,7 +306,7 @@ jobs:
       - name: Repair base workspace (same dedup as this PR applies to main)
         run: |
           rm -rf base/crates/utils/rustok-distribution base/crates/libs/rustok-commerce-foundation base/crates/libs/rustok-iggy
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
@@ -416,7 +416,7 @@ jobs:
       - name: Repair base workspace (same dedup as this PR applies to main)
         run: |
           rm -rf base/crates/utils/rustok-distribution base/crates/libs/rustok-commerce-foundation base/crates/libs/rustok-iggy
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
