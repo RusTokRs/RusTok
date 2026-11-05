@@ -23,7 +23,7 @@ pub use error::{PricingPublicError, map_pricing_port_error, map_pricing_service_
 pub use integrations::{
     InProcessPricingReadPort, InProcessPricingWritePort, PriceListTranslationChangeLifecycle,
     PriceListTranslationChangeRecord, PriceListTranslationTargetProvider,
-    PricingProductPricingPortAdapter, in_process_price_list_owner_port,
+    PricingProductPricingPortAdapter, ensure_pricing_tables, in_process_price_list_owner_port,
     in_process_pricing_read_port, in_process_pricing_write_port, in_process_product_pricing_port,
     register_price_list_translation_target_provider,
 };

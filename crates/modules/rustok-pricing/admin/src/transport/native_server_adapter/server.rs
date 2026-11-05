@@ -1,4 +1,10 @@
 use leptos::prelude::*;
+use uuid::Uuid;
+
+use crate::core::{parse_optional_uuid_string, sanitize_resolution_context};
+#[cfg(feature = "ssr")]
+use rustok_api::HostRuntimeContext;
+
 
 use crate::model::{
     PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
@@ -16,6 +22,11 @@ use super::operations::*;
 pub(crate) async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
@@ -78,6 +89,11 @@ pub(crate) async fn pricing_admin_active_price_lists_native(
 ) -> Result<Vec<PricingPriceListOption>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 
@@ -120,6 +136,11 @@ pub(crate) async fn pricing_admin_products_native(
 ) -> Result<PricingProductList, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
@@ -198,6 +219,11 @@ pub(crate) async fn pricing_admin_product_native(
 ) -> Result<Option<PricingProductDetail>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
@@ -393,6 +419,11 @@ pub(crate) async fn pricing_admin_update_variant_price_native(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 
@@ -426,6 +457,11 @@ pub(crate) async fn pricing_admin_preview_variant_discount_native(
 ) -> Result<PricingAdjustmentPreview, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 
@@ -466,6 +502,11 @@ pub(crate) async fn pricing_admin_apply_variant_discount_native(
 ) -> Result<PricingAdjustmentPreview, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 
@@ -496,6 +537,11 @@ pub(crate) async fn pricing_admin_update_price_list_rule_native(
 ) -> Result<PricingPriceListOption, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 
@@ -526,6 +572,11 @@ pub(crate) async fn pricing_admin_update_price_list_scope_native(
 ) -> Result<PricingPriceListOption, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use super::context::*;
+        use super::mappers::*;
+        use super::operations::*;
+        use rustok_api::HostRuntimeContext;
+        use uuid::Uuid;
         use leptos::prelude::expect_context;
         use rustok_api::{AuthContext, TenantContext};
 

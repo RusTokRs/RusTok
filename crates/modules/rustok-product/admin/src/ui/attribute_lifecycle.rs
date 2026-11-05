@@ -526,7 +526,7 @@ pub(super) fn AttributeLifecyclePanel(
                 <div class="flex-1 space-y-2">
                     <Label r#for="attribute-definition-directory">{text("product-attributeLifecycle-directory")}</Label>
                     {move || {
-                        let options = current_directory.get().map(|workspace| core::directory_options(&workspace, &text("product-attributeLifecycle-archived"), &text("product-attributeLifecycle-active"))).unwrap_or_default().into_iter().map(|(value, label)| SelectOption::new(value, label)).collect();
+                        let options: Vec<SelectOption> = current_directory.get().map(|workspace| core::directory_options(&workspace, &text("product-attributeLifecycle-archived"), &text("product-attributeLifecycle-active"))).unwrap_or_default().into_iter().map(|(value, label)| SelectOption::new(value, label)).collect();
                         view! { <Select id="attribute-definition-directory" options=options value=directory_selection set_value=set_directory_selection placeholder=text("product-attributeLifecycle-choose") disabled=!authenticated.get() || busy.get() || storage_error.get() || record.get().is_some_and(|record| matches!(record.state, DefinitionPhase::Pending { .. })) /> }
                     }}
                 </div>
@@ -536,7 +536,7 @@ pub(super) fn AttributeLifecyclePanel(
                 <p class="break-all font-mono text-xs">{move || selected_attribute.get_value()}{move || (selected_target.get() != "attribute").then(|| format!(" / {}", selected_target.get()))}</p>
                 {move || record.get().and_then(|record| core::record_message_key(&record)).map(|key| view! { <p role="status">{text(key)}</p> })}
                 {move || current_workspace.get().map(|workspace| {
-                    let options = core::target_options(&workspace, &selected_target.get_untracked(), &text("product-attributeLifecycle-attribute"), &text("product-attributeLifecycle-archived"), &text("product-attributeLifecycle-active"), &text("product-attributeLifecycle-notFound")).into_iter().map(|(value, label)| {
+                    let options: Vec<SelectOption> = core::target_options(&workspace, &selected_target.get_untracked(), &text("product-attributeLifecycle-attribute"), &text("product-attributeLifecycle-archived"), &text("product-attributeLifecycle-active"), &text("product-attributeLifecycle-notFound")).into_iter().map(|(value, label)| {
                         let missing = core::target_archived(&workspace, &value).is_none();
                         let option = SelectOption::new(value, label);
                         if missing { option.disabled() } else { option }

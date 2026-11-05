@@ -4163,6 +4163,7 @@ mod tests {
             id: "attr-1".to_string(),
             code: "color".to_string(),
             value_type: "option".to_string(),
+            scope: "product".to_string(),
             is_localized: false,
             is_filterable: true,
             is_searchable: true,

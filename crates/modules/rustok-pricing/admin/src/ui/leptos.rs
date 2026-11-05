@@ -1,21 +1,11 @@
 use crate::core::{
-    GLOBAL_CHANNEL_KEY, PriceDraftForm, UNLISTED_CHANNEL_KEY, apply_selected_channel_option,
-    build_discount_draft, build_price_draft, build_price_list_rule_draft,
-    build_price_list_scope_draft, build_product_admin_href, build_product_detail_header_view_model,
-    build_resolution_context, build_variant_card_view_model, clear_price_list_rule_draft,
-    default_variant_price_editor_currency, empty_price_draft, filter_pricing_products,
-    format_adjustment_preview, format_channel_option_label, format_channel_scope_text,
-    format_effective_context, format_price_list_option_label, format_variant_count_label,
-    format_variant_price_editor_title, normalize_channel_value, normalized_currency_code,
-    normalized_price_list_id, normalized_quantity, normalized_region_id, price_draft_from_price,
-    pricing_grid_columns, selected_channel_key, summarize_pricing, text_or_none,
-    unlisted_channel_option_label,
+    build_resolution_context, filter_pricing_products, normalize_channel_value,
+    normalized_currency_code, normalized_price_list_id, normalized_quantity, normalized_region_id,
+    pricing_grid_columns, text_or_none,
 };
 use crate::i18n::t;
 use crate::model::{
-    PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption, PricingPriceDraft,
-    PricingPriceListOption, PricingProductDetail, PricingProductListItem, PricingResolutionContext,
-    PricingVariant,
+    PricingAdminBootstrap, PricingProductDetail, PricingProductListItem, PricingResolutionContext,
 };
 use crate::transport;
 use leptos::prelude::*;
@@ -227,22 +217,13 @@ pub fn PricingAdmin() -> impl IntoView {
     });
 
     let ui_locale_for_list = ui_locale.clone();
-    let ui_locale_for_detail = ui_locale.clone();
-    let ui_locale_for_variants = ui_locale.clone();
-    let ui_locale_for_empty = ui_locale.clone();
-    let ui_locale_for_context = ui_locale.clone();
-    let ui_locale_for_price_list_select = ui_locale.clone();
-    let ui_locale_for_channel_select = ui_locale.clone();
-    let effective_locale_for_detail = effective_locale.clone();
+
     let product_module_route_base = route_context.module_route_base("product");
     let refresh_open_product = open_product;
     let initial_open_product = open_product;
     let list_query_writer = query_writer.clone();
     let context_query_writer = query_writer.clone();
-    let context_query_writer_for_region = query_writer.clone();
-    let context_query_writer_for_price_list = query_writer.clone();
-    let context_query_writer_for_channel = query_writer.clone();
-    let context_query_writer_for_quantity = query_writer.clone();
+
     let refresh_detail = Callback::new(move |_| {
         set_refresh_nonce.update(|value| *value += 1);
         if let Some(product_id) = selected_id.get_untracked() {
@@ -523,11 +504,22 @@ pub fn PricingAdmin() -> impl IntoView {
                         selected=Signal::derive(move || selected.get())
                         applied_resolution_context=Signal::derive(move || applied_resolution_context.get())
                         resolution_currency=resolution_currency
+                        set_resolution_currency=set_resolution_currency
                         resolution_region_id=resolution_region_id
+                        set_resolution_region_id=set_resolution_region_id
                         resolution_price_list_id=resolution_price_list_id
+                        set_resolution_price_list_id=set_resolution_price_list_id
                         resolution_channel_id=resolution_channel_id
+                        set_resolution_channel_id=set_resolution_channel_id
                         resolution_channel_slug=resolution_channel_slug
+                        set_resolution_channel_slug=set_resolution_channel_slug
                         resolution_quantity=resolution_quantity
+                        set_resolution_quantity=set_resolution_quantity
+                        busy=busy
+                        set_busy=set_busy
+                        error=error
+                        set_error=set_error
+                        refresh_detail=refresh_detail
                         context_query_writer=context_query_writer
                         product_module_route_base=product_module_route_base
                         open_product=open_product

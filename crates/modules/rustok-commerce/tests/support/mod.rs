@@ -30,7 +30,6 @@ use rustok_order::entities::{
 use rustok_payment::entities::{
     payment, payment_collection, provider_operation as payment_provider_operation, refund_creation,
 };
-use rustok_pricing::entities::{price, price_list, price_list_translation};
 use rustok_product::entities::{
     product, product_attribute_group, product_brand, product_image, product_image_translation, product_tag,
     product_translation, product_variant, product_variant_axis, product_variant_axis_value,
@@ -212,7 +211,7 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(shipping_profile_translation::Entity),
     )
     .await;
-    create_entity_table(db, &builder, schema.create_table_from_entity(price::Entity)).await;
+    rustok_pricing::ensure_pricing_tables(db).await;
     create_entity_table(db, &builder, schema.create_table_from_entity(cart::Entity)).await;
     create_entity_table(
         db,
@@ -496,18 +495,6 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     ensure_tenant_tables(db).await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(price_list::Entity),
-    )
-    .await;
-    create_entity_table(
-        db,
-        &builder,
-        schema.create_table_from_entity(price_list_translation::Entity),
-    )
-    .await;
     ensure_field_definition_tables(db).await;
     ensure_product_attribute_tables(db).await;
     ensure_catalog_category_tables(db).await;

@@ -55,10 +55,10 @@ pub(super) async fn read(
                 locale: locale.clone(),
                 request,
             }),
-        )
-        .with_token(token)
-        .with_tenant(tenant)
-        .with_locale(Some(locale)),
+        ),
+        token,
+        tenant,
+        Some(locale),
     )
     .await
     .map_err(|_| ())?;
@@ -92,10 +92,10 @@ pub(super) async fn update(
                 idempotency_key: key,
                 input: wire,
             }),
-        )
-        .with_token(token)
-        .with_tenant(tenant)
-        .with_locale(Some(input.locale)),
+        ),
+        token,
+        tenant,
+        Some(input.locale),
     )
     .await;
     match response {

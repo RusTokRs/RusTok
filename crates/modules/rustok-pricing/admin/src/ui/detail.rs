@@ -1,37 +1,51 @@
 use leptos::prelude::*;
-use leptos_ui_routing::UiRouteQueryWriter;
+use leptos_ui_routing::RouteQueryWriter;
 use rustok_ui_core::AdminQueryKey;
 
 use super::editors::*;
 use crate::core::*;
 use crate::i18n::t;
 use crate::model::*;
-use crate::transport::{self, ApiError};
+use crate::transport::ApiError;
 
 #[component]
 pub(crate) fn PricingDetailSection(
     ui_locale: Option<String>,
     effective_locale: Option<String>,
-    bootstrap: Resource<Result<PricingAdminBootstrap, ApiError>>,
-    context_active_price_lists: Resource<Result<Vec<PricingPriceListOption>, ApiError>>,
+    bootstrap: LocalResource<Result<PricingAdminBootstrap, ApiError>>,
+    context_active_price_lists: LocalResource<Result<Vec<PricingPriceListOption>, ApiError>>,
     selected: Signal<Option<PricingProductDetail>>,
     applied_resolution_context: Signal<Option<PricingResolutionContext>>,
-    resolution_currency: RwSignal<String>,
-    resolution_region_id: RwSignal<String>,
-    resolution_price_list_id: RwSignal<String>,
-    resolution_channel_id: RwSignal<String>,
-    resolution_channel_slug: RwSignal<String>,
-    resolution_quantity: RwSignal<String>,
-    context_query_writer: UiRouteQueryWriter,
+    resolution_currency: ReadSignal<String>,
+    set_resolution_currency: WriteSignal<String>,
+    resolution_region_id: ReadSignal<String>,
+    set_resolution_region_id: WriteSignal<String>,
+    resolution_price_list_id: ReadSignal<String>,
+    set_resolution_price_list_id: WriteSignal<String>,
+    resolution_channel_id: ReadSignal<String>,
+    set_resolution_channel_id: WriteSignal<String>,
+    resolution_channel_slug: ReadSignal<String>,
+    set_resolution_channel_slug: WriteSignal<String>,
+    resolution_quantity: ReadSignal<String>,
+    set_resolution_quantity: WriteSignal<String>,
+    busy: ReadSignal<bool>,
+    set_busy: WriteSignal<bool>,
+    error: ReadSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    refresh_detail: Callback<()>,
+    context_query_writer: RouteQueryWriter,
     product_module_route_base: String,
     open_product: Callback<String>,
 ) -> impl IntoView {
+    let _ = set_busy;
+    let _ = set_error;
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_variants = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
     let ui_locale_for_price_list_select = ui_locale.clone();
     let ui_locale_for_channel_select = ui_locale.clone();
     let effective_locale_for_detail = effective_locale.clone();
+    let ui_locale_for_context = ui_locale.clone();
 
     let context_query_writer_for_region = context_query_writer.clone();
     let context_query_writer_for_price_list = context_query_writer.clone();
@@ -258,9 +272,10 @@ pub(crate) fn PricingDetailSection(
                             <button
                                 type="button"
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                disabled=move || busy.get() || selected_id.get().is_none()
+                                disabled=move || busy.get() || selected.get().is_none()
                                 on:click=move |_| {
-                                    if let Some(product_id) = selected_id.get() {
+                                    if let Some(detail) = selected.get() {
+                                        let product_id = detail.id;
                                         open_product.run(product_id);
                                     }
                                 }

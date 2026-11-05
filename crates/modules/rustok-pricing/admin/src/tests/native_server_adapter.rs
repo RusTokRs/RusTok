@@ -1,7 +1,9 @@
-use super::*;
+use uuid::Uuid;
+use leptos::prelude::*;
+use rustok_api::HostRuntimeContext;
+use crate::core::*;
 use crate::model::*;
 use crate::transport::native_server_adapter::*;
-
     fn pricing_projection_test_context(tenant_id: Uuid, locale: &str) -> rustok_api::PortContext {
         rustok_api::PortContext::new(
             tenant_id.to_string(),
@@ -76,6 +78,71 @@ use crate::transport::native_server_adapter::*;
         .expect("channel should be inserted");
     }
 
+    async fn load_base_price(
+        db: &sea_orm::DatabaseConnection,
+        variant_id: Uuid,
+    ) -> (rust_decimal::Decimal, Option<rust_decimal::Decimal>) {
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Sqlite,
+                "SELECT amount, compare_at_amount FROM prices WHERE variant_id = ? AND currency_code = 'USD' AND price_list_id IS NULL AND channel_id IS NULL AND min_quantity IS NULL AND max_quantity IS NULL LIMIT 1",
+                vec![variant_id.into()],
+            ))
+            .await
+            .expect("price row query should succeed")
+            .expect("base row should exist");
+
+        (
+            row.try_get("", "amount").expect("valid amount"),
+            row.try_get("", "compare_at_amount").expect("valid compare_at"),
+        )
+    }
+
+    async fn load_base_price_full(
+        db: &sea_orm::DatabaseConnection,
+        variant_id: Uuid,
+    ) -> (
+        rust_decimal::Decimal,
+        Option<rust_decimal::Decimal>,
+        Option<i64>,
+        Option<i64>,
+    ) {
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Sqlite,
+                "SELECT amount, compare_at_amount, legacy_amount, legacy_compare_at_amount FROM prices WHERE variant_id = ? AND currency_code = 'USD' AND price_list_id IS NULL AND channel_id IS NULL AND min_quantity IS NULL AND max_quantity IS NULL LIMIT 1",
+                vec![variant_id.into()],
+            ))
+            .await
+            .expect("price row query should succeed")
+            .expect("base row should exist");
+
+        (
+            row.try_get("", "amount").expect("valid amount"),
+            row.try_get("", "compare_at_amount").expect("valid compare_at"),
+            row.try_get("", "legacy_amount").expect("valid legacy_amount"),
+            row.try_get("", "legacy_compare_at_amount").expect("valid legacy_compare_at"),
+        )
+    }
+
+    async fn count_prices(
+        db: &sea_orm::DatabaseConnection,
+        variant_id: Uuid,
+        price_list_id: Uuid,
+    ) -> u64 {
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Sqlite,
+                "SELECT count(*) as count FROM prices WHERE variant_id = ? AND price_list_id = ?",
+                vec![variant_id.into(), price_list_id.into()],
+            ))
+            .await
+            .expect("query should succeed")
+            .expect("count row exists");
+        let count: i64 = row.try_get("", "count").expect("valid count");
+        count as u64
+    }
+
     async fn create_test_product(
         catalog: &CatalogService,
         tenant_id: Uuid,
@@ -87,6 +154,7 @@ use crate::transport::native_server_adapter::*;
                 actor_id,
                 rustok_product::dto::CreateProductInput {
                     attribute_values: Default::default(),
+                    brands: vec![],
                     translations: vec![rustok_product::dto::ProductTranslationInput {
                         locale: "en".to_string(),
                         title: "Tiered Pricing Product".to_string(),
@@ -643,28 +711,19 @@ use crate::transport::native_server_adapter::*;
         .await
         .expect("fractional update should succeed");
 
-        let price = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::CurrencyCode.eq("USD"))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.is_null())
-            .filter(rustok_pricing::entities::price::Column::ChannelId.is_null())
-            .filter(rustok_pricing::entities::price::Column::MinQuantity.is_null())
-            .filter(rustok_pricing::entities::price::Column::MaxQuantity.is_null())
-            .one(&db)
-            .await
-            .expect("price row query should succeed")
-            .expect("base row should exist");
+        let (amount, compare_at_amount, legacy_amount, legacy_compare_at_amount) =
+            load_base_price_full(&db, variant_id).await;
 
         assert_eq!(
-            price.amount,
+            amount,
             rust_decimal::Decimal::from_str("79.994").expect("valid decimal")
         );
         assert_eq!(
-            price.compare_at_amount,
+            compare_at_amount,
             Some(rust_decimal::Decimal::from_str("99.996").expect("valid decimal"))
         );
-        assert_eq!(price.legacy_amount, Some(7999));
-        assert_eq!(price.legacy_compare_at_amount, Some(10000));
+        assert_eq!(legacy_amount, Some(7999));
+        assert_eq!(legacy_compare_at_amount, Some(10000));
     }
 
     #[tokio::test]
@@ -735,25 +794,16 @@ use crate::transport::native_server_adapter::*;
         .await
         .expect("compare_at clear should succeed");
 
-        let price = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::CurrencyCode.eq("USD"))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.is_null())
-            .filter(rustok_pricing::entities::price::Column::ChannelId.is_null())
-            .filter(rustok_pricing::entities::price::Column::MinQuantity.is_null())
-            .filter(rustok_pricing::entities::price::Column::MaxQuantity.is_null())
-            .one(&db)
-            .await
-            .expect("price row query should succeed")
-            .expect("base row should exist");
+        let (amount, compare_at_amount, legacy_amount, legacy_compare_at_amount) =
+            load_base_price_full(&db, variant_id).await;
 
         assert_eq!(
-            price.amount,
+            amount,
             rust_decimal::Decimal::from_str("89.99").expect("valid decimal")
         );
-        assert_eq!(price.compare_at_amount, None);
-        assert_eq!(price.legacy_amount, Some(8999));
-        assert_eq!(price.legacy_compare_at_amount, None);
+        assert_eq!(compare_at_amount, None);
+        assert_eq!(legacy_amount, Some(8999));
+        assert_eq!(legacy_compare_at_amount, None);
     }
 
     #[tokio::test]
@@ -1764,12 +1814,7 @@ use crate::transport::native_server_adapter::*;
         let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
         let price_list_id = create_future_price_list(&db, tenant_id, "active").await;
 
-        let count_before = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_before = count_prices(&db, variant_id, price_list_id).await;
 
         let error = apply_variant_discount_native_with_context(
             &app_ctx,
@@ -1787,12 +1832,7 @@ use crate::transport::native_server_adapter::*;
         .await
         .expect_err("future list should be rejected");
 
-        let count_after = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_after = count_prices(&db, variant_id, price_list_id).await;
 
         assert!(error.to_string().contains("not active yet"));
         assert_eq!(count_before, 0);
@@ -1831,12 +1871,7 @@ use crate::transport::native_server_adapter::*;
         let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
         let price_list_id = create_expired_price_list(&db, tenant_id, "active").await;
 
-        let count_before = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_before = count_prices(&db, variant_id, price_list_id).await;
 
         let error = apply_variant_discount_native_with_context(
             &app_ctx,
@@ -1854,12 +1889,7 @@ use crate::transport::native_server_adapter::*;
         .await
         .expect_err("expired list should be rejected");
 
-        let count_after = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_after = count_prices(&db, variant_id, price_list_id).await;
 
         assert!(error.to_string().contains("already expired"));
         assert_eq!(count_before, 0);
@@ -1929,12 +1959,7 @@ use crate::transport::native_server_adapter::*;
             .await
             .expect("scoped override should be created");
 
-        let count_before = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_before = count_prices(&db, variant_id, price_list_id).await;
 
         let error = apply_variant_discount_native_with_context(
             &app_ctx,
@@ -1952,12 +1977,7 @@ use crate::transport::native_server_adapter::*;
         .await
         .expect_err("mismatched channel should be rejected");
 
-        let count_after = rustok_pricing::entities::price::Entity::find()
-            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
-            .count(&db)
-            .await
-            .expect("price count should load");
+        let count_after = count_prices(&db, variant_id, price_list_id).await;
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
@@ -2658,4 +2678,3 @@ use crate::transport::native_server_adapter::*;
 
         assert!(error.to_string().contains("products:update required"));
     }
-}

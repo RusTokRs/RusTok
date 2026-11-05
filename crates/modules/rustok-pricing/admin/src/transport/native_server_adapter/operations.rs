@@ -4,6 +4,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::str::FromStr;
 use uuid::Uuid;
 
+use crate::core::{parse_optional_uuid_string, sanitize_channel_slug, text_or_none};
 use crate::model::{
     PricingAdjustmentPreview, PricingChannelOption, PricingDiscountDraft, PricingPriceDraft,
     PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
@@ -431,5 +432,3 @@ pub(crate) async fn update_price_list_scope_native_with_context(
         .map(map_native_price_list_option)
         .map_err(ServerFnError::new)
 }
-
-#[cfg(feature = "ssr")]

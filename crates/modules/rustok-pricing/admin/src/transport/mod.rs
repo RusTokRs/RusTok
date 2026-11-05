@@ -9,7 +9,7 @@ use crate::model::{
     PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
     PricingProductDetail, PricingProductList,
 };
-use native_server_adapter::ApiError;
+pub use native_server_adapter::ApiError;
 
 fn selected_transport_path() -> UiTransportPath {
     if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {

@@ -60,10 +60,10 @@ pub(super) async fn create(
                 product_id: scope.product_id,
                 input,
             }),
-        )
-        .with_token(token)
-        .with_tenant(tenant_slug)
-        .with_locale(Some(scope.locale)),
+        ),
+        token,
+        tenant_slug,
+        Some(scope.locale),
     )
     .await;
     match result {

@@ -1,6 +1,7 @@
 pub mod price_list_owner;
 pub mod product_pricing_port;
 pub mod read_context;
+pub mod schema;
 pub mod translation_changes;
 pub mod translation_target;
 pub mod write_context;
@@ -8,6 +9,7 @@ pub mod write_context;
 pub use price_list_owner::in_process_price_list_owner_port;
 pub use product_pricing_port::{PricingProductPricingPortAdapter, in_process_product_pricing_port};
 pub use read_context::{InProcessPricingReadPort, in_process_pricing_read_port};
+pub use schema::ensure_pricing_tables;
 pub use translation_changes::{
     MAX_PRICE_LIST_TRANSLATION_CHANGE_PAGE, PriceListTranslationChangeLifecycle,
     PriceListTranslationChangeRecord,

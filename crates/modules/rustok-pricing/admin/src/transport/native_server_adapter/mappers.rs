@@ -75,7 +75,7 @@ pub(crate) fn map_channel_option(value: rustok_channel::ChannelResponse) -> Pric
 
 #[cfg(feature = "ssr")]
 
-pub(crate) pub(crate) fn map_native_list_item(
+pub(crate) fn map_native_list_item(
     value: rustok_pricing::AdminPricingProductListItem,
 ) -> PricingProductListItem {
     PricingProductListItem {
