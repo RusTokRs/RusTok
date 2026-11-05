@@ -28,7 +28,7 @@ pub struct AdminChildPageRegistration {
     pub nav_label: &'static str,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AdminPageRegistration {
     pub module_slug: &'static str,
     pub route_segment: &'static str,
@@ -36,6 +36,17 @@ pub struct AdminPageRegistration {
     pub child_pages: &'static [AdminChildPageRegistration],
     pub render: fn() -> AnyView,
 }
+
+impl PartialEq for AdminPageRegistration {
+    fn eq(&self, other: &Self) -> bool {
+        self.module_slug == other.module_slug
+            && self.route_segment == other.route_segment
+            && self.title == other.title
+            && self.child_pages == other.child_pages
+    }
+}
+
+impl Eq for AdminPageRegistration {}
 
 static REGISTRY: RwLock<Vec<AdminComponentRegistration>> = RwLock::new(Vec::new());
 static PAGE_REGISTRY: RwLock<Vec<AdminPageRegistration>> = RwLock::new(Vec::new());

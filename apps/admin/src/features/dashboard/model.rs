@@ -10,20 +10,20 @@ pub struct DashboardStatsResponse {
 pub struct DashboardStats {
     #[serde(rename = "totalUsers")]
     pub total_users: i64,
-    #[serde(rename = "totalPosts")]
-    pub total_posts: i64,
-    #[serde(rename = "totalOrders")]
-    pub total_orders: i64,
-    #[serde(rename = "totalRevenue")]
-    pub total_revenue: i64,
     #[serde(rename = "usersChange")]
     pub users_change: f64,
-    #[serde(rename = "postsChange")]
-    pub posts_change: f64,
-    #[serde(rename = "ordersChange")]
-    pub orders_change: f64,
-    #[serde(rename = "revenueChange")]
-    pub revenue_change: f64,
+    #[serde(default, rename = "totalPosts")]
+    pub total_posts: Option<i64>,
+    #[serde(default, rename = "totalOrders")]
+    pub total_orders: Option<i64>,
+    #[serde(default, rename = "totalRevenue")]
+    pub total_revenue: Option<i64>,
+    #[serde(default, rename = "postsChange")]
+    pub posts_change: Option<f64>,
+    #[serde(default, rename = "ordersChange")]
+    pub orders_change: Option<f64>,
+    #[serde(default, rename = "revenueChange")]
+    pub revenue_change: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

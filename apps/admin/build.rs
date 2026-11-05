@@ -330,7 +330,9 @@ fn render_admin_registry_codegen(
     core_modules: &[CoreModuleEntry],
 ) -> String {
     let mut out = String::new();
+    out.push_str("#[allow(unused_imports)]\n");
     out.push_str("use leptos::prelude::*;\n");
+    out.push_str("#[allow(unused_imports)]\n");
     out.push_str(
         "use crate::app::modules::{register_component, register_page, AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot};\n\n",
     );

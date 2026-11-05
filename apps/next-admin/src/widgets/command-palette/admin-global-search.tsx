@@ -94,7 +94,26 @@ function buildSearchFallbackHref(
 }
 
 function resolveAdminHref(query: string, item: AdminGlobalSearchItem): string {
+  if (item.url && item.url.trim().length > 0) {
+    return item.url;
+  }
+
   const payload = parsePayload(item.payload);
+  if (
+    payload &&
+    typeof payload.url === 'string' &&
+    payload.url.trim().length > 0
+  ) {
+    return payload.url;
+  }
+
+  if (
+    payload &&
+    typeof payload.href === 'string' &&
+    payload.href.trim().length > 0
+  ) {
+    return payload.href;
+  }
 
   if (item.entityType === 'product') {
     return `/dashboard/product/${item.id}`;

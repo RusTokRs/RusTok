@@ -9,7 +9,7 @@ pub const USER_DETAILS_QUERY: &str =
 pub const USER_DETAILS_QUERY_HASH: &str =
     "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7";
 
-pub const DASHBOARD_STATS_QUERY: &str = "query DashboardStats { dashboardStats { totalUsers totalPosts totalOrders totalRevenue usersChange postsChange ordersChange revenueChange } }";
+pub const DASHBOARD_STATS_QUERY: &str = "query DashboardStats { dashboardStats { totalUsers usersChange } }";
 
 pub const RECENT_ACTIVITY_QUERY: &str = "query RecentActivity($limit: Int!) { recentActivity(limit: $limit) { id type description timestamp user { id name } } }";
 

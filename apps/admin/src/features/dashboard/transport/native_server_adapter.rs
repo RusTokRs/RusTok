@@ -36,50 +36,19 @@ pub(super) async fn dashboard_stats_native() -> Result<DashboardStatsResponse, S
         )
         .await
         .map_err(|err| server_error(err.to_string()))?;
-        let post_stats = load_period_count_snapshot(
-            runtime.db(),
-            "nodes",
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-            Some(match runtime.db().get_database_backend() {
-                DbBackend::Sqlite => " AND kind = ?4",
-                _ => " AND kind = $4",
-            }),
-            Some("post"),
-        )
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
-        let order_stats = load_order_stats_snapshot(
-            runtime.db(),
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-        )
-        .await
-        .map_err(|err| server_error(err.to_string()))?;
         Ok(DashboardStatsResponse {
             dashboard_stats: Some(DashboardStats {
                 total_users: user_stats.total_count,
-                total_posts: post_stats.total_count,
-                total_orders: order_stats.total_orders,
-                total_revenue: order_stats.total_revenue,
                 users_change: calculate_percent_change(
                     user_stats.current_count,
                     user_stats.previous_count,
                 ),
-                posts_change: calculate_percent_change(
-                    post_stats.current_count,
-                    post_stats.previous_count,
-                ),
-                orders_change: calculate_percent_change(
-                    order_stats.current_orders,
-                    order_stats.previous_orders,
-                ),
-                revenue_change: calculate_percent_change(
-                    order_stats.current_revenue,
-                    order_stats.previous_revenue,
-                ),
+                total_posts: None,
+                total_orders: None,
+                total_revenue: None,
+                posts_change: None,
+                orders_change: None,
+                revenue_change: None,
             }),
         })
     }
@@ -118,17 +87,6 @@ pub(super) async fn recent_activity_native(
         ))
     }
 }
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct OrderStatsSnapshot {
-    pub(super) total_orders: i64,
-    pub(super) total_revenue: i64,
-    pub(super) current_orders: i64,
-    pub(super) previous_orders: i64,
-    pub(super) current_revenue: i64,
-    pub(super) previous_revenue: i64,
-}
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct PeriodCountSnapshot {
@@ -221,91 +179,6 @@ pub(crate) async fn load_period_count_snapshot(
         total_count: row.try_get("", "total_count")?,
         current_count: row.try_get("", "current_count")?,
         previous_count: row.try_get("", "previous_count")?,
-    })
-}
-
-#[cfg(feature = "ssr")]
-pub(crate) async fn load_order_stats_snapshot(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    current_period_start: chrono::DateTime<Utc>,
-    previous_period_start: chrono::DateTime<Utc>,
-) -> std::result::Result<OrderStatsSnapshot, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let tenant_id = tenant_id.to_string();
-
-    let statement = match backend {
-        DbBackend::Sqlite => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                CAST(COUNT(*) AS INTEGER) AS total_orders,
-                CAST(COALESCE(SUM(COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)), 0) AS INTEGER) AS total_revenue,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS current_orders,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?3 AND created_at < ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS previous_orders,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS current_revenue,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?3 AND created_at < ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  json_extract(payload, '$.tenant_id') = ?1
-                  OR json_extract(payload, '$.event.tenant_id') = ?1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-        _ => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total_orders,
-                COALESCE(SUM(COALESCE((payload->'event'->'data'->>'total')::bigint, 0)), 0)::bigint AS total_revenue,
-                COALESCE(SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END), 0)::bigint AS current_orders,
-                COALESCE(SUM(CASE WHEN created_at >= $3 AND created_at < $2 THEN 1 ELSE 0 END), 0)::bigint AS previous_orders,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS current_revenue,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $3 AND created_at < $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  payload->>'tenant_id' = $1
-                  OR payload->'event'->>'tenant_id' = $1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-    };
-
-    let Some(row) = db.query_one_raw(statement).await? else {
-        return Ok(OrderStatsSnapshot::default());
-    };
-
-    Ok(OrderStatsSnapshot {
-        total_orders: row.try_get("", "total_orders")?,
-        total_revenue: row.try_get("", "total_revenue")?,
-        current_orders: row.try_get("", "current_orders")?,
-        previous_orders: row.try_get("", "previous_orders")?,
-        current_revenue: row.try_get("", "current_revenue")?,
-        previous_revenue: row.try_get("", "previous_revenue")?,
     })
 }
 
