@@ -34,7 +34,7 @@ If two mandatory rules genuinely conflict, surface the conflict and resolve it t
 
 ## 2. Required start protocol
 
-Full-stack (§2.1) and cross-cutting (§2.1.1) audit execution protocols are conditional. They apply only when the user explicitly requests execution or continuation of the corresponding audit plan, including its canonical trigger. Reading this file, requesting an ideal implementation, or performing ordinary development does not activate an audit protocol.
+Full-stack (§2.1), cross-cutting (§2.1.1), and architecture/documentation (§2.1.2) audit execution protocols are conditional. They apply only when the user explicitly requests execution or continuation of the corresponding audit plan, including its canonical trigger. Reading this file, requesting an ideal implementation, or performing ordinary development does not activate an audit protocol.
 
 For ordinary features, bug fixes, and targeted refactoring, agents MUST NOT start or advance audit ledger phases, read audit-only ledgers or exhaustive audit runbooks solely because they are referenced here, or silently expand the task into an unrelated full-crate audit. The general start protocol below, all repository-wide engineering rules, root-cause investigation, affected-boundary completeness, and cross-client parity remain mandatory. Only audit-specific exhaustive *whole-crate* inspection, zero-known-defect remediation across unrelated crate functionality, and phase-completion requirements are conditional.
 
@@ -80,6 +80,22 @@ When that instruction is given, the contributor or AI agent MUST:
 3. Identify the active cross-cutting phase (`CC-XX`) and its CodeGraph query targets.
 4. Use `codegraph_explore` (or CodeGraph CLI) to trace blast radius and call flow across all modules and boundaries.
 5. Follow the same atomic remediation, scoped verification, and ledger recording protocols as §2.1.
+
+### 2.1.2 Architecture, Documentation & ADR Governance Audit Contract (DAR)
+
+The canonical trigger for the deep audit, reconciliation, and hygiene of documentation, architecture maps, and ADRs is:
+
+`реализуй план аудита документации`
+*(or `реализуй план актуализации adr` / `execute documentation audit plan`)*
+
+When that instruction is given, the contributor or AI agent MUST:
+1. Read `docs/standards/docs-governance-ledger.md`, the canonical living ledger for architecture and documentation governance.
+2. Identify the active phase (`DAR-XX`) and its target documentation scope.
+3. **Deep Architectural Understanding (No Dogma, No Slop):** Contributors and agents MUST understand the domain semantics and actual executable code before editing documentation. An agent MUST NOT blindly enforce or copy obsolete rules, generate machine-stub filler, or preserve demonstrably flawed decisions merely because they were documented. Flawed or outdated decisions MUST be corrected or superseded under §11.
+4. **Reconcile with Code Reality:** Verify documented types, ports, database tables, and configuration against the current code (`crates/`, `apps/`, and schemas).
+5. **Consolidate and De-slop:** Consolidate redundant, fragmented, or machine-generated placeholder documents into high-signal specifications; archive or delete finished ephemeral implementation plans.
+6. **Scoped Verification:** Run `npm run verify:docs`, `npm run verify:adrs`, `npm run verify:manifest`, and relevant scoped crate checks. Ensure zero documentation errors or broken links.
+7. Mark the phase complete in `docs/standards/docs-governance-ledger.md` and record verified changes.
 
 
 Before changing repository content, contributors and agents MUST:

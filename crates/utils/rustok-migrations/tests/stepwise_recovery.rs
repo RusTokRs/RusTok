@@ -1,4 +1,4 @@
-use rustok_migrations::execution::{ExecutionError, StepRunner};
+use rustok_migrations::execution::{ExecutionError, ExecutionPhase, StepRunner};
 use sea_orm_migration::{
     prelude::*,
     sea_orm::{Database, DatabaseConnection, DbBackend, Statement},
@@ -76,6 +76,17 @@ fn plan(fail: bool) -> Vec<Box<dyn MigrationTrait>> {
     ]
 }
 
+fn phase(prefix: &[&str], steps: &[&str]) -> ExecutionPhase {
+    ExecutionPhase {
+        expected_prefix: prefix.iter().map(|name| (*name).into()).collect(),
+        steps: steps.iter().map(|name| (*name).into()).collect(),
+    }
+}
+
+fn first_phase() -> ExecutionPhase {
+    phase(&[], &["create", "backfill"])
+}
+
 async fn scalar(db: &DatabaseConnection, sql: &str) -> Result<i64> {
     Ok(db
         .query_one_raw(Statement::from_string(DbBackend::Postgres, sql))
@@ -118,6 +129,54 @@ async fn rejects_unsupported_plans_before_connecting() {
         StepRunner::connect("invalid URL", vec![Box::new(nontransactional)]).await,
         Err(ExecutionError::UnsupportedRecovery(_))
     ));
+}
+
+#[tokio::test]
+async fn rejects_inexact_phases_before_connecting() {
+    for request in [
+        phase(&[], &[]),
+        phase(&["create"], &[]),
+        phase(&[], &["backfill"]),
+        phase(&[], &["create", "tail"]),
+        phase(&[], &["create", "backfill", "tail", "unknown"]),
+        phase(&["create", "tail"], &["backfill"]),
+        phase(&["backfill"], &["tail"]),
+        phase(&["create"], &["create"]),
+        phase(&["create"], &[" backfill"]),
+        phase(&["create"], &[""]),
+    ] {
+        assert!(
+            matches!(
+                StepRunner::connect_phase("invalid URL", plan(false), request.clone()).await,
+                Err(ExecutionError::InvalidPhase)
+            ),
+            "accepted inexact phase: {request:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn phase_recovery_policy_applies_only_to_selected_steps() {
+    for index in 0..3 {
+        let mut steps = plan(false);
+        let mut nontransactional =
+            Script::migration(["create", "backfill", "tail"][index], "SELECT 1");
+        nontransactional.transaction = Some(false);
+        steps[index] = Box::new(nontransactional);
+        let result =
+            StepRunner::connect_phase("invalid URL", steps, phase(&["create"], &["backfill"]))
+                .await;
+        if index == 1 {
+            assert!(matches!(
+                result,
+                Err(ExecutionError::UnsupportedRecovery(_))
+            ));
+        } else {
+            // A valid phase reaches connection validation even if an applied
+            // prerequisite or unselected future step requires separate recovery.
+            assert!(matches!(result, Err(ExecutionError::Connection(_))));
+        }
+    }
 }
 
 #[tokio::test]
@@ -176,6 +235,10 @@ async fn postgres_stepwise_failure_cancellation_and_restart() -> Result {
 async fn run_recovery_scenarios(url: String, admin: DatabaseConnection) -> Result {
     let db = Database::connect(&url).await?;
     let result = async {
+        bounded_phase_boundaries(&url, &db).await?;
+        reset(&db).await?;
+        phase_failure_and_restart(&url, &db).await?;
+        reset(&db).await?;
         transaction_failure_and_restart(&url, &db).await?;
         reset(&db).await?;
         cancellation(&url, &db).await?;
@@ -201,6 +264,128 @@ async fn run_recovery_scenarios(url: String, admin: DatabaseConnection) -> Resul
     }
 }
 
+async fn bounded_phase_boundaries(url: &str, db: &DatabaseConnection) -> Result {
+    assert!(matches!(
+        StepRunner::connect_phase(url, plan(false), phase(&["create"], &["backfill"])).await,
+        Err(ExecutionError::JournalOutsidePhase)
+    ));
+    assert_eq!(
+        scalar(
+            db,
+            "SELECT (to_regclass('public.seaql_migrations') IS NOT NULL)::int::bigint AS value"
+        )
+        .await?,
+        0
+    );
+    assert_eq!(
+        scalar(
+            db,
+            "SELECT (to_regclass('public.effects') IS NOT NULL)::int::bigint AS value"
+        )
+        .await?,
+        0
+    );
+
+    let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
+    assert_eq!(
+        runner.pending_migrations()?.collect::<Vec<_>>(),
+        ["create", "backfill"]
+    );
+    assert!(matches!(
+        StepRunner::connect_phase(url, plan(false), first_phase()).await,
+        Err(ExecutionError::ConcurrentWriter)
+    ));
+    assert_eq!(runner.apply_next().await?, Some("create".into()));
+    assert_state(db, 1, 1, 1).await?;
+    runner.close().await?;
+    assert!(matches!(
+        StepRunner::connect_phase(url, plan(false), phase(&["create", "backfill"], &["tail"]))
+            .await,
+        Err(ExecutionError::JournalOutsidePhase)
+    ));
+    assert_state(db, 1, 1, 1).await?;
+
+    let mut steps = plan(false);
+    let mut tail = Script::migration("tail", "INSERT INTO effects VALUES (2, 20)");
+    tail.transaction = Some(false);
+    steps[2] = Box::new(tail);
+    let mut runner = StepRunner::connect_phase(url, steps, first_phase()).await?;
+    assert_eq!(
+        runner.pending_migrations()?.collect::<Vec<_>>(),
+        ["backfill"]
+    );
+    assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+    assert_eq!(runner.apply_next().await?, None);
+    assert_eq!(runner.apply_next().await?, None);
+    assert!(runner.pending_migrations()?.next().is_none());
+    assert_state(db, 2, 2, 1).await?;
+    runner.close().await?;
+
+    // Completed retry verifies the boundary and cannot advance into the suffix.
+    let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
+    assert_eq!(runner.apply_next().await?, None);
+    db.execute_unprepared("INSERT INTO seaql_migrations VALUES ('foreign', 1)")
+        .await?;
+    assert!(matches!(
+        runner.apply_next().await,
+        Err(ExecutionError::InvalidJournal)
+    ));
+    assert!(matches!(
+        runner.pending_migrations(),
+        Err(ExecutionError::Interrupted)
+    ));
+    runner.close().await?;
+    db.execute_unprepared("DELETE FROM seaql_migrations WHERE version='foreign'")
+        .await?;
+    assert_state(db, 2, 2, 1).await?;
+
+    let mut runner =
+        StepRunner::connect_phase(url, plan(false), phase(&["create"], &["backfill"])).await?;
+    assert_eq!(runner.apply_next().await?, None);
+    runner.close().await?;
+    let mut runner =
+        StepRunner::connect_phase(url, plan(false), phase(&["create", "backfill"], &["tail"]))
+            .await?;
+    assert_eq!(runner.apply_next().await?, Some("tail".into()));
+    assert_eq!(runner.apply_next().await?, None);
+    runner.close().await?;
+    assert!(matches!(
+        StepRunner::connect_phase(url, plan(false), first_phase()).await,
+        Err(ExecutionError::JournalOutsidePhase)
+    ));
+    assert_state(db, 2, 3, 2).await?;
+    Ok(())
+}
+
+async fn phase_failure_and_restart(url: &str, db: &DatabaseConnection) -> Result {
+    let mut runner = StepRunner::connect_phase(url, plan(true), first_phase()).await?;
+    assert_eq!(runner.apply_next().await?, Some("create".into()));
+    assert!(matches!(
+        runner.apply_next().await,
+        Err(ExecutionError::Migration { .. })
+    ));
+    assert!(matches!(
+        runner.apply_next().await,
+        Err(ExecutionError::Interrupted)
+    ));
+    runner.close().await?;
+    assert_state(db, 1, 1, 1).await?;
+    assert_eq!(
+        scalar(
+            db,
+            "SELECT (to_regclass('public.partial_table') IS NOT NULL)::int::bigint AS value"
+        )
+        .await?,
+        0
+    );
+    let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
+    assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+    assert_eq!(runner.apply_next().await?, None);
+    assert_state(db, 2, 2, 1).await?;
+    runner.close().await?;
+    Ok(())
+}
+
 async fn process_fixture(url: &str) -> Result {
     let parsed = url::Url::parse(url)?;
     if !parsed.path().starts_with("/rustok_step_") {
@@ -214,7 +399,7 @@ async fn process_fixture(url: &str) -> Result {
         wait: true,
         transaction: None,
     });
-    let mut runner = StepRunner::connect(url, steps).await?;
+    let mut runner = StepRunner::connect_phase(url, steps, first_phase()).await?;
     while runner.apply_next().await?.is_some() {}
     runner.close().await?;
     Err("process fixture unexpectedly completed".into())
@@ -251,8 +436,9 @@ async fn process_interruption(url: &str, db: &DatabaseConnection) -> Result {
             Ok::<_, Box<dyn Error + Send + Sync>>(())
         }).await??;
         assert_state(db, 1, 1, 1).await?;
-        let mut runner = StepRunner::connect(url, plan(false)).await?;
+        let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
         assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+        assert_eq!(runner.apply_next().await?, None);
         assert_state(db, 2, 2, 1).await?;
         runner.close().await?;
         Ok::<_, Box<dyn Error + Send + Sync>>(())
@@ -328,7 +514,7 @@ async fn cancellation(url: &str, db: &DatabaseConnection) -> Result {
         wait: true,
         transaction: None,
     });
-    let mut runner = StepRunner::connect(url, steps).await?;
+    let mut runner = StepRunner::connect_phase(url, steps, first_phase()).await?;
     runner.apply_next().await?;
     {
         let apply = runner.apply_next();
@@ -349,8 +535,9 @@ async fn cancellation(url: &str, db: &DatabaseConnection) -> Result {
     ));
     runner.close().await?;
     assert_state(db, 1, 1, 1).await?;
-    let mut runner = StepRunner::connect(url, plan(false)).await?;
+    let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
     assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+    assert_eq!(runner.apply_next().await?, None);
     assert_state(db, 2, 2, 1).await?;
     runner.close().await?;
     Ok(())
@@ -372,7 +559,7 @@ async fn session_loss(
             transaction: None,
         });
     }
-    let mut runner = StepRunner::connect(url, steps).await?;
+    let mut runner = StepRunner::connect_phase(url, steps, first_phase()).await?;
     let pid = scalar(
         runner.database(),
         "SELECT pg_backend_pid()::bigint AS value",
@@ -410,8 +597,9 @@ async fn session_loss(
     ));
     runner.close().await?;
     assert_state(db, 1, 1, 1).await?;
-    let mut runner = StepRunner::connect(url, plan(false)).await?;
+    let mut runner = StepRunner::connect_phase(url, plan(false), first_phase()).await?;
     assert_eq!(runner.apply_next().await?, Some("backfill".into()));
+    assert_eq!(runner.apply_next().await?, None);
     assert_state(db, 2, 2, 1).await?;
     runner.close().await?;
     Ok(())

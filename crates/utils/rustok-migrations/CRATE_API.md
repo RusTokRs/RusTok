@@ -26,8 +26,17 @@
   further execution in that instance. Plans containing nontransactional steps
   fail admission until owner-defined recovery is supported. No replacement
   authority is granted.
+- `execution::ExecutionPhase { expected_prefix, steps }`: strict serializable
+  execution restriction. `StepRunner::connect_phase(url, full_plan, phase)`
+  requires their exact concatenation to match a composition prefix and accepts
+  only journals ending within that phase. Pending/executed steps stop at its
+  end; completed retries cannot advance into the suffix. A missing prerequisite
+  or journal beyond the end fails before journal installation. Recovery policy
+  is checked on selected steps. This type is not production authorization or
+  source/schema identity evidence. Installer bootstrap is unchanged.
 - `execution::ExecutionError`: distinguishes invalid plans/journals, unsupported
-  recovery, a competing writer, an interrupted runner and database/step failures.
+  recovery, invalid phases, out-of-phase journals, a competing writer, an
+  interrupted runner, database/step failures and combined execution/cleanup errors.
 - `Migrator`: Authoritative global migrator implementing `sea_orm_migration::MigratorTrait`.
   - `Migrator::migrations() -> Vec<Box<dyn MigrationTrait>>`
 - `SqliteTestMigrator`: Test-only portable schema migrator implementing `sea_orm_migration::MigratorTrait`.
@@ -90,6 +99,10 @@ observer:
 - **Missing Dependency Validation:** Any descriptor referencing a non-existent migration or unsatisfied dependency immediately fails validation rather than partially applying schema.
 - **Duplicate Descriptor Rejection:** Duplicate dependency declarations for the same migration are strictly rejected.
 - **Non-Destructive CLI Operation:** The `rustok-migrate` operational binary strictly permits only `up` and `status` commands; destructive operations (`down`, `fresh`, `reset`, `refresh`) are forbidden at the CLI argument parser.
+- **Explicit CLI Phase:** `up --phase <json-file>` uses the same bounded runner.
+  Requests require both phase fields, reject unknown fields and exceed neither
+  1 MiB nor the compiled composition. Its completion message certifies only the
+  phase boundary; bare `up` and read-only `status` retain their behavior.
 
 ---
 

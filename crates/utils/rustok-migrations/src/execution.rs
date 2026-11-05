@@ -12,6 +12,7 @@ use sea_orm_migration::{
 };
 use std::{
     collections::HashSet,
+    ops::Range,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -24,6 +25,12 @@ use thiserror::Error;
 pub enum ExecutionError {
     #[error("migration plan must be nonempty with distinct, nonempty identities")]
     InvalidPlan,
+    #[error(
+        "phase must name a complete ordered prerequisite prefix and nonempty contiguous steps from the compiled plan"
+    )]
+    InvalidPhase,
+    #[error("migration journal is before the phase prerequisites or beyond its terminal boundary")]
+    JournalOutsidePhase,
     #[error("nontransactional migration {0} requires an owner-proven recovery contract")]
     UnsupportedRecovery(String),
     #[error("another migration writer holds the database lock")]
@@ -38,27 +45,67 @@ pub enum ExecutionError {
     Database(#[from] DbErr),
     #[error("migration session connection failed: {0}")]
     Connection(#[from] sqlx::Error),
+    #[error("{execution}; session cleanup also failed: {cleanup}")]
+    Cleanup {
+        #[source]
+        execution: Box<ExecutionError>,
+        cleanup: DbErr,
+    },
 }
 
 type Result<T> = std::result::Result<T, ExecutionError>;
 
+/// Untrusted execution restriction, not module/release authorization. Both lists
+/// are checked against the full compiled composition by `connect_phase`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionPhase {
+    pub expected_prefix: Vec<String>,
+    pub steps: Vec<String>,
+}
+
+impl ExecutionPhase {
+    fn range(&self, migrations: &[Step]) -> Result<Range<usize>> {
+        let start = self.expected_prefix.len();
+        let end = start
+            .checked_add(self.steps.len())
+            .ok_or(ExecutionError::InvalidPhase)?;
+        if self.steps.is_empty()
+            || end > migrations.len()
+            || !self
+                .expected_prefix
+                .iter()
+                .chain(&self.steps)
+                .zip(&migrations[..end])
+                .all(|(expected, step)| expected == step.name())
+        {
+            return Err(ExecutionError::InvalidPhase);
+        }
+        Ok(start..end)
+    }
+}
+
 #[derive(Clone)]
-struct Step(Arc<dyn MigrationTrait>);
+struct Step {
+    name: Arc<str>,
+    transaction: Option<bool>,
+    migration: Arc<dyn MigrationTrait>,
+}
 
 impl MigrationName for Step {
     fn name(&self) -> &str {
-        self.0.name()
+        &self.name
     }
 }
 
 #[async_trait::async_trait]
 impl MigrationTrait for Step {
     async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-        self.0.up(manager).await
+        self.migration.up(manager).await
     }
 
     fn use_transaction(&self) -> Option<bool> {
-        self.0.use_transaction()
+        self.transaction
     }
 }
 
@@ -92,14 +139,38 @@ enum State {
 pub struct StepRunner {
     database: DatabaseConnection,
     migrations: Vec<Step>,
+    end: usize,
     state: State,
 }
 
 impl StepRunner {
     pub async fn connect(url: &str, migrations: Vec<Box<dyn MigrationTrait>>) -> Result<Self> {
+        Self::connect_plan(url, migrations, None).await
+    }
+
+    /// Execute only the requested contiguous phase while retaining the complete
+    /// plan for predecessor/journal checks. Resume accepts committed prefixes
+    /// inside this phase, including its end, but never outside its boundaries.
+    pub async fn connect_phase(
+        url: &str,
+        migrations: Vec<Box<dyn MigrationTrait>>,
+        phase: ExecutionPhase,
+    ) -> Result<Self> {
+        Self::connect_plan(url, migrations, Some(phase)).await
+    }
+
+    async fn connect_plan(
+        url: &str,
+        migrations: Vec<Box<dyn MigrationTrait>>,
+        phase: Option<ExecutionPhase>,
+    ) -> Result<Self> {
         let migrations: Vec<_> = migrations
             .into_iter()
-            .map(|step| Step(step.into()))
+            .map(|step| Step {
+                name: step.name().into(),
+                transaction: step.use_transaction(),
+                migration: step.into(),
+            })
             .collect();
         let names: HashSet<_> = migrations.iter().map(|step| step.name()).collect();
         if migrations.is_empty()
@@ -108,7 +179,11 @@ impl StepRunner {
         {
             return Err(ExecutionError::InvalidPlan);
         }
-        for step in &migrations {
+        let range = match phase {
+            Some(phase) => phase.range(&migrations)?,
+            None => 0..migrations.len(),
+        };
+        for step in &migrations[range.clone()] {
             if step.use_transaction() == Some(false) {
                 return Err(ExecutionError::UnsupportedRecovery(step.name().into()));
             }
@@ -147,9 +222,21 @@ impl StepRunner {
             if !row.try_get::<bool>("", "acquired")? {
                 return Err(ExecutionError::ConcurrentWriter);
             }
-            migrations[0].install(&database).await?;
-            let applied = read_journal(&database).await?;
+            // A missing journal is an explicitly empty initial history. Reject
+            // missing prerequisites before even creating the journal table.
+            let applied = if SchemaManager::new(&database)
+                .has_table("seaql_migrations")
+                .await?
+            {
+                read_journal(&database).await?
+            } else {
+                HashSet::new()
+            };
             verify_prefix(&migrations, &applied, applied.len())?;
+            if applied.len() < range.start || applied.len() > range.end {
+                return Err(ExecutionError::JournalOutsidePhase);
+            }
+            migrations[0].install(&database).await?;
             Ok(applied.len())
         }
         .await;
@@ -157,12 +244,16 @@ impl StepRunner {
             Ok(next) => Ok(Self {
                 database,
                 migrations,
+                end: range.end,
                 state: State::Ready(next),
             }),
-            Err(error) => {
-                database.close().await?;
-                Err(error)
-            }
+            Err(error) => match database.close().await {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(ExecutionError::Cleanup {
+                    execution: Box::new(error),
+                    cleanup,
+                }),
+            },
         }
     }
 
@@ -174,7 +265,9 @@ impl StepRunner {
         let State::Ready(next) = self.state else {
             return Err(ExecutionError::Interrupted);
         };
-        Ok(self.migrations[next..].iter().map(|step| step.name()))
+        Ok(self.migrations[next..self.end]
+            .iter()
+            .map(|step| step.name()))
     }
 
     /// Returns only after commit and exact journal-prefix verification. A failed
@@ -185,10 +278,11 @@ impl StepRunner {
         };
         self.state = State::Interrupted;
         verify_prefix(&self.migrations, &read_journal(&self.database).await?, next)?;
-        let Some(step) = self.migrations.get(next) else {
+        if next == self.end {
             self.state = State::Ready(next);
             return Ok(None);
-        };
+        }
+        let step = &self.migrations[next];
         let name = step.name().to_owned();
         MigratorTraitSelf::up(step, &self.database, Some(1))
             .await

@@ -274,6 +274,7 @@ from complete operation safety and retention through serving cutover.
 - [Safe Database Migrations and Squashing Guide](./guides/safe-database-migrations-and-squashing.md)
 - [Release-bound migration consolidation](../DECISIONS/2026-11-03-migration-consolidation.md) — stable history protection, PostgreSQL schema/data comparison and implementation gates
 - [Shared migration safety assessment](../DECISIONS/2026-11-05-migration-safety-assessment.md) — canonical additive/maintenance/unknown facts used by schema summaries and module preflight; native phase authorization and consolidation admission remain separate gates
+- [Bounded migration execution](../DECISIONS/2026-11-05-bounded-migration-execution.md) — exact contiguous phases through the shared runner and CLI, with journal-boundary validation and restart; production owner authorization remains pending
 - [Alloy Runtime Hardening Contract](../crates/modules/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Input Validation](./guides/input-validation.md)
@@ -286,6 +287,7 @@ from complete operation safety and retention through serving cutover.
 - [Continuous Code Review & Slop Remediation (ACRE)](./CONTINUOUS_CODE_REVIEW.md)
 - [Continuous Review Progress Ledger (Full-Stack / By-Module)](./standards/continuous-review-ledger.md)
 - [Cross-Cutting Architectural Review Ledger (Horizontal / CodeGraph)](./standards/cross-cutting-review-ledger.md)
+- [Architecture & Documentation Governance Ledger (DAR)](./standards/docs-governance-ledger.md)
 
 ## Platform Verification
 
