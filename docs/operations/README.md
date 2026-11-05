@@ -18,6 +18,7 @@ This directory contains canonical operational specifications, runbooks, and runt
 
 - [Platform Configuration & Environment Reference](./configuration-reference.md) — Comprehensive reference for all server configuration keys, YAML options, defaults, and environment variable overrides.
 - [Tenant Runtime Profiles & Resolution Modes](./tenant-runtime-profiles.md) — Specification of multi-tenant, single-tenant, and development isolation profiles, header/subdomain resolution, and fail-closed security invariants.
+- [Operational Assets & Monitoring Infrastructure](../../ops/README.md) — Grafana provisioning dashboards, Prometheus alert rules, and Criterion performance benchmark tooling.
 
 ---
 

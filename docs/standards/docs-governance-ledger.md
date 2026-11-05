@@ -44,8 +44,8 @@ When triggered, the agent:
 
 - **Status:** IN PROGRESS
 - **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
-- **Active Phase:** [DAR-04: Operations, Deployment & Runbooks Unification](#dar-04-operations-deployment-runbooks-unification)
-- **Completed Phases (Cycle 2):** 3/16 (DAR-01, DAR-02, DAR-03 PASS)
+- **Active Phase:** [DAR-05: UI Workbench, Design Tokens & Client Surface Contracts](#dar-05-ui-workbench-design-tokens-client-surface-contracts)
+- **Completed Phases (Cycle 2):** 4/16 (DAR-01, DAR-02, DAR-03, DAR-04 PASS)
 - **Active Branch:** `main`
 
 ---
@@ -89,7 +89,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | [x] | **[Root Platform Entrypoints & Slop Purge](../../README.md)** | `root` | 7 | 1,480 | 2026-11-06 | Cleaned: purged 50 obsolete/duplicate root files (17 revisions scratchpads, 3 demo content notes, 15 AI diaries). Preserved 7 canonical platform contracts (README, README.ru, ARCHITECTURE, AGENTS, CONTRIBUTING, CHANGELOG, COMMERCIAL-LICENSE). Zero root slop. |
 | [x] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 22 | 5,273 | 2026-11-06 | Reconciled system overview, routing, settings, and distribution profiles. Eliminated displaced ADR subfolder (relocated newsletter ADR to canonical DECISIONS/), purged obsolete multilingual transport drift notes. Diagram & verify-docs: 100% PASS. |
 | [x] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,617 | 2026-11-06 | Reconciled coding standards, error frameworks (rustok-core error & typed_error), transactional outbox, distributed tracing, and security policies. Zero broken links across 15 documents. |
-| [ ] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 8 | 609 | 2026-11-06 | Consolidate legacy `ops/`, `RUNBOOKS/`, `SPECS/` into `docs/operations/`. Reconcile `configuration-reference.md` with current YAML/Rust configs. |
+| [x] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 6 | 774 | 2026-11-06 | Unified operations documentation. Eliminated empty ghost directories (RUNBOOKS/ and SPECS/ with 5 broken links). Connected ops/ assets (benches, grafana, prometheus) to docs/operations/README.md. Reconciled configuration-reference.md with YAML and runtime configs. |
 | [ ] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Consolidate legacy root `UI/` and `packages/` into `docs/UI/` and `crates/ui/`. Reconcile Leptos FFA and Next.js frontend parity specs. |
 | [ ] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 13 | 2,904 | 2026-11-06 | Archive obsolete July 2026 hardening plans. Synchronize verification guides with active scripts in `scripts/verify/`. |
 | [ ] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Reconcile remaining 31 `In progress` ADRs against code; triage 83 legacy `Not tracked` ADRs; verify relations graph; supersede obsolete decisions. |
@@ -157,13 +157,13 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ### DAR-04: Operations, Deployment & Runbooks Unification
 
-**Scope:** `docs/operations/*`, `ops/*`, `RUNBOOKS/*`, `SPECS/*` (8 files, 609 LOC).
-**Goal:** Consolidate scattered operational documentation into a single authoritative directory.
+**Scope:** `docs/operations/*`, `ops/*`, `RUNBOOKS/*`, `SPECS/*` (6 files, 774 LOC).
+**Goal:** Consolidate scattered operational documentation into an authoritative directory and eliminate ghost directories with broken links.
 
-- [ ] **DAR-04.1:** Consolidate `RUNBOOKS/README.md` and `SPECS/README.md` into `docs/operations/runbooks/`.
-- [ ] **DAR-04.2:** Reconcile `docs/operations/configuration-reference.md` with actual configuration loaders in `apps/server/src/config/`.
-- [ ] **DAR-04.3:** Reconcile `ops/prometheus/` and `ops/grafana/` documentation with operational metrics.
-- [ ] **DAR-04.4:** Run `npm run verify:docs` to ensure clean references.
+- [x] **DAR-04.1: Eliminate Ghost Directories.** Removed empty stub directories `RUNBOOKS/` and `SPECS/` containing only broken phantom links (`QUICKSTART.md`, `OBSERVABILITY_QUICKSTART.md`, `grafana-setup.md`). Operational runbooks and architecture specifications live strictly in `docs/operations/` and `DECISIONS/`.
+- [x] **DAR-04.2: Connect Observability & Benchmark Assets.** Reconciled `ops/` (`ops/benches`, `ops/grafana`, `ops/prometheus`) as canonical operational infrastructure, linking directly from `docs/operations/README.md`.
+- [x] **DAR-04.3: Verify Configuration Reference.** Reconciled `docs/operations/configuration-reference.md` with runtime configuration files in `apps/server/config/*.yaml` and platform environment variables.
+- [x] **DAR-04.4: Run Scoped Verification.** Ran `npm run verify:docs` — 100% PASS across all 6 stages. Zero broken relative links or missing anchors in operations documentation.
 
 ---
 
