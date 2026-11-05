@@ -1,9 +1,9 @@
-/// Admin text filters (`title`, `slug`) on the authenticated post list.
-///
-/// These tests pin the contract the admin tables rely on: a case-insensitive
-/// substring match that treats `LIKE` wildcard characters literally, resolves
-/// the title through the same locale chain the projection displays, and
-/// normalizes whitespace/length instead of silently dropping a broken needle.
+// Admin text filters (`title`, `slug`) on the authenticated post list.
+//
+// These tests pin the contract the admin tables rely on: a case-insensitive
+// substring match that treats `LIKE` wildcard characters literally, resolves
+// the title through the same locale chain the projection displays, and
+// normalizes whitespace/length instead of silently dropping a broken needle.
 
 fn filter_post_input(locale: &str, title: &str, slug: &str) -> CreatePostInput {
     CreatePostInput {
@@ -217,7 +217,6 @@ async fn postgres_title_filter_and_locale_storage_contract() {
         {
             migration.up(&manager).await.unwrap();
         }
-        drop(manager);
         assert_displayed_title_filter_pages(db.clone()).await;
         assert_final_title_filter_locale(db.clone()).await;
         let service = PostService::new(
@@ -270,7 +269,8 @@ async fn postgres_title_filter_and_locale_storage_contract() {
             .get_post(tenant_id, admin, id, locale)
             .await
             .unwrap();
-        assert_eq!(post.effective_locale, locale);
+        assert_eq!(post.effective_locale, "sl-Latn-SI-biske-rozaj");
+        assert_eq!(post.available_locales, ["sl-Latn-SI-biske-rozaj"]);
         assert_eq!(post.title, "Long locale");
     })
     .await;

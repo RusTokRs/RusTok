@@ -91,9 +91,42 @@ the gates above.
 
 ### Verification record
 
-Exact local results for this review are recorded below after scoped execution.
-Source checks, configured database execution, native UI unit tests and mounted
-client workflows remain separate evidence classes.
+The scoped review obtained the following local results on 2026-11-05. Concurrent
+local integration reached `92cbd1b75256d8e93c6a496e001bb6435cac280c` before the
+final checks. The current filter, Category transaction and locale-bound changes
+were re-read after those commits; additional Blog/Events changes were formatting
+and bounded cleanup, not a replacement owner model.
+
+| Command or scenario | Obtained result and limit |
+| --- | --- |
+| `cargo test -p rustok-blog --locked --offline --lib --test integration --test contract_surface --test contract_tests --test category_taxonomy_dual_write --test category_taxonomy_mutation_response_cutover` | 176 library tests and 28 selected integration/contract tests passed. One explicitly opt-in PostgreSQL test was ignored in this command. |
+| `cargo test -p rustok-events --locked --offline --lib` | 83 passed, including locale-length bounds for the formerly narrower event families. |
+| Configured PostgreSQL title/locale scenario, selected explicitly as described below | One test passed on PostgreSQL 16.13. It covers displayed-title filtering before pagination, deterministic final locale fallback, normalized long-locale event/storage/readback and locale width retained after migration rollback. |
+| `cargo clippy -p rustok-blog -p rustok-events --locked --offline --all-targets -- -D warnings` | Passed. |
+| `cargo test -p rustok-blog-admin -p rustok-blog-storefront --locked --offline --lib` | 46 admin and 42 storefront tests passed under default native test profiles. No mounted browser or SSR/hydration certification follows from this. |
+| `cargo check -p rustok-blog --locked --offline --features runtime,comment-assets --lib` | Passed before final locale-bound rebuilding. This is compilation evidence for the declared backend features, not scheduler or asset execution. |
+| `npm run verify:module-source-layout` | Blog source guard and 57 layout fixture tests passed; two Windows symlink-privilege cases were skipped. |
+| `npm run verify:module-reference-contract`, `npm run verify:blog:fba` | Passed as source checks. The FBA chain initially exposed two formatting false failures; both guards now retain required identities independently of import/export ordering. |
+| Comments GraphQL port-injection and AI richtext guard fixtures | 14 and 9 tests passed, including reordered imports/re-exports and rejection of missing required identities. |
+| Blog Next GraphQL contract guard and its fixture suite | Seven client documents matched 66 schema types; four positive/negative fixtures passed. |
+| Next storefront `reading-time.test.mjs` and `comments-order.test.mjs` | Seven utility tests passed. |
+| Formatting, changed-file diff checks and architecture dependency guard | Passed for the scoped changes. |
+| `python scripts/verify/verify-remediation-gate.py --files <review paths>` | Passed, including diff invariants, architecture dependencies and package-scoped Clippy for Blog and Events. |
+| `node scripts/verify/verify-adrs.mjs` | Failed on missing Pricing/Product Relations registry entries and incomplete Region ADR metadata/sections already present at the recorded starting base. These unrelated ADR defects remain open. |
+
+The explicit PostgreSQL title/locale test must be selected with
+`RUSTOK_BLOG_TEST_DATABASE_URL` and
+`cargo test -p rustok-blog --locked --offline --lib services::post::tests::postgres_title_filter_and_locale_storage_contract -- --ignored --exact`.
+It creates and removes an isolated database, applies actual Blog/Taxonomy/Outbox
+migrations for its no-Channel-selector scenarios, and reconnects after width DDL
+before verifying post readback. The configured execution passed; unlike the
+older projection harnesses, an explicitly requested run fails when its database
+URL is absent. The temporary local PostgreSQL instance was stopped afterward.
+
+Full prerequisite migration composition, older PostgreSQL projection/race/restart
+harness execution, remote providers, mounted Fly, browser/accessibility and
+Leptos/Next workflow parity remain unverified. Workspace suites and long E2E
+were not run. No FFA/FBA or full reference readiness status was promoted.
 
 ## Reference-v1 certification note
 

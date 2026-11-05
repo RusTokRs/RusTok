@@ -27,9 +27,15 @@ unless an event already validates canonical locale identity explicitly.
 the formerly narrower Content, Profiles, Blog, Forum, conversion, route and
 Forms events with a real long locale, the 32-character boundary, an oversized
 value and empty input. Wire fields, registry metadata and schema versions are
-unchanged. Run the scoped library suite and the Blog long-locale PostgreSQL
-scenario before recording this continuation as verified. This does not admit
+unchanged. The scoped library suite and the Blog long-locale PostgreSQL
+scenario passed as recorded below. This does not admit
 unrelated pending event digests or certify transport delivery.
+
+Local `cargo test -p rustok-events --locked --offline --lib` passed all 83
+library tests on 2026-11-05, including the new length-bound scenario. Scoped
+Clippy for Blog and Events also passed with warnings denied. Blog's configured
+long-locale PostgreSQL and rollback execution passed and is recorded in its
+[reference plan](../../../modules/rustok-blog/docs/implementation-plan.md#verification-record).
 
 The committed `contracts/event-contract-digests.json` gates the root registry and
 root/typed wire schemas. Digest generation is deterministic and never occurs as an
