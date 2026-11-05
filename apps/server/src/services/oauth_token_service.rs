@@ -696,7 +696,9 @@ fn prepare_service_access_token(
         scopes: Set(serde_json::to_value(scopes).map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
         })?),
-        expires_at: Set((now + chrono::Duration::seconds(SERVICE_ACCESS_TOKEN_TTL_SECS as i64)).into()),
+        expires_at: Set(
+            (now + chrono::Duration::seconds(SERVICE_ACCESS_TOKEN_TTL_SECS as i64)).into(),
+        ),
         revoked_at: Set(None),
         last_used_at: Set(None),
         created_at: Set(now.into()),
@@ -741,15 +743,13 @@ async fn prepare_user_tokens(
         access_token_id,
     )
     .map_err(|_| OAuthTokenProtocolError::server_error("Failed to encode access token"))?;
-    let scopes_json = serde_json::to_value(scopes).map_err(|_| {
-        OAuthTokenProtocolError::server_error("Failed to serialize token scopes")
-    })?;
+    let scopes_json = serde_json::to_value(scopes)
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to serialize token scopes"))?;
 
     let refresh_token = if include_refresh_token {
-        Some(
-            auth::generate_refresh_token()
-                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to generate refresh token"))?,
-        )
+        Some(auth::generate_refresh_token().map_err(|_| {
+            OAuthTokenProtocolError::server_error("Failed to generate refresh token")
+        })?)
     } else {
         None
     };
@@ -782,7 +782,9 @@ async fn prepare_user_tokens(
         token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
         consent_granted_at: Set(consent_granted_at),
         scopes: Set(scopes_json.clone()),
-        expires_at: Set((now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64)).into()),
+        expires_at: Set(
+            (now + chrono::Duration::seconds(USER_ACCESS_TOKEN_TTL_SECS as i64)).into(),
+        ),
         revoked_at: Set(None),
         last_used_at: Set(None),
         created_at: Set(now.into()),
@@ -854,7 +856,9 @@ async fn commit_authorization_code_exchange(
             })?;
         } else {
             tx.rollback().await.map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to roll back authorization-code exchange")
+                OAuthTokenProtocolError::server_error(
+                    "Failed to roll back authorization-code exchange",
+                )
             })?;
         }
         return Err(OAuthTokenProtocolError::invalid_grant(
@@ -938,9 +942,12 @@ async fn persist_prepared_tokens<C>(
 where
     C: ConnectionTrait,
 {
-    prepared.access_model.clone().insert(db).await.map_err(|_| {
-        OAuthTokenProtocolError::server_error("Failed to persist access token")
-    })?;
+    prepared
+        .access_model
+        .clone()
+        .insert(db)
+        .await
+        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to persist access token"))?;
     if let Some(model) = prepared.refresh_model.clone() {
         model.insert(db).await.map_err(|_| {
             OAuthTokenProtocolError::server_error("Failed to persist replacement refresh token")

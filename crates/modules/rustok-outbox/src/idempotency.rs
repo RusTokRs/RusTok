@@ -653,50 +653,81 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database should connect");
-        SysEventsMigration.up(&SchemaManager::new(&database))
-            .await.expect("outbox migration should apply");
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration should apply");
         let tenant = Uuid::new_v4();
         let request = serde_json::json!({"actor": "author", "post_id": Uuid::new_v4()});
         let first = match admit(
-            &database, OwnerOperationScope::Tenant(tenant), "comments",
-            "stable-command", "create_comment", &request,
-        ).await.expect("first admission") {
+            &database,
+            OwnerOperationScope::Tenant(tenant),
+            "comments",
+            "stable-command",
+            "create_comment",
+            &request,
+        )
+        .await
+        .expect("first admission")
+        {
             Admission::Run(lease) => lease,
             _ => panic!("first request must run"),
         };
 
         let lost = release_retryable(
             &database,
-            Lease { operation_id: first.operation_id, token: Uuid::new_v4() },
+            Lease {
+                operation_id: first.operation_id,
+                token: Uuid::new_v4(),
+            },
             &PortError::unavailable("comments.timeout", "temporary outage"),
-        ).await.expect_err("stale worker cannot release another lease");
+        )
+        .await
+        .expect_err("stale worker cannot release another lease");
         assert!(lost.retryable);
 
         let terminal = release_retryable(
-            &database, first,
+            &database,
+            first,
             &PortError::validation("comments.bad_input", "invalid"),
-        ).await.expect_err("nonretryable error must be persisted, not released");
+        )
+        .await
+        .expect_err("nonretryable error must be persisted, not released");
         assert_eq!(terminal.code, "outbox.operation_receipt_release_terminal");
 
         release_retryable(
-            &database, first,
+            &database,
+            first,
             &PortError::unavailable("comments.database", "retryable"),
-        ).await.expect("temporary failure releases the receipt");
+        )
+        .await
+        .expect("temporary failure releases the receipt");
 
         let second = match admit(
-            &database, OwnerOperationScope::Tenant(tenant), "comments",
-            "stable-command", "create_comment", &request,
-        ).await.expect("retry admission") {
+            &database,
+            OwnerOperationScope::Tenant(tenant),
+            "comments",
+            "stable-command",
+            "create_comment",
+            &request,
+        )
+        .await
+        .expect("retry admission")
+        {
             Admission::Run(lease) => lease,
             _ => panic!("released command must run again"),
         };
         complete(&database, second, &serde_json::json!({"comment": "ok"}))
-            .await.expect("commit receipt");
+            .await
+            .expect("commit receipt");
 
         let uncertain = release_retryable(
-            &database, second,
+            &database,
+            second,
             &PortError::unavailable("comments.commit", "unknown outcome"),
-        ).await.expect_err("committed receipt must never be removed");
+        )
+        .await
+        .expect_err("committed receipt must never be removed");
         assert!(uncertain.retryable);
         assert!(matches!(
             admit(

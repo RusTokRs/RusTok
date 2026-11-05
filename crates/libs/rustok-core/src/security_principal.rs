@@ -1,7 +1,7 @@
 use rustok_api::Permission;
 use uuid::Uuid;
 
-use crate::{infer_user_role_from_permissions, SecurityContext};
+use crate::{SecurityContext, infer_user_role_from_permissions};
 
 const CLIENT_CREDENTIALS_GRANT: &str = "client_credentials";
 

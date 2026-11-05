@@ -1,6 +1,6 @@
 use rustok_modules::MODULE_ARTIFACT_SOURCE_MANIFEST_FILE;
 
-use crate::{render, ModuleTemplateError, ModuleTemplateInput, RUST_TOOLCHAIN, TEMPLATE_VERSION};
+use crate::{ModuleTemplateError, ModuleTemplateInput, RUST_TOOLCHAIN, TEMPLATE_VERSION, render};
 
 fn sample_input() -> ModuleTemplateInput {
     ModuleTemplateInput {

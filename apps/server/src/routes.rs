@@ -21,7 +21,10 @@ pub async fn not_found_fallback(uri: axum::http::Uri) -> impl IntoResponse {
 /// protocol surface and its discovery metadata are not mounted at all. The
 /// default remains fail-closed so a missing feature block cannot silently
 /// expose an authorization server.
-pub fn build_application_router(host_mode: RuntimeHostMode, settings: &RustokSettings) -> ServerRouter {
+pub fn build_application_router(
+    host_mode: RuntimeHostMode,
+    settings: &RustokSettings,
+) -> ServerRouter {
     let router = axum::Router::new()
         .merge(crate::controllers::health::router())
         .merge(crate::controllers::metrics::router());

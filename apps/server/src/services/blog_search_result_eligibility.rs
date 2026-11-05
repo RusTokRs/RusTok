@@ -52,7 +52,11 @@ impl SearchAudiencePolicyPort for ServerBlogSearchResultEligibilityPort {
                 "Blog Search requires a valid tenant",
             ));
         }
-        if request.auth.as_ref().is_some_and(|auth| auth.tenant_id != request.tenant_id) {
+        if request
+            .auth
+            .as_ref()
+            .is_some_and(|auth| auth.tenant_id != request.tenant_id)
+        {
             return Err(PortError::forbidden(
                 "blog.search.auth_tenant_mismatch",
                 "Blog Search auth tenant mismatch",
@@ -65,7 +69,10 @@ impl SearchAudiencePolicyPort for ServerBlogSearchResultEligibilityPort {
             )
         })?;
         if context.tenant_id != request.tenant_id
-            || request.auth.as_ref().is_some_and(|auth| context.user_id != Some(auth.user_id))
+            || request
+                .auth
+                .as_ref()
+                .is_some_and(|auth| context.user_id != Some(auth.user_id))
         {
             return Err(PortError::forbidden(
                 "blog.search.request_context_mismatch",
@@ -76,7 +83,9 @@ impl SearchAudiencePolicyPort for ServerBlogSearchResultEligibilityPort {
         if !self.enabled(request.tenant_id).await? {
             return Ok(Vec::new());
         }
-        let post_ids = request.candidates.iter()
+        let post_ids = request
+            .candidates
+            .iter()
             .filter(|item| item.source_module == "blog" && item.entity_type == "blog_post")
             .map(|item| item.document_id)
             .collect::<Vec<_>>();

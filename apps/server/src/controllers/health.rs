@@ -222,33 +222,51 @@ async fn collect_readiness(
         let db = ctx.db_clone();
         pending.push(
             async move {
-                let check = run_guarded_check("database", DependencyCriticality::Critical, "dependency", move || async move {
-                    check_database(&db).await
-                }).await;
+                let check = run_guarded_check(
+                    "database",
+                    DependencyCriticality::Critical,
+                    "dependency",
+                    move || async move { check_database(&db).await },
+                )
+                .await;
                 (false, check)
-            }.boxed(),
+            }
+            .boxed(),
         );
     }
     {
         let ctx = ctx.clone();
         pending.push(
             async move {
-                let check = run_guarded_check("database_schema", DependencyCriticality::Critical, "dependency", move || async move {
-                    check_required_database_schema(&ctx, ctx.settings()).await
-                }).await;
+                let check =
+                    run_guarded_check(
+                        "database_schema",
+                        DependencyCriticality::Critical,
+                        "dependency",
+                        move || async move {
+                            check_required_database_schema(&ctx, ctx.settings()).await
+                        },
+                    )
+                    .await;
                 (false, check)
-            }.boxed(),
+            }
+            .boxed(),
         );
     }
     {
         let ctx = ctx.clone();
         pending.push(
             async move {
-                let check = run_guarded_check("cache_backend", DependencyCriticality::NonCritical, "dependency", move || async move {
-                    check_cache_backend(&ctx).await
-                }).await;
+                let check = run_guarded_check(
+                    "cache_backend",
+                    DependencyCriticality::NonCritical,
+                    "dependency",
+                    move || async move { check_cache_backend(&ctx).await },
+                )
+                .await;
                 (false, check)
-            }.boxed(),
+            }
+            .boxed(),
         );
     }
     let mut checks = vec![marketplace_provider_check(&ctx)];
@@ -259,22 +277,32 @@ async fn collect_readiness(
             let ctx = ctx.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check("tenant_cache_invalidation", DependencyCriticality::NonCritical, "dependency", move || async move {
-                        check_tenant_invalidation_listener(&ctx).await
-                    }).await;
+                    let check = run_guarded_check(
+                        "tenant_cache_invalidation",
+                        DependencyCriticality::NonCritical,
+                        "dependency",
+                        move || async move { check_tenant_invalidation_listener(&ctx).await },
+                    )
+                    .await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         {
             let ctx = ctx.clone();
             pending.push(
                 async move {
-                    let check = run_guarded_check("event_transport", DependencyCriticality::Critical, "dependency", move || async move {
-                        check_event_transport(&ctx).await
-                    }).await;
+                    let check = run_guarded_check(
+                        "event_transport",
+                        DependencyCriticality::Critical,
+                        "dependency",
+                        move || async move { check_event_transport(&ctx).await },
+                    )
+                    .await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         if settings.rate_limit.enabled {
@@ -283,11 +311,16 @@ async fn collect_readiness(
                 pending.push(
                     async move {
                         let name = format!("rate_limit:{namespace}");
-                        let check = run_guarded_check(&name, DependencyCriticality::Critical, "dependency", move || async move {
-                            check_rate_limit_backend(&ctx, namespace).await
-                        }).await;
+                        let check = run_guarded_check(
+                            &name,
+                            DependencyCriticality::Critical,
+                            "dependency",
+                            move || async move { check_rate_limit_backend(&ctx, namespace).await },
+                        )
+                        .await;
                         (false, check)
-                    }.boxed(),
+                    }
+                    .boxed(),
                 );
             }
         }
@@ -296,7 +329,10 @@ async fn collect_readiness(
             pending.push(
                 async move {
                     let check = run_guarded_check(
-                        "search_backend", DependencyCriticality::NonCritical, "dependency", move || async move {
+                        "search_backend",
+                        DependencyCriticality::NonCritical,
+                        "dependency",
+                        move || async move {
                             if !search.enabled
                                 || search.driver.eq_ignore_ascii_case("postgres")
                                 || search.driver.eq_ignore_ascii_case("memory")
@@ -305,12 +341,16 @@ async fn collect_readiness(
                                 return Ok(());
                             }
                             let (host, port) = parse_host_port(&search.url)?;
-                            TcpStream::connect((host.as_str(), port)).await.map(|_| ())
+                            TcpStream::connect((host.as_str(), port))
+                                .await
+                                .map(|_| ())
                                 .map_err(|_| "search backend connection failed".to_string())
                         },
-                    ).await;
+                    )
+                    .await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         {
@@ -319,7 +359,8 @@ async fn collect_readiness(
                 async move {
                     let check = check_runtime_guardrails(&ctx).await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         {
@@ -328,7 +369,8 @@ async fn collect_readiness(
                 async move {
                     let check = check_outbox_pending_lag(&ctx, ctx.settings()).await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         if settings.features.search_indexing {
@@ -337,7 +379,8 @@ async fn collect_readiness(
                 async move {
                     let check = check_search_index_lag(&ctx, ctx.settings()).await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
         checks.push(email_backend_check(settings));
@@ -352,10 +395,15 @@ async fn collect_readiness(
             pending.push(
                 async move {
                     let check = run_guarded_check(
-                        "storage", DependencyCriticality::NonCritical, "dependency", move || async move { check_storage_backend(&ctx).await },
-                    ).await;
+                        "storage",
+                        DependencyCriticality::NonCritical,
+                        "dependency",
+                        move || async move { check_storage_backend(&ctx).await },
+                    )
+                    .await;
                     (false, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
     } else {
@@ -380,15 +428,22 @@ async fn collect_readiness(
                         DependencyCriticality::NonCritical
                     };
                     let name = format!("module:{}", module.slug());
-                    let check = run_guarded_check(&name, criticality, "module", move || async move {
-                        match module.health().await {
-                            HealthStatus::Healthy => Ok(()),
-                            HealthStatus::Degraded => Err("module reported degraded".to_string()),
-                            HealthStatus::Unhealthy => Err("module reported unhealthy".to_string()),
-                        }
-                    }).await;
+                    let check =
+                        run_guarded_check(&name, criticality, "module", move || async move {
+                            match module.health().await {
+                                HealthStatus::Healthy => Ok(()),
+                                HealthStatus::Degraded => {
+                                    Err("module reported degraded".to_string())
+                                }
+                                HealthStatus::Unhealthy => {
+                                    Err("module reported unhealthy".to_string())
+                                }
+                            }
+                        })
+                        .await;
                     (true, check)
-                }.boxed(),
+                }
+                .boxed(),
             );
         }
     } else {
@@ -1434,8 +1489,17 @@ mod tests {
                 let barrier = barrier.clone();
                 async move {
                     barrier.wait().await;
-                    (false, check("parallel", DependencyCriticality::Critical, ReadinessStatus::Ok, None))
-                }.boxed()
+                    (
+                        false,
+                        check(
+                            "parallel",
+                            DependencyCriticality::Critical,
+                            ReadinessStatus::Ok,
+                            None,
+                        ),
+                    )
+                }
+                .boxed()
             })
             .collect();
         let checks = tokio::time::timeout(Duration::from_secs(1), run_readiness_checks(pending))
@@ -1595,8 +1659,14 @@ mod tests {
             (crate::common::settings::RuntimeHostMode::Worker, true),
             (crate::common::settings::RuntimeHostMode::Api, false),
             (crate::common::settings::RuntimeHostMode::AdminSsr, false),
-            (crate::common::settings::RuntimeHostMode::StorefrontSsr, false),
-            (crate::common::settings::RuntimeHostMode::RegistryOnly, false),
+            (
+                crate::common::settings::RuntimeHostMode::StorefrontSsr,
+                false,
+            ),
+            (
+                crate::common::settings::RuntimeHostMode::RegistryOnly,
+                false,
+            ),
         ] {
             let mut settings = RustokSettings::default();
             settings.runtime.host_mode = host_mode;

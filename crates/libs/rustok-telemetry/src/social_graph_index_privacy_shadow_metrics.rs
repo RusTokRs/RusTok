@@ -219,8 +219,8 @@ fn unix_timestamp_seconds() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_error_code, SocialGraphIndexPrivacyShadowOperation as Operation,
-        SocialGraphIndexPrivacyShadowOutcome as Outcome,
+        SocialGraphIndexPrivacyShadowOperation as Operation,
+        SocialGraphIndexPrivacyShadowOutcome as Outcome, bounded_error_code,
     };
 
     #[test]

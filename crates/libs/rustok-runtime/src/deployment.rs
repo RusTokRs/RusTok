@@ -414,8 +414,8 @@ fn io_error(path: impl AsRef<Path>, source: std::io::Error) -> RoleMaterializati
 
 #[cfg(test)]
 mod tests {
-    use super::{materialize_role, RoleMaterializationError, RoleMaterializationRequest};
-    use crate::{prepare_instance_layout, InstanceLayout, InstancePlacement};
+    use super::{RoleMaterializationError, RoleMaterializationRequest, materialize_role};
+    use crate::{InstanceLayout, InstancePlacement, prepare_instance_layout};
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
 

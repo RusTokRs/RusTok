@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::messages::PreparedUiMessages;
-use rustok_ui_i18n::{fluent_args, BundleBuildError, I18nError, UiMessages};
+use rustok_ui_i18n::{BundleBuildError, I18nError, UiMessages, fluent_args};
 
 fn assert_send_sync<T: Send + Sync>() {}
 

@@ -350,10 +350,7 @@ where
         .map_err(super::internal_admin_error)?;
     let _revoked_oauth_tokens =
         crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
-            db,
-            tenant_id,
-            user_id,
-            now,
+            db, tenant_id, user_id, now,
         )
         .await
         .map_err(super::internal_admin_error)?;

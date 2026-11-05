@@ -506,7 +506,10 @@ impl SettingsService {
             let wrote = match existing.as_ref() {
                 Some(existing) => {
                     let updated = Entity::update_many()
-                        .col_expr(platform_settings::Column::Settings, Expr::value(settings.clone()))
+                        .col_expr(
+                            platform_settings::Column::Settings,
+                            Expr::value(settings.clone()),
+                        )
                         .col_expr(platform_settings::Column::UpdatedBy, Expr::value(actor_id))
                         .col_expr(
                             platform_settings::Column::SchemaVersion,
@@ -1312,7 +1315,10 @@ mod tests {
         use std::sync::Arc;
 
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let ctx = ServerRuntimeContext::new(
+            db.clone(),
+            crate::common::settings::RustokSettings::default(),
+        );
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let validators = ValidatorRegistry::default();
         let tenant_id = Uuid::new_v4();
@@ -1356,7 +1362,10 @@ mod tests {
         use std::sync::Arc;
 
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = ServerRuntimeContext::new(db.clone(), crate::common::settings::RustokSettings::default());
+        let ctx = ServerRuntimeContext::new(
+            db.clone(),
+            crate::common::settings::RustokSettings::default(),
+        );
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let validators = ValidatorRegistry::default();
         let tenant_id = Uuid::new_v4();
@@ -1448,14 +1457,17 @@ mod tests {
         );
         assert_eq!(merged["smtp_password"], json!("stored-secret"));
         assert_eq!(
-            preserve_secrets_from_row(category::EMAIL, None, json!({ "smtp_password": "" }))
-                ["smtp_password"],
+            preserve_secrets_from_row(category::EMAIL, None, json!({ "smtp_password": "" }))["smtp_password"],
             json!("")
         );
     }
 
     #[test]
     fn write_conflict_is_a_deliberate_retry_signal() {
-        assert!(SettingsError::WriteConflict.to_string().contains("concurrently"));
+        assert!(
+            SettingsError::WriteConflict
+                .to_string()
+                .contains("concurrently")
+        );
     }
 }

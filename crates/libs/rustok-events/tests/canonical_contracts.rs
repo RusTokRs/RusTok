@@ -1,8 +1,8 @@
 use rustok_events::{
-    contract_event_envelope_json_schema, contract_event_payload_json_schema,
-    domain_event_json_schema, event_contract_digests, event_envelope_json_schema, event_schema,
-    event_schemas, ContractEventEnvelope, DomainEvent, EventEnvelope, RootDomainEvent,
-    RootEventEnvelope, ValidateEvent, EVENT_SCHEMAS,
+    ContractEventEnvelope, DomainEvent, EVENT_SCHEMAS, EventEnvelope, RootDomainEvent,
+    RootEventEnvelope, ValidateEvent, contract_event_envelope_json_schema,
+    contract_event_payload_json_schema, domain_event_json_schema, event_contract_digests,
+    event_envelope_json_schema, event_schema, event_schemas,
 };
 use uuid::Uuid;
 

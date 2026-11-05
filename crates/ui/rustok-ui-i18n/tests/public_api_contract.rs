@@ -44,7 +44,7 @@ fn prelude_exposes_the_supported_high_level_consumer_surface() {
 #[test]
 #[allow(deprecated)]
 fn deprecated_compatibility_symbols_remain_callable_before_1_0() {
-    use rustok_ui_i18n::{push_locale_candidate, push_unique, LanguageIdentifier};
+    use rustok_ui_i18n::{LanguageIdentifier, push_locale_candidate, push_unique};
 
     let mut candidates = Vec::new();
     push_locale_candidate(&mut candidates, Some("en-US"));

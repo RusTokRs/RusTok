@@ -169,7 +169,10 @@ impl UserAdminMutationPort for GuardedUserAdminMutationProvider {
             // Custom role slugs fall through to the provider (the
             // USERS_MANAGE requirement above already covers them);
             // built-in role grants keep the hierarchy check here.
-            if let Some(role) = Self::parse_role(role).ok().filter(|r| *r != UserRole::Customer) {
+            if let Some(role) = Self::parse_role(role)
+                .ok()
+                .filter(|r| *r != UserRole::Customer)
+            {
                 Self::validate_role_grant(context, &authority, &role)?;
             }
         }
@@ -326,10 +329,15 @@ mod tests {
     #[test]
     fn customer_role_grant_bypasses_hierarchy_validation() {
         let role = super::GuardedUserAdminMutationProvider::parse_role("customer");
-        assert_eq!(role.ok().filter(|r| *r != rustok_core::UserRole::Customer), None);
+        assert_eq!(
+            role.ok().filter(|r| *r != rustok_core::UserRole::Customer),
+            None
+        );
         let admin_role = super::GuardedUserAdminMutationProvider::parse_role("admin");
         assert_eq!(
-            admin_role.ok().filter(|r| *r != rustok_core::UserRole::Customer),
+            admin_role
+                .ok()
+                .filter(|r| *r != rustok_core::UserRole::Customer),
             Some(rustok_core::UserRole::Admin)
         );
     }

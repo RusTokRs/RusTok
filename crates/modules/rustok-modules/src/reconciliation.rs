@@ -139,12 +139,18 @@ mod tests {
 
     #[test]
     fn baseline_phase_contract_requires_owner_gated_activation() {
-        assert!(ModuleReconciliationPhase::Pending
-            .allows_standard_transition_to(ModuleReconciliationPhase::Prepared));
-        assert!(ModuleReconciliationPhase::Prepared
-            .allows_standard_transition_to(ModuleReconciliationPhase::Healthy));
-        assert!(!ModuleReconciliationPhase::Healthy
-            .allows_standard_transition_to(ModuleReconciliationPhase::Active));
+        assert!(
+            ModuleReconciliationPhase::Pending
+                .allows_standard_transition_to(ModuleReconciliationPhase::Prepared)
+        );
+        assert!(
+            ModuleReconciliationPhase::Prepared
+                .allows_standard_transition_to(ModuleReconciliationPhase::Healthy)
+        );
+        assert!(
+            !ModuleReconciliationPhase::Healthy
+                .allows_standard_transition_to(ModuleReconciliationPhase::Active)
+        );
         assert!(ModuleReconciliationPhase::Healthy.permits_report_payload(true, false));
         assert!(ModuleReconciliationPhase::Failed.permits_report_payload(false, true));
         assert!(!ModuleReconciliationPhase::Pending.permits_report_payload(false, false));

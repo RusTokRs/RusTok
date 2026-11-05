@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use crate::modules::manifest::{
-    builtin_module_catalog, module_package_manifest_path, ManifestError, ManifestManager,
-    ManifestModuleSpec,
+    ManifestError, ManifestManager, ManifestModuleSpec, builtin_module_catalog,
+    module_package_manifest_path,
 };
 
 #[derive(Debug, Default, Deserialize)]

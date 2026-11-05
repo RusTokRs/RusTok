@@ -36,4 +36,3 @@ pub mod views;
 
 #[cfg(test)]
 mod contract_tests;
-

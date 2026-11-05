@@ -146,7 +146,10 @@ pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
 }
 
 fn path_matches_route_template(path: &str, template: &str) -> bool {
-    let path_segments: Vec<&str> = path.split('/').filter(|segment| !segment.is_empty()).collect();
+    let path_segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
     let template_segments: Vec<&str> = template
         .split('/')
         .filter(|segment| !segment.is_empty())
@@ -387,8 +390,14 @@ mod tests {
             unmatched_metrics_path("/admin/modules/blog/settings"),
             "/admin/:unmatched"
         );
-        assert_eq!(unmatched_metrics_path("/random/attacker-path"), "/:unmatched");
-        assert_eq!(not_found_metrics_path("/api/unknown/123"), "/api/:not_found");
+        assert_eq!(
+            unmatched_metrics_path("/random/attacker-path"),
+            "/:unmatched"
+        );
+        assert_eq!(
+            not_found_metrics_path("/api/unknown/123"),
+            "/api/:not_found"
+        );
         assert_eq!(not_found_metrics_path("/health"), "/health");
         assert_eq!(not_found_metrics_path("/metrics"), "/metrics");
         assert_eq!(not_found_metrics_path("/"), "/");

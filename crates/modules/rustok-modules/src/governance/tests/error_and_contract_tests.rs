@@ -18,12 +18,12 @@ use crate::build::{
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 use crate::{
     ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
-    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
-    ModuleMarketplaceEntry, ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference,
-    TrustEvidenceKind, TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET,
+    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, MODULE_BUILD_COMPONENT_TARGET,
     MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
-    MODULE_BUILD_WIT_WORLD,
+    MODULE_BUILD_WIT_WORLD, ModuleArtifactDescriptor, ModuleCommandContext,
+    ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease, ModuleMarketplaceEntry,
+    ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
+    TrustEvidenceReference,
 };
 
 #[test]
@@ -145,9 +145,11 @@ fn follow_up_stage_contract_is_selected_by_artifact_origin() {
         platform.iter().map(|stage| stage.key).collect::<Vec<_>>(),
         vec!["compile_smoke", "targeted_tests"]
     );
-    assert!(platform
-        .iter()
-        .all(|stage| stage.runner_kind == "owner_evidence"));
+    assert!(
+        platform
+            .iter()
+            .all(|stage| stage.runner_kind == "owner_evidence")
+    );
 
     let external = publication_follow_up_stages(ModulePublicationArtifactOrigin::ExternalPrebuilt);
     assert_eq!(external.len(), 1);

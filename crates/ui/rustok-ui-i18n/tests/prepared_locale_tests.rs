@@ -9,7 +9,7 @@
  */
 
 use rustok_ui_i18n::messages::UiLocaleTranslator;
-use rustok_ui_i18n::{fluent_args, I18nError, UiMessages};
+use rustok_ui_i18n::{I18nError, UiMessages, fluent_args};
 
 fn assert_send_sync<T: Send + Sync>() {}
 

@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ModuleArtifactDescriptor, ModuleArtifactSourceManifest, ModulePublicationArtifactOrigin,
-    ModulePublishValidationContract, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, ModuleArtifactDescriptor, ModuleArtifactSourceManifest,
+    ModulePublicationArtifactOrigin, ModulePublishValidationContract,
 };
 
 /// Maximum accepted serialized publish bundle size. The bundle carries only
@@ -898,13 +898,11 @@ mod tests {
         assert_eq!(written["artifact_type"], MODULE_PUBLISH_BUNDLE_TYPE);
         assert!(written["files"]["module-artifact.json"].is_string());
         assert!(written["files"].get("rustok-module.toml").is_none());
-        assert!(validate_module_publish_bundle(
-            &contract(),
-            MODULE_PUBLISH_BUNDLE_CONTENT_TYPE,
-            &bytes
-        )
-        .errors
-        .is_empty());
+        assert!(
+            validate_module_publish_bundle(&contract(), MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, &bytes)
+                .errors
+                .is_empty()
+        );
     }
 
     #[test]
@@ -926,17 +924,21 @@ mod tests {
         source_manifest["slug"] = serde_json::json!("other_module");
         substituted_package_manifest["files"]["module-artifact.json"] =
             serde_json::json!(serde_json::to_string(&source_manifest).expect("source manifest"));
-        assert!(!validate_bundle(&substituted_package_manifest)
-            .errors
-            .is_empty());
+        assert!(
+            !validate_bundle(&substituted_package_manifest)
+                .errors
+                .is_empty()
+        );
 
         let mut substituted_cargo_manifest = bundle();
         substituted_cargo_manifest["files"]["Cargo.toml"] = serde_json::json!(
             "[package]\nname = \"other_module\"\nversion = \"1.0.0\"\nlicense = \"GPL-3.0\"\n"
         );
-        assert!(!validate_bundle(&substituted_cargo_manifest)
-            .errors
-            .is_empty());
+        assert!(
+            !validate_bundle(&substituted_cargo_manifest)
+                .errors
+                .is_empty()
+        );
     }
 
     #[test]
@@ -949,10 +951,12 @@ mod tests {
 
         let validation = validate_bundle(&unexpected_ui);
         assert!(!validation.errors.is_empty());
-        assert!(validation
-            .errors
-            .iter()
-            .all(|diagnostic| !diagnostic.contains(marker)));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .all(|diagnostic| !diagnostic.contains(marker))
+        );
     }
 
     #[test]
@@ -1065,9 +1069,11 @@ mod tests {
         require_file("Cargo.toml", Some(&source), &mut validation);
 
         assert!(!validation.errors.is_empty());
-        assert!(validation
-            .errors
-            .iter()
-            .all(|diagnostic| !diagnostic.contains(marker)));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .all(|diagnostic| !diagnostic.contains(marker))
+        );
     }
 }

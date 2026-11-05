@@ -68,8 +68,7 @@ pub async fn purge_expired_auth_artifacts(db: &DatabaseConnection) -> Result<Aut
         .exec(db)
         .await?;
 
-    let oauth_code_cutoff =
-        Utc::now() - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
+    let oauth_code_cutoff = Utc::now() - Duration::days(OAUTH_AUTHORIZATION_CODE_RETENTION_DAYS);
     let oauth_authorization_codes = oauth_authorization_codes::Entity::delete_many()
         .filter(oauth_authorization_codes::Column::ExpiresAt.lt(oauth_code_cutoff))
         .exec(db)
@@ -98,10 +97,11 @@ mod tests {
     #[tokio::test]
     async fn purge_removes_only_oauth_codes_past_the_lineage_retention_window() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new("Retention tenant", &format!("retention-{}", Uuid::new_v4()))
-            .insert(&db)
-            .await
-            .expect("tenant");
+        let tenant =
+            tenants::ActiveModel::new("Retention tenant", &format!("retention-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("tenant");
         let user = users::ActiveModel::new(tenant.id, "retention@example.com", "hash")
             .insert(&db)
             .await
@@ -177,7 +177,9 @@ mod tests {
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].id, recent.id);
 
-        let second = purge_expired_auth_artifacts(&db).await.expect("second purge");
+        let second = purge_expired_auth_artifacts(&db)
+            .await
+            .expect("second purge");
         assert_eq!(second.oauth_authorization_codes, 0);
     }
 }

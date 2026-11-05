@@ -94,7 +94,12 @@ mod tests {
             .expect("cache settings read");
         let written = port
             .port()
-            .update(tenant_id, None, current.settings.clone(), current.schema_version)
+            .update(
+                tenant_id,
+                None,
+                current.settings.clone(),
+                current.schema_version,
+            )
             .await
             .expect("cache settings persist");
         assert_eq!(written.settings["mode"], current.settings["mode"]);

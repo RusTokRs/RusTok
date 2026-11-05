@@ -64,7 +64,9 @@ fn host_resolution_context_preserves_the_matched_target() {
     assert!(channel.contains("ChannelResolutionSource::Host => facts"));
     assert!(channel.contains("ChannelTargetType::WebDomain.normalize_value(host)"));
     assert!(channel.contains("value == normalized_host"));
-    assert!(channel.contains(".or_else(|| detail.targets.iter().find(|target| target.is_primary))"));
+    assert!(
+        channel.contains(".or_else(|| detail.targets.iter().find(|target| target.is_primary))")
+    );
 }
 
 #[test]
@@ -135,9 +137,11 @@ fn native_and_rest_channel_mutations_publish_durable_invalidation() {
         wrapper_paths, native_paths,
         "native mutation path inventory must exactly match the channel admin server-function owner"
     );
-    assert!(!wrapper_paths
-        .iter()
-        .any(|path| path == "/api/fn/channel/bootstrap"));
+    assert!(
+        !wrapper_paths
+            .iter()
+            .any(|path| path == "/api/fn/channel/bootstrap")
+    );
 }
 
 #[test]
@@ -150,8 +154,10 @@ fn durable_channel_generation_is_database_owned_and_supervised() {
     let bootstrap = source("apps/server/src/services/server_bootstrap.rs");
     let guardrails = source("apps/server/src/services/runtime_guardrails.rs");
 
-    assert!(migration_registry
-        .contains("m20260716_000009_create_channel_resolution_invalidation_state"));
+    assert!(
+        migration_registry
+            .contains("m20260716_000009_create_channel_resolution_invalidation_state")
+    );
     for table in [
         "channels",
         "channel_targets",

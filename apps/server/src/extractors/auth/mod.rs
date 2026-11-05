@@ -417,8 +417,9 @@ pub async fn resolve_current_user_from_access_token(
 
     let claims = decode_access_token(auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
-    let access_token_expires_at = chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
-        .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
+    let access_token_expires_at =
+        chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
+            .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
 
     if claims.tenant_id != tenant_id {
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));

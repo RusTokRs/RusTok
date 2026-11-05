@@ -183,7 +183,10 @@ mod tests {
 
         let origins = vec!["http://localhost:3000".to_string()];
         let app = axum::Router::new()
-            .route("/api/auth/session/refresh", axum::routing::post(|| async { "" }))
+            .route(
+                "/api/auth/session/refresh",
+                axum::routing::post(|| async { "" }),
+            )
             .layer(build_cors_layer(false, Some(&origins)));
 
         let response = app
@@ -218,7 +221,10 @@ mod tests {
             "x-rustok-setup-token",
             "x-rustok-observability-token",
         ] {
-            assert!(allowed.contains(required), "missing {required} in {allowed}");
+            assert!(
+                allowed.contains(required),
+                "missing {required} in {allowed}"
+            );
         }
     }
 

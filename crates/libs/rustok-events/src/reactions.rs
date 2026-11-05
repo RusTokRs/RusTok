@@ -4,8 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 pub const REACTIONS_ACTOR_STATE_CHANGED_EVENT_TYPE: &str = "reactions.actor_state.changed";

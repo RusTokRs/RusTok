@@ -11,7 +11,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::settings::{
-    normalize_module_settings, ModuleSettingSpec, ModuleSettingsValidationError,
+    ModuleSettingSpec, ModuleSettingsValidationError, normalize_module_settings,
 };
 
 /// State of an N/N+1 Settings Compatibility Guard.

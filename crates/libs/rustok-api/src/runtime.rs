@@ -34,7 +34,8 @@ pub struct SharedStaticModuleSettingsTransactionReader(
 
 impl std::fmt::Debug for SharedStaticModuleSettingsTransactionReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SharedStaticModuleSettingsTransactionReader").finish()
+        f.debug_struct("SharedStaticModuleSettingsTransactionReader")
+            .finish()
     }
 }
 

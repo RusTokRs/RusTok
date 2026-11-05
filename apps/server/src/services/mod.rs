@@ -121,8 +121,8 @@ pub mod module_event_dispatcher {
     };
 
     pub use super::module_event_dispatcher_base::{
-        ModuleEventDispatcherHandle, build_module_event_dispatcher, build_shared_runtime_extensions,
-        spawn_module_event_dispatcher,
+        ModuleEventDispatcherHandle, build_module_event_dispatcher,
+        build_shared_runtime_extensions, spawn_module_event_dispatcher,
     };
 
     /// Search source modules whose indexed documents are public discovery material.

@@ -1320,10 +1320,9 @@ async fn disable_oauth_caching(
         CACHE_CONTROL,
         axum::http::HeaderValue::from_static("no-store"),
     );
-    response.headers_mut().insert(
-        PRAGMA,
-        axum::http::HeaderValue::from_static("no-cache"),
-    );
+    response
+        .headers_mut()
+        .insert(PRAGMA, axum::http::HeaderValue::from_static("no-cache"));
     response
 }
 

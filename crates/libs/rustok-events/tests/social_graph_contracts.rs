@@ -1,6 +1,6 @@
 use rustok_events::{
-    event_schema, event_schemas, ContractEventEnvelope, ContractEventPayload,
-    SocialGraphRelationEvent, ValidateEvent, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS,
+    ContractEventEnvelope, ContractEventPayload, SOCIAL_GRAPH_RELATION_EVENT_SCHEMAS,
+    SocialGraphRelationEvent, ValidateEvent, event_schema, event_schemas,
 };
 use uuid::Uuid;
 

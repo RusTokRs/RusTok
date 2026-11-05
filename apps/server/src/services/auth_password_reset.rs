@@ -85,10 +85,7 @@ impl AuthLifecycleService {
 
         let _revoked_oauth_tokens =
             crate::services::oauth_token_service::revoke_user_delegated_tokens_in_tx(
-                &tx,
-                tenant_id,
-                user.id,
-                now,
+                &tx, tenant_id, user.id, now,
             )
             .await
             .map_err(AuthLifecycleError::from)?;

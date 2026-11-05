@@ -988,7 +988,10 @@ mod tests {
         })
         .to_string();
         assert_eq!(
-            tracker.observe_client_message(&long_id).expect_err("long id").code,
+            tracker
+                .observe_client_message(&long_id)
+                .expect_err("long id")
+                .code,
             super::WS_CLOSE_INVALID_OPERATION
         );
     }
@@ -996,7 +999,10 @@ mod tests {
     #[test]
     fn graphql_ws_server_complete_releases_operation_slot() {
         let complete = serde_json::json!({ "type": "complete", "id": "op-1" }).to_string();
-        assert_eq!(super::ws_server_complete_id(&complete), Some("op-1".to_string()));
+        assert_eq!(
+            super::ws_server_complete_id(&complete),
+            Some("op-1".to_string())
+        );
         let next = serde_json::json!({ "type": "next", "id": "op-1" }).to_string();
         assert_eq!(super::ws_server_complete_id(&next), None);
 
@@ -1006,7 +1012,9 @@ mod tests {
         if let Some(id) = super::ws_server_complete_id(&complete) {
             tracker.release(&id);
         }
-        tracker.observe_client_message(&start).expect("id is reusable after complete");
+        tracker
+            .observe_client_message(&start)
+            .expect("id is reusable after complete");
     }
 
     #[test]

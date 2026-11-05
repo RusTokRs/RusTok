@@ -517,8 +517,10 @@ mod tests {
             encoded["registryLifecycle"]["ownerBinding"]["owner"],
             "user:owner"
         );
-        assert!(encoded["registryLifecycle"]["ownerBinding"]
-            .get("ownerPrincipal")
-            .is_none());
+        assert!(
+            encoded["registryLifecycle"]["ownerBinding"]
+                .get("ownerPrincipal")
+                .is_none()
+        );
     }
 }

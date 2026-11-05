@@ -4,8 +4,8 @@ use secrecy::ExposeSecret;
 use uuid::Uuid;
 
 use crate::{
-    EnvResolver, MountedFileResolver, SecretAccessPolicy, SecretError, SecretRef,
-    SecretResolver, SecretResolverRegistry,
+    EnvResolver, MountedFileResolver, SecretAccessPolicy, SecretError, SecretRef, SecretResolver,
+    SecretResolverRegistry,
 };
 
 #[test]

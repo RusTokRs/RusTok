@@ -129,7 +129,7 @@ pub enum AlloyReleaseError {
 
 #[cfg(test)]
 mod tests {
-    use super::{alloy_release_command_context, AlloyReleaseError, AlloyReleaseStageCommand};
+    use super::{AlloyReleaseError, AlloyReleaseStageCommand, alloy_release_command_context};
     use uuid::Uuid;
 
     #[test]

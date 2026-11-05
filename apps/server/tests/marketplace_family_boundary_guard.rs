@@ -49,12 +49,16 @@ fn marketplace_family_names_and_ownership_stay_explicit() {
     assert!(root_consumer.contains("Arc<dyn MarketplaceSellerReadPort>"));
     assert!(!root_consumer.contains("sea_orm"));
     assert!(!root_consumer.contains("entities::"));
-    assert!(!Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/modules/rustok-marketplace/src/entities")
-        .exists());
-    assert!(!Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/modules/rustok-marketplace/src/migrations")
-        .exists());
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/modules/rustok-marketplace/src/entities")
+            .exists()
+    );
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/modules/rustok-marketplace/src/migrations")
+            .exists()
+    );
 }
 
 #[test]

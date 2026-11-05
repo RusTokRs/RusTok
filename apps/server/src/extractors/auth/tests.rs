@@ -280,14 +280,8 @@ fn service_permission_snapshot_drops_grants_owned_by_disabled_modules() {
     use std::collections::{BTreeMap, BTreeSet};
 
     let ownership = BTreeMap::from([
-        (
-            "forum_topics:list".to_string(),
-            "forum".to_string(),
-        ),
-        (
-            "modules:list".to_string(),
-            "modules".to_string(),
-        ),
+        ("forum_topics:list".to_string(), "forum".to_string()),
+        ("modules:list".to_string(), "modules".to_string()),
     ]);
     let availability = rustok_rbac::PermissionAvailability::new(
         ownership,

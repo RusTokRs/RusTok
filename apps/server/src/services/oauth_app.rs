@@ -610,9 +610,7 @@ impl OAuthAppService {
             }
         }
 
-        tx.commit()
-            .await
-            .map_err(GrantConsentAttempt::classify)?;
+        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 
@@ -1830,7 +1828,10 @@ mod tests {
                 .await
                 .expect("load family token")
                 .expect("family token exists");
-            assert!(token.revoked_at.is_some(), "family token {id} must be revoked");
+            assert!(
+                token.revoked_at.is_some(),
+                "family token {id} must be revoked"
+            );
         }
         let unrelated = oauth_tokens::Entity::find_by_id(unrelated.id)
             .one(&db)
@@ -1883,7 +1884,10 @@ mod tests {
                 .await
                 .expect("load family token")
                 .expect("family token exists");
-            assert!(token.revoked_at.is_some(), "family token {id} must be revoked");
+            assert!(
+                token.revoked_at.is_some(),
+                "family token {id} must be revoked"
+            );
         }
     }
 
@@ -1891,13 +1895,11 @@ mod tests {
     #[serial]
     async fn rfc7009_revocation_is_scoped_to_client_and_tenant() {
         let (db, tenant) = test_db_with_tenant().await;
-        let other_tenant = tenants::ActiveModel::new(
-            "Other tenant",
-            &format!("tenant-{}", Uuid::new_v4()),
-        )
-        .insert(&db)
-        .await
-        .expect("insert other tenant");
+        let other_tenant =
+            tenants::ActiveModel::new("Other tenant", &format!("tenant-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("insert other tenant");
         let app = insert_revocation_app(&db, tenant.id, "rfc7009-scope").await;
         let other_app = insert_revocation_app(&db, other_tenant.id, "rfc7009-other").await;
         let root = insert_revocation_token(&db, &app, "scoped-root", None).await;

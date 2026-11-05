@@ -363,8 +363,8 @@ mod tests {
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
 
-    use super::{materialize_module_payload, record_prepared_module, ModulePayloadCacheError};
-    use crate::{prepare_instance_layout, InstanceLayout, InstancePlacement};
+    use super::{ModulePayloadCacheError, materialize_module_payload, record_prepared_module};
+    use crate::{InstanceLayout, InstancePlacement, prepare_instance_layout};
 
     fn layout() -> (InstanceLayout, std::path::PathBuf) {
         let parent = std::env::temp_dir().join(format!("rustok-module-cache-{}", Uuid::new_v4()));
@@ -428,10 +428,12 @@ mod tests {
             error,
             ModulePayloadCacheError::DigestMismatch { .. }
         ));
-        assert!(!layout
-            .module_payload_cache_entry(&digest)
-            .expect("cache path")
-            .exists());
+        assert!(
+            !layout
+                .module_payload_cache_entry(&digest)
+                .expect("cache path")
+                .exists()
+        );
         std::fs::remove_dir_all(parent).expect("cleanup");
     }
 }

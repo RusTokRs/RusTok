@@ -6,9 +6,9 @@ use std::{
 use uuid::Uuid;
 
 use crate::{
-    ArchiveLimits, CasArchiveError, CasArchivePublisher, CasArchiveStore, SourceArchiveBuilder,
-    SourceArchiveError, SourceArchiveInspector, SourceTreeError, SourceTreeFile,
-    SourceTreeMaterializer, CAS_SOURCE_URI_SCHEME, COPY_BUFFER_BYTES, USTAR_BLOCK_BYTES,
+    ArchiveLimits, CAS_SOURCE_URI_SCHEME, COPY_BUFFER_BYTES, CasArchiveError, CasArchivePublisher,
+    CasArchiveStore, SourceArchiveBuilder, SourceArchiveError, SourceArchiveInspector,
+    SourceTreeError, SourceTreeFile, SourceTreeMaterializer, USTAR_BLOCK_BYTES,
 };
 
 struct TestDir(PathBuf);

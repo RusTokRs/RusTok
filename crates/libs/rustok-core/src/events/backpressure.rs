@@ -3,8 +3,8 @@
 //! This module provides mechanisms to prevent Out-Of-Memory (OOM) errors
 //! from event bursts by implementing queue depth monitoring and backpressure.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use thiserror::Error;
 
 /// Errors that can occur during backpressure control

@@ -148,7 +148,7 @@ pub enum ReviewError {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_transition, ReviewStatus};
+    use super::{ReviewStatus, validate_transition};
 
     #[test]
     fn review_transitions_are_terminal_for_one_source_revision() {

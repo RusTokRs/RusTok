@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 /// Park reason for an operation whose compensation cannot be rolled back
@@ -321,22 +321,26 @@ mod tests {
     #[test]
     fn parked_event_accepts_only_the_bounded_park_reasons() {
         for reason in CHECKOUT_OPERATION_PARK_REASONS {
-            assert!(CheckoutOperationEvent::Parked {
-                operation_id: Uuid::new_v4(),
-                cart_id: Uuid::new_v4(),
-                reason: (*reason).to_string(),
-            }
-            .validate()
-            .is_ok());
+            assert!(
+                CheckoutOperationEvent::Parked {
+                    operation_id: Uuid::new_v4(),
+                    cart_id: Uuid::new_v4(),
+                    reason: (*reason).to_string(),
+                }
+                .validate()
+                .is_ok()
+            );
         }
 
-        assert!(CheckoutOperationEvent::Parked {
-            operation_id: Uuid::new_v4(),
-            cart_id: Uuid::new_v4(),
-            reason: "provider said so".to_string(),
-        }
-        .validate()
-        .is_err());
+        assert!(
+            CheckoutOperationEvent::Parked {
+                operation_id: Uuid::new_v4(),
+                cart_id: Uuid::new_v4(),
+                reason: "provider said so".to_string(),
+            }
+            .validate()
+            .is_err()
+        );
     }
 
     #[test]
@@ -346,14 +350,16 @@ mod tests {
         let operator_id = Uuid::new_v4();
 
         for outcome in CHECKOUT_OPERATION_OUTCOMES {
-            assert!(CheckoutOperationEvent::Reconciled {
-                operation_id,
-                cart_id,
-                outcome: (*outcome).to_string(),
-                operator_id,
-            }
-            .validate()
-            .is_ok());
+            assert!(
+                CheckoutOperationEvent::Reconciled {
+                    operation_id,
+                    cart_id,
+                    outcome: (*outcome).to_string(),
+                    operator_id,
+                }
+                .validate()
+                .is_ok()
+            );
         }
 
         for invalid in [
@@ -377,16 +383,18 @@ mod tests {
     #[test]
     fn admission_changed_event_accepts_only_bounded_levels_and_positive_epochs() {
         for admission in CHECKOUT_OPERATION_ADMISSIONS {
-            assert!(CheckoutOperationEvent::AdmissionChanged {
-                operation_id: Uuid::new_v4(),
-                cart_id: Uuid::new_v4(),
-                previous_admission: None,
-                admission: (*admission).to_string(),
-                admission_epoch: 1,
-                status: "pending".to_string(),
-            }
-            .validate()
-            .is_ok());
+            assert!(
+                CheckoutOperationEvent::AdmissionChanged {
+                    operation_id: Uuid::new_v4(),
+                    cart_id: Uuid::new_v4(),
+                    previous_admission: None,
+                    admission: (*admission).to_string(),
+                    admission_epoch: 1,
+                    status: "pending".to_string(),
+                }
+                .validate()
+                .is_ok()
+            );
         }
 
         for invalid in [

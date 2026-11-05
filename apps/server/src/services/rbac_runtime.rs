@@ -475,8 +475,10 @@ mod tests {
         let error = Error::from(PermissionCacheResolutionError::Store(
             sea_orm::DbErr::Custom("original storage failure".into()),
         ));
-        assert!(matches!(error, Error::Database(sea_orm::DbErr::Custom(message))
-            if message == "original storage failure"));
+        assert!(
+            matches!(error, Error::Database(sea_orm::DbErr::Custom(message))
+            if message == "original storage failure")
+        );
     }
 
     async fn insert_tenant_and_user(

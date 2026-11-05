@@ -57,8 +57,10 @@ fn durable_generation_watchdog_is_owned_supervised_and_restartable() {
         );
     }
 
-    assert!(!generation
-        .contains("if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)"));
+    assert!(
+        !generation
+            .contains("if !ctx.shared_insert_if_absent(RbacInvalidationGenerationWatchdogHandle)")
+    );
 
     let spawn = generation
         .find("let task = spawn_rbac_invalidation_generation_watchdog")

@@ -457,7 +457,8 @@ fn cookie_logout_revocation_result(
     result: std::result::Result<(), AuthLifecycleError>,
 ) -> Result<()> {
     match result {
-        Ok(()) | Err(AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::SessionExpired) => {
+        Ok(())
+        | Err(AuthLifecycleError::InvalidRefreshToken | AuthLifecycleError::SessionExpired) => {
             Ok(())
         }
         Err(error) => Err(Error::from(error)),
@@ -1063,14 +1064,16 @@ mod tests {
     #[test]
     fn cookie_logout_is_idempotent_but_fails_closed_on_revocation_outage() {
         assert!(super::cookie_logout_revocation_result(Ok(())).is_ok());
-        assert!(super::cookie_logout_revocation_result(Err(
-            super::AuthLifecycleError::InvalidRefreshToken
-        ))
-        .is_ok());
-        assert!(super::cookie_logout_revocation_result(Err(
-            super::AuthLifecycleError::SessionExpired
-        ))
-        .is_ok());
+        assert!(
+            super::cookie_logout_revocation_result(Err(
+                super::AuthLifecycleError::InvalidRefreshToken
+            ))
+            .is_ok()
+        );
+        assert!(
+            super::cookie_logout_revocation_result(Err(super::AuthLifecycleError::SessionExpired))
+                .is_ok()
+        );
 
         let result = super::cookie_logout_revocation_result(Err(
             super::AuthLifecycleError::Internal(crate::error::Error::InternalServerError),

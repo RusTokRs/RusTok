@@ -509,7 +509,9 @@ mod tests {
             .register(source, Arc::new(TestHandler("unique-slug")))
             .await
             .expect_err("duplicate registration must fail");
-        assert!(matches!(err, rustok_api::ModuleWorkError::DuplicateHandler(slug) if slug == "unique-slug"));
+        assert!(
+            matches!(err, rustok_api::ModuleWorkError::DuplicateHandler(slug) if slug == "unique-slug")
+        );
     }
 
     #[tokio::test]

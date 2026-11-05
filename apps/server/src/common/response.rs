@@ -209,22 +209,22 @@ mod tests {
         let rich = RichError::new(ErrorKind::Validation, "sql password=secret")
             .with_user_message("Invalid product input")
             .with_field("dsn", "postgres://admin:secret@db");
-        let (status, payload) =
-            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        let (status, payload) = commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(payload["error"]["code"], "VALIDATION_ERROR");
         assert_eq!(payload["error"]["message"], "Invalid product input");
         assert!(!payload.to_string().contains("secret"));
 
         let rich = RichError::new(ErrorKind::NotFound, "internal row ID");
-        let (status, payload) =
-            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        let (status, payload) = commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(payload["error"]["message"], "Request could not be completed");
+        assert_eq!(
+            payload["error"]["message"],
+            "Request could not be completed"
+        );
 
         let rich = RichError::new(ErrorKind::Database, "postgres://admin:secret@db");
-        let (status, payload) =
-            commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
+        let (status, payload) = commerce_error_payload(CommerceError::Rich(Box::new(rich))).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(payload["error"]["message"], "Internal server error");
         assert!(!payload.to_string().contains("secret"));

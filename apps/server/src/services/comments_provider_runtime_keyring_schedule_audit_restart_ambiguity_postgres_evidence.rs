@@ -29,9 +29,7 @@ const SOURCE_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_outbox";
 const RECOVERY_AUDIT_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_recovery_audits";
 const STATE_KEY: &str = "comments_tcp_delegation_schedule";
 const CANONICAL_EVENT_TYPE: &str = "blog.comments_delegation_schedule.replacement_succeeded";
-const SELECTED_MIGRATIONS: [&str; 1] = [
-    "m20261029_000001_create_blog_schema",
-];
+const SELECTED_MIGRATIONS: [&str; 1] = ["m20261029_000001_create_blog_schema"];
 
 struct PostgresRestartEvidenceDb {
     control: DatabaseConnection,

@@ -1,4 +1,7 @@
-#![cfg_attr(not(all(feature = "mod-profiles", feature = "mod-media")), allow(dead_code))]
+#![cfg_attr(
+    not(all(feature = "mod-profiles", feature = "mod-media")),
+    allow(dead_code)
+)]
 
 #[allow(unused_imports)]
 use std::time::Duration;

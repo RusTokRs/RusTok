@@ -674,8 +674,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let module_event_dispatcher_drain = async {
         if let Some(worker) = runtime_ctx
-            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>()
-        {
+            .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>(
+        ) {
             // Request a cooperative drain first; if a handler blocks past the
             // host deadline, abort the dispatcher task as the emergency fallback.
             worker.request_stop();

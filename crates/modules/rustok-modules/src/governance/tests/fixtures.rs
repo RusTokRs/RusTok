@@ -15,11 +15,12 @@ use crate::build::{
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 use crate::{
     ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
-    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
-    ModuleCommandContext, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+    ControlPlaneInfrastructure, InMemoryArtifactBlobStore, MODULE_BUILD_COMPONENT_TARGET,
+    MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
+    MODULE_BUILD_WIT_WORLD, ModuleArtifactDescriptor, ModuleCommandContext,
+    ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
     ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
-    TrustEvidenceReference, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
-    MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
+    TrustEvidenceReference,
 };
 
 pub(crate) fn trust_evidence(digest_character: char) -> Vec<TrustEvidenceReference> {

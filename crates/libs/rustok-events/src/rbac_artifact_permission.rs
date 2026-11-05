@@ -2,8 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 const MAX_PERMISSION_KEY_LENGTH: usize = 256;
@@ -69,8 +69,7 @@ const ASSIGNMENT_CHANGED_FIELDS: &[FieldSchema] = &[
 pub const RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS: &[EventSchema] = &[EventSchema {
     event_type: "rbac.artifact_role_permission.assignment_changed",
     version: 1,
-    description:
-        "RBAC atomically changed one tenant role grant for an admitted artifact permission.",
+    description: "RBAC atomically changed one tenant role grant for an admitted artifact permission.",
     fields: ASSIGNMENT_CHANGED_FIELDS,
 }];
 
@@ -160,16 +159,18 @@ mod tests {
             granted,
             ..
         } = event();
-        assert!(RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id: Uuid::nil(),
-            artifact_permission_id,
-            role_id,
-            installation_id,
-            permission_key,
-            granted,
-        }
-        .validate()
-        .is_err());
+        assert!(
+            RbacArtifactPermissionEvent::AssignmentChanged {
+                operation_id: Uuid::nil(),
+                artifact_permission_id,
+                role_id,
+                installation_id,
+                permission_key,
+                granted,
+            }
+            .validate()
+            .is_err()
+        );
 
         let RbacArtifactPermissionEvent::AssignmentChanged {
             operation_id,
@@ -179,16 +180,18 @@ mod tests {
             granted,
             ..
         } = event();
-        assert!(RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id,
-            artifact_permission_id: Uuid::nil(),
-            role_id,
-            installation_id,
-            permission_key,
-            granted,
-        }
-        .validate()
-        .is_err());
+        assert!(
+            RbacArtifactPermissionEvent::AssignmentChanged {
+                operation_id,
+                artifact_permission_id: Uuid::nil(),
+                role_id,
+                installation_id,
+                permission_key,
+                granted,
+            }
+            .validate()
+            .is_err()
+        );
 
         let RbacArtifactPermissionEvent::AssignmentChanged {
             operation_id,
@@ -198,15 +201,17 @@ mod tests {
             granted,
             ..
         } = event();
-        assert!(RbacArtifactPermissionEvent::AssignmentChanged {
-            operation_id,
-            artifact_permission_id,
-            role_id,
-            installation_id,
-            permission_key: "x".repeat(MAX_PERMISSION_KEY_LENGTH + 1),
-            granted,
-        }
-        .validate()
-        .is_err());
+        assert!(
+            RbacArtifactPermissionEvent::AssignmentChanged {
+                operation_id,
+                artifact_permission_id,
+                role_id,
+                installation_id,
+                permission_key: "x".repeat(MAX_PERMISSION_KEY_LENGTH + 1),
+                granted,
+            }
+            .validate()
+            .is_err()
+        );
     }
 }

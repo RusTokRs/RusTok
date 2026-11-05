@@ -38,7 +38,10 @@ impl std::fmt::Debug for SandboxRuntime {
         f.debug_struct("SandboxRuntime")
             .field("executors", &self.executors)
             .field("observers_count", &self.observers.len())
-            .field("capability_observers_count", &self.capability_observers.len())
+            .field(
+                "capability_observers_count",
+                &self.capability_observers.len(),
+            )
             .finish()
     }
 }
