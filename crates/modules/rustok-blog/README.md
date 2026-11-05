@@ -74,6 +74,9 @@ interface-copy coverage and do not restrict Blog content locales.
 
 Run both `npm run verify:module-source-layout` and
 `npm run verify:module-reference-contract` before using Blog as a template.
+The [annotated connection map](docs/README.md#reading-and-extending-the-reference)
+identifies actual permission, transaction, event, Search, cache, provider and UI
+seams, including the limits of the current Media example.
 
 ## Responsibilities
 

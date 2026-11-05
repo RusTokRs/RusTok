@@ -46,6 +46,13 @@ use crate::services::tag::{
 };
 use crate::state_machine::BlogPostStatus;
 
+/// Application boundary for Blog-owned post state and its durable side effects.
+///
+/// Hosts inject the database and transactional bus. Commands own authorization,
+/// CAS, localized writes and commit ordering; transports must not reproduce them.
+/// `commands`/`queries` orchestrate use cases, `repository` keeps storage private,
+/// and `routes`/`scheduled` own their related invariants. See the connection map
+/// in `docs/README.md` before attaching another platform capability.
 pub struct PostService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,

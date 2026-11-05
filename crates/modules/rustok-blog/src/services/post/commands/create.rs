@@ -76,6 +76,10 @@ impl PostService {
         // pooled connection while it is rejected.
         let scheduled_at_db = validate_schedule_for_create(scheduled_at, publish, now)?;
 
+        // Reference transaction boundary: every owner row, route/relation and
+        // outbox write below uses this transaction. An error must roll them all
+        // back. External Search/cache/provider IO belongs after durable delivery,
+        // never between an owner mutation and its outbox publication.
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
             .await?;
@@ -206,6 +210,8 @@ impl PostService {
                 .map_err(BlogError::from)?;
         }
 
+        // Acknowledgement needs no additional privileged read. A UI reload is
+        // a separate operation and cannot turn this committed write into failure.
         txn.commit().await.map_err(BlogError::from)?;
         Ok(post_id)
     }

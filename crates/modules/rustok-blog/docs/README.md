@@ -7,8 +7,9 @@ contracts.
 
 ## Planning cursor
 
-[The implementation plan](./implementation-plan.md) is the single source of truth
-for Blog task status, architecture contracts, and roadmap.
+[The implementation plan](./implementation-plan.md) owns Blog task status and
+remaining evidence. This owner documentation and accepted ADRs define the contract;
+executable wiring defines the currently implemented behavior.
 
 
 ## Purpose
@@ -71,6 +72,37 @@ is responsibility-oriented while public Rust paths remain deliberate owner API:
 Unused canonical slots are not created. Nested feature modules are preferred when
 a responsibility grows, and the enrolled reference profile is checked by
 `npm run verify:module-source-layout`.
+
+### Reading and extending the reference
+
+Follow one actual operation before copying its structure. For post creation,
+start at `src/dto/post.rs`, then
+`src/services/post/commands/create.rs`, `repository.rs`, and the owner migration
+builders. The application service checks authority and input bounds, writes
+base/localized/route/relation state and durable events in one transaction, and
+returns acknowledgement after commit. Transport adapters map context and errors;
+they do not acquire ownership of those rules. UI command construction belongs in
+the module's pure `core/`, with native and GraphQL IO behind `transport/`.
+
+| Concern | Existing connection and extension point | Boundary to preserve |
+| --- | --- | --- |
+| Lifecycle, permissions and runtime registration | `src/module.rs`, `src/services/rbac.rs`, `rustok-core`, `rustok-api` | Register typed resources and runtime capabilities; retain owner-service authorization after transport preflight. |
+| Persistence and locale writes | `src/services/post/commands/`, `repository.rs`, private `src/entities/`, `src/migrations/` | A requested read locale is not write authority. Require explicit copy changes, Patch semantics and the loaded business revision. Add constraints and declared migration prerequisites with schema changes. |
+| Events and rollback | `TransactionalEventBus::publish_in_tx` in the command transaction; listeners in `src/module.rs` | Couple owner mutations and durable events before commit. Workers, indexes and caches consume committed events; an external call is not part of the database transaction. |
+| Search and indexing | `src/services/search_projection.rs` and its factory in `src/module.rs` | Blog owns published content and current audience checks. Search owns indexed documents and ranking. Recheck current visibility instead of treating an index payload as authorization. |
+| Optional Comments provider | `CommentService::from_runtime_capabilities`, `src/graphql/runtime_data.rs`, HTTP runtime composition | The host selects the neutral owner port. Missing capability has an explicit unavailable state; do not construct a private provider or read its tables. |
+| Cached public comments | `src/integrations/public_comments_snapshot.rs` and its host-injected `PublicCommentsSnapshotStore` | This is a bounded derived snapshot, not a generic Blog cache. Keys include tenant, post, locale, channel, page and projection revision; live publication/discussion policy still gates every fallback read. |
+| SEO and Reactions | `src/integrations/seo_targets.rs`, `reaction_subject.rs`, registrations in `src/module.rs` | Register owner contracts and expose current identity/revision/visibility. Keep generated SEO and reaction state with their canonical owners. |
+| Scheduled work and retention | `src/services/scheduler.rs` with the `runtime` feature | Register work with the runtime owner; a source file or enabled feature alone does not prove the worker was executed. |
+| Media | `featured_image_url` in the post DTO and owner URL validation | Blog currently demonstrates a validated external URL, not asset upload, Media ownership, attachment lifecycle or deletion cleanup. A new asset-backed field must use the Media owner's actual contract and verify those effects. |
+| UI libraries and localization | `admin/`, `storefront/`, their owner READMEs and the central FFA/i18n guides | Reuse canonical controls, forms, grid and catalogs. Preserve host effective UI locale separately from content requested/effective locales. |
+
+For a capability without persistence, omit the entity/repository/migration chain;
+do not invent a storage model to imitate Blog. For an optional integration, carry
+its real unavailable/error behavior and executable tests with the selected owner
+operation. The [reference acceptance record](./implementation-plan.md#reference-readiness-review-2026-11-05)
+states which connections have executed evidence and which remain pending. Do not
+generate placeholder adapters or publish readiness from this map alone.
 
 ## Multilingual storage contract
 
@@ -174,8 +206,7 @@ slice text.
 ## Related Documentation
 
 - [README crate](../README.md)
-- [Current Implementation Cursor](./implementation-plan-current.md)
-- [Historical Implementation Plan](./implementation-plan.md)
+- [Implementation Plan and Reference Evidence](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)

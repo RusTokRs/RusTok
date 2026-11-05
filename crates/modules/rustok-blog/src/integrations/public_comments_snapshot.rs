@@ -12,6 +12,12 @@ use crate::{BlogError, BlogResult, CommentListItem, CommentService, ListComments
 const SNAPSHOT_SCHEMA_VERSION: u16 = 3;
 pub const MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024;
 
+/// Host-injected storage for the derived public snapshot, not Comments authority.
+///
+/// The host implements retention/expiry through its canonical cache capability.
+/// Callers use `list_public_comments_with_snapshot`, which rechecks current Blog
+/// visibility and discussion policy before allowing a cached fallback. Never
+/// expose a store lookup directly as an authenticated/public comment read.
 #[async_trait]
 pub trait PublicCommentsSnapshotStore: Send + Sync {
     async fn load(&self, key: &str) -> Result<Option<Vec<u8>>, String>;
