@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     AccessMode, ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, EntityTrait,
-    IsolationLevel, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ExprTrait, IsolationLevel, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -249,7 +249,7 @@ impl PricingService {
                 .one(&txn)
                 .await?
                 .ok_or_else(|| CommerceError::Validation("price_list_id was not found".into()))?;
-            super::commands::validate_active_price_list_at(&list, resolved_at)?;
+            super::scope::validate_active_price_list_at(&list, resolved_at)?;
             if !channel_scope_matches(
                 list.channel_id,
                 list.channel_slug.as_deref(),
@@ -531,7 +531,7 @@ pub(crate) async fn resolve_requested_price_list_id(
         return Ok(None);
     };
 
-    let price_list = super::commands::resolve_active_price_list(db, tenant_id, price_list_id).await?;
+    let price_list = super::scope::resolve_active_price_list(db, tenant_id, price_list_id).await?;
 
     if !channel_scope_matches(
         price_list.channel_id,
@@ -545,34 +545,6 @@ pub(crate) async fn resolve_requested_price_list_id(
     }
 
     Ok(Some(price_list_id))
-}
-
-pub(crate) fn channel_scope_matches(
-    scoped_channel_id: Option<Uuid>,
-    scoped_channel_slug: Option<&str>,
-    requested_channel_id: Option<Uuid>,
-    requested_channel_slug: Option<&str>,
-) -> bool {
-    let scoped_channel_slug = normalize_channel_slug(scoped_channel_slug);
-    let requested_channel_slug = normalize_channel_slug(requested_channel_slug);
-
-    if scoped_channel_id.is_none() && scoped_channel_slug.is_none() {
-        return true;
-    }
-
-    if let Some(scoped_channel_id) = scoped_channel_id
-        && Some(scoped_channel_id) != requested_channel_id
-    {
-        return false;
-    }
-
-    if let Some(scoped_channel_slug) = scoped_channel_slug
-        && Some(scoped_channel_slug.as_str()) != requested_channel_slug.as_deref()
-    {
-        return false;
-    }
-
-    true
 }
 
 pub(crate) fn optional_int_filter(column: price::Column, value: Option<i32>) -> sea_orm::Condition {

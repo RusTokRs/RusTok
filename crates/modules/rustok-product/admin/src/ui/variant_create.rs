@@ -294,7 +294,7 @@ pub(super) fn ProductVariantCreateSection(
         product
             .get()
             .map(|value| crate::core::combinations::saved_members(&value.variants))
-            .unwrap_or_default()
+            .unwrap_or(Ok(Vec::new()))
     });
     let pick = Callback::new(move |values| {
         if editable.get_untracked() {
@@ -344,22 +344,22 @@ pub(super) fn ProductVariantCreateSection(
                         <CreateTextField field=CreateField::Barcode draft=draft editable=editable locale=locale.get_value() />
                         <CreateTextField field=CreateField::ShippingProfile draft=draft editable=editable locale=locale.get_value() />
                     </div>
-                    <For each=move || variant_create::assignment_ids(product.get().as_ref(), &draft.get()) key=|id| id.clone() children=move |id| view! {
+                    <For each={move || variant_create::assignment_ids(product.get().as_ref(), &draft.get())} key={|id| id.clone()} children={move |id| view! {
                         <CreateAssignment attribute_id=id draft=draft product=product editable=editable locale=locale.get_value() />
-                    } />
-                    <For each=move || (0..draft.get().prices.len()).collect::<Vec<_>>() key=|index| *index children=move |index| view! {
+                    }} />
+                    <For each={move || (0..draft.get().prices.len()).collect::<Vec<_>>()} key={|index| *index} children={move |index| view! {
                         <div class="grid gap-3 md:grid-cols-4">
                             <CreateTextField field=CreateField::Currency(index) draft=draft editable=editable locale=locale.get_value() />
                             <CreateTextField field=CreateField::Amount(index) draft=draft editable=editable locale=locale.get_value() />
                             <CreateTextField field=CreateField::CompareAt(index) draft=draft editable=editable locale=locale.get_value() />
                             <Button on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if index < draft.prices.len() { draft.prices.remove(index); } }); } })>{text("product-variantCreate-removePrice")}</Button>
                         </div>
-                    } />
-                    {move || view! { <Button disabled=draft.get().prices.len() >= variant_create::MAX_PRICE_ROWS on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if draft.prices.len() < variant_create::MAX_PRICE_ROWS { draft.prices.push(crate::model::VariantPriceDraft { currency_code: "USD".into(), ..Default::default() }); } }); } })>{text("product-variantCreate-addPrice")}</Button> }}
+                    }} />
+                    {move || view! { <Button disabled=(draft.get().prices.len() >= variant_create::MAX_PRICE_ROWS) on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if draft.prices.len() < variant_create::MAX_PRICE_ROWS { draft.prices.push(crate::model::VariantPriceDraft { currency_code: "USD".into(), ..Default::default() }); } }); } })>{text("product-variantCreate-addPrice")}</Button> }}
                     <p class="text-xs">{text("product-combinations-noPrice")}</p>
                     <label class="block"><span>{text("product-variantCreate-quantity")}</span><Input r#type="number" value=quantity set_value=set_quantity /></label>
                     <CreateInventoryPolicy draft=draft editable=editable locale=locale.get_value() />
-                    <Button r#type="submit" disabled=!editable.get()>{text("product-variantCreate-save")}</Button>
+                    <Button r#type="submit" disabled=(!editable.get())>{text("product-variantCreate-save")}</Button>
                 </fieldset>
                 </form>
             </Show>
@@ -415,7 +415,7 @@ fn CreateAssignment(
         if editable.get_untracked() { draft.update(|draft| crate::core::initial_catalog::set_pending_assignment(&mut draft.axis_values, &id.get_value(), event_target_value(&event))); }
     }>{move || {
         let (label, choices) = variant_create::assignment_choices(product.get().as_ref(), &draft.get(), &id.get_value());
-        let options = choices.into_iter().map(|choice| {
+        let options: Vec<SelectOption> = choices.into_iter().map(|choice| {
             let mut option = SelectOption::new(choice.id, if choice.available { choice.label } else { format!("{} · {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), choice.label) });
             option.disabled = !choice.available; option
         }).collect();

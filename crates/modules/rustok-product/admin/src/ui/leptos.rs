@@ -41,6 +41,7 @@ use crate::model::{
     SetCategorySchemaModeDraft, UpdateProductImageDraft, VariantPriceDraft,
 };
 use crate::transport;
+use super::product_editor::ProductEditorPage;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -210,8 +211,8 @@ pub fn ProductAdmin() -> impl IntoView {
     // Selection, not Product GET, owns the stable recovery mount. Metadata refreshes keep
     // this keyed editor alive; both reference entry paths use the routed write/recovery boundary.
     view! {
-        <For each=move || selected_id.get().into_iter().collect::<Vec<_>>() key=|id| id.clone()
-            children=move |product_id| view! { <super::product_editor::ProductEditorPage is_new=false product_id=product_id /> }
+        <For each={move || selected_id.get().into_iter().collect::<Vec<_>>()} key={|id| id.clone()}
+            children={move |product_id| view! { <ProductEditorPage is_new=false product_id=product_id /> }}
         />
         <Show when=move || selected_id.get().is_none()>
             <ProductCatalogReference />

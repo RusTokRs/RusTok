@@ -64,7 +64,7 @@ pub(super) fn InitialVariantsSection(
             <p class="text-xs text-muted-foreground">"Only the selected rows are created, atomically with the Product. No Cartesian grid is generated. Category changes retain this draft. Use the SKU, price and stock fields below to fill each selected row, then add it here."</p>
             {move || error.get().map(|message| view! { <Alert variant=AlertVariant::Destructive>{message}</Alert> })}
             {move || {
-                let options = form.get().map(|form| form.attributes.into_iter()
+                let options: Vec<SelectOption> = form.get().map(|form| form.attributes.into_iter()
                     .filter(crate::core::is_eligible_axis)
                     .map(|attribute| SelectOption::new(attribute.attribute_id, attribute.label)).collect()).unwrap_or_default();
                 view! { <label><span>"Add an axis"</span><Select options=options value=attribute set_value=set_attribute placeholder="Select an eligible attribute" /></label> }
@@ -177,7 +177,7 @@ fn AssignmentSelect(
         }>
             <span>"Value for the next selected SKU"</span>
             {move || {
-                let options = initial_catalog::pending_assignment_choices(
+                let options: Vec<SelectOption> = initial_catalog::pending_assignment_choices(
                     &axes.get(), &pending.get(), &id.get_value(), form.get().as_ref(),
                 ).into_iter().map(|option| {
                     let mut view = SelectOption::new(option.id, if option.available { option.label } else {

@@ -16,4 +16,4 @@ mod ui;
 pub use ui::PricingAdmin;
 
 #[cfg(test)]
-mod contract_tests;
+mod tests;

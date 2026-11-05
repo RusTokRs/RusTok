@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ModuleGuard } from "@/modules/module-guard";
+import { ModuleGuard } from "@/app/providers/module-guard";
 
 export default function ProductRelationsLayout({
   children,

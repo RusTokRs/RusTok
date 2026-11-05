@@ -407,3 +407,31 @@ pub(crate) fn validate_discount_percent(discount_percent: Decimal) -> CommerceRe
 
     Ok(())
 }
+
+pub(crate) fn channel_scope_matches(
+    scoped_channel_id: Option<Uuid>,
+    scoped_channel_slug: Option<&str>,
+    requested_channel_id: Option<Uuid>,
+    requested_channel_slug: Option<&str>,
+) -> bool {
+    let scoped_channel_slug = normalize_channel_slug(scoped_channel_slug);
+    let requested_channel_slug = normalize_channel_slug(requested_channel_slug);
+
+    if scoped_channel_id.is_none() && scoped_channel_slug.is_none() {
+        return true;
+    }
+
+    if let Some(scoped_channel_id) = scoped_channel_id
+        && Some(scoped_channel_id) != requested_channel_id
+    {
+        return false;
+    }
+
+    if let Some(scoped_channel_slug) = scoped_channel_slug
+        && Some(scoped_channel_slug.as_str()) != requested_channel_slug.as_deref()
+    {
+        return false;
+    }
+
+    true
+}

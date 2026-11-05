@@ -2037,14 +2037,19 @@ pub fn build_variant_row_view_models(
         .map(|v| {
             let options = combinations::retained_labels(&product.variant_axes, &v.axis_values);
             let options_summary = if options.is_empty() {
-                t(
-                    locale,
-                    if product.variant_axes.is_empty() {
-                        "product-combinations-default"
-                    } else {
-                        "product-combinations-unassigned"
-                    },
-                )
+                if product.variant_axes.is_empty() {
+                    t(
+                        locale,
+                        "product-combinations-default",
+                        "Default tuple (no axes)",
+                    )
+                } else {
+                    t(
+                        locale,
+                        "product-combinations-unassigned",
+                        "Missing axis assignments - review the SKU",
+                    )
+                }
             } else {
                 options.join(" · ")
             };

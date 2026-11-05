@@ -507,12 +507,12 @@ pub(super) fn ProductVariantAxesSection(
                 } />
                 <div class="flex flex-wrap items-end gap-2">
                     <label class="grid gap-1 text-xs"><span>{text("product-axes-attribute")}</span>
-                        <select class="rounded border border-border bg-background px-2 py-1" disabled=move || locked() || rows.get().len() >= 32 prop:value=move || add_selection.get() on:change=move |event| add_selection.set(event_target_value(&event))>
+                        <select class="rounded border border-border bg-background px-2 py-1" disabled=move || (locked() || rows.get().len() >= 32) prop:value=move || add_selection.get() on:change=move |event| add_selection.set(event_target_value(&event))>
                             <option value="">{text("product-axes-attribute")}</option>
                             {move || form.get().map(|form| form.attributes.iter().filter(|attribute| !rows.get().iter().any(|row| row.attribute_id == attribute.attribute_id) && axis_candidate(&form, &attribute.attribute_id).is_some()).map(|attribute| view! { <option value=attribute.attribute_id.clone()>{attribute.label.clone()}</option> }).collect_view())}
                         </select>
                     </label>
-                    <button type="button" class="rounded border px-3 py-1 text-xs" disabled=move || locked() || rows.get().len() >= 32 || add_selection.get().is_empty() on:click=move |_| {
+                    <button type="button" class="rounded border px-3 py-1 text-xs" disabled=move || (locked() || rows.get().len() >= 32 || add_selection.get().is_empty()) on:click=move |_| {
                         let Some(candidate) = form.get_untracked().and_then(|form| axis_candidate(&form, &add_selection.get_untracked())) else { return; };
                         if rows.get_untracked().len() >= 32 || rows.get_untracked().iter().any(|row| row.attribute_id == candidate.attribute_id) { return; }
                         changed.run(()); rows.update(|rows| rows.push(candidate)); add_selection.set(String::new());

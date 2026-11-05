@@ -1,6 +1,6 @@
 mod graphql_adapter;
 mod graphql_error_safety;
-mod native_server_adapter;
+pub(crate) mod native_server_adapter;
 
 use rustok_ui_transport::UiTransportPath;
 
