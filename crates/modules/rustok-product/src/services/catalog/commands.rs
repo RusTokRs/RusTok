@@ -1784,7 +1784,9 @@ impl CatalogService {
             &[variant_id],
         )
         .await?;
-        PricingBootstrapService::delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
+        if let Some(port) = &self.pricing_port {
+            port.delete_prices_for_variants_in_tx(&txn, &[variant_id]).await?;
+        }
 
         entities::variant_translation::Entity::delete_many()
             .filter(entities::variant_translation::Column::VariantId.eq(variant_id))

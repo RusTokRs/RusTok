@@ -5,7 +5,7 @@ pub fn calculate_reading_time(plain_text: &str) -> u32 {
 }
 
 pub fn format_reading_time(minutes: u32, locale: Option<&str>) -> String {
-    if locale == Some("ru") {
+    if locale.is_some_and(|l| l.starts_with("ru")) {
         let mod10 = minutes % 10;
         let mod100 = minutes % 100;
         let suffix = if mod10 == 1 && mod100 != 11 {

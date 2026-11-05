@@ -48,7 +48,7 @@ capability before tenant-less price-row reads. Remote adapter execution remains 
 ## Domain Collaborations
 
 - **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs.
-- **Pricing Persistence**: Transaction-aware initial price creation via `rustok_pricing_persistence::BootstrapService::create_initial_prices_in_tx` during product variant bootstrap.
+- **Pricing Collaboration**: Transaction-aware initial price creation, replacement, cleanup, and catalog projections via `ProductPricingPort` during product and variant lifecycle.
 - **Inventory**: Transaction-aware initial inventory item provisioning during variant creation.
 - **Flex**: Custom fields and dynamic attribute schemas attached to product aggregates.
 - **Brand**: Cross-boundary collaboration with `rustok-brand`. Product owns the relational `product_brands` table mapping products to primary manufacturers and collaborative partner brands.

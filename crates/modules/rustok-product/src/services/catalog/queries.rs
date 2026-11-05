@@ -180,27 +180,24 @@ impl CatalogService {
             .iter()
             .map(|variant| variant.id)
             .collect::<Vec<_>>();
-        let prices = if variant_ids.is_empty() {
-            Vec::new()
-        } else {
-            rustok_pricing_persistence::entities::price::Entity::find()
-                .filter(
-                    rustok_pricing_persistence::entities::price::Column::VariantId
-                        .is_in(variant_ids.clone()),
-                )
-                .all(&self.db)
-                .await?
-        };
         let mut variant_to_product = HashMap::<Uuid, Uuid>::new();
         for variant in &variants {
             variant_to_product.insert(variant.id, variant.product_id);
         }
-        let price_from_by_product = build_storefront_list_price_from_map(
-            &variant_to_product,
-            prices.as_slice(),
-            list_query.currency_code.as_deref(),
-            public_channel_slug,
-        );
+        let price_from_by_product = if variant_ids.is_empty() {
+            HashMap::new()
+        } else if let Some(port) = &self.pricing_port {
+            port.load_storefront_list_prices(
+                (&self.db).into(),
+                &variant_to_product,
+                &variant_ids,
+                list_query.currency_code.as_deref(),
+                public_channel_slug,
+            )
+            .await?
+        } else {
+            HashMap::new()
+        };
 
         let items = products
             .into_iter()
@@ -592,94 +589,4 @@ impl CatalogService {
     }
 }
 
-/// Derives the storefront "from" price of every listed product from its base
-/// variant prices.
-///
-/// Only base rows participate: price-list rows are resolved by the pricing
-/// owner against a price-list/channel/quantity context, and quantity tiers
-/// (`min_quantity`) are intentionally excluded from a catalog snapshot. Channel
-/// scoping is honoured by preferring rows of the requested public channel and
-/// falling back to channel-neutral rows, then to any channel when the tenant
-/// only maintains channel-scoped prices.
-fn build_storefront_list_price_from_map(
-    variant_to_product: &HashMap<Uuid, Uuid>,
-    prices: &[rustok_pricing_persistence::entities::price::Model],
-    currency_code: Option<&str>,
-    public_channel_slug: Option<&str>,
-) -> HashMap<Uuid, StorefrontProductListPrice> {
-    let mut candidates_by_product =
-        HashMap::<Uuid, Vec<&rustok_pricing_persistence::entities::price::Model>>::new();
-    for price in prices {
-        if price.price_list_id.is_some() || price.min_quantity.is_some() {
-            continue;
-        }
-        if let Some(currency_code) = currency_code
-            && !price.currency_code.eq_ignore_ascii_case(currency_code)
-        {
-            continue;
-        }
-        let Some(product_id) = variant_to_product.get(&price.variant_id) else {
-            continue;
-        };
-        candidates_by_product
-            .entry(*product_id)
-            .or_default()
-            .push(price);
-    }
 
-    candidates_by_product
-        .into_iter()
-        .filter_map(|(product_id, candidates)| {
-            let selected = select_storefront_list_price_candidates(candidates, public_channel_slug);
-            selected
-                .into_iter()
-                .min_by(|left, right| left.amount.cmp(&right.amount))
-                .map(|price| {
-                    let on_sale = price
-                        .compare_at_amount
-                        .is_some_and(|compare_at| compare_at > price.amount);
-                    (
-                        product_id,
-                        StorefrontProductListPrice {
-                            currency_code: price.currency_code.to_ascii_uppercase(),
-                            amount: price.amount,
-                            compare_at_amount: price.compare_at_amount,
-                            on_sale,
-                        },
-                    )
-                })
-        })
-        .collect()
-}
-
-fn select_storefront_list_price_candidates<'a>(
-    candidates: Vec<&'a rustok_pricing_persistence::entities::price::Model>,
-    public_channel_slug: Option<&str>,
-) -> Vec<&'a rustok_pricing_persistence::entities::price::Model> {
-    if let Some(channel_slug) = public_channel_slug {
-        let channel_scoped = candidates
-            .iter()
-            .copied()
-            .filter(|price| {
-                price
-                    .channel_slug
-                    .as_deref()
-                    .is_some_and(|slug| slug.eq_ignore_ascii_case(channel_slug))
-            })
-            .collect::<Vec<_>>();
-        if !channel_scoped.is_empty() {
-            return channel_scoped;
-        }
-    }
-
-    let channel_neutral = candidates
-        .iter()
-        .copied()
-        .filter(|price| price.channel_slug.is_none())
-        .collect::<Vec<_>>();
-    if !channel_neutral.is_empty() {
-        return channel_neutral;
-    }
-
-    candidates
-}

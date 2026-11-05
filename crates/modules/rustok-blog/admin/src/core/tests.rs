@@ -1031,3 +1031,28 @@ fn category_search_matches_name_slug_and_description() {
     assert!(blog_category_matches_query(&row, "  "));
     assert!(!blog_category_matches_query(&row, "roadmap"));
 }
+
+#[test]
+fn blog_admin_section_resolution_maps_subpaths() {
+    assert_eq!(
+        blog_admin_section_for_subpath(Some("categories")),
+        BlogAdminSection::Categories
+    );
+    assert_eq!(
+        blog_admin_section_for_subpath(Some("categories/anything")),
+        BlogAdminSection::Categories
+    );
+    assert_eq!(
+        blog_admin_section_for_subpath(Some("posts")),
+        BlogAdminSection::Posts
+    );
+    assert_eq!(
+        blog_admin_section_for_subpath(Some("new")),
+        BlogAdminSection::Posts
+    );
+    assert_eq!(
+        blog_admin_section_for_subpath(Some("category")),
+        BlogAdminSection::Posts
+    );
+    assert_eq!(blog_admin_section_for_subpath(None), BlogAdminSection::Posts);
+}

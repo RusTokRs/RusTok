@@ -10,7 +10,7 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::{CommerceError, dto::StorefrontProductListPrice};
+use crate::{CommerceError, StorefrontProductListPrice};
 
 /// Initial price input for variant bootstrapping.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +49,28 @@ impl<'a> From<&'a DatabaseConnection> for PricingConnection<'a> {
 impl<'a> From<&'a DatabaseTransaction> for PricingConnection<'a> {
     fn from(tx: &'a DatabaseTransaction) -> Self {
         PricingConnection::Transaction(tx)
+    }
+}
+
+pub trait AsPricingConnection {
+    fn as_pricing_connection(&self) -> PricingConnection<'_>;
+}
+
+impl AsPricingConnection for DatabaseConnection {
+    fn as_pricing_connection(&self) -> PricingConnection<'_> {
+        PricingConnection::Connection(self)
+    }
+}
+
+impl AsPricingConnection for DatabaseTransaction {
+    fn as_pricing_connection(&self) -> PricingConnection<'_> {
+        PricingConnection::Transaction(self)
+    }
+}
+
+impl AsPricingConnection for crate::services::write_transaction::ProductWriteTransaction {
+    fn as_pricing_connection(&self) -> PricingConnection<'_> {
+        PricingConnection::Transaction(self)
     }
 }
 

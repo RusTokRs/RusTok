@@ -24,7 +24,7 @@ fn product_declares_owner_local_dto_and_entity_sources() {
     }
 
     assert!(!cargo.contains("rustok-commerce-foundation"));
-    assert!(cargo.contains("rustok-pricing-persistence.workspace = true"));
+    assert!(!cargo.contains("rustok-pricing-persistence"));
     assert!(!cargo.contains("rustok-commerce-foundation.workspace = true"));
     assert!(!cargo.contains("rustok-index"));
 }

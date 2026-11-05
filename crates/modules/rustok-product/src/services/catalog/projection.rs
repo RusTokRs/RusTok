@@ -429,7 +429,9 @@ impl CatalogService {
     }
 
     /// Build the public snapshot on the write connection before its commit.
-    pub(super) async fn get_product_in<C: ConnectionTrait>(
+    pub(super) async fn get_product_in<
+        C: ConnectionTrait + crate::ports::pricing::AsPricingConnection,
+    >(
         &self,
         conn: &C,
         tenant_id: Uuid,
@@ -521,13 +523,14 @@ impl CatalogService {
             async {
                 if variant_ids.is_empty() {
                     Ok::<_, CommerceError>(Vec::new())
-                } else {
-                    PricingBootstrapService::load_catalog_base_prices_for_variants(
-                        conn,
+                } else if let Some(port) = &self.pricing_port {
+                    port.load_catalog_base_prices_for_variants(
+                        conn.as_pricing_connection(),
                         &variant_ids,
                     )
                     .await
-                    .map_err(CommerceError::from)
+                } else {
+                    Ok(Vec::new())
                 }
             },
             async {
@@ -556,7 +559,7 @@ impl CatalogService {
 
         let mut prices_by_variant: HashMap<
             Uuid,
-            Vec<rustok_pricing_persistence::entities::price::Model>,
+            Vec<CatalogBasePriceSnapshot>,
         > = HashMap::new();
         for price in all_prices {
             prices_by_variant
@@ -754,7 +757,9 @@ impl CatalogService {
         self.get_variant_in(&self.db, tenant_id, variant_id).await
     }
 
-    pub(super) async fn get_variant_in<C: ConnectionTrait>(
+    pub(super) async fn get_variant_in<
+        C: ConnectionTrait + crate::ports::pricing::AsPricingConnection,
+    >(
         &self,
         conn: &C,
         tenant_id: Uuid,
@@ -769,9 +774,15 @@ impl CatalogService {
         let variant_ids = [variant_id];
         let (prices, translations, available_inventory_by_variant, mut axis_values_by_variant) = tokio::try_join!(
             async {
-                PricingBootstrapService::load_catalog_base_prices_for_variants(conn, &variant_ids)
+                if let Some(port) = &self.pricing_port {
+                    port.load_catalog_base_prices_for_variants(
+                        conn.as_pricing_connection(),
+                        &variant_ids,
+                    )
                     .await
-                    .map_err(CommerceError::from)
+                } else {
+                    Ok(Vec::new())
+                }
             },
             async {
                 Ok::<_, CommerceError>(

@@ -17023,7 +17023,6 @@ dependencies = [
  "rustok-events",
  "rustok-inventory",
  "rustok-outbox",
- "rustok-pricing-persistence",
  "rustok-seo-targets",
  "rustok-taxonomy",
  "rustok-test-utils",

@@ -8,6 +8,8 @@ pub enum AdminSlot {
     DashboardMetric,
     DashboardSection,
     NavItem,
+    HeaderActions,
+    SidebarFooter,
 }
 
 #[derive(Clone)]

@@ -10,7 +10,8 @@ mod types;
 
 pub use catalog_read::ProductCatalogReadPort;
 pub use pricing::{
-    CatalogBasePriceSnapshot, InitialPrice, PricingConnection, ProductPricingPort,
+    AsPricingConnection, CatalogBasePriceSnapshot, InitialPrice, PricingConnection,
+    ProductPricingPort,
 };
 pub use types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,

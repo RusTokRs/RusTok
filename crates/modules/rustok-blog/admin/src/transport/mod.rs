@@ -383,11 +383,13 @@ pub async fn moderate_comment(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum BlogAdminContractUnavailable {
     Posts,
     Moderation,
 }
 
+#[allow(dead_code)]
 pub fn blog_admin_contract_unavailable(error: &ApiError) -> Option<BlogAdminContractUnavailable> {
     if is_posts_contract_unavailable(error) {
         Some(BlogAdminContractUnavailable::Posts)

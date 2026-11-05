@@ -68,6 +68,31 @@ incremental.
 
 ---
 
+## Symmetric Architecture vs Identical Structure (Admin ↔ Storefront)
+
+Admin and Storefront must have **symmetric architecture**, but **not completely identical file structures**.
+
+A developer transitioning between `admin/` and `storefront/` must immediately recognize the layering, but must never encounter artificial file duplication or empty placeholders created merely to mirror directories.
+
+### The Architectural Formula
+$$\text{Shared Domain \& Contracts} + \text{Parallel Feature Architecture} + \text{Independent Presentation}$$
+
+- **100% architectural consistency:** Both surfaces strictly follow FFA three-layer separation (`core`, `model`, `transport`, `ui`), dual-path transport abstraction, typed error handling, and canonical UI primitives (`rustok-grid`, design tokens).
+- **100% domain consistency:** Domain aggregates, validation invariants, commands, and backend schemas are sovereignly owned by the backend crate (`crates/modules/<module>/src/dto/` and `domain/`). UI surfaces consume those contracts and define only transport-neutral view-models in `model.rs`.
+- **0% forced structural duplication:** No mirroring files for the sake of symmetry.
+  - **Admin** focuses on *operator workflows*: management tables, entity filters, wysiwyg/rich-text editors, lifecycle transition commands, and moderation queues.
+  - **Storefront** focuses on *customer UX*: catalog grids, post cards, cursor-based pagination, reading time computation, social sharing, and SEO metadata.
+
+### 5 Mandatory Rules for Scaffolding and Module UI
+
+1. **Structural Parity:** All UI packages organize along identical FFA principles (`core/`, `model.rs`, `transport/`, `ui/`).
+2. **No Artificial Symmetry:** Never create dummy files, empty folders, or speculative abstraction layers just to make the Admin and Storefront trees match 1:1.
+3. **Single Source of Truth:** Business rules, schemas, and mutation logic reside exclusively in the backend owner crate. UI view-models derive from them.
+4. **Independent UI Evolution:** Admin and Storefront can evolve, optimize, and refactor their presentation components independently without breaking the other surface.
+5. **Feature Isolation:** UI features interact across module boundaries only through declared capability ports and public transport facades.
+
+---
+
 ## Dual-Path Transport Model
 
 The RusTok transport contract is always dual-path. Full spec:

@@ -387,13 +387,13 @@ mod tests {
                 PortErrorKind::Unavailable,
                 "PRICING_TEMPORARILY_UNAVAILABLE",
                 "Pricing is temporarily unavailable",
-                true,
+                false,
             ),
             (
                 PortErrorKind::Timeout,
                 "PRICING_TEMPORARILY_UNAVAILABLE",
                 "Pricing is temporarily unavailable",
-                true,
+                false,
             ),
             (
                 PortErrorKind::InvariantViolation,

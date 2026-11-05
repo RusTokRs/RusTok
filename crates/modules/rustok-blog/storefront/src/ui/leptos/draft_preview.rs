@@ -161,7 +161,7 @@ pub fn BlogDraftPreview() -> impl IntoView {
                                                 class="text-base leading-8 text-foreground/90 space-y-4"
                                             />
                                         }.into_any(),
-                                        None => view! {}.into_any(),
+                                        None => ().into_any(),
                                     }}
                                 </div>
                             </div>
@@ -216,7 +216,7 @@ pub fn BlogDraftPreview() -> impl IntoView {
                                     </p>
                                 }.into_any()
                             } else {
-                                view! {}.into_any()
+                                ().into_any()
                             }}
                         </div>
                     }.into_any()

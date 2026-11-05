@@ -61,6 +61,20 @@ struct LeptosUiContract {
     nav_order: Option<usize>,
     #[serde(default)]
     child_pages: Vec<AdminNestedPageContract>,
+    #[serde(default)]
+    components: Vec<AdminUiComponentContract>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AdminUiComponentContract {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    component: String,
+    #[serde(default)]
+    slot: String,
+    #[serde(default)]
+    order: Option<usize>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -84,6 +98,50 @@ struct AdminUiEntry {
     nav_order: usize,
     has_settings: bool,
     child_pages: Vec<AdminChildPageEntry>,
+    components: Vec<AdminUiComponentEntry>,
+}
+
+#[derive(Debug)]
+struct AdminUiComponentEntry {
+    id: String,
+    component_name: String,
+    slot: AdminSlot,
+    order: usize,
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdminSlot {
+    DashboardMetric,
+    DashboardSection,
+    NavItem,
+    HeaderActions,
+    SidebarFooter,
+}
+
+fn admin_slot_from_manifest(raw: Option<&str>) -> Result<AdminSlot, Box<dyn Error>> {
+    match raw
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("dashboard_section")
+    {
+        "dashboard_metric" | "dashboard:metric" => Ok(AdminSlot::DashboardMetric),
+        "dashboard_section" | "dashboard:section" => Ok(AdminSlot::DashboardSection),
+        "nav_item" | "nav:item" => Ok(AdminSlot::NavItem),
+        "header_actions" | "header:actions" => Ok(AdminSlot::HeaderActions),
+        "sidebar_footer" | "sidebar:footer" => Ok(AdminSlot::SidebarFooter),
+        other => Err(format!("unsupported admin slot `{other}`").into()),
+    }
+}
+
+fn admin_slot_expr(slot: AdminSlot) -> &'static str {
+    match slot {
+        AdminSlot::DashboardMetric => "AdminSlot::DashboardMetric",
+        AdminSlot::DashboardSection => "AdminSlot::DashboardSection",
+        AdminSlot::NavItem => "AdminSlot::NavItem",
+        AdminSlot::HeaderActions => "AdminSlot::HeaderActions",
+        AdminSlot::SidebarFooter => "AdminSlot::SidebarFooter",
+    }
 }
 
 #[derive(Debug)]
@@ -182,6 +240,30 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
                         title: page.title.unwrap_or_else(|| fallback.clone()),
                         nav_label: page.nav_label.unwrap_or_else(|| fallback.clone()),
                         subpath,
+                    })
+                })
+                .collect(),
+            components: admin_ui
+                .components
+                .into_iter()
+                .enumerate()
+                .filter_map(|(idx, comp)| {
+                    let slot = admin_slot_from_manifest(Some(&comp.slot)).ok()?;
+                    let component_name = if comp.component.trim().is_empty() {
+                        format!("{}Admin", pascal_case(&slug))
+                    } else {
+                        comp.component.trim().to_string()
+                    };
+                    let id = if comp.id.trim().is_empty() {
+                        format!("{}-component-{}", slug, idx)
+                    } else {
+                        comp.id.trim().to_string()
+                    };
+                    Some(AdminUiComponentEntry {
+                        id,
+                        component_name,
+                        slot,
+                        order: comp.order.unwrap_or(50 + idx * 10),
                     })
                 })
                 .collect(),
@@ -305,13 +387,7 @@ fn render_admin_registry_codegen(
     if entries.is_empty() {
         out.push_str("}\n\n");
     } else {
-        for (index, entry) in entries.iter().enumerate() {
-            out.push_str(&format!(
-                "    register_component(AdminComponentRegistration {{ id: \"{slug}-dashboard\", module_slug: Some(\"{slug}\"), slot: AdminSlot::DashboardSection, order: {order}, render: {fn_name} }});\n",
-                slug = entry.slug,
-                order = 100 + index,
-                fn_name = admin_render_fn_name(&entry.slug),
-            ));
+        for entry in entries {
             out.push_str(&format!(
                 "    register_page(AdminPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", child_pages: {child_pages}, render: {page_fn} }});\n",
                 slug = entry.slug,
@@ -324,46 +400,21 @@ fn render_admin_registry_codegen(
                 },
                 page_fn = admin_page_render_fn_name(&entry.slug),
             ));
-            out.push_str(&format!(
-                "    register_component(AdminComponentRegistration {{ id: \"{slug}-nav\", module_slug: Some(\"{slug}\"), slot: AdminSlot::NavItem, order: {order}, render: {fn_name} }});\n",
-                slug = entry.slug,
-                order = 200 + index,
-                fn_name = admin_nav_render_fn_name(&entry.slug),
-            ));
+            for component in &entry.components {
+                out.push_str(&format!(
+                    "    register_component(AdminComponentRegistration {{ id: \"{id}\", module_slug: Some(\"{slug}\"), slot: {slot_expr}, order: {order}, render: {fn_name} }});\n",
+                    id = component.id,
+                    slug = entry.slug,
+                    slot_expr = admin_slot_expr(component.slot),
+                    order = component.order,
+                    fn_name = admin_component_render_fn_name(&entry.slug, &component.id),
+                ));
+            }
         }
         out.push_str("}\n\n");
     }
 
     for entry in entries {
-        let fn_name = admin_render_fn_name(&entry.slug);
-        out.push_str(&format!(
-            "fn {fn_name}() -> AnyView {{\n",
-            fn_name = fn_name
-        ));
-        out.push_str("    view! {\n");
-        out.push_str(
-            "        <section class=\"rounded-xl border border-border bg-card p-6 shadow-sm\">\n",
-        );
-        out.push_str("            <div class=\"mb-4 flex items-center justify-between gap-3\">\n");
-        out.push_str(&format!(
-            "                <h3 class=\"text-lg font-semibold text-card-foreground\">\"{label}\"</h3>\n",
-            label = entry.name,
-        ));
-        out.push_str(&format!(
-            "                <span class=\"inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground\">\"{slug}\"</span>\n",
-            slug = entry.slug,
-        ));
-        out.push_str("            </div>\n");
-        out.push_str(&format!(
-            "            <{crate_ident}::{component_name} />\n",
-            crate_ident = entry.crate_ident,
-            component_name = entry.component_name,
-        ));
-        out.push_str("        </section>\n");
-        out.push_str("    }\n");
-        out.push_str("    .into_any()\n");
-        out.push_str("}\n\n");
-
         let page_component_path = if entry.slug == "search" {
             "crate::app::modules::SearchAdminComposition".to_string()
         } else {
@@ -382,38 +433,16 @@ fn render_admin_registry_codegen(
         out.push_str("    .into_any()\n");
         out.push_str("}\n\n");
 
-        out.push_str(&format!(
-            "fn {fn_name}() -> AnyView {{\n",
-            fn_name = admin_nav_render_fn_name(&entry.slug)
-        ));
-        out.push_str("    use leptos_router::components::A;\n");
-        out.push_str("    use leptos_router::hooks::use_location;\n\n");
-        out.push_str("    let location = use_location();\n");
-        out.push_str(&format!(
-            "    let is_active = move || location.pathname.get().starts_with(\"/modules/{route_segment}\");\n\n",
-            route_segment = entry.route_segment,
-        ));
-        out.push_str("    view! {\n");
-        out.push_str("        <A\n");
-        out.push_str(&format!(
-            "            href=\"/modules/{route_segment}\"\n",
-            route_segment = entry.route_segment,
-        ));
-        out.push_str(
-            "            attr:class=move || format!(\n                \"flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground {}\",\n                if is_active() { \"bg-accent text-accent-foreground shadow-sm\" } else { \"text-muted-foreground\" }\n            )\n",
-        );
-        out.push_str("        >\n");
-        out.push_str("            <svg class=\"h-4 w-4 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2\">\n");
-        out.push_str("                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 7h16M4 12h16M4 17h10\" />\n");
-        out.push_str("            </svg>\n");
-        out.push_str(&format!(
-            "            \"{label}\"\n",
-            label = entry.nav_label,
-        ));
-        out.push_str("        </A>\n");
-        out.push_str("    }\n");
-        out.push_str("    .into_any()\n");
-        out.push_str("}\n\n");
+        for component in &entry.components {
+            let fn_name = admin_component_render_fn_name(&entry.slug, &component.id);
+            let component_path = format!("{}::{}", entry.crate_ident, component.component_name);
+            out.push_str(&format!("fn {fn_name}() -> AnyView {{\n"));
+            out.push_str("    view! {\n");
+            out.push_str(&format!("        <{component_path} />\n"));
+            out.push_str("    }\n");
+            out.push_str("    .into_any()\n");
+            out.push_str("}\n\n");
+        }
     }
 
     out
@@ -471,16 +500,16 @@ fn default_nav_order(slug: &str) -> usize {
     }
 }
 
-fn admin_render_fn_name(slug: &str) -> String {
-    format!("render_{}_dashboard_section", slug.replace('-', "_"))
+fn admin_component_render_fn_name(slug: &str, component_id: &str) -> String {
+    format!(
+        "render_{}_{}_component",
+        slug.replace('-', "_"),
+        component_id.replace(['-', ':', '.'], "_")
+    )
 }
 
 fn admin_page_render_fn_name(slug: &str) -> String {
     format!("render_{}_admin_page", slug.replace('-', "_"))
-}
-
-fn admin_nav_render_fn_name(slug: &str) -> String {
-    format!("render_{}_nav_item", slug.replace('-', "_"))
 }
 
 fn admin_child_pages_const_name(slug: &str) -> String {

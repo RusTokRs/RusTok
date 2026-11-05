@@ -9,7 +9,7 @@ mod index_refresh;
 mod index_refresh_event;
 mod index_refresh_publication;
 mod index_refresh_relay;
-mod write_transaction;
+pub(crate) mod write_transaction;
 
 pub use catalog::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
