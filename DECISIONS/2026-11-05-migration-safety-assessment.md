@@ -2,7 +2,7 @@
 
 - Date: 2026-11-05
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-core, rustok-migrations, rustok-modules
 - Extends: 2026-11-03-migration-consolidation, 2026-08-06-module-release-rollback-safety
 - Supersedes: None

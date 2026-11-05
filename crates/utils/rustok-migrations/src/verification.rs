@@ -535,10 +535,10 @@ fn run_pg_dump(
         let mut detail = String::from_utf8_lossy(&stderr).into_owned();
         if let Some(database_url) = database_url {
             detail = detail.replace(database_url, "[fixture URL]");
-            if let Ok(url) = url::Url::parse(database_url) {
-                if let Some(password) = url.password().filter(|password| !password.is_empty()) {
-                    detail = detail.replace(password, "[redacted]");
-                }
+            if let Ok(url) = url::Url::parse(database_url)
+                && let Some(password) = url.password().filter(|password| !password.is_empty())
+            {
+                detail = detail.replace(password, "[redacted]");
             }
         }
         return Err(VerificationError::Tool(format!(
@@ -574,16 +574,16 @@ fn normalize_dump(dump: String) -> Result<String> {
     let substantive = |line: &&str| !line.trim().is_empty() && !line.starts_with("--");
     let first = lines.iter().position(substantive);
     let last = lines.iter().rposition(substantive);
-    if let (Some(first), Some(last)) = (first, last) {
-        if let Some(token) = lines[first].trim_end().strip_prefix("\\restrict ") {
-            if first == last || lines[last].trim_end() != format!("\\unrestrict {token}") {
-                return Err(VerificationError::Incomplete(
-                    "unmatched pg_dump restriction guard".into(),
-                ));
-            }
-            lines.remove(last);
-            lines.remove(first);
+    if let (Some(first), Some(last)) = (first, last)
+        && let Some(token) = lines[first].trim_end().strip_prefix("\\restrict ")
+    {
+        if first == last || lines[last].trim_end() != format!("\\unrestrict {token}") {
+            return Err(VerificationError::Incomplete(
+                "unmatched pg_dump restriction guard".into(),
+            ));
         }
+        lines.remove(last);
+        lines.remove(first);
     }
     Ok(lines.concat())
 }

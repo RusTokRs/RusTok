@@ -51,10 +51,23 @@ Scoped verification on the task branch:
   `data_copier_tests` and `transition_service_tests` passed 27 tests. The settings
   fixture was corrected to reject candidate-only defaults instead of expecting
   a predecessor-incompatible normalized value.
+- After reconciliation with `origin/main@1ab9b8a234c15fe91d07d43f19461a32f82564d2`,
+  the same module library and selected integration targets passed again.
+  `rustok-core` migration tests passed 2/2; the independent migration library
+  passed 16 tests with one PostgreSQL test ignored (including ten schema
+  classifier tests and the existing observer/bootstrap assertions).
+- `cargo clippy --locked -p rustok-core --lib -- -D warnings` and
+  `cargo clippy --locked -p rustok-migrations --no-default-features --lib -- -D warnings`
+  passed. Two existing observer nested conditionals were collapsed without
+  changing redaction or dump-guard behavior to satisfy the latter check.
+- `cargo check --locked -p rustok-migrations --lib` passed with the normal
+  composed module set. Existing Commerce warnings about the deprecated Brand
+  API remain outside this change.
 - Architecture dependency/import validation and diff whitespace checks passed.
 - The remediation gate passed, including `cargo clippy --package rustok-modules
-  --all-targets -- -D warnings`. Foundation migration-assessment tests passed
-  2/2, including incomplete and unknown serialized-state rejection.
+  --all-targets -- -D warnings`. After reconciliation, it passed again with
+  `--crate rustok-core` and all-target Clippy. Foundation migration-assessment
+  tests passed 2/2, including incomplete and unknown serialized-state rejection.
 - Production native phase execution, PostgreSQL schema equivalence, fleet
   exclusion and full client/deployment recovery were not exercised by this
   change. The global ADR check reports pre-existing registry/template errors

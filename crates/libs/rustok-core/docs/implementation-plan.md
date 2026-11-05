@@ -10,6 +10,21 @@ Auth lifecycle belongs to `rustok-auth`; canonical `Port*`, permission, and
 locale contracts belong to `rustok-api`. Core consumes those contracts where
 needed and keeps no compatibility exports for their former locations.
 
+## Shared migration assessment (2026-11-05)
+
+`MigrationSafetyAssessment` is the shared additive/maintenance/unknown fact
+contract consumed by `rustok-migrations` schema summaries and `rustok-modules`
+preflight. It replaces the independent classifier enum and boolean/reason
+translation; update policy, SQL execution and observed catalog evidence remain
+with their existing owners. Empty diagnostic text cannot change a rejected
+assessment. Unknown fields/variants and incomplete wire bodies fail decoding.
+
+The two foundation tests and the scoped foundation library Clippy check passed.
+Consumer execution and the remaining native phase/consolidation gates are
+recorded in the [modules owner plan](../../../modules/rustok-modules/docs/implementation-plan.md#shared-migration-assessment-2026-11-05)
+and [assessment ADR](../../../../DECISIONS/2026-11-05-migration-safety-assessment.md).
+This result does not promote unrelated foundation or event-delivery evidence.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
