@@ -394,10 +394,16 @@ pub(crate) fn pricing_error_policy(error: &CommerceError) -> PricingErrorPolicy 
             "pricing SKU is already in use",
             false,
         ),
-        CommerceError::InvalidPrice(_) | CommerceError::Validation(_) => PricingErrorPolicy::new(
+        CommerceError::InvalidPrice(msg) => PricingErrorPolicy::new(
             PortErrorKind::Validation,
             "pricing.validation",
-            "pricing request is invalid",
+            msg.clone(),
+            false,
+        ),
+        CommerceError::Validation(msg) => PricingErrorPolicy::new(
+            PortErrorKind::Validation,
+            "pricing.validation",
+            msg.clone(),
             false,
         ),
         CommerceError::InsufficientInventory { .. } => PricingErrorPolicy::new(

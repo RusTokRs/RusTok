@@ -1,3 +1,4 @@
+#![allow(unused_imports, clippy::empty_line_after_outer_attr)]
 #![allow(clippy::too_many_arguments)]
 
 use leptos::prelude::*;

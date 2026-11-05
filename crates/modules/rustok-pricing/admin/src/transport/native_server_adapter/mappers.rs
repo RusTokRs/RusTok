@@ -1,3 +1,4 @@
+#![allow(unused_imports, clippy::empty_line_after_outer_attr)]
 use uuid::Uuid;
 
 use crate::model::{

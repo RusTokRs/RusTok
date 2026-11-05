@@ -1504,7 +1504,6 @@ impl CatalogService {
             });
         }
         if !initial_prices.is_empty() {
-            if !initial_prices.is_empty() {
             if let Some(port) = &self.pricing_port {
                 port.create_initial_prices_in_tx(&txn, initial_prices).await?;
             } else {
@@ -1512,7 +1511,6 @@ impl CatalogService {
                     "Product pricing port required to author variant prices".into(),
                 ));
             }
-        }
         }
 
         txn.publish(
