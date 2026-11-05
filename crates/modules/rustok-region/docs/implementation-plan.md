@@ -159,6 +159,12 @@ The native tax-policy continuation was rechecked on 2026-11-05 from local
   boundary for both missing and foreign identities. Production error behavior
   is unchanged. Existing unrelated Commerce warnings remain.
 
+The earlier successful remote refresh matched the recorded base. The final
+pre-commit refresh failed with an empty server reply and then DNS resolution
+failure for GitHub. Local `main` and the last fetched `origin/main` still
+matched that base before the scoped local commit. No remote integration or push
+was performed; refresh remote history before subsequent integration.
+
 ## Update rules
 
 1. Keep regional policy and region read projections in this module.
