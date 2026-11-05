@@ -306,27 +306,6 @@ pub fn blog_post_admin_editor_form_copy_view(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlogPostAdminEditorFieldClassesViewModel {
-    pub text_input: &'static str,
-    pub textarea_short: &'static str,
-    pub textarea_long: &'static str,
-    pub label_text: &'static str,
-    pub checkbox_label: &'static str,
-    pub submit_button: &'static str,
-}
-
-pub fn blog_post_admin_editor_field_classes_view() -> BlogPostAdminEditorFieldClassesViewModel {
-    BlogPostAdminEditorFieldClassesViewModel {
-        text_input: "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm",
-        textarea_short: "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm",
-        textarea_long: "min-h-48 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm",
-        label_text: "text-sm font-medium text-card-foreground",
-        checkbox_label: "flex items-center gap-2 text-sm text-card-foreground",
-        submit_button: "inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50",
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlogPostAdminTableClassesViewModel {
     pub empty_state: &'static str,
     pub total_label: &'static str,
@@ -748,14 +727,12 @@ pub fn blog_post_transport_failure_issue(context: &str, error: &str) -> WritePat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostSaveResultViewModel {
     pub refresh_posts: bool,
-    pub apply_returned_post_to_form: bool,
     pub selected_post_query_intent: Option<BlogPostAdminRouteQueryIntent>,
 }
 
 pub fn blog_post_save_result_view(returned_post_id: &str) -> BlogPostSaveResultViewModel {
     BlogPostSaveResultViewModel {
         refresh_posts: true,
-        apply_returned_post_to_form: true,
         selected_post_query_intent: Some(blog_post_admin_saved_post_query_intent(
             returned_post_id.to_string(),
         )),
@@ -765,16 +742,16 @@ pub fn blog_post_save_result_view(returned_post_id: &str) -> BlogPostSaveResultV
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostMutationResultViewModel {
     pub refresh_posts: bool,
-    pub apply_returned_post_to_form: bool,
+    pub reload_selected_post: bool,
 }
 
 pub fn blog_post_mutation_result_view(
     editing_post_id: Option<&str>,
-    returned_post_id: &str,
+    acknowledged_post_id: &str,
 ) -> BlogPostMutationResultViewModel {
     BlogPostMutationResultViewModel {
         refresh_posts: true,
-        apply_returned_post_to_form: is_editing_post(editing_post_id, returned_post_id),
+        reload_selected_post: is_editing_post(editing_post_id, acknowledged_post_id),
     }
 }
 

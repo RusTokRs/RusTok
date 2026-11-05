@@ -194,12 +194,22 @@ export type AppMessageKey =
   | 'auth.tenantLabel'
   | 'auth-title'
   | 'auth.title'
+  | 'blog-categories-actionsHeader'
+  | 'blog.categories.actionsHeader'
   | 'blog-categories-add'
   | 'blog.categories.add'
   | 'blog-categories-cancel'
   | 'blog.categories.cancel'
+  | 'blog-categories-confirmDelete'
+  | 'blog.categories.confirmDelete'
   | 'blog-categories-create'
   | 'blog.categories.create'
+  | 'blog-categories-created'
+  | 'blog.categories.created'
+  | 'blog-categories-createNewInstead'
+  | 'blog.categories.createNewInstead'
+  | 'blog-categories-delete'
+  | 'blog.categories.delete'
   | 'blog-categories-deleteConfirm'
   | 'blog.categories.deleteConfirm'
   | 'blog-categories-deleted'
@@ -208,26 +218,154 @@ export type AppMessageKey =
   | 'blog.categories.deleteError'
   | 'blog-categories-deleteTitle'
   | 'blog.categories.deleteTitle'
+  | 'blog-categories-edit'
+  | 'blog.categories.edit'
+  | 'blog-categories-editing'
+  | 'blog.categories.editing'
   | 'blog-categories-empty'
   | 'blog.categories.empty'
+  | 'blog-categories-error-delete'
+  | 'blog.categories.error.delete'
+  | 'blog-categories-error-invalidName'
+  | 'blog.categories.error.invalidName'
+  | 'blog-categories-error-invalidPosition'
+  | 'blog.categories.error.invalidPosition'
+  | 'blog-categories-error-load'
+  | 'blog.categories.error.load'
+  | 'blog-categories-error-save'
+  | 'blog.categories.error.save'
+  | 'blog-categories-form-description'
+  | 'blog.categories.form.description'
+  | 'blog-categories-form-name'
+  | 'blog.categories.form.name'
+  | 'blog-categories-form-parent'
+  | 'blog.categories.form.parent'
+  | 'blog-categories-form-position'
+  | 'blog.categories.form.position'
+  | 'blog-categories-form-root'
+  | 'blog.categories.form.root'
+  | 'blog-categories-form-slug'
+  | 'blog.categories.form.slug'
+  | 'blog-categories-form-subtitle'
+  | 'blog.categories.form.subtitle'
+  | 'blog-categories-form-title'
+  | 'blog.categories.form.title'
   | 'blog-categories-loadError'
   | 'blog.categories.loadError'
   | 'blog-categories-loading'
   | 'blog.categories.loading'
+  | 'blog-categories-localeHeader'
+  | 'blog.categories.localeHeader'
   | 'blog-categories-name'
   | 'blog.categories.name'
+  | 'blog-categories-nameHeader'
+  | 'blog.categories.nameHeader'
+  | 'blog-categories-new'
+  | 'blog.categories.new'
+  | 'blog-categories-orderHeader'
+  | 'blog.categories.orderHeader'
   | 'blog-categories-position'
   | 'blog.categories.position'
+  | 'blog-categories-reset'
+  | 'blog.categories.reset'
   | 'blog-categories-search'
   | 'blog.categories.search'
   | 'blog-categories-searchEmpty'
   | 'blog.categories.searchEmpty'
+  | 'blog-categories-searchPlaceholder'
+  | 'blog.categories.searchPlaceholder'
   | 'blog-categories-slug'
   | 'blog.categories.slug'
+  | 'blog-categories-slugHeader'
+  | 'blog.categories.slugHeader'
   | 'blog-categories-subtitle'
   | 'blog.categories.subtitle'
   | 'blog-categories-title'
   | 'blog.categories.title'
+  | 'blog-categories-update'
+  | 'blog.categories.update'
+  | 'blog-categories-updated'
+  | 'blog.categories.updated'
+  | 'blog-editor-categoriesUnavailable'
+  | 'blog.editor.categoriesUnavailable'
+  | 'blog-editor-categoryFallbackNotice'
+  | 'blog.editor.categoryFallbackNotice'
+  | 'blog-editor-currentCategory'
+  | 'blog.editor.currentCategory'
+  | 'blog-editor-fallbackNotice'
+  | 'blog.editor.fallbackNotice'
+  | 'blog-editor-imagePreview'
+  | 'blog.editor.imagePreview'
+  | 'blog-editor-invalidImage'
+  | 'blog.editor.invalidImage'
+  | 'blog-editor-invalidSchedule'
+  | 'blog.editor.invalidSchedule'
+  | 'blog-editor-localeChanged'
+  | 'blog.editor.localeChanged'
+  | 'blog-editor-requiredCopy'
+  | 'blog.editor.requiredCopy'
+  | 'blog-editor-retry'
+  | 'blog.editor.retry'
+  | 'blog-editor-revisionMissing'
+  | 'blog.editor.revisionMissing'
+  | 'blog-editor-saved'
+  | 'blog.editor.saved'
+  | 'blog-editor-savedReloadFailed'
+  | 'blog.editor.savedReloadFailed'
+  | 'blog-editor-scheduleHelp'
+  | 'blog.editor.scheduleHelp'
+  | 'blog-editor-slugRequired'
+  | 'blog.editor.slugRequired'
+  | 'blog-error-savePost'
+  | 'blog.error.savePost'
+  | 'blog-form-body'
+  | 'blog.form.body'
+  | 'blog-form-category'
+  | 'blog.form.category'
+  | 'blog-form-channels'
+  | 'blog.form.channels'
+  | 'blog-form-content'
+  | 'blog.form.content'
+  | 'blog-form-create'
+  | 'blog.form.create'
+  | 'blog-form-createNewInstead'
+  | 'blog.form.createNewInstead'
+  | 'blog-form-createTitle'
+  | 'blog.form.createTitle'
+  | 'blog-form-editingBanner'
+  | 'blog.form.editingBanner'
+  | 'blog-form-editTitle'
+  | 'blog.form.editTitle'
+  | 'blog-form-excerpt'
+  | 'blog.form.excerpt'
+  | 'blog-form-featuredImage'
+  | 'blog.form.featuredImage'
+  | 'blog-form-locale'
+  | 'blog.form.locale'
+  | 'blog-form-publishNow'
+  | 'blog.form.publishNow'
+  | 'blog-form-saving'
+  | 'blog.form.saving'
+  | 'blog-form-scheduledAt'
+  | 'blog.form.scheduledAt'
+  | 'blog-form-seoDescription'
+  | 'blog.form.seoDescription'
+  | 'blog-form-seoTitle'
+  | 'blog.form.seoTitle'
+  | 'blog-form-slug'
+  | 'blog.form.slug'
+  | 'blog-form-subtitle'
+  | 'blog.form.subtitle'
+  | 'blog-form-tags'
+  | 'blog.form.tags'
+  | 'blog-form-tagsPlaceholder'
+  | 'blog.form.tagsPlaceholder'
+  | 'blog-form-title'
+  | 'blog.form.title'
+  | 'blog-form-uncategorized'
+  | 'blog.form.uncategorized'
+  | 'blog-form-update'
+  | 'blog.form.update'
   | 'blog-grid-actions'
   | 'blog.grid.actions'
   | 'blog-grid-author'
@@ -276,18 +414,36 @@ export type AppMessageKey =
   | 'blog.preview.copyLink'
   | 'blog-preview-copyToken'
   | 'blog.preview.copyToken'
+  | 'blog-preview-description'
+  | 'blog.preview.description'
+  | 'blog-preview-descriptionReady'
+  | 'blog.preview.descriptionReady'
   | 'blog-preview-done'
   | 'blog.preview.done'
+  | 'blog-preview-expires'
+  | 'blog.preview.expires'
   | 'blog-preview-expiresLabel'
   | 'blog.preview.expiresLabel'
   | 'blog-preview-lifetime'
   | 'blog.preview.lifetime'
+  | 'blog-preview-lifetimeHours'
+  | 'blog.preview.lifetimeHours'
+  | 'blog-preview-linkCopied'
+  | 'blog.preview.linkCopied'
+  | 'blog-preview-linkHint'
+  | 'blog.preview.linkHint'
+  | 'blog-preview-mintError'
+  | 'blog.preview.mintError'
   | 'blog-preview-open'
   | 'blog.preview.open'
+  | 'blog-preview-pathHint'
+  | 'blog.preview.pathHint'
   | 'blog-preview-post'
   | 'blog.preview.post'
   | 'blog-preview-title'
   | 'blog.preview.title'
+  | 'blog-preview-tokenCopied'
+  | 'blog.preview.tokenCopied'
   | 'blog-sort-asc'
   | 'blog.sort.asc'
   | 'blog-sort-created_at'
@@ -2370,12 +2526,22 @@ export interface AppMessageArgs {
   'auth-tenantLabel'?: Record<string, never>;
   'auth.title'?: Record<string, never>;
   'auth-title'?: Record<string, never>;
+  'blog.categories.actionsHeader'?: Record<string, never>;
+  'blog-categories-actionsHeader'?: Record<string, never>;
   'blog.categories.add'?: Record<string, never>;
   'blog-categories-add'?: Record<string, never>;
   'blog.categories.cancel'?: Record<string, never>;
   'blog-categories-cancel'?: Record<string, never>;
+  'blog.categories.confirmDelete'?: Record<string, never>;
+  'blog-categories-confirmDelete'?: Record<string, never>;
   'blog.categories.create'?: Record<string, never>;
   'blog-categories-create'?: Record<string, never>;
+  'blog.categories.created'?: Record<string, never>;
+  'blog-categories-created'?: Record<string, never>;
+  'blog.categories.createNewInstead'?: Record<string, never>;
+  'blog-categories-createNewInstead'?: Record<string, never>;
+  'blog.categories.delete'?: Record<string, never>;
+  'blog-categories-delete'?: Record<string, never>;
   'blog.categories.deleteConfirm': { 'name': string | number | Date };
   'blog-categories-deleteConfirm': { 'name': string | number | Date };
   'blog.categories.deleted'?: Record<string, never>;
@@ -2384,26 +2550,154 @@ export interface AppMessageArgs {
   'blog-categories-deleteError'?: Record<string, never>;
   'blog.categories.deleteTitle'?: Record<string, never>;
   'blog-categories-deleteTitle'?: Record<string, never>;
+  'blog.categories.edit'?: Record<string, never>;
+  'blog-categories-edit'?: Record<string, never>;
+  'blog.categories.editing'?: Record<string, never>;
+  'blog-categories-editing'?: Record<string, never>;
   'blog.categories.empty'?: Record<string, never>;
   'blog-categories-empty'?: Record<string, never>;
+  'blog.categories.error.delete'?: Record<string, never>;
+  'blog-categories-error-delete'?: Record<string, never>;
+  'blog.categories.error.invalidName'?: Record<string, never>;
+  'blog-categories-error-invalidName'?: Record<string, never>;
+  'blog.categories.error.invalidPosition'?: Record<string, never>;
+  'blog-categories-error-invalidPosition'?: Record<string, never>;
+  'blog.categories.error.load'?: Record<string, never>;
+  'blog-categories-error-load'?: Record<string, never>;
+  'blog.categories.error.save'?: Record<string, never>;
+  'blog-categories-error-save'?: Record<string, never>;
+  'blog.categories.form.description'?: Record<string, never>;
+  'blog-categories-form-description'?: Record<string, never>;
+  'blog.categories.form.name'?: Record<string, never>;
+  'blog-categories-form-name'?: Record<string, never>;
+  'blog.categories.form.parent'?: Record<string, never>;
+  'blog-categories-form-parent'?: Record<string, never>;
+  'blog.categories.form.position'?: Record<string, never>;
+  'blog-categories-form-position'?: Record<string, never>;
+  'blog.categories.form.root'?: Record<string, never>;
+  'blog-categories-form-root'?: Record<string, never>;
+  'blog.categories.form.slug'?: Record<string, never>;
+  'blog-categories-form-slug'?: Record<string, never>;
+  'blog.categories.form.subtitle'?: Record<string, never>;
+  'blog-categories-form-subtitle'?: Record<string, never>;
+  'blog.categories.form.title'?: Record<string, never>;
+  'blog-categories-form-title'?: Record<string, never>;
   'blog.categories.loadError'?: Record<string, never>;
   'blog-categories-loadError'?: Record<string, never>;
   'blog.categories.loading'?: Record<string, never>;
   'blog-categories-loading'?: Record<string, never>;
+  'blog.categories.localeHeader'?: Record<string, never>;
+  'blog-categories-localeHeader'?: Record<string, never>;
   'blog.categories.name'?: Record<string, never>;
   'blog-categories-name'?: Record<string, never>;
+  'blog.categories.nameHeader'?: Record<string, never>;
+  'blog-categories-nameHeader'?: Record<string, never>;
+  'blog.categories.new'?: Record<string, never>;
+  'blog-categories-new'?: Record<string, never>;
+  'blog.categories.orderHeader'?: Record<string, never>;
+  'blog-categories-orderHeader'?: Record<string, never>;
   'blog.categories.position'?: Record<string, never>;
   'blog-categories-position'?: Record<string, never>;
+  'blog.categories.reset'?: Record<string, never>;
+  'blog-categories-reset'?: Record<string, never>;
   'blog.categories.search'?: Record<string, never>;
   'blog-categories-search'?: Record<string, never>;
   'blog.categories.searchEmpty'?: Record<string, never>;
   'blog-categories-searchEmpty'?: Record<string, never>;
+  'blog.categories.searchPlaceholder'?: Record<string, never>;
+  'blog-categories-searchPlaceholder'?: Record<string, never>;
   'blog.categories.slug'?: Record<string, never>;
   'blog-categories-slug'?: Record<string, never>;
+  'blog.categories.slugHeader'?: Record<string, never>;
+  'blog-categories-slugHeader'?: Record<string, never>;
   'blog.categories.subtitle'?: Record<string, never>;
   'blog-categories-subtitle'?: Record<string, never>;
   'blog.categories.title'?: Record<string, never>;
   'blog-categories-title'?: Record<string, never>;
+  'blog.categories.update'?: Record<string, never>;
+  'blog-categories-update'?: Record<string, never>;
+  'blog.categories.updated'?: Record<string, never>;
+  'blog-categories-updated'?: Record<string, never>;
+  'blog.editor.categoriesUnavailable'?: Record<string, never>;
+  'blog-editor-categoriesUnavailable'?: Record<string, never>;
+  'blog.editor.categoryFallbackNotice'?: Record<string, never>;
+  'blog-editor-categoryFallbackNotice'?: Record<string, never>;
+  'blog.editor.currentCategory'?: Record<string, never>;
+  'blog-editor-currentCategory'?: Record<string, never>;
+  'blog.editor.fallbackNotice'?: Record<string, never>;
+  'blog-editor-fallbackNotice'?: Record<string, never>;
+  'blog.editor.imagePreview'?: Record<string, never>;
+  'blog-editor-imagePreview'?: Record<string, never>;
+  'blog.editor.invalidImage'?: Record<string, never>;
+  'blog-editor-invalidImage'?: Record<string, never>;
+  'blog.editor.invalidSchedule'?: Record<string, never>;
+  'blog-editor-invalidSchedule'?: Record<string, never>;
+  'blog.editor.localeChanged'?: Record<string, never>;
+  'blog-editor-localeChanged'?: Record<string, never>;
+  'blog.editor.requiredCopy'?: Record<string, never>;
+  'blog-editor-requiredCopy'?: Record<string, never>;
+  'blog.editor.retry'?: Record<string, never>;
+  'blog-editor-retry'?: Record<string, never>;
+  'blog.editor.revisionMissing'?: Record<string, never>;
+  'blog-editor-revisionMissing'?: Record<string, never>;
+  'blog.editor.saved'?: Record<string, never>;
+  'blog-editor-saved'?: Record<string, never>;
+  'blog.editor.savedReloadFailed'?: Record<string, never>;
+  'blog-editor-savedReloadFailed'?: Record<string, never>;
+  'blog.editor.scheduleHelp'?: Record<string, never>;
+  'blog-editor-scheduleHelp'?: Record<string, never>;
+  'blog.editor.slugRequired'?: Record<string, never>;
+  'blog-editor-slugRequired'?: Record<string, never>;
+  'blog.error.savePost'?: Record<string, never>;
+  'blog-error-savePost'?: Record<string, never>;
+  'blog.form.body'?: Record<string, never>;
+  'blog-form-body'?: Record<string, never>;
+  'blog.form.category'?: Record<string, never>;
+  'blog-form-category'?: Record<string, never>;
+  'blog.form.channels'?: Record<string, never>;
+  'blog-form-channels'?: Record<string, never>;
+  'blog.form.content'?: Record<string, never>;
+  'blog-form-content'?: Record<string, never>;
+  'blog.form.create'?: Record<string, never>;
+  'blog-form-create'?: Record<string, never>;
+  'blog.form.createNewInstead'?: Record<string, never>;
+  'blog-form-createNewInstead'?: Record<string, never>;
+  'blog.form.createTitle'?: Record<string, never>;
+  'blog-form-createTitle'?: Record<string, never>;
+  'blog.form.editingBanner': { 'id': string | number | Date };
+  'blog-form-editingBanner': { 'id': string | number | Date };
+  'blog.form.editTitle'?: Record<string, never>;
+  'blog-form-editTitle'?: Record<string, never>;
+  'blog.form.excerpt'?: Record<string, never>;
+  'blog-form-excerpt'?: Record<string, never>;
+  'blog.form.featuredImage'?: Record<string, never>;
+  'blog-form-featuredImage'?: Record<string, never>;
+  'blog.form.locale'?: Record<string, never>;
+  'blog-form-locale'?: Record<string, never>;
+  'blog.form.publishNow'?: Record<string, never>;
+  'blog-form-publishNow'?: Record<string, never>;
+  'blog.form.saving'?: Record<string, never>;
+  'blog-form-saving'?: Record<string, never>;
+  'blog.form.scheduledAt'?: Record<string, never>;
+  'blog-form-scheduledAt'?: Record<string, never>;
+  'blog.form.seoDescription'?: Record<string, never>;
+  'blog-form-seoDescription'?: Record<string, never>;
+  'blog.form.seoTitle'?: Record<string, never>;
+  'blog-form-seoTitle'?: Record<string, never>;
+  'blog.form.slug'?: Record<string, never>;
+  'blog-form-slug'?: Record<string, never>;
+  'blog.form.subtitle'?: Record<string, never>;
+  'blog-form-subtitle'?: Record<string, never>;
+  'blog.form.tags'?: Record<string, never>;
+  'blog-form-tags'?: Record<string, never>;
+  'blog.form.tagsPlaceholder'?: Record<string, never>;
+  'blog-form-tagsPlaceholder'?: Record<string, never>;
+  'blog.form.title'?: Record<string, never>;
+  'blog-form-title'?: Record<string, never>;
+  'blog.form.uncategorized'?: Record<string, never>;
+  'blog-form-uncategorized'?: Record<string, never>;
+  'blog.form.update'?: Record<string, never>;
+  'blog-form-update'?: Record<string, never>;
   'blog.grid.actions'?: Record<string, never>;
   'blog-grid-actions'?: Record<string, never>;
   'blog.grid.author'?: Record<string, never>;
@@ -2452,18 +2746,36 @@ export interface AppMessageArgs {
   'blog-preview-copyLink'?: Record<string, never>;
   'blog.preview.copyToken'?: Record<string, never>;
   'blog-preview-copyToken'?: Record<string, never>;
+  'blog.preview.description'?: Record<string, never>;
+  'blog-preview-description'?: Record<string, never>;
+  'blog.preview.descriptionReady'?: Record<string, never>;
+  'blog-preview-descriptionReady'?: Record<string, never>;
   'blog.preview.done'?: Record<string, never>;
   'blog-preview-done'?: Record<string, never>;
+  'blog.preview.expires': { 'at': string | number | Date };
+  'blog-preview-expires': { 'at': string | number | Date };
   'blog.preview.expiresLabel'?: Record<string, never>;
   'blog-preview-expiresLabel'?: Record<string, never>;
   'blog.preview.lifetime'?: Record<string, never>;
   'blog-preview-lifetime'?: Record<string, never>;
+  'blog.preview.lifetimeHours': { 'hours': string | number | Date };
+  'blog-preview-lifetimeHours': { 'hours': string | number | Date };
+  'blog.preview.linkCopied'?: Record<string, never>;
+  'blog-preview-linkCopied'?: Record<string, never>;
+  'blog.preview.linkHint'?: Record<string, never>;
+  'blog-preview-linkHint'?: Record<string, never>;
+  'blog.preview.mintError'?: Record<string, never>;
+  'blog-preview-mintError'?: Record<string, never>;
   'blog.preview.open'?: Record<string, never>;
   'blog-preview-open'?: Record<string, never>;
+  'blog.preview.pathHint'?: Record<string, never>;
+  'blog-preview-pathHint'?: Record<string, never>;
   'blog.preview.post'?: Record<string, never>;
   'blog-preview-post'?: Record<string, never>;
   'blog.preview.title'?: Record<string, never>;
   'blog-preview-title'?: Record<string, never>;
+  'blog.preview.tokenCopied'?: Record<string, never>;
+  'blog-preview-tokenCopied'?: Record<string, never>;
   'blog.sort.asc'?: Record<string, never>;
   'blog-sort-asc'?: Record<string, never>;
   'blog.sort.created_at'?: Record<string, never>;

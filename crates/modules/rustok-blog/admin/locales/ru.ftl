@@ -148,7 +148,7 @@ blog-categories-empty = Категории ещё не созданы.
 blog-categories-error-load = Не удалось загрузить категории
 blog-categories-error-save = Не удалось сохранить категорию
 blog-categories-error-delete = Не удалось удалить категорию
-blog-categories-error-nameTooShort = Название категории должно содержать минимум 2 символа.
+blog-categories-error-invalidName = Введите название категории длиной от 1 до 120 символов.
 blog-categories-error-invalidPosition = Порядок категории должен быть неотрицательным числом.
 blog-categories-form-title = Категория
 blog-categories-form-subtitle = Создание категории или правка выбранной.
@@ -230,3 +230,36 @@ blog-sort-updated_at = Последние изменения
 blog-moderation-approved = Одобрить
 blog-moderation-saving = Сохранение...
 blog-categories-deleteConfirm = Удалить категорию «{ $name }»? Это действие нельзя отменить.
+blog-editor-saved = Запись сохранена.
+
+blog-editor-savedReloadFailed = Запись сохранена. Обновите её перед редактированием: текущие данные загрузить не удалось.
+
+blog-editor-fallbackNotice = Перевод на выбранный язык отсутствует. Исходный текст ниже доступен только для чтения; введите заголовок и текст на выбранном языке, чтобы создать перевод.
+
+blog-editor-categoryFallbackNotice = Перевод на выбранный язык отсутствует. Исходный текст ниже доступен только для чтения; введите название на выбранном языке, чтобы создать перевод.
+
+blog-editor-retry = Повторить
+
+blog-editor-currentCategory = Текущая категория
+
+blog-editor-requiredCopy = Перед созданием перевода введите заголовок и текст на выбранном языке.
+
+blog-editor-localeChanged = Язык содержимого изменился. Перед сохранением загрузите выбранный язык.
+
+blog-editor-invalidSchedule = Введите дату и время в формате RFC 3339 с часовым поясом.
+
+blog-editor-invalidImage = Введите HTTP/HTTPS URL или путь изображения от корня сайта.
+
+blog-editor-revisionMissing = Версия записи отсутствует. Обновите запись перед сохранением.
+
+blog-editor-categoriesUnavailable = Не удалось загрузить категории. Текущая категория сохранена; повторите загрузку, чтобы изменить её.
+
+blog-editor-scheduleHelp = Используйте RFC 3339 с часовым поясом, например 2026-12-01T10:00:00+03:00.
+
+blog-categories-created = Категория создана.
+
+blog-categories-updated = Категория обновлена.
+
+blog-editor-imagePreview = Предпросмотр главного изображения
+
+blog-editor-slugRequired = Канонический адрес обязателен

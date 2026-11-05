@@ -32,6 +32,8 @@ ssr = [
 fly = { path = "../../../ui/fly" }
 fly-ui = { path = "../../../ui/fly/ui" }
 rustok-ui-core.workspace = true
+rustok-ui-forms.workspace = true
+rustok-forms-leptos.workspace = true
 rustok-ui-transport.workspace = true
 rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }

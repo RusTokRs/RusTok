@@ -51,6 +51,7 @@ const uiPath = "crates/modules/rustok-blog/admin/src/ui/leptos.rs";
 const uiModPath = "crates/modules/rustok-blog/admin/src/ui/mod.rs";
 const uiComponentsPath = "crates/modules/rustok-blog/admin/src/ui/components.rs";
 const uiPagePath = "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs";
+const uiLifecyclePath = "crates/modules/rustok-blog/admin/src/ui/leptos/lifecycle.rs";
 const richtextAdapterPath = "crates/modules/rustok-blog/admin/src/ui/richtext.rs";
 const sharedRichtextAdapterPath = "crates/ui/leptos-ui/src/richtext.rs";
 const moderationPath = "crates/modules/rustok-blog/admin/src/ui/moderation.rs";
@@ -111,7 +112,8 @@ const ui = readRepo(uiPath);
 const uiMod = readRepo(uiModPath);
 const uiComponents = readRepo(uiComponentsPath);
 const uiPage = existsSync(repoPath(uiPagePath)) ? readRepo(uiPagePath) : "";
-const uiBoundary = `${ui}\n${uiPage}\n${uiComponents}`;
+const uiLifecycle = existsSync(repoPath(uiLifecyclePath)) ? readRepo(uiLifecyclePath) : "";
+const uiBoundary = `${ui}\n${uiPage}\n${uiComponents}\n${uiLifecycle}`;
 const richtextAdapter = readRepo(richtextAdapterPath);
 const sharedRichtextAdapter = readRepo(sharedRichtextAdapterPath);
 const moderation = readRepo(moderationPath);
@@ -176,8 +178,6 @@ for (const marker of [
   "BlogPostAdminEditorFormCopyViewModel",
   "BlogPostAdminEditorFormCopyLabels",
   "blog_post_admin_editor_form_copy_view",
-  "BlogPostAdminEditorFieldClassesViewModel",
-  "blog_post_admin_editor_field_classes_view",
   "BlogPostAdminTitleInputViewModel",
   "blog_post_admin_title_input_view",
   "RichTextDocument",
@@ -300,7 +300,9 @@ for (const marker of ["mount_richtext_frame", "dispose_richtext_frame", 'sandbox
 assertContains(uiBoundary, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(uiBoundary, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
 assertContains(uiBoundary, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
-assertContains(uiBoundary, "core::blog_post_admin_editor_field_classes_view", `${uiPath}: UI must use core-owned editor field class presentation policy`);
+for (const marker of ["rustok_forms_leptos", "<Form ", "<FormField ", "<FormMessage"]) {
+  assertContains(uiBoundary, marker, `${uiPath}: editor must bind canonical form components (${marker})`);
+}
 assertContains(uiBoundary, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
 assertContains(uiBoundary, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
 assertContains(uiBoundary, "core::blog_post_admin_table_classes_view", `${uiPath}: UI must use core-owned posts-table class presentation policy`);
@@ -312,8 +314,8 @@ assertContains(ui, "apply_query_intent", `${uiPath}: UI must apply core-owned ro
 assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
 assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
 assertContains(uiBoundary, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification`);
-assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
-assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
+assertContains(uiBoundary, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
+assertContains(uiBoundary, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
 assertContains(ui, "transport::fetch_posts", `${uiPath}: UI must call the module-owned transport facade`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostService", "CategoryService", "TagService", "CommentService"]) {

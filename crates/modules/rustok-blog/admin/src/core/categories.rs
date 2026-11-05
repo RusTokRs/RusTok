@@ -1,6 +1,7 @@
 use crate::model::{BlogCategoryDetail, BlogCategoryDraft, BlogCategoryUpdate};
-use rustok_api::{Patch, WritePathIssue};
+use rustok_api::WritePathIssue;
 use rustok_ui_core::{ui_busy_key, ui_busy_key_with_id};
+use rustok_ui_forms::FormValidator;
 
 /// Which module-owned workspace the Blog admin root renders for a subpath.
 ///
@@ -51,34 +52,30 @@ pub fn blog_category_matches_query(
     category: &BlogCategoryAdminTableRowViewModel,
     query: &str,
 ) -> bool {
-    let needle = query.trim().to_ascii_lowercase();
+    let needle = query.trim().to_lowercase();
     if needle.is_empty() {
         return true;
     }
-    category.name.to_ascii_lowercase().contains(&needle)
-        || category.slug.to_ascii_lowercase().contains(&needle)
-        || category.description.to_ascii_lowercase().contains(&needle)
+    category.name.to_lowercase().contains(&needle)
+        || category.slug.to_lowercase().contains(&needle)
+        || category.description.to_lowercase().contains(&needle)
 }
 
-/// Category names must be at least two characters, mirroring the Next admin
-/// form contract; the owner additionally enforces its own length cap.
-pub const MIN_BLOG_CATEGORY_NAME_LENGTH: usize = 2;
+/// Match the Blog owner's Unicode name bounds instead of inventing a client-only minimum.
+pub const MIN_BLOG_CATEGORY_NAME_LENGTH: usize = 1;
 
 pub fn blog_category_name_is_valid(name: &str) -> bool {
-    name.trim().chars().count() >= MIN_BLOG_CATEGORY_NAME_LENGTH
-}
-
-/// The update payload sends the description only when it changed relative to
-/// the loaded row: an unchanged description is a keep, an emptied one is a
-/// clear, and a new text is a set. This mirrors the owner's Patch semantics
-/// and keeps "clear" distinguishable from "not supplied".
-pub fn blog_category_description_patch(current: &str, loaded: Option<&str>) -> Patch<String> {
-    let trimmed = current.trim();
-    match loaded {
-        Some(existing) if trimmed == existing => Patch::Keep,
-        _ if trimmed.is_empty() => Patch::Clear,
-        _ => Patch::Set(trimmed.to_string()),
-    }
+    FormValidator::new()
+        .required("name", name, "Name is required")
+        .min_length(
+            "name",
+            name.trim(),
+            MIN_BLOG_CATEGORY_NAME_LENGTH,
+            "Name is required",
+        )
+        .max_length("name", name.trim(), 120, "Name is too long")
+        .finish()
+        .is_ok()
 }
 
 pub fn busy_key_for_category_save(category_id: Option<&str>) -> String {
@@ -108,9 +105,7 @@ pub struct BlogCategorySaveCommand {
 
 pub struct BlogCategoryFormInput<'a> {
     pub editing_category_id: Option<&'a str>,
-    /// Description currently loaded in the editor for the edited row; the
-    /// update payload keeps an unchanged description instead of re-sending it.
-    pub loaded_description: Option<&'a str>,
+    pub loaded_category: Option<&'a BlogCategoryDetail>,
     pub locale: &'a str,
     pub name: &'a str,
     pub slug: &'a str,
@@ -129,16 +124,19 @@ fn optional_trimmed(value: &str) -> Option<String> {
 }
 
 /// Validates the form and builds the create or update command. Validation
-/// mirrors the Next admin form contract: the name needs at least two
-/// characters and the create-only position must parse as a non-negative
+/// matches the owner name bounds and requires a target-language identity.
+/// The create-only position must parse as a non-negative
 /// integer (the owner additionally clamps the position to the sibling count).
 pub fn prepare_blog_category_save_command(
     input: BlogCategoryFormInput<'_>,
     name_too_short_message: String,
     invalid_position_message: String,
+    slug_required_message: String,
 ) -> Result<BlogCategorySaveCommand, WritePathIssue> {
     let name = input.name.trim().to_string();
-    if !blog_category_name_is_valid(&name) {
+    if (input.editing_category_id.is_none() || !name.is_empty())
+        && !blog_category_name_is_valid(&name)
+    {
         return Err(WritePathIssue::new(name_too_short_message));
     }
     let slug = optional_trimmed(input.slug);
@@ -146,18 +144,43 @@ pub fn prepare_blog_category_save_command(
 
     let busy_key = busy_key_for_category_save(input.editing_category_id);
     let operation = match input.editing_category_id {
-        Some(category_id) => BlogCategorySaveOperation::Update {
-            category_id: category_id.to_string(),
-            update: BlogCategoryUpdate {
-                locale,
-                name: Some(name),
-                slug,
-                description: blog_category_description_patch(
-                    input.description,
-                    input.loaded_description,
-                ),
-            },
-        },
+        Some(category_id) => {
+            let loaded = input
+                .loaded_category
+                .filter(|category| category.id == category_id && category.locale == locale)
+                .ok_or_else(|| WritePathIssue::new(name_too_short_message.clone()))?;
+            let own_copy = loaded.locale == loaded.effective_locale;
+            if own_copy && !loaded.slug.is_empty() && slug.is_none() {
+                return Err(WritePathIssue::new(slug_required_message));
+            }
+            let baseline_name = if own_copy { loaded.name.as_str() } else { "" };
+            let baseline_description = if own_copy {
+                loaded.description.as_deref()
+            } else {
+                None
+            };
+            let description = super::text_patch(Some(input.description), baseline_description);
+            let name = (name != baseline_name).then_some(name);
+            if (!own_copy
+                && name
+                    .as_deref()
+                    .is_none_or(|value| !blog_category_name_is_valid(value)))
+                || name
+                    .as_deref()
+                    .is_some_and(|value| !blog_category_name_is_valid(value))
+            {
+                return Err(WritePathIssue::new(name_too_short_message));
+            }
+            BlogCategorySaveOperation::Update {
+                category_id: category_id.to_string(),
+                update: BlogCategoryUpdate {
+                    locale,
+                    name,
+                    slug: slug.filter(|value| !own_copy || value != &loaded.slug),
+                    description,
+                },
+            }
+        }
         None => {
             let position = if input.position.trim().is_empty() {
                 None
@@ -182,4 +205,56 @@ pub fn prepare_blog_category_save_command(
         operation,
         busy_key,
     })
+}
+
+/// Editable copy belongs to the exact target locale; the adapter renders the
+/// source projection separately when this snapshot is empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryEditorCopy {
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+}
+pub fn category_editor_copy(category: &BlogCategoryDetail) -> CategoryEditorCopy {
+    if category.locale == category.effective_locale {
+        CategoryEditorCopy {
+            name: category.name.clone(),
+            slug: category.slug.clone(),
+            description: category.description.clone().unwrap_or_default(),
+        }
+    } else {
+        CategoryEditorCopy {
+            name: String::new(),
+            slug: String::new(),
+            description: String::new(),
+        }
+    }
+}
+
+pub fn category_grid_columns(labels: [&str; 5]) -> Vec<rustok_grid::GridColumnDef> {
+    ["name", "slug", "locale", "position", "actions"]
+        .into_iter()
+        .zip(labels)
+        .map(|(id, title)| rustok_grid::GridColumnDef::new(id, title))
+        .collect()
+}
+
+/// Preserve an assigned identity when option loading is unavailable or the
+/// selected category is absent from a refreshed page. Display state cannot clear it.
+pub fn post_category_options(
+    items: &[crate::model::BlogCategoryOption],
+    selected: &str,
+    empty_label: String,
+    current_label: String,
+) -> Vec<rustok_ui_forms::FieldOption> {
+    let mut options = vec![rustok_ui_forms::FieldOption::new("", empty_label)];
+    options.extend(
+        items
+            .iter()
+            .map(|item| rustok_ui_forms::FieldOption::new(item.id.clone(), item.name.clone())),
+    );
+    if !selected.is_empty() && !items.iter().any(|item| item.id == selected) {
+        options.push(rustok_ui_forms::FieldOption::new(selected, current_label));
+    }
+    options
 }

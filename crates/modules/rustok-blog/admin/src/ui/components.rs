@@ -442,8 +442,7 @@ fn StatusBadge(status: String) -> impl IntoView {
 
 #[derive(Clone, Copy)]
 pub(super) struct BlogPostFormSetters {
-    pub(super) editing_post_id: WriteSignal<Option<String>>,
-    pub(super) editing_version: WriteSignal<Option<i32>>,
+    pub(super) editor_session: RwSignal<crate::core::PostEditorSession>,
     pub(super) title: WriteSignal<String>,
     pub(super) slug: WriteSignal<String>,
     pub(super) excerpt: WriteSignal<String>,
@@ -461,10 +460,18 @@ pub(super) struct BlogPostFormSetters {
 }
 
 pub(super) fn apply_post_to_form(setters: BlogPostFormSetters, post: &BlogPostDetail) {
+    setters
+        .editor_session
+        .set(crate::core::PostEditorSession::Loaded(Box::new(
+            post.clone(),
+        )));
     apply_form_state(setters, core::BlogPostEditorFormState::from_post(post));
 }
 
 pub(super) fn reset_form(setters: BlogPostFormSetters, default_locale: &str) {
+    setters
+        .editor_session
+        .set(crate::core::PostEditorSession::Creating);
     apply_form_state(
         setters,
         core::BlogPostEditorFormState::empty(default_locale),
@@ -472,8 +479,6 @@ pub(super) fn reset_form(setters: BlogPostFormSetters, default_locale: &str) {
 }
 
 fn apply_form_state(setters: BlogPostFormSetters, state: core::BlogPostEditorFormState) {
-    setters.editing_post_id.set(state.editing_post_id);
-    setters.editing_version.set(state.version);
     setters.title.set(state.title);
     setters.slug.set(state.slug);
     setters.excerpt.set(state.excerpt);

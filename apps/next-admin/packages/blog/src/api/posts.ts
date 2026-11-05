@@ -7,6 +7,7 @@ export interface GqlOpts {
   token?: string | null;
   tenantSlug?: string | null;
   tenantId?: string | null;
+  locale?: string;
 }
 
 // ---------- Types (matches GraphQL schema, camelCase) ----------
@@ -187,8 +188,8 @@ query Posts($tenantId: UUID!, $filter: PostsFilter) {
 `;
 
 const POST_QUERY = `
-query Post($tenantId: UUID!, $id: UUID!) {
-  post(tenantId: $tenantId, id: $id) {
+query Post($tenantId: UUID!, $id: UUID!, $locale: String) {
+  post(tenantId: $tenantId, id: $id, locale: $locale) {
     id
     requestedLocale
     effectiveLocale
@@ -385,9 +386,15 @@ export async function getPost(
   opts: GqlOpts = {}
 ): Promise<PostResponse | null> {
   const data = await graphqlRequest<
-    { tenantId: string; id: string },
+    { tenantId: string; id: string; locale?: string },
     PostQueryResponse
-  >(POST_QUERY, { tenantId: opts.tenantId!, id }, opts.token, opts.tenantSlug);
+  >(
+    POST_QUERY,
+    { tenantId: opts.tenantId!, id, locale: opts.locale },
+    opts.token,
+    opts.tenantSlug,
+    { locale: opts.locale }
+  );
   return data.post;
 }
 
@@ -421,71 +428,95 @@ export async function updatePost(
     opts.token,
     opts.tenantSlug
   );
-  if (!data.updatePost) throw new Error('Update post rejected by the Blog owner');
+  if (!data.updatePost)
+    throw new Error('Update post rejected by the Blog owner');
 }
 
 export async function deletePost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, DeletePostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    DeletePostResponse
+  >(
     DELETE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
-  if (!data.deletePost) throw new Error('deletePost rejected by the Blog owner');
+  if (!data.deletePost)
+    throw new Error('deletePost rejected by the Blog owner');
 }
 
 export async function publishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, PublishPostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    PublishPostResponse
+  >(
     PUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
-  if (!data.publishPost) throw new Error('publishPost rejected by the Blog owner');
+  if (!data.publishPost)
+    throw new Error('publishPost rejected by the Blog owner');
 }
 
 export async function unpublishPost(
   id: string,
   opts: GqlOpts = {}
 ): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpublishPostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    UnpublishPostResponse
+  >(
     UNPUBLISH_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
-  if (!data.unpublishPost) throw new Error('unpublishPost rejected by the Blog owner');
+  if (!data.unpublishPost)
+    throw new Error('unpublishPost rejected by the Blog owner');
 }
 
 export async function archivePost(id: string, opts: GqlOpts): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, ArchivePostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    ArchivePostResponse
+  >(
     ARCHIVE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
-  if (!data.archivePost) throw new Error('Archive post rejected by the Blog owner');
+  if (!data.archivePost)
+    throw new Error('Archive post rejected by the Blog owner');
 }
 
 export async function restorePost(id: string, opts: GqlOpts): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, RestorePostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    RestorePostResponse
+  >(
     RESTORE_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
     opts.tenantSlug
   );
-  if (!data.restorePost) throw new Error('Restore post rejected by the Blog owner');
+  if (!data.restorePost)
+    throw new Error('Restore post rejected by the Blog owner');
 }
 
 /** Pin state is owned by Blog and is independent of the post edit version. */
 export async function pinPost(id: string, opts: GqlOpts): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, PinPostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    PinPostResponse
+  >(
     PIN_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,
@@ -495,7 +526,10 @@ export async function pinPost(id: string, opts: GqlOpts): Promise<void> {
 }
 
 export async function unpinPost(id: string, opts: GqlOpts): Promise<void> {
-  const data = await graphqlRequest<{ id: string; tenantId: string }, UnpinPostResponse>(
+  const data = await graphqlRequest<
+    { id: string; tenantId: string },
+    UnpinPostResponse
+  >(
     UNPIN_POST_MUTATION,
     { id, tenantId: opts.tenantId! },
     opts.token,

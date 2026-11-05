@@ -185,9 +185,14 @@ fn prepare_save_command_rejects_missing_required_fields() {
         schedule_editable: true,
     });
 
-    let issue =
-        prepare_blog_post_save_command(None, draft, "Title and body are required".to_string())
-            .expect_err("missing title must fail before transport selection");
+    let issue = prepare_blog_post_save_command(
+        None,
+        None,
+        draft,
+        "Title and body are required".to_string(),
+        "slug required".into(),
+    )
+    .expect_err("missing title must fail before transport selection");
 
     assert_eq!(issue.message, "Title and body are required");
 }
@@ -213,13 +218,23 @@ fn prepare_save_command_selects_create_operation() {
         schedule_editable: true,
     });
 
-    let command = prepare_blog_post_save_command(None, draft, "required".to_string())
-        .expect("valid create command");
+    let command = prepare_blog_post_save_command(
+        None,
+        None,
+        draft,
+        "required".to_string(),
+        "slug required".into(),
+    )
+    .expect("valid create command");
 
-    assert_eq!(command.operation, BlogPostSaveOperation::Create);
     assert_eq!(command.busy_key, "create");
-    assert_eq!(command.draft.title, "Launch");
-    assert_eq!(command.draft.content, content);
+    match command.operation {
+        BlogPostSaveOperation::Create(draft) => {
+            assert_eq!(draft.title, "Launch");
+            assert_eq!(draft.content, content);
+        }
+        _ => panic!("expected create"),
+    }
 }
 
 #[test]
@@ -243,16 +258,24 @@ fn prepare_save_command_selects_update_operation() {
         schedule_editable: true,
     });
 
-    let command =
-        prepare_blog_post_save_command(Some("post-1".to_string()), draft, "required".to_string())
-            .expect("valid update command");
-
-    assert_eq!(
-        command.operation,
-        BlogPostSaveOperation::Update {
-            post_id: "post-1".to_string()
+    let mut post = editor_post();
+    post.id = "post-1".into();
+    post.version = 7;
+    let command = prepare_blog_post_save_command(
+        Some("post-1".into()),
+        Some(&post),
+        draft,
+        "required".into(),
+        "slug required".into(),
+    )
+    .expect("valid update command");
+    match command.operation {
+        BlogPostSaveOperation::Update { post_id, update } => {
+            assert_eq!(post_id, "post-1");
+            assert_eq!(update.version, 7);
         }
-    );
+        _ => panic!("expected update"),
+    }
     assert_eq!(command.busy_key, "save:post-1");
 }
 
@@ -313,7 +336,6 @@ fn save_result_view_model_maps_apply_refresh_and_query_policy() {
     let view = blog_post_save_result_view("post-1");
 
     assert!(view.refresh_posts);
-    assert!(view.apply_returned_post_to_form);
     assert_eq!(
         view.selected_post_query_intent,
         Some(BlogPostAdminRouteQueryIntent::Replace {
@@ -328,17 +350,17 @@ fn mutation_result_view_model_maps_apply_and_refresh_policy() {
     let matching = blog_post_mutation_result_view(Some("post-1"), "post-1");
 
     assert!(matching.refresh_posts);
-    assert!(matching.apply_returned_post_to_form);
+    assert!(matching.reload_selected_post);
 
     let different = blog_post_mutation_result_view(Some("post-2"), "post-1");
 
     assert!(different.refresh_posts);
-    assert!(!different.apply_returned_post_to_form);
+    assert!(!different.reload_selected_post);
 
     let not_editing = blog_post_mutation_result_view(None, "post-1");
 
     assert!(not_editing.refresh_posts);
-    assert!(!not_editing.apply_returned_post_to_form);
+    assert!(!not_editing.reload_selected_post);
 }
 
 #[test]
@@ -874,41 +896,13 @@ fn admin_sort_tokens_match_the_wire_spelling() {
 }
 
 #[test]
-fn category_description_patch_keeps_unchanged_clears_emptied_and_sets_changed() {
-    use rustok_api::Patch;
-
-    assert_eq!(
-        blog_category_description_patch("same text", Some("same text")),
-        Patch::<String>::Keep
-    );
-    assert_eq!(
-        blog_category_description_patch("", Some("old text")),
-        Patch::Clear
-    );
-    assert_eq!(
-        blog_category_description_patch("   ", Some("old text")),
-        Patch::Clear
-    );
-    assert_eq!(
-        blog_category_description_patch("new text", Some("old text")),
-        Patch::Set("new text".to_string())
-    );
-    // Nothing was loaded (create flow): any text is a set, blank is a clear.
-    assert_eq!(
-        blog_category_description_patch("text", None),
-        Patch::Set("text".to_string())
-    );
-    assert_eq!(blog_category_description_patch("", None), Patch::Clear);
-}
-
-#[test]
 fn category_save_command_validates_the_name_length() {
     let issue = prepare_blog_category_save_command(
         BlogCategoryFormInput {
             editing_category_id: None,
-            loaded_description: None,
+            loaded_category: None,
             locale: "en",
-            name: " a ",
+            name: "   ",
             slug: "",
             description: "",
             parent_id: None,
@@ -916,6 +910,7 @@ fn category_save_command_validates_the_name_length() {
         },
         "name too short".to_string(),
         "invalid position".to_string(),
+        "slug required".into(),
     )
     .unwrap_err();
     assert_eq!(issue.message, "name too short");
@@ -926,7 +921,7 @@ fn category_save_command_create_trims_optionals_and_parses_position() {
     let command = prepare_blog_category_save_command(
         BlogCategoryFormInput {
             editing_category_id: None,
-            loaded_description: None,
+            loaded_category: None,
             locale: " en ",
             name: " News ",
             slug: "  ",
@@ -936,6 +931,7 @@ fn category_save_command_create_trims_optionals_and_parses_position() {
         },
         "name too short".to_string(),
         "invalid position".to_string(),
+        "slug required".into(),
     )
     .unwrap();
     match command.operation {
@@ -958,7 +954,7 @@ fn category_save_command_rejects_negative_or_non_numeric_position() {
         let issue = prepare_blog_category_save_command(
             BlogCategoryFormInput {
                 editing_category_id: None,
-                loaded_description: None,
+                loaded_category: None,
                 locale: "en",
                 name: "News",
                 slug: "",
@@ -968,6 +964,7 @@ fn category_save_command_rejects_negative_or_non_numeric_position() {
             },
             "name too short".to_string(),
             "invalid position".to_string(),
+            "slug required".into(),
         )
         .unwrap_err();
         assert_eq!(issue.message, "invalid position");
@@ -979,7 +976,7 @@ fn category_save_command_update_uses_description_patch_semantics() {
     let command = prepare_blog_category_save_command(
         BlogCategoryFormInput {
             editing_category_id: Some("11111111-1111-1111-1111-111111111111"),
-            loaded_description: Some("loaded text"),
+            loaded_category: Some(&category_snapshot()),
             locale: "en",
             name: "News",
             slug: "news",
@@ -989,6 +986,7 @@ fn category_save_command_update_uses_description_patch_semantics() {
         },
         "name too short".to_string(),
         "invalid position".to_string(),
+        "slug required".into(),
     )
     .unwrap();
     match command.operation {
@@ -998,8 +996,8 @@ fn category_save_command_update_uses_description_patch_semantics() {
         } => {
             assert_eq!(category_id, "11111111-1111-1111-1111-111111111111");
             assert_eq!(update.locale, "en");
-            assert_eq!(update.name.as_deref(), Some("News"));
-            assert_eq!(update.slug.as_deref(), Some("news"));
+            assert_eq!(update.name, None);
+            assert_eq!(update.slug, None);
             assert_eq!(update.description, rustok_api::Patch::Keep);
         }
         BlogCategorySaveOperation::Create(_) => panic!("expected an update command"),
@@ -1066,3 +1064,38 @@ fn grid_column_copy_and_unicode_filtering_have_no_language_branch() {
     assert_eq!(columns[0].title, "fr:blog.grid.title");
     assert!(sort_field_change("INVALID", BlogPostSortOrder::Desc).is_none());
 }
+fn editor_post() -> crate::model::BlogPostDetail {
+    serde_json::from_value(serde_json::json!({
+        "id":"post-1", "requestedLocale":"en", "effectiveLocale":"en", "availableLocales":["en"],
+        "title":"Source title", "slug":"source", "excerpt":"Source excerpt", "content":null,
+        "contentPlainText":"Source body", "status":"draft", "createdAt":"2026-11-05T00:00:00Z",
+        "updatedAt":"2026-11-05T00:00:00Z", "publishedAt":null, "scheduledAt":null,
+        "isPinned":false, "pinnedAt":null, "tags":[], "categoryId":"old-category", "channelSlugs":[],
+        "featuredImageUrl":null, "seoTitle":"Source SEO", "seoDescription":null, "version":8
+    })).unwrap()
+}
+fn editor_draft(post: &crate::model::BlogPostDetail) -> crate::model::BlogPostDraft {
+    let state = BlogPostEditorFormState::from_post(post);
+    build_blog_post_draft(BlogPostFormInput {
+        locale: &state.locale,
+        version: state.version,
+        title: &state.title,
+        slug: &state.slug,
+        excerpt: &state.excerpt,
+        content: &state.content,
+        publish: false,
+        tags: &state.tags_input,
+        category_id: &state.category_id,
+        channel_slugs: &state.channel_slugs_input,
+        featured_image_url: &state.featured_image_url,
+        seo_title: &state.seo_title,
+        seo_description: &state.seo_description,
+        scheduled_at: &state.scheduled_at,
+        schedule_editable: state.schedule_editable,
+    })
+}
+fn category_snapshot() -> crate::model::BlogCategoryDetail {
+    serde_json::from_value(serde_json::json!({"id":"11111111-1111-1111-1111-111111111111", "locale":"en", "effectiveLocale":"en", "name":"News", "slug":"news", "description":"loaded text", "parentId":null, "position":0, "createdAt":"2026-11-05T00:00:00Z", "updatedAt":null})).unwrap()
+}
+
+mod editor;

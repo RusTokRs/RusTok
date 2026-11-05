@@ -1,5 +1,68 @@
 use super::*;
 use leptos::prelude::*;
+use leptos_ui::{Alert, Button};
+use rustok_forms_leptos::{
+    Form, FormCheckbox, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect,
+    FormTextarea, SubmitButton,
+};
+use rustok_ui_forms::{DirtyTracker, FormState};
+
+pub(super) struct BlogAdminPageState {
+    pub(super) ui_locale: Option<String>,
+    pub(super) host_locale_for_seo: String,
+    pub(super) seo_target_kind: SeoTargetSlug,
+    pub(super) form_copy_view: core::BlogPostAdminEditorFormCopyViewModel,
+    pub(super) shell_classes: core::BlogPostAdminShellClassesViewModel,
+    pub(super) form_view_model: Memo<core::BlogPostAdminFormViewModel>,
+    pub(super) editing_banner_view: Memo<core::BlogPostAdminEditBannerViewModel>,
+    pub(super) issue_banner_view: Memo<core::BlogPostAdminIssueBannerViewModel>,
+    pub(super) reset_current_post: Callback<()>,
+    pub(super) list_locale: ReadSignal<String>,
+    pub(super) set_list_locale: WriteSignal<String>,
+    pub(super) posts_resource:
+        LocalResource<Result<crate::model::BlogPostList, transport::ApiError>>,
+    pub(super) posts_rows: RwSignal<Vec<crate::model::BlogPostListItem>>,
+    pub(super) posts_next_cursor: RwSignal<Option<String>>,
+    pub(super) posts_load_more_error: RwSignal<Option<String>>,
+    pub(super) posts_sort: RwSignal<core::BlogPostAdminSort>,
+    pub(super) load_posts_error_label: String,
+    pub(super) load_more_posts: Callback<String>,
+    pub(super) change_posts_sort: Callback<core::BlogPostAdminSort>,
+    pub(super) open_post: Callback<(String, String)>,
+    pub(super) toggle_publish: Callback<(String, bool, String)>,
+    pub(super) toggle_pin: Callback<(String, bool, String)>,
+    pub(super) archive_post: Callback<(String, String)>,
+    pub(super) restore_post: Callback<(String, String)>,
+    pub(super) delete_post: Callback<String>,
+    pub(super) create_preview_link: Callback<String>,
+    pub(super) preview_token: ReadSignal<Option<crate::model::BlogPreviewToken>>,
+    pub(super) close_preview_banner: Callback<()>,
+    pub(super) categories_resource:
+        LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
+    pub(super) categories_unavailable_label: String,
+    pub(super) retry_categories: Callback<()>,
+    pub(super) form_setters: BlogPostFormSetters,
+    pub(super) editing_post_id: Signal<Option<String>>,
+    pub(super) title: ReadSignal<String>,
+    pub(super) slug: ReadSignal<String>,
+    pub(super) excerpt: ReadSignal<String>,
+    pub(super) content: ReadSignal<RichTextDocument>,
+    pub(super) locale: ReadSignal<String>,
+    pub(super) tags_input: ReadSignal<String>,
+    pub(super) category_id: ReadSignal<String>,
+    pub(super) channel_slugs_input: ReadSignal<String>,
+    pub(super) featured_image_url: ReadSignal<String>,
+    pub(super) seo_title: ReadSignal<String>,
+    pub(super) seo_description: ReadSignal<String>,
+    pub(super) scheduled_at: ReadSignal<String>,
+    pub(super) schedule_editable: ReadSignal<bool>,
+    pub(super) publish_now: ReadSignal<bool>,
+    pub(super) busy_key: ReadSignal<Option<String>>,
+    pub(super) submit_post: Callback<()>,
+    pub(super) loaded_post: Signal<Option<crate::model::BlogPostDetail>>,
+    pub(super) editor_session: RwSignal<crate::core::PostEditorSession>,
+    pub(super) save_notice: ReadSignal<Option<String>>,
+}
 
 pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
     let BlogAdminPageState {
@@ -7,7 +70,6 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         host_locale_for_seo,
         seo_target_kind,
         form_copy_view,
-        form_field_classes,
         shell_classes,
         form_view_model,
         editing_banner_view,
@@ -34,6 +96,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         close_preview_banner,
         categories_resource,
         categories_unavailable_label,
+        retry_categories,
         form_setters,
         editing_post_id,
         title,
@@ -52,10 +115,12 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         publish_now,
         busy_key,
         submit_post,
+        loaded_post,
+        editor_session,
+        save_notice,
     } = state;
     let BlogPostFormSetters {
-        editing_post_id: _,
-        editing_version: _,
+        editor_session: _,
         title: set_title,
         slug: set_slug,
         excerpt: set_excerpt,
@@ -71,6 +136,45 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
         schedule_editable: _set_schedule_editable,
         publish_now: set_publish_now,
     } = form_setters;
+
+    let ui_locale = StoredValue::new(ui_locale);
+    let form_copy_view = StoredValue::new(form_copy_view);
+    let categories_unavailable_label = StoredValue::new(categories_unavailable_label);
+    let form_state = RwSignal::new(FormState::idle());
+    let dirty_tracker = RwSignal::new(DirtyTracker::new());
+    Effect::new(move |_| {
+        let mut state = FormState::idle();
+        state.is_submitting = busy_key.get().is_some();
+        state.form_error = issue_banner_view
+            .get()
+            .visible
+            .then(|| issue_banner_view.get().message);
+        form_state.set(state);
+    });
+    Effect::new(move |_| {
+        let _snapshot = loaded_post.get().map(|post| (post.id, post.version));
+        dirty_tracker.update(|tracker| tracker.reset());
+    });
+    let category_options = Signal::derive(move || {
+        let items = categories_resource
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        core::post_category_options(
+            &items,
+            &category_id.get(),
+            t(
+                ui_locale.get_value().as_deref(),
+                "blog.form.uncategorized",
+                "Uncategorized",
+            ),
+            t(
+                ui_locale.get_value().as_deref(),
+                "blog.editor.currentCategory",
+                "Current category",
+            ),
+        )
+    });
 
     view! {
             <div class=shell_classes.page>
@@ -94,7 +198,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                         <BlogPostsListHeader
                             locale=list_locale
                             set_locale=set_list_locale
-                            locale_filter_label=form_copy_view.locale_label.clone()
+                            locale_filter_label=form_copy_view.with_value(|value| value.locale_label.clone())
                         />
 
                         <Suspense
@@ -177,7 +281,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                             <h2 class=shell_classes.form_title>
     {move || form_view_model.get().title}
                             </h2>
-                            <p class=shell_classes.form_subtitle>{form_copy_view.subtitle.clone()}</p>
+                            <p class=shell_classes.form_subtitle>{form_copy_view.with_value(|value| value.subtitle.clone())}</p>
                         </div>
 
                         <Show when=move || editing_banner_view.get().visible>
@@ -190,200 +294,97 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                             />
                         </Show>
 
-                        <form class="mt-5 space-y-4" on:submit=move |event: SubmitEvent| submit_post.run(event)>
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {form_copy_view.title_label.clone()}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=form_field_classes.text_input
-                                    prop:value=title
-                                    on:input=move |ev| {
-                                        let title_input = core::blog_post_admin_title_input_view(
-                                            event_target_value(&ev),
-                                        );
-                                        set_title.set(title_input.title);
-                                    }
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {form_copy_view.slug_label.clone()}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=form_field_classes.text_input
-                                    prop:value=slug
-                                    on:input=move |ev| set_slug.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <div class="grid gap-4">
-                                <label class=shell_classes.locale_filter_label>
-                                    <span class=form_field_classes.label_text>
-                                        {form_copy_view.locale_label.clone()}
-                                    </span>
-                                    <input
-                                        type="text"
-                                        class=form_field_classes.text_input
-                                        prop:value=locale
-                                        disabled=move || editing_post_id.get().is_some()
-                                        on:input=move |ev| set_locale.set(event_target_value(&ev))
-                                    />
-                                </label>
-
-                            </div>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {form_copy_view.excerpt_label.clone()}
-                                </span>
-                                <textarea
-                                    class=form_field_classes.textarea_short
-                                    prop:value=excerpt
-                                    on:input=move |ev| set_excerpt.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <BlogRichTextEditor
-                                document=content
-                                set_document=set_content
-                                content_locale=locale
-                                label=form_copy_view.content_label.clone()
-                                disabled=Signal::derive(move || busy_key.get().is_some())
-                            />
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {form_copy_view.tags_label.clone()}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=form_field_classes.text_input
-                                    placeholder=form_copy_view.tags_placeholder.clone()
-                                    prop:value=tags_input
-                                    on:input=move |ev| set_tags_input.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {t(ui_locale.as_deref(), "blog.form.category", "Category")}
-                                </span>
-                                <select class=form_field_classes.text_input
-                                    prop:value=category_id
-                                    on:change=move |ev| set_category_id.set(event_target_value(&ev))
-                                >
-                                    <option value="">{t(ui_locale.as_deref(), "blog.form.uncategorized", "Uncategorized")}</option>
-                                    {move || {
-                                        match categories_resource.get() {
-                                            Some(Ok(items)) => items.into_iter().map(|item| {
-                                                view! { <option value=item.id>{item.name}</option> }
-                                            }).collect_view().into_any(),
-                                            _ => ().into_any(),
-                                        }
-                                    }}
-                                </select>
-                                {move || categories_resource.get().and_then(|result| result.err()).map(|error| {
-                                    view! { <span class="text-xs text-destructive">{format!("{}: {error}", categories_unavailable_label.clone())}</span> }
-                                })}
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.channels", "Channels (comma separated; empty = all channels)")}</span>
-                                <input type="text" class=form_field_classes.text_input
-                                    placeholder="default, mobile"
-                                    prop:value=channel_slugs_input
-                                    on:input=move |ev| set_channel_slugs_input.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.featuredImage", "Featured image URL")}</span>
-                                <input type="text" class=form_field_classes.text_input
-                                    placeholder="https://example.com/cover.jpg"
-                                    prop:value=featured_image_url
-                                    on:input=move |ev| set_featured_image_url.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoTitle", "SEO title (Blog default)")}</span>
-                                <input type="text" class=form_field_classes.text_input
-                                    prop:value=seo_title
-                                    on:input=move |ev| set_seo_title.set(event_target_value(&ev))
-                                />
-                            </label>
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>{t(ui_locale.as_deref(), "blog.form.seoDescription", "SEO description (Blog default)")}</span>
-                                <textarea class=form_field_classes.textarea_short
-                                    prop:value=seo_description
-                                    on:input=move |ev| set_seo_description.set(event_target_value(&ev))
-                                />
-                            </label>
-
+                        {move || { let notice = editor_session.get().reload_notice_key().map(|key| t(ui_locale.get_value().as_deref(), key, "Post saved. Reload before editing again; its current snapshot could not be loaded.")).or_else(|| save_notice.get()); notice.map(|notice| view! { <Alert>{notice}</Alert> }) }}
+                        {move || loaded_post.get().filter(|post| post.requested_locale != post.effective_locale).map(|post| {
+                            view! {
+                                <Alert>
+                                    <p>{t(ui_locale.get_value().as_deref(), "blog.editor.fallbackNotice", "The requested translation does not exist. The source below is read-only; enter target-language title and content to create it.")}</p>
+                                    <p lang=post.effective_locale.clone()>{post.title}</p>
+                                    <p lang=post.effective_locale>{post.content_plain_text.unwrap_or_default()}</p>
+                                </Alert>
+                            }
+                        })}
+                        <Form state=form_state dirty_tracker=dirty_tracker auto_submitting=false on_submit=submit_post class="mt-5 space-y-4">
+                            <FormError />
+                            <FormField name="title">
+                                <FormLabel>{form_copy_view.with_value(|value| value.title_label.clone())}</FormLabel>
+                                <FormInput value=title disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_title.set(core::blog_post_admin_title_input_view(value).title) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="slug">
+                                <FormLabel>{form_copy_view.with_value(|value| value.slug_label.clone())}</FormLabel>
+                                <FormInput value=slug disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_slug.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="locale">
+                                <FormLabel>{form_copy_view.with_value(|value| value.locale_label.clone())}</FormLabel>
+                                <FormInput value=locale on_input=move |value| set_locale.set(value) disabled=Signal::derive(move || editing_post_id.get().is_some() || busy_key.get().is_some()) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="excerpt">
+                                <FormLabel>{form_copy_view.with_value(|value| value.excerpt_label.clone())}</FormLabel>
+                                <FormTextarea value=excerpt disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_excerpt.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <BlogRichTextEditor document=content set_document=set_content content_locale=locale
+                                label=form_copy_view.with_value(|value| value.content_label.clone()) disabled=Signal::derive(move || busy_key.get().is_some()) />
+                            <FormField name="tags">
+                                <FormLabel>{form_copy_view.with_value(|value| value.tags_label.clone())}</FormLabel>
+                                <FormInput value=tags_input disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_tags_input.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="category_id">
+                                <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.category", "Category")}</FormLabel>
+                                {move || view! { <FormSelect value=category_id options=category_options.get()
+                                    on_change=move |value| set_category_id.set(value)
+                                    disabled=Signal::derive(move || busy_key.get().is_some() || !matches!(categories_resource.get(), Some(Ok(_)))) /> }}
+                                {move || categories_resource.get().and_then(Result::err).map(|_| view! { <Alert>{categories_unavailable_label.get_value()}<Button on_click=Box::new(move || retry_categories.run(()))>{t(ui_locale.get_value().as_deref(), "blog.editor.retry", "Retry")}</Button></Alert> })}
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="channel_slugs">
+                                <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.channels", "Channels (comma separated; empty = all channels)")}</FormLabel>
+                                <FormInput value=channel_slugs_input disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_channel_slugs_input.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="featured_image_url">
+                                <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.featuredImage", "Featured image URL")}</FormLabel>
+                                <FormInput value=featured_image_url disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_featured_image_url.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="seo_title">
+                                <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.seoTitle", "SEO title (Blog default)")}</FormLabel>
+                                <FormInput value=seo_title disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_seo_title.set(value) />
+                                <FormMessage />
+                            </FormField>
+                            <FormField name="seo_description">
+                                <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.seoDescription", "SEO description (Blog default)")}</FormLabel>
+                                <FormTextarea value=seo_description disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_seo_description.set(value) />
+                                <FormMessage />
+                            </FormField>
                             <Show when=move || schedule_editable.get()>
-                                <label class=shell_classes.locale_filter_label>
-                                    <span class=form_field_classes.label_text>
-                                        {t(ui_locale.as_deref(), "blog.form.scheduledAt", "Schedule (RFC 3339 with timezone)")}
-                                    </span>
-                                    <input type="text" class=form_field_classes.text_input
-                                        placeholder="2026-11-01T10:00:00+01:00"
-                                        prop:value=scheduled_at
-                                        on:input=move |ev| {
-                                            let value = event_target_value(&ev);
-                                            if !value.trim().is_empty() {
-                                                set_publish_now.set(false);
-                                            }
-                                            set_scheduled_at.set(value);
-                                        }
-                                    />
-                                </label>
+                                <FormField name="scheduled_at">
+                                    <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.scheduledAt", "Schedule (RFC 3339 with timezone)")}</FormLabel>
+                                    <FormInput value=scheduled_at disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value: String| {
+                                        if !value.trim().is_empty() { set_publish_now.set(false); }
+                                        set_scheduled_at.set(value);
+                                    } />
+                                    <FormMessage />
+                                </FormField>
                             </Show>
-
                             <Show when=move || editing_post_id.get().is_none()>
-                                <label class=form_field_classes.checkbox_label>
-                                    <input
-                                        type="checkbox"
-                                        prop:checked=publish_now
-                                        on:change=move |ev| {
-                                            let checked = event_target_checked(&ev);
-                                            if checked {
-                                                set_scheduled_at.set(String::new());
-                                            }
+                                <FormField name="publish">
+                                    <FormCheckbox checked=publish_now disabled=Signal::derive(move || busy_key.get().is_some()) label=form_copy_view.with_value(|value| value.publish_now_label.clone())
+                                        on_change=move |checked| {
+                                            if checked { set_scheduled_at.set(String::new()); }
                                             set_publish_now.set(checked);
-                                        }
-                                    />
-                                    {form_copy_view.publish_now_label.clone()}
-                                </label>
+                                        } />
+                                </FormField>
                             </Show>
-
-                            <Show when=move || issue_banner_view.get().visible>
-                                <div class=move || issue_banner_view.get().class>
-                                    {move || {
-                                        let issue_banner = issue_banner_view.get();
-
-                                        view! {
-                                            <span>
-                                                <strong>{issue_banner.label}</strong>
-                                                {": "}
-                                                {issue_banner.message}
-                                            </span>
-                                        }
-                                    }}
-                                </div>
-                            </Show>
-
-                            <button
-                                type="submit"
-                                class=form_field_classes.submit_button
-    disabled=move || form_view_model.get().submit_disabled
-                            >
-    {move || form_view_model.get().submit_label}
-                            </button>
-                        </form>
+                            <SubmitButton disabled=Signal::derive(move || form_view_model.get().submit_disabled
+                                || !editor_session.get().can_save())>
+                                {move || form_view_model.get().submit_label}
+                            </SubmitButton>
+                        </Form>
                     </section>
 
                     <BlogPostSeoPanel

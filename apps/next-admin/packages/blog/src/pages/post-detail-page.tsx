@@ -1,3 +1,4 @@
+import { getLocale } from '@rustok/next-fluent/server';
 import { getPost } from '../api/posts';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +30,12 @@ export default async function PostDetailPage({
   tenantSlug,
   tenantId
 }: PostDetailPageProps) {
-  const opts: GqlOpts = { token, tenantSlug, tenantId };
+  const opts: GqlOpts = {
+    token,
+    tenantSlug,
+    tenantId,
+    locale: await getLocale()
+  };
   const post: PostResponse | null = await getPost(postId, opts);
 
   if (!post) {

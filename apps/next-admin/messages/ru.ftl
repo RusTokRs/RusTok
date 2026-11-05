@@ -1034,7 +1034,6 @@ blog-categories-loadError = Не удалось загрузить катего�
 blog-categories-deleted = Категория удалена
 blog-categories-deleteError = Не удалось удалить категорию
 blog-categories-search = Поиск категорий...
-blog-categories-create = Новая категория
 blog-categories-title = Категории
 blog-categories-subtitle = Распределение статей по категориям
 blog-categories-name = Название
@@ -1134,3 +1133,146 @@ blog-preview-linkCopied = Ссылка предпросмотра скопиро
 blog-preview-tokenCopied = Токен скопирован
 blog-preview-expires = Действует до { $at }. Не публикуйте эту ссылку.
 blog-preview-lifetimeHours = { $hours } ч
+blog-error-savePost = Не удалось сохранить пост
+
+blog-form-body = Содержимое
+
+blog-form-content = Содержимое
+
+blog-form-create = Создать пост
+
+blog-form-createNewInstead = Создать новый вместо этого
+
+blog-form-createTitle = Создать пост
+
+blog-form-editTitle = Редактировать пост
+
+blog-form-editingBanner = Редактируется пост { $id }
+
+blog-form-excerpt = Краткое описание
+
+blog-form-locale = Локаль
+
+blog-form-publishNow = Опубликовать сразу
+
+blog-form-saving = Сохранение...
+
+blog-form-slug = Слаг
+
+blog-form-subtitle = Пакет владеет и списком, и формой. apps/admin только хостит маршрут модуля.
+
+blog-form-tags = Теги
+
+blog-form-tagsPlaceholder = news, launch, release
+
+blog-form-title = Заголовок
+
+blog-form-update = Обновить пост
+
+blog-form-category = Категория
+
+blog-form-uncategorized = Без категории
+
+blog-form-channels = Каналы (через запятую; пусто = все каналы)
+
+blog-form-featuredImage = URL обложки
+
+blog-form-seoTitle = SEO-заголовок (значение по умолчанию)
+
+blog-form-seoDescription = SEO-описание (значение по умолчанию)
+
+blog-form-scheduledAt = Публикация по расписанию (RFC 3339 с часовым поясом)
+
+
+
+blog-categories-searchPlaceholder = Поиск категорий...
+
+blog-categories-new = Новая категория
+
+blog-categories-nameHeader = Название
+
+blog-categories-slugHeader = Слаг
+
+blog-categories-localeHeader = Язык
+
+blog-categories-orderHeader = Порядок
+
+blog-categories-actionsHeader = Действия
+
+blog-categories-edit = Изменить
+
+blog-categories-delete = Удалить
+
+blog-categories-confirmDelete = Подтвердить удаление
+
+
+blog-categories-createNewInstead = Создать новую
+
+blog-categories-reset = Сбросить
+
+blog-categories-create = Создать категорию
+
+blog-categories-update = Обновить категорию
+
+blog-categories-editing = Редактирование категории
+
+
+blog-categories-error-load = Не удалось загрузить категории
+
+blog-categories-error-save = Не удалось сохранить категорию
+
+blog-categories-error-delete = Не удалось удалить категорию
+
+blog-categories-error-invalidName = Введите название категории длиной от 1 до 120 символов.
+
+blog-categories-error-invalidPosition = Порядок категории должен быть неотрицательным числом.
+
+blog-categories-form-title = Категория
+
+blog-categories-form-subtitle = Создание категории или правка выбранной.
+
+blog-categories-form-name = Название
+
+blog-categories-form-slug = Слаг (необязательно)
+
+blog-categories-form-description = Описание
+
+blog-categories-form-parent = Родительская категория
+
+blog-categories-form-root = Корень (без родителя)
+
+blog-categories-form-position = Порядок
+
+blog-editor-saved = Запись сохранена.
+
+blog-editor-savedReloadFailed = Запись сохранена. Обновите её перед редактированием: текущие данные загрузить не удалось.
+
+blog-editor-fallbackNotice = Перевод на выбранный язык отсутствует. Исходный текст ниже доступен только для чтения; введите заголовок и текст на выбранном языке, чтобы создать перевод.
+
+blog-editor-categoryFallbackNotice = Перевод на выбранный язык отсутствует. Исходный текст ниже доступен только для чтения; введите название на выбранном языке, чтобы создать перевод.
+
+blog-editor-retry = Повторить
+
+blog-editor-currentCategory = Текущая категория
+
+blog-editor-requiredCopy = Перед созданием перевода введите заголовок и текст на выбранном языке.
+
+blog-editor-localeChanged = Язык содержимого изменился. Перед сохранением загрузите выбранный язык.
+
+blog-editor-invalidSchedule = Введите дату и время в формате RFC 3339 с часовым поясом.
+
+blog-editor-invalidImage = Введите HTTP/HTTPS URL или путь изображения от корня сайта.
+
+blog-editor-revisionMissing = Версия записи отсутствует. Обновите запись перед сохранением.
+
+blog-editor-categoriesUnavailable = Не удалось загрузить категории. Текущая категория сохранена; повторите загрузку, чтобы изменить её.
+
+blog-editor-scheduleHelp = Используйте RFC 3339 с часовым поясом, например 2026-12-01T10:00:00+03:00.
+
+blog-categories-created = Категория создана.
+
+blog-categories-updated = Категория обновлена.
+
+blog-editor-imagePreview = Предпросмотр главного изображения
+
+blog-editor-slugRequired = Канонический адрес обязателен

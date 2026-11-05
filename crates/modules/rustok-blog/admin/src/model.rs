@@ -266,6 +266,38 @@ pub struct BlogPostDraft {
     pub schedule_editable: bool,
 }
 
+/// A prepared edit, distinct from a creation draft. Omitted fields preserve owner
+/// state; nullable fields retain the canonical Keep / Set / Clear contract.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogPostUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<RichTextDocument>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub excerpt: Patch<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub category_id: Patch<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_slugs: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub featured_image_url: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub seo_title: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub seo_description: Patch<String>,
+    #[serde(default, skip_serializing_if = "Patch::is_keep")]
+    pub scheduled_at: Patch<String>,
+    pub version: i32,
+}
+
 /// A minted draft preview token. The plaintext `token` exists only in the mint
 /// result — the backend stores a SHA-256 digest — so the admin surface shows it
 /// exactly once, next to the storefront preview path that carries it as a URL

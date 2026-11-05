@@ -3,12 +3,15 @@ use leptos::prelude::*;
 mod test_support;
 pub(super) mod widget;
 
+#[cfg(all(test, feature = "ssr"))]
+mod write_ack_tests;
+
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
 use crate::model::{
     BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
-    BlogPostDraft, BlogPostList,
+    BlogPostDraft, BlogPostList, BlogPostUpdate,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{BlogModerationComment, BlogPostListItem};
@@ -34,57 +37,36 @@ pub(super) async fn fetch_post(
     blog_admin_post_native(id, locale).await
 }
 
-pub(super) async fn create_post(draft: BlogPostDraft) -> Result<BlogPostDetail, ServerFnError> {
+pub(super) async fn create_post(draft: BlogPostDraft) -> Result<String, ServerFnError> {
     blog_admin_create_post_native(draft).await
 }
 
-pub(super) async fn update_post(
-    id: String,
-    draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_update_post_native(id, draft).await
+pub(super) async fn update_post(id: String, update: BlogPostUpdate) -> Result<(), ServerFnError> {
+    blog_admin_update_post_native(id, update).await
 }
 
-pub(super) async fn publish_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_publish_post_native(id, locale).await
+pub(super) async fn publish_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_publish_post_native(id).await
 }
 
-pub(super) async fn unpublish_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_unpublish_post_native(id, locale).await
+pub(super) async fn unpublish_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_unpublish_post_native(id).await
 }
 
-pub(super) async fn pin_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_pin_post_native(id, locale).await
+pub(super) async fn pin_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_pin_post_native(id).await
 }
 
-pub(super) async fn unpin_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_unpin_post_native(id, locale).await
+pub(super) async fn unpin_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_unpin_post_native(id).await
 }
 
-pub(super) async fn archive_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_archive_post_native(id, locale).await
+pub(super) async fn archive_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_archive_post_native(id).await
 }
 
-pub(super) async fn restore_post(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
-    blog_admin_restore_post_native(id, locale).await
+pub(super) async fn restore_post(id: String) -> Result<(), ServerFnError> {
+    blog_admin_restore_post_native(id).await
 }
 
 pub(super) async fn delete_post(id: String) -> Result<bool, ServerFnError> {
@@ -468,16 +450,13 @@ async fn blog_admin_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/create-post")]
-async fn blog_admin_create_post_native(
-    draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_blog::{CreatePostInput, PostService};
 
         let context = native_context().await?;
         require_blog_posts_create_permission(&context.auth)?;
-        let locale = draft.locale.clone();
         let service = PostService::new(context.db, context.event_bus);
         let post_id = service
             .create_post(
@@ -505,17 +484,7 @@ async fn blog_admin_create_post_native(
             )
             .await
             .map_err(public_blog_error)?;
-        let post = service
-            .get_post_with_locale_fallback(
-                context.tenant.id,
-                security_context(&context.auth),
-                post_id,
-                locale.as_str(),
-                Some(context.tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(public_blog_error)?;
-        Ok(map_post_detail(post))
+        Ok(post_id.to_string())
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -529,83 +498,53 @@ async fn blog_admin_create_post_native(
 #[server(prefix = "/api/fn", endpoint = "blog/admin/update-post")]
 async fn blog_admin_update_post_native(
     id: String,
-    draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ServerFnError> {
+    update: BlogPostUpdate,
+) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use rustok_api::Patch;
         use rustok_blog::{PostService, UpdatePostInput};
-
         let context = native_context().await?;
         require_blog_posts_update_permission(&context.auth)?;
         let post_id = parse_uuid(&id, "post_id")?;
-        let locale = draft.locale.clone();
-        let service = PostService::new(context.db, context.event_bus);
-        service
+        let category_id = match update.category_id {
+            Patch::Keep => Patch::Keep,
+            Patch::Clear => Patch::Clear,
+            Patch::Set(value) => Patch::Set(parse_uuid(&value, "category_id")?),
+        };
+        let scheduled_at = match update.scheduled_at {
+            Patch::Keep => Patch::Keep,
+            Patch::Clear => Patch::Clear,
+            Patch::Set(value) => Patch::Set(parse_schedule(value)?),
+        };
+        PostService::new(context.db, context.event_bus)
             .update_post(
                 context.tenant.id,
                 post_id,
                 security_context(&context.auth),
                 UpdatePostInput {
-                    locale: Some(draft.locale),
-                    title: Some(draft.title),
-                    content: Some(draft.content),
-                    excerpt: optional_text(draft.excerpt)
-                        .map(rustok_api::Patch::Set)
-                        .unwrap_or(rustok_api::Patch::Clear),
-                    // An empty slug must not be sent: the owner treats a present
-                    // but blank slug as a validation error instead of
-                    // regenerating it from the title, so a cleared field would
-                    // block the save.
-                    slug: optional_text(draft.slug),
-                    tags: Some(draft.tags),
-                    category_id: match draft.category_id {
-                        Some(id) => rustok_api::Patch::Set(parse_uuid(&id, "category_id")?),
-                        None => rustok_api::Patch::Clear,
-                    },
-                    featured_image_url: draft
-                        .featured_image_url
-                        .map(rustok_api::Patch::Set)
-                        .unwrap_or(rustok_api::Patch::Clear),
-                    seo_title: draft
-                        .seo_title
-                        .map(rustok_api::Patch::Set)
-                        .unwrap_or(rustok_api::Patch::Clear),
-                    seo_description: draft
-                        .seo_description
-                        .map(rustok_api::Patch::Set)
-                        .unwrap_or(rustok_api::Patch::Clear),
-                    channel_slugs: Some(draft.channel_slugs),
+                    locale: update.locale,
+                    title: update.title,
+                    content: update.content,
+                    excerpt: update.excerpt,
+                    slug: update.slug,
+                    tags: update.tags,
+                    category_id,
+                    featured_image_url: update.featured_image_url,
+                    seo_title: update.seo_title,
+                    seo_description: update.seo_description,
+                    channel_slugs: update.channel_slugs,
                     metadata: None,
-                    version: draft.version.ok_or_else(|| {
-                        ServerFnError::new("Blog post revision is missing; reload before saving")
-                    })?,
-                    scheduled_at: if draft.schedule_editable {
-                        match draft.scheduled_at {
-                            Some(value) => rustok_api::Patch::Set(parse_schedule(value)?),
-                            None => rustok_api::Patch::Clear,
-                        }
-                    } else {
-                        rustok_api::Patch::Keep
-                    },
+                    version: update.version,
+                    scheduled_at,
                 },
             )
             .await
-            .map_err(public_blog_error)?;
-        let post = service
-            .get_post_with_locale_fallback(
-                context.tenant.id,
-                security_context(&context.auth),
-                post_id,
-                locale.as_str(),
-                Some(context.tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(public_blog_error)?;
-        Ok(map_post_detail(post))
+            .map_err(public_blog_error)
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, draft);
+        let _ = (id, update);
         Err(ServerFnError::new(
             "blog/admin/update-post requires the `ssr` feature",
         ))
@@ -613,17 +552,14 @@ async fn blog_admin_update_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/publish-post")]
-async fn blog_admin_publish_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_publish_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Publish).await
+        update_status(id, StatusMutation::Publish).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/publish-post requires the `ssr` feature",
         ))
@@ -631,17 +567,14 @@ async fn blog_admin_publish_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/unpublish-post")]
-async fn blog_admin_unpublish_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_unpublish_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Unpublish).await
+        update_status(id, StatusMutation::Unpublish).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/unpublish-post requires the `ssr` feature",
         ))
@@ -649,17 +582,14 @@ async fn blog_admin_unpublish_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/pin-post")]
-async fn blog_admin_pin_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_pin_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Pin).await
+        update_status(id, StatusMutation::Pin).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/pin-post requires the `ssr` feature",
         ))
@@ -667,17 +597,14 @@ async fn blog_admin_pin_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/unpin-post")]
-async fn blog_admin_unpin_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_unpin_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Unpin).await
+        update_status(id, StatusMutation::Unpin).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/unpin-post requires the `ssr` feature",
         ))
@@ -685,17 +612,14 @@ async fn blog_admin_unpin_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/archive-post")]
-async fn blog_admin_archive_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_archive_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Archive).await
+        update_status(id, StatusMutation::Archive).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/archive-post requires the `ssr` feature",
         ))
@@ -703,17 +627,14 @@ async fn blog_admin_archive_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/restore-post")]
-async fn blog_admin_restore_post_native(
-    id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn blog_admin_restore_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        update_status_and_reload(id, locale, StatusMutation::Restore).await
+        update_status(id, StatusMutation::Restore).await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (id, locale);
+        let _ = id;
         Err(ServerFnError::new(
             "blog/admin/restore-post requires the `ssr` feature",
         ))
@@ -731,17 +652,12 @@ enum StatusMutation {
 }
 
 #[cfg(feature = "ssr")]
-async fn update_status_and_reload(
-    id: String,
-    locale: Option<String>,
-    mutation: StatusMutation,
-) -> Result<BlogPostDetail, ServerFnError> {
+async fn update_status(id: String, mutation: StatusMutation) -> Result<(), ServerFnError> {
     use rustok_blog::PostService;
 
     let context = native_context().await?;
     require_blog_posts_publish_permission(&context.auth)?;
     let post_id = parse_uuid(&id, "post_id")?;
-    let locale = requested_locale(locale, context.tenant.default_locale.as_str());
     let service = PostService::new(context.db, context.event_bus);
     let security = security_context(&context.auth);
     match mutation {
@@ -767,7 +683,7 @@ async fn update_status_and_reload(
                     context.tenant.id,
                     post_id,
                     security,
-                    Some("Archived from module admin package".to_string()),
+                    None,
                 )
                 .await
         }
@@ -779,17 +695,7 @@ async fn update_status_and_reload(
     }
     .map_err(public_blog_error)?;
 
-    let post = service
-        .get_post_with_locale_fallback(
-            context.tenant.id,
-            security_context(&context.auth),
-            post_id,
-            locale.as_str(),
-            Some(context.tenant.default_locale.as_str()),
-        )
-        .await
-        .map_err(public_blog_error)?;
-    Ok(map_post_detail(post))
+    Ok(())
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/delete-post")]

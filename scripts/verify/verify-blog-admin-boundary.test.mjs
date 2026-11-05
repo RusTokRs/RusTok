@@ -78,8 +78,6 @@ pub fn blog_post_admin_shell_classes_view() {}
 pub struct BlogPostAdminEditorFormCopyViewModel;
 pub struct BlogPostAdminEditorFormCopyLabels;
 pub fn blog_post_admin_editor_form_copy_view() {}
-pub struct BlogPostAdminEditorFieldClassesViewModel;
-pub fn blog_post_admin_editor_field_classes_view() {}
 pub struct BlogPostAdminTitleInputViewModel;
 pub fn blog_post_admin_title_input_view() {}
 ${legacyRichtextCore ? "pub struct BlogPostAdminBodyFormatSelectViewModel;\npub struct BlogPostAdminBodyFormatOptionViewModel;\npub fn blog_post_admin_body_format_select_view() {}\npub struct BlogPostAdminBodyFormatChangeViewModel;\npub fn blog_post_admin_body_format_change_view() {}\npub fn normalize_blog_post_body_format() {}\npub struct BlogPostAdminRawBodyWarningViewModel;\npub fn raw_body_warning_class() {}\npub fn blog_post_admin_raw_body_warning_view() {}" : ""}
@@ -116,7 +114,7 @@ pub fn blog_post_admin_clear_post_query_intent() {}
 `;
 }
 
-function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false, legacyRichtextUi = false } = {}) {
+function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false, omitCanonicalForm = false, legacyRichtextUi = false } = {}) {
   return `
 use crate::{core, transport};
 use rustok_api::RichTextDocument;
@@ -141,7 +139,7 @@ pub fn BlogAdmin() {
     let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _status_badge = core::blog_post_admin_status_badge_view;
     let _form_copy = core::blog_post_admin_editor_form_copy_view;
-    let _field_classes = core::blog_post_admin_editor_field_classes_view;
+    ${omitCanonicalForm ? "" : 'use rustok_forms_leptos::Form; <Form state=form_state><FormField name="title"><FormMessage /></FormField></Form>;'}
     let _title_input = core::blog_post_admin_title_input_view;
     let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _table_classes = core::blog_post_admin_table_classes_view;
@@ -305,6 +303,9 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/core/presentation.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  if (options.rawLifecycleApiCall) {
+    writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/leptos/lifecycle.rs", "fn lifecycle() { api::fetch_posts(); }");
+  }
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/mod.rs", uiModSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/components.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
@@ -467,6 +468,13 @@ test("blog admin boundary verifier rejects raw api calls from CRUD UI", () => {
   });
 });
 
+test("blog admin boundary verifier rejects raw calls in lifecycle bindings", () => {
+  withRoot({ rawLifecycleApiCall: true }, result => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /CRUD UI adapter must not call raw transport or services/);
+  });
+});
+
 test("blog admin boundary verifier rejects raw service calls from moderation UI", () => {
   withRoot({ rawServiceCall: true }, (result) => {
     assert.notEqual(result.status, 0);
@@ -513,5 +521,13 @@ test("blog admin boundary verifier rejects missing moderation slice", () => {
   withRoot({ omitModeration: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /moderation/);
+  });
+});
+
+
+test("blog admin boundary verifier rejects editor without canonical forms", () => {
+  withRoot({ omitCanonicalForm: true }, result => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /editor must bind canonical form components/);
   });
 });

@@ -146,7 +146,7 @@ blog-categories-empty = No categories created yet.
 blog-categories-error-load = Failed to load categories
 blog-categories-error-save = Failed to save category
 blog-categories-error-delete = Failed to delete category
-blog-categories-error-nameTooShort = Category name must be at least 2 characters.
+blog-categories-error-invalidName = Enter a category name of 1 to 120 characters.
 blog-categories-error-invalidPosition = Category order must be a non-negative number.
 blog-categories-form-title = Category
 blog-categories-form-subtitle = Create a category or edit the selected one.
@@ -228,3 +228,36 @@ blog-sort-updated_at = Recently updated
 blog-moderation-approved = Approve
 blog-moderation-saving = Saving...
 blog-categories-deleteConfirm = Delete category “{ $name }”? This action cannot be undone.
+blog-editor-saved = Post saved.
+
+blog-editor-savedReloadFailed = Post saved. Reload the post before editing again; its current snapshot could not be loaded.
+
+blog-editor-fallbackNotice = The requested translation does not exist. The source below is read-only; enter target-language title and content to create it.
+
+blog-editor-categoryFallbackNotice = The requested translation does not exist. The source below is read-only; enter a name in the target language to create it.
+
+blog-editor-retry = Retry
+
+blog-editor-currentCategory = Current category
+
+blog-editor-requiredCopy = Enter the target-language title and content before creating a translation.
+
+blog-editor-localeChanged = The content locale changed. Reload the target locale before saving.
+
+blog-editor-invalidSchedule = Enter a valid RFC 3339 date and time with a timezone offset.
+
+blog-editor-invalidImage = Enter an HTTP/HTTPS URL or a root-relative image path.
+
+blog-editor-revisionMissing = The post revision is missing. Reload before saving.
+
+blog-editor-categoriesUnavailable = Categories could not be loaded. The current assignment is preserved; retry to edit it.
+
+blog-editor-scheduleHelp = Use RFC 3339 with an explicit timezone, for example 2026-12-01T10:00:00+03:00.
+
+blog-categories-created = Category created.
+
+blog-categories-updated = Category updated.
+
+blog-editor-imagePreview = Featured image preview
+
+blog-editor-slugRequired = Canonical slug is required

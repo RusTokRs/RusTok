@@ -1,6 +1,7 @@
+mod lifecycle;
 mod page;
+use page::BlogAdminPageState;
 
-use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -17,59 +18,6 @@ use super::components::{
 use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
 use crate::{core, transport};
-
-struct BlogAdminPageState {
-    ui_locale: Option<String>,
-    host_locale_for_seo: String,
-    seo_target_kind: SeoTargetSlug,
-    form_copy_view: core::BlogPostAdminEditorFormCopyViewModel,
-    form_field_classes: core::BlogPostAdminEditorFieldClassesViewModel,
-    shell_classes: core::BlogPostAdminShellClassesViewModel,
-    form_view_model: Memo<core::BlogPostAdminFormViewModel>,
-    editing_banner_view: Memo<core::BlogPostAdminEditBannerViewModel>,
-    issue_banner_view: Memo<core::BlogPostAdminIssueBannerViewModel>,
-    reset_current_post: Callback<()>,
-    list_locale: ReadSignal<String>,
-    set_list_locale: WriteSignal<String>,
-    posts_resource: LocalResource<Result<crate::model::BlogPostList, transport::ApiError>>,
-    posts_rows: RwSignal<Vec<crate::model::BlogPostListItem>>,
-    posts_next_cursor: RwSignal<Option<String>>,
-    posts_load_more_error: RwSignal<Option<String>>,
-    posts_sort: RwSignal<core::BlogPostAdminSort>,
-    load_posts_error_label: String,
-    load_more_posts: Callback<String>,
-    change_posts_sort: Callback<core::BlogPostAdminSort>,
-    open_post: Callback<(String, String)>,
-    toggle_publish: Callback<(String, bool, String)>,
-    toggle_pin: Callback<(String, bool, String)>,
-    archive_post: Callback<(String, String)>,
-    restore_post: Callback<(String, String)>,
-    delete_post: Callback<String>,
-    create_preview_link: Callback<String>,
-    preview_token: ReadSignal<Option<crate::model::BlogPreviewToken>>,
-    close_preview_banner: Callback<()>,
-    categories_resource:
-        LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
-    categories_unavailable_label: String,
-    form_setters: BlogPostFormSetters,
-    editing_post_id: ReadSignal<Option<String>>,
-    title: ReadSignal<String>,
-    slug: ReadSignal<String>,
-    excerpt: ReadSignal<String>,
-    content: ReadSignal<RichTextDocument>,
-    locale: ReadSignal<String>,
-    tags_input: ReadSignal<String>,
-    category_id: ReadSignal<String>,
-    channel_slugs_input: ReadSignal<String>,
-    featured_image_url: ReadSignal<String>,
-    seo_title: ReadSignal<String>,
-    seo_description: ReadSignal<String>,
-    scheduled_at: ReadSignal<String>,
-    schedule_editable: ReadSignal<bool>,
-    publish_now: ReadSignal<bool>,
-    busy_key: ReadSignal<Option<String>>,
-    submit_post: Callback<SubmitEvent>,
-}
 
 #[component]
 pub fn BlogAdmin() -> impl IntoView {
@@ -99,8 +47,15 @@ pub fn BlogAdmin() -> impl IntoView {
     );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (editing_post_id, set_editing_post_id) = signal(Option::<String>::None);
-    let (editing_version, set_editing_version) = signal(Option::<i32>::None);
+    let editor_session = RwSignal::new(crate::core::PostEditorSession::Creating);
+    let editor_request = RwSignal::new(None::<core::EditorRequest>);
+    let editing_post_id = Signal::derive(move || {
+        editor_session.with(|session| session.post_id().map(str::to_string))
+    });
+    let editing_version = Signal::derive(move || editor_session.with(|session| session.version()));
+    let loaded_post =
+        Signal::derive(move || editor_session.with(|session| session.snapshot().cloned()));
+    let (save_notice, set_save_notice) = signal(Option::<String>::None);
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
     let (excerpt, set_excerpt) = signal(String::new());
@@ -119,30 +74,30 @@ pub fn BlogAdmin() -> impl IntoView {
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
+    let form_setters = BlogPostFormSetters {
+        editor_session,
+        title: set_title,
+        slug: set_slug,
+        excerpt: set_excerpt,
+        content: set_content,
+        locale: set_locale,
+        tags_input: set_tags_input,
+        category_id: set_category_id,
+        channel_slugs_input: set_channel_slugs_input,
+        featured_image_url: set_featured_image_url,
+        seo_title: set_seo_title,
+        seo_description: set_seo_description,
+        scheduled_at: set_scheduled_at,
+        schedule_editable: set_schedule_editable,
+        publish_now: set_publish_now,
+    };
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {
-            reset_form(
-                BlogPostFormSetters {
-                    editing_post_id: set_editing_post_id,
-                    editing_version: set_editing_version,
-                    title: set_title,
-                    slug: set_slug,
-                    excerpt: set_excerpt,
-                    content: set_content,
-                    locale: set_locale,
-                    tags_input: set_tags_input,
-                    category_id: set_category_id,
-                    channel_slugs_input: set_channel_slugs_input,
-                    featured_image_url: set_featured_image_url,
-                    seo_title: set_seo_title,
-                    seo_description: set_seo_description,
-                    scheduled_at: set_scheduled_at,
-                    schedule_editable: set_schedule_editable,
-                    publish_now: set_publish_now,
-                },
-                default_locale.as_str(),
-            )
+            editor_request.set(None);
+            set_busy_key.set(None);
+            set_save_notice.set(None);
+            reset_form(form_setters, default_locale.as_str())
         }
     });
     let editing_banner_locale = ui_locale.clone();
@@ -162,7 +117,6 @@ pub fn BlogAdmin() -> impl IntoView {
     let issue_banner_view =
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
     let form_copy_view = blog_form_copy_view_model(ui_locale.as_deref());
-    let form_field_classes = core::blog_post_admin_editor_field_classes_view();
     let shell_classes = core::blog_post_admin_shell_classes_view();
 
     let categories_unavailable_label = t(
@@ -181,6 +135,9 @@ pub fn BlogAdmin() -> impl IntoView {
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
+            if busy_key.get_untracked().is_some() {
+                return;
+            }
             query_writer.apply_query_intent(core::blog_post_admin_clear_post_query_intent());
             reset_form_action.run(());
         }
@@ -204,6 +161,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let posts_rows = RwSignal::new(Vec::<crate::model::BlogPostListItem>::new());
     let posts_next_cursor = RwSignal::new(None::<String>);
     let posts_load_more_error = RwSignal::new(None::<String>);
+    let posts_page_chain = RwSignal::new(uuid::Uuid::new_v4());
     // The sort is part of the request source, so changing it reloads page one instead of
     // reordering the rows already on screen.
     let posts_sort = RwSignal::new(core::BlogPostAdminSort::default());
@@ -217,15 +175,18 @@ pub fn BlogAdmin() -> impl IntoView {
                 posts_sort.get(),
             )
         },
-        move |(token_value, tenant_value, _, locale_value, sort_value)| async move {
-            transport::fetch_posts(
-                token_value,
-                tenant_value,
-                core::locale_arg(locale_value.as_str()),
-                None,
-                sort_value,
-            )
-            .await
+        move |(token_value, tenant_value, _, locale_value, sort_value)| {
+            posts_page_chain.set(uuid::Uuid::new_v4());
+            async move {
+                transport::fetch_posts(
+                    token_value,
+                    tenant_value,
+                    core::locale_arg(locale_value.as_str()),
+                    None,
+                    sort_value,
+                )
+                .await
+            }
         },
     );
     Effect::new(move |_| {
@@ -241,18 +202,32 @@ pub fn BlogAdmin() -> impl IntoView {
         let tenant_value = tenant.get_untracked();
         let locale_value = list_locale.get_untracked();
         let sort_value = posts_sort.get_untracked();
+        let page_chain = posts_page_chain.get_untracked();
+        let refresh_value = refresh_nonce.get_untracked();
         let error_label = load_more_error_label.clone();
         posts_load_more_error.set(None);
         spawn_local(async move {
-            match transport::fetch_posts(
-                token_value,
-                tenant_value,
+            let result = transport::fetch_posts(
+                token_value.clone(),
+                tenant_value.clone(),
                 core::locale_arg(locale_value.as_str()),
-                Some(cursor),
+                Some(cursor.clone()),
                 sort_value,
             )
-            .await
+            .await;
+            // A cursor belongs to one authenticated page chain. A late page or
+            // its error cannot append to a newly sorted/refreshed/locale list.
+            if posts_page_chain.get_untracked() != page_chain
+                || refresh_nonce.get_untracked() != refresh_value
+                || token.get_untracked() != token_value
+                || tenant.get_untracked() != tenant_value
+                || list_locale.get_untracked() != locale_value
+                || posts_sort.get_untracked() != sort_value
+                || posts_next_cursor.get_untracked().as_deref() != Some(cursor.as_str())
             {
+                return;
+            }
+            match result {
                 Ok(list) => {
                     posts_rows.update(|rows| rows.extend(list.items));
                     posts_next_cursor.set(list.next_cursor);
@@ -278,6 +253,8 @@ pub fn BlogAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
+        let request = core::EditorRequest::new(Some(post_id.clone()), requested_locale.clone());
+        editor_request.set(Some(request.clone()));
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_edit(post_id.as_str())));
 
@@ -290,6 +267,17 @@ pub fn BlogAdmin() -> impl IntoView {
             )
             .await
             {
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                Ok(Some(post))
+                    if !request.accepts_post(editor_request.get_untracked().as_ref(), &post) =>
+                {
+                    reset_form_to_defaults.run(());
+                    set_submit_error.set(Some(rustok_api::WritePathIssue::new(t(
+                        ui_locale.as_deref(),
+                        "blog.error.loadPost",
+                        "Failed to load post",
+                    ))));
+                }
                 Ok(post) => {
                     let result_view = core::blog_post_load_result_view(
                         post.is_some(),
@@ -302,28 +290,11 @@ pub fn BlogAdmin() -> impl IntoView {
 
                     match (result_view, post) {
                         (Ok(view_model), Some(post)) => {
-                            if view_model.apply_returned_post_to_form {
-                                apply_post_to_form(
-                                    BlogPostFormSetters {
-                                        editing_post_id: set_editing_post_id,
-                                        editing_version: set_editing_version,
-                                        title: set_title,
-                                        slug: set_slug,
-                                        excerpt: set_excerpt,
-                                        content: set_content,
-                                        locale: set_locale,
-                                        tags_input: set_tags_input,
-                                        category_id: set_category_id,
-                                        channel_slugs_input: set_channel_slugs_input,
-                                        featured_image_url: set_featured_image_url,
-                                        seo_title: set_seo_title,
-                                        seo_description: set_seo_description,
-                                        scheduled_at: set_scheduled_at,
-                                        schedule_editable: set_schedule_editable,
-                                        publish_now: set_publish_now,
-                                    },
-                                    &post,
-                                );
+                            if view_model.apply_returned_post_to_form
+                                && request
+                                    .accepts_post(editor_request.get_untracked().as_ref(), &post)
+                            {
+                                apply_post_to_form(form_setters, &post);
                             }
                         }
                         (Ok(view_model), None) => {
@@ -356,6 +327,9 @@ pub fn BlogAdmin() -> impl IntoView {
     let initial_edit_post = edit_post;
     let effect_default_locale = default_locale.clone();
     Effect::new(move |_| {
+        // A new principal/tenant owns a new editor session even when the URL is
+        // unchanged. In-flight responses from the predecessor are discarded.
+        let _principal = (token.get(), tenant.get());
         if let Some(request) = core::selected_post_request(
             selected_post_query.get().as_deref(),
             effect_default_locale.as_str(),
@@ -368,8 +342,11 @@ pub fn BlogAdmin() -> impl IntoView {
 
     let submit_ui_locale = ui_locale.clone();
     let submit_query_writer = query_writer.clone();
-    let submit_post = Callback::new(move |ev: SubmitEvent| {
-        ev.prevent_default();
+    let submit_post = Callback::new(move |_: ()| {
+        if busy_key.get_untracked().is_some() {
+            return;
+        }
+        set_save_notice.set(None);
         set_submit_error.set(None);
         let submit_ui_locale = submit_ui_locale.clone();
         let submit_query_writer = submit_query_writer.clone();
@@ -411,8 +388,14 @@ pub fn BlogAdmin() -> impl IntoView {
         );
         let command = match core::prepare_blog_post_save_command(
             editing_post_id.get_untracked(),
+            loaded_post.get_untracked().as_ref(),
             draft,
             required_fields_message,
+            t(
+                submit_ui_locale.as_deref(),
+                "blog.editor.slugRequired",
+                "Canonical slug is required",
+            ),
         ) {
             Ok(command) => command,
             Err(issue) => {
@@ -423,49 +406,70 @@ pub fn BlogAdmin() -> impl IntoView {
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let request =
+            core::EditorRequest::new(editing_post_id.get_untracked(), locale_value.clone());
+        editor_request.set(Some(request.clone()));
         set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
+            let reload_locale = locale_value;
             let result = match command.operation {
-                core::BlogPostSaveOperation::Update { post_id } => {
-                    transport::update_post(token_value, tenant_value, post_id, command.draft).await
-                }
-                core::BlogPostSaveOperation::Create => {
-                    transport::create_post(token_value, tenant_value, command.draft).await
+                core::BlogPostSaveOperation::Update { post_id, update } => transport::update_post(
+                    token_value.clone(),
+                    tenant_value.clone(),
+                    post_id.clone(),
+                    update,
+                )
+                .await
+                .map(|()| post_id),
+                core::BlogPostSaveOperation::Create(draft) => {
+                    transport::create_post(token_value.clone(), tenant_value.clone(), draft).await
                 }
             };
-
+            if !request.is_current(editor_request.get_untracked().as_ref()) {
+                if result.is_ok() {
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                return;
+            }
             match result {
-                Ok(post) => {
-                    let result_view = core::blog_post_save_result_view(post.id.as_str());
-                    if result_view.apply_returned_post_to_form {
-                        apply_post_to_form(
-                            BlogPostFormSetters {
-                                editing_post_id: set_editing_post_id,
-                                editing_version: set_editing_version,
-                                title: set_title,
-                                slug: set_slug,
-                                excerpt: set_excerpt,
-                                content: set_content,
-                                locale: set_locale,
-                                tags_input: set_tags_input,
-                                category_id: set_category_id,
-                                channel_slugs_input: set_channel_slugs_input,
-                                featured_image_url: set_featured_image_url,
-                                seo_title: set_seo_title,
-                                seo_description: set_seo_description,
-                                scheduled_at: set_scheduled_at,
-                                schedule_editable: set_schedule_editable,
-                                publish_now: set_publish_now,
-                            },
-                            &post,
-                        );
-                    }
+                Ok(post_id) => {
+                    let result_view = core::blog_post_save_result_view(post_id.as_str());
+                    // The write is acknowledged. Block another save until a fresh
+                    // revision arrives, even if the independent reload fails.
+                    editor_session.set(crate::core::PostEditorSession::Acknowledged {
+                        post_id: post_id.clone(),
+                    });
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    if let Some(intent) = result_view.selected_post_query_intent {
-                        submit_query_writer.apply_query_intent(intent);
+                    set_save_notice.set(Some(t(
+                        submit_ui_locale.as_deref(),
+                        "blog.editor.saved",
+                        "Post saved.",
+                    )));
+                    match transport::fetch_post(
+                        token_value,
+                        tenant_value,
+                        post_id.clone(),
+                        Some(reload_locale),
+                    )
+                    .await
+                    {
+                        _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                        Ok(Some(post))
+                            if request
+                                .accepts_post(editor_request.get_untracked().as_ref(), &post) =>
+                        {
+                            apply_post_to_form(form_setters, &post);
+                            if let Some(intent) = result_view.selected_post_query_intent {
+                                submit_query_writer.apply_query_intent(intent);
+                            }
+                        }
+                        Ok(_) | Err(_) => {
+                            editor_session
+                                .set(crate::core::PostEditorSession::ReloadFailed { post_id });
+                        }
                     }
                 }
                 Err(err) => {
@@ -484,313 +488,49 @@ pub fn BlogAdmin() -> impl IntoView {
         });
     });
 
-    let toggle_publish_locale = ui_locale.clone();
-    let toggle_publish = Callback::new(
-        move |(post_id, publish, post_locale): (String, bool, String)| {
-            let token_value = token.get_untracked();
-            let tenant_value = tenant.get_untracked();
-            let ui_locale = toggle_publish_locale.clone();
-            let command =
-                core::prepare_blog_post_status_command(post_id, publish, post_locale.as_str());
-            set_submit_error.set(None);
-            set_busy_key.set(Some(command.busy_key.clone()));
-
-            spawn_local(async move {
-                let result = match command.operation {
-                    core::BlogPostStatusOperation::Publish => {
-                        transport::publish_post(
-                            token_value,
-                            tenant_value,
-                            command.post_id.clone(),
-                            command.locale.clone(),
-                        )
-                        .await
-                    }
-                    core::BlogPostStatusOperation::Unpublish => {
-                        transport::unpublish_post(
-                            token_value,
-                            tenant_value,
-                            command.post_id.clone(),
-                            command.locale.clone(),
-                        )
-                        .await
-                    }
-                };
-
-                match result {
-                    Ok(post) => {
-                        let result_view = core::blog_post_mutation_result_view(
-                            editing_post_id.get_untracked().as_deref(),
-                            post.id.as_str(),
-                        );
-                        if result_view.apply_returned_post_to_form {
-                            apply_post_to_form(
-                                BlogPostFormSetters {
-                                    editing_post_id: set_editing_post_id,
-                                    editing_version: set_editing_version,
-                                    title: set_title,
-                                    slug: set_slug,
-                                    excerpt: set_excerpt,
-                                    content: set_content,
-                                    locale: set_locale,
-                                    tags_input: set_tags_input,
-                                    category_id: set_category_id,
-                                    channel_slugs_input: set_channel_slugs_input,
-                                    featured_image_url: set_featured_image_url,
-                                    seo_title: set_seo_title,
-                                    seo_description: set_seo_description,
-                                    scheduled_at: set_scheduled_at,
-                                    schedule_editable: set_schedule_editable,
-                                    publish_now: set_publish_now,
-                                },
-                                &post,
-                            );
-                        }
-                        if result_view.refresh_posts {
-                            set_refresh_nonce.update(|value| *value += 1);
-                        }
-                    }
-                    Err(err) => {
-                        set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                            &t(
-                                ui_locale.as_deref(),
-                                "blog.error.updateStatus",
-                                "Failed to update post status",
-                            ),
-                            &err.to_string(),
-                        )));
-                    }
-                }
-
-                set_busy_key.set(None);
-            });
-        },
-    );
-
-    let toggle_pin_locale = ui_locale.clone();
-    let toggle_pin = Callback::new(move |(post_id, pin, post_locale): (String, bool, String)| {
-        let token_value = token.get_untracked();
-        let tenant_value = tenant.get_untracked();
-        let ui_locale = toggle_pin_locale.clone();
-        let command = core::prepare_blog_post_pin_command(post_id, pin, post_locale.as_str());
-        set_submit_error.set(None);
-        set_busy_key.set(Some(command.busy_key.clone()));
-
-        spawn_local(async move {
-            let result = if command.pin {
-                transport::pin_post(
-                    token_value,
-                    tenant_value,
-                    command.post_id.clone(),
-                    command.locale.clone(),
-                )
-                .await
-            } else {
-                transport::unpin_post(
-                    token_value,
-                    tenant_value,
-                    command.post_id.clone(),
-                    command.locale.clone(),
-                )
-                .await
-            };
-
-            match result {
-                Ok(post) => {
-                    let result_view = core::blog_post_mutation_result_view(
-                        editing_post_id.get_untracked().as_deref(),
-                        post.id.as_str(),
-                    );
-                    if result_view.apply_returned_post_to_form {
-                        apply_post_to_form(
-                            BlogPostFormSetters {
-                                editing_post_id: set_editing_post_id,
-                                editing_version: set_editing_version,
-                                title: set_title,
-                                slug: set_slug,
-                                excerpt: set_excerpt,
-                                content: set_content,
-                                locale: set_locale,
-                                tags_input: set_tags_input,
-                                category_id: set_category_id,
-                                channel_slugs_input: set_channel_slugs_input,
-                                featured_image_url: set_featured_image_url,
-                                seo_title: set_seo_title,
-                                seo_description: set_seo_description,
-                                scheduled_at: set_scheduled_at,
-                                schedule_editable: set_schedule_editable,
-                                publish_now: set_publish_now,
-                            },
-                            &post,
-                        );
-                    }
-                    if result_view.refresh_posts {
-                        set_refresh_nonce.update(|value| *value += 1);
-                    }
-                }
-                Err(err) => {
-                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                        &t(
-                            ui_locale.as_deref(),
-                            "blog.error.updatePin",
-                            "Failed to change post pin state",
-                        ),
-                        &err.to_string(),
-                    )));
-                }
-            }
-
-            set_busy_key.set(None);
-        });
-    });
-
-    let archive_post_locale = ui_locale.clone();
-    let archive_post = Callback::new(move |(post_id, post_locale): (String, String)| {
-        let token_value = token.get_untracked();
-        let tenant_value = tenant.get_untracked();
-        let ui_locale = archive_post_locale.clone();
-        let command = core::prepare_blog_post_archive_command(post_id, post_locale.as_str());
-        set_submit_error.set(None);
-        set_busy_key.set(Some(command.busy_key.clone()));
-
-        spawn_local(async move {
-            match transport::archive_post(
-                token_value,
-                tenant_value,
-                command.post_id.clone(),
-                command.locale.clone(),
-            )
-            .await
-            {
-                Ok(post) => {
-                    let result_view = core::blog_post_mutation_result_view(
-                        editing_post_id.get_untracked().as_deref(),
-                        post.id.as_str(),
-                    );
-                    if result_view.apply_returned_post_to_form {
-                        apply_post_to_form(
-                            BlogPostFormSetters {
-                                editing_post_id: set_editing_post_id,
-                                editing_version: set_editing_version,
-                                title: set_title,
-                                slug: set_slug,
-                                excerpt: set_excerpt,
-                                content: set_content,
-                                locale: set_locale,
-                                tags_input: set_tags_input,
-                                category_id: set_category_id,
-                                channel_slugs_input: set_channel_slugs_input,
-                                featured_image_url: set_featured_image_url,
-                                seo_title: set_seo_title,
-                                seo_description: set_seo_description,
-                                scheduled_at: set_scheduled_at,
-                                schedule_editable: set_schedule_editable,
-                                publish_now: set_publish_now,
-                            },
-                            &post,
-                        );
-                    }
-                    if result_view.refresh_posts {
-                        set_refresh_nonce.update(|value| *value += 1);
-                    }
-                }
-                Err(err) => {
-                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                        &t(
-                            ui_locale.as_deref(),
-                            "blog.error.archivePost",
-                            "Failed to archive post",
-                        ),
-                        &err.to_string(),
-                    )));
-                }
-            }
-
-            set_busy_key.set(None);
-        });
-    });
-
-    let restore_post_locale = ui_locale.clone();
-    let restore_post = Callback::new(move |(post_id, post_locale): (String, String)| {
-        let token_value = token.get_untracked();
-        let tenant_value = tenant.get_untracked();
-        let ui_locale = restore_post_locale.clone();
-        let command = core::prepare_blog_post_restore_command(post_id, post_locale.as_str());
-        set_submit_error.set(None);
-        set_busy_key.set(Some(command.busy_key.clone()));
-
-        spawn_local(async move {
-            match transport::restore_post(
-                token_value,
-                tenant_value,
-                command.post_id.clone(),
-                command.locale.clone(),
-            )
-            .await
-            {
-                Ok(post) => {
-                    let result_view = core::blog_post_mutation_result_view(
-                        editing_post_id.get_untracked().as_deref(),
-                        post.id.as_str(),
-                    );
-                    if result_view.apply_returned_post_to_form {
-                        apply_post_to_form(
-                            BlogPostFormSetters {
-                                editing_post_id: set_editing_post_id,
-                                editing_version: set_editing_version,
-                                title: set_title,
-                                slug: set_slug,
-                                excerpt: set_excerpt,
-                                content: set_content,
-                                locale: set_locale,
-                                tags_input: set_tags_input,
-                                category_id: set_category_id,
-                                channel_slugs_input: set_channel_slugs_input,
-                                featured_image_url: set_featured_image_url,
-                                seo_title: set_seo_title,
-                                seo_description: set_seo_description,
-                                scheduled_at: set_scheduled_at,
-                                schedule_editable: set_schedule_editable,
-                                publish_now: set_publish_now,
-                            },
-                            &post,
-                        );
-                    }
-                    if result_view.refresh_posts {
-                        set_refresh_nonce.update(|value| *value += 1);
-                    }
-                }
-                Err(err) => {
-                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                        &t(
-                            ui_locale.as_deref(),
-                            "blog.error.restorePost",
-                            "Failed to restore post",
-                        ),
-                        &err.to_string(),
-                    )));
-                }
-            }
-
-            set_busy_key.set(None);
-        });
+    let lifecycle::LifecycleCallbacks {
+        toggle_publish,
+        toggle_pin,
+        archive_post,
+        restore_post,
+    } = lifecycle::bind(lifecycle::LifecycleBindings {
+        ui_locale: ui_locale.clone(),
+        token: token,
+        tenant: tenant,
+        busy_key: busy_key,
+        set_busy_key: set_busy_key,
+        editor_request: editor_request,
+        editing_post_id: editing_post_id,
+        locale: locale,
+        editor_session: editor_session,
+        form_setters: form_setters,
+        set_save_notice: set_save_notice,
+        set_refresh_nonce: set_refresh_nonce,
+        set_submit_error: set_submit_error,
     });
 
     let delete_post_locale = ui_locale.clone();
     let delete_post_reset_form_action = reset_form_action;
     let delete_query_writer = query_writer.clone();
     let delete_post = Callback::new(move |post_id: String| {
+        if busy_key.get_untracked().is_some() {
+            return;
+        }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = delete_post_locale.clone();
         let reset_form_to_defaults = delete_post_reset_form_action;
         let delete_query_writer = delete_query_writer.clone();
         let command = core::prepare_blog_post_delete_command(post_id);
+        let request =
+            core::EditorRequest::new(editing_post_id.get_untracked(), locale.get_untracked());
+        editor_request.set(Some(request.clone()));
         set_submit_error.set(None);
         set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
             match transport::delete_post(token_value, tenant_value, command.post_id.clone()).await {
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
                 Ok(deleted) => {
                     let delete_result = core::blog_post_delete_result_view(
                         deleted,
@@ -848,9 +588,15 @@ pub fn BlogAdmin() -> impl IntoView {
     let close_preview_banner = Callback::new(move |_| set_preview_token.set(None));
     let create_preview_link_locale = ui_locale.clone();
     let create_preview_link = Callback::new(move |post_id: String| {
+        if busy_key.get_untracked().is_some() {
+            return;
+        }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = create_preview_link_locale.clone();
+        let request =
+            core::EditorRequest::new(editing_post_id.get_untracked(), locale.get_untracked());
+        editor_request.set(Some(request.clone()));
         set_submit_error.set(None);
         set_busy_key.set(Some(core::busy_key_for_preview(post_id.as_str())));
 
@@ -859,6 +605,7 @@ pub fn BlogAdmin() -> impl IntoView {
             // service validates the 1..720h range and revokes tokens on any
             // lifecycle transition away from draft.
             match transport::create_preview_token(token_value, tenant_value, post_id, None).await {
+                _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
                 Ok(minted) => {
                     set_preview_token.set(Some(minted));
                 }
@@ -883,7 +630,6 @@ pub fn BlogAdmin() -> impl IntoView {
         host_locale_for_seo,
         seo_target_kind,
         form_copy_view,
-        form_field_classes,
         shell_classes,
         form_view_model,
         editing_banner_view,
@@ -910,24 +656,8 @@ pub fn BlogAdmin() -> impl IntoView {
         close_preview_banner,
         categories_resource,
         categories_unavailable_label,
-        form_setters: BlogPostFormSetters {
-            editing_post_id: set_editing_post_id,
-            editing_version: set_editing_version,
-            title: set_title,
-            slug: set_slug,
-            excerpt: set_excerpt,
-            content: set_content,
-            locale: set_locale,
-            tags_input: set_tags_input,
-            category_id: set_category_id,
-            channel_slugs_input: set_channel_slugs_input,
-            featured_image_url: set_featured_image_url,
-            seo_title: set_seo_title,
-            seo_description: set_seo_description,
-            scheduled_at: set_scheduled_at,
-            schedule_editable: set_schedule_editable,
-            publish_now: set_publish_now,
-        },
+        retry_categories: Callback::new(move |()| set_refresh_nonce.update(|value| *value += 1)),
+        form_setters,
         editing_post_id,
         title,
         slug,
@@ -945,6 +675,9 @@ pub fn BlogAdmin() -> impl IntoView {
         publish_now,
         busy_key,
         submit_post,
+        loaded_post,
+        editor_session,
+        save_notice,
     })
     .into_any()
 }

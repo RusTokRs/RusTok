@@ -1,240 +1,137 @@
-use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::WritePathIssue;
+use leptos_ui::{Alert, Button};
+use rustok_forms_leptos::{
+    Form, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect, FormTextarea,
+    SubmitButton,
+};
+use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
-
-use crate::core;
-use crate::i18n::t;
-use crate::model::BlogCategoryDetail;
-use crate::transport;
+use rustok_ui_forms::{DirtyTracker, FieldOption, FormState};
 
 use super::components::local_resource;
+use crate::i18n::t;
+use crate::model::BlogCategoryDetail;
+use crate::{core, transport};
 
-/// Category management workspace rendered for the `/modules/blog/categories`
-/// child route. Capability parity with the Next admin categories page: list
-/// with client-side search (name/slug/description), create with parent and
-/// canonical position, edit of localized copy (name/slug/description with
-/// clear semantics) and delete with an explicit confirmation step. Moving a
-/// category in the hierarchy or changing the sibling position stays an owner
-/// command, exactly as in the Next admin.
+/// Full owner list goes to DataGrid; it owns client pagination and never receives
+/// a pre-sliced page. Localized editor values belong only to the target locale.
 #[component]
 pub fn BlogCategoriesAdmin() -> impl IntoView {
-    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let ui_locale = route_context.locale.clone();
-    // The Next modal derives the command locale from the admin locale, not
-    // from the list contents; the Leptos route locale plays the same role.
-    let default_locale = ui_locale.clone().unwrap_or_default();
-
+    let route = use_context::<UiRouteContext>().unwrap_or_default();
+    let locale = StoredValue::new(route.locale);
     let token = use_token();
     let tenant = use_tenant();
-
-    let shell_classes = core::blog_post_admin_shell_classes_view();
-    let form_field_classes = core::blog_post_admin_editor_field_classes_view();
-
-    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
-    let (busy_key, set_busy_key) = signal(Option::<String>::None);
-    let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
-    let (search, set_search) = signal(String::new());
-    let (editing_category_id, set_editing_category_id) = signal(Option::<String>::None);
-    let (editing_loaded_description, set_editing_loaded_description) =
-        signal(Option::<String>::None);
-    let (delete_confirm_id, set_delete_confirm_id) = signal(Option::<String>::None);
-    let (name, set_name) = signal(String::new());
-    let (slug, set_slug) = signal(String::new());
-    let (description, set_description) = signal(String::new());
-    let (parent_id, set_parent_id) = signal(String::new());
-    let (position, set_position) = signal("0".to_string());
-
-    // The Next list pages through the owner list in the admin locale (the
-    // GraphQL resolver falls back to the request locale the same way); the
-    // Leptos route locale plays that role on the native path.
-    let list_locale = default_locale.clone();
-    let categories_resource = local_resource(
-        move || {
-            (
-                token.get(),
-                tenant.get(),
-                list_locale.clone(),
-                refresh_nonce.get(),
-            )
-        },
-        move |(token_value, tenant_value, locale_value, _)| async move {
-            transport::fetch_category_details(
-                token_value,
-                tenant_value,
-                core::locale_arg(locale_value.as_str()),
-            )
-            .await
+    let refresh = RwSignal::new(0_u64);
+    let busy = RwSignal::new(false);
+    let active_request = RwSignal::new(None::<core::EditorRequest>);
+    let loaded = RwSignal::new(Option::<BlogCategoryDetail>::None);
+    let delete_id = RwSignal::new(Option::<String>::None);
+    let name = RwSignal::new(String::new());
+    let slug = RwSignal::new(String::new());
+    let description = RwSignal::new(String::new());
+    let parent = RwSignal::new(String::new());
+    let position = RwSignal::new("0".to_string());
+    let search = RwSignal::new(String::new());
+    let state = RwSignal::new(FormState::idle());
+    let dirty = RwSignal::new(DirtyTracker::new());
+    let copy = move |key: &str, fallback: &str| {
+        locale.with_value(|value| t(value.as_deref(), key, fallback))
+    };
+    let categories = local_resource(
+        move || (token.get(), tenant.get(), refresh.get()),
+        move |(token, tenant, _)| async move {
+            transport::fetch_category_details(token, tenant, locale.get_value()).await
         },
     );
-
-    let load_error_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.error.load",
-        "Failed to load categories",
-    );
-    let empty_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.empty",
-        "No categories created yet.",
-    );
-    let search_placeholder = t(
-        ui_locale.as_deref(),
-        "blog.categories.searchPlaceholder",
-        "Search categories...",
-    );
-    let new_label = t(ui_locale.as_deref(), "blog.categories.new", "New Category");
-    let locale_header = t(
-        ui_locale.as_deref(),
-        "blog.categories.localeHeader",
-        "Locale",
-    );
-    let name_header = t(ui_locale.as_deref(), "blog.categories.nameHeader", "Name");
-    let slug_header = t(ui_locale.as_deref(), "blog.categories.slugHeader", "Slug");
-    let order_header = t(ui_locale.as_deref(), "blog.categories.orderHeader", "Order");
-    let actions_header = t(
-        ui_locale.as_deref(),
-        "blog.categories.actionsHeader",
-        "Actions",
-    );
-    let edit_label = t(ui_locale.as_deref(), "blog.categories.edit", "Edit");
-    let delete_label = t(ui_locale.as_deref(), "blog.categories.delete", "Delete");
-    let confirm_delete_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.confirmDelete",
-        "Confirm delete",
-    );
-    let cancel_label = t(ui_locale.as_deref(), "blog.categories.cancel", "Cancel");
-    let create_new_instead_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.createNewInstead",
-        "Create new instead",
-    );
-    let (editing_banner_label, _) = signal(t(
-        ui_locale.as_deref(),
-        "blog.categories.editing",
-        "Editing category",
-    ));
-    let parent_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.form.parent",
-        "Parent category",
-    );
-    let root_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.form.root",
-        "Root (no parent)",
-    );
-    let position_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.form.position",
-        "Order",
-    );
-    let create_category_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.create",
-        "Create category",
-    );
-    let update_category_label = t(
-        ui_locale.as_deref(),
-        "blog.categories.update",
-        "Update category",
-    );
-
-    // The resource resolves into row/error signals, matching the posts list
-    // pattern: render reads the signals and refreshes keep the stale rows
-    // until the new page lands (no skeleton flash between mutations).
-    let (categories_rows, set_categories_rows) = signal(Vec::<BlogCategoryDetail>::new());
-    let (categories_error, set_categories_error) = signal(Option::<String>::None);
-    let (categories_resolved, set_categories_resolved) = signal(false);
-    let effect_load_error_label = load_error_label.clone();
-    Effect::new(move |_| match categories_resource.get() {
-        Some(Ok(categories)) => {
-            set_categories_rows.set(categories);
-            set_categories_error.set(None);
-            set_categories_resolved.set(true);
+    let rows = Signal::derive(move || {
+        categories
+            .get()
+            .and_then(Result::ok)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|row| {
+                core::blog_category_matches_query(
+                    &core::blog_category_admin_table_row_view(row),
+                    &search.get(),
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    let reset = Callback::new(move |()| {
+        active_request.set(None);
+        busy.set(false);
+        loaded.set(None);
+        name.set(String::new());
+        slug.set(String::new());
+        description.set(String::new());
+        parent.set(String::new());
+        position.set("0".to_string());
+        state.set(FormState::idle());
+        dirty.update(|value| value.reset());
+    });
+    Effect::new(move |_| {
+        let _principal = (token.get(), tenant.get());
+        reset.run(());
+    });
+    let edit = Callback::new(move |category: BlogCategoryDetail| {
+        if busy.get_untracked() {
+            return;
         }
-        Some(Err(_)) => {
-            set_categories_error.set(Some(effect_load_error_label.clone()));
-            set_categories_resolved.set(true);
+        active_request.set(None);
+        let target = core::category_editor_copy(&category);
+        name.set(target.name);
+        description.set(target.description);
+        slug.set(target.slug);
+        parent.set(category.parent_id.clone().unwrap_or_default());
+        position.set(category.position.to_string());
+        loaded.set(Some(category));
+        state.set(FormState::idle());
+        dirty.update(|value| value.reset());
+    });
+    let submit = Callback::new(move |()| {
+        if busy.get_untracked() {
+            return;
         }
-        None => {}
-    });
-
-    let reset_form = Callback::new(move |_: ()| {
-        set_editing_category_id.set(None);
-        set_editing_loaded_description.set(None);
-        set_delete_confirm_id.set(None);
-        set_name.set(String::new());
-        set_slug.set(String::new());
-        set_description.set(String::new());
-        set_parent_id.set(String::new());
-        set_position.set("0".to_string());
-        set_submit_error.set(None);
-    });
-
-    let start_editing = Callback::new(move |category: BlogCategoryDetail| {
-        set_editing_category_id.set(Some(category.id));
-        set_editing_loaded_description.set(category.description.clone());
-        set_delete_confirm_id.set(None);
-        set_name.set(category.name);
-        set_slug.set(category.slug);
-        set_description.set(category.description.unwrap_or_default());
-        set_parent_id.set(category.parent_id.unwrap_or_default());
-        set_position.set(category.position.to_string());
-        set_submit_error.set(None);
-    });
-
-    let submit_locale = ui_locale.clone();
-    let submit = Callback::new(move |ev: SubmitEvent| {
-        ev.prevent_default();
-        set_submit_error.set(None);
-        let submit_ui_locale = submit_locale.clone();
-
-        let name_too_short_message = t(
-            submit_ui_locale.as_deref(),
-            "blog.categories.error.nameTooShort",
-            "Category name must be at least 2 characters.",
-        );
-        let invalid_position_message = t(
-            submit_ui_locale.as_deref(),
-            "blog.categories.error.invalidPosition",
-            "Category order must be a non-negative number.",
-        );
-        let failure_message = t(
-            submit_ui_locale.as_deref(),
-            "blog.categories.error.save",
-            "Failed to save category",
-        );
-
-        let parent_value = parent_id.get_untracked();
-        let command = match core::prepare_blog_category_save_command(
+        let category = loaded.get_untracked();
+        let command = core::prepare_blog_category_save_command(
             core::BlogCategoryFormInput {
-                editing_category_id: editing_category_id.get_untracked().as_deref(),
-                loaded_description: editing_loaded_description.get_untracked().as_deref(),
-                locale: default_locale.as_str(),
+                editing_category_id: category.as_ref().map(|value| value.id.as_str()),
+                loaded_category: category.as_ref(),
+                locale: locale.get_value().as_deref().unwrap_or_default(),
                 name: &name.get_untracked(),
                 slug: &slug.get_untracked(),
                 description: &description.get_untracked(),
-                parent_id: Some(parent_value.as_str()),
+                parent_id: Some(&parent.get_untracked()),
                 position: &position.get_untracked(),
             },
-            name_too_short_message,
-            invalid_position_message,
-        ) {
+            copy(
+                "blog.categories.error.invalidName",
+                "Enter a category name of 1 to 120 characters.",
+            ),
+            copy(
+                "blog.categories.error.invalidPosition",
+                "Category order must be a non-negative number.",
+            ),
+            copy("blog.editor.slugRequired", "Canonical slug is required"),
+        );
+        let command = match command {
             Ok(command) => command,
             Err(issue) => {
-                set_submit_error.set(Some(issue));
+                state.set(FormState::with_form_error(issue.message));
                 return;
             }
         };
-
+        let request = core::EditorRequest::new(
+            category.as_ref().map(|row| row.id.clone()),
+            locale.get_value().unwrap_or_default(),
+        );
+        active_request.set(Some(request.clone()));
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        set_busy_key.set(Some(command.busy_key.clone()));
-
+        busy.set(true);
+        state.set(FormState::submitting());
         spawn_local(async move {
             let result = match command.operation {
                 core::BlogCategorySaveOperation::Create(draft) => {
@@ -249,395 +146,115 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
                     .await
                     .map(|_| ()),
             };
-
+            if !request.is_current(active_request.get_untracked().as_ref()) {
+                return;
+            }
             match result {
                 Ok(()) => {
-                    reset_form.run(());
-                    set_refresh_nonce.update(|value| *value += 1);
+                    reset.run(());
+                    refresh.update(|value| *value += 1);
                 }
-                Err(err) => {
-                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                        &failure_message,
-                        &err.to_string(),
-                    )));
-                }
+                Err(_) => state.set(FormState::with_form_error(copy(
+                    "blog.categories.error.save",
+                    "Failed to save category",
+                ))),
             }
-
-            set_busy_key.set(None);
+            busy.set(false);
         });
     });
-
-    let delete_failure_message = t(
-        ui_locale.as_deref(),
-        "blog.categories.error.delete",
-        "Failed to delete category",
-    );
-    let on_delete = Callback::new(move |category_id: String| {
-        set_submit_error.set(None);
-        set_delete_confirm_id.set(None);
-        let busy = core::busy_key_for_category_delete(category_id.as_str());
-        set_busy_key.set(Some(busy));
-        let delete_failure_message = delete_failure_message.clone();
-
+    let remove = Callback::new(move |id: String| {
+        if busy.get_untracked() {
+            return;
+        }
+        let request = core::EditorRequest::new(
+            loaded.get_untracked().map(|row| row.id),
+            locale.get_value().unwrap_or_default(),
+        );
+        active_request.set(Some(request.clone()));
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        busy.set(true);
         spawn_local(async move {
-            match transport::delete_category(
-                token.get_untracked(),
-                tenant.get_untracked(),
-                category_id.clone(),
-            )
-            .await
-            {
-                Ok(_) => {
-                    if editing_category_id.get_untracked().as_deref() == Some(category_id.as_str())
-                    {
-                        reset_form.run(());
+            match transport::delete_category(token_value, tenant_value, id.clone()).await {
+                _ if !request.is_current(active_request.get_untracked().as_ref()) => return,
+                Ok(true) => {
+                    if loaded.get_untracked().is_some_and(|row| row.id == id) {
+                        reset.run(());
                     }
-                    set_refresh_nonce.update(|value| *value += 1);
+                    delete_id.set(None);
+                    refresh.update(|value| *value += 1);
                 }
-                Err(err) => {
-                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
-                        &delete_failure_message,
-                        &err.to_string(),
-                    )));
-                }
+                Ok(false) | Err(_) => state.set(FormState::with_form_error(copy(
+                    "blog.categories.error.delete",
+                    "Failed to delete category",
+                ))),
             }
-
-            set_busy_key.set(None);
+            busy.set(false);
         });
     });
-
+    let cells = Callback::new(move |(row, column): (BlogCategoryDetail, String)| {
+        match column.as_str() {
+            "name" => view! { <span>{row.name}</span> }.into_any(),
+            "slug" => view! { <span>{row.slug}</span> }.into_any(),
+            "locale" => view! { <span>{row.effective_locale}</span> }.into_any(),
+            "position" => view! { <span>{row.position}</span> }.into_any(),
+            "actions" => {
+                let edit_row = row.clone();
+                let id = row.id.clone();
+                let confirm_id = row.id;
+                let visible_id = confirm_id.clone();
+                view! { <div class="flex gap-2">
+                <Button disabled=busy on_click=Box::new(move || edit.run(edit_row.clone()))>{copy("blog.categories.edit", "Edit")}</Button>
+                <Button disabled=busy on_click=Box::new(move || delete_id.set(Some(id.clone())))>{copy("blog.categories.delete", "Delete")}</Button>
+                <Show when=move || delete_id.get().as_deref() == Some(visible_id.as_str())>
+                    <Button disabled=busy on_click=Box::new({ let id = confirm_id.clone(); move || remove.run(id.clone()) })>{copy("blog.categories.confirmDelete", "Confirm delete")}</Button>
+                    <Button on_click=Box::new(move || delete_id.set(None))>{copy("blog.categories.cancel", "Cancel")}</Button>
+                </Show>
+            </div> }.into_any()
+            }
+            _ => ().into_any(),
+        }
+    });
+    let columns = core::category_grid_columns([
+        &copy("blog.categories.nameHeader", "Name"),
+        &copy("blog.categories.slugHeader", "Slug"),
+        &copy("blog.categories.localeHeader", "Locale"),
+        &copy("blog.categories.orderHeader", "Order"),
+        &copy("blog.categories.actionsHeader", "Actions"),
+    ]);
     view! {
-        <div class=shell_classes.page>
-            <header class=shell_classes.header>
-                <div class=shell_classes.header_content>
-                    <span class=shell_classes.badge>
-                        {t(ui_locale.as_deref(), "blog.badge", "blog")}
-                    </span>
-                    <h1 class=shell_classes.title>
-                        {t(ui_locale.as_deref(), "blog.categories.title", "Blog Categories")}
-                    </h1>
-                    <p class=shell_classes.subtitle>
-                        {t(
-                            ui_locale.as_deref(),
-                            "blog.categories.subtitle",
-                            "Taxonomy category management through the Blog owner contract.",
-                        )}
-                    </p>
-                </div>
-            </header>
-
-            <section class=shell_classes.layout>
-                <div class=shell_classes.list_card>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <input
-                            type="text"
-                            class=shell_classes.locale_filter_input
-                            placeholder=search_placeholder.clone()
-                            prop:value=search
-                            on:input=move |ev| set_search.set(event_target_value(&ev))
-                        />
-                        <button
-                            type="button"
-                            class=form_field_classes.submit_button
-                            disabled=move || busy_key.get().is_some()
-                            on:click=move |_| reset_form.run(())
-                        >
-                            {new_label.clone()}
-                        </button>
-                    </div>
-
-                    {move || {
-                        let categories = categories_rows.get();
-                        let load_error = categories_error.get();
-                        let resolved = categories_resolved.get();
-                        let query = search.get();
-                        let busy = busy_key.get();
-                        let confirm_id_source = delete_confirm_id.get();
-                        view! {
-                            {load_error.map(|message| view! {
-                                <div class=shell_classes.load_error>{message}</div>
-                            })}
-                            {if !resolved {
-                                view! {
-                                    <div class=shell_classes.skeleton_stack>
-                                        {(0..4).map(|_| view! {
-                                            <div class=shell_classes.skeleton_row></div>
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
-                            } else if categories.is_empty() {
-                                view! {
-                                    <div class="py-10 text-center text-sm text-muted-foreground">
-                                        {empty_label.clone()}
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! {
-                                    <div class="overflow-x-auto">
-                                        <table class="w-full text-left text-sm">
-                                            <thead class="border-b border-border text-xs uppercase text-muted-foreground">
-                                                <tr>
-                                                    <th class="px-4 py-3">{name_header.clone()}</th>
-                                                    <th class="px-4 py-3">{slug_header.clone()}</th>
-                                                    <th class="px-4 py-3">{locale_header.clone()}</th>
-                                                    <th class="px-4 py-3">{order_header.clone()}</th>
-                                                    <th class="px-4 py-3 text-right">{actions_header.clone()}</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="divide-y divide-border">
-                                                {categories
-                                                    .iter()
-                                                    .filter(|category| {
-                                                        let row = core::blog_category_admin_table_row_view(category);
-                                                        core::blog_category_matches_query(&row, &query)
-                                                    })
-                                                    .map(|category| {
-                                                        let row = core::blog_category_admin_table_row_view(category);
-                                                        let edit_category = category.clone();
-                                                        let delete_id = row.id.clone();
-                                                        let confirm_id = row.id.clone();
-                                                        let confirming = confirm_id_source
-                                                            .as_deref()
-                                                            .is_some_and(|id| id == row.id.as_str());
-                                                        view! {
-                                                            <tr class="transition-colors hover:bg-muted/50">
-                                                                <td class="px-4 py-3">
-                                                                    <div class="font-medium">{row.name.clone()}</div>
-                                                                    {(!row.description.is_empty()).then(|| view! {
-                                                                        <div class="max-w-xs truncate text-xs text-muted-foreground">
-                                                                            {row.description.clone()}
-                                                                        </div>
-                                                                    })}
-                                                                </td>
-                                                                <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
-                                                                    {row.slug.clone()}
-                                                                </td>
-                                                                <td class="px-4 py-3 text-xs text-muted-foreground">
-                                                                    {row.locale.clone()}
-                                                                </td>
-                                                                <td class="px-4 py-3 text-xs text-muted-foreground">
-                                                                    {row.position}
-                                                                </td>
-                                                                <td class="space-x-2 px-4 py-3 text-right">
-                                                                    {if confirming {
-                                                                        view! {
-                                                                            <span class="inline-flex items-center gap-2">
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90"
-                                                                                    disabled=busy.is_some()
-                                                                                    on:click=move |_| on_delete.run(confirm_id.clone())
-                                                                                >
-                                                                                    {confirm_delete_label.clone()}
-                                                                                </button>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                                                                                    disabled=busy.is_some()
-                                                                                    on:click=move |_| set_delete_confirm_id.set(None)
-                                                                                >
-                                                                                    {cancel_label.clone()}
-                                                                                </button>
-                                                                            </span>
-                                                                        }.into_any()
-                                                                    } else {
-                                                                        view! {
-                                                                            <span class="inline-flex items-center gap-2">
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                                                                                    disabled=busy.is_some()
-                                                                                    on:click=move |_| start_editing.run(edit_category.clone())
-                                                                                >
-                                                                                    {edit_label.clone()}
-                                                                                </button>
-                                                                                <button
-                                                                                    type="button"
-                                                                                    class="rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90"
-                                                                                    disabled=busy.is_some()
-                                                                                    on:click=move |_| set_delete_confirm_id.set(Some(delete_id.clone()))
-                                                                                >
-                                                                                    {delete_label.clone()}
-                                                                                </button>
-                                                                            </span>
-                                                                        }.into_any()
-                                                                    }}
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    })
-                                                    .collect_view()}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                }.into_any()
-                            }}
-                        }
-                    }}
-                </div>
-
-                <div class=shell_classes.sidebar>
-                    <section class=shell_classes.form_card>
-                        <div class=shell_classes.form_header>
-                            <h2 class=shell_classes.form_title>
-                                {t(ui_locale.as_deref(), "blog.categories.form.title", "Category")}
-                            </h2>
-                            <p class=shell_classes.form_subtitle>
-                                {t(
-                                    ui_locale.as_deref(),
-                                    "blog.categories.form.subtitle",
-                                    "Create a category or edit the selected one.",
-                                )}
-                            </p>
-                        </div>
-
-                        <Show when=move || submit_error.get().is_some()>
-                            <div class=shell_classes.load_error>
-                                {move || {
-                                    submit_error
-                                        .get()
-                                        .map(|issue| issue.message)
-                                        .unwrap_or_default()
-                                }}
-                            </div>
-                        </Show>
-
-                        <Show when=move || editing_category_id.get().is_some()>
-                            <div class="flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2">
-                                <div class="text-sm text-muted-foreground">
-                                    {move || {
-                                        let current_name = name.get();
-                                        if current_name.is_empty() {
-                                            editing_banner_label.get()
-                                        } else {
-                                            format!("{}: {current_name}", editing_banner_label.get())
-                                        }
-                                    }}
-                                </div>
-                                <button
-                                    type="button"
-                                    class="text-xs font-medium text-primary hover:underline"
-                                    on:click=move |_| reset_form.run(())
-                                >
-                                    {create_new_instead_label.clone()}
-                                </button>
-                            </div>
-                        </Show>
-
-                        <form class="mt-5 space-y-4" on:submit=move |event: SubmitEvent| submit.run(event)>
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {t(ui_locale.as_deref(), "blog.categories.form.name", "Name")}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=form_field_classes.text_input
-                                    prop:value=name
-                                    on:input=move |ev| set_name.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {t(ui_locale.as_deref(), "blog.categories.form.slug", "Slug (optional)")}
-                                </span>
-                                <input
-                                    type="text"
-                                    class=form_field_classes.text_input
-                                    prop:value=slug
-                                    on:input=move |ev| set_slug.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {t(ui_locale.as_deref(), "blog.categories.form.description", "Description")}
-                                </span>
-                                <textarea
-                                    class=form_field_classes.textarea_short
-                                    prop:value=description
-                                    on:input=move |ev| set_description.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            {move || {
-                                let editing = editing_category_id.get().is_some();
-                                let selected_parent = parent_id.get();
-                                let editing_id = editing_category_id.get();
-                                let options = categories_rows.get();
-                                let parent_label = parent_label.clone();
-                                let root_label = root_label.clone();
-                                let position_label = position_label.clone();
-                                view! {
-                                    <label class=shell_classes.locale_filter_label>
-                                        <span class=form_field_classes.label_text>
-                                            {parent_label}
-                                        </span>
-                                        <select
-                                            class=form_field_classes.text_input
-                                            disabled=editing
-                                            prop:value=selected_parent
-                                            on:change=move |ev| set_parent_id.set(event_target_value(&ev))
-                                        >
-                                            <option value="">
-                                                {root_label}
-                                            </option>
-                                            {options
-                                                .into_iter()
-                                                .filter(|category| {
-                                                    Some(category.id.clone()) != editing_id.clone()
-                                                })
-                                                .map(|category| view! {
-                                                    <option value=category.id.clone()>
-                                                        {category.name.clone()}
-                                                    </option>
-                                                })
-                                                .collect_view()}
-                                        </select>
-                                    </label>
-                                    {(!editing).then(move || view! {
-                                        <label class=shell_classes.locale_filter_label>
-                                            <span class=form_field_classes.label_text>
-                                                {position_label}
-                                            </span>
-                                            <input
-                                                type="number"
-                                                class=form_field_classes.text_input
-                                                prop:value=position
-                                                on:input=move |ev| set_position.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                    })}
-                                }
-                            }}
-
-                            <div class="flex items-center justify-end space-x-2 pt-2">
-                                <button
-                                    type="button"
-                                    class="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted"
-                                    disabled=move || busy_key.get().is_some()
-                                    on:click=move |_| reset_form.run(())
-                                >
-                                    {t(ui_locale.as_deref(), "blog.categories.reset", "Reset")}
-                                </button>
-                                <button
-                                    type="submit"
-                                    class=form_field_classes.submit_button
-                                    disabled=move || busy_key.get().is_some()
-                                >
-                                    {move || {
-                                        if editing_category_id.get().is_some() {
-                                            update_category_label.clone()
-                                        } else {
-                                            create_category_label.clone()
-                                        }
-                                    }}
-                                </button>
-                            </div>
-                        </form>
-                    </section>
-                </div>
-            </section>
-        </div>
+        <section class="space-y-6">
+            <div class="flex items-center justify-between"><h1>{copy("blog.categories.title", "Blog categories")}</h1>
+                <Button disabled=busy on_click=Box::new(move || reset.run(()))>{copy("blog.categories.new", "New category")}</Button>
+            </div>
+            <FormInput value=search on_input=move |value| search.set(value) aria_label=copy("blog.categories.searchPlaceholder", "Search categories") />
+            {move || categories.get().and_then(Result::err).map(|_| view! {
+                <Alert>{copy("blog.categories.error.load", "Failed to load categories")}
+                    <Button on_click=Box::new(move || refresh.update(|value| *value += 1))>{copy("blog.editor.retry", "Retry")}</Button>
+                </Alert>
+            })}
+            <DataGrid columns=columns data=rows key_fn=|row: &BlogCategoryDetail| row.id.clone()
+                cell_renderer=cells empty_message=copy("blog.categories.empty", "No categories created yet.") />
+            {move || loaded.get().filter(|row| row.locale != row.effective_locale).map(|row| view! {
+                <Alert><p>{copy("blog.editor.fallbackNotice", "The requested translation does not exist. The source below is read-only; enter target-language title and content to create it.")}</p>
+                    <p lang=row.effective_locale>{row.name}</p><p>{row.description.unwrap_or_default()}</p></Alert>
+            })}
+            <Form state=state dirty_tracker=dirty auto_submitting=false on_submit=submit class="space-y-4">
+                <FormError />
+                <FormField name="name"><FormLabel>{copy("blog.categories.form.name", "Name")}</FormLabel><FormInput value=name on_input=move |value| name.set(value) disabled=busy /><FormMessage /></FormField>
+                <FormField name="slug"><FormLabel>{copy("blog.categories.form.slug", "Slug")}</FormLabel><FormInput value=slug on_input=move |value| slug.set(value) disabled=busy /><FormMessage /></FormField>
+                <FormField name="description"><FormLabel>{copy("blog.categories.form.description", "Description")}</FormLabel><FormTextarea value=description on_input=move |value| description.set(value) disabled=busy /><FormMessage /></FormField>
+                <Show when=move || loaded.get().is_none()>
+                    <FormField name="parent"><FormLabel>{copy("blog.categories.form.parent", "Parent category")}</FormLabel>
+                        {move || { let mut options = vec![FieldOption::new("", copy("blog.categories.form.root", "Root (no parent)"))];
+                            if let Some(Ok(rows)) = categories.get() { options.extend(rows.into_iter().map(|row| FieldOption::new(row.id, row.name))); }
+                            view! { <FormSelect value=parent options=options on_change=move |value| parent.set(value) disabled=busy /> }
+                        }}<FormMessage />
+                    </FormField>
+                    <FormField name="position"><FormLabel>{copy("blog.categories.form.position", "Order")}</FormLabel><FormInput input_type="number" min="0" value=position on_input=move |value| position.set(value) disabled=busy /><FormMessage /></FormField>
+                </Show>
+                <SubmitButton disabled=busy>{move || if loaded.get().is_some() { copy("blog.categories.update", "Update category") } else { copy("blog.categories.create", "Create category") }}</SubmitButton>
+            </Form>
+        </section>
     }
 }

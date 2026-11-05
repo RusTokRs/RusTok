@@ -1,11 +1,12 @@
-use rustok_api::{RichTextDocument, RichTextNode, WritePathIssue};
+use rustok_api::{Patch, RichTextDocument, RichTextNode, WritePathIssue};
 pub use rustok_ui_core::normalize_ui_text as optional_text;
 use rustok_ui_core::{
     AdminQueryKey, UiRouteQueryIntent, parse_ui_csv, ui_busy_key, ui_busy_key_last_segment_matches,
     ui_busy_key_matches_action, ui_busy_key_with_id,
 };
+use rustok_ui_forms::FormValidator;
 
-use crate::model::{BlogPostDetail, BlogPostDraft};
+use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostUpdate};
 
 pub type BlogPostAdminRouteQueryIntent = UiRouteQueryIntent;
 
@@ -352,24 +353,45 @@ impl BlogPostEditorFormState {
     }
 
     pub fn from_post(post: &BlogPostDetail) -> Self {
+        // Fallback is a read projection, never an editable target-locale draft.
+        let own_copy = post.requested_locale == post.effective_locale;
         Self {
             editing_post_id: Some(post.id.clone()),
             version: Some(post.version),
-            title: post.title.clone(),
+            title: if own_copy {
+                post.title.clone()
+            } else {
+                String::new()
+            },
             slug: optional_text_or_default(post.slug.clone()),
-            excerpt: optional_text_or_default(post.excerpt.clone()),
-            content: post
-                .content
-                .as_ref()
-                .map(|view| view.document.clone())
-                .unwrap_or_default(),
+            excerpt: if own_copy {
+                optional_text_or_default(post.excerpt.clone())
+            } else {
+                String::new()
+            },
+            content: if own_copy {
+                post.content
+                    .as_ref()
+                    .map(|view| view.document.clone())
+                    .unwrap_or_default()
+            } else {
+                RichTextDocument::empty()
+            },
             locale: post.requested_locale.clone(),
             tags_input: tags_input_value(post.tags.as_slice()),
             category_id: optional_text_or_default(post.category_id.clone()),
             channel_slugs_input: tags_input_value(post.channel_slugs.as_slice()),
             featured_image_url: optional_text_or_default(post.featured_image_url.clone()),
-            seo_title: optional_text_or_default(post.seo_title.clone()),
-            seo_description: optional_text_or_default(post.seo_description.clone()),
+            seo_title: if own_copy {
+                optional_text_or_default(post.seo_title.clone())
+            } else {
+                String::new()
+            },
+            seo_description: if own_copy {
+                optional_text_or_default(post.seo_description.clone())
+            } else {
+                String::new()
+            },
             scheduled_at: optional_text_or_default(post.scheduled_at.clone()),
             schedule_editable: post.status.eq_ignore_ascii_case("draft"),
             publish_now: is_published_status(post.status.as_str()),
@@ -378,7 +400,11 @@ impl BlogPostEditorFormState {
 }
 
 pub fn has_required_draft_fields(title: &str, content: &RichTextDocument) -> bool {
-    !title.is_empty() && document_has_text(content)
+    FormValidator::new()
+        .required("title", title, "Title is required")
+        .finish()
+        .is_ok()
+        && document_has_text(content)
 }
 
 fn document_has_text(document: &RichTextDocument) -> bool {
@@ -392,44 +418,138 @@ fn document_has_text(document: &RichTextDocument) -> bool {
     document.content.iter().any(node_has_text)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum BlogPostSaveOperation {
-    Create,
-    Update { post_id: String },
+    Create(BlogPostDraft),
+    Update {
+        post_id: String,
+        update: BlogPostUpdate,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct BlogPostSaveCommand {
     pub operation: BlogPostSaveOperation,
-    pub draft: BlogPostDraft,
     pub busy_key: String,
+}
+
+/// Compare against the editable target snapshot, never against fallback copy.
+/// This also avoids rewriting unrelated nullable fields and localized tag names.
+pub fn build_post_update(draft: &BlogPostDraft, post: &BlogPostDetail) -> BlogPostUpdate {
+    let baseline = BlogPostEditorFormState::from_post(post);
+    let title = (draft.title != baseline.title).then(|| draft.title.clone());
+    let content = (draft.content != baseline.content).then(|| draft.content.clone());
+    let excerpt = text_patch(
+        Some(draft.excerpt.as_str()),
+        Some(baseline.excerpt.as_str()),
+    );
+    let seo_title = text_patch(
+        draft.seo_title.as_deref(),
+        Some(baseline.seo_title.as_str()),
+    );
+    let seo_description = text_patch(
+        draft.seo_description.as_deref(),
+        Some(baseline.seo_description.as_str()),
+    );
+    let tags = (draft.tags != post.tags).then(|| draft.tags.clone());
+    let has_localized_change = title.is_some()
+        || content.is_some()
+        || excerpt.is_changed()
+        || seo_title.is_changed()
+        || seo_description.is_changed()
+        || tags.is_some();
+    BlogPostUpdate {
+        locale: has_localized_change.then(|| draft.locale.clone()),
+        title,
+        content,
+        excerpt,
+        seo_title,
+        seo_description,
+        tags,
+        slug: (draft.slug != baseline.slug)
+            .then(|| optional_text(&draft.slug))
+            .flatten(),
+        category_id: text_patch(draft.category_id.as_deref(), post.category_id.as_deref()),
+        channel_slugs: (draft.channel_slugs != post.channel_slugs)
+            .then(|| draft.channel_slugs.clone()),
+        featured_image_url: text_patch(
+            draft.featured_image_url.as_deref(),
+            post.featured_image_url.as_deref(),
+        ),
+        scheduled_at: if draft.schedule_editable {
+            text_patch(draft.scheduled_at.as_deref(), post.scheduled_at.as_deref())
+        } else {
+            Patch::Keep
+        },
+        version: post.version,
+    }
+}
+
+pub fn text_patch(current: Option<&str>, baseline: Option<&str>) -> Patch<String> {
+    let current = current.and_then(optional_text);
+    let baseline = baseline.and_then(optional_text);
+    if current == baseline {
+        Patch::Keep
+    } else {
+        current.map(Patch::Set).unwrap_or(Patch::Clear)
+    }
 }
 
 pub fn prepare_blog_post_save_command(
     editing_post_id: Option<String>,
+    loaded_post: Option<&BlogPostDetail>,
     draft: BlogPostDraft,
     required_fields_message: String,
+    slug_required_message: String,
 ) -> Result<BlogPostSaveCommand, WritePathIssue> {
-    if !has_required_draft_fields(draft.title.as_str(), &draft.content) {
-        return Err(WritePathIssue::new(required_fields_message));
-    }
-
     let busy_key = busy_key_for_save(editing_post_id.as_deref());
-    let operation = match editing_post_id_if_editing_mode(editing_post_id) {
+    let operation = match editing_post_id {
         Some(post_id) => {
-            if draft.version.is_none() {
-                return Err(WritePathIssue::new(
-                    "The Blog post revision is missing; reload before saving",
-                ));
+            let post = loaded_post
+                .filter(|post| {
+                    post.id == post_id
+                        && post.version > 0
+                        && Some(post.version) == draft.version
+                        && post.requested_locale == draft.locale
+                })
+                .ok_or_else(|| WritePathIssue::new(required_fields_message.clone()))?;
+            // A canonical route cannot be cleared. Empty on create delegates
+            // generation to Blog; empty on update must never become silent Keep.
+            if draft.slug.trim().is_empty() {
+                return Err(WritePathIssue::new(slug_required_message));
             }
-            BlogPostSaveOperation::Update { post_id }
+            let update = build_post_update(&draft, post);
+            let new_translation = post.requested_locale != post.effective_locale;
+            let copy_changed = update.title.is_some()
+                || update.content.is_some()
+                || update.excerpt.is_changed()
+                || update.seo_title.is_changed()
+                || update.seo_description.is_changed();
+            if (new_translation
+                && copy_changed
+                && !has_required_draft_fields(&draft.title, &draft.content))
+                || update
+                    .title
+                    .as_ref()
+                    .is_some_and(|title| title.trim().is_empty())
+                || update
+                    .content
+                    .as_ref()
+                    .is_some_and(|content| !document_has_text(content))
+            {
+                return Err(WritePathIssue::new(required_fields_message));
+            }
+            BlogPostSaveOperation::Update { post_id, update }
         }
-        None => BlogPostSaveOperation::Create,
+        None => {
+            if !has_required_draft_fields(&draft.title, &draft.content) {
+                return Err(WritePathIssue::new(required_fields_message));
+            }
+            BlogPostSaveOperation::Create(draft)
+        }
     };
-
     Ok(BlogPostSaveCommand {
         operation,
-        draft,
         busy_key,
     })
 }

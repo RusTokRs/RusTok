@@ -60,3 +60,48 @@ that bounded correction does not resolve the shared policy mismatch.
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
 - See [platform docs](../../../../docs/index.md).
+
+## Editorial write contract
+
+Post creation uses a complete `BlogPostDraft`; post editing uses a distinct
+`BlogPostUpdate` with mandatory predecessor revision and canonical nullable
+`Patch` semantics. Pure command builders compare target-language editor values
+against the loaded owner snapshot. Unchanged fields are omitted from both
+native and GraphQL commands. Owner fields can change without touching copy.
+
+A fallback projection is shown as a labelled read-only source. It never hydrates
+editable title, body, excerpt, SEO or Category identity in a missing target
+language. A new Post translation requires its own title and body; a new Category
+translation requires its own name. Changing another field cannot create a
+translation from fallback text. Existing optional copy remains distinguishable
+as keep, set and clear.
+
+Create/update and lifecycle adapters acknowledge the owner command without a separate detail
+read. The controller invalidates the old edit revision immediately after that
+acknowledgement, then reloads independently. One typed `PostEditorSession` owns
+the editor identity, revision and snapshot; a failed reload retains the saved
+identity, exposes its localized notice, and cannot become a duplicate create.
+A failed reload displays a saved
+notice and blocks another save until a fresh snapshot is loaded. UUID request
+identity binds asynchronous loads/writes to their selected entity and locale;
+principal changes or later selections discard predecessor completions. Lifecycle
+bindings live in `ui/leptos/lifecycle.rs`. Existing Post and exact-target Category routes cannot be
+cleared on update; empty create routes still delegate generation to Blog. It never
+reports a committed command as a failed save or grants implicit Read permission.
+
+Editor controls use `rustok-forms-leptos` and the shared form lifecycle/dirty
+state. Category rows use the canonical `DataGrid` with the complete filtered
+collection; the grid owns client pagination. Category-list failures remain
+visible and do not clear an existing Post assignment.
+
+## Known Limitations / Pending Implementation
+
+The latest editor continuation adds source regressions for actual native HTTP
+write-only acknowledgements (update and all six lifecycle commands), using the
+shared Fly request fixture. These latest Rust changes have not yet been compiled
+or executed in this branch; combined integration verification owns that gate.
+Thirteen Next pure/API tests passed locally; mounted workflow coverage remains open.
+
+Mounted browser, accessibility and authenticated persistence/reload scenarios
+remain required in both clients. Default unit tests and SSR compilation do not
+certify those workflows. The owner reference plan tracks that acceptance work.

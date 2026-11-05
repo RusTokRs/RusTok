@@ -8,6 +8,7 @@ import {
   type FormOption
 } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextEditor } from '@/shared/ui/rich-text-editor';
 import { Form } from '@/shared/ui/shadcn/form';
@@ -18,363 +19,339 @@ import {
   validateRichTextDocument,
   type RichTextDocument
 } from '@rustok/richtext';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useLocale } from '@rustok/next-fluent';
+import { useLocale, useTranslations } from '@rustok/next-fluent';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { useForm, type Resolver } from 'react-hook-form';
+import Image from 'next/image';
+import { useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 import { listAllBlogCategories, type BlogCategory } from '../api/categories';
+import {
+  buildPostCommand,
+  canSubmitEditor,
+  completeEditorWrite,
+  type EditorWriteState,
+  EditorValidationError,
+  targetPostCopy,
+  postImageSource,
+  type PostEditorValues
+} from '../model/editor';
 import { BlogModerationPanel } from './moderation-panel';
 
-const formSchema = z.object({
-  title: z.string().min(2, 'Title must be at least 2 characters.'),
-  slug: z.string().optional(),
-  locale: z.string().min(2),
-  categoryId: z.string().optional(),
-  channelSlugs: z.string().optional(),
-  excerpt: z.string().optional(),
-  tags: z.string().optional(),
-  featuredImageUrl: z.string().refine(
-    (value) => !value || (value.startsWith('/') && !value.startsWith('//')) || /^https?:\/\//.test(value),
-    'Enter an HTTP/HTTPS URL or a root-relative image path.'
-  ).optional(),
-  seoTitle: z.string().optional(),
-  seoDescription: z.string().optional(),
-  publish: z.boolean().default(false),
-  scheduledAt: z.string().optional()
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-function toLocalDateTimeInput(iso: string): string {
-  const date = new Date(iso);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16);
-}
-
-function resolveInitialDoc(initialData: PostResponse | null): RichTextDocument {
-  return initialData?.content?.document ?? emptyRichTextDocument();
-}
-
-export default function PostForm({
-  initialData,
-  pageTitle,
-  gqlOpts = {}
-}: {
+type Props = {
   initialData: PostResponse | null;
   pageTitle: string;
   gqlOpts?: GqlOpts;
-}) {
+};
+export default function PostForm(props: Props) {
+  // Owner snapshots and tenant switches create new form sessions. React Hook Form
+  // defaults must never retain values from a previous post or principal.
+  const session = JSON.stringify([
+    props.initialData,
+    props.gqlOpts?.tenantId,
+    props.gqlOpts?.tenantSlug,
+    props.gqlOpts?.token,
+    props.gqlOpts?.locale
+  ]);
+  return <PostEditorSession key={session} {...props} />;
+}
+function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
   const router = useRouter();
+  const t = useTranslations('blog');
   const hostLocale = useLocale();
-  const defaultLocale =
-    initialData?.requestedLocale ?? initialData?.effectiveLocale ?? hostLocale;
-  const initialDoc = useMemo(
-    () => resolveInitialDoc(initialData),
-    [initialData]
+  const locale = initialData?.requestedLocale ?? gqlOpts.locale ?? hostLocale;
+  const targetCopy = targetPostCopy(initialData);
+  const [content, setContent] = useState<RichTextDocument>(
+    targetCopy.document ?? emptyRichTextDocument()
   );
-  const [content, setContent] = useState<RichTextDocument>(initialDoc);
+  const documentRef = useRef(content);
+  const writeState = useRef<EditorWriteState>('idle');
+  const [writeAcknowledged, setWriteAcknowledged] = useState(false);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [categories, setCategories] = useState<BlogCategory[]>([]);
-
+  const [categoryState, setCategoryState] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading');
+  const [categoryRetry, setCategoryRetry] = useState(0);
+  const { token, tenantSlug, tenantId } = gqlOpts;
   useEffect(() => {
     let active = true;
-    listAllBlogCategories({ locale: defaultLocale }, gqlOpts)
-      .then((res) => {
+    setCategoryState('loading');
+    listAllBlogCategories({ locale }, { token, tenantSlug, tenantId, locale })
+      .then((rows) => {
         if (active) {
-          setCategories(res);
+          setCategories(rows);
+          setCategoryState('ready');
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setCategoryState('error');
+      });
     return () => {
       active = false;
     };
-  }, [defaultLocale, gqlOpts]);
-
-  const categoryOptions: FormOption[] = useMemo(() => {
-    const opts: FormOption[] = [{ label: 'None (Uncategorized)', value: '__none__' }];
-    categories.forEach((cat) => {
-      opts.push({ label: cat.name, value: cat.id });
+  }, [locale, token, tenantSlug, tenantId, categoryRetry]);
+  const options: FormOption[] = [
+    { label: t('form.uncategorized'), value: '__none__' },
+    ...categories.map((category) => ({
+      label: category.name,
+      value: category.id
+    }))
+  ];
+  if (
+    initialData?.categoryId &&
+    !categories.some((row) => row.id === initialData.categoryId)
+  ) {
+    options.push({
+      label: initialData.categoryName ?? t('editor.currentCategory'),
+      value: initialData.categoryId
     });
-    return opts;
-  }, [categories]);
-
-  const defaultValues: FormValues = {
-    title: initialData?.title ?? '',
-    slug: initialData?.slug ?? '',
-    locale: defaultLocale,
-    categoryId: initialData?.categoryId ?? '__none__',
-    channelSlugs: initialData?.channelSlugs?.join(', ') ?? '',
-    excerpt: initialData?.excerpt ?? '',
-    tags: initialData?.tags?.join(', ') ?? '',
-    featuredImageUrl: initialData?.featuredImageUrl ?? '',
-    seoTitle: initialData?.seoTitle ?? '',
-    seoDescription: initialData?.seoDescription ?? '',
-    publish: false,
-    scheduledAt: initialData?.scheduledAt
-      ? toLocalDateTimeInput(initialData.scheduledAt)
-      : ''
-  };
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema) as Resolver<FormValues>,
-    defaultValues
+  }
+  const form = useForm<PostEditorValues>({
+    defaultValues: {
+      title: targetCopy.title,
+      slug: initialData?.slug ?? '',
+      locale,
+      categoryId: initialData?.categoryId ?? '__none__',
+      channelSlugs: initialData?.channelSlugs?.join(', ') ?? '',
+      excerpt: targetCopy.excerpt,
+      tags: initialData?.tags.join(', ') ?? '',
+      featuredImageUrl: initialData?.featuredImageUrl ?? '',
+      seoTitle: targetCopy.seoTitle,
+      seoDescription: targetCopy.seoDescription,
+      publish: false,
+      scheduledAt: initialData?.scheduledAt ?? ''
+    }
   });
   const contentLocale = form.watch('locale');
-  const featuredImageUrl = form.watch('featuredImageUrl');
   const publishNow = form.watch('publish');
-
-  // The owner rejects a schedule together with `publish: true`, so the date is
-  // cleared as soon as the switch is turned on.
+  const imageSource = postImageSource(form.watch('featuredImageUrl'));
   useEffect(() => {
-    if (publishNow) {
-      form.setValue('scheduledAt', '');
-    }
+    if (publishNow) form.setValue('scheduledAt', '');
   }, [publishNow, form]);
-
-  async function onSubmit(values: FormValues) {
-    const tags = values.tags
-      ? values.tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
-
-    const channelSlugs = values.channelSlugs
-      ? values.channelSlugs
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
-    // The owner accepts a schedule only on a draft and rejects a schedule
-    // together with `publish: true`, so a schedule is sent only where it is
-    // valid. Everywhere else the key is omitted and the stored value is kept.
-    const scheduleValue = values.scheduledAt
-      ? new Date(values.scheduledAt).toISOString()
-      : undefined;
-    const updateSchedule = initialData
-      ? initialData.status === 'DRAFT'
-        ? (scheduleValue ?? null)
-        : undefined
-      : undefined;
-    const createSchedule = values.publish ? undefined : scheduleValue;
-
-    const validation = validateRichTextDocument(
-      content,
-      getRichTextProfile('article')
-    );
-    if (!validation.valid || !richTextDocumentHasText(content)) {
-      toast.error(validation.error ?? 'Post content is required.');
-      return;
-    }
-
+  async function onSubmit(values: PostEditorValues) {
+    if (!canSubmitEditor(writeState.current)) return;
+    let acknowledged = false;
     try {
-      if (initialData) {
-        await updatePost(
-          initialData.id,
-          {
-            title: values.title,
-            slug: values.slug || undefined,
-            locale: initialData.requestedLocale,
-            content,
-            excerpt: values.excerpt?.trim() || null,
-            tags,
-            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : null,
-            channelSlugs,
-            featuredImageUrl: values.featuredImageUrl?.trim() || null,
-            seoTitle: values.seoTitle?.trim() || null,
-            seoDescription: values.seoDescription?.trim() || null,
-            version: initialData.version,
-            scheduledAt: updateSchedule
-          },
-          gqlOpts
+      const command = buildPostCommand(
+        values,
+        documentRef.current,
+        initialData,
+        emptyRichTextDocument(),
+        richTextDocumentHasText
+      );
+      if (command.input.content) {
+        const validation = validateRichTextDocument(
+          command.input.content,
+          getRichTextProfile('article')
         );
-        toast.success('Post updated');
-      } else {
-        await createPost(
-          {
-            title: values.title,
-            slug: values.slug || undefined,
-            locale: values.locale,
-            content,
-            excerpt: values.excerpt || undefined,
-            publish: values.publish,
-            tags,
-            categoryId: values.categoryId && values.categoryId !== '__none__' ? values.categoryId : undefined,
-            channelSlugs: channelSlugs.length > 0 ? channelSlugs : undefined,
-            featuredImageUrl: values.featuredImageUrl || undefined,
-            seoTitle: values.seoTitle || undefined,
-            seoDescription: values.seoDescription || undefined,
-            scheduledAt: createSchedule
-          },
-          gqlOpts
-        );
-        toast.success('Post created');
+        if (!validation.valid) {
+          form.setError('root', { message: t('editor.requiredCopy') });
+          return;
+        }
       }
+      writeState.current = 'saving';
+      if (command.kind === 'update' && initialData)
+        await updatePost(initialData.id, command.input, gqlOpts);
+      else if (command.kind === 'create')
+        await createPost(command.input, gqlOpts);
+      acknowledged = true;
+    } catch (error) {
+      if (!active.current) return;
+      if (error instanceof EditorValidationError) {
+        const messages = {
+          requiredCopy: t('editor.requiredCopy'),
+          localeChanged: t('editor.localeChanged'),
+          invalidSchedule: t('editor.invalidSchedule'),
+          invalidImage: t('editor.invalidImage'),
+          slugRequired: t('editor.slugRequired'),
+          revisionMissing: t('editor.revisionMissing')
+        };
+        form.setError('root', { message: messages[error.code] });
+      } else toast.error(t('error.savePost'));
+    } finally {
+      writeState.current = completeEditorWrite(acknowledged);
+    }
+    if (acknowledged && active.current) {
+      setWriteAcknowledged(true);
+      toast.success(t('editor.saved'));
+      // Navigation is independent of the acknowledged owner write.
       router.push('/dashboard/blog');
       router.refresh();
-    } catch {
-      toast.error('Failed to save post');
     }
   }
-
   return (
     <>
       <Card className='mx-auto w-full'>
-      <CardHeader>
-        <CardTitle className='text-left text-2xl font-bold'>
-          {pageTitle}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Form
-          form={form}
-          onSubmit={form.handleSubmit(onSubmit)}
-          className='space-y-8'
-        >
-          <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
+        <CardHeader>
+          <CardTitle>{pageTitle}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {initialData &&
+            initialData.requestedLocale !== initialData.effectiveLocale && (
+              <Alert>
+                <AlertDescription>
+                  <p>{t('editor.fallbackNotice')}</p>
+                  <p lang={initialData.effectiveLocale}>{initialData.title}</p>
+                  <p lang={initialData.effectiveLocale}>
+                    {initialData.contentPlainText}
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
+          <Form
+            form={form}
+            onSubmit={form.handleSubmit(onSubmit)}
+            className='space-y-6'
+          >
             <FormInput
               control={form.control}
               name='title'
-              label='Title'
-              placeholder='Enter post title'
-              required
+              label={t('form.title')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
             <FormInput
               control={form.control}
               name='slug'
-              label='Slug'
-              placeholder='auto-generated-if-empty'
+              label={t('form.slug')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-          </div>
-
-          <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput
               control={form.control}
               name='locale'
-              label='Locale'
-              placeholder='Host locale'
-              description={initialData ? 'Translation locale is fixed for this edit. Open the target locale before editing its content.' : undefined}
-              disabled={Boolean(initialData)}
-              required
+              label={t('form.locale')}
+              disabled={
+                Boolean(initialData) ||
+                form.formState.isSubmitting ||
+                writeAcknowledged
+              }
             />
             <FormInput
               control={form.control}
               name='tags'
-              label='Tags'
-              placeholder='rust, blog, news'
+              label={t('form.tags')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-          </div>
-
-          <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormSelect
               control={form.control}
               name='categoryId'
-              label='Category'
-              options={categoryOptions}
-              placeholder='Select category'
+              label={t('form.category')}
+              options={options}
+              disabled={
+                categoryState !== 'ready' ||
+                form.formState.isSubmitting ||
+                writeAcknowledged
+              }
             />
+            {categoryState === 'error' && (
+              <Alert variant='destructive'>
+                <AlertDescription>
+                  {t('editor.categoriesUnavailable')}{' '}
+                  <Button
+                    type='button'
+                    onClick={() => setCategoryRetry((value) => value + 1)}
+                  >
+                    {t('editor.retry')}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
             <FormInput
               control={form.control}
               name='channelSlugs'
-              label='Channels'
-              placeholder='e.g. default, mobile'
-              description='Comma-separated channel slugs'
+              label={t('form.channels')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-          </div>
-
-          <RichTextEditor
-            label='Content'
-            profile='article'
-            value={content}
-            contentLocale={contentLocale}
-            disabled={form.formState.isSubmitting}
-            onChange={setContent}
-          />
-
-          <FormTextarea
-            control={form.control}
-            name='excerpt'
-            label='Excerpt'
-            placeholder='Short summary'
-            config={{ rows: 3, maxLength: 1000, showCharCount: true }}
-          />
-
-          <div className='space-y-2'>
+            <RichTextEditor
+              label={t('form.content')}
+              profile='article'
+              value={content}
+              contentLocale={contentLocale}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
+              onChange={(document) => {
+                documentRef.current = document;
+                setContent(document);
+              }}
+            />
+            <FormTextarea
+              control={form.control}
+              name='excerpt'
+              label={t('form.excerpt')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
+            />
             <FormInput
               control={form.control}
               name='featuredImageUrl'
-              label='Featured Image URL'
-              placeholder='https://...'
+              label={t('form.featuredImage')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-            {featuredImageUrl && (
-              <div className='bg-muted relative mt-2 h-44 max-w-sm overflow-hidden rounded-md border'>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={featuredImageUrl}
-                  alt='Featured image preview'
-                  className='h-full w-full object-cover'
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).classList.add('hidden');
-                  }}
-                />
-              </div>
+            {imageSource && (
+              <Image
+                src={imageSource}
+                alt={t('editor.imagePreview')}
+                width={560}
+                height={320}
+                unoptimized
+                className='max-w-sm rounded-md object-cover'
+              />
             )}
-          </div>
-
-          <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput
               control={form.control}
               name='seoTitle'
-              label='SEO Title'
-              placeholder='SEO title override'
+              label={t('form.seoTitle')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-            <FormInput
+            <FormTextarea
               control={form.control}
               name='seoDescription'
-              label='SEO Description'
-              placeholder='SEO meta description'
+              label={t('form.seoDescription')}
+              disabled={form.formState.isSubmitting || writeAcknowledged}
             />
-          </div>
-
-          {!initialData && (
-            <FormSwitch
-              control={form.control}
-              name='publish'
-              label='Publish immediately'
-            />
-          )}
-
-          <div>
-            <label className='mb-1 block text-sm font-medium'>
-              Schedule publication (optional)
-            </label>
-            <input
-              type='datetime-local'
-              className='border-input bg-background w-full rounded-md border px-3 py-2 text-sm'
-              {...form.register('scheduledAt')}
-              disabled={publishNow}
-            />
-            <p className='text-muted-foreground mt-1 text-xs'>
-              Leave empty to save as draft. Set a future date to schedule
-              automatic publication.
-            </p>
-          </div>
-
-          <Button type='submit' disabled={form.formState.isSubmitting}>
-            {initialData ? 'Update Post' : 'Create Post'}
-          </Button>
-        </Form>
-      </CardContent>
+            {!initialData && (
+              <FormSwitch
+                control={form.control}
+                name='publish'
+                label={t('form.publishNow')}
+                disabled={form.formState.isSubmitting || writeAcknowledged}
+              />
+            )}
+            {(!initialData || initialData.status === 'DRAFT') && (
+              <FormInput
+                control={form.control}
+                name='scheduledAt'
+                label={t('form.scheduledAt')}
+                description={t('editor.scheduleHelp')}
+                disabled={
+                  publishNow || form.formState.isSubmitting || writeAcknowledged
+                }
+              />
+            )}
+            {form.formState.errors.root?.message && (
+              <Alert variant='destructive'>
+                <AlertDescription>
+                  {form.formState.errors.root.message}
+                </AlertDescription>
+              </Alert>
+            )}
+            <Button
+              type='submit'
+              disabled={form.formState.isSubmitting || writeAcknowledged}
+            >
+              {initialData ? t('form.update') : t('form.create')}
+            </Button>
+          </Form>
+        </CardContent>
       </Card>
       {initialData && (
         <BlogModerationPanel
-          key={initialData.id}
           postId={initialData.id}
           locale={initialData.requestedLocale}
           gqlOpts={gqlOpts}

@@ -1043,7 +1043,6 @@ blog-categories-loadError = Failed to load categories
 blog-categories-deleted = Category deleted
 blog-categories-deleteError = Failed to delete category
 blog-categories-search = Search categories...
-blog-categories-create = New Category
 blog-categories-title = Categories
 blog-categories-subtitle = Organize blog posts into structured taxonomy categories
 blog-categories-name = Name
@@ -1146,3 +1145,146 @@ blog-preview-linkCopied = Preview link copied
 blog-preview-tokenCopied = Token copied
 blog-preview-expires = Expires { $at }. Keep this link private.
 blog-preview-lifetimeHours = { $hours } hours
+blog-error-savePost = Failed to save post
+
+blog-form-body = Body
+
+blog-form-content = Content
+
+blog-form-create = Create post
+
+blog-form-createNewInstead = Create new instead
+
+blog-form-createTitle = Create post
+
+blog-form-editTitle = Edit post
+
+blog-form-editingBanner = Editing post { $id }
+
+blog-form-excerpt = Excerpt
+
+blog-form-locale = Locale
+
+blog-form-publishNow = Publish immediately
+
+blog-form-saving = Saving...
+
+blog-form-slug = Slug
+
+blog-form-subtitle = The package owns both the list and the form. apps/admin only hosts the module route.
+
+blog-form-tags = Tags
+
+blog-form-tagsPlaceholder = news, launch, release
+
+blog-form-title = Title
+
+blog-form-update = Update post
+
+blog-form-category = Category
+
+blog-form-uncategorized = Uncategorized
+
+blog-form-channels = Channels (comma separated; empty = all channels)
+
+blog-form-featuredImage = Featured image URL
+
+blog-form-seoTitle = SEO title (Blog default)
+
+blog-form-seoDescription = SEO description (Blog default)
+
+blog-form-scheduledAt = Schedule (RFC 3339 with timezone)
+
+
+
+blog-categories-searchPlaceholder = Search categories...
+
+blog-categories-new = New Category
+
+blog-categories-nameHeader = Name
+
+blog-categories-slugHeader = Slug
+
+blog-categories-localeHeader = Locale
+
+blog-categories-orderHeader = Order
+
+blog-categories-actionsHeader = Actions
+
+blog-categories-edit = Edit
+
+blog-categories-delete = Delete
+
+blog-categories-confirmDelete = Confirm delete
+
+
+blog-categories-createNewInstead = Create new instead
+
+blog-categories-reset = Reset
+
+blog-categories-create = Create category
+
+blog-categories-update = Update category
+
+blog-categories-editing = Editing category
+
+
+blog-categories-error-load = Failed to load categories
+
+blog-categories-error-save = Failed to save category
+
+blog-categories-error-delete = Failed to delete category
+
+blog-categories-error-invalidName = Enter a category name of 1 to 120 characters.
+
+blog-categories-error-invalidPosition = Category order must be a non-negative number.
+
+blog-categories-form-title = Category
+
+blog-categories-form-subtitle = Create a category or edit the selected one.
+
+blog-categories-form-name = Name
+
+blog-categories-form-slug = Slug (optional)
+
+blog-categories-form-description = Description
+
+blog-categories-form-parent = Parent category
+
+blog-categories-form-root = Root (no parent)
+
+blog-categories-form-position = Order
+
+blog-editor-saved = Post saved.
+
+blog-editor-savedReloadFailed = Post saved. Reload the post before editing again; its current snapshot could not be loaded.
+
+blog-editor-fallbackNotice = The requested translation does not exist. The source below is read-only; enter target-language title and content to create it.
+
+blog-editor-categoryFallbackNotice = The requested translation does not exist. The source below is read-only; enter a name in the target language to create it.
+
+blog-editor-retry = Retry
+
+blog-editor-currentCategory = Current category
+
+blog-editor-requiredCopy = Enter the target-language title and content before creating a translation.
+
+blog-editor-localeChanged = The content locale changed. Reload the target locale before saving.
+
+blog-editor-invalidSchedule = Enter a valid RFC 3339 date and time with a timezone offset.
+
+blog-editor-invalidImage = Enter an HTTP/HTTPS URL or a root-relative image path.
+
+blog-editor-revisionMissing = The post revision is missing. Reload before saving.
+
+blog-editor-categoriesUnavailable = Categories could not be loaded. The current assignment is preserved; retry to edit it.
+
+blog-editor-scheduleHelp = Use RFC 3339 with an explicit timezone, for example 2026-12-01T10:00:00+03:00.
+
+blog-categories-created = Category created.
+
+blog-categories-updated = Category updated.
+
+blog-editor-imagePreview = Featured image preview
+
+blog-editor-slugRequired = Canonical slug is required

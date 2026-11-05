@@ -8,7 +8,7 @@ use crate::core::BlogPostAdminSort;
 use crate::model::{
     BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate,
     BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
-    BlogPreviewToken,
+    BlogPostUpdate, BlogPreviewToken,
 };
 use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 
@@ -87,7 +87,7 @@ pub async fn create_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<String, ApiError> {
     let native_draft = draft.clone();
     execute_selected_transport(
         "blog/admin/create-post",
@@ -102,15 +102,15 @@ pub async fn update_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ApiError> {
+    update: BlogPostUpdate,
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_draft = draft.clone();
+    let native_update = update.clone();
     execute_selected_transport(
         "blog/admin/update-post",
         selected_transport_path(),
-        move || native_server_adapter::update_post(native_id, native_draft),
-        move || graphql_adapter::update_post(token, tenant_slug, id, draft),
+        move || native_server_adapter::update_post(native_id, native_update),
+        move || graphql_adapter::update_post(token, tenant_slug, id, update),
     )
     .await
 }
@@ -119,15 +119,13 @@ pub async fn publish_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/publish-post",
         selected_transport_path(),
-        move || native_server_adapter::publish_post(native_id, native_locale),
-        move || graphql_adapter::publish_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::publish_post(native_id),
+        move || graphql_adapter::publish_post(token, tenant_slug, id),
     )
     .await
 }
@@ -136,15 +134,13 @@ pub async fn unpublish_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/unpublish-post",
         selected_transport_path(),
-        move || native_server_adapter::unpublish_post(native_id, native_locale),
-        move || graphql_adapter::unpublish_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::unpublish_post(native_id),
+        move || graphql_adapter::unpublish_post(token, tenant_slug, id),
     )
     .await
 }
@@ -153,15 +149,13 @@ pub async fn pin_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/pin-post",
         selected_transport_path(),
-        move || native_server_adapter::pin_post(native_id, native_locale),
-        move || graphql_adapter::pin_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::pin_post(native_id),
+        move || graphql_adapter::pin_post(token, tenant_slug, id),
     )
     .await
 }
@@ -170,15 +164,13 @@ pub async fn unpin_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/unpin-post",
         selected_transport_path(),
-        move || native_server_adapter::unpin_post(native_id, native_locale),
-        move || graphql_adapter::unpin_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::unpin_post(native_id),
+        move || graphql_adapter::unpin_post(token, tenant_slug, id),
     )
     .await
 }
@@ -187,15 +179,13 @@ pub async fn archive_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/archive-post",
         selected_transport_path(),
-        move || native_server_adapter::archive_post(native_id, native_locale),
-        move || graphql_adapter::archive_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::archive_post(native_id),
+        move || graphql_adapter::archive_post(token, tenant_slug, id),
     )
     .await
 }
@@ -204,15 +194,13 @@ pub async fn restore_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let native_id = id.clone();
-    let native_locale = locale.clone();
     execute_selected_transport(
         "blog/admin/restore-post",
         selected_transport_path(),
-        move || native_server_adapter::restore_post(native_id, native_locale),
-        move || graphql_adapter::restore_post(token, tenant_slug, id, locale),
+        move || native_server_adapter::restore_post(native_id),
+        move || graphql_adapter::restore_post(token, tenant_slug, id),
     )
     .await
 }

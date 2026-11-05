@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::core;
 use crate::model::{
     BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate, BlogPostDetail,
-    BlogPostDraft, BlogPostList, BlogPreviewToken,
+    BlogPostDraft, BlogPostList, BlogPostUpdate, BlogPreviewToken,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -124,7 +124,7 @@ struct CreatePostVariables {
 #[derive(Debug, Serialize)]
 struct UpdatePostVariables {
     id: String,
-    input: UpdatePostInput,
+    input: BlogPostUpdate,
 }
 
 #[derive(Debug, Serialize)]
@@ -148,29 +148,6 @@ struct CreatePostInput {
     seo_description: Option<String>,
     #[serde(rename = "scheduledAt")]
     scheduled_at: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdatePostInput {
-    locale: Option<String>,
-    title: Option<String>,
-    content: Option<RichTextDocument>,
-    excerpt: Option<String>,
-    slug: Option<String>,
-    tags: Option<Vec<String>>,
-    #[serde(rename = "categoryId")]
-    category_id: Option<String>,
-    #[serde(rename = "channelSlugs")]
-    channel_slugs: Vec<String>,
-    #[serde(rename = "featuredImageUrl")]
-    featured_image_url: Option<String>,
-    #[serde(rename = "seoTitle")]
-    seo_title: Option<String>,
-    #[serde(rename = "seoDescription")]
-    seo_description: Option<String>,
-    #[serde(rename = "scheduledAt", skip_serializing_if = "Option::is_none")]
-    scheduled_at: Option<Option<String>>,
-    version: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -358,7 +335,7 @@ pub async fn create_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<String, ApiError> {
     let created: CreatePostResponse = request(
         CREATE_POST_MUTATION,
         CreatePostVariables {
@@ -383,66 +360,37 @@ pub async fn create_post(
     )
     .await?;
 
-    fetch_post(token, tenant_slug, created.create_post, Some(draft.locale))
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Created post could not be reloaded".into()))
+    Ok(created.create_post)
 }
 
 pub async fn update_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    draft: BlogPostDraft,
-) -> Result<BlogPostDetail, ApiError> {
+    update: BlogPostUpdate,
+) -> Result<(), ApiError> {
     let updated: BoolMutationResponse = request(
         UPDATE_POST_MUTATION,
-        UpdatePostVariables {
-            id: id.clone(),
-            input: UpdatePostInput {
-                locale: Some(draft.locale.clone()),
-                title: Some(draft.title),
-                content: Some(draft.content),
-                excerpt: core::optional_text(draft.excerpt.as_str()),
-                // An empty slug must not be sent: the owner treats a present but
-                // blank slug as a validation error instead of regenerating it
-                // from the title, so a cleared field would block the save.
-                slug: core::optional_text(draft.slug.as_str()),
-                tags: Some(draft.tags),
-                category_id: draft.category_id,
-                channel_slugs: draft.channel_slugs,
-                featured_image_url: draft.featured_image_url,
-                seo_title: draft.seo_title,
-                seo_description: draft.seo_description,
-                scheduled_at: draft.schedule_editable.then_some(draft.scheduled_at),
-                version: draft.version.ok_or_else(|| {
-                    GraphqlHttpError::Graphql(
-                        "Blog post revision is missing; reload before saving".into(),
-                    )
-                })?,
-            },
-        },
-        token.clone(),
-        tenant_slug.clone(),
+        UpdatePostVariables { id, input: update },
+        token,
+        tenant_slug,
     )
     .await?;
-
     if !updated.update_post {
         return Err(GraphqlHttpError::Graphql(
             "Update post returned false".into(),
         ));
     }
-
-    fetch_post(token, tenant_slug, id, Some(draft.locale))
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Updated post could not be reloaded".into()))
+    // The mutation acknowledgement is independent of a subsequent detail read.
+    // A read failure must never turn a committed write into a failed save.
+    Ok(())
 }
 
 pub async fn publish_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         PUBLISH_POST_MUTATION,
         PostIdVariables { id: id.clone() },
@@ -457,17 +405,14 @@ pub async fn publish_post(
         ));
     }
 
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Published post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn unpublish_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         UNPUBLISH_POST_MUTATION,
         PostIdVariables { id: id.clone() },
@@ -482,17 +427,14 @@ pub async fn unpublish_post(
         ));
     }
 
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Unpublished post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn pin_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         PIN_POST_MUTATION,
         PostIdVariables { id: id.clone() },
@@ -503,17 +445,14 @@ pub async fn pin_post(
     if !response.pin_post {
         return Err(GraphqlHttpError::Graphql("Pin post returned false".into()));
     }
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Pinned post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn unpin_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         UNPIN_POST_MUTATION,
         PostIdVariables { id: id.clone() },
@@ -526,17 +465,14 @@ pub async fn unpin_post(
             "Unpin post returned false".into(),
         ));
     }
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Unpinned post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn archive_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         ARCHIVE_POST_MUTATION,
         ArchivePostVariables {
@@ -554,17 +490,14 @@ pub async fn archive_post(
         ));
     }
 
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Archived post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn restore_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    locale: Option<String>,
-) -> Result<BlogPostDetail, ApiError> {
+) -> Result<(), ApiError> {
     let response: BoolMutationResponse = request(
         RESTORE_POST_MUTATION,
         PostIdVariables { id: id.clone() },
@@ -579,9 +512,7 @@ pub async fn restore_post(
         ));
     }
 
-    fetch_post(token, tenant_slug, id, locale)
-        .await?
-        .ok_or_else(|| GraphqlHttpError::Graphql("Restored post could not be reloaded".into()))
+    Ok(())
 }
 
 pub async fn delete_post(
