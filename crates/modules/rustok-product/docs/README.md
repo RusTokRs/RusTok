@@ -205,11 +205,34 @@ Cargo checks remain a targeted/live evidence step before promoting product FBA t
 
 - [README crate](../README.md)
 - [README admin UI](../admin/README.md)
+- [`rustok-product` implementation plan](./implementation-plan.md)
 - [Product write boundary](write-boundary.md)
 - [Attribute/option definition lifecycle](write-boundary.md#attribute-and-option-definition-lifecycle) — selected-owner receipt command, stable UUIDs, bounded refusals and Next/Leptos exact-request recovery; regression sources and runtime gates are unexecuted.
 - [Axis preview, atomic application and standalone SKU recovery](variant-axis-reconfiguration.md) — source implementation of Next/Leptos immutable full-request recovery with explicit unexecuted release gates.
 - [Bounded sparse combination browsing and explicit tuple picking](variant-combinations.md) — local projections over canonical configuration/membership; no new writer, price or stock generation, with unexecuted release gates.
 - [Product unpublish and archive lifecycle events](product-unpublish-archive-events.md)
+- [Media reference retention](media-reference-retention.md)
+- [Product lifecycle collaboration](product-lifecycle-collaboration.md)
+- [Product public error diagnostic safety](product-public-error-diagnostic-safety.md)
+- [Category locale contract](category-locale-contract.md)
+- [Category taxonomy binding](category-taxonomy-binding.md)
+- [Variant nullable patches](variant-nullable-patches.md)
+- [Reference hardening current](reference-hardening-current.md)
+- [Admin catalog search options error safety](admin-catalog-search-options-error-safety.md)
+- [Admin category GraphQL read error safety](admin-category-graphql-read-error-safety.md)
+- [Admin fallback GraphQL mutation error safety](admin-fallback-graphql-mutation-error-safety.md)
+- [Admin primary GraphQL mutation error safety](admin-primary-graphql-mutation-error-safety.md)
+- [Admin primary GraphQL read error safety](admin-primary-graphql-read-error-safety.md)
+- [Storefront GraphQL error safety](storefront-graphql-error-safety.md)
+- [Index graph projection ledger](index-graph-projection-ledger.md)
+- [Index locale refresh ledger](index-locale-refresh-ledger.md)
+- [Index refresh canonical writer](index-refresh-canonical-writer.md)
+- [Index refresh event family](index-refresh-event-family.md)
+- [Index refresh relay step](index-refresh-relay-step.md)
+- [Index sales channel relation convergence](index-sales-channel-relation-convergence.md)
+- [Index sales channel relation freshness](index-sales-channel-relation-freshness.md)
+- [Index sales channel relation ledger](index-sales-channel-relation-ledger.md)
+- [Index variant refresh ledger](index-variant-refresh-ledger.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
 
 ## Value-write serialization and lifecycle-only editing

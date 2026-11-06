@@ -93,7 +93,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | [x] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Reconciled multi-framework design tokens (base.css, tokens.json, Flutter tokens) and cross-framework UI components. Verified FFA client parity (Leptos, Next.js, Flutter). verify:ui:parity and verify:ffa:ui:migration:docs 100% PASS. |
 | [x] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 11 | 2,126 | 2026-11-06 | Modernized verification documentation. Purged 2 obsolete July 2026 hardening diaries (PLATFORM_HARDENING_STATUS_2026-07-18 and PLATFORM_HARDENING_IMPLEMENTATION_PLAN). Aligned links with living test gates. verify:docs: 100% PASS. |
 | [x] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Audited all 31 `In progress` ADRs against code; promoted 19 fully implemented decisions to `Implemented` across migrations, RBAC, OAuth revocation fence, search projection driver, shipment stock ports, refund valuation, order shipment status, order cancellation sagas, forum feeds, pre-moderation, and site symbols. Triage & relations verified; node scripts/verify/verify-adrs.mjs passed for 177 decisions. |
-| [ ] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 180 | 22,400 | None | Audit READMEs and CRATE_APIs for `rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`. |
+| [x] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 208 | 24,150 | 2026-11-06 | Audited all 208 markdown files across 11 commerce crates (rustok-cart, rustok-commerce, rustok-pricing, rustok-payment, rustok-order, rustok-fulfillment, rustok-inventory, rustok-tax, rustok-region, rustok-brand, rustok-product). Fixed broken anchor slugs in rustok-product/CRATE_API.md and admin/CRATE_API.md. Reconciled and indexed 88 architecture/diagnostic specifications in docs/README.md across all 10 modules. 642 links, 0 broken links, 0 broken anchors. |
 | [ ] | **[Domain Modules: Content, Pages & Forum](../../crates/modules/rustok-content/README.md)** | `modules-content` | 165 | 19,800 | None | Audit READMEs and CRATE_APIs for `rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`. |
 | [ ] | **[Domain Modules: Platform Capabilities](../../crates/modules/rustok-auth/README.md)** | `modules-platform` | 140 | 16,500 | None | Audit READMEs and CRATE_APIs for `rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`. |
 | [ ] | **[Domain Modules: Marketplace & Multi-Tenancy](../../crates/modules/rustok-marketplace/README.md)** | `modules-market` | 110 | 13,200 | None | Audit READMEs and CRATE_APIs for `rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`. |
@@ -222,12 +222,33 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-08..DAR-15: Domain Modules Documentation Audit (by Clusters)
+### DAR-08: Commerce & Checkout Cluster
 
-**Scope:** Documentation across 82 module directories in `crates/modules/` and `docs/modules/`.
+**Scope:** Documentation across 11 commerce crates in `crates/modules/` (208 files, 24,150 LOC).
+**Goal:** Verify and synchronize domain contracts, CRATE_API, entity models, port interfaces, and diagnostic specifications across all commerce modules.
+
+- [x] **DAR-08.1: Audit and Reconcile Contract Anchors.** Corrected anchor slugification mismatch in `crates/modules/rustok-product/CRATE_API.md` and `crates/modules/rustok-product/admin/CRATE_API.md` (`#known-limitations--pending-implementation` -> `#known-limitations-pending-implementation`).
+- [x] **DAR-08.2: Index and Reconcile Unreferenced Diagnostic Specifications.** Reconciled and linked 88 previously unindexed architecture, compensation, and error-safety specifications into their respective `docs/README.md` across 10 modules:
+  - `rustok-cart/docs/README.md`: linked checkout admission context and storefront error-safety docs.
+  - `rustok-pricing/docs/README.md`: linked pricing implementation plan, owner port error safety, and local context specs.
+  - `rustok-inventory/docs/README.md`: linked inventory implementation plan, port diagnostics, transport error safety, and reservation contexts.
+  - `rustok-order/docs/README.md`: linked order read port specs, checkout recovery diagnostics, and storefront runtime diagnostics.
+  - `rustok-payment/docs/README.md`: linked payment collection contexts, execution diagnostic safety, and storefront error safety.
+  - `rustok-fulfillment/docs/README.md`: linked fulfillment lifecycle contracts, shipping selection diagnostics, and storefront error safety.
+  - `rustok-tax/docs/README.md`: linked tax implementation plan and calculation policy contexts.
+  - `rustok-region/docs/README.md`: linked region owner port error safety and storefront native error safety.
+  - `rustok-commerce/docs/README.md`: linked all 33 checkout compensation, admin diagnostic, and GraphQL query safety specifications.
+  - `rustok-product/docs/README.md`: linked all 23 attribute lifecycle, variant axis, and index ledger specifications.
+- [x] **DAR-08.3: Verify Cross-Module Link & Anchor Integrity.** Audited all 208 markdown files and 642 internal links/anchors across the entire commerce cluster. Verified zero broken links and zero dangling anchors.
+- [x] **DAR-08.4: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-09..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+
+**Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
 **Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
 
-- [ ] **DAR-08: Commerce & Checkout Cluster** (`rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`).
 - [ ] **DAR-09: Content, Pages & Forum Cluster** (`rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`).
 - [ ] **DAR-10: Platform Capabilities Cluster** (`rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`).
 - [ ] **DAR-11: Marketplace & Multi-Tenancy Cluster** (`rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`).

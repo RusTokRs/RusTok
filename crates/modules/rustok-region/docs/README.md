@@ -73,3 +73,5 @@ defines this shared-database contract.
 - [README crate](../README.md)
 - [`rustok-region` implementation plan](./implementation-plan.md)
 - [`commerce` umbrella plan](../../rustok-commerce/docs/implementation-plan.md)
+- [Region Owner Port Error Safety](./region-owner-port-error-safety.md)
+- [Storefront Native Error Safety](./storefront-native-error-safety.md)

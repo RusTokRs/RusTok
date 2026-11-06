@@ -133,7 +133,7 @@ create/receipt boundary. Sparse selected tuples are valid; there is no implicit 
 expansion or temporary axis-less default SKU. Variant UUIDs remain cross-owner identities.
 Product typed EAV writes accept only `product`/`both` scope, not variant-only definitions.
 
-See [Known Limitations / Pending Implementation](README.md#known-limitations--pending-implementation)
+See [Known Limitations / Pending Implementation](README.md#known-limitations-pending-implementation)
 and the [implementation plan](docs/implementation-plan.md#variant-axis-continuation-2026-10-29)
 for source-only verification, unsupported/unverified writers and remaining rollout work.
 

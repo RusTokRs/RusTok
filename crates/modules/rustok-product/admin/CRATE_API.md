@@ -69,7 +69,7 @@ projection and does not hydrate/rebase document controls. The newly mounted pane
 expose destructive Variant retirement.
 
 Compilation/mounted execution, remaining copy localization and durable browser pending-request
-recovery for lifecycle commands other than axes and standalone creation remain outstanding; see [Known Limitations / Pending Implementation](README.md#known-limitations--pending-implementation).
+recovery for lifecycle commands other than axes and standalone creation remain outstanding; see [Known Limitations / Pending Implementation](README.md#known-limitations-pending-implementation).
 
 
 ## Existing-axis preview and recovery

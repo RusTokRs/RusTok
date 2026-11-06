@@ -31,6 +31,7 @@
 
 - [Tax calculation policy context](./calculation-port-policy-context.md)
 - [Tax calculation local outcome context](./calculation-local-context.md)
+- [Implementation plan for `rustok-tax`](./implementation-plan.md)
 
 ## File map
 

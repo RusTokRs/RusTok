@@ -53,6 +53,49 @@ for checkout, REST/GraphQL transport and split-module integration in addition to
 - [Admin UI package](../admin/README.md)
 - [Storefront UI package](../storefront/README.md)
 
+### Checkout & Compensation Architecture Specifications
+
+- [Checkout Compensation Cart Context](./checkout-compensation-cart-context.md)
+- [Checkout Compensation Inventory Context](./checkout-compensation-inventory-context.md)
+- [Checkout Compensation Public Envelope Safety](./checkout-compensation-public-envelope-safety.md)
+- [Checkout Fulfillment Stage Context](./checkout-fulfillment-stage-context.md)
+- [Checkout Order Compensation Error Safety](./checkout-order-compensation-error-safety.md)
+- [Checkout Order Stage Context](./checkout-order-stage-context.md)
+- [Checkout Payment Compensation Error Safety](./checkout-payment-compensation-error-safety.md)
+- [Checkout Payment Stage Context](./checkout-payment-stage-context.md)
+- [Storefront Checkout Completion Command Error Safety](./storefront-checkout-completion-command-error-safety.md)
+- [Storefront Checkout HTTP Diagnostic Safety](./storefront-checkout-http-diagnostic-safety.md)
+- [Storefront Checkout Runtime Error Safety](./storefront-checkout-runtime-error-safety.md)
+- [Storefront Payment Collection Command Error Safety](./storefront-payment-collection-command-error-safety.md)
+- [Storefront Shipping Option Command Error Safety](./storefront-shipping-option-command-error-safety.md)
+- [Storefront Request Context Regression](./storefront-request-context-regression.md)
+
+### Admin Diagnostic & Transport Error Safety Specifications
+
+- [Admin Checkout Operation Diagnostic Safety](./admin-checkout-operation-diagnostic-safety.md)
+- [Admin GraphQL Error Safety](./admin-graphql-error-safety.md)
+- [Admin GraphQL Transport Error Safety](./admin-graphql-transport-error-safety.md)
+- [Admin Order Change Client Transport Error Safety](./admin-order-change-client-transport-error-safety.md)
+- [Admin Order Change Native Error Safety](./admin-order-change-native-error-safety.md)
+- [Admin Order Mutation Diagnostic Safety](./admin-order-mutation-diagnostic-safety.md)
+- [Admin Order Read Diagnostic Safety](./admin-order-read-diagnostic-safety.md)
+- [Admin Post Order Read Diagnostic Safety](./admin-post-order-read-diagnostic-safety.md)
+- [Admin Product Diagnostic Safety](./admin-product-diagnostic-safety.md)
+- [Admin Promotion Client Transport Error Safety](./admin-promotion-client-transport-error-safety.md)
+- [Admin Promotion Native Error Safety](./admin-promotion-native-error-safety.md)
+
+### GraphQL Query & Port Error Safety Specifications
+
+- [GraphQL Order Read Shim](./graphql-order-read-shim.md)
+- [GraphQL Query Cart Read Error Safety](./graphql-query-cart-read-error-safety.md)
+- [GraphQL Query Channel Error Safety](./graphql-query-channel-error-safety.md)
+- [GraphQL Query Customer Error Safety](./graphql-query-customer-error-safety.md)
+- [GraphQL Query Payment Error Safety](./graphql-query-payment-error-safety.md)
+- [GraphQL Query Pricing Error Safety](./graphql-query-pricing-error-safety.md)
+- [GraphQL Query Region Error Safety](./graphql-query-region-error-safety.md)
+- [Public Port Error Safety](./public-port-error-safety.md)
+- [Tenant Locale Owner Cutover](./tenant-locale-owner-cutover.md)
+
 ## Current state
 
 - `rustok-commerce` remains the umbrella/root module for the ecommerce family and holds orchestration, transport and the remaining uncut parts of the domain.
