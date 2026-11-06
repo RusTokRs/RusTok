@@ -197,6 +197,34 @@ by each migration. The installer's sparse bootstrap entrypoints remain separate.
 
 ### Verification evidence
 
+The bounded-phase implementation has scoped execution evidence on PostgreSQL
+16.13: `stepwise_recovery` passed all four tests with `--include-ignored`.
+The fixture exercises exact terminal stops, committed-prefix restart, completed
+retry, missing prerequisites without journal creation, history beyond the phase,
+transaction failure, cancellation, backend/process loss, competing writers and
+journal drift. It also asserts that unselected suffix effects remain absent.
+The independent library passed 16 tests (one observer test ignored), and the CLI
+passed three parser/input-bound tests. These finite scenarios do not certify
+every production migration or module transition.
+
+`cargo clippy --locked -p rustok-migrations --no-default-features --lib --test
+stepwise_recovery -- -D warnings` and the composed CLI check with `--no-deps`
+passed. An earlier composed dependency-lint run failed on Commerce and Forum
+diagnostics before subsequent main integration. The owner checks above do not
+claim a fresh lint result for every dependency.
+
+On 2026-11-06, the built CLI was exercised against an isolated PostgreSQL
+16.13 cluster using the exported 581-identity composition from
+`main@74ab78c207383612a1e7103140496644a456a329`. Two successive one-step phases
+applied exactly the first two identities. A completed retry emitted no step
+confirmation, `status` still reported pending migrations, and the third step's
+`sessions` table remained absent. Missing prerequisites were rejected without
+creating the journal; a journal beyond the requested end was also rejected.
+The exact final journal contained only the selected two identities. The fixture
+database was removed and the temporary cluster was stopped. This is a bounded
+CLI integration check, not a fresh replay of all 581 migrations or a production
+admission/recovery certification.
+
 `status` reads the journal without creating it. Fresh verification requires
 the ordered confirmations from both runners and checks each final journal
 against its executable plan.
