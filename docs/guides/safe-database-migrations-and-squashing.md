@@ -237,6 +237,13 @@ regression and pre/post migration-name comparison remain pending. Neither these
 unit tests nor source/static checks establish database equivalence or release
 admission.
 
+The composed inventory test attempt stopped before execution: `rustok-ai`
+does not currently compile against Rig 0.46 (47 unresolved client/trait/constant
+errors in its engine adapters). Consequently the composed regression and
+post-change exporter/name comparison remain blocked. The neutral inventory and
+`xtask` checks do not certify this composed boundary. The AI provider SDK cutover
+must be reconciled before retrying it; no migration or release gate is waived.
+
 `xtask migrations verify-fresh` now binds each side's executable inventory to
 the existing path/mode/blob snapshot, lockfile, Cargo/toolchain configuration,
 normalized native normal/build dependency graph, tool versions, arguments and

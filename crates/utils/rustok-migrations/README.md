@@ -157,6 +157,14 @@ regressions; the isolated PostgreSQL observer test remained ignored. The compose
 inventory regression and pre/post migration-name comparison are still pending.
 Static checks and source review do not substitute for those composed checks.
 
+The composed command `cargo test --locked --offline -p rustok-migrations --lib
+inventory` was attempted after the inventory/build-report changes. Compilation
+stopped in `rustok-ai` with 47 Rig 0.46 adapter errors, including unresolved
+provider `Client` types, client traits, `Nothing` and `DEFAULT_AWS_REGION` in
+its engine modules. The inventory tests did not execute in that run, and no
+post-change composed exporter was produced for the name comparison. Restoring
+the AI SDK adapter contract is required before those checks can be completed.
+
 The default `composition` feature preserves the complete existing `Migrator`,
 installer entrypoints and exports. Build the independent observer without that
 domain dependency tree:
@@ -307,6 +315,9 @@ See [the database architecture](../../../docs/architecture/database.md) and the
 The executable inventory contains owner declarations only; most migrations
 currently have no safety metadata. Trusted immutable source/build coverage,
 stable release seals and production authorization remain unimplemented.
+The composed inventory regression and pre/post exporter comparison are blocked
+by the AI Rig adapter compilation errors described above; this is not a passing
+composition check.
 
 The stepwise runner currently supports PostgreSQL transactional execution only;
 selected phase steps must all support its recovery policy.
