@@ -389,7 +389,23 @@ npm run verify:blog:fba
 cargo xtask module validate blog
 cargo check -p rustok-blog
 cargo test -p rustok-blog --lib
+cargo test -p rustok-blog --test post_creation
+cargo test -p rustok-blog-admin --lib --features ssr
 ```
+
+Creation transport tests exercise REST and GraphQL; the admin SSR tests exercise
+the native HTTP dispatcher. PostgreSQL replay, contention and injected Outbox
+rollback scenarios are opt-in. Set `RUSTOK_BLOG_TEST_DATABASE_URL` explicitly to
+a test PostgreSQL instance whose account can create/drop disposable databases,
+then run:
+
+```bash
+cargo test -p rustok-blog --test post_creation --test post_creation_postgres -- --ignored
+```
+
+These tests use isolated databases and remove them after the scenario. An
+ordinary test run leaves PostgreSQL scenarios ignored; it does not certify
+their behavior.
 
 The FBA registry is `crates/modules/rustok-blog/contracts/blog-fba-registry.json`.
 The Comments projection contract is

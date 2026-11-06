@@ -1,17 +1,12 @@
-//! Owner-command regressions for the slices that shipped without owner tests.
+//! Owner-command regressions for creation, lifecycle, scheduling, pinning and tag usage.
 //!
-//! `publish_scheduled_posts` was the largest untested command in the module (audit
-//! finding L-7 of 2026-10-15): the host scheduler calls it for one tenant, and nothing
-//! exercised the due-post scan, the tenant scope, the batch bound or the
-//! `BlogPostPublished` publication. The pin tests below cover the write path that
-//! `pin.rs`'s predicate-only test cannot reach: the published-only rejection, the
-//! tenant scope, and the column boundary of the pin statement itself (pin state must
-//! not be written through `status`/`published_at`/`archived_at`/`scheduled_at`, and a
-//! pin is presentation state, not a new `version`).
-//!
-//! The harness is the crate's sqlite unit-test harness (`rustok_test_utils`), so no
-//! external database is required. A due post is written directly: the owner commands
-//! require a future schedule on input, and only the passage of time makes one due.
+//! Creation checks persisted acknowledgements, durable rejection, current authority
+//! and atomic rollback of owner data with Outbox. Real concurrent admission is
+//! verified separately by `tests/post_creation_postgres.rs`; SQLite cannot prove it.
+//! Scheduling checks tenant scope, oldest-due ordering and bounded batches. Due
+//! timestamps are fixture state because the public command accepts only future ones.
+//! Pinning checks the published-only rule and leaves lifecycle fields and business
+//! revision untouched. The SQLite harness requires no external database.
 
 use chrono::{Duration, Utc};
 use sea_orm::{
@@ -27,6 +22,32 @@ use super::hardening::{
 use crate::entities::{blog_post, blog_post_tag, blog_tag_usage};
 use crate::services::{MAX_SCHEDULED_PUBLISH_BATCH, TagService, status_to_storage};
 use crate::{BlogError, BlogPostStatus, CreateTagInput, UpdateTagInput};
+
+#[tokio::test]
+async fn creation_refuses_nil_command_identity_without_writing_a_receipt() {
+    let (db, events) = setup_hardening_schema().await;
+    let mut input = post_input("nil-creation-command");
+    input.command_id = Uuid::nil();
+    let error = post_service(&db, &events)
+        .create_post(Uuid::new_v4(), admin(), input)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, BlogError::Validation(message)
+        if message == "Command ID must not be nil"));
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 0);
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, 0);
+    let receipts = db
+        .query_one_raw(sea_orm::Statement::from_string(
+            db.get_database_backend(),
+            "SELECT COUNT(*) AS count FROM owner_operation_receipts",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "count")
+        .unwrap();
+    assert_eq!(receipts, 0);
+}
 
 #[tokio::test]
 async fn creation_outbox_failure_rolls_back_and_retries_the_same_identity() {

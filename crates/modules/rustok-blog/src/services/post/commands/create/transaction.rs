@@ -1,7 +1,7 @@
 use super::*;
 
 impl PostService {
-    #[instrument(skip(self, security, input))]
+    #[instrument(skip(self, txn, security, input))]
     pub(super) async fn create_post_in_tx(
         &self,
         txn: &DatabaseTransaction,

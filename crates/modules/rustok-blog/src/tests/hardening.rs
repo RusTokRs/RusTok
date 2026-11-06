@@ -400,7 +400,9 @@ async fn nil_uuid_validation_guards_reject_invalid_identifiers() {
         .create_post(Uuid::new_v4(), admin.clone(), create_post)
         .await
         .unwrap_err();
-    assert!(err.to_string().contains("Category ID must not be nil"));
+    // Input rejection after admission is stored as a safe public outcome; its
+    // internal validation detail is not part of the replay acknowledgement.
+    assert!(matches!(err, crate::BlogError::CreationRejected(public) if public.status == 400));
 
     // CategoryService guards
     let create_cat = crate::dto::CreateCategoryInput {

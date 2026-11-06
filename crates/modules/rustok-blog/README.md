@@ -427,11 +427,10 @@ The following limitations are tracked in the module backlog:
 - Anonymous REST read access is not available.
 - Newsletter, membership, and paid content are not available.
 - Reactions are limited to `like` on posts.
-- Post creation has no stable logical command identity for replay after an
-  uncertain network outcome. Confirmed acknowledgement blocks a duplicate UI
-  submission, but retry after a lost acknowledgement is not exactly-once. The
-  owner receipt/transport/client cutover and its failure scenario remain a
-  reference acceptance gate.
+- Post creation has a durable owner receipt and both editors retain the original
+  command for exact retry after an uncertain response. Pending editor state is
+  still memory-only; browser reload, unmount and process recovery are not yet
+  certified. Mounted response-loss evidence remains a reference acceptance gate.
 - Preview reads have no audit trail;
   the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
   transition (see "Preview tokens").

@@ -14,10 +14,11 @@ impl PostService {
         security: SecurityContext,
         input: CreatePostInput,
     ) -> BlogResult<Uuid> {
-        if tenant_id.is_nil() || input.command_id.is_nil() {
-            return Err(BlogError::validation(
-                "Tenant and command IDs must not be nil",
-            ));
+        if tenant_id.is_nil() {
+            return Err(BlogError::validation("Tenant ID must not be nil"));
+        }
+        if input.command_id.is_nil() {
+            return Err(BlogError::validation("Command ID must not be nil"));
         }
         let author = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
         if input.publish {

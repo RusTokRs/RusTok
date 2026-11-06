@@ -10,8 +10,11 @@ fn pending_creation_retains_original_command_until_a_durable_outcome() {
     changed.command_id = uuid::Uuid::new_v4();
     changed.title = "Different input after timeout".into();
     let retried = session.retain_creation(changed.clone());
-    assert_eq!(retried.command_id, request.command_id);
-    assert_eq!(retried.title, request.title);
+    assert_eq!(
+        serde_json::to_value(&retried).unwrap(),
+        serde_json::to_value(&request).unwrap(),
+        "retry retains every input field, not only the command identity"
+    );
     assert!(session.can_save(), "retry remains available");
     session.reject_creation();
     assert!(session.pending_creation().is_none());

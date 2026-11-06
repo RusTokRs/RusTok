@@ -1,116 +1,24 @@
 mod support;
-
-use std::sync::Arc;
+#[path = "support/transport.rs"]
+mod transport;
+use transport::{Fixture, fixture, fixture_on, http, request_context, router};
 
 use async_graphql::{EmptySubscription, Request, Schema};
-use axum::{Extension, Router, body::Body, http::StatusCode};
-use rustok_api::{AuthContext, RequestContext, RichTextDocument, TenantContext};
+use axum::http::StatusCode;
+use rustok_api::{AuthContext, RichTextDocument};
 use rustok_blog::{
     BlogMutation, BlogQuery, BlogWidgetInput, BlogWidgetPayload, BlogWidgetService,
     CategoryService, CreateCategoryInput, CreatePostInput, PostService,
 };
 use rustok_core::{SecurityContext, UserRole};
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, Statement,
-    sea_query::{Alias, Expr, Query},
-};
-use sea_orm_migration::SchemaManager;
+use sea_orm::{ConnectionTrait, Statement};
 use serde_json::{Value, json};
-use tower::ServiceExt;
 use uuid::Uuid;
-
-type Fixture = (
-    DatabaseConnection,
-    TransactionalEventBus,
-    TenantContext,
-    AuthContext,
-);
-
-async fn fixture() -> Fixture {
-    fixture_on(rustok_test_utils::setup_test_db().await).await
-}
-
-async fn fixture_on(db: DatabaseConnection) -> Fixture {
-    support::apply_blog_schema(&db).await.unwrap();
-    rustok_modules::migrations::migrations()
-        .into_iter()
-        .find(|migration| migration.name() == "m20250101_000060_create_tenant_modules")
-        .unwrap()
-        .up(&SchemaManager::new(&db))
-        .await
-        .unwrap();
-    let tenant = TenantContext {
-        id: Uuid::new_v4(),
-        name: "Widget fixture".into(),
-        slug: "widgets".into(),
-        domain: None,
-        settings: json!({}),
-        default_locale: "en".into(),
-        is_active: true,
-    };
-    let mut insert = Query::insert();
-    insert
-        .into_table(Alias::new("tenants"))
-        .columns([Alias::new("id"), Alias::new("name"), Alias::new("slug")])
-        .values_panic([
-            Expr::value(tenant.id),
-            Expr::value(&tenant.name),
-            Expr::value(&tenant.slug),
-        ]);
-    db.execute_raw(db.get_database_backend().build(&insert))
-        .await
-        .unwrap();
-    let mut insert = Query::insert();
-    insert
-        .into_table(Alias::new("tenant_modules"))
-        .columns([
-            Alias::new("id"),
-            Alias::new("tenant_id"),
-            Alias::new("module_slug"),
-            Alias::new("enabled"),
-        ])
-        .values_panic([
-            Expr::value(Uuid::new_v4()),
-            Expr::value(tenant.id),
-            Expr::value("blog"),
-            Expr::value(true),
-        ]);
-    db.execute_raw(db.get_database_backend().build(&insert))
-        .await
-        .unwrap();
-    let auth = AuthContext {
-        user_id: Uuid::new_v4(),
-        session_id: Uuid::new_v4(),
-        tenant_id: tenant.id,
-        permissions: rustok_core::Rbac::permissions_for_role(&UserRole::Admin)
-            .iter()
-            .copied()
-            .collect(),
-        client_id: None,
-        scopes: vec![],
-        grant_type: "direct".into(),
-    };
-    let bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
-    (db, bus, tenant, auth)
-}
 
 fn input(widget_type: &str, props: Value) -> BlogWidgetInput {
     BlogWidgetInput {
         widget_type: widget_type.into(),
         props,
-    }
-}
-
-fn request_context(tenant: &TenantContext, auth: &AuthContext) -> RequestContext {
-    RequestContext {
-        tenant_id: tenant.id,
-        user_id: Some(auth.user_id),
-        channel_id: None,
-        channel_slug: None,
-        channel_resolution_source: None,
-        locale: "fr".into(),
-        correlation_id: Uuid::new_v4().to_string(),
     }
 }
 
@@ -455,75 +363,6 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
 }
 
 #[tokio::test]
-async fn graphql_creation_replays_acknowledgement_and_marks_durable_rejections() {
-    let (db, bus, tenant, auth) = fixture().await;
-    let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription)
-        .data(db.clone())
-        .data(bus)
-        .finish();
-    let mut input = json!({
-        "commandId": Uuid::new_v4(), "locale": "en", "title": "Replayable creation",
-        "content": RichTextDocument::single_paragraph("Body"), "publish": false, "tags": []
-    });
-    let request = |input: Value, auth: AuthContext| {
-        Request::new("mutation($input: CreatePostInput!) { createPost(input: $input) }")
-            .variables(async_graphql::Variables::from_json(json!({"input": input})))
-            .data(tenant.clone())
-            .data(request_context(&tenant, &auth))
-            .data(auth)
-    };
-    let mut creator = auth;
-    creator.permissions = vec![rustok_api::Permission::BLOG_POSTS_CREATE];
-    let first = schema
-        .execute(request(input.clone(), creator.clone()))
-        .await;
-    assert!(first.errors.is_empty(), "{:?}", first.errors);
-    let replay = schema
-        .execute(request(input.clone(), creator.clone()))
-        .await;
-    assert!(replay.errors.is_empty(), "{:?}", replay.errors);
-    assert_eq!(replay.data, first.data);
-    let count = db
-        .query_one_raw(Statement::from_string(
-            db.get_database_backend(),
-            "SELECT COUNT(*) AS count FROM blog_posts",
-        ))
-        .await
-        .unwrap()
-        .unwrap()
-        .try_get::<i64>("", "count")
-        .unwrap();
-    assert_eq!(count, 1);
-    let mut denied = creator.clone();
-    denied.permissions.clear();
-    let denied = schema.execute(request(input.clone(), denied)).await;
-    assert!(!denied.errors.is_empty());
-    assert!(denied.errors.iter().all(|error| {
-        error
-            .extensions
-            .as_ref()
-            .and_then(|extensions| extensions.get("outcome"))
-            .is_none()
-    }));
-    input["commandId"] = json!(Uuid::new_v4());
-    input["title"] = json!("");
-    let rejected = schema
-        .execute(request(input.clone(), creator.clone()))
-        .await;
-    assert_eq!(rejected.errors.len(), 1, "{:?}", rejected.errors);
-    assert_eq!(
-        rejected.errors[0]
-            .extensions
-            .as_ref()
-            .unwrap()
-            .get("outcome"),
-        Some(&async_graphql::Value::from("rejected"))
-    );
-    let replay = schema.execute(request(input, creator)).await;
-    assert_eq!(replay.errors, rejected.errors);
-}
-
-#[tokio::test]
 async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_module_denial() {
     let (db, bus, tenant, auth) = fixture().await;
     let posts = PostService::new(db.clone(), bus.clone());
@@ -612,72 +451,6 @@ async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_modu
     .unwrap();
     let denied = schema.execute(request().data(auth)).await;
     assert!(!denied.errors.is_empty());
-}
-
-struct UnusedCategoryCleanup;
-
-#[async_trait::async_trait]
-impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for UnusedCategoryCleanup {
-    async fn cleanup_in_tx(
-        &self,
-        _txn: &sea_orm::DatabaseTransaction,
-        _tenant: Uuid,
-        _category: Uuid,
-    ) -> rustok_taxonomy::TaxonomyResult<()> {
-        Err(rustok_taxonomy::TaxonomyError::validation(
-            "Widget preview must never delete a category",
-        ))
-    }
-}
-
-fn router(
-    db: DatabaseConnection,
-    bus: TransactionalEventBus,
-    tenant: TenantContext,
-    auth: Option<AuthContext>,
-) -> Router {
-    let cleanup: Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort> =
-        Arc::new(UnusedCategoryCleanup);
-    let host = rustok_api::HostRuntimeContext::new(db)
-        .with_shared_value(bus)
-        .with_shared_value(cleanup);
-    let router = rustok_blog::controllers::axum_router(&host)
-        .unwrap()
-        .layer(Extension(rustok_api::context::TenantContextExtension(
-            tenant,
-        )))
-        .layer(Extension(rustok_api::ResolvedRequestLocale {
-            requested_locale: Some("fr".into()),
-            effective_locale: "fr".into(),
-        }));
-    match auth {
-        Some(auth) => router.layer(Extension(rustok_api::context::AuthContextExtension(auth))),
-        None => router,
-    }
-}
-
-async fn http(router: Router, method: &str, path: &str, body: Value) -> (StatusCode, Value) {
-    let response = router
-        .oneshot(
-            axum::http::Request::builder()
-                .method(method)
-                .uri(path)
-                .header("content-type", "application/json")
-                .body(if method == "GET" {
-                    Body::empty()
-                } else {
-                    Body::from(body.to_string())
-                })
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let status = response.status();
-    let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
-        .await
-        .unwrap();
-    let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    (status, json)
 }
 
 #[tokio::test]
