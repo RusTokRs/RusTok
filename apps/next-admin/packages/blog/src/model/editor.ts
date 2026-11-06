@@ -221,12 +221,20 @@ export class PostCreationAttempt {
   get request(): CreatePostInput | undefined {
     return this.pending ? structuredClone(this.pending) : undefined;
   }
-  prepare(input: Omit<CreatePostInput, 'commandId'>, allocate: () => string): CreatePostInput {
+  prepare(
+    input: Omit<CreatePostInput, 'commandId'>,
+    allocate: () => string
+  ): CreatePostInput {
     this.pending ??= { ...structuredClone(input), commandId: allocate() };
     return structuredClone(this.pending);
   }
   resolve(error: unknown): void {
-    if (typeof error === 'object' && error !== null && 'outcome' in error && error.outcome === 'rejected')
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'outcome' in error &&
+      error.outcome === 'rejected'
+    )
       this.pending = undefined;
   }
 }

@@ -19,9 +19,6 @@ async fn setup_schema() -> sea_orm::DatabaseConnection {
         .up(&manager)
         .await
         .expect("outbox migration should apply");
-    rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
-        .await
-        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)

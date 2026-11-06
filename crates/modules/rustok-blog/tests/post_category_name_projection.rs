@@ -32,9 +32,6 @@ async fn ensure_schema(db: &DatabaseConnection) {
         .up(&manager)
         .await
         .expect("outbox migration should apply");
-    rustok_outbox::migration::create_owner_operation_receipts_table(&schema)
-        .await
-        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)

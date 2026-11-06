@@ -13,10 +13,17 @@ fn pending_creation_retains_original_command_until_a_durable_outcome() {
     assert_eq!(retried.command_id, request.command_id);
     assert_eq!(retried.title, request.title);
     assert!(session.can_save(), "retry remains available");
-    session = PostEditorSession::Creating; // only durable rejection unlocks editing
+    session.reject_creation();
+    assert!(session.pending_creation().is_none());
     assert_eq!(
         session.retain_creation(changed.clone()).command_id,
         changed.command_id
+    );
+    let mut loaded = PostEditorSession::Loaded(Box::new(post));
+    loaded.reject_creation();
+    assert!(
+        loaded.snapshot().is_some(),
+        "rejection cannot discard an edit"
     );
 }
 

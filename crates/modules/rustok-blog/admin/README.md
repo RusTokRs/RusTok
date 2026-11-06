@@ -67,9 +67,9 @@ Blog's owner widget payloads and schema references are already unversioned;
 that bounded correction does not resolve the shared policy mismatch.
 
 Mounted browser, accessibility and authenticated persistence/reload scenarios
-remain required in both clients. Confirmed creation acknowledgements block
-duplicate submission, but replay after a lost creation acknowledgement still
-requires the owner receipt/transport/client cutover tracked in the reference plan.
+remain required in both clients. Creation now carries a stable command identity
+through the owner receipt and both transports. Pending requests are retained in
+memory; browser reload/process recovery remains an open reference gate.
 
 ## Documentation
 
@@ -78,7 +78,10 @@ requires the owner receipt/transport/client cutover tracked in the reference pla
 
 ## Editorial write contract
 
-Post creation uses a complete `BlogPostDraft`; post editing uses a distinct
+Post creation uses a complete `BlogPostDraft` with a caller-retained `command_id`.
+`BlogPostCreationOutcome::Rejected` is produced only by a durable failed receipt;
+ordinary errors preserve the frozen key and payload for exact retry. A durable
+rejection permits correction with a new identity. Post editing uses a distinct
 `BlogPostUpdate` with mandatory predecessor revision and canonical nullable
 `Patch` semantics. Pure command builders compare target-language editor values
 against the loaded owner snapshot. Unchanged fields are omitted from both

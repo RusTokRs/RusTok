@@ -65,6 +65,36 @@ domain property tests, owner-service regressions, integration/transport checks,
 projection replay tests and pure UI tests. The missing evidence is specific to
 the gates above.
 
+### Post creation replay continuation (2026-11-06)
+
+This bounded continuation started on local `main` at
+`4f33743372626e761fb2b628e2c4792f97a4a62b`. Concurrent commits updated dependencies
+and consolidated migrations; the creation implementation was also captured by
+`8237bd93135f448aad16f46de95c5aa4ab6cfd19` and `90276fc80f` during the work.
+No audit ledger or new branch/worktree was activated.
+
+The mandatory `command_id` is scoped through the existing Outbox receipt by
+current tenant/author. Exact replay returns the original UUID without new rows,
+events or Read authority; changed input conflicts. All creation effects and
+receipt completion share the owner transaction. Only a durable failed receipt
+is an authoritative rejection. Both native/GraphQL adapters preserve this
+outcome, and both editor models retain the immutable original request after
+ordinary errors. Same-actor credential refresh preserves the editor session.
+
+The owner and transport regressions cover response-loss replay, changed-input
+conflict, tenant/author isolation, current permission denial, replay after
+post deletion, durable rejection and injected outbox rollback/retry. These are
+executable scenarios, not evidence of execution until their scoped Rust runs
+complete. The current client/guard evidence is 17 Next Blog tests, 21 existing
+semantic guard fixtures and 3 new creation fixtures; Blog lint passes with the
+cached ESLint 9. The installed ESLint 10 fails in its parser integration. Overall
+Next admin type checking reports three existing Pricing errors.
+
+Pending requests remain memory-only. Mounted response loss, browser reload and
+process recovery, and creation-specific PostgreSQL contention are still required
+before this gate can be called complete. The owner contract is in
+[CRATE_API.md](../CRATE_API.md#replayable-post-creation).
+
 ### Fly owner continuation (2026-11-05)
 
 This source continuation started from `01ea0627d6b50e64a4b4fe2aa19fb0718e5c4f55`

@@ -17,7 +17,6 @@ pub async fn apply_blog_schema(
         migration.up(&manager).await?;
     }
     SysEventsMigration.up(&manager).await?;
-    rustok_outbox::migration::create_owner_operation_receipts_table(&manager).await?;
     let oauth = rustok_auth::migrations::migrations()
         .into_iter()
         .find(|migration| migration.name() == "m20260308_000001_create_oauth_apps")

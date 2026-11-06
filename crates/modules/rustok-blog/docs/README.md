@@ -77,12 +77,16 @@ a responsibility grows, and the enrolled reference profile is checked by
 
 Follow one actual operation before copying its structure. For post creation,
 start at `src/dto/post.rs`, then
-`src/services/post/commands/create.rs`, `repository.rs`, and the owner migration
-builders. The application service checks authority and input bounds, writes
+`src/services/post/commands/create.rs`, `commands/create/transaction.rs`,
+`repository.rs`, and the owner migration builders. The parent command admits the
+caller-retained identity through the canonical Outbox receipt; the transaction
+implementation owns the domain writes. The application service checks authority and input bounds, writes
 base/localized/route/relation state and durable events in one transaction, and
 returns acknowledgement after commit. Transport adapters map context and errors;
 they do not acquire ownership of those rules. UI command construction belongs in
 the module's pure `core/`, with native and GraphQL IO behind `transport/`.
+The [creation contract](../CRATE_API.md#replayable-post-creation) explains which
+outcomes permit another logical command and why ordinary transport errors do not.
 
 | Concern | Existing connection and extension point | Boundary to preserve |
 | --- | --- | --- |

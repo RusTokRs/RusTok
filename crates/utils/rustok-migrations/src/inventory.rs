@@ -34,6 +34,7 @@ impl From<MigrationDependencyDescriptor> for MigrationDescriptor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+/// The contributing migration source, not data-owner authority or SQL confinement.
 pub enum MigrationOwner {
     Platform,
     Module { slug: String },

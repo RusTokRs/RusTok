@@ -163,6 +163,7 @@ pub async fn get_post(
     responses(
         (status = 201, description = "Post created", body = Uuid),
         (status = 400, description = "Invalid input"),
+        (status = 409, description = "Command identity reused with different input or slug conflict"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )

@@ -146,13 +146,15 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
     let acknowledged = false;
     try {
       const retained = creation.current.request;
-      const command = retained ? { kind: 'create' as const, input: retained } : buildPostCommand(
-        values,
-        documentRef.current,
-        initialData,
-        emptyRichTextDocument(),
-        richTextDocumentHasText
-      );
+      const command = retained
+        ? { kind: 'create' as const, input: retained }
+        : buildPostCommand(
+            values,
+            documentRef.current,
+            initialData,
+            emptyRichTextDocument(),
+            richTextDocumentHasText
+          );
       if (command.input.content) {
         const validation = validateRichTextDocument(
           command.input.content,
@@ -167,7 +169,9 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
       if (command.kind === 'update' && initialData)
         await updatePost(initialData.id, command.input, gqlOpts);
       else if (command.kind === 'create') {
-        const input = creation.current.prepare(command.input, () => crypto.randomUUID());
+        const input = creation.current.prepare(command.input, () =>
+          crypto.randomUUID()
+        );
         setCreationPending(true);
         await createPost(input, gqlOpts);
       }
@@ -217,7 +221,11 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
                 </AlertDescription>
               </Alert>
             )}
-          {creationPending && <Alert><AlertDescription>{t('editor.creationUnknown')}</AlertDescription></Alert>}
+          {creationPending && (
+            <Alert>
+              <AlertDescription>{t('editor.creationUnknown')}</AlertDescription>
+            </Alert>
+          )}
           <Form
             form={form}
             onSubmit={form.handleSubmit(onSubmit)}
@@ -227,13 +235,21 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='title'
               label={t('form.title')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <FormInput
               control={form.control}
               name='slug'
               label={t('form.slug')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <FormInput
               control={form.control}
@@ -242,14 +258,19 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               disabled={
                 Boolean(initialData) ||
                 form.formState.isSubmitting ||
-                writeAcknowledged || creationPending
+                writeAcknowledged ||
+                creationPending
               }
             />
             <FormInput
               control={form.control}
               name='tags'
               label={t('form.tags')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <FormSelect
               control={form.control}
@@ -259,7 +280,8 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               disabled={
                 categoryState !== 'ready' ||
                 form.formState.isSubmitting ||
-                writeAcknowledged || creationPending
+                writeAcknowledged ||
+                creationPending
               }
             />
             {categoryState === 'error' && (
@@ -279,14 +301,22 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='channelSlugs'
               label={t('form.channels')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <RichTextEditor
               label={t('form.content')}
               profile='article'
               value={content}
               contentLocale={contentLocale}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
               onChange={(document) => {
                 documentRef.current = document;
                 setContent(document);
@@ -296,13 +326,21 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='excerpt'
               label={t('form.excerpt')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <FormInput
               control={form.control}
               name='featuredImageUrl'
               label={t('form.featuredImage')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             {imageSource && (
               <Image
@@ -318,20 +356,32 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='seoTitle'
               label={t('form.seoTitle')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             <FormTextarea
               control={form.control}
               name='seoDescription'
               label={t('form.seoDescription')}
-              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationPending
+              }
             />
             {!initialData && (
               <FormSwitch
                 control={form.control}
                 name='publish'
                 label={t('form.publishNow')}
-                disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
+                disabled={
+                  form.formState.isSubmitting ||
+                  writeAcknowledged ||
+                  creationPending
+                }
               />
             )}
             {(!initialData || initialData.status === 'DRAFT') && (
@@ -341,7 +391,10 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
                 label={t('form.scheduledAt')}
                 description={t('editor.scheduleHelp')}
                 disabled={
-                  publishNow || form.formState.isSubmitting || writeAcknowledged || creationPending
+                  publishNow ||
+                  form.formState.isSubmitting ||
+                  writeAcknowledged ||
+                  creationPending
                 }
               />
             )}

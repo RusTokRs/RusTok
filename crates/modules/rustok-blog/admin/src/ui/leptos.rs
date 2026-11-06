@@ -490,7 +490,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     }
                 }
                 Ok(crate::model::BlogPostCreationOutcome::Rejected(message)) => {
-                    editor_session.set(core::PostEditorSession::Creating);
+                    editor_session.update(|session| session.reject_creation());
                     set_submit_error.set(Some(WritePathIssue::new(message)));
                 }
                 Err(err) => {

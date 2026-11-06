@@ -85,6 +85,14 @@ impl PostEditorSession {
         *self = Self::CreatingPending(Box::new(draft.clone()));
         draft
     }
+
+    /// An authoritative failed receipt releases only a pending creation. It
+    /// cannot discard an existing edit snapshot or an acknowledged write.
+    pub fn reject_creation(&mut self) {
+        if matches!(self, Self::CreatingPending(_)) {
+            *self = Self::Creating;
+        }
+    }
     pub fn can_save(&self) -> bool {
         !self.awaiting_reload()
     }

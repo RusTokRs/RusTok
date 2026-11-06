@@ -137,6 +137,8 @@ targets, and cycles. Cross-owner dependency targets remain supported. Missing
 safety metadata is explicit `null`, never additive-safe evidence. The exporter
 and operations CLI propagate typed composition errors before database work.
 SeaORM's infallible factory retains its static compiled-composition assertion.
+Ownership identifies the contributing migration source; it does not infer
+table ownership, confine SQL effects, or confer module authority.
 
 This is a diagnostic declaration inventory. It does not hash source inputs,
 resolve transitive build provenance, certify observed safety, or seal a release.

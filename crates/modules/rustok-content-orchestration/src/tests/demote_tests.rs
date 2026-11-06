@@ -56,7 +56,7 @@ async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
             tenant_id,
             security.clone(),
             CreatePostInput {
-                        command_id: Uuid::new_v4(),
+                command_id: Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Legacy post".to_string(),
                 content: richtext("Original blog body"),

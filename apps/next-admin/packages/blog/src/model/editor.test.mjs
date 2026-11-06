@@ -318,7 +318,13 @@ test('creation retries retain exact identity and payload after an unknown respon
   const attempt = new PostCreationAttempt();
   let calls = 0;
   const allocate = () => `command-${++calls}`;
-  const input = { title: 'Original', locale: 'en', tags: [], publish: false, content: doc('Body') };
+  const input = {
+    title: 'Original',
+    locale: 'en',
+    tags: [],
+    publish: false,
+    content: doc('Body')
+  };
   const first = attempt.prepare(input, allocate);
   first.content.content.length = 0;
   input.title = 'Changed';
