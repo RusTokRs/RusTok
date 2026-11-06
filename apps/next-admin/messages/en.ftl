@@ -1292,3 +1292,5 @@ blog-editor-slugRequired = Canonical slug is required
 blog-status-unknown = Unknown status
 blog-detail-notFound = Post not found.
 blog-detail-publishedAt = Published { $date }
+
+blog-editor-creationUnknown = Creation is unconfirmed. Save again to retry the original request.

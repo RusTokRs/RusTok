@@ -31,6 +31,8 @@ fn ensure_cursor_token_is_bounded(token: &str) -> BlogResult<()> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreatePostInput {
+    /// Allocate once per logical creation; retain unchanged across retries.
+    pub command_id: Uuid,
     pub locale: String,
     #[schema(max_length = 512)]
     pub title: String,
@@ -136,6 +138,7 @@ mod tests {
     #[test]
     fn create_post_input_serde_requires_canonical_document() {
         let input = CreatePostInput {
+            command_id: uuid::Uuid::new_v4(),
             locale: "en".to_string(),
             title: "Title".to_string(),
             content: RichTextDocument::single_paragraph("Body"),

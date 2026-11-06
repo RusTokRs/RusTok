@@ -140,7 +140,9 @@ pub fn BlogAdmin() -> impl IntoView {
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
-            if busy_key.get_untracked().is_some() {
+            if busy_key.get_untracked().is_some()
+                || editor_session.with_untracked(|s| s.pending_creation().is_some())
+            {
                 return;
             }
             query_writer.apply_query_intent(core::blog_post_admin_clear_post_query_intent());
@@ -391,7 +393,10 @@ pub fn BlogAdmin() -> impl IntoView {
             "blog.error.requiredFields",
             "Title and content are required to save a blog post.",
         );
-        let command = match core::prepare_blog_post_save_command(
+        let draft = editor_session
+            .with_untracked(|s| s.pending_creation().cloned())
+            .unwrap_or(draft);
+        let mut command = match core::prepare_blog_post_save_command(
             editing_post_id.get_untracked(),
             loaded_post.get_untracked().as_ref(),
             draft,
@@ -408,6 +413,13 @@ pub fn BlogAdmin() -> impl IntoView {
                 return;
             }
         };
+
+        if let core::BlogPostSaveOperation::Create(draft) = &command.operation {
+            let mut session = editor_session.get_untracked();
+            let retained = session.retain_creation(draft.clone());
+            editor_session.set(session);
+            command.operation = core::BlogPostSaveOperation::Create(retained);
+        }
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
@@ -426,7 +438,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     update,
                 )
                 .await
-                .map(|()| post_id),
+                .map(|()| crate::model::BlogPostCreationOutcome::Created(post_id)),
                 core::BlogPostSaveOperation::Create(draft) => {
                     transport::create_post(token_value.clone(), tenant_value.clone(), draft).await
                 }
@@ -438,7 +450,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 return;
             }
             match result {
-                Ok(post_id) => {
+                Ok(crate::model::BlogPostCreationOutcome::Created(post_id)) => {
                     let result_view = core::blog_post_save_result_view(post_id.as_str());
                     // The write is acknowledged. Block another save until a fresh
                     // revision arrives, even if the independent reload fails.
@@ -477,7 +489,18 @@ pub fn BlogAdmin() -> impl IntoView {
                         }
                     }
                 }
+                Ok(crate::model::BlogPostCreationOutcome::Rejected(message)) => {
+                    editor_session.set(core::PostEditorSession::Creating);
+                    set_submit_error.set(Some(WritePathIssue::new(message)));
+                }
                 Err(err) => {
+                    if editor_session.with_untracked(|s| s.pending_creation().is_some()) {
+                        set_save_notice.set(Some(t(
+                            submit_ui_locale.as_deref(),
+                            "blog.editor.creationUnknown",
+                            "Creation is unconfirmed. Save again to retry the original request.",
+                        )));
+                    }
                     set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
                             submit_ui_locale.as_deref(),

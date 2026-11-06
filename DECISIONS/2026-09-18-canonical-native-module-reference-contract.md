@@ -115,6 +115,27 @@ type/dependency names.
 - Provider errors remain typed across the port boundary.
 - Degraded/fallback behavior is explicitly described and separately evidenced.
 
+### Replayable post creation
+
+Blog post creation requires a non-nil caller-generated `command_id`. The owner
+uses the existing Outbox owner-operation receipt, scoped to tenant, author and
+operation, and binds it to the complete input. Current authorization precedes
+every admission/replay. A completed receipt returns the original post identity
+without another read permission, temporal revalidation or new events, including
+after the post has subsequently changed or been deleted.
+
+Post rows, translations, routes, relations, outbox events and successful receipt
+completion share one transaction. A terminal command rejection is replayable
+only after rollback and durable failure finalization. Failed rollback, failed
+commit, transport loss and uncertain receipt finalization remain unknown outcomes.
+An attempt-local authorization refusal cannot disprove an earlier commit.
+
+Both editors retain the exact creation command and identity before IO and retry
+that command after an unknown outcome. Only a successful acknowledgement or a
+durable terminal rejection releases it. Credential refresh must preserve the
+same principal's pending command. This contract does not claim browser reload
+recovery without a durable client journal and its execution evidence.
+
 ### Owner-backed Page Builder contributions
 
 An advertised widget catalog, property validator or preview must execute through

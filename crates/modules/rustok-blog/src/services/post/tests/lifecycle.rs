@@ -32,6 +32,7 @@ async fn stale_edit_preserves_owner_localized_rows_and_durable_events() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".into(),
                 title: "Original".into(),
                 content: crate::richtext::article_document_from_plain_text("Body"),
@@ -110,6 +111,7 @@ async fn persisted_patches_and_new_locale_validation_preserve_write_provenance()
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".into(),
                 title: "English only".into(),
                 content: crate::richtext::article_document_from_plain_text("English body"),
@@ -266,6 +268,7 @@ async fn post_lifecycle_uses_blog_owned_tables() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Draft Post".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Content"),
@@ -324,6 +327,7 @@ async fn customer_cannot_create_or_read_draft_posts() {
             tenant_id,
             customer.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Customer draft".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),
@@ -349,6 +353,7 @@ async fn customer_cannot_create_or_read_draft_posts() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Admin draft".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),
@@ -410,6 +415,7 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Visible post".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),

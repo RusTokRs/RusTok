@@ -36,6 +36,10 @@ pub use dto::{
     PublishedPostCursor, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
     UpdatePostInput, UpdateTagInput,
 };
+pub use dto::{
+    BlogWidgetCatalog, BlogWidgetInput, BlogWidgetIssue, BlogWidgetPayload, BlogWidgetPreview,
+    BlogWidgetSchema, BlogWidgetValidation,
+};
 pub use error::{BlogError, BlogPublicError, BlogResult};
 pub use graphql::{BlogMutation, BlogQuery};
 pub use integrations::public_comments_snapshot;
@@ -56,14 +60,13 @@ pub use ports::{
 };
 pub use rustok_comments::CommentsThreadPort;
 pub use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
+pub use services::BlogWidgetService;
 pub use services::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,
     CategoryService, CommentService, PostService, PreviewToken, PreviewTokenService, TagService,
     canonical_post_route, remove_post_tag_links_in_tx, replace_post_tag_links_in_tx,
 };
 pub use state_machine::BlogPostStatus;
-pub use dto::{BlogWidgetCatalog, BlogWidgetInput, BlogWidgetIssue, BlogWidgetPayload, BlogWidgetPreview, BlogWidgetSchema, BlogWidgetValidation};
-pub use services::BlogWidgetService;
 
 #[cfg(test)]
 mod tests;

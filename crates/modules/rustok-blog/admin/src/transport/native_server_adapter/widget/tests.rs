@@ -19,6 +19,7 @@ async fn native_dispatch_executes_schema_validation_preview_and_denials() {
             tenant.id,
             SecurityContext::new(UserRole::Admin, Some(auth.user_id)),
             rustok_blog::CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".into(),
                 title: "Native owner preview".into(),
                 content: rustok_api::RichTextDocument::single_paragraph("Native body"),

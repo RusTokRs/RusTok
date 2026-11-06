@@ -34,6 +34,7 @@ async fn public_visible_listing_filters_by_typed_channel_relation() {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: title.to_string(),
                     content: crate::richtext::article_document_from_plain_text("Body"),
@@ -100,6 +101,7 @@ async fn public_visible_keyset_keeps_pinned_post_via_cursor_rank() {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: format!("Paged {index}"),
                     content: crate::richtext::article_document_from_plain_text("Body"),
@@ -197,6 +199,7 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Healthy".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),
@@ -220,6 +223,7 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Damaged".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),

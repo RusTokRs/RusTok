@@ -18,6 +18,7 @@ async fn published_posts_reject_a_schedule_patch() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Scheduled later".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),

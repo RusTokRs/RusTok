@@ -5,7 +5,7 @@ use rustok_web::HttpError;
 
 use crate::BlogError;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BlogPublicError {
     pub status: u16,
     pub code: String,
@@ -74,10 +74,14 @@ pub(crate) fn to_http_error(error: BlogError) -> HttpError {
 }
 
 pub(crate) fn to_graphql_error(error: BlogError) -> GraphqlError {
+    let rejected = matches!(&error, BlogError::CreationRejected(_));
     let public = BlogPublicError::from(error);
     GraphqlError::new(public.message).extend_with(|_, extensions| {
         extensions.set("code", public.code);
         extensions.set("httpStatus", public.status);
+        if rejected {
+            extensions.set("outcome", "rejected");
+        }
     })
 }
 

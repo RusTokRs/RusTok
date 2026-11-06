@@ -90,7 +90,7 @@ pub async fn create_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     draft: BlogPostDraft,
-) -> Result<String, ApiError> {
+) -> Result<crate::model::BlogPostCreationOutcome, ApiError> {
     let native_draft = draft.clone();
     execute_selected_transport(
         "blog/admin/create-post",

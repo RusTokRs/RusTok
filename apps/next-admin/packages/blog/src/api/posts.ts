@@ -130,6 +130,7 @@ export interface PostListQuery {
 }
 
 export interface CreatePostInput {
+  commandId: string;
   locale: string;
   title: string;
   content?: RichTextDocument;

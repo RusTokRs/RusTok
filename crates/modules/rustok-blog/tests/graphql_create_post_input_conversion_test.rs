@@ -8,6 +8,7 @@ use uuid::Uuid;
 fn create_post_input_conversion_preserves_canonical_content() {
     let canonical = RichTextDocument::single_paragraph("canonical content");
     let input = GraphqlCreatePostInput {
+        command_id: Uuid::new_v4(),
         locale: "ru".to_string(),
         title: "Заголовок".to_string(),
         content: canonical.clone(),
@@ -31,6 +32,7 @@ fn create_post_input_conversion_preserves_canonical_content() {
 #[test]
 fn create_post_input_conversion_rejects_invalid_scheduled_at() {
     let input = GraphqlCreatePostInput {
+        command_id: Uuid::new_v4(),
         locale: "en".to_string(),
         title: "Title".to_string(),
         content: RichTextDocument::single_paragraph("body"),

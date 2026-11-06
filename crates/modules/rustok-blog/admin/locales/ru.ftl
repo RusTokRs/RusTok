@@ -263,3 +263,5 @@ blog-categories-updated = Категория обновлена.
 blog-editor-imagePreview = Предпросмотр главного изображения
 
 blog-editor-slugRequired = Канонический адрес обязателен
+
+blog-editor-creationUnknown = Результат создания не подтверждён. Нажмите «Сохранить», чтобы повторить исходный запрос.

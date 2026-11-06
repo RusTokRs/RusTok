@@ -1408,6 +1408,7 @@ fn build_blog_draft_create_input(request: BlogDraftCreateRequest<'_>) -> AiResul
     let body = request.body;
 
     Ok(CreatePostInput {
+        command_id: uuid::Uuid::new_v4(),
         locale: request.locale.to_string(),
         title: request.title.to_string(),
         content: crate::rustok_blog::richtext::article_document_from_plain_text(body),

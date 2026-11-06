@@ -308,63 +308,63 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                             <FormError />
                             <FormField name="title">
                                 <FormLabel>{form_copy_view.with_value(|value| value.title_label.clone())}</FormLabel>
-                                <FormInput value=title disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_title.set(core::blog_post_admin_title_input_view(value).title) />
+                                <FormInput value=title disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_title.set(core::blog_post_admin_title_input_view(value).title) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="slug">
                                 <FormLabel>{form_copy_view.with_value(|value| value.slug_label.clone())}</FormLabel>
-                                <FormInput value=slug disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_slug.set(value) />
+                                <FormInput value=slug disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_slug.set(value) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="locale">
                                 <FormLabel>{form_copy_view.with_value(|value| value.locale_label.clone())}</FormLabel>
-                                <FormInput value=locale on_input=move |value| set_locale.set(value) disabled=Signal::derive(move || editing_post_id.get().is_some() || busy_key.get().is_some()) />
+                                <FormInput value=locale on_input=move |value| set_locale.set(value) disabled=Signal::derive(move || editing_post_id.get().is_some() || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="excerpt">
                                 <FormLabel>{form_copy_view.with_value(|value| value.excerpt_label.clone())}</FormLabel>
-                                <FormTextarea value=excerpt disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_excerpt.set(value) />
+                                <FormTextarea value=excerpt disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_excerpt.set(value) />
                                 <FormMessage />
                             </FormField>
                             <BlogRichTextEditor document=content set_document=set_content content_locale=locale
-                                label=form_copy_view.with_value(|value| value.content_label.clone()) disabled=Signal::derive(move || busy_key.get().is_some()) />
+                                label=form_copy_view.with_value(|value| value.content_label.clone()) disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) />
                             <FormField name="tags">
                                 <FormLabel>{form_copy_view.with_value(|value| value.tags_label.clone())}</FormLabel>
-                                <FormInput value=tags_input disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_tags_input.set(value) />
+                                <FormInput value=tags_input disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_tags_input.set(value) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="category_id">
                                 <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.category", "Category")}</FormLabel>
                                 {move || view! { <FormSelect value=category_id options=category_options.get()
                                     on_change=move |value| set_category_id.set(value)
-                                    disabled=Signal::derive(move || busy_key.get().is_some() || !matches!(categories_resource.get(), Some(Ok(_)))) /> }}
+                                    disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some() || !matches!(categories_resource.get(), Some(Ok(_)))) /> }}
                                 {move || categories_resource.get().and_then(Result::err).map(|_| view! { <Alert>{categories_unavailable_label.get_value()}<Button on_click=Box::new(move || retry_categories.run(()))>{t(ui_locale.get_value().as_deref(), "blog.editor.retry", "Retry")}</Button></Alert> })}
                                 <FormMessage />
                             </FormField>
                             <FormField name="channel_slugs">
                                 <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.channels", "Channels (comma separated; empty = all channels)")}</FormLabel>
-                                <FormInput value=channel_slugs_input disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_channel_slugs_input.set(value) />
+                                <FormInput value=channel_slugs_input disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_channel_slugs_input.set(value) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="featured_image_url">
                                 <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.featuredImage", "Featured image URL")}</FormLabel>
-                                <FormInput value=featured_image_url disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_featured_image_url.set(value) />
+                                <FormInput value=featured_image_url disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_featured_image_url.set(value) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="seo_title">
                                 <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.seoTitle", "SEO title (Blog default)")}</FormLabel>
-                                <FormInput value=seo_title disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_seo_title.set(value) />
+                                <FormInput value=seo_title disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_seo_title.set(value) />
                                 <FormMessage />
                             </FormField>
                             <FormField name="seo_description">
                                 <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.seoDescription", "SEO description (Blog default)")}</FormLabel>
-                                <FormTextarea value=seo_description disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value| set_seo_description.set(value) />
+                                <FormTextarea value=seo_description disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value| set_seo_description.set(value) />
                                 <FormMessage />
                             </FormField>
                             <Show when=move || schedule_editable.get()>
                                 <FormField name="scheduled_at">
                                     <FormLabel>{t(ui_locale.get_value().as_deref(), "blog.form.scheduledAt", "Schedule (RFC 3339 with timezone)")}</FormLabel>
-                                    <FormInput value=scheduled_at disabled=Signal::derive(move || busy_key.get().is_some()) on_input=move |value: String| {
+                                    <FormInput value=scheduled_at disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) on_input=move |value: String| {
                                         if !value.trim().is_empty() { set_publish_now.set(false); }
                                         set_scheduled_at.set(value);
                                     } />
@@ -373,7 +373,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                             </Show>
                             <Show when=move || editing_post_id.get().is_none()>
                                 <FormField name="publish">
-                                    <FormCheckbox checked=publish_now disabled=Signal::derive(move || busy_key.get().is_some()) label=form_copy_view.with_value(|value| value.publish_now_label.clone())
+                                    <FormCheckbox checked=publish_now disabled=Signal::derive(move || editor_session.with(|s| s.pending_creation().is_some()) || busy_key.get().is_some()) label=form_copy_view.with_value(|value| value.publish_now_label.clone())
                                         on_change=move |checked| {
                                             if checked { set_scheduled_at.set(String::new()); }
                                             set_publish_now.set(checked);

@@ -587,7 +587,10 @@ mod composition {
             let err = sort_migrations_by_dependencies(&mut migrations, &descriptors)
                 .expect_err("missing dependency must fail");
             assert!(
-                err.contains("depends on missing migration"),
+                matches!(
+                    err,
+                    crate::MigrationInventoryError::MissingDependency { .. }
+                ),
                 "unexpected error: {err}"
             );
         }
@@ -612,7 +615,7 @@ mod composition {
             let err =
                 sort_migrations_by_dependencies(&mut migrations, &descriptors).expect_err("cycle");
             assert!(
-                err.contains("cycle or unsatisfied dependency"),
+                matches!(err, crate::MigrationInventoryError::DependencyCycle(_)),
                 "unexpected error: {err}"
             );
         }
@@ -634,7 +637,10 @@ mod composition {
             let err = sort_migrations_by_dependencies(&mut migrations, &descriptors)
                 .expect_err("duplicate descriptor must fail");
             assert!(
-                err.contains("duplicate migration descriptor"),
+                matches!(
+                    err,
+                    crate::MigrationInventoryError::DuplicateDeclaration { .. }
+                ),
                 "unexpected error: {err}"
             );
         }

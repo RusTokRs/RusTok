@@ -261,3 +261,5 @@ blog-categories-updated = Category updated.
 blog-editor-imagePreview = Featured image preview
 
 blog-editor-slugRequired = Canonical slug is required
+
+blog-editor-creationUnknown = Creation is unconfirmed. Save again to retry the original request.

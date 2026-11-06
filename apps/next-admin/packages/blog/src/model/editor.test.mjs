@@ -16,10 +16,11 @@ const {
   targetCategoryCopy,
   canSubmitEditor,
   completeEditorWrite,
-  EditorValidationError
+  EditorValidationError,
+  PostCreationAttempt
 } = compileFunction(
   stripTypeScriptTypes(source) +
-    '\nreturn { buildPostCommand, targetPostCopy, buildCategoryUpdate, targetCategoryCopy, EditorValidationError, canSubmitEditor, completeEditorWrite };',
+    '\nreturn { PostCreationAttempt, buildPostCommand, targetPostCopy, buildCategoryUpdate, targetCategoryCopy, EditorValidationError, canSubmitEditor, completeEditorWrite };',
   ['z']
 )(z);
 const doc = (text) => ({
@@ -311,4 +312,24 @@ test('post write acknowledgement never performs a second privileged detail query
     api(async () => ({ updatePost: false })).updatePost('p', { version: 8 }),
     /rejected/
   );
+});
+
+test('creation retries retain exact identity and payload after an unknown response', () => {
+  const attempt = new PostCreationAttempt();
+  let calls = 0;
+  const allocate = () => `command-${++calls}`;
+  const input = { title: 'Original', locale: 'en', tags: [], publish: false, content: doc('Body') };
+  const first = attempt.prepare(input, allocate);
+  first.content.content.length = 0;
+  input.title = 'Changed';
+  attempt.resolve(new Error('network'));
+  attempt.resolve({ code: 'UNAUTHORIZED' });
+  assert.equal(attempt.prepare(input, allocate).title, 'Original');
+  assert.equal(attempt.request.content.content.length, 1);
+  assert.equal(attempt.request.commandId, 'command-1');
+  assert.equal(calls, 1);
+  attempt.resolve({ outcome: 'rejected' });
+  assert.equal(attempt.request, undefined);
+  assert.equal(attempt.prepare(input, allocate).commandId, 'command-2');
+  assert.equal(attempt.request.title, 'Changed');
 });

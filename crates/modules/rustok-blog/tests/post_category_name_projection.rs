@@ -32,6 +32,9 @@ async fn ensure_schema(db: &DatabaseConnection) {
         .up(&manager)
         .await
         .expect("outbox migration should apply");
+    rustok_outbox::migration::create_owner_operation_receipts_table(&schema)
+        .await
+        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -91,6 +94,7 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "de".to_string(),
                 title: "Kategorie im Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),

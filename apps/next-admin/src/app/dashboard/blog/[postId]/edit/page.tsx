@@ -22,6 +22,7 @@ export default async function Page(props: PageProps) {
     <PageContainer scrollable pageTitle='Edit Post'>
       <Suspense fallback={<div>Loading form...</div>}>
         <PostFormPage
+          actorId={session?.user?.id ?? ''}
           postId={postId}
           token={token}
           tenantSlug={tenantSlug}

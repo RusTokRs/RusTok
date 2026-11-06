@@ -15,7 +15,8 @@
 
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -26,6 +27,160 @@ use super::hardening::{
 use crate::entities::{blog_post, blog_post_tag, blog_tag_usage};
 use crate::services::{MAX_SCHEDULED_PUBLISH_BATCH, TagService, status_to_storage};
 use crate::{BlogError, BlogPostStatus, CreateTagInput, UpdateTagInput};
+
+#[tokio::test]
+async fn creation_outbox_failure_rolls_back_and_retries_the_same_identity() {
+    let (db, events) = setup_hardening_schema().await;
+    let service = post_service(&db, &events);
+    let tenant = Uuid::new_v4();
+    let actor = admin();
+    let input = post_input("creation-outbox-retry");
+    db.execute_unprepared(
+        "CREATE TRIGGER reject_creation_event BEFORE INSERT ON sys_events \
+         BEGIN SELECT RAISE(ABORT, 'injected outbox failure'); END",
+    )
+    .await
+    .unwrap();
+    let error = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap_err();
+    assert!(!matches!(error, BlogError::CreationRejected(_)));
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 0);
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, 0);
+    db.execute_unprepared("DROP TRIGGER reject_creation_event")
+        .await
+        .unwrap();
+    let id = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap();
+    assert_eq!(service.create_post(tenant, actor, input).await.unwrap(), id);
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 1);
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, 1);
+}
+
+#[tokio::test]
+async fn creation_replay_returns_original_identity_without_new_rows_or_events() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant = Uuid::new_v4();
+    let actor = admin();
+    let service = post_service(&db, &events);
+    let input = post_input("replayed-creation");
+    let id = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap();
+    let event_count = outbox_event_count(&db, "blog.post.created").await;
+    let create_only = rustok_core::SecurityContext::from_permissions(
+        rustok_core::UserRole::Admin,
+        actor.user_id,
+        [rustok_api::Permission::BLOG_POSTS_CREATE],
+    );
+    assert_eq!(
+        service
+            .create_post(tenant, create_only.clone(), input.clone())
+            .await
+            .unwrap(),
+        id
+    );
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, event_count);
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 1);
+    let mut changed = input.clone();
+    changed.title = "Different command payload".into();
+    let error = service
+        .create_post(tenant, actor.clone(), changed)
+        .await
+        .unwrap_err();
+    assert_eq!(crate::BlogPublicError::from(error).status, 409);
+    service
+        .delete_post(tenant, id, actor.clone())
+        .await
+        .unwrap();
+    let after_delete = outbox_event_count(&db, "blog.post.created").await;
+    assert_eq!(
+        service
+            .create_post(tenant, create_only, input.clone())
+            .await
+            .unwrap(),
+        id
+    );
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 0);
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, after_delete);
+    let denied = rustok_core::SecurityContext::from_permissions(
+        rustok_core::UserRole::Admin,
+        actor.user_id,
+        Vec::<rustok_api::Permission>::new(),
+    );
+    assert!(matches!(
+        service.create_post(tenant, denied, input).await,
+        Err(BlogError::Forbidden(_))
+    ));
+}
+
+#[tokio::test]
+async fn creation_rejection_is_durable_and_a_corrected_command_needs_new_identity() {
+    let (db, events) = setup_hardening_schema().await;
+    let tenant = Uuid::new_v4();
+    let actor = admin();
+    let service = post_service(&db, &events);
+    let mut input = post_input("rejected-creation");
+    input.title.clear();
+    let first = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap_err();
+    assert!(matches!(&first, BlogError::CreationRejected(_)));
+    let again = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        crate::BlogPublicError::from(first),
+        crate::BlogPublicError::from(again)
+    );
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 0);
+    assert_eq!(outbox_event_count(&db, "blog.post.created").await, 0);
+    input.title = "Corrected".into();
+    assert_eq!(
+        crate::BlogPublicError::from(
+            service
+                .create_post(tenant, actor.clone(), input.clone())
+                .await
+                .unwrap_err()
+        )
+        .status,
+        409
+    );
+    input.command_id = Uuid::new_v4();
+    service.create_post(tenant, actor, input).await.unwrap();
+    assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn creation_identity_is_isolated_by_tenant_and_current_author() {
+    let (db, events) = setup_hardening_schema().await;
+    let service = post_service(&db, &events);
+    let tenant = Uuid::new_v4();
+    let actor = admin();
+    let input = post_input("tenant-creation");
+    let first = service
+        .create_post(tenant, actor.clone(), input.clone())
+        .await
+        .unwrap();
+    let second = service
+        .create_post(Uuid::new_v4(), actor.clone(), input.clone())
+        .await
+        .unwrap();
+    assert_ne!(first, second);
+    let mut other_input = input;
+    other_input.slug = Some("different-author".into());
+    let other = service
+        .create_post(tenant, admin(), other_input)
+        .await
+        .unwrap();
+    assert_ne!(first, other);
+}
 
 /// Reads a post row straight from the owner table, so an assertion cannot be satisfied by
 /// a cached DTO.

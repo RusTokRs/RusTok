@@ -1280,3 +1280,5 @@ blog-editor-slugRequired = Канонический адрес обязател�
 blog-status-unknown = Неизвестный статус
 blog-detail-notFound = Запись не найдена.
 blog-detail-publishedAt = Опубликовано { $date }
+
+blog-editor-creationUnknown = Результат создания не подтверждён. Нажмите «Сохранить», чтобы повторить исходный запрос.

@@ -17,6 +17,7 @@ export default async function Page() {
     <PageContainer scrollable pageTitle='Create Post'>
       <Suspense fallback={<div>Loading form...</div>}>
         <PostFormPage
+          actorId={session?.user?.id ?? ''}
           token={token}
           tenantSlug={tenantSlug}
           tenantId={tenantId}

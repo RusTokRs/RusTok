@@ -79,7 +79,7 @@ export function buildPostCommand(
   emptyDocument: RichTextDocument,
   hasText: (value: RichTextDocument) => boolean
 ):
-  | { kind: 'create'; input: CreatePostInput }
+  | { kind: 'create'; input: Omit<CreatePostInput, 'commandId'> }
   | { kind: 'update'; input: UpdatePostInput } {
   const title = values.title.trim();
   const locale = values.locale.trim();
@@ -213,4 +213,20 @@ export function postImageSource(value?: string | null): string | undefined {
       /^https?:\/\//.test(source))
     ? source
     : undefined;
+}
+
+/** One immutable logical creation. Only durable receipt rejection can release it. */
+export class PostCreationAttempt {
+  private pending: CreatePostInput | undefined;
+  get request(): CreatePostInput | undefined {
+    return this.pending ? structuredClone(this.pending) : undefined;
+  }
+  prepare(input: Omit<CreatePostInput, 'commandId'>, allocate: () => string): CreatePostInput {
+    this.pending ??= { ...structuredClone(input), commandId: allocate() };
+    return structuredClone(this.pending);
+  }
+  resolve(error: unknown): void {
+    if (typeof error === 'object' && error !== null && 'outcome' in error && error.outcome === 'rejected')
+      this.pending = undefined;
+  }
 }

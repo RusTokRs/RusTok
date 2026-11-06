@@ -350,6 +350,7 @@ pub struct GqlPublicPostList {
 
 #[derive(InputObject)]
 pub struct CreatePostInput {
+    pub command_id: Uuid,
     pub locale: String,
     pub title: String,
     pub content: RichTextDocument,
@@ -596,6 +597,7 @@ impl TryFrom<CreatePostInput> for DomainCreatePostInput {
     type Error = BlogError;
     fn try_from(input: CreatePostInput) -> Result<Self, Self::Error> {
         Ok(Self {
+            command_id: input.command_id,
             locale: input.locale,
             title: input.title,
             content: input.content,

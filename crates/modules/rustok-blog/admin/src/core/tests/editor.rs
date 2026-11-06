@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn pending_creation_retains_original_command_until_a_durable_outcome() {
+    let post = editor_post();
+    let original = editor_draft(&post);
+    let mut session = PostEditorSession::Creating;
+    let request = session.retain_creation(original.clone());
+    let mut changed = original;
+    changed.command_id = uuid::Uuid::new_v4();
+    changed.title = "Different input after timeout".into();
+    let retried = session.retain_creation(changed.clone());
+    assert_eq!(retried.command_id, request.command_id);
+    assert_eq!(retried.title, request.title);
+    assert!(session.can_save(), "retry remains available");
+    session = PostEditorSession::Creating; // only durable rejection unlocks editing
+    assert_eq!(
+        session.retain_creation(changed.clone()).command_id,
+        changed.command_id
+    );
+}
+
+#[test]
 fn editor_principal_preserves_same_actor_refresh_but_separates_actor_tenant_and_logout() {
     let signed_in = EditorPrincipal {
         actor_id: Some("actor-a".into()),

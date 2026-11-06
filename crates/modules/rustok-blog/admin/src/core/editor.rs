@@ -1,4 +1,4 @@
-use crate::model::BlogPostDetail;
+use crate::model::{BlogPostDetail, BlogPostDraft};
 
 /// Stable owner of an editable snapshot. Credentials may rotate without
 /// changing this identity; actor/tenant switches start a different editor.
@@ -43,6 +43,7 @@ impl EditorRequest {
 pub enum PostEditorSession {
     #[default]
     Creating,
+    CreatingPending(Box<BlogPostDraft>),
     Loaded(Box<BlogPostDetail>),
     Acknowledged {
         post_id: String,
@@ -54,7 +55,7 @@ pub enum PostEditorSession {
 impl PostEditorSession {
     pub fn post_id(&self) -> Option<&str> {
         match self {
-            Self::Creating => None,
+            Self::Creating | Self::CreatingPending(_) => None,
             Self::Loaded(post) => Some(&post.id),
             Self::Acknowledged { post_id } | Self::ReloadFailed { post_id } => Some(post_id),
         }
@@ -67,6 +68,22 @@ impl PostEditorSession {
     }
     pub fn version(&self) -> Option<i32> {
         self.snapshot().map(|post| post.version)
+    }
+    pub fn pending_creation(&self) -> Option<&BlogPostDraft> {
+        match self {
+            Self::CreatingPending(draft) => Some(draft),
+            _ => None,
+        }
+    }
+
+    /// Retain the entire request before IO. A transport error cannot prove that
+    /// a previous attempt did not commit, even if current authorization fails.
+    pub fn retain_creation(&mut self, draft: BlogPostDraft) -> BlogPostDraft {
+        if let Some(pending) = self.pending_creation() {
+            return pending.clone();
+        }
+        *self = Self::CreatingPending(Box::new(draft.clone()));
+        draft
     }
     pub fn can_save(&self) -> bool {
         !self.awaiting_reload()

@@ -30,6 +30,7 @@ import { createPost, updatePost } from '../api/posts';
 import { listAllBlogCategories, type BlogCategory } from '../api/categories';
 import {
   buildPostCommand,
+  PostCreationAttempt,
   canSubmitEditor,
   completeEditorWrite,
   type EditorWriteState,
@@ -43,6 +44,7 @@ import { BlogModerationPanel } from './moderation-panel';
 type Props = {
   initialData: PostResponse | null;
   pageTitle: string;
+  actorId: string;
   gqlOpts?: GqlOpts;
 };
 export default function PostForm(props: Props) {
@@ -52,7 +54,7 @@ export default function PostForm(props: Props) {
     props.initialData,
     props.gqlOpts?.tenantId,
     props.gqlOpts?.tenantSlug,
-    props.gqlOpts?.token,
+    props.actorId,
     props.gqlOpts?.locale
   ]);
   return <PostEditorSession key={session} {...props} />;
@@ -68,6 +70,8 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
   );
   const documentRef = useRef(content);
   const writeState = useRef<EditorWriteState>('idle');
+  const creation = useRef(new PostCreationAttempt());
+  const [creationPending, setCreationPending] = useState(false);
   const [writeAcknowledged, setWriteAcknowledged] = useState(false);
   const active = useRef(true);
   useEffect(() => {
@@ -141,7 +145,8 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
     if (!canSubmitEditor(writeState.current)) return;
     let acknowledged = false;
     try {
-      const command = buildPostCommand(
+      const retained = creation.current.request;
+      const command = retained ? { kind: 'create' as const, input: retained } : buildPostCommand(
         values,
         documentRef.current,
         initialData,
@@ -161,11 +166,16 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
       writeState.current = 'saving';
       if (command.kind === 'update' && initialData)
         await updatePost(initialData.id, command.input, gqlOpts);
-      else if (command.kind === 'create')
-        await createPost(command.input, gqlOpts);
+      else if (command.kind === 'create') {
+        const input = creation.current.prepare(command.input, () => crypto.randomUUID());
+        setCreationPending(true);
+        await createPost(input, gqlOpts);
+      }
       acknowledged = true;
     } catch (error) {
       if (!active.current) return;
+      creation.current.resolve(error);
+      setCreationPending(Boolean(creation.current.request));
       if (error instanceof EditorValidationError) {
         const messages = {
           requiredCopy: t('editor.requiredCopy'),
@@ -207,6 +217,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
                 </AlertDescription>
               </Alert>
             )}
+          {creationPending && <Alert><AlertDescription>{t('editor.creationUnknown')}</AlertDescription></Alert>}
           <Form
             form={form}
             onSubmit={form.handleSubmit(onSubmit)}
@@ -216,13 +227,13 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='title'
               label={t('form.title')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <FormInput
               control={form.control}
               name='slug'
               label={t('form.slug')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <FormInput
               control={form.control}
@@ -238,7 +249,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='tags'
               label={t('form.tags')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <FormSelect
               control={form.control}
@@ -268,14 +279,14 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='channelSlugs'
               label={t('form.channels')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <RichTextEditor
               label={t('form.content')}
               profile='article'
               value={content}
               contentLocale={contentLocale}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
               onChange={(document) => {
                 documentRef.current = document;
                 setContent(document);
@@ -285,13 +296,13 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='excerpt'
               label={t('form.excerpt')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <FormInput
               control={form.control}
               name='featuredImageUrl'
               label={t('form.featuredImage')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             {imageSource && (
               <Image
@@ -307,20 +318,20 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='seoTitle'
               label={t('form.seoTitle')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             <FormTextarea
               control={form.control}
               name='seoDescription'
               label={t('form.seoDescription')}
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
             />
             {!initialData && (
               <FormSwitch
                 control={form.control}
                 name='publish'
                 label={t('form.publishNow')}
-                disabled={form.formState.isSubmitting || writeAcknowledged}
+                disabled={form.formState.isSubmitting || writeAcknowledged || creationPending}
               />
             )}
             {(!initialData || initialData.status === 'DRAFT') && (
@@ -330,7 +341,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
                 label={t('form.scheduledAt')}
                 description={t('editor.scheduleHelp')}
                 disabled={
-                  publishNow || form.formState.isSubmitting || writeAcknowledged
+                  publishNow || form.formState.isSubmitting || writeAcknowledged || creationPending
                 }
               />
             )}

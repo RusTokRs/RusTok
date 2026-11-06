@@ -10,6 +10,55 @@ use serde_json::json;
 use super::test_support::{execute, fixture};
 
 #[tokio::test]
+async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
+    let fixture = fixture().await;
+    let mut creator = fixture.auth.clone();
+    creator.permissions = vec![Permission::BLOG_POSTS_CREATE];
+    let mut draft = json!({
+        "command_id": uuid::Uuid::new_v4(),
+        "locale": "en",
+        "title": "Replayable native creation",
+        "slug": "replayable-native-creation",
+        "excerpt": "",
+        "content": rustok_api::RichTextDocument::single_paragraph("Body"),
+        "publish": false,
+        "tags": [],
+        "channel_slugs": [],
+        "schedule_editable": true
+    });
+    let path = super::BlogAdminCreatePostNative::PATH;
+    let (status, first) = execute(
+        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert!(first["Created"].as_str().is_some(), "{first}");
+    let (status, replay) = execute(
+        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{replay}");
+    assert_eq!(replay, first);
+    // An attempt-local permission denial cannot establish the outcome of the
+    // original request and must never be encoded as a durable rejection.
+    let mut denied = creator.clone();
+    denied.permissions.clear();
+    let (status, _) = execute(
+        &fixture.host, &fixture.tenant, &denied, path, json!({"draft": draft}),
+    ).await;
+    assert_ne!(status, StatusCode::OK);
+    draft["command_id"] = json!(uuid::Uuid::new_v4());
+    draft["title"] = json!("");
+    let (status, rejected) = execute(
+        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
+    ).await;
+    assert_eq!(status, StatusCode::OK, "{rejected}");
+    assert!(rejected["Rejected"].as_str().is_some(), "{rejected}");
+    let (_, replay) = execute(
+        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
+    ).await;
+    assert_eq!(replay, rejected);
+}
+
+#[tokio::test]
 async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
     let fixture = fixture().await;
     let service = PostService::new(fixture.db.clone(), fixture.bus.clone());
@@ -19,6 +68,7 @@ async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
             fixture.tenant.id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".into(),
                 title: "Acknowledged owner write".into(),
                 content: rustok_api::RichTextDocument::single_paragraph("Body"),

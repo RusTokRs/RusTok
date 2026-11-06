@@ -248,6 +248,7 @@ impl BlogModerationStatus {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDraft {
+    pub command_id: uuid::Uuid,
     pub locale: String,
     pub version: Option<i32>,
     pub title: String,
@@ -267,6 +268,14 @@ pub struct BlogPostDraft {
     pub scheduled_at: Option<String>,
     /// The form may change schedule only while the post is a draft.
     pub schedule_editable: bool,
+}
+
+/// Rejection is returned only from a durable failed creation receipt. Transport
+/// errors leave the logical command unresolved, including authorization loss.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum BlogPostCreationOutcome {
+    Created(String),
+    Rejected(String),
 }
 
 /// A prepared edit, distinct from a creation draft. Omitted fields preserve owner

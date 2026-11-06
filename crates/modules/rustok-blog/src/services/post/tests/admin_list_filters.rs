@@ -7,6 +7,7 @@
 
 fn filter_post_input(locale: &str, title: &str, slug: &str) -> CreatePostInput {
     CreatePostInput {
+        command_id: uuid::Uuid::new_v4(),
         locale: locale.into(),
         title: title.into(),
         content: crate::richtext::article_document_from_plain_text("Body"),
@@ -296,6 +297,7 @@ async fn admin_list_title_filter_matches_case_insensitively() {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: title.to_string(),
                     content: crate::richtext::article_document_from_plain_text("Body"),
@@ -361,6 +363,7 @@ async fn admin_list_title_filter_escapes_like_wildcards() {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: title.to_string(),
                     content: crate::richtext::article_document_from_plain_text("Body"),
@@ -429,6 +432,7 @@ async fn admin_list_title_filter_resolves_the_fallback_locale_translation() {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Fallback Locale Title".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),
@@ -493,6 +497,7 @@ async fn admin_list_slug_filter_matches_substring_case_insensitively() {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: title.to_string(),
                     content: crate::richtext::article_document_from_plain_text("Body"),
@@ -553,6 +558,7 @@ async fn admin_list_text_filters_normalize_blank_and_reject_oversized_needles() 
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Only Post".to_string(),
                 content: crate::richtext::article_document_from_plain_text("Body"),

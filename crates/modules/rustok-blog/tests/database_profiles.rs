@@ -75,6 +75,7 @@ async fn channel_publication_and_locale_contract(db: DatabaseConnection) {
                 owner,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".into(),
                     title: slug.into(),
                     content: RichTextDocument::single_paragraph("Fixture body"),

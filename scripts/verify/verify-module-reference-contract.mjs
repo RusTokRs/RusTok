@@ -979,8 +979,12 @@ requireAll("crates/modules/rustok-blog/src/services/category.rs", [
 ]);
 requireAll("crates/modules/rustok-blog/src/services/post/commands/create.rs", [
   "pub async fn create_post(",
-  "if publish {",
+  "if input.publish {",
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
+  "idempotency::admit(",
+  "idempotency::complete(",
+  "txn.commit().await",
+  "Admission::Replay(value)",
 ]);
 requireAll("crates/modules/rustok-blog/src/services/post/mod.rs", [
   "const MAX_POST_METADATA_BYTES: usize = 64 * 1024;",
@@ -1053,6 +1057,7 @@ requireAllSource("crates/modules/rustok-blog/src/services/tag.rs", tagServiceSou
 const allowedBlogPostMutationSources = new Set([
   "crates/modules/rustok-blog/src/services/post/commands.rs",
   "crates/modules/rustok-blog/src/services/post/commands/create.rs",
+  "crates/modules/rustok-blog/src/services/post/commands/create/transaction.rs",
   "crates/modules/rustok-blog/src/services/post/repository.rs",
   "crates/modules/rustok-blog/src/services/post/pin.rs",
   "crates/modules/rustok-blog/src/services/tag.rs",

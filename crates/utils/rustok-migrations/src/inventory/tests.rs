@@ -1,6 +1,7 @@
 use super::*;
 use rustok_core::{MigrationPhaseConstraint, MigrationSafetyClass, MigrationSource};
 use sea_orm_migration::{DbErr, MigrationName, SchemaManager};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct TestMigration(&'static str, Option<bool>);
 
@@ -26,6 +27,7 @@ struct TestModule {
     names: Vec<(&'static str, Option<bool>)>,
     dependencies: Vec<MigrationDependencyDescriptor>,
     safety: Vec<MigrationSafetyMetadata>,
+    calls: AtomicUsize,
 }
 
 impl TestModule {
@@ -35,12 +37,14 @@ impl TestModule {
             names: names.iter().map(|name| (*name, None)).collect(),
             dependencies: Vec::new(),
             safety: Vec::new(),
+            calls: AtomicUsize::new(0),
         }
     }
 }
 
 impl MigrationSource for TestModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         self.names
             .iter()
             .map(|(name, transaction)| {
@@ -100,6 +104,8 @@ fn export_and_executor_share_exact_order_and_owner_facts() {
         MigrationInventory::compose(vec![Box::new(TestMigration("b", None))], &[&alpha, &beta])
             .unwrap();
     assert_eq!(inventory.migrations(), &["b", "c", "a", "d"]);
+    assert_eq!(alpha.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(beta.calls.load(Ordering::SeqCst), 1);
     assert_eq!(inventory.entries()[0].owner, MigrationOwner::Platform);
     assert_eq!(
         inventory.entries()[2].owner,
@@ -291,12 +297,17 @@ fn missing_targets_self_dependencies_and_cycles_are_rejected() {
 #[test]
 fn module_registration_order_does_not_change_exported_bytes() {
     let mut alpha = TestModule::new("alpha", &["a", "d"]);
-    alpha.dependencies.push(MigrationDependencyDescriptor::new("a", vec!["c"]));
+    alpha
+        .dependencies
+        .push(MigrationDependencyDescriptor::new("a", vec!["c"]));
     alpha.safety.push(metadata("a"));
     let beta = TestModule::new("beta", &["b", "c"]);
     let forward = MigrationInventory::compose(Vec::new(), &[&alpha, &beta]).unwrap();
     let reversed = MigrationInventory::compose(Vec::new(), &[&beta, &alpha]).unwrap();
-    assert_eq!(serde_json::to_vec(&forward).unwrap(), serde_json::to_vec(&reversed).unwrap());
+    assert_eq!(
+        serde_json::to_vec(&forward).unwrap(),
+        serde_json::to_vec(&reversed).unwrap()
+    );
 }
 
 #[cfg(feature = "composition")]
@@ -307,9 +318,23 @@ fn compiled_inventory_covers_platform_and_iggy_and_matches_seaorm_factory() {
     let inventory = crate::Migrator::inventory().unwrap();
     assert_eq!(inventory.entries().len(), inventory.migrations().len());
     assert_eq!(inventory.entries()[0].owner, MigrationOwner::Platform);
-    assert_eq!(inventory.entries()[0].migration, "m20250101_000001_create_tenants");
-    assert!(inventory.entries().iter().any(|entry| entry.owner == MigrationOwner::Module { slug: "iggy_connector".to_owned() }));
-    assert!(inventory.entries().iter().any(|entry| entry.safety.is_some()));
-    let names: Vec<_> = crate::Migrator::migrations().iter().map(|migration| migration.name().to_owned()).collect();
+    assert_eq!(
+        inventory.entries()[0].migration,
+        "m20250101_000001_create_tenants"
+    );
+    assert!(inventory.entries().iter().any(|entry| entry.owner
+        == MigrationOwner::Module {
+            slug: "iggy_connector".to_owned()
+        }));
+    assert!(
+        inventory
+            .entries()
+            .iter()
+            .any(|entry| entry.safety.is_some())
+    );
+    let names: Vec<_> = crate::Migrator::migrations()
+        .iter()
+        .map(|migration| migration.name().to_owned())
+        .collect();
     assert_eq!(inventory.migrations(), names);
 }

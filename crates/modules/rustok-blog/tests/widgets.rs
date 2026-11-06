@@ -138,6 +138,7 @@ async fn create_post(
             tenant,
             SecurityContext::new(UserRole::Admin, Some(author)),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".into(),
                 title: title.into(),
                 content: RichTextDocument::single_paragraph("Owner document"),
@@ -373,6 +374,7 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
                 tenant.id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".into(),
                     title: title.into(),
                     content: RichTextDocument::single_paragraph("Channel body"),
@@ -450,6 +452,51 @@ async fn public_scope_preview_applies_channel_visibility_before_keyset_limits() 
         )
         .await;
     assert!(matches!(denied, Err(rustok_blog::BlogError::Forbidden(_))));
+}
+
+#[tokio::test]
+async fn graphql_creation_replays_acknowledgement_and_marks_durable_rejections() {
+    let (db, bus, tenant, auth) = fixture().await;
+    let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription)
+        .data(db.clone())
+        .data(bus)
+        .finish();
+    let mut input = json!({
+        "commandId": Uuid::new_v4(), "locale": "en", "title": "Replayable creation",
+        "content": RichTextDocument::single_paragraph("Body"), "publish": false, "tags": []
+    });
+    let request = |input: Value, auth: AuthContext| {
+        Request::new("mutation($input: CreatePostInput!) { createPost(input: $input) }")
+            .variables(async_graphql::Variables::from_json(json!({"input": input})))
+            .data(tenant.clone())
+            .data(request_context(&tenant, &auth))
+            .data(auth)
+    };
+    let mut creator = auth;
+    creator.permissions = vec![rustok_api::Permission::BLOG_POSTS_CREATE];
+    let first = schema.execute(request(input.clone(), creator.clone())).await;
+    assert!(first.errors.is_empty(), "{:?}", first.errors);
+    let replay = schema.execute(request(input.clone(), creator.clone())).await;
+    assert!(replay.errors.is_empty(), "{:?}", replay.errors);
+    assert_eq!(replay.data, first.data);
+    let count = db.query_one_raw(Statement::from_string(
+        db.get_database_backend(), "SELECT COUNT(*) AS count FROM blog_posts",
+    )).await.unwrap().unwrap().try_get::<i64>("", "count").unwrap();
+    assert_eq!(count, 1);
+    let mut denied = creator.clone();
+    denied.permissions.clear();
+    let denied = schema.execute(request(input.clone(), denied)).await;
+    assert!(!denied.errors.is_empty());
+    assert!(denied.errors.iter().all(|error| error.extensions.as_ref()
+        .and_then(|extensions| extensions.get("outcome")).is_none()));
+    input["commandId"] = json!(Uuid::new_v4());
+    input["title"] = json!("");
+    let rejected = schema.execute(request(input.clone(), creator.clone())).await;
+    assert_eq!(rejected.errors.len(), 1, "{:?}", rejected.errors);
+    assert_eq!(rejected.errors[0].extensions.as_ref().unwrap().get("outcome"),
+        Some(&async_graphql::Value::from("rejected")));
+    let replay = schema.execute(request(input, creator)).await;
+    assert_eq!(replay.errors, rejected.errors);
 }
 
 #[tokio::test]

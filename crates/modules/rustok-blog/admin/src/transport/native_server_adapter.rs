@@ -37,7 +37,9 @@ pub(super) async fn fetch_post(
     blog_admin_post_native(id, locale).await
 }
 
-pub(super) async fn create_post(draft: BlogPostDraft) -> Result<String, ServerFnError> {
+pub(super) async fn create_post(
+    draft: BlogPostDraft,
+) -> Result<crate::model::BlogPostCreationOutcome, ServerFnError> {
     blog_admin_create_post_native(draft).await
 }
 
@@ -450,7 +452,9 @@ async fn blog_admin_post_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/admin/create-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
-async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, ServerFnError> {
+async fn blog_admin_create_post_native(
+    draft: BlogPostDraft,
+) -> Result<crate::model::BlogPostCreationOutcome, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_blog::{CreatePostInput, PostService};
@@ -458,11 +462,12 @@ async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, S
         let context = native_context().await?;
         require_blog_posts_create_permission(&context.auth)?;
         let service = PostService::new(context.db, context.event_bus);
-        let post_id = service
+        let result = service
             .create_post(
                 context.tenant.id,
                 security_context(&context.auth),
                 CreatePostInput {
+                    command_id: draft.command_id,
                     locale: draft.locale,
                     title: draft.title,
                     content: draft.content,
@@ -482,9 +487,16 @@ async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, S
                     scheduled_at: draft.scheduled_at.map(parse_schedule).transpose()?,
                 },
             )
-            .await
-            .map_err(public_blog_error)?;
-        Ok(post_id.to_string())
+            .await;
+        match result {
+            Ok(post_id) => Ok(crate::model::BlogPostCreationOutcome::Created(
+                post_id.to_string(),
+            )),
+            Err(rustok_blog::BlogError::CreationRejected(public)) => Ok(
+                crate::model::BlogPostCreationOutcome::Rejected(public.message),
+            ),
+            Err(error) => Err(public_blog_error(error)),
+        }
     }
     #[cfg(not(feature = "ssr"))]
     {

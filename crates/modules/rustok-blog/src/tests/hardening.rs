@@ -54,6 +54,9 @@ pub(crate) async fn setup_hardening_schema() -> (DatabaseConnection, Transaction
         .up(&manager)
         .await
         .expect("outbox migration should apply");
+    rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+        .await
+        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -112,6 +115,7 @@ pub(crate) async fn create_draft_post(
 
 pub(crate) fn post_input(slug: &str) -> CreatePostInput {
     CreatePostInput {
+        command_id: uuid::Uuid::new_v4(),
         locale: "en".to_string(),
         title: format!("Post {slug}"),
         content: crate::richtext::article_document_from_plain_text("Body"),
@@ -373,6 +377,7 @@ async fn nil_uuid_validation_guards_reject_invalid_identifiers() {
     assert!(err.to_string().contains("Post ID must not be nil"));
 
     let create_post = CreatePostInput {
+        command_id: uuid::Uuid::new_v4(),
         locale: "en".into(),
         title: "Test Post".into(),
         content: crate::richtext::article_document_from_plain_text("Test content"),

@@ -6,6 +6,7 @@ import PostForm from '../components/post-form';
 
 interface PostFormPageProps {
   postId?: string;
+  actorId: string;
   token?: string | null;
   tenantSlug?: string | null;
   tenantId?: string | null;
@@ -13,6 +14,7 @@ interface PostFormPageProps {
 
 export default async function PostFormPage({
   postId,
+  actorId,
   token,
   tenantSlug,
   tenantId
@@ -26,6 +28,7 @@ export default async function PostFormPage({
   return (
     <PostForm
       initialData={initialData}
+      actorId={actorId}
       pageTitle={initialData ? t('form.editTitle') : t('form.createTitle')}
       gqlOpts={opts}
     />

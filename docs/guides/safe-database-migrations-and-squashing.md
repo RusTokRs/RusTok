@@ -231,6 +231,10 @@ remain unknown. Immutable Git/build input coverage, stable seals and their
 atomic integration/publication fence remain pending; this inventory completes
 neither gate 2 nor production update authorization.
 
+The inventory's Rust regression execution and composed pre/post name comparison
+are still pending on the current source. The available source review and static
+checks are not executable migration-equivalence or release-admission evidence.
+
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.
    Reject empty or unsupported coverage explicitly. Remove misleading complete

@@ -129,6 +129,8 @@ struct UpdatePostVariables {
 
 #[derive(Debug, Serialize)]
 struct CreatePostInput {
+    #[serde(rename = "commandId")]
+    command_id: uuid::Uuid,
     locale: String,
     title: String,
     content: RichTextDocument,
@@ -335,11 +337,12 @@ pub async fn create_post(
     token: Option<String>,
     tenant_slug: Option<String>,
     draft: BlogPostDraft,
-) -> Result<String, ApiError> {
-    let created: CreatePostResponse = request(
+) -> Result<crate::model::BlogPostCreationOutcome, ApiError> {
+    let request = GraphqlRequest::new(
         CREATE_POST_MUTATION,
-        CreatePostVariables {
+        Some(CreatePostVariables {
             input: CreatePostInput {
+                command_id: draft.command_id,
                 locale: draft.locale.clone(),
                 title: draft.title,
                 content: draft.content,
@@ -354,13 +357,29 @@ pub async fn create_post(
                 seo_description: draft.seo_description,
                 scheduled_at: draft.scheduled_at,
             },
-        },
-        token.clone(),
-        tenant_slug.clone(),
+        }),
+    );
+    let result = rustok_graphql::execute_with_metadata::<_, CreatePostResponse>(
+        &graphql_url(),
+        request,
+        token,
+        tenant_slug,
+        None,
     )
-    .await?;
-
-    Ok(created.create_post)
+    .await;
+    match result {
+        Ok(created) => Ok(crate::model::BlogPostCreationOutcome::Created(
+            created.create_post,
+        )),
+        Err(error)
+            if error.extensions.as_ref().and_then(|e| e.outcome.as_deref()) == Some("rejected") =>
+        {
+            Ok(crate::model::BlogPostCreationOutcome::Rejected(
+                error.error.to_string(),
+            ))
+        }
+        Err(error) => Err(error.error),
+    }
 }
 
 pub async fn update_post(

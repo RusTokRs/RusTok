@@ -104,6 +104,7 @@ async fn simultaneous_edits_commit_one_revision_and_one_localized_event() {
         let actor = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
         let posts = service(db.clone());
         let id = posts.create_post(tenant_id, actor.clone(), CreatePostInput {
+            command_id: uuid::Uuid::new_v4(),
             locale: "en".into(), title: "Original".into(),
             content: RichTextDocument::single_paragraph("Original body"),
             excerpt: None, slug: Some("edit-race".into()), publish: false,

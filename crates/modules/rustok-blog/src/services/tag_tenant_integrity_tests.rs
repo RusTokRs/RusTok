@@ -19,6 +19,9 @@ async fn setup_schema() -> sea_orm::DatabaseConnection {
         .up(&manager)
         .await
         .expect("outbox migration should apply");
+    rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+        .await
+        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
@@ -37,6 +40,7 @@ async fn setup_schema() -> sea_orm::DatabaseConnection {
 
 fn create_input(slug: &str, tag: &str) -> CreatePostInput {
     CreatePostInput {
+        command_id: uuid::Uuid::new_v4(),
         locale: "en".to_string(),
         title: format!("Post {slug}"),
         content: crate::richtext::article_document_from_plain_text("Body"),

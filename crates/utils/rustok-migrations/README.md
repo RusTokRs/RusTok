@@ -137,6 +137,11 @@ SeaORM's infallible factory retains its static compiled-composition assertion.
 This is a diagnostic declaration inventory. It does not hash source inputs,
 resolve transitive build provenance, certify observed safety, or seal a release.
 
+Inventory verification is pending on the current source: the Rust regression
+cases are defined, but compilation/execution and the composed pre/post migration
+name comparison have not yet completed. Static contract checks, documentation
+checks and independent source review do not substitute for those runtime checks.
+
 The default `composition` feature preserves the complete existing `Migrator`,
 installer entrypoints and exports. Build the independent observer without that
 domain dependency tree:

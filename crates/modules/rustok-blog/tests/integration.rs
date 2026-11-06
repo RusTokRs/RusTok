@@ -88,6 +88,7 @@ async fn test_post_lifecycle() -> TestResult<()> {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Test Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Hello, Blog!"),
@@ -161,6 +162,7 @@ async fn test_create_and_publish_post() -> TestResult<()> {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Draft Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Content"),
@@ -217,6 +219,7 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en-us".to_string(),
                 title: "Localized Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -360,6 +363,7 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
                 tenant_id,
                 admin.clone(),
                 CreatePostInput {
+                    command_id: uuid::Uuid::new_v4(),
                     locale: "en".to_string(),
                     title: format!("Post {i}"),
                     content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -457,6 +461,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Rust Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -480,6 +485,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Go Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -527,6 +533,7 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Published Post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Content"),
@@ -894,6 +901,7 @@ async fn test_blog_comment_surface_policy_preserves_comment_data() -> TestResult
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Comment policy".to_string(),
                 content: richtext("Post body"),
@@ -1053,6 +1061,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Post for comments".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Post body"),
@@ -1135,6 +1144,7 @@ async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestRe
             tenant_id,
             author.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Public comment target".to_string(),
                 content: richtext("Post body"),
@@ -1211,6 +1221,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Post with comments".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -1403,6 +1414,7 @@ async fn test_moderate_comment_requires_comments_moderate_permission() -> TestRe
             tenant_id,
             admin.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Post for moderation".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -1630,6 +1642,7 @@ mod unit_tests {
     #[test]
     fn test_create_post_input_fields() {
         let input = CreatePostInput {
+            command_id: uuid::Uuid::new_v4(),
             locale: "ru".to_string(),
             title: "Заголовок".to_string(),
             content: rustok_blog::richtext::article_document_from_plain_text("Тело поста"),

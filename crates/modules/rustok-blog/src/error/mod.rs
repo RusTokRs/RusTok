@@ -11,6 +11,9 @@ use uuid::Uuid;
 /// Gradually migrate to RichError for better context.
 #[derive(Error, Debug)]
 pub enum BlogError {
+    /// A durable failed creation receipt proves that no creation committed.
+    #[error("Blog creation rejected: {0:?}")]
+    CreationRejected(Box<BlogPublicError>),
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 
@@ -96,6 +99,13 @@ pub type BlogResult<T> = Result<T, BlogError>;
 impl From<BlogError> for RichError {
     fn from(err: BlogError) -> Self {
         match err {
+            BlogError::CreationRejected(public) => {
+                let mut rich = RichError::new(ErrorKind::BusinessLogic, public.message.clone())
+                    .with_user_message(public.message)
+                    .with_error_code(public.code);
+                rich.status_code = public.status;
+                rich
+            }
             BlogError::Database(db_err) => {
                 RichError::new(ErrorKind::Database, "Database operation failed")
                     .with_user_message("Unable to access blog data")

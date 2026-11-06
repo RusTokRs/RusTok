@@ -44,6 +44,9 @@ async fn setup() -> (
         .up(&schema)
         .await
         .expect("outbox migration should apply");
+    rustok_outbox::migration::create_owner_operation_receipts_table(&schema)
+        .await
+        .expect("owner receipts migration should apply");
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -79,6 +82,7 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Tagged post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -164,6 +168,7 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Popular tag post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -188,6 +193,7 @@ async fn tag_list_is_bounded_by_database_pagination_and_preserves_zero_use_modul
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Second popular tag post".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -275,6 +281,7 @@ async fn post_tag_sync_reuses_existing_global_taxonomy_term() {
             tenant_id,
             security,
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Global tag reuse".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -389,6 +396,7 @@ async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed(
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Canonical tag relation".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -435,6 +443,7 @@ async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Atomic tag update".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -521,6 +530,7 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Rollback tag update".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),
@@ -608,6 +618,7 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
             tenant_id,
             security.clone(),
             CreatePostInput {
+                command_id: uuid::Uuid::new_v4(),
                 locale: "en".to_string(),
                 title: "Atomic tag delete".to_string(),
                 content: rustok_blog::richtext::article_document_from_plain_text("Body"),

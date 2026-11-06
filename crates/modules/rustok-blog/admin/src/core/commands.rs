@@ -292,6 +292,7 @@ pub struct BlogPostFormInput<'a> {
 
 pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
     BlogPostDraft {
+        command_id: uuid::Uuid::new_v4(),
         locale: trimmed_text(input.locale),
         version: input.version,
         title: trimmed_text(input.title),
