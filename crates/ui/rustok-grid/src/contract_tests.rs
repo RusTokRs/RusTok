@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{cmp::Ordering, collections::BTreeMap};
 
 use super::*;
 
@@ -11,103 +11,143 @@ fn test_package_metadata_contract() {
 
 #[test]
 fn test_pagination_invariants_and_bounds_contract() {
-    let mut pag = GridPagination::paged(95, 10);
-    assert_eq!(pag.total_pages(), 10);
-    assert_eq!(pag.current_page(), 1);
-    assert_eq!(pag.effective_offset(), 0);
-    assert_eq!(pag.effective_limit(), 10);
+    let mut pagination = GridPagination::new(1, 10, 95);
+    assert_eq!(pagination.total_pages(), 10);
+    assert_eq!(pagination.page, 1);
+    assert_eq!(pagination.offset(), 0);
+    assert_eq!(pagination.page_size, 10);
 
-    // Navigating past total clamps to last page
-    pag.goto_page(100);
-    assert_eq!(pag.current_page(), 10);
-    assert_eq!(pag.effective_offset(), 90);
-    assert_eq!(pag.effective_limit(), 10);
+    // Navigation reports the effective page; the partial final display window
+    // does not change the page size an owner uses for its next fetch.
+    assert_eq!(pagination.go_to_page(100), 10);
+    assert_eq!(pagination.offset(), 90);
+    assert_eq!(pagination.page_size, 10);
+    assert_eq!(pagination.visible_len(), 5);
+    assert_eq!((pagination.from_index(), pagination.to_index()), (91, 95));
+    assert!(!pagination.has_next);
+    assert!(pagination.has_previous());
 
-    // Navigating below 1 clamps to 1
-    pag.goto_page(0);
-    assert_eq!(pag.current_page(), 1);
+    assert_eq!(pagination.go_to_page(0), 1);
+    assert_eq!(pagination.offset(), 0);
+    assert_eq!(pagination.go_to_page(3), 3);
+    pagination.set_mode(PaginationMode::Infinite);
+    assert_eq!(pagination.offset(), 20, "fetches still request page 3");
+    assert_eq!(
+        pagination.visible_len(),
+        30,
+        "infinite rendering retains the prefix"
+    );
 
-    // Empty datasets still maintain at least 1 page
-    let empty_pag = GridPagination::paged(0, 10);
-    assert_eq!(empty_pag.total_pages(), 1);
-    assert_eq!(empty_pag.current_page(), 1);
+    let empty = GridPagination::new(0, 10, 0);
+    assert_eq!((empty.total_pages(), empty.page), (1, 1));
+    assert_eq!(
+        (empty.from_index(), empty.to_index(), empty.visible_len()),
+        (0, 0, 0)
+    );
+    assert!(!empty.has_next);
+    let zero_size = GridPagination::new(0, 0, 5);
+    assert_eq!((zero_size.page, zero_size.page_size), (1, 1));
 }
 
 #[test]
 fn test_column_width_bounds_clamping_contract() {
-    let width = ColumnWidth::new(80, 400).with_current(500);
+    let width = ColumnWidth::resizable(500, 80, 400);
     assert_eq!(width.current, 400);
-
-    let stepped_down = step_resized_width(width, -350);
-    assert_eq!(stepped_down.current, 80);
-
-    let stepped_up = step_resized_width(width, 100);
-    assert_eq!(stepped_up.current, 400);
+    assert_eq!(
+        step_resized_width(width.current, -350, width.min, width.max),
+        80,
+    );
+    assert_eq!(
+        step_resized_width(width.current, 100, width.min, width.max),
+        400,
+    );
+    assert_eq!(
+        step_resized_width(width.current, i32::MIN, width.min, width.max),
+        80,
+    );
+    assert_eq!(
+        step_resized_width(width.current, i32::MAX, width.min, width.max),
+        400,
+    );
+    assert_eq!(ColumnWidth::resizable(500, 400, 80), width);
 }
 
 #[test]
 fn test_cell_value_total_ordering_contract() {
-    let empty = CellValue::Empty;
-    let b_false = CellValue::Boolean(false);
-    let b_true = CellValue::Boolean(true);
-    let num_1 = CellValue::Number(1.0);
-    let num_10 = CellValue::Number(10.0);
-    let txt_a = CellValue::Text("apple".to_string());
-    let txt_b = CellValue::Text("banana".to_string());
-
-    assert!(empty < b_false);
-    assert!(b_false < b_true);
-    assert!(b_true < num_1);
-    assert!(num_1 < num_10);
-    assert!(num_10 < txt_a);
-    assert!(txt_a < txt_b);
+    let ordered = [
+        CellValue::Empty,
+        CellValue::boolean(false),
+        CellValue::boolean(true),
+        CellValue::number(1.0),
+        CellValue::number(10.0),
+        CellValue::text("apple"),
+        CellValue::text("banana"),
+    ];
+    for pair in ordered.windows(2) {
+        assert_eq!(pair[0].compare(&pair[1]), Ordering::Less);
+        assert_eq!(pair[1].compare(&pair[0]), Ordering::Greater);
+    }
+    for value in &ordered {
+        assert_eq!(value.compare(value), Ordering::Equal);
+    }
+    // The public constructor rejects non-finite numbers. A malformed raw
+    // variant still sorts with missing values instead of poisoning the order.
+    assert_eq!(CellValue::number(f64::INFINITY), CellValue::Empty);
+    assert_eq!(
+        CellValue::Number(f64::NAN).compare(&CellValue::Empty),
+        Ordering::Equal
+    );
 }
 
 #[test]
 fn test_grid_state_apply_rows_pipeline_contract() {
-    let cols = vec![
-        GridColumnDef::new("id", "ID"),
-        GridColumnDef::new("name", "Name"),
-        GridColumnDef::new("score", "Score"),
+    fn row(id: f64, name: &str, score: f64, visible: bool) -> BTreeMap<String, CellValue> {
+        BTreeMap::from([
+            ("id".into(), CellValue::number(id)),
+            ("name".into(), CellValue::text(name)),
+            ("score".into(), CellValue::number(score)),
+            ("visible".into(), CellValue::boolean(visible)),
+        ])
+    }
+    let dataset = vec![
+        row(1.0, "Alice", 85.0, true),
+        row(2.0, "Bob", 95.0, true),
+        row(3.0, "Charlie", 70.0, false),
+        row(4.0, "Dana", 95.0, true),
+        row(5.0, "Eve", 100.0, false),
     ];
+    let cell_of = |row: &BTreeMap<String, CellValue>, column: &str| {
+        row.get(column).cloned().unwrap_or(CellValue::Empty)
+    };
+    let names = |rows: &[BTreeMap<String, CellValue>]| {
+        rows.iter()
+            .map(|row| row["name"].display_text())
+            .collect::<Vec<_>>()
+    };
+    let mut state = GridState::new().with_pagination(1, 2, dataset.len() as u64);
+    state.sort.set("score", SortDirection::Desc);
+    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Eve", "Bob"]);
 
-    let mut state = GridState::new(cols);
-    state.set_page_size(2);
-
-    let row1 = BTreeMap::from([
-        ("id".to_string(), CellValue::Number(1.0)),
-        ("name".to_string(), CellValue::Text("Alice".to_string())),
-        ("score".to_string(), CellValue::Number(85.0)),
-    ]);
-    let row2 = BTreeMap::from([
-        ("id".to_string(), CellValue::Number(2.0)),
-        ("name".to_string(), CellValue::Text("Bob".to_string())),
-        ("score".to_string(), CellValue::Number(95.0)),
-    ]);
-    let row3 = BTreeMap::from([
-        ("id".to_string(), CellValue::Number(3.0)),
-        ("name".to_string(), CellValue::Text("Charlie".to_string())),
-        ("score".to_string(), CellValue::Number(70.0)),
-    ]);
-
-    let dataset = vec![row1, row2, row3];
-
-    // Sort by score descending
-    state.set_sort("score", SortDirection::Desc);
-    let (rendered, total) = state.apply_rows(&dataset, |row, col| {
-        row.get(col).cloned().unwrap_or(CellValue::Empty)
-    });
-
-    assert_eq!(total, 3);
-    assert_eq!(rendered.len(), 2);
-    // Highest score first (Bob: 95)
+    state.pagination.set_page(2);
+    assert!(state.set_filter("visible", FilterValue::Boolean(true)));
     assert_eq!(
-        rendered[0].get("name"),
-        Some(&CellValue::Text("Bob".to_string()))
+        state.pagination.page, 1,
+        "changed filters invalidate page state"
     );
-    // Second highest (Alice: 85)
+    // apply_rows returns rendered rows, not a second total source. The owner
+    // obtains its filtered count through the same canonical filter vocabulary.
+    let filtered = state.filters.retain_matching(&dataset, cell_of);
+    assert_eq!(filtered.len(), 3);
+    state.pagination.set_total(filtered.len() as u64);
+    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Bob", "Dana"]);
+
+    state.pagination.set_page(2);
+    assert_eq!(names(&state.apply_rows(&dataset, cell_of)), ["Alice"]);
+    assert_eq!(state.pagination.total, 3);
+    assert_eq!(state.toggle_sort("score"), None);
+    assert_eq!(state.pagination.page, 1);
     assert_eq!(
-        rendered[1].get("name"),
-        Some(&CellValue::Text("Alice".to_string()))
+        names(&state.apply_rows(&dataset, cell_of)),
+        ["Alice", "Bob"]
     );
 }
