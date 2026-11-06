@@ -271,47 +271,55 @@ where
     V: Serialize,
     T: DeserializeOwned,
 {
-    let mut req = client.post(endpoint).json(&request);
+    let future = async move {
+        let mut req = client.post(endpoint).json(&request);
 
-    if let Some(token) = token {
-        req = req.header(AUTH_HEADER, format!("Bearer {token}"));
-    }
+        if let Some(token) = token {
+            req = req.header(AUTH_HEADER, format!("Bearer {token}"));
+        }
 
-    if let Some(tenant_slug) = tenant_slug {
-        req = req.header(TENANT_HEADER, tenant_slug);
-    }
+        if let Some(tenant_slug) = tenant_slug {
+            req = req.header(TENANT_HEADER, tenant_slug);
+        }
 
-    if let Some(locale) = locale {
-        req = req.header(ACCEPT_LANGUAGE_HEADER, locale);
-    }
+        if let Some(locale) = locale {
+            req = req.header(ACCEPT_LANGUAGE_HEADER, locale);
+        }
 
-    let response = req.send().await.map_err(|_| GraphqlHttpError::Network)?;
+        let response = req.send().await.map_err(|_| GraphqlHttpError::Network)?;
 
-    if response.status() == 401 {
-        return Err(GraphqlHttpError::Unauthorized.into());
-    }
+        if response.status() == 401 {
+            return Err(GraphqlHttpError::Unauthorized.into());
+        }
 
-    if !response.status().is_success() {
-        return Err(GraphqlHttpError::Http(response.status().to_string()).into());
-    }
+        if !response.status().is_success() {
+            return Err(GraphqlHttpError::Http(response.status().to_string()).into());
+        }
 
-    let body: GraphqlResponse<T> = response
-        .json()
-        .await
-        .map_err(|_| GraphqlHttpError::Network)?;
+        let body: GraphqlResponse<T> = response
+            .json()
+            .await
+            .map_err(|_| GraphqlHttpError::Network)?;
 
-    if let Some(errors) = body.errors
-        && let Some(error) = errors.first()
-    {
-        return Err(GraphqlOperationError {
-            error: GraphqlHttpError::Graphql(error.message.clone()),
-            extensions: error.extensions.clone(),
-        });
-    }
+        if let Some(errors) = body.errors
+            && let Some(error) = errors.first()
+        {
+            return Err(GraphqlOperationError {
+                error: GraphqlHttpError::Graphql(error.message.clone()),
+                extensions: error.extensions.clone(),
+            });
+        }
 
-    body.data.ok_or_else(|| {
-        GraphqlOperationError::from(GraphqlHttpError::Graphql("No data".to_string()))
-    })
+        body.data.ok_or_else(|| {
+            GraphqlOperationError::from(GraphqlHttpError::Graphql("No data".to_string()))
+        })
+    };
+    // All browser fetch state, including response cancellation guards, stays on
+    // its originating JS thread. The checked wrapper matches Leptos' browser
+    // runtime and makes owned-DTO transport futures usable by Send resources.
+    #[cfg(target_arch = "wasm32")]
+    let future = send_wrapper::SendWrapper::new(future);
+    future.await
 }
 
 pub async fn execute_with_raw_client<V, T>(
@@ -335,6 +343,18 @@ mod tests {
     use super::{GraphqlHttpError, GraphqlRequest, persisted_query_extension};
     use serde_json::json;
     use std::str::FromStr;
+
+    #[test]
+    fn owned_dto_execution_future_supports_send_resources() {
+        fn require_send(_: impl std::future::Future + Send) {}
+        require_send(super::execute::<serde_json::Value, serde_json::Value>(
+            "/api/graphql",
+            GraphqlRequest::new("query { ok }", None),
+            None,
+            None,
+            None,
+        ));
+    }
 
     #[test]
     fn request_omits_empty_optional_fields() {

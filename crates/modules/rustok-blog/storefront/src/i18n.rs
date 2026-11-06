@@ -37,6 +37,7 @@ pub fn comment_composer_copy(locale: Option<&str>) -> CommentComposerCopy {
     }
 }
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub fn search_results_message(locale: Option<&str>, page: usize, total: u64) -> String {
     let mut args = rustok_ui_i18n::FluentArgs::new();
     args.set("page", page.to_string());
@@ -44,7 +45,7 @@ pub fn search_results_message(locale: Option<&str>, page: usize, total: u64) -> 
     format(locale, "blog.search.results", Some(&args), "")
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "ssr", not(feature = "comment-island"))))]
 mod tests {
     fn visible(text: String) -> String {
         text.replace(['\u{2068}', '\u{2069}'], "")

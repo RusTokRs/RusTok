@@ -15468,6 +15468,7 @@ version = "0.1.0"
 dependencies = [
  "reqwest 0.13.5",
  "reqwest-middleware",
+ "send_wrapper",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

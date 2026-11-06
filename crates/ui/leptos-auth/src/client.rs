@@ -27,7 +27,10 @@ where
     fn send(request: Self::Request) -> impl Future<Output = Result<Self::Response, Error>> + Send {
         #[cfg(target_arch = "wasm32")]
         let failure = (|| -> Result<(), &'static str> {
-            let headers = request.headers();
+            // gloo's convenience setter throws and returns (). The underlying
+            // web-sys API preserves the error so malformed auth metadata fails
+            // before BrowserClient sends the request.
+            let headers = request.headers().into_raw();
             if let Some(token) = crate::storage::get_token() {
                 headers
                     .set("Authorization", format!("Bearer {token}").as_str())

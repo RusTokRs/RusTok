@@ -13,6 +13,14 @@ canonical transport surface.
 
 ## FFA/FBA boundary
 
+The 2026-11-06 Blog reference continuation exposed a WASM-only compile error in
+`AuthorizedBrowserClient`: gloo `Headers::set` returns unit and throws, so it
+cannot propagate a typed header failure. The client now obtains the underlying
+`web_sys::Headers` and preserves its fallible `set` calls before request IO.
+The existing credential source and request/auth ownership are unchanged.
+Scoped compilation is recorded in the Blog plan; browser failure/session
+execution remains pending and this correction does not promote readiness.
+
 - FFA status: `not_started`
 - FBA status: `not_started`
 - Structural shape: `shared_ui_support`

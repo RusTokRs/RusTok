@@ -269,6 +269,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 async-trait = "0.1"
 futures-util = "0.3"
 any_spawner = { version = "0.3", default-features = false }
+send_wrapper = { version = "0.6", features = ["futures"] }
 object_store = { version = "0.14.1", default-features = false, features = ["fs", "tokio", "cloud-base"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "avif", "gif"] }
 fast_image_resize = { version = "6.0.0", features = ["image"] }

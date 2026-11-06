@@ -95,10 +95,10 @@ New post-detail blocks correctly remain incomplete until a real post is selected
 no fake default ID is generated.
 
 Source-layout, architecture dependencies, semantic reference guard and the full
-`verify:blog:fba` source chain passed during this continuation. Cargo checks were
-not completed: the shared target was locked by an unrelated IDE build, and the
-waiting scoped command was stopped so the combined integration tree can be
-verified once. The new Rust tests are currently unrun. Required scoped commands:
+`verify:blog:fba` source chain passed during the initial source continuation.
+The combined integration subsequently passed the scoped Rust, PostgreSQL and
+WASM checks recorded in the 2026-11-06 section below. The bounded widget
+regression commands are:
 
 ```powershell
 cargo test -p rustok-blog --locked --offline --lib services::widget::tests
@@ -132,7 +132,7 @@ authentication scope, exact counters and canonical reload after uncertain writes
 The actual Leptos discussion island composes Reactions and the Comments editor;
 unavailable/read-only cached threads cannot enable replies.
 
-Native admin input uses the existing platform JSON codec. This preserves null,
+Native admin input, including category commands, uses the existing platform JSON codec. This preserves null,
 richtext and numeric widget properties through the actual server-function HTTP
 dispatcher. Pin/unpin preflight uses Update, matching the owner service; lifecycle
 transitions use Publish. Every new widget GraphQL root is classified as a read
@@ -142,23 +142,34 @@ non-human security context instead of being rejected for having no human ID.
 | Command or bounded scenario | Obtained result and limit |
 | --- | --- |
 | Scoped library tests for Blog admin, storefront, Reactions storefront and Grid under default native profiles | 59 + 50 + 16 + 80 passed before final SSR-only continuation. |
-| `cargo test -p rustok-blog -p rustok-blog-admin -p rustok-blog-storefront -p rustok-reactions-storefront -p rustok-grid-leptos --features rustok-blog-admin/ssr,rustok-blog-storefront/ssr,rustok-reactions-storefront/ssr --offline --lib` | 184 + 64 + 53 + 16 + 3 passed. One opt-in PostgreSQL library case was ignored. Includes real native HTTP acknowledgement/authorization, widget dispatcher type fidelity, and real Grid SSR page 2/3 with French copy. |
+| `cargo test -p rustok-blog -p rustok-blog-admin -p rustok-blog-storefront -p rustok-reactions-storefront -p rustok-grid -p rustok-grid-leptos -p leptos-auth -p rustok-graphql --features rustok-blog-admin/ssr,rustok-blog-storefront/ssr,rustok-reactions-storefront/ssr --locked --offline --lib` | 421 passed: Blog 184, admin 65, storefront 53, Reactions 16, Grid 80, Grid Leptos 3, Auth 8 and GraphQL 12. One opt-in PostgreSQL library case was ignored. Includes real native HTTP acknowledgement/authorization, category Clear/Set/Keep with Update-only authority, widget dispatcher type fidelity, and real Grid SSR page 2/3 with French copy. |
 | `cargo test -p rustok-blog -p rustok-blog-admin --features rustok-blog-admin/ssr --locked --offline --test widgets --test integration -- --include-ignored` with explicit PostgreSQL URL | 22 integration and five widget scenarios passed, including PostgreSQL owner preview, actual REST/GraphQL, service principals, publication/channel filtering, locale provenance and unchanged rows/outbox. |
 | Next editor/API/presentation and storefront utility/policy Node suites | 31 passed. Includes actual async detail RSC execution with real Fluent copy/formatter; this is not mounted HTML/browser evidence. |
 | Next storefront `npm run typecheck` | Passed. |
 | Next admin `npm run typecheck` | Three existing Pricing errors remain: navigation `href` versus `url`, missing package import in the Pricing route and module registry. No Blog diagnostics. |
 | Scoped Blog ESLint with manifest-compatible cached ESLint 9.39.4 | Both packages passed. Installed executable ESLint 10.12.0 is incompatible with the existing Next parser; normal `npm run lint:blog` fails in that installation. Frontend config now actually selects Blog TS/TSX instead of silently ignoring it. |
-| Reference semantic guard and negative fixtures | 19 passed, including required revision/provenance and native JSON codec rejection scenarios. |
+| Reference semantic guard and negative fixtures | 21 passed, including required revision/provenance, category/post/widget native JSON codec and canonical browser-auth rejection scenarios. |
 | Source-layout guard and fixtures | 57 passed; two Windows symlink-privilege cases skipped. CRLF normalization preserves the mandatory declarations. |
 | UI parity, i18n parity and dependency architecture guard | Passed; 77 catalog directories include the shared Grid en/ru/fr catalogs. |
 
 Clippy passed with `-D warnings` across all targets of `rustok-blog`,
 `rustok-blog-admin`, `rustok-blog-storefront`, `rustok-reactions-storefront`,
-`rustok-grid`, `rustok-grid-leptos`, `rustok-grid-dioxus` and `rustok-ui-leptos`
+`rustok-grid`, `rustok-grid-leptos`, `rustok-grid-dioxus`, `rustok-ui-leptos`,
+`leptos-auth` and `rustok-graphql`
 using the SSR feature combination above. The complete `verify:blog:fba` and
 `test:verify:blog:fba` chains also passed as source/fixture checks. No broader
-workspace/server build was run. Hydration/island compilation is recorded when
-obtained. Mounted browser/accessibility, visual Builder,
+workspace/server build was run. WASM hydration checks passed for Blog admin,
+Blog storefront and Reactions storefront; the actual `rustok-storefront`
+`--no-default-features --features blog-comment-island` WASM entrypoint also
+compiled. Its unused full-article policy/DTO modules are now excluded by the
+existing island profile instead of being suppressed or duplicated.
+
+WASM exposed two shared prerequisites: Auth header mutation now uses fallible
+`web_sys::Headers`, and GraphQL wraps the entire browser fetch/response lifetime
+with the existing origin-thread checked `send_wrapper`. Native Blog browser
+calls use the canonical `AuthorizedBrowserClient` rather than omitting bearer
+metadata. The owner plans record these corrections; network/session/cancellation
+execution remains pending. Mounted browser/accessibility, visual Builder,
 shared Builder contract admission and creation replay remain open; this
 continuation does not promote complete reference or remote FFA/FBA readiness.
 Native HTTP scenarios inject canonical host/auth/tenant context into the real

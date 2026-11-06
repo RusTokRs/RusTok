@@ -12,6 +12,15 @@ resolution logic.
 
 ## FFA/FBA boundary
 
+The 2026-11-06 Blog hydration check exposed that reqwest's WASM fetch/response
+futures are not Send, so even a selected native transport could make a resource
+fail to compile through the shared GraphQL branch. The client now wraps the
+entire browser IO lifecycle with the existing checked `send_wrapper` primitive.
+An owned-DTO future contract is checked on native and WASM; polling/drop stays
+on the original JS thread. This is a client transport correction, not a domain
+fallback or retry. The Blog plan records obtained scoped evidence; browser
+network/error/cancellation execution remains pending.
+
 - FFA status: `in_progress`
 - FBA status: `not_started`
 - Structural shape: `no_ui_boundary`

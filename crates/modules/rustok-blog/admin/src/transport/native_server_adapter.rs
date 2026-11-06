@@ -312,7 +312,7 @@ fn requested_locale(locale: Option<String>, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/categories", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/categories", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_categories_native(
     locale: Option<String>,
 ) -> Result<Vec<BlogCategoryOption>, ServerFnError> {
@@ -357,7 +357,7 @@ async fn blog_admin_categories_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/posts", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/posts", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_posts_native(
     locale: Option<String>,
     after: Option<String>,
@@ -413,7 +413,7 @@ async fn blog_admin_posts_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_post_native(
     id: String,
     locale: Option<String>,
@@ -449,7 +449,7 @@ async fn blog_admin_post_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/create-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -495,7 +495,7 @@ async fn blog_admin_create_post_native(draft: BlogPostDraft) -> Result<String, S
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/update-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/update-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_update_post_native(
     id: String,
     update: BlogPostUpdate,
@@ -551,7 +551,7 @@ async fn blog_admin_update_post_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/publish-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/publish-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_publish_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -566,7 +566,7 @@ async fn blog_admin_publish_post_native(id: String) -> Result<(), ServerFnError>
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/unpublish-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/unpublish-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_unpublish_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -581,7 +581,7 @@ async fn blog_admin_unpublish_post_native(id: String) -> Result<(), ServerFnErro
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/pin-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/pin-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_pin_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -596,7 +596,7 @@ async fn blog_admin_pin_post_native(id: String) -> Result<(), ServerFnError> {
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/unpin-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/unpin-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_unpin_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -611,7 +611,7 @@ async fn blog_admin_unpin_post_native(id: String) -> Result<(), ServerFnError> {
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/archive-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/archive-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_archive_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -626,7 +626,7 @@ async fn blog_admin_archive_post_native(id: String) -> Result<(), ServerFnError>
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/restore-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/restore-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_restore_post_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -698,7 +698,7 @@ async fn update_status(id: String, mutation: StatusMutation) -> Result<(), Serve
     Ok(())
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/delete-post", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/delete-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -725,7 +725,7 @@ async fn blog_admin_delete_post_native(id: String) -> Result<bool, ServerFnError
 /// Mints a draft preview token through the owner service. The plaintext secret
 /// crosses the server-function boundary exactly once; the service stores only
 /// its SHA-256 digest and the listing surface never returns it again.
-#[server(prefix = "/api/fn", endpoint = "blog/admin/create-preview-token", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-preview-token", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_create_preview_token_native(
     post_id: String,
     ttl_hours: Option<i64>,
@@ -765,7 +765,7 @@ async fn blog_admin_create_preview_token_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_moderation_comments_native(
     post_id: String,
     locale: Option<String>,
@@ -810,7 +810,7 @@ async fn blog_admin_moderation_comments_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment", input = leptos::server_fn::codec::Json)]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_moderate_comment_native(
     comment_id: String,
     command_id: String,

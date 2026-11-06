@@ -2,7 +2,10 @@ mod graphql_adapter;
 mod moderation_adapter;
 mod native_server_adapter;
 mod widget;
-pub use widget::{load_blog_page_builder_widget_property_schema, preview_blog_page_builder_widget, validate_blog_page_builder_widget_properties};
+pub use widget::{
+    load_blog_page_builder_widget_property_schema, preview_blog_page_builder_widget,
+    validate_blog_page_builder_widget_properties,
+};
 
 use crate::core::BlogPostAdminSort;
 use crate::model::{

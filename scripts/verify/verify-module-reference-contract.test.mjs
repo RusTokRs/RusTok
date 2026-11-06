@@ -68,6 +68,20 @@ test("reference source guard accepts the unchanged owner snapshot", (t) => {
 
 const regressions = [
   {
+    name: "native category commands lose nullable field semantics",
+    path: `${blog}/admin/src/transport/native_server_adapter/categories.rs`,
+    before: "input = leptos::server_fn::codec::Json",
+    after: "input = leptos::server_fn::codec::PostUrl",
+    diagnostic: /native admin inputs must preserve JSON null, number and string types/,
+  },
+  {
+    name: "native browser calls drop canonical authentication metadata",
+    path: `${blog}/admin/src/transport/native_server_adapter.rs`,
+    before: "client = leptos_auth::AuthorizedBrowserClient",
+    after: "client = leptos::server_fn::client::browser::BrowserClient",
+    diagnostic: /native admin browser calls must use canonical auth metadata/,
+  },
+  {
     name: "native edit encoding loses JSON field semantics",
     path: `${blog}/admin/src/transport/native_server_adapter.rs`,
     before: "input = leptos::server_fn::codec::Json",

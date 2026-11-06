@@ -44,4 +44,11 @@ refuses restoration rather than silently borrowing a default tenant. It issues n
 creates no auth storage key/protocol and does not invent an SSR session. Browser native headers
 still read canonical auth storage; header application failures now refuse before IO. SSR hosts
 must validate and supply their own auth snapshot where required; native Product reads use the
-validated Axum request context. These sources remain uncompiled/unmounted in this work session.
+validated Axum request context. Browser header mutation uses the fallible
+`web_sys::Headers` obtained from the Leptos request wrapper. The gloo convenience
+setter returns unit and throws; it cannot implement this error contract.
+
+## Known Limitations / Pending Implementation
+
+Mounted request/session verification remains pending; the Blog reference plan
+records the bounded package/WASM compilation obtained during its continuation.

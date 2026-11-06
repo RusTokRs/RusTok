@@ -1,12 +1,14 @@
 use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontBlogData {
     pub selected_post: Option<BlogPostDetail>,
     pub posts: BlogPostList,
 }
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,
@@ -17,6 +19,7 @@ pub struct BlogPostList {
     pub next_cursor: Option<String>,
 }
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostListItem {
     pub id: String,
@@ -113,6 +116,7 @@ pub struct BlogCommentDetail {
     pub updated_at: String,
 }
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlogPostAuthorProfile {
@@ -124,6 +128,7 @@ pub struct BlogPostAuthorProfile {
     pub avatar_media_id: Option<String>,
 }
 
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDetail {
     pub id: String,

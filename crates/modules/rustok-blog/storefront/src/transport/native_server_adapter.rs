@@ -3,8 +3,10 @@ use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+use crate::model::BlogPostDetail;
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::model::StorefrontBlogData;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail};
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostAuthorProfile,

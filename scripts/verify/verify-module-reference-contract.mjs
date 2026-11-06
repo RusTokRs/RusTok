@@ -668,12 +668,16 @@ requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter
 for (const path of [
   "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
   "crates/modules/rustok-blog/admin/src/transport/native_server_adapter/widget.rs",
+  "crates/modules/rustok-blog/admin/src/transport/native_server_adapter/categories.rs",
 ]) {
   const serverFunctions = [...read(path).matchAll(/#\[server\(([\s\S]*?)\)\]/g)];
   if (serverFunctions.length === 0) fail(`${path}: expected native server functions`);
   for (const [, attributes] of serverFunctions) {
     if (!/\binput\s*=\s*leptos::server_fn::codec::Json\b/.test(attributes)) {
       fail(`${path}: native admin inputs must preserve JSON null, number and string types`);
+    }
+    if (!/\bclient\s*=\s*leptos_auth::AuthorizedBrowserClient\b/.test(attributes)) {
+      fail(`${path}: native admin browser calls must use canonical auth metadata`);
     }
   }
 }

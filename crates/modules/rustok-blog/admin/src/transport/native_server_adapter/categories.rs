@@ -43,7 +43,7 @@ fn map_category_detail(item: rustok_blog::CategoryListItem) -> crate::model::Blo
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/category-details")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/category-details", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_category_details_native(
     locale: Option<String>,
 ) -> Result<Vec<crate::model::BlogCategoryDetail>, ServerFnError> {
@@ -87,7 +87,7 @@ async fn blog_admin_category_details_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/create-category")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/create-category", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_create_category_native(
     draft: crate::model::BlogCategoryDraft,
 ) -> Result<String, ServerFnError> {
@@ -131,7 +131,7 @@ async fn blog_admin_create_category_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/update-category")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/update-category", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_update_category_native(
     id: String,
     update: crate::model::BlogCategoryUpdate,
@@ -183,7 +183,7 @@ async fn blog_admin_update_category_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/delete-category")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/delete-category", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_delete_category_native(id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -217,3 +217,6 @@ async fn blog_admin_delete_category_native(id: String) -> Result<bool, ServerFnE
         ))
     }
 }
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests;

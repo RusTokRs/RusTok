@@ -7,8 +7,10 @@ pub mod native_server_adapter;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
+use crate::model::BlogPostDetail;
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::model::StorefrontBlogData;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail};
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 use leptos::prelude::ServerFnError;
 use rustok_ui_transport::UiTransportError;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
