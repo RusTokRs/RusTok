@@ -237,15 +237,20 @@ regression and pre/post migration-name comparison remain pending. Neither these
 unit tests nor source/static checks establish database equivalence or release
 admission.
 
-The next bounded implementation step extends the existing `xtask migrations
-verify-fresh` build report: bind the executable inventory to the existing
-path/mode/blob source snapshot, lockfile and resolved Cargo dependency/feature
-graph. Keep external package bytes, generated inputs, build-script/proc-macro
-effects and ambient native/toolchain inputs explicitly unverified until their
-provenance is established. A resolved graph is partial build evidence, not a
-complete input read trace or a per-migration freeze set. The module archive
-`source_digest` identifies archive bytes and cannot replace workspace/build
-identity; retain the existing snapshot, publication and source-store owners.
+`xtask migrations verify-fresh` now binds each side's executable inventory to
+the existing path/mode/blob snapshot, lockfile, Cargo/toolchain configuration,
+normalized native normal/build dependency graph, tool versions, arguments and
+actual binary digests. It compares resolution before and after the build.
+Workspace feature unification can overstate actual compilation features;
+external package bytes, generated inputs, build-script/proc-macro effects,
+ambient native/toolchain inputs and per-migration attribution remain explicitly
+unverified. This is partial build evidence, not a complete input read trace or
+per-migration freeze set. The module archive `source_digest` cannot replace
+workspace/build identity. The existing snapshot, publication and source-store
+owners remain canonical. All 14 migration-command tests passed, including nine
+build-input regressions and real Cargo metadata collection on an isolated
+workspace. The complete updated `verify-fresh` workflow has not been rerun;
+no fresh PostgreSQL replay evidence is claimed for this step.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.

@@ -325,6 +325,36 @@ home. Source inputs are verified again after execution, including the build
 copies used as migration working directories. Failed runs retain a failure
 record; temporary build sources, fixture databases and roles are cleaned up.
 
+Each side's build evidence binds the existing source snapshot, lockfile,
+repository Cargo/toolchain configuration, normalized Cargo dependency resolution,
+tool versions and build arguments to the actual runner, exporter and exported
+inventory digests. Builds explicitly target the reported native Rust host;
+Cargo metadata uses the same platform filter. Package IDs and target paths are
+normalized independently of scratch and registry-cache locations. Local normal
+and build dependencies and their selected source targets must be captured by
+the snapshot. Unbuilt dependency examples, tests, benches and binaries are not
+required. Resolution is checked before and after each build.
+
+### Known Limitations / Pending Implementation
+
+Build resolution evidence remains partial. Cargo workspace metadata can unify
+features from unbuilt workspace and development consumers; this is not an exact
+compilation-unit graph. External package bytes, generated inputs, build-script
+and proc-macro effects, ambient native/toolchain inputs and per-migration source
+attribution are explicitly unverified. A module archive's `source_digest` is not
+the composed migrator's workspace/build identity. Source/input declarations do
+not grant release authority or replace the existing source-store/publication
+owners. All 14 tests in the migration command group passed, including nine
+build-input regressions and a real Cargo metadata invocation on an isolated
+fixture workspace. The complete updated `verify-fresh` database/build workflow
+has not been rerun; this step does not claim fresh PostgreSQL replay evidence.
+
+Scoped verification for this command group:
+
+```powershell
+cargo test --locked --offline -p xtask --bin xtask migrations
+```
+
 The implemented scope is **fresh-install equivalence**. A matching result keeps
 `replacement_admission` blocked. Release seals, supported-predecessor fixtures,
 installer/activation and recovery checks are required before replacing history.

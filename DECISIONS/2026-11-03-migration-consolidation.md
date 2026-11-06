@@ -89,6 +89,18 @@ Missing safety metadata and undeclared transaction policy remain explicit
 safety. Trusted immutable hashes, transitive build provenance and stable seals
 remain required before this inventory can participate in release admission.
 
+The local `xtask migrations verify-fresh` report now binds that export and the
+runner/exporter digests to the enclosing path/mode/blob snapshot, lockfile,
+repository Cargo/toolchain configuration, native filtered dependency resolution,
+tool versions and explicit build arguments. Resolution is compared before and
+after the build. Normal/build dependency identities and selected library,
+proc-macro, build-script and runner targets use snapshot-relative or
+package-relative paths. Workspace feature unification remains an overestimate,
+not an exact compilation-unit graph. External bytes, generated inputs,
+build-script/proc-macro effects, ambient native/toolchain inputs and individual
+migration attribution remain unverified. This partial local evidence does not
+establish the complete provenance or authority required below.
+
 Trusted inventory must establish the complete transitive execution-input
 coverage, including shared helpers and generated input provenance. Declarations
 are checked against resolved build/source inputs. An unresolved input or mutable

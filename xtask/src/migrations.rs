@@ -15,6 +15,8 @@ use std::{
 
 const BUILD_TIMEOUT_SECONDS: u64 = 2 * 60 * 60;
 
+mod build_inputs;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SourceFile {
     path: String,
@@ -605,6 +607,14 @@ fn verify_fresh(
             let mut rustc_version = build_command("rustc", source)?;
             rustc_version.arg("-Vv");
             let rustc_version = String::from_utf8(run_process(&mut rustc_version, 30, 4096)?)?;
+            let host = build_inputs::native_target(&rustc_version)?;
+            let source_snapshot = if side == "reference" {
+                &plan.reference
+            } else {
+                &plan.candidate
+            };
+            let resolution = build_inputs::collect(source, source_snapshot, &target, &host)?;
+            let resolution_sha256 = digest(&serde_json::to_vec(&resolution)?);
             let build_args = [
                 "build",
                 "--locked",
@@ -612,22 +622,13 @@ fn verify_fresh(
                 "-p",
                 "rustok-migrations",
                 "--bin",
-                "rustok-migrate",
+                build_inputs::BINARIES[0],
                 "--bin",
-                "export-migration-plan",
+                build_inputs::BINARIES[1],
+                "--target",
+                &host,
                 "--message-format=json-render-diagnostics",
             ];
-            build_identity.insert(
-                side,
-                serde_json::json!({
-                    "cargo": cargo_version,
-                    "rustc": rustc_version,
-                    "arguments": build_args,
-                    "timeout_seconds": BUILD_TIMEOUT_SECONDS,
-                    "ambient_cargo_config": "rejected",
-                    "source_git_discovery": "disabled",
-                }),
-            );
             let mut build = build_command("cargo", source)?;
             build
                 .args(build_args)
@@ -672,6 +673,36 @@ fn verify_fresh(
             run_process(&mut export, 30, 4096)
                 .with_context(|| format!("{side} executable migration plan export failed"))?;
             input_digests.insert(plan_output.clone(), file_digest(&plan_output)?);
+            ensure!(
+                digest(&serde_json::to_vec(&build_inputs::collect(
+                    source,
+                    source_snapshot,
+                    &target,
+                    &host
+                )?)?)
+                    == resolution_sha256,
+                "Cargo resolution changed during build"
+            );
+            let identity = serde_json::json!({
+                "cargo": cargo_version,
+                "rustc": rustc_version,
+                "arguments": build_args,
+                "timeout_seconds": BUILD_TIMEOUT_SECONDS,
+                "ambient_cargo_config": "rejected",
+                "source_git_discovery": "disabled",
+                "source_inputs": resolution,
+                "resolution_sha256": resolution_sha256,
+                "runner_sha256": input_digests[&runner],
+                "exporter_sha256": input_digests[&exporter],
+                "inventory_sha256": input_digests[&plan_output],
+            });
+            build_identity.insert(
+                side,
+                serde_json::json!({
+                    "sha256": digest(&serde_json::to_vec(&identity)?),
+                    "evidence": identity,
+                }),
+            );
             validate_snapshot(
                 source,
                 if side == "reference" {
