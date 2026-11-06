@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Leptos admin UI package for the rustok-commerce module"
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
