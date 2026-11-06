@@ -146,19 +146,6 @@ pub async fn fetch_post_by_preview_token(
     .await
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
-        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
-        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
-        #[cfg(any(feature = "ssr", feature = "hydrate"))]
-        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
-    }
-}
-
 /// Compose owner feed and Search IO behind the module transport boundary.
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub async fn fetch_blog_page(
@@ -185,4 +172,17 @@ pub async fn fetch_blog_page(
     let total = result.total;
     data.posts = crate::core::map_blog_search_results(result)?;
     Ok((data, Some(total), request.search_page))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+        #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
+        assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
+        #[cfg(any(feature = "ssr", feature = "hydrate"))]
+        assert_eq!(selected_transport_path(), UiTransportPath::NativeServer);
+    }
 }

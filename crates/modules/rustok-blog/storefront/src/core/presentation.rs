@@ -491,10 +491,10 @@ pub fn showcase_posts(
             categories.entry(id.clone()).or_insert_with(|| name.clone());
         }
     }
-    if let Some(post) = &data.selected_post {
-        if let (Some(id), Some(name)) = (&post.category_id, &post.category_name) {
-            categories.entry(id.clone()).or_insert_with(|| name.clone());
-        }
+    if let Some(post) = &data.selected_post
+        && let (Some(id), Some(name)) = (&post.category_id, &post.category_name)
+    {
+        categories.entry(id.clone()).or_insert_with(|| name.clone());
     }
     let posts = data
         .posts

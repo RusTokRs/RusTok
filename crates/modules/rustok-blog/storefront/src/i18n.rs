@@ -37,6 +37,13 @@ pub fn comment_composer_copy(locale: Option<&str>) -> CommentComposerCopy {
     }
 }
 
+pub fn search_results_message(locale: Option<&str>, page: usize, total: u64) -> String {
+    let mut args = rustok_ui_i18n::FluentArgs::new();
+    args.set("page", page.to_string());
+    args.set("total", total.to_string());
+    format(locale, "blog.search.results", Some(&args), "")
+}
+
 #[cfg(test)]
 mod tests {
     fn visible(text: String) -> String {
@@ -79,11 +86,4 @@ mod tests {
             "Page 1 · Results: 1"
         );
     }
-}
-
-pub fn search_results_message(locale: Option<&str>, page: usize, total: u64) -> String {
-    let mut args = rustok_ui_i18n::FluentArgs::new();
-    args.set("page", page.to_string());
-    args.set("total", total.to_string());
-    format(locale, "blog.search.results", Some(&args), "")
 }

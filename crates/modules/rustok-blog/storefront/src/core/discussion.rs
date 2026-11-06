@@ -40,14 +40,11 @@ pub fn order_comments(items: Vec<BlogCommentListItem>) -> Vec<(BlogCommentListIt
         .map(|item| (item, 0usize))
         .collect::<Vec<_>>();
     let mut remaining = items.into_iter();
-    loop {
-        let Some((item, depth)) = pending.pop().or_else(|| {
-            remaining
-                .find(|item| !seen.contains(&item.id))
-                .map(|item| (item, 0))
-        }) else {
-            break;
-        };
+    while let Some((item, depth)) = pending.pop().or_else(|| {
+        remaining
+            .find(|item| !seen.contains(&item.id))
+            .map(|item| (item, 0))
+    }) {
         if !seen.insert(item.id.clone()) {
             continue;
         }

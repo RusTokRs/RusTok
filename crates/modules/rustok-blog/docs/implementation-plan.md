@@ -152,10 +152,19 @@ non-human security context instead of being rejected for having no human ID.
 | Source-layout guard and fixtures | 57 passed; two Windows symlink-privilege cases skipped. CRLF normalization preserves the mandatory declarations. |
 | UI parity, i18n parity and dependency architecture guard | Passed; 77 catalog directories include the shared Grid en/ru/fr catalogs. |
 
-Clippy, hydration/island compilation and the final combined gate result are
-recorded below when obtained. Mounted browser/accessibility, visual Builder,
+Clippy passed with `-D warnings` across all targets of `rustok-blog`,
+`rustok-blog-admin`, `rustok-blog-storefront`, `rustok-reactions-storefront`,
+`rustok-grid`, `rustok-grid-leptos`, `rustok-grid-dioxus` and `rustok-ui-leptos`
+using the SSR feature combination above. The complete `verify:blog:fba` and
+`test:verify:blog:fba` chains also passed as source/fixture checks. No broader
+workspace/server build was run. Hydration/island compilation is recorded when
+obtained. Mounted browser/accessibility, visual Builder,
 shared Builder contract admission and creation replay remain open; this
 continuation does not promote complete reference or remote FFA/FBA readiness.
+Native HTTP scenarios inject canonical host/auth/tenant context into the real
+server-function dispatcher. They do not exercise the server host's network auth
+middleware or browser login/session transport. The changed admin host Fly binding
+also remains outside the package-scoped compilation evidence.
 
 ### Scaffold extraction sequence
 
