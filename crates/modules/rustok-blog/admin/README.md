@@ -66,6 +66,11 @@ contract/registry/validator reconciliation before full reference acceptance.
 Blog's owner widget payloads and schema references are already unversioned;
 that bounded correction does not resolve the shared policy mismatch.
 
+Mounted browser, accessibility and authenticated persistence/reload scenarios
+remain required in both clients. Confirmed creation acknowledgements block
+duplicate submission, but replay after a lost creation acknowledgement still
+requires the owner receipt/transport/client cutover tracked in the reference plan.
+
 ## Documentation
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
@@ -91,8 +96,7 @@ read. The controller invalidates the old edit revision immediately after that
 acknowledgement, then reloads independently. One typed `PostEditorSession` owns
 the editor identity, revision and snapshot; a failed reload retains the saved
 identity, exposes its localized notice, and cannot become a duplicate create.
-A failed reload displays a saved
-notice and blocks another save until a fresh snapshot is loaded. UUID request
+It blocks another save until a fresh snapshot is loaded. UUID request
 identity binds asynchronous loads/writes to their selected entity and locale;
 principal changes or later selections discard predecessor completions. The
 Leptos editor principal is the canonical current-user id plus tenant, memoized
@@ -107,14 +111,12 @@ state. Category rows use the canonical `DataGrid` with the complete filtered
 collection; the grid owns client pagination. Category-list failures remain
 visible and do not clear an existing Post assignment.
 
-## Known Limitations / Pending Implementation
+## Verification evidence
 
-The latest editor continuation adds source regressions for actual native HTTP
-write-only acknowledgements (update and all six lifecycle commands), using the
-shared Fly request fixture. These latest Rust changes have not yet been compiled
-or executed in this branch; combined integration verification owns that gate.
-Sixteen Next pure/API/component-contract tests passed locally; mounted workflow coverage remains open.
-
-Mounted browser, accessibility and authenticated persistence/reload scenarios
-remain required in both clients. Default unit tests and SSR compilation do not
-certify those workflows. The owner reference plan tracks that acceptance work.
+The 2026-11-06 integration passed 65 package tests with `ssr`, including actual
+native HTTP write-only acknowledgements, category nullable patches and widget
+input types through the shared migration-backed fixture. Package WASM hydration
+compilation and scoped Clippy also passed. The
+[owner reference plan](../docs/implementation-plan.md#integrated-client-and-widget-verification-2026-11-06)
+records the exact combined commands, Next results and remaining acceptance gates.
+These results do not certify mounted browser workflows.

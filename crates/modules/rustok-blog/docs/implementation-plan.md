@@ -151,6 +151,11 @@ non-human security context instead of being rejected for having no human ID.
 | Reference semantic guard and negative fixtures | 21 passed, including required revision/provenance, category/post/widget native JSON codec and canonical browser-auth rejection scenarios. |
 | Source-layout guard and fixtures | 57 passed; two Windows symlink-privilege cases skipped. CRLF normalization preserves the mandatory declarations. |
 | UI parity, i18n parity and dependency architecture guard | Passed; 77 catalog directories include the shared Grid en/ru/fr catalogs. |
+| Documentation, ADR and manifest checks | Passed; 177 ADRs and 65 module manifests validated. |
+
+The staged remediation gate passed diff invariants and architecture dependencies
+with `--skip-cargo`; the explicit scoped Clippy command below supplied Rust
+verification for the selected production feature combination.
 
 Clippy passed with `-D warnings` across all targets of `rustok-blog`,
 `rustok-blog-admin`, `rustok-blog-storefront`, `rustok-reactions-storefront`,

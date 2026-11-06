@@ -118,8 +118,12 @@ adapter and already underlies Leptos reactive tasks.
   sort change in both pagination modes; the Dioxus grid does so only in client-side mode. It is a
   rendering-policy difference the owners of those adapters accept; this crate's `set_filter` /
   `toggle_sort` always reset, and an adapter that keeps route state decides what to persist.
-- **`cargo` verification is a CI/maintainer step for this change set.** The sandbox that produced it
-  has no Rust toolchain, so the new and edited Rust is grammar-checked
-  (`scripts/audit/rust_syntax_check.mjs`) and structurally reviewed, not compiled or test-run here.
 
-The Blog reference continuation adds an SSR renderer regression for page 2/3 over a complete client collection, plus Fluent locale/range/plural cases. Rust execution is pending the integrated scoped verification; it does not claim mounted browser coverage.
+## Verification evidence
+
+The 2026-11-06 Blog reference integration passed 80 Grid library tests and three
+Leptos adapter tests, including SSR page 2/3 over a complete client collection
+with French range copy. Fluent locale/range/plural cases, scoped Clippy for Grid
+and both adapters, and platform UI/i18n parity checks passed. The
+[Blog reference plan](../../modules/rustok-blog/docs/implementation-plan.md#integrated-client-and-widget-verification-2026-11-06)
+records the combined commands. Mounted browser coverage remains pending.
