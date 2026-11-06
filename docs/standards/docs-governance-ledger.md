@@ -281,12 +281,24 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-11..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+### DAR-11: Marketplace & Multi-Tenancy Cluster
+
+**Scope:** Documentation across 9 marketplace and tenancy crates in `crates/modules/` (`rustok-distribution`, `rustok-marketplace`, `rustok-marketplace-allocation`, `rustok-marketplace-balance`, `rustok-marketplace-commission`, `rustok-marketplace-listing`, `rustok-marketplace-payout`, `rustok-marketplace-seller`, `rustok-tenant`) (44 files, 2,404 LOC).
+**Goal:** Verify and synchronize domain contracts, CRATE_API, entity schemas, seller lifecycle, balance bucket transitions, multi-tenancy invariants, and distribution registry documentation.
+
+- [x] **DAR-11.1: Reconcile Marketplace Family Boundaries.** Verified domain contracts, port boundaries, and FBA integration across `rustok-marketplace`, `rustok-marketplace-seller`, `rustok-marketplace-listing`, `rustok-marketplace-allocation`, `rustok-marketplace-balance`, `rustok-marketplace-commission`, and `rustok-marketplace-payout`. Reconciled `crates/modules/rustok-marketplace-listing/docs/README.md` to index `contracts/evidence/README.md`.
+- [x] **DAR-11.2: Verify Multi-Tenancy Contracts & Backend Isolation.** Audited `crates/modules/rustok-tenant/docs/README.md` and `CRATE_API.md`. Confirmed multi-backend database constraints (PostgreSQL/SQLite filtered unique index, MySQL generated column), concurrent-idempotent `ensure_tenant`, transactional outbox publication, and cache invalidation hooks.
+- [x] **DAR-11.3: Verify Distribution Registry & Static Generation Contracts.** Verified `crates/modules/rustok-distribution/docs/README.md` and `inventory-index.md` covering `build_runtime_extensions`, deterministic `composition_identity`, static generation validation, and worker isolation.
+- [x] **DAR-11.4: Verify Full Link & Anchor Integrity Across Cluster.** Audited all 44 markdown files and 59 internal links across all 9 crates. Verified zero broken links, zero dangling anchors, and 100% indexed documentation coverage.
+- [x] **DAR-11.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-12..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
 
 **Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
 **Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
 
-- [ ] **DAR-11: Marketplace & Multi-Tenancy Cluster** (`rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`).
 - [ ] **DAR-12: Customer, CRM & Finance Cluster** (`rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-accounting`, `rustok-billing`, `rustok-forms`, `rustok-workflow`).
 - [ ] **DAR-13: AI & Emerging Capabilities Cluster** (`rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`).
 - [ ] **DAR-14: Platform Foundation Libraries & Utilities** (`crates/libs/*`, `crates/utils/*`, `crates/workers/*`).

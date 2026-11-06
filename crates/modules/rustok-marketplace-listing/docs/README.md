@@ -25,3 +25,4 @@
 - [Crate README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
 - [Commerce Plan](../../rustok-commerce/docs/implementation-plan.md)
+- [Marketplace listing evidence](../contracts/evidence/README.md)
