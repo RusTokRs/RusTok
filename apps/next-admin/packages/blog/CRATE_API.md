@@ -67,3 +67,10 @@ Unmounted sessions ignore write completions; acknowledged writes remain locked
 until navigation replaces the form. This prevents duplicate creation while a
 post-commit navigation is delayed. Clearing an existing canonical Post route
 produces an explicit localized validation error.
+
+Post detail status and missing-record copy use the owner Fluent catalog.
+Publication dates use `getFormatter({ locale })` with the canonical request
+timezone. Pure status presentation lives in `model/presentation.ts`. Its Node
+regressions execute the actual async detail component with injected owner and
+host i18n ports, then inspect its returned React tree against real Fluent
+catalogs and formatter output; they do not certify DOM rendering or a browser.

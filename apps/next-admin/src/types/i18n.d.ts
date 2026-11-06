@@ -286,6 +286,10 @@ export type AppMessageKey =
   | 'blog.categories.update'
   | 'blog-categories-updated'
   | 'blog.categories.updated'
+  | 'blog-detail-notFound'
+  | 'blog.detail.notFound'
+  | 'blog-detail-publishedAt'
+  | 'blog.detail.publishedAt'
   | 'blog-editor-categoriesUnavailable'
   | 'blog.editor.categoriesUnavailable'
   | 'blog-editor-categoryFallbackNotice'
@@ -462,6 +466,8 @@ export type AppMessageKey =
   | 'blog.status.draft'
   | 'blog-status-published'
   | 'blog.status.published'
+  | 'blog-status-unknown'
+  | 'blog.status.unknown'
   | 'blog-table-actions'
   | 'blog.table.actions'
   | 'blog-table-allStatuses'
@@ -2618,6 +2624,10 @@ export interface AppMessageArgs {
   'blog-categories-update'?: Record<string, never>;
   'blog.categories.updated'?: Record<string, never>;
   'blog-categories-updated'?: Record<string, never>;
+  'blog.detail.notFound'?: Record<string, never>;
+  'blog-detail-notFound'?: Record<string, never>;
+  'blog.detail.publishedAt': { 'date': string | number | Date };
+  'blog-detail-publishedAt': { 'date': string | number | Date };
   'blog.editor.categoriesUnavailable'?: Record<string, never>;
   'blog-editor-categoriesUnavailable'?: Record<string, never>;
   'blog.editor.categoryFallbackNotice'?: Record<string, never>;
@@ -2794,6 +2804,8 @@ export interface AppMessageArgs {
   'blog-status-draft'?: Record<string, never>;
   'blog.status.published'?: Record<string, never>;
   'blog-status-published'?: Record<string, never>;
+  'blog.status.unknown'?: Record<string, never>;
+  'blog-status-unknown'?: Record<string, never>;
   'blog.table.actions'?: Record<string, never>;
   'blog-table-actions'?: Record<string, never>;
   'blog.table.allStatuses'?: Record<string, never>;

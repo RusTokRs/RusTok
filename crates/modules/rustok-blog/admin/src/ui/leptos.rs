@@ -4,7 +4,7 @@ use page::BlogAdminPageState;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{RichTextDocument, WritePathIssue};
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
@@ -34,6 +34,11 @@ pub fn BlogAdmin() -> impl IntoView {
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
+    let current_user = use_current_user();
+    let editor_principal = Memo::new(move |_| core::EditorPrincipal {
+        actor_id: current_user.get().map(|user| user.id),
+        tenant: tenant.get(),
+    });
     let default_locale = ui_locale.clone().unwrap_or_default();
     let load_posts_error_label = t(
         ui_locale.as_deref(),
@@ -329,7 +334,7 @@ pub fn BlogAdmin() -> impl IntoView {
     Effect::new(move |_| {
         // A new principal/tenant owns a new editor session even when the URL is
         // unchanged. In-flight responses from the predecessor are discarded.
-        let _principal = (token.get(), tenant.get());
+        let _principal = editor_principal.get();
         if let Some(request) = core::selected_post_request(
             selected_post_query.get().as_deref(),
             effect_default_locale.as_str(),

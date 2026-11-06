@@ -84,7 +84,10 @@ identity, exposes its localized notice, and cannot become a duplicate create.
 A failed reload displays a saved
 notice and blocks another save until a fresh snapshot is loaded. UUID request
 identity binds asynchronous loads/writes to their selected entity and locale;
-principal changes or later selections discard predecessor completions. Lifecycle
+principal changes or later selections discard predecessor completions. The
+Leptos editor principal is the canonical current-user id plus tenant, memoized
+independently of credentials: same-actor access-token refresh preserves the
+unsaved draft; actor, tenant and logout changes invalidate it. Lifecycle
 bindings live in `ui/leptos/lifecycle.rs`. Existing Post and exact-target Category routes cannot be
 cleared on update; empty create routes still delegate generation to Blog. It never
 reports a committed command as a failed save or grants implicit Read permission.
@@ -100,7 +103,7 @@ The latest editor continuation adds source regressions for actual native HTTP
 write-only acknowledgements (update and all six lifecycle commands), using the
 shared Fly request fixture. These latest Rust changes have not yet been compiled
 or executed in this branch; combined integration verification owns that gate.
-Thirteen Next pure/API tests passed locally; mounted workflow coverage remains open.
+Sixteen Next pure/API/component-contract tests passed locally; mounted workflow coverage remains open.
 
 Mounted browser, accessibility and authenticated persistence/reload scenarios
 remain required in both clients. Default unit tests and SSR compilation do not

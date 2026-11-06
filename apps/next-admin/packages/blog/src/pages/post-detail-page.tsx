@@ -1,9 +1,14 @@
-import { getLocale } from '@rustok/next-fluent/server';
+import {
+  getFormatter,
+  getLocale,
+  getTranslations
+} from '@rustok/next-fluent/server';
 import { getPost } from '../api/posts';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextHtml } from '@rustok/richtext/view';
+import { postStatusPresentation } from '../model/presentation';
 
 interface PostDetailPageProps {
   postId: string;
@@ -12,52 +17,47 @@ interface PostDetailPageProps {
   tenantId?: string | null;
 }
 
-const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  PUBLISHED: 'default',
-  DRAFT: 'secondary',
-  ARCHIVED: 'outline'
-};
-
-const statusLabel: Record<string, string> = {
-  DRAFT: 'Draft',
-  PUBLISHED: 'Published',
-  ARCHIVED: 'Archived'
-};
-
 export default async function PostDetailPage({
   postId,
   token,
   tenantSlug,
   tenantId
 }: PostDetailPageProps) {
+  const locale = await getLocale();
+  const t = await getTranslations({ namespace: 'blog', locale });
+  const formatter = await getFormatter({ locale });
   const opts: GqlOpts = {
     token,
     tenantSlug,
     tenantId,
-    locale: await getLocale()
+    locale
   };
   const post: PostResponse | null = await getPost(postId, opts);
 
   if (!post) {
-    return <p>Post not found.</p>;
+    return <p>{t('detail.notFound')}</p>;
   }
+
+  const status = postStatusPresentation(post.status);
 
   return (
     <Card>
       <CardHeader>
         <div className='flex items-center gap-3'>
           <CardTitle className='text-2xl'>{post.title}</CardTitle>
-          <Badge variant={statusVariant[post.status] ?? 'outline'}>
-            {statusLabel[post.status] ?? post.status}
-          </Badge>
+          <Badge variant={status.variant}>{t(status.labelKey)}</Badge>
         </div>
         <p className='text-muted-foreground text-sm'>
           {post.slug}
           {post.publishedAt && (
             <>
               {' '}
-              &middot; Published{' '}
-              {new Date(post.publishedAt).toLocaleDateString()}
+              &middot;{' '}
+              {t('detail.publishedAt', {
+                date: formatter.dateTime(post.publishedAt, {
+                  dateStyle: 'medium'
+                })
+              })}
             </>
           )}
         </p>

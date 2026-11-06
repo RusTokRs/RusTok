@@ -1,5 +1,13 @@
 use crate::model::BlogPostDetail;
 
+/// Stable owner of an editable snapshot. Credentials may rotate without
+/// changing this identity; actor/tenant switches start a different editor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditorPrincipal {
+    pub actor_id: Option<String>,
+    pub tenant: Option<String>,
+}
+
 /// Identity of one editor operation. Navigation/principal changes replace this
 /// token, so an earlier response cannot overwrite the newly selected snapshot.
 #[derive(Clone, Debug, PartialEq, Eq)]

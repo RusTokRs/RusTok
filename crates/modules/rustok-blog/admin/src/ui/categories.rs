@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui::{Alert, Button};
 use rustok_forms_leptos::{
     Form, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect, FormTextarea,
@@ -23,6 +23,11 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
     let locale = StoredValue::new(route.locale);
     let token = use_token();
     let tenant = use_tenant();
+    let current_user = use_current_user();
+    let editor_principal = Memo::new(move |_| core::EditorPrincipal {
+        actor_id: current_user.get().map(|user| user.id),
+        tenant: tenant.get(),
+    });
     let refresh = RwSignal::new(0_u64);
     let busy = RwSignal::new(false);
     let active_request = RwSignal::new(None::<core::EditorRequest>);
@@ -72,7 +77,7 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
         dirty.update(|value| value.reset());
     });
     Effect::new(move |_| {
-        let _principal = (token.get(), tenant.get());
+        let _principal = editor_principal.get();
         reset.run(());
     });
     let edit = Callback::new(move |category: BlogCategoryDetail| {

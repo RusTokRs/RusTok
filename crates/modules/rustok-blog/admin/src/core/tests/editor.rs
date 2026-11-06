@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn editor_principal_preserves_same_actor_refresh_but_separates_actor_tenant_and_logout() {
+    let signed_in = EditorPrincipal {
+        actor_id: Some("actor-a".into()),
+        tenant: Some("tenant-a".into()),
+    };
+    // The replacement credential is intentionally absent from the editor key.
+    // A host user snapshot refreshed for the same actor compares equal, so the
+    // render adapter's Memo retains the unsaved draft and active request.
+    let refreshed = EditorPrincipal {
+        actor_id: Some("actor-a".into()),
+        tenant: Some("tenant-a".into()),
+    };
+    assert_eq!(signed_in, refreshed);
+    assert_ne!(
+        signed_in,
+        EditorPrincipal {
+            actor_id: Some("actor-b".into()),
+            ..refreshed.clone()
+        }
+    );
+    assert_ne!(
+        signed_in,
+        EditorPrincipal {
+            tenant: Some("tenant-b".into()),
+            ..refreshed.clone()
+        }
+    );
+    assert_ne!(
+        signed_in,
+        EditorPrincipal {
+            actor_id: None,
+            ..refreshed
+        }
+    );
+}
+
+#[test]
 fn fallback_editor_global_edit_emits_no_localized_fields() {
     let mut post = editor_post();
     post.requested_locale = "fr".into();
