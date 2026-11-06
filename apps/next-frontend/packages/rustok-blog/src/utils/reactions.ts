@@ -43,9 +43,15 @@ export function reactionControls(snapshot: ReactionSnapshot) {
 }
 
 /** A mutation timeout may have committed; canonical read follows every outcome. */
-export async function settleReactionMutation(write: () => Promise<unknown>, reload: () => Promise<ReactionSnapshot>) {
+export async function settleReactionMutation(
+  write: () => Promise<unknown>,
+  reload: () => Promise<ReactionSnapshot>,
+  isCurrent: () => boolean,
+) {
+  if (!isCurrent()) return null;
   let writeFailed = false;
   try { await write(); } catch { writeFailed = true; }
+  if (!isCurrent()) return null;
   const snapshot = await reload();
-  return { writeFailed, snapshot };
+  return isCurrent() ? { writeFailed, snapshot } : null;
 }

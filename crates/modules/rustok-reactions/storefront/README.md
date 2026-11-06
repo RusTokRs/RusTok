@@ -48,6 +48,24 @@ network timeout, so it still triggers a read. If that read fails, stale controls
 are removed and the read failure is shown. No failed mutation is automatically
 retried and no local aggregate is incremented.
 
+## Authentication lifecycle
+
+Leptos reads the canonical reactive `AuthContext` session and user signals.
+Each credential/tenant/principal binding owns a keyed render scope. Its pending
+mutation continuation is cancelled with the Leptos scope, and a current-binding
+fence runs before writes and around the follow-up read. A late response cannot
+restore a previous actor's selected reactions after login, logout or a switch.
+
+The Next Blog consumer uses the existing storefront host `useStorefrontAuth`
+binding and its synchronous fresh-snapshot fence. Request state is scoped to
+that binding, tenant and subject, including the render before an effect runs.
+No token is decoded to invent an actor identity. Token rotation invalidates
+request freshness and refetches the canonical owner state; it is not treated as
+proof that a different person has signed in. Transport debug output redacts tokens.
+
+Pure settlement tests cover scope changes before a write, after a write and
+during reload. Mounted auth-transition/browser verification remains pending.
+
 ## Deliberate limits
 
 There is no standalone Reactions route or HTTP transport in this UI package.

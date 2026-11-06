@@ -1,5 +1,6 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task::spawn_local_scoped_with_cancellation;
+use leptos_auth::AuthContext;
 use leptos_ui::{Button, ButtonVariant, Size};
 use rustok_ui_core::UiRouteContext;
 
@@ -9,6 +10,31 @@ use crate::transport;
 
 #[component]
 pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
+    let auth = use_context::<AuthContext>();
+    let scope = Memo::new(move |_| {
+        (
+            transport::ReactionStorefrontTransportContext::from_auth(auth.as_ref()),
+            auth.as_ref()
+                .and_then(|auth| auth.user.get())
+                .map(|user| user.id),
+        )
+    });
+    view! {
+        <For each=move || vec![scope.get()] key=|binding| binding.clone()
+            children=move |binding| {
+                let context = binding.0.clone();
+                let is_current = Callback::new(move |()| scope.get_untracked() == binding);
+                view! { <ReactionSession subject=subject.clone() context is_current /> }
+            } />
+    }
+}
+
+#[component]
+fn ReactionSession(
+    subject: ReactionSubjectUiRef,
+    context: transport::ReactionStorefrontTransportContext,
+    is_current: Callback<(), bool>,
+) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let label = t(locale.as_deref(), "reactions.label", "Reactions");
     let loading_label = t(
@@ -35,9 +61,8 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
     let like_label = t(locale.as_deref(), "reactions.like", "Like");
     let selected_label = t(locale.as_deref(), "reactions.selected", "Selected");
 
-    let transport_context = transport::current_reaction_storefront_transport_context();
-    let resource_context = transport_context.clone();
-    let mutation_context = transport_context;
+    let resource_context = context.clone();
+    let mutation_context = context;
     let resource_subject = subject.clone();
     let mutation_subject = subject;
 
@@ -54,33 +79,41 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
         },
     );
 
+    let session_owner = Owner::current().expect("ReactionSession requires a reactive owner");
     let on_toggle = Callback::new(move |(reaction, action): (String, ReactionAction)| {
-        if mutation_busy.get_untracked() {
+        if mutation_busy.get_untracked() || !is_current.run(()) {
             return;
         }
         let context = mutation_context.clone();
         let subject = mutation_subject.clone();
         set_mutation_busy.set(true);
         set_mutation_error.set(false);
-        spawn_local(async move {
-            let write_context = context.clone();
-            let write_subject = subject.clone();
-            match crate::core::settle_reaction_mutation(
-                || transport::apply_reaction(write_context, write_subject, reaction, action),
-                || transport::load_reaction_snapshot(context, subject),
-            )
-            .await
-            {
-                Ok(settled) => {
-                    set_mutation_error.set(settled.write_failed);
-                    set_settled_snapshot.set(Some(Ok(settled.snapshot)));
+        session_owner.with(|| {
+            spawn_local_scoped_with_cancellation(async move {
+                let write_context = context.clone();
+                let write_subject = subject.clone();
+                let result = crate::core::settle_reaction_mutation(
+                    || transport::apply_reaction(write_context, write_subject, reaction, action),
+                    || transport::load_reaction_snapshot(context, subject),
+                    || is_current.run(()),
+                )
+                .await;
+                if !is_current.run(()) {
+                    return;
                 }
-                Err(_) => {
-                    // A failed canonical reload removes stale interactive controls.
-                    set_settled_snapshot.set(Some(Err(String::new())));
+                match result {
+                    Ok(Some(settled)) => {
+                        set_mutation_error.set(settled.write_failed);
+                        set_settled_snapshot.set(Some(Ok(settled.snapshot)));
+                    }
+                    Ok(None) => return,
+                    Err(_) => {
+                        // A failed canonical reload removes stale interactive controls.
+                        set_settled_snapshot.set(Some(Err(String::new())));
+                    }
                 }
-            }
-            set_mutation_busy.set(false);
+                set_mutation_busy.set(false);
+            })
         });
     });
 
@@ -111,7 +144,9 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
                     let on_toggle = on_toggle;
                     Suspend::new(async move {
                         let initial = snapshot_resource.await.map_err(|_| String::new());
-                        move || match settled_snapshot.get().unwrap_or_else(|| initial.clone()) {
+                        move || if !is_current.run(()) {
+                            ().into_any()
+                        } else { match settled_snapshot.get().unwrap_or_else(|| initial.clone()) {
                             Ok(snapshot) => view! {
                                 <ReactionButtons
                                     snapshot
@@ -130,7 +165,7 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
                                 </p>
                             }
                             .into_any(),
-                        }
+                        }}
                     })
                 }}
             </Suspense>

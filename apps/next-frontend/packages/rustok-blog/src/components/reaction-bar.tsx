@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from '@rustok/next-fluent';
 import { Button } from '@/shared/ui/base/button';
-import { getClientAuth } from '@/shared/lib/auth';
+import { useStorefrontAuth } from '@/shared/lib/auth-session';
 import { applyReaction, loadReactionSnapshot } from '../api/reactions';
 import { blogReactionSubject, reactionControls, settleReactionMutation, type ReactionSnapshot } from '../utils/reactions';
 
@@ -11,40 +11,55 @@ export function ReactionBar({ postId, version, tenantSlug }: {
   postId: string; version: number; locale?: string; tenantSlug?: string | null;
 }) {
   const t = useTranslations('Blog');
+  const auth = useStorefrontAuth();
   const subject = useMemo(() => blogReactionSubject(postId, version), [postId, version]);
-  const [snapshot, setSnapshot] = useState<ReactionSnapshot | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [writeFailed, setWriteFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const scope = useMemo(() => ({ subject, tenantSlug, auth }), [subject, tenantSlug, auth]);
+  const empty = { snapshot: null as ReactionSnapshot | null, failed: false, writeFailed: false, busy: false };
+  const [state, setState] = useState({ scope, ...empty });
+  // Hide an old principal's state during the render before effects reset it.
+  const { snapshot, failed, writeFailed, busy } = state.scope === scope ? state : empty;
   const generation = useRef(0);
   const pending = useRef<number | null>(null);
   useEffect(() => {
     const current = ++generation.current;
-    setSnapshot(null); setFailed(false); setWriteFailed(false); setBusy(false); pending.current = null;
-    const auth = getClientAuth();
-    void loadReactionSnapshot({ token: auth?.token ?? undefined, tenant: tenantSlug ?? undefined }, subject)
-      .then(value => { if (generation.current === current) setSnapshot(value); })
-      .catch(() => { if (generation.current === current) setFailed(true); });
+    setState({ scope, snapshot: null, failed: auth.refused, writeFailed: false, busy: false });
+    pending.current = null;
+    if (auth.ready && !auth.refused) {
+      void loadReactionSnapshot({ token: auth.token ?? undefined, tenant: tenantSlug ?? undefined }, subject)
+        .then(value => {
+          if (generation.current === current && auth.isCurrent())
+            setState({ scope, snapshot: value, failed: false, writeFailed: false, busy: false });
+        })
+        .catch(() => {
+          if (generation.current === current && auth.isCurrent())
+            setState({ scope, snapshot: null, failed: true, writeFailed: false, busy: false });
+        });
+    }
     return () => { generation.current++; };
-  }, [subject, tenantSlug]);
+  }, [scope, subject, tenantSlug, auth]);
 
   async function toggle(reaction: string, selected: boolean) {
     if (pending.current === generation.current) return;
-    const auth = getClientAuth();
-    if (!auth?.token || !snapshot?.actorState) return;
+    if (!auth.token || !auth.isCurrent() || !snapshot?.actorState) return;
     const current = generation.current;
     const context = { token: auth.token, tenant: tenantSlug ?? undefined };
-    pending.current = current; setBusy(true); setWriteFailed(false);
+    const isCurrent = () => generation.current === current && auth.isCurrent();
+    pending.current = current;
+    setState({ scope, snapshot, failed: false, writeFailed: false, busy: true });
     try {
       const result = await settleReactionMutation(
         () => applyReaction(context, subject, reaction, selected),
         () => loadReactionSnapshot(context, subject),
+        isCurrent,
       );
-      if (generation.current === current) { setSnapshot(result.snapshot); setWriteFailed(result.writeFailed); setFailed(false); }
-    } catch { if (generation.current === current) { setSnapshot(null); setFailed(true); } }
+      if (result && isCurrent())
+        setState({ scope, snapshot: result.snapshot, writeFailed: result.writeFailed, failed: false, busy: false });
+    } catch {
+      if (isCurrent()) setState({ scope, snapshot: null, failed: true, writeFailed: false, busy: false });
+    }
     finally {
       if (pending.current === current) pending.current = null;
-      if (generation.current === current) setBusy(false);
+      if (isCurrent()) setState(previous => ({ ...previous, busy: false }));
     }
   }
   return <section aria-label={t('reactions.title')} className='space-y-2'>

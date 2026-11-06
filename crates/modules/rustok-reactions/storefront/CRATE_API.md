@@ -29,6 +29,7 @@
 - Tenant and actor identity derived from trusted UI auth context, never accepted as variables.
 - Write mutations generate fresh UUID command identity for owner idempotency.
 - Counts and revisions remain canonical decimal strings, including full-width u64 values.
+- Authentication comes from the canonical host binding. Credential or principal changes invalidate old request scopes and actor snapshots; stale settlements return no current result.
 - Every write outcome is followed by a canonical read; controls remain locked until the read settles, and failed reads remove stale interactive state.
 
 ### Events / Outbox Side Effects

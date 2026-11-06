@@ -129,20 +129,32 @@ pub struct SettledReactionMutation {
     pub snapshot: ReactionSnapshotView,
 }
 
+/// `None` explicitly denotes a superseded authentication/request scope.
+/// Transport failures still propagate when the request remains current.
 pub async fn settle_reaction_mutation<E, Write, Read>(
     write: impl FnOnce() -> Write,
     reload: impl FnOnce() -> Read,
-) -> Result<SettledReactionMutation, E>
+    is_current: impl Fn() -> bool,
+) -> Result<Option<SettledReactionMutation>, E>
 where
     Write: Future<Output = Result<ReactionWriteResultView, E>>,
     Read: Future<Output = Result<ReactionSnapshotView, E>>,
 {
+    if !is_current() {
+        return Ok(None);
+    }
     let write_failed = write().await.is_err();
+    if !is_current() {
+        return Ok(None);
+    }
     let snapshot = reload().await?;
-    Ok(SettledReactionMutation {
+    if !is_current() {
+        return Ok(None);
+    }
+    Ok(Some(SettledReactionMutation {
         write_failed,
         snapshot,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -289,7 +301,7 @@ mod tests {
 mod settlement_tests {
     use super::*;
     use std::{
-        cell::RefCell,
+        cell::{Cell, RefCell},
         future::ready,
         task::{Context, Poll, Waker},
     };
@@ -345,7 +357,9 @@ mod settlement_tests {
                 calls.borrow_mut().push("read");
                 ready(Ok(snapshot()))
             },
+            || true,
         ))
+        .unwrap()
         .unwrap();
         assert_eq!(*calls.borrow(), ["write", "read"]);
         assert!(settled.write_failed);
@@ -361,7 +375,75 @@ mod settlement_tests {
                 }))
             },
             || ready(Err::<ReactionSnapshotView, _>("owner read unavailable")),
+            || true,
         ));
         assert_eq!(failed.unwrap_err(), "owner read unavailable");
+    }
+    #[test]
+    fn auth_change_before_or_during_reload_discards_the_old_actor_snapshot() {
+        let active = Cell::new(true);
+        let reads = Cell::new(0);
+        let writes = Cell::new(0);
+        active.set(false);
+        let rejected = finish(settle_reaction_mutation(
+            || {
+                writes.set(writes.get() + 1);
+                ready(Ok::<_, &str>(ReactionWriteResultView {
+                    command_id: Uuid::new_v4(),
+                    changed: true,
+                }))
+            },
+            || ready(Ok(snapshot())),
+            || active.get(),
+        ))
+        .unwrap();
+        assert!(rejected.is_none());
+        assert_eq!(
+            writes.get(),
+            0,
+            "a stale credential scope must not start another write"
+        );
+        active.set(true);
+        let result = finish(settle_reaction_mutation(
+            || {
+                active.set(false);
+                ready(Ok::<_, &str>(ReactionWriteResultView {
+                    command_id: Uuid::new_v4(),
+                    changed: true,
+                }))
+            },
+            || {
+                reads.set(reads.get() + 1);
+                ready(Ok(snapshot()))
+            },
+            || active.get(),
+        ))
+        .unwrap();
+        assert!(result.is_none());
+        assert_eq!(
+            reads.get(),
+            0,
+            "a changed auth scope must not issue a stale reload"
+        );
+
+        active.set(true);
+        let result = finish(settle_reaction_mutation(
+            || {
+                ready(Ok::<_, &str>(ReactionWriteResultView {
+                    command_id: Uuid::new_v4(),
+                    changed: true,
+                }))
+            },
+            || {
+                active.set(false);
+                ready(Ok(snapshot()))
+            },
+            || active.get(),
+        ))
+        .unwrap();
+        assert!(
+            result.is_none(),
+            "a late old-actor read must not enter current UI state"
+        );
     }
 }

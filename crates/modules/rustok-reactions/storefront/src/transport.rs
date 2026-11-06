@@ -39,7 +39,7 @@ mutation ReactionStorefrontApply($input: ApplyReactionInput!) {
 }
 "#;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, Hash, PartialEq)]
 pub struct ReactionStorefrontTransportContext {
     pub access_token: Option<String>,
     pub tenant_slug: Option<String>,
@@ -54,14 +54,33 @@ impl ReactionStorefrontTransportContext {
     }
 }
 
+impl std::fmt::Debug for ReactionStorefrontTransportContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ReactionStorefrontTransportContext")
+            .field(
+                "access_token",
+                &self.access_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("tenant_slug", &self.tenant_slug)
+            .finish()
+    }
+}
+
+impl ReactionStorefrontTransportContext {
+    /// Read the canonical reactive Auth owner without interpreting token claims.
+    pub fn from_auth(auth: Option<&AuthContext>) -> Self {
+        let access_token = auth.and_then(AuthContext::get_token);
+        let tenant_slug = auth
+            .and_then(AuthContext::get_tenant)
+            .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
+        Self::new(access_token, tenant_slug)
+    }
+}
+
 pub fn current_reaction_storefront_transport_context() -> ReactionStorefrontTransportContext {
     let auth = use_context::<AuthContext>();
-    let access_token = auth.as_ref().and_then(AuthContext::get_token);
-    let tenant_slug = auth
-        .as_ref()
-        .and_then(AuthContext::get_tenant)
-        .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
-    ReactionStorefrontTransportContext::new(access_token, tenant_slug)
+    ReactionStorefrontTransportContext::from_auth(auth.as_ref())
 }
 
 #[derive(Debug, Serialize)]
@@ -241,5 +260,15 @@ mod tests {
         );
         assert_eq!(value.get("action").and_then(|v| v.as_str()), Some("ADD"));
         assert!(value.get("subject").is_some());
+    }
+    #[test]
+    fn credential_debug_does_not_expose_an_access_token() {
+        let context = super::ReactionStorefrontTransportContext::new(
+            Some("secret-token".into()),
+            Some("tenant".into()),
+        );
+        let debug = format!("{context:?}");
+        assert!(!debug.contains("secret-token"));
+        assert!(debug.contains("<redacted>"));
     }
 }

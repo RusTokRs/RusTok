@@ -25,7 +25,32 @@ test('malformed actor/catalog state never enables an anonymous control', () => {
 
 test('uncertain mutation reloads canonical state before reporting completion', async () => {
   const calls = []; const snapshot = { catalog: { keys: ['like'], selectionMode: 'SINGLE', maxSelected: 1 }, actorState: null, aggregates: [{ reaction: 'like', count: '9007199254740993' }] };
-  const result = await settleReactionMutation(async () => { calls.push('write'); throw new Error('timeout after commit'); }, async () => { calls.push('read'); return snapshot; });
+  const result = await settleReactionMutation(async () => { calls.push('write'); throw new Error('timeout after commit'); }, async () => { calls.push('read'); return snapshot; }, () => true);
   assert.deepEqual(calls, ['write', 'read']); assert.equal(result.writeFailed, true); assert.equal(result.snapshot, snapshot);
-  await assert.rejects(settleReactionMutation(async () => {}, async () => { throw new Error('snapshot unavailable'); }));
+  await assert.rejects(settleReactionMutation(async () => {}, async () => { throw new Error('snapshot unavailable'); }, () => true));
+});
+
+test('principal change after write never reloads or displays the old actor snapshot', async () => {
+  let current = true;
+  const calls = [];
+  const result = await settleReactionMutation(
+    async () => { calls.push('write'); current = false; },
+    async () => { calls.push('read'); throw new Error('stale read must not run'); },
+    () => current,
+  );
+  assert.deepEqual(calls, ['write']);
+  assert.equal(result, null);
+});
+
+test('credential refresh or logout during reload discards its late actor response', async () => {
+  let generation = 1;
+  const result = await settleReactionMutation(
+    async () => {},
+    async () => { generation++; return { catalog: { keys: ['like'] }, actorState: { selected: ['like'] }, aggregates: [] }; },
+    () => generation === 1,
+  );
+  assert.equal(result, null);
+  let called = false;
+  assert.equal(await settleReactionMutation(async () => { called = true; }, async () => {}, () => false), null);
+  assert.equal(called, false, 'a stale credential scope cannot start another mutation');
 });
