@@ -2050,12 +2050,18 @@ backend preflight.
 
 ### 4. Implement the Safe Data Path
 
-- [x] Make `rustok-migrations` generate the normalized owner-scoped declarative
+- [ ] Make `rustok-migrations` generate the normalized owner-scoped declarative
   schema diff and no-write dry-run receipt, bind them into the existing
   immutable preflight/operator preview, and execute only the confirmed exact
   migration-plan digest rather than an unbounded migrator during update. Reuse
   the existing owner operation and receipt ledger; do not add a parallel
   dry-run lifecycle.
+  Status correction (2026-11-05): supplied-operation summaries remain diagnostic;
+  observed owner-scoped diff/admission and digest-bound production execution are
+  not implemented. The [bounded runner](../../DECISIONS/2026-11-05-bounded-migration-execution.md)
+  now restricts operational execution to an exact contiguous phase and validates
+  its journal boundaries. It is a prerequisite, not owner authorization,
+  source/build/schema binding or a durable operation receipt.
 - [ ] Support transactional additive expansion and resumable idempotent
   backfills whose every checkpoint preserves the single canonical
   representation, with uncertain-outcome recovery.

@@ -14681,6 +14681,7 @@ dependencies = [
  "leptos-auth",
  "leptos-ui",
  "rustok-api",
+ "serde_json",
 ]
 
 [[package]]

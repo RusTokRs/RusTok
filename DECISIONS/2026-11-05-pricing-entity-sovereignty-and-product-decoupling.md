@@ -2,10 +2,11 @@
 
 - Date: 2026-11-05
 - Decision status: Accepted
-- Implementation status: In progress
-- Owners: Pricing and Product
-- Supersedes the Pricing persistence-sharing part of [the initial commerce split](2026-03-25-commerce-module-split-product-pricing-inventory.md)
-- Extends [the native module reference contract](2026-09-18-canonical-native-module-reference-contract.md) and [AGENTS.md governance contract](../../AGENTS.md) §5
+- Implementation status: Implemented
+- Owners: rustok-pricing, rustok-product
+- Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md)
+- Supersedes: [2026-03-25-commerce-module-split-product-pricing-inventory.md](./2026-03-25-commerce-module-split-product-pricing-inventory.md)
+- Superseded by: None
 
 ## Context
 
@@ -43,13 +44,56 @@ This violated canonical architectural principles in `AGENTS.md` §5:
 4. **Zero Cross-Module SQL or Entity Leaks**:
    - `rustok-product` contains zero SQL queries against the `prices` table and zero imports of foreign pricing entities.
 
+## Sources of truth and ownership
+
+- `rustok-pricing` is the single source of truth for pricing models, price lists, tier rules, currency rounding discipline, and the `prices` table.
+- `rustok-product` owns product variants, attributes, and catalog lifecycle.
+- The boundary between product catalog and pricing is bridged exclusively via `ProductPricingPort`.
+
 ## Invariants
 
 - `rustok-pricing` owns its database schema, migrations, and entities.
 - `rustok-product` does not query or mutate `prices` table directly.
 - The Cargo graph is strictly acyclic: `rustok-pricing -> rustok-product`.
-- Product variant creation/deletion and pricing operations continue to participate in atomic transactional boundaries when wired with `ProductPricingPort`.
+- Product variant creation/deletion and pricing operations participate in atomic transactional boundaries when wired with `ProductPricingPort`.
 - Dual database support (PostgreSQL and SQLite) is fully preserved.
+
+## Non-goals
+
+- `rustok-product` does not manage price resolution, customer group price overrides, or volume tiers.
+- `rustok-pricing` does not manage catalog taxon hierarchies or stock reservations (owned by Inventory).
+
+## Data, transaction, and concurrency boundary
+
+In native composition sharing a database connection, `ProductPricingPort` executes operations directly against caller-provided `&DatabaseTransaction`. If price insertion fails or invariant validation fails, the entire transaction (including product mutation) rolls back. When prices are deleted as part of variant removal, cascades and deletions execute inside the same transaction.
+
+## Context dimensions
+
+- Tenant: All pricing operations are strictly scoped to `tenant_id`.
+- Currency: ISO-4217 3-letter currency code, normalized and validated.
+- Channel: Storefront price calculations accept `channel_id` for scoped price resolution.
+- Locale: Non-applicable to raw prices; price list names/descriptions utilize translation structures.
+
+## Events and projections
+
+Pricing mutations emit `PriceCreated`, `PriceUpdated`, `PriceDeleted` domain events through the transactional outbox. Storefront search projection drivers subscribe to price events to update cached price facets.
+
+## Failure semantics
+
+If a product operation supplies variant prices but no `ProductPricingPort` is attached, the operation fails closed with `PricingProviderRequired`. If pricing operations fail during a transaction, the error propagates and the transaction rolls back.
+
+## Migration and cutover
+
+1. Migrate entities from `crates/libs/rustok-pricing-persistence` into `crates/modules/rustok-pricing/src/entities/`.
+2. Introduce `ProductPricingPort` in `rustok-product`.
+3. Implement `PricingProductPricingPortAdapter` in `rustok-pricing`.
+4. Delete `crates/libs/rustok-pricing-persistence` and remove all Cargo dependencies on it.
+5. Update server composition root to wire `in_process_product_pricing_port(db)`.
+
+## Alternatives considered
+
+- Retaining `crates/libs/rustok-pricing-persistence`: rejected, creates an architectural anti-pattern where domain entities live in generic libraries to bypass Cargo cycles.
+- Direct raw SQL queries from Product to prices table: rejected, completely violates module isolation and schema autonomy.
 
 ## Verification
 
@@ -57,3 +101,12 @@ This violated canonical architectural principles in `AGENTS.md` §5:
 - `cargo check -p rustok-pricing` and `cargo test -p rustok-pricing --lib` pass.
 - `node scripts/verify/verify-module-source-layout.mjs --module pricing` passes.
 - `python scripts/architecture_dependency_guard.py` passes with 0 violations.
+
+## Consequences
+
+- **Positive:**
+  - Complete elimination of shadow persistence crate `rustok-pricing-persistence`.
+  - True table sovereignty and encapsulation for `rustok-pricing`.
+  - Clean, acyclic dependency graph.
+- **Negative:**
+  - Product commands requiring initial price setting depend on runtime injection of `ProductPricingPort`.

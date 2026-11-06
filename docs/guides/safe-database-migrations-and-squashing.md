@@ -274,6 +274,16 @@ every committed step in incremental mode. Selected backfill assertions now run
 immediately after their own step as well as at the end. Assertions are read-only;
 targets outside the pending range fail before fixture setup.
 
+The [bounded execution contract](../../DECISIONS/2026-11-05-bounded-migration-execution.md)
+adds exact contiguous phases to this same runner and the operations CLI. It
+checks a complete prerequisite prefix and selected step list against the full
+compiled composition, then refuses journals before or beyond that phase.
+Restart may resume only within the selected boundaries; no suffix step can run.
+This supplies an execution primitive for retained verification boundaries. It
+does not provide release seals, source/schema authorization, durable module
+operation receipts or replacement admission, and does not replace the sparse
+installer bootstrap path. Gates 2–5 remain incomplete.
+
 Current status is implementation in progress. Existing-check corrections, Rust
 source planning and the bounded fresh-install observer/runner are implemented.
 On PostgreSQL 16.13, the composed runner applied and confirmed all 580 exported

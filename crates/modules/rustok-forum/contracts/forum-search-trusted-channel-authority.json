@@ -11,7 +11,7 @@
   "native_storefront": "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
   "native_forum_storefront": "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
   "forum_execution_owner": "crates/modules/rustok-search/src/audience_security.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2e1-trusted-channel-authority.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-search-audience-classes.mjs",
   "authority": {
     "tenant_source": "RequestContext.tenant_id",

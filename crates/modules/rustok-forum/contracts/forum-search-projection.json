@@ -17,7 +17,7 @@
     "forum_topic",
     "forum_reply"
   ],
-  "owner_note": "crates/modules/rustok-forum/docs/forum-20bj-search-projection.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "source_verifier": "scripts/verify/verify-forum-search-projection.mjs",
   "upstream_contract": "crates/modules/rustok-forum/contracts/forum-public-discovery-seo.json",
   "invalidation_contract": "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json",

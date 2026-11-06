@@ -65,6 +65,14 @@ actual SQL/relay/Iggy/restart/Search, generic Index and Product step 8 are not c
 - [README crate](../README.md)
 - [README admin package](../admin/README.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
+- [`rustok-inventory` implementation plan](./implementation-plan.md)
+- [Inventory Port Diagnostic Safety](./inventory-port-diagnostic-safety.md)
+- [Admin Client Transport Error Safety](./admin-client-transport-error-safety.md)
+- [Admin Native Error Safety](./admin-native-error-safety.md)
+- [Availability Quantity Local Context](./availability-quantity-local-context.md)
+- [Availability Quantity Owner Context](./availability-quantity-owner-context.md)
+- [Reservation Local Context](./reservation-local-context.md)
+- [Reservation Owner Context](./reservation-owner-context.md)
 
 ## Shipment source continuation
 

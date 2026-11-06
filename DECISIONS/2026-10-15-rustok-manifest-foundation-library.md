@@ -2,7 +2,7 @@
 
 - Date: 2026-10-15
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-manifest`, platform-architecture, `xtask`
 - Extends: [Registry v2 clean contract without runtime compat](./2026-04-19-registry-v2-clean-contract-without-runtime-compat.md)
 - Supersedes: None

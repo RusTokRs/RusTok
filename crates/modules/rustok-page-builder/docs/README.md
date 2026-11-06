@@ -24,6 +24,8 @@
 
 - [Crate README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Fly Runtime](./fly-runtime.md)
+- [Static Publish Resource Limits](./static-publish-resource-limits.md)
 
 # rustok-page-builder runtime
 

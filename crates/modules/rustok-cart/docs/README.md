@@ -91,6 +91,10 @@ synthetic shipping selection. The target contract is defined in
 - [README crate](../README.md)
 - [Development Plan for `rustok-cart`](./implementation-plan.md)
 - [Commerce Split Plan](../../rustok-commerce/docs/implementation-plan.md)
+- [Checkout Admission Context](./checkout-admission-context.md)
+- [Storefront GraphQL Error Safety](./storefront-graphql-error-safety.md)
+- [Storefront Native Error Safety](./storefront-native-error-safety.md)
+- [Storefront Native Client Error Safety](./storefront-native-client-error-safety.md)
 
 ## Priced quantity adoption (2026-10-30; source only)
 

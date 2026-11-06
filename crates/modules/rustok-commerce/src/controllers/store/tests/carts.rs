@@ -69,7 +69,7 @@ async fn store_cart_line_item_transport_rejects_channel_hidden_product() {
         default_locale: "en".to_string(),
         is_active: true,
     };
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let mut hidden_input = storefront_product_input();
     hidden_input.translations[0].handle = Some("channel-hidden-variant-en".to_string());
     hidden_input.translations[1].handle = Some("channel-hidden-variant-de".to_string());
@@ -339,7 +339,7 @@ async fn store_cart_line_item_transport_resolves_backend_title_and_price() {
     };
     let mut product_input = storefront_product_input();
     product_input.variants[0].inventory_quantity = 5;
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, product_input)
         .await
@@ -528,7 +528,7 @@ async fn store_cart_transport_returns_typed_adjustments_and_totals() {
         default_locale: "en".to_string(),
         is_active: true,
     };
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, storefront_product_input())
         .await
@@ -658,7 +658,7 @@ async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promoti
         default_locale: "en".to_string(),
         is_active: true,
     };
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let created = catalog
         .create_product(tenant_id, actor_id, storefront_product_input())
         .await

@@ -161,7 +161,7 @@ The current roadmap is captured in `docs/implementation-plan.md`: base batches `
 - [Implementation plan](./implementation-plan.md)
 - [Runbook replay/repair](./replay-repair-runbook.md)
 - [Operational runbook](./operations-runbook.md)
-- [`rustok-seo-render` documentation](../render/docs/README.md)
+- [`rustok-seo-storefront` documentation](../storefront/README.md)
 - [`rustok-seo-panel` documentation](../panel/docs/README.md)
 - [Admin package](../admin/README.md)
 - [Storefront contract](../../../../docs/UI/storefront.md)

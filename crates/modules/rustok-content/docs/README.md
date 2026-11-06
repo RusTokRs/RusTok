@@ -50,5 +50,6 @@ implementation and generic shared-node service have been removed under the
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
+- [Content Runbook](./runbook.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
 - [Richtext implementation plan](../../../../docs/modules/rich-text-implementation-plan.md)

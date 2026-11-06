@@ -44,4 +44,4 @@ independent locale fallback chain.
 
 - [Crate README](../README.md)
 - [Module documentation](./README.md)
-- [SEO module plan](../../rustok-seo/docs/implementation-plan.md)
+- [SEO module plan](../../docs/implementation-plan.md)

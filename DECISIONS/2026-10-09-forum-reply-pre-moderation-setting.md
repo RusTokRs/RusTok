@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`services/reply_owner_inline.rs`, `rustok-module.toml`, `README.md`), `apps/next-admin` (`module-settings-fields/forum.tsx`)
 - Extends: `DECISIONS/2026-10-09-forum-soft-default-settings.md`
 - Supersedes: None

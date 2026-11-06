@@ -2,7 +2,7 @@
 
 - Date: 2026-10-21
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-fulfillment (shipment truth, port contract); rustok-inventory (stock and ledger); rustok-commerce (composition, return completion)
 - Extends: [Order shipped/delivered status follows fulfillment truth; stock consumption stays trigger-owned for now](./2026-10-21-order-shipment-status-projection.md)
 - Supersedes: None

@@ -2,7 +2,7 @@
 
 - Date: 2026-09-24
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-forum and rustok-media maintainers
 - Extends: Direct object-store runtime and owner-local lifecycle
 - Supersedes: None

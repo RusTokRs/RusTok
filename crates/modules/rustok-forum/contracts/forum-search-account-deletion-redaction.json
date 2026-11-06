@@ -11,7 +11,7 @@
   "search_inbox": "crates/modules/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
   "umbrella_contract": "crates/modules/rustok-forum/contracts/forum-search-public-author-summary.json",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23a11-account-deletion-redaction.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-account-deletion-redaction.mjs",
   "owner_transaction_boundary": {
     "auth_delete_is_deactivation_not_hard_erasure": true,

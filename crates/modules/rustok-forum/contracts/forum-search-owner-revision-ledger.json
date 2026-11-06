@@ -11,7 +11,7 @@
   "forum_owner": "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
   "outbox_api": "crates/modules/rustok-outbox/src/transactional.rs",
   "outbox_api_documentation": "crates/modules/rustok-outbox/CRATE_API.md",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g2a-search-owner-revision-ledger.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-owner-revision-ledger.mjs",
   "revision_owner": {
     "module": "forum",
@@ -28,9 +28,16 @@
   },
   "ledger": {
     "table": "forum_projection_revision_ledger",
-    "primary_key": ["tenant_id", "revision"],
+    "primary_key": [
+      "tenant_id",
+      "revision"
+    ],
     "event_id_unique": true,
-    "target_types": ["forum", "forum_category", "forum_topic"],
+    "target_types": [
+      "forum",
+      "forum_category",
+      "forum_topic"
+    ],
     "forum_target_requires_null_id": true,
     "category_and_topic_targets_require_id": true,
     "append_only_update_trigger": true,

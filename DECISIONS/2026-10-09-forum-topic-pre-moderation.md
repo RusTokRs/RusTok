@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`state_machine.rs`, `constants.rs`, `services/topic_inline.rs`, `services/moderation_owner.rs`, `services/pending_visibility.rs`, `services/topic_audience_visibility.rs`, `services/reply.rs`, `services/reply_audience_read.rs`, `services/reply_owner_inline.rs`, `error.rs`, `migrations/m20261009_000038_allow_pending_forum_topic_status.rs`), `rustok-content-orchestration` (`bridge/promote.rs`), `apps/next-admin` (`module-settings-fields/forum.tsx`)
 - Extends: `DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md`
 - Supersedes: Item 3 of `DECISIONS/2026-10-09-forum-reply-pre-moderation-setting.md` (topics are not held). The rest of that decision stands.

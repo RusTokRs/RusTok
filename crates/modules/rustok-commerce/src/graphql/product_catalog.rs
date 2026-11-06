@@ -784,7 +784,9 @@ impl ProductCatalogQuery {
 
         // Backward compatibility fallback to legacy brand_products
         let service = rustok_brand::BrandService::new(db.clone());
+        #[allow(deprecated)]
         use rustok_brand::BrandPort;
+        #[allow(deprecated)]
         let brand = service
             .get_brand_for_product(tenant.id, product_id, locale.as_deref())
             .await
@@ -842,7 +844,9 @@ impl ProductCatalogQuery {
 
         // Backward compatibility fallback to legacy brand_products
         let service = rustok_brand::BrandService::new(db.clone());
+        #[allow(deprecated)]
         use rustok_brand::BrandPort;
+        #[allow(deprecated)]
         if let Ok(Some(legacy_brand)) = service
             .get_brand_for_product(tenant.id, product_id, locale.as_deref())
             .await

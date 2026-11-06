@@ -19,7 +19,7 @@ use crate::core::{
 };
 use rustok_comments::{CommentRecord, CommentThreadDetail, CommentThreadSummary};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum CommentsAdminTransportError {
     ServerFn(String),
 }

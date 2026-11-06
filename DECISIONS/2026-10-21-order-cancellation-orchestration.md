@@ -2,7 +2,7 @@
 
 - Date: 2026-10-21
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-commerce (orchestration); rustok-order, rustok-fulfillment, rustok-payment (owners of their state)
 - Extends: [Checkout operation invariants are owned by typed Rust](./2026-10-07-checkout-operation-invariants-owned-by-rust.md)
 - Supersedes: None

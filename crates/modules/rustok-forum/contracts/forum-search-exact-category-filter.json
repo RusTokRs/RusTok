@@ -11,7 +11,7 @@
   "postgres_filter_owner": "crates/modules/rustok-search/src/pg_engine.rs",
   "search_readme": "crates/modules/rustok-search/README.md",
   "search_plan": "crates/modules/rustok-search/docs/implementation-plan.md",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b1-exact-category-filter.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-search-audience-classes.mjs",
   "query_boundary": {
     "existing_category_ids_input_is_reused": true,

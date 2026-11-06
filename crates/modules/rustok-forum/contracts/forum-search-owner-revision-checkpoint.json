@@ -15,7 +15,7 @@
   "forum_owner_source": "crates/modules/rustok-forum/src/services/event.rs",
   "host_adapter": "apps/server/src/services/forum_search_owner_revision.rs",
   "host_worker": "apps/server/src/services/forum_search_inbox_worker.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g2b2-search-owner-revision-checkpoint.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-owner-revision-checkpoint.mjs",
   "owner_discovery": {
     "source_table": "forum_projection_revision_ledger",
@@ -32,13 +32,19 @@
   },
   "checkpoint_storage": {
     "table": "search_projection_owner_checkpoints",
-    "primary_key": ["tenant_id", "source_module"],
+    "primary_key": [
+      "tenant_id",
+      "source_module"
+    ],
     "source_module": "forum",
     "first_revision": 1,
     "exact_increment": 1,
     "positive_revision_required": true,
     "event_identity_retained": true,
-    "outcomes": ["delivery_covered", "rebuild_repaired"],
+    "outcomes": [
+      "delivery_covered",
+      "rebuild_repaired"
+    ],
     "row_delete_forbidden": true,
     "table_truncate_forbidden": true,
     "independent_from_ingest_sequence": true
@@ -49,7 +55,10 @@
     "pending_blocks_checkpoint": true,
     "processing_blocks_checkpoint": true,
     "retryable_error_blocks_checkpoint": true,
-    "coverage_identity": ["tenant_id", "event_id"],
+    "coverage_identity": [
+      "tenant_id",
+      "event_id"
+    ],
     "completed_is_covered": true,
     "skipped_is_covered": true,
     "missing_requires_rebuild": true,

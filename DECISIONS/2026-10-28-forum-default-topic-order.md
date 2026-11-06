@@ -2,7 +2,7 @@
 
 - Date: 2026-10-28
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-forum
 - Extends: [Forum list page-size defaults](./2026-10-09-forum-list-page-size-from-settings.md)
 - Supersedes: None

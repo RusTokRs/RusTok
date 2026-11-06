@@ -2,7 +2,7 @@
 
 - Date: 2026-10-07
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-commerce (checkout operation journal); rustok-payment (payment provider execution)
 - Extends: None
 - Supersedes: None

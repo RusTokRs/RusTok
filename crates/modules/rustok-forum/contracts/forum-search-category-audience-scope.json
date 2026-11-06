@@ -11,7 +11,7 @@
   "audience_read_search_extension": "crates/modules/rustok-forum/src/services/category_audience_read_search.rs",
   "audience_visibility_owner": "crates/modules/rustok-forum/src/services/category_audience_visibility.rs",
   "owner_export": "crates/modules/rustok-forum/src/services/mod.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2b-category-audience-scope.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-category-audience-scope.mjs",
   "bounds": {
     "raw_root_ids": 10,

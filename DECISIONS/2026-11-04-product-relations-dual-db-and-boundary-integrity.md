@@ -2,9 +2,9 @@
 
 - Date: 2026-11-04
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-product-relations, rustok-product
-- Extends: [2026-03-25-commerce-module-split-product-pricing-inventory.md](2026-03-25-commerce-module-split-product-pricing-inventory.md)
+- Extends: [2026-03-25-commerce-module-split-product-pricing-inventory.md](./2026-03-25-commerce-module-split-product-pricing-inventory.md)
 - Supersedes: None
 - Superseded by: None
 
@@ -49,6 +49,56 @@ During architectural code review against platform standards (`AGENTS.md`), sever
    - Reorganize `src/` to follow canonical slots: `src/dto/mod.rs`, `src/ports/mod.rs`, `src/tests/mod.rs` & `src/tests/contract.rs`.
    - Keep entities private (`pub(crate) mod entities;`).
 
+## Sources of truth and ownership
+
+- `rustok-product-relations` is the sole canonical owner of the `product_relations` table, its positions, relation types, and migrations.
+- `rustok-product` is the sole owner of the `products` table, product lifecycle, and product identity.
+- Relations reference `products` via product IDs scoped to `tenant_id`; relations never own product metadata.
+
+## Invariants
+
+- Self-relations are strictly forbidden: `product_id != related_product_id`.
+- Tenant consistency: both `product_id` and `related_product_id` must belong to the same `tenant_id`.
+- Unique relation pairs: `(tenant_id, product_id, related_product_id, relation_type)` must be unique.
+- Non-negative, unique sequential ordering positions: `(tenant_id, product_id, relation_type, position)` must be unique and non-negative.
+- Migrations must succeed cleanly on both PostgreSQL and SQLite without engine-exclusive failures.
+
+## Non-goals
+
+- `rustok-product-relations` does not manage product categories, collections, or bundles (owned by Product and Bundles modules).
+- This decision does not introduce asynchronous graph databases or external recommendation engines.
+
+## Data, transaction, and concurrency boundary
+
+All relation position re-ordering and pair insertions execute in atomic database transactions (`DatabaseTransaction`). Unique constraint `uq_product_relations_tenant_product_type_position` prevents position collision races. Foreign key cascades cleanly delete relation edges upon product deletion.
+
+## Context dimensions
+
+- Tenant: Mandatory tenant isolation across all queries, indexes, and unique constraints.
+- Locale: Relation types and names participate in localization, while relation edges and IDs are locale-invariant.
+- Channel / Currency: Non-applicable to raw product relation edges.
+
+## Events and projections
+
+Mutations emit `ProductRelationCreated`, `ProductRelationUpdated`, `ProductRelationDeleted` domain events. Search indexers and storefront catalog projections consume these events to invalidate cached recommendation and related product carousels.
+
+## Failure semantics
+
+Violation of self-relation check, foreign key constraints, or position unique keys return typed domain errors (`InvalidRelationTarget`, `DuplicateRelationError`). Migrations fail immediately if dialect-specific statements fail.
+
+## Migration and cutover
+
+Historical migration files are updated to support SQLite dialect without altering existing PostgreSQL schema contracts. Redundant constraint creation on foreign `products` table is removed. Test suites cut over from manual raw SQL setup to executing canonical migrations.
+
+## Alternatives considered
+
+- Retaining raw SQL mocking in tests: rejected, creates divergence between test schema and production schema.
+- Leaving PostgreSQL-only requirement: rejected, breaks local developer experience and platform SQLite compatibility contract.
+
+## Verification
+
+Run `cargo test -p rustok-product-relations` against SQLite. Verify migration execution, position compaction, self-relation rejection, and foreign key cascades. Run `npm run verify:module-source-layout` to verify canonical module physical structure.
+
 ## Consequences
 
 - **Positive:**
@@ -57,4 +107,4 @@ During architectural code review against platform standards (`AGENTS.md`), sever
   - Test suites run real migrations instead of mocking schema.
   - Full Leptos and Next.js parity documented and verified.
 - **Negative:**
-  - Requires updating existing migration files to handle SQLite dialect branching cleanly.
+  - Requires maintaining dialect compatibility in migration definitions across both PostgreSQL and SQLite.

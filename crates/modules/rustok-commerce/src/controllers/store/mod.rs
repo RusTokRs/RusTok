@@ -1,5 +1,6 @@
 pub mod carts;
 pub mod checkout;
+#[cfg(test)]
 pub(crate) mod line_item_resolution;
 pub mod orders;
 #[path = "products_owner_list.rs"]
@@ -23,7 +24,9 @@ use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 
-use rustok_pricing::{PriceResolutionContext, PricingReadPort, in_process_pricing_read_port};
+use rustok_pricing::{PriceResolutionContext, in_process_pricing_read_port};
+#[cfg(test)]
+use rustok_pricing::PricingReadPort;
 use rustok_product::entities::product_translation;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
@@ -37,7 +40,7 @@ use uuid::Uuid;
 use super::common::PaginationParams;
 use crate::{
     StoreContextError, StoreContextService,
-    dto::{AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse},
+    dto::{CartResponse, ResolveStoreContextInput, StoreContextResponse},
     storefront_channel::{
         is_module_enabled_for_request_channel, normalize_public_channel_slug,
         public_channel_slug_from_request,
@@ -569,6 +572,10 @@ pub(crate) fn storefront_cart_pricing_snapshot(
     (base_unit_price, pricing_adjustment)
 }
 
+#[cfg(test)]
+use crate::dto::AddCartLineItemInput;
+
+#[cfg(test)]
 #[derive(Debug)]
 pub(crate) struct ResolvedStoreLineItemInput {
     pub(crate) add_line_item: AddCartLineItemInput,
@@ -617,6 +624,7 @@ pub(crate) fn current_shipping_selections(
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) struct StoreLineItemResolution<'a> {
     pub(crate) product_catalog_read_port: &'a dyn rustok_product::ProductCatalogReadPort,
     pub(crate) pricing_read_port: &'a dyn PricingReadPort,
@@ -627,6 +635,7 @@ pub(crate) struct StoreLineItemResolution<'a> {
     pub(crate) input: StoreAddCartLineItemInput,
 }
 
+#[cfg(test)]
 fn store_line_item_pricing_port_context(
     tenant_id: Uuid,
     variant_id: Uuid,
@@ -691,6 +700,7 @@ pub(crate) fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn normalize_store_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -698,6 +708,7 @@ pub(crate) fn normalize_store_seller_id(value: Option<&str>) -> Option<String> {
         .map(|value| value.to_owned())
 }
 
+#[cfg(test)]
 pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
     let seller_id = normalize_store_seller_id(seller_id);
 

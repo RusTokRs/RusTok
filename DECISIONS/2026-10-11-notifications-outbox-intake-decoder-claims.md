@@ -2,7 +2,7 @@
 
 - Date: 2026-10-11
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-notifications` (outbox intake worker); `apps/server` (outbox envelope decoder wiring); consumers: every module that publishes a notification source event, currently `rustok-forum`
 - Extends: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`, `DECISIONS/2026-10-09-forum-topic-owner-audience-read.md`
 - Supersedes: None

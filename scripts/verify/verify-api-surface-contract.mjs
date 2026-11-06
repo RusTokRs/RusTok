@@ -242,7 +242,7 @@ const httpOwnerForwarders = [
   [
     "crates/modules/rustok-commerce/src/controllers/products.rs",
     "map_admin_product_port_error",
-    "error.retryable",
+    "retryable",
     1,
   ],
   [

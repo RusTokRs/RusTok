@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-page-builder` (semantics and editor surface), `fly` (component model and resolution), `rustok-pages` (site store, load/publish merge)
 - Extends: [Multilingual content contract](./2026-03-28-multilingual-content-contract.md), [Page body working copies: draft revisions and body revision journal](./2026-10-09-page-body-draft-and-revision-history.md)
 - Supersedes: None

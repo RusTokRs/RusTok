@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`services/posting_rate.rs`, `services/posting_rate` call sites in topic and reply create, `error.rs`, `controllers/mod.rs`); `apps/next-admin` is not changed in this decision
 - Extends: `DECISIONS/2026-10-09-forum-soft-default-settings.md`, `DECISIONS/2026-10-09-forum-content-length-enforcement.md`
 - Supersedes: None

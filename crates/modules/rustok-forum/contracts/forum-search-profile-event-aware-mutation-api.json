@@ -9,7 +9,7 @@
   "graphql_runtime": "crates/modules/rustok-profiles/src/graphql/mutation.rs",
   "cli_backfill_runtime": "crates/modules/rustok-profiles/cli/src/lib.rs",
   "legacy_source_gate_contract": "crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23a9-profile-event-aware-mutation-api.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-profile-event-aware-mutation-api.mjs",
   "public_event_aware_methods": [
     "upsert_profile_with_event",

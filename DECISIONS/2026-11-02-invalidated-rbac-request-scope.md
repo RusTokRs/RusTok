@@ -2,7 +2,7 @@
 
 - Date: 2026-11-02
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: apps/server (request scope), rustok-rbac (persisted grants and policy)
 - Extends: 2026-02-26-rbac-relation-source-of-truth-cutover
 - Supersedes: None

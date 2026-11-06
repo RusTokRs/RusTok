@@ -64,20 +64,50 @@ async fn storefront_cart_native(
     selected_cart_id: Option<String>,
     locale: Option<String>,
 ) -> Result<StorefrontCartData, ServerFnError> {
-    super::native_server_adapter_ssr::storefront_cart_native(selected_cart_id, locale).await
+    #[cfg(feature = "ssr")]
+    {
+        super::native_server_adapter_ssr::storefront_cart_native(selected_cart_id, locale).await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (selected_cart_id, locale);
+        Err(ServerFnError::new(
+            "cart/storefront-data requires the `ssr` feature",
+        ))
+    }
 }
 #[server(prefix = "/api/fn", endpoint = "cart/decrement-line-item", client = leptos_auth::AuthorizedBrowserClient)]
 async fn storefront_cart_decrement_line_item(
     cart_id: String,
     line_item_id: String,
 ) -> Result<(), ServerFnError> {
-    super::native_server_adapter_ssr::storefront_cart_decrement_line_item(cart_id, line_item_id)
-        .await
+    #[cfg(feature = "ssr")]
+    {
+        super::native_server_adapter_ssr::storefront_cart_decrement_line_item(cart_id, line_item_id)
+            .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (cart_id, line_item_id);
+        Err(ServerFnError::new(
+            "cart/decrement-line-item requires the `ssr` feature",
+        ))
+    }
 }
 #[server(prefix = "/api/fn", endpoint = "cart/remove-line-item", client = leptos_auth::AuthorizedBrowserClient)]
 async fn storefront_cart_remove_line_item(
     cart_id: String,
     line_item_id: String,
 ) -> Result<(), ServerFnError> {
-    super::native_server_adapter_ssr::storefront_cart_remove_line_item(cart_id, line_item_id).await
+    #[cfg(feature = "ssr")]
+    {
+        super::native_server_adapter_ssr::storefront_cart_remove_line_item(cart_id, line_item_id).await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (cart_id, line_item_id);
+        Err(ServerFnError::new(
+            "cart/remove-line-item requires the `ssr` feature",
+        ))
+    }
 }

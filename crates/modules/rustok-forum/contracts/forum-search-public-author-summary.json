@@ -21,7 +21,7 @@
   "auth_account_deactivation_owner": "apps/server/src/services/auth_admin_mutation_provider/user_admin.rs",
   "search_inbox": "crates/modules/rustok-search/src/forum_inbox.rs",
   "search_ingestion": "crates/modules/rustok-search/src/ingestion.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23a-search-public-author-summary.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-public-author-summary.mjs",
   "projection_boundary": {
     "anonymous_profiles_presentation_is_authoritative": true,

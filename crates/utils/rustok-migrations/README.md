@@ -160,6 +160,43 @@ the runner; callers close it before reconciling through a new session.
 Plans containing nontransactional steps are rejected before connecting until
 their owner-proven recovery contract is supported. No step is implicitly made
 transactional.
+
+### Bounded execution
+
+`StepRunner::connect_phase(url, complete_plan, ExecutionPhase)` restricts that
+same executor to a nonempty, contiguous phase. The request names the complete
+ordered `expected_prefix` and the exact ordered `steps`; their concatenation
+must match the beginning of the full compiled composition. The journal must
+end inside the phase, including its prerequisite and completed boundaries.
+Missing prerequisites and history beyond the end are rejected before journal
+installation. Pending steps and execution stop at the terminal boundary even
+when later steps exist. Restart revalidates the same phase and committed prefix.
+Nontransactional steps outside the selected phase are not executed and do not
+prevent this phase from running.
+
+The CLI uses this same path:
+
+```json
+{"expected_prefix":["create"],"steps":["backfill"]}
+```
+
+```powershell
+rustok-migrate up --phase phase.json
+```
+
+Names above are illustrative; use the exact compiled identities. Both fields
+are required, unknown fields are rejected, and the file is limited to 1 MiB.
+Phase completion does not mean that the full schema is current; use `status`
+for that check. Bare `up` preserves full-plan installation/verification behavior.
+See the [bounded execution decision](../../../DECISIONS/2026-11-05-bounded-migration-execution.md).
+
+This request restricts execution; it grants no release or module authority.
+Production updates still require owner admission, observed-schema/source/build
+binding, fences and durable operation receipts. SQL side effects remain owned
+by each migration. The installer's sparse bootstrap entrypoints remain separate.
+
+### Verification evidence
+
 `status` reads the journal without creating it. Fresh verification requires
 the ordered confirmations from both runners and checks each final journal
 against its executable plan.
@@ -201,7 +238,8 @@ See [the database architecture](../../../docs/architecture/database.md) and the
 
 ### Known Limitations / Pending Implementation
 
-The stepwise runner currently supports PostgreSQL transactional plans only.
+The stepwise runner currently supports PostgreSQL transactional execution only;
+selected phase steps must all support its recovery policy.
 Nontransactional recovery, complete owner assertions at every retained boundary,
 released-prefix/installer coverage and trusted replacement admission remain
 pending in the [canonical plan](../../../docs/guides/safe-database-migrations-and-squashing.md).

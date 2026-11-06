@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (`VoteService`, `ForumSettingsProviders`, `ForumModuleSettings`); `rustok-tenant` (static module settings rows read through `StaticModuleSettingsTransactionReader`)
 - Extends: `DECISIONS/2026-10-09-forum-vote-subscription-write-audience.md`
 - Supersedes: None

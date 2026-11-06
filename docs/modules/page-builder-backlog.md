@@ -124,7 +124,7 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
    - Wired CSRF token derivation into `rustok-pages-admin::PagesFlyBuilder` and propagated to `data-fly-csrf-token` / browser runtime adapter.
    - Enforced strict CSRF check in `apps/admin/src/main.rs::page_builder_intent`: cookie-authenticated browser sessions require a valid `x-csrf-token` matching the session token (returns `403 Forbidden` if missing or invalid). API requests with `authorization: Bearer` bypass CSRF.
    - Verified via `cargo test -p fly-browser`, `cargo test -p rustok-pages-admin` (46/46 passed), `cargo check -p rustok-admin`, and `verify-fly-admin-browser-runtime.mjs`.
-   - Remaining for full CLEAN-060: server-side login endpoint issuing `HttpOnly` cookie without `localStorage` client mirroring (tracked under platform hardening `docs/verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`). Owner: admin shell / auth.
+   - Remaining for full CLEAN-060: server-side login endpoint issuing `HttpOnly` cookie without `localStorage` client mirroring (implemented under [ADR 2026-09-27-leptos-httponly-session-migration.md](../../DECISIONS/2026-09-27-leptos-httponly-session-migration.md)). Owner: admin shell / auth.
 4. **Browser evidence (rest of P1-8/P1-9) — PROGRESS (2026-10-15).**
    - Enabled Chromium auto-resolution with system Chrome/Edge fallback in `scripts/verify/verify-fly-grapesjs-roundtrip.mjs` and `scripts/capture/capture-fly-grapesjs-fixture.mjs`.
    - Refreshed real browser capture `browser-current.json` with Chromium 155 and current HEAD commit.

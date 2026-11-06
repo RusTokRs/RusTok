@@ -8,7 +8,7 @@
   "profiles_readme": "crates/modules/rustok-profiles/README.md",
   "legacy_source_gate_contract": "crates/modules/rustok-forum/contracts/forum-search-profile-service-mutation-boundary.json",
   "event_aware_api_contract": "crates/modules/rustok-forum/contracts/forum-search-profile-event-aware-mutation-api.json",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23a10-profile-legacy-mutation-deprecation.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-profile-legacy-mutation-deprecation.mjs",
   "deprecated_methods": {
     "upsert_profile": "ProfileMutationService::upsert_profile_with_event",

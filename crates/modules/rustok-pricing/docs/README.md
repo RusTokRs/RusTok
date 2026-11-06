@@ -128,6 +128,13 @@ context, source regressions and unexecuted release gates. This is not remote exe
 - [README crate](../README.md)
 - [README admin package](../admin/README.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)
+- [`rustok-pricing` implementation plan](./implementation-plan.md)
+- [Pricing Owner Port Error Safety](./pricing-owner-port-error-safety.md)
+- [Admin GraphQL Error Safety](./admin-graphql-error-safety.md)
+- [Storefront GraphQL Error Safety](./storefront-graphql-error-safety.md)
+- [Storefront Native Error Safety](./storefront-native-error-safety.md)
+- [Read Local Context](./read-local-context.md)
+- [Write Local Context](./write-local-context.md)
 
 ## FFA separation for admin and storefront
 

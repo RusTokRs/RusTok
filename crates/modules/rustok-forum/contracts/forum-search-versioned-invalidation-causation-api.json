@@ -9,7 +9,7 @@
   "outbox_owner": "crates/modules/rustok-outbox/src/transactional.rs",
   "events_api": "crates/libs/rustok-events/CRATE_API.md",
   "outbox_api": "crates/modules/rustok-outbox/CRATE_API.md",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g2b3b1-causation-publication-api.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-versioned-invalidation-causation-api.mjs",
   "envelope_api": {
     "constructor": "ContractEventEnvelope::new_caused_by",

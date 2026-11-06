@@ -105,7 +105,7 @@ async fn store_shipping_options_transport_filters_incompatible_shipping_profiles
         is_active: true,
     };
 
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let mut product_input = storefront_product_input();
     product_input.metadata = json!({
         "shipping_profile": {
@@ -270,7 +270,7 @@ async fn store_update_cart_context_rejects_incompatible_shipping_profile_option(
         is_active: true,
     };
 
-    let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+    let catalog = test_catalog_service(db.clone());
     let mut product_input = storefront_product_input();
     product_input.metadata = json!({
         "shipping_profile": {
