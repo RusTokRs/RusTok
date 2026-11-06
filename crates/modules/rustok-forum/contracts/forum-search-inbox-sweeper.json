@@ -11,7 +11,7 @@
   "server_worker_registry": "apps/server/src/services/mod.rs",
   "server_bootstrap": "apps/server/src/services/server_bootstrap.rs",
   "source_contract_test": "crates/modules/rustok-search/tests/forum_projection_sweeper_contract.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-20bq-search-inbox-sweeper.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "source_verifier": "scripts/verify/verify-forum-search-inbox-sweeper.mjs",
   "discovery_boundary": {
     "search_owns_due_tenant_query": true,

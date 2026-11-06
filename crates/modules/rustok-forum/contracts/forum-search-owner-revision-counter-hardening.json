@@ -8,7 +8,7 @@
   "baseline_migration": "crates/modules/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   "hardening_migration": "crates/modules/rustok-forum/src/migrations/m20260731_000008_harden_forum_projection_revision_counter.rs",
   "migration_registry": "crates/modules/rustok-forum/src/migrations/mod.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g2a1-search-owner-revision-counter-hardening.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-owner-revision-counter-hardening.mjs",
   "upgrade_preflight": {
     "existing_counter_requires_contiguous_ledger_from_one": true,

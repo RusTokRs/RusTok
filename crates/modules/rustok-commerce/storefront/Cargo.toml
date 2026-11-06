@@ -14,28 +14,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-hydrate = [
-  "leptos/hydrate",
-  "rustok-cart-storefront/hydrate",
-  "rustok-fulfillment-storefront/hydrate",
-  "rustok-order-storefront/hydrate",
-  "rustok-payment-storefront/hydrate",
-]
-ssr = [
-  "leptos/ssr",
-  "dep:leptos_axum",
-  "dep:rustok-cart",
-  "dep:rustok-commerce",
-  "dep:rustok-customer",
-  "dep:rustok-inventory",
-  "dep:rustok-pricing",
-  "dep:rustok-region",
-  "rustok-api/server",
-  "rustok-cart-storefront/ssr",
-  "rustok-fulfillment-storefront/ssr",
-  "rustok-order-storefront/ssr",
-  "rustok-payment-storefront/ssr",
-]
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr", "dep:leptos_axum", "dep:rustok-cart", "dep:rustok-commerce", "dep:rustok-customer", "dep:rustok-inventory", "dep:rustok-pricing", "dep:rustok-region", "rustok-api/server"]
 
 [dependencies]
 rustok-ui-core.workspace = true

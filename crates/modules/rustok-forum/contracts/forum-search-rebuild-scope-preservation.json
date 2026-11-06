@@ -10,7 +10,7 @@
   "blog_search_projection_source": "crates/modules/rustok-blog/src/services/search_projection.rs",
   "search_projection_driver": "crates/modules/rustok-search/src/projection_driver.rs",
   "source_contract_test": "crates/modules/rustok-search/tests/search_scope_preservation_contract.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-20bm-search-rebuild-scope-preservation.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "source_verifier": "scripts/verify/verify-forum-search-rebuild-scope-preservation.mjs",
   "graphql_snapshot_cleanup_contract": "crates/modules/rustok-forum/contracts/forum-graphql-query-snapshot-cleanup.json",
   "approved_reply_search_contract": "crates/modules/rustok-forum/contracts/forum-approved-reply-search.json",

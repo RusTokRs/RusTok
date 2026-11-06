@@ -8,7 +8,7 @@
   "search_migration": "crates/modules/rustok-search/src/migrations/m20260731_000010_add_forum_projection_ingest_sequence.rs",
   "inbox_owner": "crates/modules/rustok-search/src/forum_inbox.rs",
   "reconciliation_owner": "crates/modules/rustok-search/src/forum_reconciliation.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g1-search-durable-ingest-sequence.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-durable-ingest-sequence.mjs",
   "ordering": {
     "database_backend": "postgresql",
@@ -27,7 +27,11 @@
   },
   "migration": {
     "existing_inbox_rows_backfilled": true,
-    "backfill_order": ["created_at", "revision_at", "event_id"],
+    "backfill_order": [
+      "created_at",
+      "revision_at",
+      "event_id"
+    ],
     "existing_watermarks_start_at_sequence_zero": true,
     "new_inbox_column_not_null": true,
     "unique_index_added": true,

@@ -10,7 +10,7 @@
   "migration": "crates/modules/rustok-search/src/migrations/m20260730_000009_create_search_projection_inbox.rs",
   "migration_registry": "crates/modules/rustok-search/src/migrations/mod.rs",
   "source_contract_test": "crates/modules/rustok-search/tests/forum_projection_inbox_contract.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-20bp-search-inbox-ordering.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "source_verifier": "scripts/verify/verify-forum-search-inbox-ordering.mjs",
   "search_inbox_sweeper_contract": "crates/modules/rustok-forum/contracts/forum-search-inbox-sweeper.json",
   "storage_boundary": {

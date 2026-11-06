@@ -16,7 +16,7 @@
   "graphql_storefront": "crates/modules/rustok-search/src/graphql/query.rs",
   "native_storefront": "crates/modules/rustok-search/storefront/src/transport/native_server_adapter.rs",
   "forum_execution_owner": "crates/modules/rustok-search/src/audience_security.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2e2-product-channel-visibility.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-search-audience-classes.mjs",
   "canonical_product_input": {
     "owner": "Product",

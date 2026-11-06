@@ -16,12 +16,16 @@
   "additive_migration": "crates/modules/rustok-search/src/migrations/m20260731_000011_add_forum_projection_ingest_sequence_lookup.rs",
   "claim_owner": "crates/modules/rustok-search/src/forum_inbox.rs",
   "due_tenant_owner": "crates/modules/rustok-search/src/forum_reconciliation.rs",
-  "owner_note": "crates/modules/rustok-forum/docs/forum-23b2g1a-search-ingest-sequence-index.md",
+  "owner_note": "crates/modules/rustok-forum/docs/README.md",
   "verifier": "scripts/verify/verify-forum-search-ingest-sequence-index.mjs",
   "index": {
     "name": "idx_search_projection_inbox_due_ingest_sequence",
     "table": "search_projection_inbox",
-    "columns": ["source_module", "tenant_id", "ingest_sequence"],
+    "columns": [
+      "source_module",
+      "tenant_id",
+      "ingest_sequence"
+    ],
     "predicate": "status IN ('pending', 'retryable_error')",
     "claim_query_supported": true,
     "due_tenant_query_supported": true,
