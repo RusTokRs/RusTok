@@ -142,6 +142,12 @@ table ownership, confine SQL effects, or confer module authority.
 
 This is a diagnostic declaration inventory. It does not hash source inputs,
 resolve transitive build provenance, certify observed safety, or seal a release.
+The existing `xtask migrations verify-fresh` consumer binds the exported bytes
+and runner/exporter digests to its source snapshot, lockfile, configuration and
+normalized Cargo normal/build resolution. Source collection stays in `xtask`;
+the exporter does not assert its own Git/build provenance. Workspace feature
+unification and external/generated/native inputs remain explicitly incomplete
+in that partial report. See the [orchestration contract](../../../xtask/README.md#migration-consolidation-commands).
 The existing migration infrastructure approval check also protects the extracted
 inventory implementation and its regression source, alongside the exporter.
 
