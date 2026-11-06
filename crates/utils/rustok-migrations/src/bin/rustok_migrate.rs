@@ -62,6 +62,7 @@ async fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
     if database_url.trim().is_empty() {
         return Err(invalid_input("DATABASE_URL must not be empty"));
     }
+    let inventory = Migrator::inventory()?;
 
     match command {
         Command::Up { phase } => {
@@ -70,12 +71,12 @@ async fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
                 Some(path) => {
                     StepRunner::connect_phase(
                         &database_url,
-                        Migrator::migrations(),
+                        inventory.into_migrations(),
                         read_phase(File::open(path)?)?,
                     )
                     .await?
                 }
-                None => StepRunner::connect(&database_url, Migrator::migrations()).await?,
+                None => StepRunner::connect(&database_url, inventory.into_migrations()).await?,
             };
             let result = async {
                 while let Some(name) = runner.apply_next().await? {

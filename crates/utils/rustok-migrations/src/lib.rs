@@ -6,6 +6,11 @@
 
 pub mod execution;
 pub mod identity;
+pub mod inventory;
+pub use inventory::{
+    MigrationDescriptor, MigrationEntry, MigrationInventory, MigrationInventoryError,
+    MigrationOwner,
+};
 pub mod schema_diff;
 pub mod verification;
 pub use schema_diff::{
@@ -202,377 +207,141 @@ mod composition {
         Migrator::up(db, None).await
     }
 
-    struct ModuleMigrationSource {
-        slug: &'static str,
-        source: &'static dyn rustok_core::MigrationSource,
-    }
-
-    static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
-        ModuleMigrationSource {
-            slug: "modules",
-            source: &rustok_modules::ModulesModule,
-        },
-        ModuleMigrationSource {
-            slug: "tenant",
-            source: &rustok_tenant::TenantModule,
-        },
-        ModuleMigrationSource {
-            slug: "alloy",
-            source: &alloy::AlloyModule,
-        },
-        ModuleMigrationSource {
-            slug: "flex",
-            source: &flex::FlexModule,
-        },
-        ModuleMigrationSource {
-            slug: "auth",
-            source: &rustok_auth::AuthModule,
-        },
-        ModuleMigrationSource {
-            slug: "rbac",
-            source: &rustok_rbac::RbacModule,
-        },
-        ModuleMigrationSource {
-            slug: "channel",
-            source: &rustok_channel::ChannelModule,
-        },
-        ModuleMigrationSource {
-            slug: "navigation",
-            source: &rustok_navigation::NavigationModule,
-        },
-        ModuleMigrationSource {
-            slug: "cart",
-            source: &rustok_cart::CartModule,
-        },
-        ModuleMigrationSource {
-            slug: "customer",
-            source: &rustok_customer::CustomerModule,
-        },
-        ModuleMigrationSource {
-            slug: "product",
-            source: &rustok_product::ProductModule,
-        },
-        ModuleMigrationSource {
-            slug: "product_relations",
-            source: &rustok_product_relations::ProductRelationsModule,
-        },
-        ModuleMigrationSource {
-            slug: "product_bundles",
-            source: &rustok_product_bundles::ProductBundlesModule,
-        },
-        ModuleMigrationSource {
-            slug: "region",
-            source: &rustok_region::RegionModule,
-        },
-        ModuleMigrationSource {
-            slug: "pricing",
-            source: &rustok_pricing::PricingModule,
-        },
-        ModuleMigrationSource {
-            slug: "inventory",
-            source: &rustok_inventory::InventoryModule,
-        },
-        ModuleMigrationSource {
-            slug: "order",
-            source: &rustok_order::OrderModule,
-        },
-        ModuleMigrationSource {
-            slug: "payment",
-            source: &rustok_payment::PaymentModule,
-        },
-        ModuleMigrationSource {
-            slug: "fulfillment",
-            source: &rustok_fulfillment::FulfillmentModule,
-        },
-        ModuleMigrationSource {
-            slug: "commerce",
-            source: &rustok_commerce::CommerceModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_seller",
-            source: &rustok_marketplace_seller::MarketplaceSellerModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_listing",
-            source: &rustok_marketplace_listing::MarketplaceListingModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_allocation",
-            source: &rustok_marketplace_allocation::MarketplaceAllocationModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_commission",
-            source: &rustok_marketplace_commission::MarketplaceCommissionModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_balance",
-            source: &rustok_marketplace_balance::MarketplaceBalanceModule,
-        },
-        ModuleMigrationSource {
-            slug: "marketplace_payout",
-            source: &rustok_marketplace_payout::MarketplacePayoutModule,
-        },
-        ModuleMigrationSource {
-            slug: "moderation",
-            source: &rustok_moderation::ModerationModule,
-        },
-        ModuleMigrationSource {
-            slug: "content",
-            source: &rustok_content::ContentModule,
-        },
-        ModuleMigrationSource {
-            slug: "blog",
-            source: &rustok_blog::BlogModule,
-        },
-        ModuleMigrationSource {
-            slug: "comments",
-            source: &rustok_comments::CommentsModule,
-        },
-        ModuleMigrationSource {
-            slug: "pages",
-            source: &rustok_pages::PagesModule,
-        },
-        ModuleMigrationSource {
-            slug: "seo",
-            source: &rustok_seo::SeoModule,
-        },
-        ModuleMigrationSource {
-            slug: "forum",
-            source: &rustok_forum::ForumModule,
-        },
-        ModuleMigrationSource {
-            slug: "index",
-            source: &rustok_index::IndexModule,
-        },
-        ModuleMigrationSource {
-            slug: "search",
-            source: &rustok_search::SearchModule,
-        },
-        ModuleMigrationSource {
-            slug: "taxonomy",
-            source: &rustok_taxonomy::TaxonomyModule,
-        },
-        ModuleMigrationSource {
-            slug: "workflow",
-            source: &rustok_workflow::WorkflowModule,
-        },
-        ModuleMigrationSource {
-            slug: "media",
-            source: &rustok_media::MediaModule,
-        },
-        ModuleMigrationSource {
-            slug: "profiles",
-            source: &rustok_profiles::ProfilesModule,
-        },
-        ModuleMigrationSource {
-            slug: "social_graph",
-            source: &rustok_social_graph::SocialGraphModule,
-        },
-        ModuleMigrationSource {
-            slug: "translation",
-            source: &rustok_translation::TranslationModule,
-        },
-        ModuleMigrationSource {
-            slug: "ai",
-            source: &rustok_ai::AiModule,
-        },
+    static MODULE_MIGRATION_SOURCES: &[&dyn rustok_core::RusToKModule] = &[
+        &rustok_modules::ModulesModule,
+        &rustok_tenant::TenantModule,
+        &alloy::AlloyModule,
+        &flex::FlexModule,
+        &rustok_auth::AuthModule,
+        &rustok_rbac::RbacModule,
+        &rustok_channel::ChannelModule,
+        &rustok_navigation::NavigationModule,
+        &rustok_cart::CartModule,
+        &rustok_customer::CustomerModule,
+        &rustok_product::ProductModule,
+        &rustok_product_relations::ProductRelationsModule,
+        &rustok_product_bundles::ProductBundlesModule,
+        &rustok_region::RegionModule,
+        &rustok_pricing::PricingModule,
+        &rustok_inventory::InventoryModule,
+        &rustok_order::OrderModule,
+        &rustok_payment::PaymentModule,
+        &rustok_fulfillment::FulfillmentModule,
+        &rustok_commerce::CommerceModule,
+        &rustok_marketplace_seller::MarketplaceSellerModule,
+        &rustok_marketplace_listing::MarketplaceListingModule,
+        &rustok_marketplace_allocation::MarketplaceAllocationModule,
+        &rustok_marketplace_commission::MarketplaceCommissionModule,
+        &rustok_marketplace_balance::MarketplaceBalanceModule,
+        &rustok_marketplace_payout::MarketplacePayoutModule,
+        &rustok_moderation::ModerationModule,
+        &rustok_content::ContentModule,
+        &rustok_blog::BlogModule,
+        &rustok_comments::CommentsModule,
+        &rustok_pages::PagesModule,
+        &rustok_seo::SeoModule,
+        &rustok_forum::ForumModule,
+        &rustok_index::IndexModule,
+        &rustok_search::SearchModule,
+        &rustok_taxonomy::TaxonomyModule,
+        &rustok_workflow::WorkflowModule,
+        &rustok_media::MediaModule,
+        &rustok_profiles::ProfilesModule,
+        &rustok_social_graph::SocialGraphModule,
+        &rustok_translation::TranslationModule,
+        &rustok_ai::AiModule,
+        &rustok_iggy_connector::IggyConnectorModule,
     ];
 
-    fn module_migration_sources() -> &'static [ModuleMigrationSource] {
+    fn module_migration_sources() -> &'static [&'static dyn rustok_core::RusToKModule] {
         MODULE_MIGRATION_SOURCES
     }
 
+    #[cfg(test)]
+    use super::MigrationDescriptor;
+    #[cfg(test)]
+    use super::inventory::sort_migrations_by_dependencies;
+
+    #[cfg(test)]
     fn collect_migration_descriptors() -> Vec<MigrationDescriptor> {
-        // Module-owned dependency metadata collection point.
-        // Keep descriptors behind the MigrationSource contract for every module whose
-        // migrations are included in this server migrator. Modules without
-        // cross-module ordering metadata use the trait default.
         module_migration_sources()
             .iter()
-            .flat_map(|module| {
-                let _module_slug = module.slug;
-                module_dependency_descriptors(module.source.migration_dependencies())
-            })
+            .flat_map(|module| module.migration_dependencies())
+            .map(MigrationDescriptor::from)
             .collect()
     }
 
-    fn module_dependency_descriptors(
-        descriptors: Vec<rustok_core::MigrationDependencyDescriptor>,
-    ) -> impl Iterator<Item = MigrationDescriptor> {
-        descriptors.into_iter().map(MigrationDescriptor::from)
-    }
-
-    fn validate_migration_dependency_order(
-        migrations: &[Box<dyn MigrationTrait>],
-        descriptors: &[MigrationDescriptor],
-    ) -> Result<(), String> {
-        let positions = migrations
-            .iter()
-            .enumerate()
-            .map(|(index, migration)| (migration.name().to_string(), index))
-            .collect::<std::collections::BTreeMap<_, _>>();
-
-        for descriptor in descriptors {
-            let migration_index = *positions
-                .get(&descriptor.migration)
-                .ok_or_else(|| format!("migration {} is missing", descriptor.migration))?;
-            for dependency in &descriptor.after {
-                let dependency_index = *positions
-                    .get(dependency)
-                    .ok_or_else(|| format!("migration dependency {dependency} is missing"))?;
-                if dependency_index >= migration_index {
-                    return Err(format!(
-                        "migration {} must run after dependency {}",
-                        descriptor.migration, dependency
-                    ));
-                }
-            }
+    impl Migrator {
+        /// The same compiled composition used by execution, with owner declarations.
+        /// This diagnostic inventory grants no release or production authority.
+        pub fn inventory() -> Result<super::MigrationInventory, super::MigrationInventoryError> {
+            super::MigrationInventory::compose(platform_migrations(), module_migration_sources())
         }
-
-        Ok(())
     }
 
     #[async_trait::async_trait]
     impl MigratorTrait for Migrator {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            // Platform-core migrations plus module-owned migrations, sorted together
-            // by migration name so test/runtime schema matches chronological intent.
-            let mut all = super::identity::migrations();
-            all.extend::<Vec<Box<dyn MigrationTrait>>>(vec![
-                Box::new(m20250201_000001_alter_status_to_enums::Migration),
-                Box::new(m20250212_000001_create_builds::Migration),
-                Box::new(m20260211_000001_add_event_versioning::Migration),
-                Box::new(m20260211_000002_create_sys_events::Migration),
-                Box::new(m20260315_000001_create_user_field_definitions::Migration),
-                Box::new(m20260316_000001_create_platform_settings::Migration),
-                Box::new(m20260317_000001_create_flex_standalone_tables::Migration),
-                Box::new(m20260319_000001_create_mcp_management_tables::Migration),
-                Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
-                Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
-                Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
-                Box::new(m20260403_000004_expand_ai_control_plane_for_direct_locale::Migration),
-                Box::new(m20260403_000006_add_sessions_active_lookup_index::Migration),
-                Box::new(m20260405_000001_expand_locale_storage_columns::Migration),
-                Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
-                Box::new(m20260405_000003_add_is_localized_to_server_field_definitions::Migration),
-                Box::new(m20260405_000004_create_flex_attached_localized_values::Migration),
-                Box::new(m20260407_000001_split_flex_entry_localized_values::Migration),
-                Box::new(m20260410_000001_cleanup_flex_attached_legacy_inline_metadata::Migration),
-                Box::new(m20260426_000001_create_install_sessions::Migration),
-                Box::new(m20260723_000001_create_event_delivery_settings::Migration),
-                Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
-                Box::new(m20260928_000001_create_install_http_jobs::Migration),
-            ]);
-
-            // Pull module-owned migrations from the domain crates and merge them into
-            // the server migrator in chronological order.
-            all.extend(alloy::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_modules::ModulesModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_tenant::TenantModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(&flex::FlexModule));
-            all.extend(rustok_auth::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_rbac::RbacModule,
-            ));
-            all.extend(rustok_channel::migrations::migrations());
-            all.extend(rustok_navigation::migrations::migrations());
-            all.extend(rustok_cart::migrations::migrations());
-            all.extend(rustok_customer::migrations::migrations());
-            all.extend(rustok_product::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_product_relations::ProductRelationsModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_product_bundles::ProductBundlesModule,
-            ));
-            all.extend(rustok_region::migrations::migrations());
-            all.extend(rustok_pricing::migrations::migrations());
-            all.extend(rustok_inventory::migrations::migrations());
-            all.extend(rustok_order::migrations::migrations());
-            all.extend(rustok_payment::migrations::migrations());
-            all.extend(rustok_fulfillment::migrations::migrations());
-            all.extend(rustok_commerce::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_seller::MarketplaceSellerModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_listing::MarketplaceListingModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_allocation::MarketplaceAllocationModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_commission::MarketplaceCommissionModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_balance::MarketplaceBalanceModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_marketplace_payout::MarketplacePayoutModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_moderation::ModerationModule,
-            ));
-            all.extend(rustok_content::migrations::migrations());
-            all.extend(rustok_blog::migrations::migrations());
-            all.extend(rustok_comments::migrations::migrations());
-            all.extend(rustok_pages::migrations::migrations());
-            all.extend(rustok_seo::migrations::migrations());
-            all.extend(rustok_forum::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_index::IndexModule,
-            ));
-            all.extend(rustok_search::migrations::migrations());
-            all.extend(rustok_taxonomy::migrations::migrations());
-            all.extend(rustok_workflow::migrations::migrations());
-            all.extend(rustok_media::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_profiles::ProfilesModule,
-            ));
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_social_graph::SocialGraphModule,
-            ));
-            all.extend(rustok_translation::migrations::migrations());
-            all.extend(rustok_core::MigrationSource::migrations(
-                &rustok_ai::AiModule,
-            ));
-            all.extend(rustok_iggy_connector::migrations::migrations());
-            all.push(Box::new(
-                m20260501_000001_create_platform_composition_state::Migration,
-            ));
-            all.push(Box::new(
-                m20261007_000014_add_sys_events_claim_index::Migration,
-            ));
-            all.push(Box::new(
-                m20261007_000015_add_sys_events_retention_index::Migration,
-            ));
-            all.push(Box::new(
-                m20261007_000016_drop_sys_events_superseded_indexes::Migration,
-            ));
-            all.push(Box::new(m20261025_000001_add_user_login_lockout::Migration));
-            all.push(Box::new(
-                m20261025_000003_add_session_reuse_detection::Migration,
-            ));
-            all.push(Box::new(m20261025_000005_add_oauth_token_family::Migration));
-            all.push(Box::new(
-                m20261028_000001_enforce_single_running_install_http_job::Migration,
-            ));
-            all.push(Box::new(
-                m20261101_000001_add_user_password_changed_at::Migration,
-            ));
-            let dependencies = collect_migration_descriptors();
-
-            all.sort_by(|a, b| a.name().cmp(b.name()));
-            sort_migrations_by_dependencies(&mut all, &dependencies)
-                .expect("migration dependency descriptors must be valid");
-            validate_migration_dependency_order(&all, &dependencies)
-                .expect("migration ordering must preserve declared dependencies");
-            all
+            // SeaORM requires an infallible factory for this static compiled composition.
+            // Fallible operator paths use inventory() before any database operation.
+            Self::inventory()
+                .expect("compiled migration declarations must define a valid composition")
+                .into_migrations()
         }
+    }
+
+    fn platform_migrations() -> Vec<Box<dyn MigrationTrait>> {
+        let mut all = super::identity::migrations();
+        all.extend::<Vec<Box<dyn MigrationTrait>>>(vec![
+            Box::new(m20250201_000001_alter_status_to_enums::Migration),
+            Box::new(m20250212_000001_create_builds::Migration),
+            Box::new(m20260211_000001_add_event_versioning::Migration),
+            Box::new(m20260211_000002_create_sys_events::Migration),
+            Box::new(m20260315_000001_create_user_field_definitions::Migration),
+            Box::new(m20260316_000001_create_platform_settings::Migration),
+            Box::new(m20260317_000001_create_flex_standalone_tables::Migration),
+            Box::new(m20260319_000001_create_mcp_management_tables::Migration),
+            Box::new(m20260320_000001_create_mcp_scaffold_drafts::Migration),
+            Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
+            Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
+            Box::new(m20260403_000004_expand_ai_control_plane_for_direct_locale::Migration),
+            Box::new(m20260403_000006_add_sessions_active_lookup_index::Migration),
+            Box::new(m20260405_000001_expand_locale_storage_columns::Migration),
+            Box::new(m20260405_000002_split_flex_schema_localized_fields::Migration),
+            Box::new(m20260405_000003_add_is_localized_to_server_field_definitions::Migration),
+            Box::new(m20260405_000004_create_flex_attached_localized_values::Migration),
+            Box::new(m20260407_000001_split_flex_entry_localized_values::Migration),
+            Box::new(m20260410_000001_cleanup_flex_attached_legacy_inline_metadata::Migration),
+            Box::new(m20260426_000001_create_install_sessions::Migration),
+            Box::new(m20260723_000001_create_event_delivery_settings::Migration),
+            Box::new(m20260803_000001_create_owner_operation_receipts::Migration),
+            Box::new(m20260928_000001_create_install_http_jobs::Migration),
+        ]);
+
+        all.push(Box::new(
+            m20260501_000001_create_platform_composition_state::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000014_add_sys_events_claim_index::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000015_add_sys_events_retention_index::Migration,
+        ));
+        all.push(Box::new(
+            m20261007_000016_drop_sys_events_superseded_indexes::Migration,
+        ));
+        all.push(Box::new(m20261025_000001_add_user_login_lockout::Migration));
+        all.push(Box::new(
+            m20261025_000003_add_session_reuse_detection::Migration,
+        ));
+        all.push(Box::new(m20261025_000005_add_oauth_token_family::Migration));
+        all.push(Box::new(
+            m20261028_000001_enforce_single_running_install_http_job::Migration,
+        ));
+        all.push(Box::new(
+            m20261101_000001_add_user_password_changed_at::Migration,
+        ));
+        all
     }
 
     #[cfg(test)]
@@ -641,105 +410,6 @@ mod composition {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct MigrationDescriptor {
-        migration: String,
-        after: Vec<String>,
-    }
-
-    impl MigrationDescriptor {
-        pub fn new(
-            migration: impl Into<String>,
-            after: impl IntoIterator<Item = impl Into<String>>,
-        ) -> Self {
-            Self {
-                migration: migration.into(),
-                after: after.into_iter().map(Into::into).collect(),
-            }
-        }
-    }
-
-    impl From<rustok_core::MigrationDependencyDescriptor> for MigrationDescriptor {
-        fn from(descriptor: rustok_core::MigrationDependencyDescriptor) -> Self {
-            Self {
-                migration: descriptor.migration.to_string(),
-                after: descriptor.after.into_iter().map(str::to_string).collect(),
-            }
-        }
-    }
-
-    fn sort_migrations_by_dependencies(
-        migrations: &mut Vec<Box<dyn sea_orm_migration::MigrationTrait>>,
-        descriptors: &[MigrationDescriptor],
-    ) -> Result<(), String> {
-        let names = migrations
-            .iter()
-            .map(|migration| migration.name().to_string())
-            .collect::<std::collections::BTreeSet<_>>();
-
-        for descriptor in descriptors {
-            if !names.contains(&descriptor.migration) {
-                return Err(format!(
-                    "migration descriptor references missing migration {}",
-                    descriptor.migration
-                ));
-            }
-            for dependency in &descriptor.after {
-                if !names.contains(dependency) {
-                    return Err(format!(
-                        "migration {} depends on missing migration {}",
-                        descriptor.migration, dependency
-                    ));
-                }
-            }
-        }
-
-        let mut after_by_name = std::collections::BTreeMap::<String, Vec<String>>::new();
-        for descriptor in descriptors.iter().cloned() {
-            if after_by_name
-                .insert(descriptor.migration.clone(), descriptor.after)
-                .is_some()
-            {
-                return Err(format!(
-                    "duplicate migration descriptor for {}",
-                    descriptor.migration
-                ));
-            }
-        }
-
-        let mut sorted: Vec<Box<dyn sea_orm_migration::MigrationTrait>> =
-            Vec::with_capacity(migrations.len());
-        let mut remaining = std::mem::take(migrations);
-
-        while !remaining.is_empty() {
-            let next = remaining.iter().position(|migration| {
-                after_by_name
-                    .get(migration.name())
-                    .into_iter()
-                    .flatten()
-                    .all(|dependency| {
-                        sorted
-                            .iter()
-                            .any(|migration| migration.name() == dependency.as_str())
-                    })
-            });
-            let Some(next) = next else {
-                let cycle = remaining
-                    .iter()
-                    .map(|migration| migration.name().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return Err(format!(
-                    "migration dependency cycle or unsatisfied dependency: {cycle}"
-                ));
-            };
-            sorted.push(remaining.remove(next));
-        }
-
-        *migrations = sorted;
-        Ok(())
-    }
-
     #[cfg(test)]
     mod tests {
         use super::{MigrationDescriptor, Migrator, sort_migrations_by_dependencies};
@@ -785,7 +455,7 @@ mod composition {
         fn module_migration_sources_cover_server_module_crates() {
             let slugs = super::module_migration_sources()
                 .iter()
-                .map(|module| module.slug)
+                .map(|module| module.slug())
                 .collect::<Vec<_>>();
 
             assert_eq!(
@@ -833,6 +503,7 @@ mod composition {
                     "social_graph",
                     "translation",
                     "ai",
+                    "iggy_connector",
                 ],
                 "descriptor aggregation must cover every module crate whose migrations are included in the server migrator"
             );
@@ -1387,7 +1058,7 @@ mod composition {
             .expect_err("missing dependency must be rejected");
 
             assert!(
-                error.contains("depends on missing migration"),
+                error.to_string().contains("depends on missing migration"),
                 "unexpected error: {error}"
             );
         }
@@ -1411,7 +1082,9 @@ mod composition {
             .expect_err("cycle must be rejected");
 
             assert!(
-                error.contains("cycle or unsatisfied dependency"),
+                error
+                    .to_string()
+                    .contains("cycle or unsatisfied dependency"),
                 "unexpected error: {error}"
             );
         }

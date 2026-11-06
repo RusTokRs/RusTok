@@ -111,11 +111,20 @@ requireMarkers(smokeScript, [
 forbidMarkers(smokeScript, ["-p migration ", "|| true"]);
 
 requireMarkers("crates/utils/rustok-migrations/src/bin/export_migration_plan.rs", [
-  "Migrator::migrations()",
-  '"schema_version": 1',
-  '"migrations": migrations',
-  "composed migration plan must not be empty",
+  "Migrator::inventory()?",
+  "serde_json::to_string_pretty(&plan)?",
   '"--output"',
+]);
+requireMarkers("crates/utils/rustok-migrations/src/lib.rs", [
+  "MigrationInventory::compose(platform_migrations(), module_migration_sources())",
+  "&rustok_iggy_connector::IggyConnectorModule",
+]);
+requireMarkers("crates/utils/rustok-migrations/src/inventory.rs", [
+  "composed migration plan must not be empty",
+  "schema_version: 1",
+  "module.migration_dependencies()",
+  "module.migration_safety_metadata()",
+  "use_transaction: migration.use_transaction()",
 ]);
 requireMarkers("scripts/verify/verify-migration-plan-compatibility.mjs", [
   "function readPlan",

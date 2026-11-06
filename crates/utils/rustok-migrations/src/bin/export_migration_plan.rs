@@ -1,5 +1,4 @@
 use rustok_migrations::Migrator;
-use sea_orm_migration::prelude::MigratorTrait;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -7,22 +6,10 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let output = parse_output_path()?;
+    let plan = Migrator::inventory()?;
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
-
-    let migrations = Migrator::migrations()
-        .into_iter()
-        .map(|migration| migration.name().to_string())
-        .collect::<Vec<_>>();
-    if migrations.is_empty() {
-        return Err("composed migration plan must not be empty".into());
-    }
-
-    let plan = serde_json::json!({
-        "schema_version": 1,
-        "migrations": migrations,
-    });
     fs::write(
         &output,
         format!("{}\n", serde_json::to_string_pretty(&plan)?),

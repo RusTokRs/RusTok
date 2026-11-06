@@ -119,6 +119,24 @@ distribution/profile selection needs executable wiring and its own evidence.
 
 ### Verification tool
 
+`export-migration-plan --output FILE` exports the same validated composition
+used by `Migrator`. Its `schema_version: 1` and ordered `migrations` name list
+remain available to append-only and backfill checks. Ordered `entries` add
+the platform/module owner, declared `after` edges, optional owner safety/phase
+metadata, and the exact `use_transaction` declaration (`null`, `true`, or
+`false`). Both projections come from one retained executable inventory;
+module ownership comes from `RusToKModule::slug()`, without another registry.
+
+Composition rejects duplicate identities/owners, foreign or absent declaration
+subjects, duplicate safety/dependency declarations and edges, missing dependency
+targets, and cycles. Cross-owner dependency targets remain supported. Missing
+safety metadata is explicit `null`, never additive-safe evidence. The exporter
+and operations CLI propagate typed composition errors before database work.
+SeaORM's infallible factory retains its static compiled-composition assertion.
+
+This is a diagnostic declaration inventory. It does not hash source inputs,
+resolve transitive build provenance, certify observed safety, or seal a release.
+
 The default `composition` feature preserves the complete existing `Migrator`,
 installer entrypoints and exports. Build the independent observer without that
 domain dependency tree:
@@ -265,6 +283,10 @@ See [the database architecture](../../../docs/architecture/database.md) and the
 [Axum runtime and operations CLI boundary](../../../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).
 
 ### Known Limitations / Pending Implementation
+
+The executable inventory contains owner declarations only; most migrations
+currently have no safety metadata. Trusted immutable source/build coverage,
+stable release seals and production authorization remain unimplemented.
 
 The stepwise runner currently supports PostgreSQL transactional execution only;
 selected phase steps must all support its recovery policy.

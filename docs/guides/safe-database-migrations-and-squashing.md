@@ -221,6 +221,16 @@ projected; consolidation replacement admission stays blocked.
 This is the single ordered consolidation work plan. Each gate needs executable evidence before the
 next admission capability becomes available.
 
+Gate 2 now has one executable declaration inventory in `rustok-migrations`:
+`Migrator::inventory()` composes the same retained objects used by execution
+and exports their owners, dependency edges, optional safety/phase declarations,
+and exact transaction policy. The source list also includes Iggy Connector;
+module ownership comes from the owner trait. The existing ordered name list is
+a derived projection for append-only/backfill consumers. Missing declarations
+remain unknown. Immutable Git/build input coverage, stable seals and their
+atomic integration/publication fence remain pending; this inventory completes
+neither gate 2 nor production update authorization.
+
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.
    Reject empty or unsupported coverage explicitly. Remove misleading complete

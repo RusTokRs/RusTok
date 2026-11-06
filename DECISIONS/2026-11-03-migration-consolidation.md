@@ -78,6 +78,14 @@ dependencies as well as entrypoint files. Record the resolved lockfile,
 toolchain, build scripts/generated inputs, features, composition, PostgreSQL
 version/extensions and verifier version in the enclosing build identity.
 
+The current executable inventory supplies the declaration portion through
+`Migrator::inventory()`: one module source list yields both executable objects
+and ordered export entries, with ownership derived from the module contract.
+Missing safety metadata and undeclared transaction policy remain explicit
+`null`. These declarations do not establish source-input coverage or observed
+safety. Trusted immutable hashes, transitive build provenance and stable seals
+remain required before this inventory can participate in release admission.
+
 Trusted inventory must establish the complete transitive execution-input
 coverage, including shared helpers and generated input provenance. Declarations
 are checked against resolved build/source inputs. An unresolved input or mutable

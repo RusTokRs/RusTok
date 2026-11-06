@@ -15,6 +15,21 @@
 ## 2. Public Surface & Data Structures
 
 ### Primary Migrators & Migration Control
+- `Migrator::inventory() -> Result<MigrationInventory, MigrationInventoryError>`:
+  the fallible compiled production composition. Execution consumes its retained
+  migration objects; export derives the ordered name and entry projections.
+- `MigrationInventory::compose(platform, modules)`: neutral composition from
+  platform migration objects and canonical `RusToKModule` sources. `migrations()`
+  and `entries()` expose immutable projections; `into_migrations()` transfers
+  the same executable objects. Serialization preserves the version-1 name-list
+  contract and adds ordered entries.
+- `MigrationEntry`, `MigrationOwner`: platform/module ownership, declared
+  dependency edges, optional `MigrationSafetyMetadata`, and exact optional
+  transaction policy. Missing safety is unknown; declarations are not safety
+  assessments, source seals, or release authorization.
+- `MigrationInventoryError`: typed failures for ambiguous identities/owners,
+  foreign/absent or duplicate declarations, duplicate edges, missing dependency
+  targets, cycles, and invalid order. Construction and export execute no SQL.
 - `execution::StepRunner` (also with `--no-default-features`): owns a single,
   non-reconnecting PostgreSQL session and its migration writer lock.
   `connect(url, migrations)` validates a nonempty unique transactional plan and
