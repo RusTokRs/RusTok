@@ -311,12 +311,24 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-13..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+### DAR-13: AI & Emerging Capabilities Cluster
+
+**Scope:** Documentation across 14 AI, capability, and automation crates in `crates/modules/` (`alloy`, `flex`, `rustok-ai`, `rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, `rustok-ai-translation`, `rustok-email`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`) (74 files, 5,783 LOC).
+**Goal:** Verify and synchronize domain contracts, CRATE_API, entity models, custom fields runtime (`flex`), script execution sandbox (`alloy`), MCP bridges, AI domain verticals, and email/tasks orchestration documentation.
+
+- [x] **DAR-13.1: Reconcile Broken Relative Paths in `rustok-tasks`.** Corrected invalid relative paths in `crates/modules/rustok-tasks/docs/README.md` (`../overview.md` -> `../README.md` and `CRATE_API.md`; `../../../backend/module-backend-implementation.md` -> `../../../../docs/backend/module-backend-implementation.md`).
+- [x] **DAR-13.2: Verify Flex Custom Fields Attached/Standalone Architecture.** Audited `crates/modules/flex/docs/README.md` and `CRATE_API.md`. Confirmed attached-mode donor storage rules, standalone mode schema/entry runtime, localized value storage (`flex_entry_localized_values`, `flex_attached_localized_values`), and capability-only ghost module wiring in `modules.toml`.
+- [x] **DAR-13.3: Verify Alloy Rhai Sandboxing & MCP Bridge Contracts.** Audited `crates/modules/alloy/docs/README.md` and `CRATE_API.md`. Confirmed source revision provenance, immutable prompt digests, tombstone collection lifecycle, legal hold semantics, and remote MCP redaction boundaries.
+- [x] **DAR-13.4: Verify Full Link & Anchor Integrity Across Cluster.** Audited all 74 markdown files and 133 internal links across all 14 crates. Verified zero broken links, zero dangling anchors, and 100% indexed documentation coverage.
+- [x] **DAR-13.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-14..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
 
 **Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
 **Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
 
-- [ ] **DAR-13: AI & Emerging Capabilities Cluster** (`rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`).
 - [ ] **DAR-14: Platform Foundation Libraries & Utilities** (`crates/libs/*`, `crates/utils/*`, `crates/workers/*`).
 - [ ] **DAR-15: Client Applications & Host Packages** (`apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).
 - [ ] **DAR-16: Continuous Documentation Verification Evolution** (Automated orphaned document detection, dead path detection, and ADR lifecycle enforcement in CI).
