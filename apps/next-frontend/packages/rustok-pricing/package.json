@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@rustok/pricing-frontend",
   "version": "0.1.0",
   "private": true,
@@ -10,7 +10,7 @@
     "./core": "./src/core.ts"
   },
   "dependencies": {
-    "next": "16.4.1",
+    "next": "16.4.5",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent#14f870bb900069762054dc882427c654a69822be",
     "react": "^19.2.7"
   },

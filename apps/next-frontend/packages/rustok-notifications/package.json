@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@rustok/notifications-frontend",
   "version": "0.1.0",
   "private": true,
@@ -6,7 +6,7 @@
   "main": "./src/index.tsx",
   "types": "./src/index.tsx",
   "dependencies": {
-    "next": "16.4.1",
+    "next": "16.4.5",
     "@rustok/next-fluent": "github:RusTokRs/next-fluent",
     "react": "^19.2.7"
   },
