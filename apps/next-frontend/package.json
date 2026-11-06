@@ -33,7 +33,7 @@
     "test:storefront-buyer": "node --experimental-strip-types --test packages/rustok-product/src/catalog/buyer.test.mjs packages/rustok-product/src/catalog/pricing.test.mjs packages/rustok-cart/src/core.test.mjs packages/rustok-pricing/src/core.test.mjs"
   },
   "dependencies": {
-    "@apollo/client": "^4.3.5",
+    "@apollo/client": "^4.3.6",
     "@radix-ui/react-slot": "^1.5.0",
     "@rustok/blog-frontend": "file:./packages/rustok-blog",
     "@rustok/cart-frontend": "file:./packages/rustok-cart",
@@ -66,13 +66,13 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
-    "@tailwindcss/postcss": "^4.3.3",
+    "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "^26.1.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "autoprefixer": "^10.6.2",
     "eslint": "10.14.0",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.4",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.1.18",
     "typescript": "6.0.3"
