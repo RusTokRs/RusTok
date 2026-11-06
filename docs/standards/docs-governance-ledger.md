@@ -294,12 +294,28 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-12..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+### DAR-12: Customer, CRM & Finance Cluster
+
+**Scope:** Documentation across 7 customer, CRM, and finance crates in `crates/modules/` (`rustok-accounting`, `rustok-billing`, `rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-forms`, `rustok-workflow`) (48 files, 2,217 LOC).
+**Goal:** Verify and synchronize domain contracts, CRATE_API, entity schemas, customer profile isolation, deal pipelines, cash desk invariants, forms triage intake, and workflow engine documentation.
+
+- [x] **DAR-12.1: Reconcile Broken Relative Paths across Billing, Deal, Finance & Forms.** Corrected invalid relative paths in `crates/modules/rustok-billing/docs/README.md`, `rustok-deal/docs/README.md`, and `rustok-finance/docs/README.md` (`../overview.md` -> `../README.md` and `CRATE_API.md`; `../../../backend/module-backend-implementation.md` -> `../../../../docs/backend/module-backend-implementation.md`). Corrected relative depth traversal in `crates/modules/rustok-forms/docs/README.md` (`../../../docs/modules/registry.md` -> `../../../../docs/modules/registry.md`).
+- [x] **DAR-12.2: Index Unreferenced Error-Safety & Diagnostic Specifications in `rustok-customer`.** Reconciled and linked 4 diagnostic and transport safety specifications into `crates/modules/rustok-customer/docs/README.md`:
+  - `admin-client-transport-error-safety.md`: Admin client transport error safety and retry policies.
+  - `admin-native-error-safety.md`: Native server function error safety and `HostRuntimeContext` isolation.
+  - `admin-native-error-safety-review.md`: Source audit review of native admin error handling.
+  - `customer-owner-error-diagnostic-safety.md`: Customer read-boundary diagnostic safety and typed error mappings.
+- [x] **DAR-12.3: Verify Customer Profile Autonomy & FBA Boundaries.** Audited `rustok-customer/docs/README.md` and `CRATE_API.md`. Confirmed customer profile separation from auth/user domain, optional tenant-scoped user linkage, `CustomerReadPort` deadline semantics, and Leptos native server-function FFA split.
+- [x] **DAR-12.4: Verify Full Link & Anchor Integrity Across Cluster.** Audited all 48 markdown files and 73 internal links across all 7 crates. Verified zero broken links, zero dangling anchors, and 100% unindexed file coverage.
+- [x] **DAR-12.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-13..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
 
 **Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
 **Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
 
-- [ ] **DAR-12: Customer, CRM & Finance Cluster** (`rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-accounting`, `rustok-billing`, `rustok-forms`, `rustok-workflow`).
 - [ ] **DAR-13: AI & Emerging Capabilities Cluster** (`rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`).
 - [ ] **DAR-14: Platform Foundation Libraries & Utilities** (`crates/libs/*`, `crates/utils/*`, `crates/workers/*`).
 - [ ] **DAR-15: Client Applications & Host Packages** (`apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).

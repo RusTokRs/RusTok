@@ -51,6 +51,11 @@ The admin package now uses framework-agnostic defaults `admin/src/core.rs`, a fa
 ## Related documents
 
 - [README crate](../README.md)
+- [Implementation plan](./implementation-plan.md)
 - [Customer read policy context](./read-port-policy-context.md)
 - [Customer read local outcome context](./read-local-context.md)
+- [Customer read-boundary diagnostic safety](./customer-owner-error-diagnostic-safety.md)
+- [Customer admin native error safety](./admin-native-error-safety.md)
+- [Customer admin native error-safety source review](./admin-native-error-safety-review.md)
+- [Customer admin client transport error safety](./admin-client-transport-error-safety.md)
 - [Commerce split plan](../../rustok-commerce/docs/implementation-plan.md)

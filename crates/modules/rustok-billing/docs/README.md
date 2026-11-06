@@ -20,8 +20,9 @@ The `billing` module provides canonical B2B Billing & Settlements domain functio
 
 ## Related Documents
 - [Implementation Plan](./implementation-plan.md)
-- [Module Platform Overview](../overview.md)
-- [Backend Implementation Guide](../../../backend/module-backend-implementation.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)
+- [Backend Implementation Guide](../../../../docs/backend/module-backend-implementation.md)
 
 ## Related Documentation
 - Documentation maps and registry contracts are centralized in `docs/modules/`.
