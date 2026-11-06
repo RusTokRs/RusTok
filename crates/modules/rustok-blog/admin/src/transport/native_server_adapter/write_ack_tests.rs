@@ -22,7 +22,7 @@ async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
                 locale: "en".into(),
                 title: "Acknowledged owner write".into(),
                 content: rustok_api::RichTextDocument::single_paragraph("Body"),
-                excerpt: None,
+                excerpt: Some("Clear this excerpt".into()),
                 slug: None,
                 publish: false,
                 tags: vec![],
@@ -48,7 +48,9 @@ async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
         update: serde_json::from_value(json!({
             "version": before.version,
             "locale": "en",
-            "title": "Write-only edit"
+            "title": "Write-only edit",
+            "content": rustok_api::RichTextDocument::single_paragraph("123"),
+            "excerpt": null
         }))
         .unwrap(),
     };
@@ -67,6 +69,8 @@ async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
         .await
         .unwrap();
     assert_eq!(updated.title, "Write-only edit");
+    assert_eq!(updated.content_plain_text, "123");
+    assert_eq!(updated.excerpt, None);
     assert_eq!(updated.version, before.version + 1);
     // A separate refresh still enforces Read. Its rejection cannot retroactively
     // turn the successful owner command into a failed save acknowledgement.
@@ -84,16 +88,37 @@ async fn native_writes_acknowledge_write_only_actors_without_detail_read() {
     assert_ne!(status, StatusCode::OK);
 
     let mut publisher = fixture.auth.clone();
-    publisher.permissions = vec![Permission::BLOG_POSTS_PUBLISH];
-    for path in [
-        super::BlogAdminPublishPostNative::PATH,
-        super::BlogAdminPinPostNative::PATH,
-        super::BlogAdminUnpinPostNative::PATH,
-        super::BlogAdminArchivePostNative::PATH,
-        super::BlogAdminRestorePostNative::PATH,
-        super::BlogAdminPublishPostNative::PATH,
-        super::BlogAdminUnpublishPostNative::PATH,
+    for (path, permission) in [
+        (
+            super::BlogAdminPublishPostNative::PATH,
+            Permission::BLOG_POSTS_PUBLISH,
+        ),
+        (
+            super::BlogAdminPinPostNative::PATH,
+            Permission::BLOG_POSTS_UPDATE,
+        ),
+        (
+            super::BlogAdminUnpinPostNative::PATH,
+            Permission::BLOG_POSTS_UPDATE,
+        ),
+        (
+            super::BlogAdminArchivePostNative::PATH,
+            Permission::BLOG_POSTS_PUBLISH,
+        ),
+        (
+            super::BlogAdminRestorePostNative::PATH,
+            Permission::BLOG_POSTS_PUBLISH,
+        ),
+        (
+            super::BlogAdminPublishPostNative::PATH,
+            Permission::BLOG_POSTS_PUBLISH,
+        ),
+        (
+            super::BlogAdminUnpublishPostNative::PATH,
+            Permission::BLOG_POSTS_PUBLISH,
+        ),
     ] {
+        publisher.permissions = vec![permission];
         let (status, response) = execute(
             &fixture.host,
             &fixture.tenant,

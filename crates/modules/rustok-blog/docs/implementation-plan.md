@@ -116,6 +116,47 @@ labels, browser accessibility and deployed native/GraphQL behavior remain open
 Page Builder/client evidence gates. No complete reference or FFA/FBA readiness
 status is promoted by this source work.
 
+### Integrated client and widget verification (2026-11-06)
+
+This continuation was assembled from `d8d241891b8328e4a8ca9d796263f7c3547b8997`
+and reconciled local `main` through
+`c7ec70a536957ecaa8c7a337c0b3b3d2146bccc2`. Concurrent documentation updates
+do not certify pending reference behavior; the semantic ADR remains in progress.
+
+Both editors bind updates to the loaded entity, locale and required revision.
+Fallback copy stays read-only, nullable fields retain Keep/Set/Clear, and
+acknowledgement consumes the old revision before independent refresh. Superseded
+requests cannot overwrite another session. The stable principal/tenant scope
+preserves unsaved input during same-user token refresh. Reactions use current
+authentication scope, exact counters and canonical reload after uncertain writes.
+The actual Leptos discussion island composes Reactions and the Comments editor;
+unavailable/read-only cached threads cannot enable replies.
+
+Native admin input uses the existing platform JSON codec. This preserves null,
+richtext and numeric widget properties through the actual server-function HTTP
+dispatcher. Pin/unpin preflight uses Update, matching the owner service; lifecycle
+transitions use Publish. Every new widget GraphQL root is classified as a read
+rate-limit surface. Authenticated service principals retain the canonical
+non-human security context instead of being rejected for having no human ID.
+
+| Command or bounded scenario | Obtained result and limit |
+| --- | --- |
+| Scoped library tests for Blog admin, storefront, Reactions storefront and Grid under default native profiles | 59 + 50 + 16 + 80 passed before final SSR-only continuation. |
+| `cargo test -p rustok-blog -p rustok-blog-admin -p rustok-blog-storefront -p rustok-reactions-storefront -p rustok-grid-leptos --features rustok-blog-admin/ssr,rustok-blog-storefront/ssr,rustok-reactions-storefront/ssr --offline --lib` | 184 + 64 + 53 + 16 + 3 passed. One opt-in PostgreSQL library case was ignored. Includes real native HTTP acknowledgement/authorization, widget dispatcher type fidelity, and real Grid SSR page 2/3 with French copy. |
+| `cargo test -p rustok-blog -p rustok-blog-admin --features rustok-blog-admin/ssr --locked --offline --test widgets --test integration -- --include-ignored` with explicit PostgreSQL URL | 22 integration and five widget scenarios passed, including PostgreSQL owner preview, actual REST/GraphQL, service principals, publication/channel filtering, locale provenance and unchanged rows/outbox. |
+| Next editor/API/presentation and storefront utility/policy Node suites | 31 passed. Includes actual async detail RSC execution with real Fluent copy/formatter; this is not mounted HTML/browser evidence. |
+| Next storefront `npm run typecheck` | Passed. |
+| Next admin `npm run typecheck` | Three existing Pricing errors remain: navigation `href` versus `url`, missing package import in the Pricing route and module registry. No Blog diagnostics. |
+| Scoped Blog ESLint with manifest-compatible cached ESLint 9.39.4 | Both packages passed. Installed executable ESLint 10.12.0 is incompatible with the existing Next parser; normal `npm run lint:blog` fails in that installation. Frontend config now actually selects Blog TS/TSX instead of silently ignoring it. |
+| Reference semantic guard and negative fixtures | 19 passed, including required revision/provenance and native JSON codec rejection scenarios. |
+| Source-layout guard and fixtures | 57 passed; two Windows symlink-privilege cases skipped. CRLF normalization preserves the mandatory declarations. |
+| UI parity, i18n parity and dependency architecture guard | Passed; 77 catalog directories include the shared Grid en/ru/fr catalogs. |
+
+Clippy, hydration/island compilation and the final combined gate result are
+recorded below when obtained. Mounted browser/accessibility, visual Builder,
+shared Builder contract admission and creation replay remain open; this
+continuation does not promote complete reference or remote FFA/FBA readiness.
+
 ### Scaffold extraction sequence
 
 1. Close the owner correctness and database gates, then the effective-locale,

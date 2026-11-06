@@ -4,6 +4,31 @@ pub use crate::model::{BlogPostSortField, BlogPostSortOrder};
 use rustok_api::{WritePathIssue, WritePathIssueKind};
 use rustok_grid::{ColumnAlign, ColumnFilters, FilterValue, GridColumnDef, GridFilterType};
 
+pub fn pin_action_label(is_pinned: bool, pin: &str, unpin: &str) -> String {
+    if is_pinned { unpin } else { pin }.to_owned()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ModerationPageView {
+    pub total_pages: u64,
+    pub current_page: u64,
+    pub can_previous: bool,
+    pub can_next: bool,
+}
+
+/// The owner transport uses u64 page counts; preserve them when projecting the
+/// bounded current page instead of narrowing to a framework pagination type.
+pub fn moderation_page_view(page: u64, per_page: u64, total: u64) -> ModerationPageView {
+    let total_pages = total.div_ceil(per_page.max(1)).max(1);
+    let current_page = page.clamp(1, total_pages);
+    ModerationPageView {
+        total_pages,
+        current_page,
+        can_previous: current_page > 1,
+        can_next: current_page < total_pages,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostAdminTableRowViewModel {
     pub post_id: String,

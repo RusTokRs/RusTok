@@ -50,11 +50,7 @@ pub fn start_blog_comment_client() -> Result<(), wasm_bindgen::JsValue> {
     let Some(document) = web_sys::window().and_then(|window| window.document()) else {
         return Ok(());
     };
-    let Some(root) = document
-        .query_selector("[data-blog-comment-island='true']")
-        .ok()
-        .flatten()
-    else {
+    let Some(root) = document.query_selector("[data-blog-comment-island='true']")? else {
         return Ok(());
     };
     let serialized = root

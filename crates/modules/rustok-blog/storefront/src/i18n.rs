@@ -39,7 +39,6 @@ pub fn comment_composer_copy(locale: Option<&str>) -> CommentComposerCopy {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     fn visible(text: String) -> String {
         text.replace(['\u{2068}', '\u{2069}'], "")
     }
@@ -68,11 +67,23 @@ mod tests {
             "3 minutes de lecture"
         );
     }
+
+    #[test]
+    fn search_total_keeps_the_exact_owner_integer_in_both_catalogs() {
+        for locale in ["en", "ru"] {
+            let message = visible(super::search_results_message(Some(locale), 2, u64::MAX));
+            assert!(message.contains("18446744073709551615"), "{message}");
+        }
+        assert_eq!(
+            visible(super::search_results_message(Some("en"), 1, 1)),
+            "Page 1 · Results: 1"
+        );
+    }
 }
 
 pub fn search_results_message(locale: Option<&str>, page: usize, total: u64) -> String {
     let mut args = rustok_ui_i18n::FluentArgs::new();
     args.set("page", page.to_string());
-    args.set("total", total as f64);
+    args.set("total", total.to_string());
     format(locale, "blog.search.results", Some(&args), "")
 }

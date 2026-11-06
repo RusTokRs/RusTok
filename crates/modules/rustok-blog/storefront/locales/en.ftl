@@ -78,9 +78,6 @@ blog-comments-replying = Replying to a comment
 blog-comments-replyAction = Reply
 
 blog-search-pages = Search pages
-blog-search-results = { $total ->
-    [one] Page { $page } · { $total } result
-   *[other] Page { $page } · { $total } results
-    }
+blog-search-results = Page { $page } · Results: { $total }
 
 blog-reactions-invalid = Reactions are unavailable for this article.

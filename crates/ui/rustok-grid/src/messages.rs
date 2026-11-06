@@ -35,7 +35,7 @@ impl GridMessages {
         MESSAGES.format(self.locale.as_deref(), key, Some(&args), key)
     }
 
-    pub fn range(&self, from: u64, to: u64, total: u64) -> String {
+    pub fn range(&self, from: usize, to: usize, total: u64) -> String {
         let mut args = FluentArgs::new();
         args.set("from", from.to_string());
         args.set("to", to.to_string());

@@ -99,6 +99,12 @@ hosts, module by module. Two gates keep the twins from drifting:
 
 ## Known Limitations / Pending Implementation
 
+The Leptos adapter's focused SSR regression renders the real grid with the
+Leptos executor abstraction and a native local test pool. It verifies page 2/3
+slicing and French controls; it does not certify browser focus, keyboard or
+hydration behavior. `any_spawner` is a test-only direct dependency of the
+adapter and already underlies Leptos reactive tasks.
+
 - **Module admin cores still filter and sort by hand.** `rustok-order`/`rustok-pricing`
   (`admin/src/core/grid.rs`) and `rustok-customer`/`rustok-fulfillment`/`rustok-inventory`/`rustok-product`
   (`admin/src/core.rs`) each carry their own `matches_*_filter` + `filter_*` loop. They agree with

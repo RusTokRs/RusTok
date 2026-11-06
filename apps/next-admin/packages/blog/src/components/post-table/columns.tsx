@@ -6,12 +6,7 @@ import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import type { GqlOpts, PostSummary } from '../../api/posts';
-
-const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  PUBLISHED: 'default',
-  DRAFT: 'secondary',
-  ARCHIVED: 'outline'
-};
+import { postStatusPresentation } from '../../model/presentation';
 
 /**
  * ISO `YYYY-MM-DD` date cell: a deterministic slice of the owner's RFC 3339
@@ -86,13 +81,14 @@ export function createColumns(gqlOpts: GqlOpts, t: (key: string) => string): Col
     ),
     cell: ({ getValue }) => {
       const status = String(getValue() ?? '');
+      const presentation = postStatusPresentation(status);
       return (
         <Badge
-          variant={statusVariant[status] ?? 'outline'}
+          variant={presentation.variant}
           className='capitalize'
         >
           <CircleDot className='mr-1 h-3 w-3' />
-          {t(`status.${status.toLowerCase()}`)}
+          {t(presentation.labelKey)}
         </Badge>
       );
     },

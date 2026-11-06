@@ -54,6 +54,9 @@ enum BlogGraphqlSurface {
     BlogCategory,
     BlogCategories,
     BlogTags,
+    WidgetCatalog,
+    WidgetValidation,
+    WidgetPreview,
     CreatePost,
     UpdatePost,
     DeletePost,
@@ -88,6 +91,9 @@ impl BlogGraphqlSurface {
             (OperationType::Query, "blogCategory") => Some(Self::BlogCategory),
             (OperationType::Query, "blogCategories") => Some(Self::BlogCategories),
             (OperationType::Query, "blogTags") => Some(Self::BlogTags),
+            (OperationType::Query, "blogWidgetCatalog") => Some(Self::WidgetCatalog),
+            (OperationType::Query, "validateBlogWidget") => Some(Self::WidgetValidation),
+            (OperationType::Query, "previewBlogWidget") => Some(Self::WidgetPreview),
             (OperationType::Mutation, "createPost") => Some(Self::CreatePost),
             (OperationType::Mutation, "updatePost") => Some(Self::UpdatePost),
             (OperationType::Mutation, "deletePost") => Some(Self::DeletePost),
@@ -123,6 +129,9 @@ impl BlogGraphqlSurface {
             Self::BlogCategory => "blog_category",
             Self::BlogCategories => "blog_categories",
             Self::BlogTags => "blog_tags",
+            Self::WidgetCatalog => "widget_catalog",
+            Self::WidgetValidation => "widget_validation",
+            Self::WidgetPreview => "widget_preview",
             Self::CreatePost => "create_post",
             Self::UpdatePost => "update_post",
             Self::DeletePost => "delete_post",
@@ -156,7 +165,10 @@ impl BlogGraphqlSurface {
             | Self::PostByPreviewToken
             | Self::BlogCategory
             | Self::BlogCategories
-            | Self::BlogTags => "read",
+            | Self::BlogTags
+            | Self::WidgetCatalog
+            | Self::WidgetValidation
+            | Self::WidgetPreview => "read",
             _ => "write",
         }
     }
@@ -178,6 +190,9 @@ impl BlogGraphqlSurface {
             | Self::BlogCategory
             | Self::BlogCategories
             | Self::BlogTags => None,
+            Self::WidgetCatalog | Self::WidgetValidation | Self::WidgetPreview => {
+                Some(Permission::BLOG_POSTS_READ)
+            }
             Self::CreatePost => Some(Permission::BLOG_POSTS_CREATE),
             Self::UpdatePost | Self::CreatePreviewToken | Self::RevokePreviewToken => {
                 Some(Permission::BLOG_POSTS_UPDATE)

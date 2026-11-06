@@ -222,6 +222,8 @@ pub(super) fn BlogPostsTable(
                 let post_locale_pin = row.locale.clone();
                 let post_locale_archive = row.locale.clone();
                 let post_locale_restore = row.locale.clone();
+                let pin_action_label =
+                    core::pin_action_label(row.is_pinned, &pin_label, &unpin_label);
 
                 match col_id.as_str() {
                 "title" => view! {
@@ -290,7 +292,7 @@ pub(super) fn BlogPostsTable(
                                         post_locale_pin.clone(),
                                     )))
                                 >
-                                    {if row.is_pinned { unpin_label.clone() } else { pin_label.clone() }}
+                                    {pin_action_label}
                                 </Button>
                             }.into_any()
                         } else {

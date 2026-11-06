@@ -61,7 +61,7 @@ pub fn BlogShareButtons(title: String, slug: String) -> impl IntoView {
         {move || share_urls.get().map(|(tg_url, vk_url, tw_url)| view! {
             <div class="mt-6 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-4">
                 <span class="mr-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    {share_label}
+                    {share_label.clone()}
                 </span>
                 <a
                     href=tg_url

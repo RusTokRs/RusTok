@@ -27,6 +27,10 @@ fn test_reexported_types_contract() {
 #[test]
 fn client_grid_renders_second_page_once_and_localizes_its_chrome() {
     use leptos::prelude::*;
+    // Rendering the real grid constructs reactive effects. Use the same
+    // executor abstraction as Leptos, backed by a native local test pool.
+    any_spawner::Executor::init_futures_executor()
+        .expect("one grid render executor per test binary");
     let owner = Owner::new();
     owner.with(|| {
         let rows = RwSignal::new((1..=25).collect::<Vec<u64>>());
@@ -49,4 +53,5 @@ fn client_grid_renders_second_page_once_and_localizes_its_chrome() {
         assert!(third.contains("row-21</span>"));
         assert!(!third.contains("row-11</span>"));
     });
+    owner.cleanup();
 }

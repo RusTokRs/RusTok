@@ -38,6 +38,13 @@ Leptos admin UI package for the `rustok-blog` module.
 - Native and GraphQL adapters call the same Blog owner services and must keep their DTO, authorization, tenant, locale, and error semantics aligned.
 - The host mounts Blog Fly preview and property ports through this package's selected transport facade. Property requests compare the complete schema reference with the registered contribution; configuration and owner-data preview execute in `BlogWidgetService`.
 
+Native admin server functions use the canonical JSON input codec, preserving
+`Patch::Keep/Set/Clear`, richtext JSON and numeric widget property types through
+the generated client and HTTP dispatcher. Form encoding cannot represent this
+contract without losing explicit null or the difference between JSON numbers
+and strings. Native acknowledgement regressions exercise the dispatcher with
+the same JSON content type; a separate failed refresh is still a read failure.
+
 ## Known Limitations / Pending Implementation
 
 The Fly contribution exposes owner data as the editor's bounded JSON preview.

@@ -75,6 +75,38 @@ async fn native_dispatch_executes_schema_validation_preview_and_denials() {
     .await;
     assert_eq!(status, StatusCode::OK, "{response}");
     assert_eq!(response["valid"], true);
+    let list_editor = crate::blog_widget_contribution()
+        .property_editors
+        .into_iter()
+        .find(|editor| editor.component_type == "blog.post_list")
+        .unwrap();
+    for (props, valid) in [
+        (json!({"per_page":7}), true),
+        (json!({"per_page":"7"}), false),
+    ] {
+        let (status, response) = execute(
+            &host,
+            &tenant,
+            &auth,
+            super::BlogWidgetValidateNative::PATH,
+            super::BlogWidgetValidateNative {
+                request: crate::model::BlogWidgetValidationRequest {
+                    widget_type: list_editor.component_type.clone(),
+                    property_schema: list_editor.property_schema.clone(),
+                    props,
+                },
+            },
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{response}");
+        assert_eq!(
+            response["valid"], valid,
+            "numeric strings and integers must remain distinct: {response}"
+        );
+        if valid {
+            assert_eq!(response["normalized_props"]["per_page"], 7);
+        }
+    }
     let preview = super::BlogWidgetPreviewNative {
         request: crate::model::BlogWidgetPreviewRequest {
             widget_type: "blog.post_detail".into(),

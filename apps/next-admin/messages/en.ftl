@@ -1289,9 +1289,6 @@ blog-editor-imagePreview = Featured image preview
 
 blog-editor-slugRequired = Canonical slug is required
 
-blog-status-draft = Draft
-blog-status-published = Published
-blog-status-archived = Archived
 blog-status-unknown = Unknown status
 blog-detail-notFound = Post not found.
 blog-detail-publishedAt = Published { $date }

@@ -83,6 +83,8 @@ pub fn PublicCommentsList(
     let can_next = state.can_next;
     let previous_writer = query_writer.clone();
     let next_writer = query_writer;
+    let previous_label = t(locale.as_deref(), "blog.comments.previous", "Previous");
+    let next_label = t(locale.as_deref(), "blog.comments.next", "Next");
 
     view! {
         <section class="mt-8 border-t border-border pt-6">
@@ -138,7 +140,7 @@ pub fn PublicCommentsList(
                         );
                     })
                 >
-                    {t(locale.as_deref(), "blog.comments.previous", "Previous")}
+                    {previous_label}
                 </Button>
                 <Button
                     size=Size::Sm variant=ButtonVariant::Outline
@@ -151,7 +153,7 @@ pub fn PublicCommentsList(
                         );
                     })
                 >
-                    {t(locale.as_deref(), "blog.comments.next", "Next")}
+                    {next_label}
                 </Button>
             </div>
         </section>

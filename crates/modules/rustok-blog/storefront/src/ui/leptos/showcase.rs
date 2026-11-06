@@ -29,6 +29,8 @@ pub(super) fn BlogShowcase(
         core::showcase_posts(&data, search_total.is_some());
 
     let related_title = t(locale.as_deref(), "blog.related.title", "Related articles");
+    let next_page_label = t(locale.as_deref(), "blog.posts.nextPage", "Next page");
+    let previous_page_label = t(locale.as_deref(), "blog.posts.previousPage", "Previous");
 
     let search_query = use_route_query_value("q");
     let tag_query = use_route_query_value("tag");
@@ -215,6 +217,7 @@ pub(super) fn BlogShowcase(
             {move || (search_total.is_none()).then_some(())
                 .and_then(|_| posts_cursor_query.get().filter(|value| !value.trim().is_empty())).map(|_| {
                 let writer = first_page_writer.clone();
+                let first_page_label = first_page_label.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
                         <Button
@@ -233,6 +236,7 @@ pub(super) fn BlogShowcase(
             })}
             {posts_next_cursor.filter(|_| search_total.is_none()).map(|cursor| {
                 let writer = next_page_writer.clone();
+                let next_page_label = next_page_label.clone();
                 view! {
                     <div class="mt-6 flex justify-center">
                         <Button
@@ -245,48 +249,39 @@ pub(super) fn BlogShowcase(
                                 ));
                             }
                         >
-                            {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
+                            {next_page_label}
                         </Button>
                     </div>
                 }
             })}
             {search_total.map(|total| {
-                let has_previous = search_page > 1;
-                let has_next = (search_page as u64) * (core::BLOG_SEARCH_PAGE_SIZE as u64) < total;
+                let page_view = core::search_page_view(search_page, total);
                 let previous_writer = search_previous_writer.clone();
                 let next_writer = search_next_writer.clone();
                 view! {
                     <nav aria-label=t(locale.as_deref(), "blog.search.pages", "Search pages") class="mt-6 flex items-center justify-center gap-4">
-                        {has_previous.then(|| {
+                        {page_view.previous.map(|intent| {
                             let writer = previous_writer.clone();
                             view! {
                                 <Button size=Size::Sm variant=ButtonVariant::Outline class="rounded-full border px-4 py-2 text-sm"
                                     on:click=move |_| {
-                                        if search_page <= 2 {
-                                            writer.apply_query_intent(UiRouteQueryIntent::clear("page"));
-                                        } else {
-                                            writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                                "page", (search_page - 1).to_string(),
-                                            ));
-                                        }
+                                        writer.apply_query_intent(intent.clone());
                                     }>
-                                    {t(locale.as_deref(), "blog.posts.previousPage", "Previous")}
+                                    {previous_page_label}
                                 </Button>
                             }
                         })}
                         <span class="text-sm text-muted-foreground">
                             {crate::i18n::search_results_message(locale.as_deref(), search_page, total)}
                         </span>
-                        {has_next.then(|| {
+                        {page_view.next.map(|intent| {
                             let writer = next_writer.clone();
                             view! {
                                 <Button size=Size::Sm variant=ButtonVariant::Outline class="rounded-full border px-4 py-2 text-sm"
                                     on:click=move |_| {
-                                        writer.apply_query_intent(UiRouteQueryIntent::replace(
-                                            "page", (search_page + 1).to_string(),
-                                        ));
+                                        writer.apply_query_intent(intent.clone());
                                     }>
-                                    {t(locale.as_deref(), "blog.posts.nextPage", "Next page")}
+                                    {next_page_label}
                                 </Button>
                             }
                         })}

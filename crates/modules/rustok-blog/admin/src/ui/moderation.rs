@@ -6,6 +6,7 @@ use leptos_ui_routing::use_route_query_value;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use uuid::Uuid;
 
+use crate::core;
 use crate::i18n::t;
 use crate::model::{BlogModerationComment, BlogModerationCommentList, BlogModerationStatus};
 use crate::transport;
@@ -204,10 +205,14 @@ fn ModerationQueue(
         .into_any();
     }
 
-    let total_pages = comments.total.div_ceil(per_page.max(1)).max(1);
-    let current_page = page.clamp(1, total_pages);
-    let can_previous = current_page > 1;
-    let can_next = current_page < total_pages;
+    let core::ModerationPageView {
+        total_pages,
+        current_page,
+        can_previous,
+        can_next,
+    } = core::moderation_page_view(page, per_page, comments.total);
+    let previous_label = t(locale.as_deref(), "blog.moderation.previous", "Previous");
+    let next_label = t(locale.as_deref(), "blog.moderation.next", "Next");
 
     view! {
         <div class="space-y-3">
@@ -241,14 +246,14 @@ fn ModerationQueue(
                     disabled=!can_previous
                     on_click=Box::new(move || on_previous.run(()))
                 >
-                    {t(locale.as_deref(), "blog.moderation.previous", "Previous")}
+                    {previous_label}
                 </Button>
                 <Button
                     size=Size::Sm variant=ButtonVariant::Outline
                     disabled=!can_next
                     on_click=Box::new(move || on_next.run(()))
                 >
-                    {t(locale.as_deref(), "blog.moderation.next", "Next")}
+                    {next_label}
                 </Button>
             </div>
         </div>
@@ -266,6 +271,9 @@ fn ModerationCommentCard(
     let approve_id = comment.id.clone();
     let spam_id = comment.id.clone();
     let trash_id = comment.id.clone();
+    let approve_label = t(locale.as_deref(), "blog.moderation.approve", "Approve");
+    let spam_label = t(locale.as_deref(), "blog.moderation.spam", "Mark spam");
+    let trash_label = t(locale.as_deref(), "blog.moderation.trash", "Move to trash");
     let reply_label = comment
         .parent_comment_id
         .is_some()
@@ -293,21 +301,21 @@ fn ModerationCommentCard(
                     disabled=is_busy
                     on_click=Box::new(move || on_moderate.run((approve_id.clone(), BlogModerationStatus::Approved)))
                 >
-                    {t(locale.as_deref(), "blog.moderation.approve", "Approve")}
+                    {approve_label}
                 </Button>
                 <Button
                     size=Size::Sm variant=ButtonVariant::Outline
                     disabled=is_busy
                     on_click=Box::new(move || on_moderate.run((spam_id.clone(), BlogModerationStatus::Spam)))
                 >
-                    {t(locale.as_deref(), "blog.moderation.spam", "Mark spam")}
+                    {spam_label}
                 </Button>
                 <Button
                     size=Size::Sm variant=ButtonVariant::Outline
                     disabled=is_busy
                     on_click=Box::new(move || on_moderate.run((trash_id.clone(), BlogModerationStatus::Trash)))
                 >
-                    {t(locale.as_deref(), "blog.moderation.trash", "Move to trash")}
+                    {trash_label}
                 </Button>
             </div>
         </article>

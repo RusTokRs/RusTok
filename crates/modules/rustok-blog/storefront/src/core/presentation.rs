@@ -122,10 +122,6 @@ pub fn selected_post_fallback_fields(
     )
 }
 
-pub fn count_label(total: u64, suffix: &str) -> String {
-    format!("{total} {suffix}")
-}
-
 pub fn error_with_context(context: &str, error: &str) -> String {
     format!("{context}: {error}")
 }

@@ -35,11 +35,11 @@ pub(super) async fn execute(
     path: &str,
     request: impl serde::Serialize,
 ) -> (StatusCode, Value) {
-    let body = serde_qs::to_string(&request).unwrap();
+    let body = serde_json::to_vec(&request).unwrap();
     let mut request = Request::builder()
         .method("POST")
         .uri(path)
-        .header("content-type", "application/x-www-form-urlencoded")
+        .header("content-type", "application/json")
         .body(Body::from(body))
         .unwrap();
     request
@@ -123,7 +123,10 @@ pub(super) async fn fixture() -> Fixture {
         user_id: Uuid::new_v4(),
         session_id: Uuid::new_v4(),
         tenant_id: tenant.id,
-        permissions: rustok_core::Rbac::permissions_for_role(&UserRole::Admin).to_vec(),
+        permissions: rustok_core::Rbac::permissions_for_role(&UserRole::Admin)
+            .iter()
+            .copied()
+            .collect(),
         client_id: None,
         scopes: vec![],
         grant_type: "direct".into(),

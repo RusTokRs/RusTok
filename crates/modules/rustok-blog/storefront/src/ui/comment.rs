@@ -1,6 +1,5 @@
 use crate::{
     i18n::{comment_composer_copy, t},
-    model::BlogDiscussionProps,
     transport,
 };
 use leptos::prelude::*;
@@ -11,7 +10,7 @@ use rustok_reactions_storefront::ReactionBar;
 use rustok_ui_core::UiRouteContext;
 
 #[component]
-pub fn BlogDiscussion(props: BlogDiscussionProps) -> impl IntoView {
+pub fn BlogDiscussion(props: crate::model::BlogDiscussionProps) -> impl IntoView {
     let mut route = use_context::<UiRouteContext>().unwrap_or_default();
     route.locale = props.ui_locale.clone();
     provide_context(route);
@@ -63,11 +62,14 @@ pub fn BlogDiscussion(props: BlogDiscussionProps) -> impl IntoView {
             }}
             {comments_available.then(|| view! {
                 <section id="comment-composer-box" class="space-y-3">
-                    {move || parent.get().map(|_| view! {
+                    {move || parent.get().map(|_| {
+                        let cancel_label = cancel_label.clone();
+                        view! {
                         <div role="status" class="flex items-center gap-2">
                             <span>{reply_label.clone()}</span>
                             <Button size=Size::Sm variant=ButtonVariant::Outline on_click=Box::new(move || set_parent.set(None))>{cancel_label.clone()}</Button>
                         </div>
+                        }
                     })}
                     <CommentComposer content_locale=props.content_locale submit_action=submit copy />
                 </section>

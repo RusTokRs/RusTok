@@ -83,7 +83,10 @@ async fn fixture_on(db: DatabaseConnection) -> Fixture {
         user_id: Uuid::new_v4(),
         session_id: Uuid::new_v4(),
         tenant_id: tenant.id,
-        permissions: rustok_core::Rbac::permissions_for_role(&UserRole::Admin).to_vec(),
+        permissions: rustok_core::Rbac::permissions_for_role(&UserRole::Admin)
+            .iter()
+            .copied()
+            .collect(),
         client_id: None,
         scopes: vec![],
         grant_type: "direct".into(),

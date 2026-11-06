@@ -75,6 +75,5 @@ rustok-modules = { workspace = true, default-features = false }
 rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true
 sea-orm-migration.workspace = true
-serde_qs.workspace = true
 tokio.workspace = true
 

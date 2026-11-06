@@ -69,7 +69,7 @@ const harnessCommand =
 
 const evidence = json(evidencePath);
 const consumerMatrix = json(consumerMatrixPath);
-const adminAdapter = read(adminAdapterPath);
+const adminAdapter = read(adminAdapterPath).replaceAll("\r\n", "\n");
 // The Comment service is split across its module entry (capabilities, port
 // contexts, error mapping) and `comment/commands.rs` (the port calls); service
 // markers may live in either half.
@@ -183,8 +183,8 @@ for (const marker of [
   'fn comment_service(context: &NativeContext) -> rustok_blog::CommentService',
   'context.comments_thread_port.clone()',
   'rustok_blog::CommentService::from_runtime_capabilities(',
-  '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]',
-  '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
+  'endpoint = "blog/admin/moderation-comments"',
+  'endpoint = "blog/admin/moderate-comment"',
   // Comment moderation is authorised by the moderation permission. Gating it on the
   // post management permission let a moderator without authoring rights be refused,
   // and let the two surfaces share one gate by accident.
@@ -214,12 +214,12 @@ requireNoMarker(adminAdapter, 'unwrap_or_default()', adminAdapterPath);
 
 const listSegment = segment(
   adminAdapter,
-  '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderation-comments")]',
-  '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
+  'endpoint = "blog/admin/moderation-comments"',
+  'endpoint = "blog/admin/moderate-comment"',
 );
 const mutationSegment = segment(
   adminAdapter,
-  '#[server(prefix = "/api/fn", endpoint = "blog/admin/moderate-comment")]',
+  'endpoint = "blog/admin/moderate-comment"',
   '#[cfg(feature = "ssr")]\nfn optional_text',
 );
 for (const [label, source] of [

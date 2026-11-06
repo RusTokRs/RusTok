@@ -1,7 +1,7 @@
 use super::*;
 use leptos::prelude::*;
 use leptos_ui::RichTextHtml;
-use leptos_ui::{Button, ButtonVariant, Input, Size};
+use leptos_ui::{Button, Input};
 use rustok_ui_core::UiRouteContext;
 
 #[cfg(target_arch = "wasm32")]

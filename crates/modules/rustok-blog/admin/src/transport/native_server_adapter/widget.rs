@@ -40,7 +40,7 @@ async fn context() -> Result<super::NativeContext, ServerFnError> {
     Ok(context)
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-schema")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-schema", input = leptos::server_fn::codec::Json)]
 async fn blog_widget_schema_native(
     request: BlogWidgetPropertyRequest,
 ) -> Result<BlogWidgetPropertySchema, ServerFnError> {
@@ -71,7 +71,7 @@ async fn blog_widget_schema_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-validate")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-validate", input = leptos::server_fn::codec::Json)]
 async fn blog_widget_validate_native(
     request: BlogWidgetValidationRequest,
 ) -> Result<BlogWidgetValidation, ServerFnError> {
@@ -112,7 +112,7 @@ async fn blog_widget_validate_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-preview")]
+#[server(prefix = "/api/fn", endpoint = "blog/admin/widget-preview", input = leptos::server_fn::codec::Json)]
 async fn blog_widget_preview_native(
     request: BlogWidgetPreviewRequest,
 ) -> Result<serde_json::Value, ServerFnError> {

@@ -68,6 +68,20 @@ test("reference source guard accepts the unchanged owner snapshot", (t) => {
 
 const regressions = [
   {
+    name: "native edit encoding loses JSON field semantics",
+    path: `${blog}/admin/src/transport/native_server_adapter.rs`,
+    before: "input = leptos::server_fn::codec::Json",
+    after: "input = leptos::server_fn::codec::PostUrl",
+    diagnostic: /native admin inputs must preserve JSON null, number and string types/,
+  },
+  {
+    name: "native widget encoding loses numeric property types",
+    path: `${blog}/admin/src/transport/native_server_adapter/widget.rs`,
+    before: "input = leptos::server_fn::codec::Json",
+    after: "input = leptos::server_fn::codec::PostUrl",
+    diagnostic: /native admin inputs must preserve JSON null, number and string types/,
+  },
+  {
     name: "the mutation surface no longer matches the source contract",
     path: `${blog}/src/graphql/mutation.rs`,
     before: "    async fn ",

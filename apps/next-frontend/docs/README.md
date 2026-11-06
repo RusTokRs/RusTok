@@ -99,6 +99,9 @@ Reusable storefront presentation components that are shared across multiple doma
 ## Verification
 
 - lint/typecheck runs across `apps/next-frontend`
+- `npm run lint:blog` checks `packages/rustok-blog/src`; its flat-config entry
+  explicitly matches TS/TSX and reuses the approved Next parser. An ignored-file
+  diagnostic does not count as a successful module lint check.
 - storefront route/i18n contract checks
 - shared contract reconciliation with `docs/UI/storefront.md` and `docs/modules/manifest.md`
 

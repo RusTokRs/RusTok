@@ -1,8 +1,30 @@
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::{BlogPostAuthorProfile, BlogPostList, BlogPostListItem};
 use rustok_search_storefront::model::{SearchPreviewFilters, SearchPreviewPayload};
+use rustok_ui_core::UiRouteQueryIntent;
 
 pub const BLOG_SEARCH_PAGE_SIZE: usize = 9;
+const MAX_SEARCH_PAGE: usize = 100;
+
+pub struct SearchPageView {
+    pub previous: Option<UiRouteQueryIntent>,
+    pub next: Option<UiRouteQueryIntent>,
+}
+
+pub fn search_page_view(page: usize, total: u64) -> SearchPageView {
+    let page = page.clamp(1, MAX_SEARCH_PAGE);
+    SearchPageView {
+        previous: (page > 1).then(|| {
+            if page == 2 {
+                UiRouteQueryIntent::clear("page")
+            } else {
+                UiRouteQueryIntent::replace("page", (page - 1).to_string())
+            }
+        }),
+        next: (page < MAX_SEARCH_PAGE && ((page * BLOG_SEARCH_PAGE_SIZE) as u64) < total)
+            .then(|| UiRouteQueryIntent::replace("page", (page + 1).to_string())),
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlogPageRequest {
@@ -32,7 +54,7 @@ pub fn prepare_blog_page_request(
     let search_page = search_page
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
-        .clamp(1, 100);
+        .clamp(1, MAX_SEARCH_PAGE);
     BlogPageRequest {
         feed,
         comments_page,
@@ -63,26 +85,30 @@ pub fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostL
         }
         let payload: serde_json::Value = serde_json::from_str(&item.payload)
             .map_err(|_| "Search returned malformed Blog metadata".to_owned())?;
-        let get_string = |key: &str| {
-            payload
-                .get(key)
-                .and_then(serde_json::Value::as_str)
-                .map(ToOwned::to_owned)
+        let get_string = |key: &str| -> Result<Option<String>, String> {
+            match payload.get(key) {
+                None | Some(serde_json::Value::Null) => Ok(None),
+                Some(serde_json::Value::String(value)) => Ok(Some(value.clone())),
+                Some(_) => Err(format!("Search returned invalid Blog field: {key}")),
+            }
         };
-        let slug = get_string("slug")
-            .filter(|value| !value.is_empty())
+        let slug = get_string("slug")?
+            .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| "Search result has no canonical Blog slug".to_owned())?;
-        let tags = payload
-            .get("tags")
-            .and_then(serde_json::Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(|value| value.as_str().map(ToOwned::to_owned))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let author_profile = match (get_string("author_id"), get_string("author_name")) {
+        let tags = match payload.get("tags") {
+            None | Some(serde_json::Value::Null) => Vec::new(),
+            Some(serde_json::Value::Array(values)) => values
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(ToOwned::to_owned)
+                        .ok_or_else(|| "Search returned invalid Blog tags".to_owned())
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(_) => return Err("Search returned invalid Blog tags".to_owned()),
+        };
+        let author_profile = match (get_string("author_id")?, get_string("author_name")?) {
             (Some(user_id), Some(display_name)) if !display_name.trim().is_empty() => {
                 Some(BlogPostAuthorProfile {
                     user_id,
@@ -103,14 +129,14 @@ pub fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostL
                 .map(|locale| locale.as_str().to_owned())
                 .ok_or_else(|| "Search result has no effective Blog locale".to_owned())?,
             slug: Some(slug),
-            excerpt: get_string("excerpt"),
+            excerpt: get_string("excerpt")?,
             status: "published".to_string(),
-            published_at: get_string("published_at"),
+            published_at: get_string("published_at")?,
             tags,
-            featured_image_url: get_string("featured_image_url"),
+            featured_image_url: get_string("featured_image_url")?,
             author_profile,
-            category_id: get_string("category_id"),
-            category_name: get_string("category_name"),
+            category_id: get_string("category_id")?,
+            category_name: get_string("category_name")?,
         });
     }
     Ok(BlogPostList {
@@ -123,9 +149,8 @@ pub fn map_blog_search_results(result: SearchPreviewPayload) -> Result<BlogPostL
 mod blog_search_mapping_tests {
     use super::*;
 
-    #[test]
-    fn search_result_projection_keeps_cross_page_fulltext_metadata() {
-        let result = serde_json::from_value::<SearchPreviewPayload>(serde_json::json!({
+    fn projection_fixture() -> SearchPreviewPayload {
+        serde_json::from_value::<SearchPreviewPayload>(serde_json::json!({
             "queryLogId": null,
             "presetKey": null,
             "total": 51,
@@ -153,7 +178,26 @@ mod blog_search_mapping_tests {
                 }).to_string()
             }]
         }))
-        .expect("Search GraphQL response must deserialize");
+        .expect("Search GraphQL response must deserialize")
+    }
+
+    #[test]
+    fn malformed_optional_projection_fields_cannot_be_silently_dropped() {
+        for metadata in [
+            serde_json::json!({"slug":"article", "tags":["valid", 12]}),
+            serde_json::json!({"slug":"article", "tags":"invalid"}),
+            serde_json::json!({"slug":"article", "category_id":12}),
+            serde_json::json!({"slug":"article", "author_name":false}),
+        ] {
+            let mut result = projection_fixture();
+            result.items[0].payload = metadata.to_string();
+            assert!(map_blog_search_results(result).is_err(), "{metadata}");
+        }
+    }
+
+    #[test]
+    fn search_result_projection_keeps_cross_page_fulltext_metadata() {
+        let result = projection_fixture();
         let page = map_blog_search_results(result).expect("Blog page projection");
         assert!(
             page.next_cursor.is_none(),
@@ -170,6 +214,21 @@ mod blog_search_mapping_tests {
 #[cfg(test)]
 mod request_tests {
     use super::*;
+    #[test]
+    fn search_navigation_obeys_the_same_bounds_as_request_preparation() {
+        assert!(search_page_view(0, 0).previous.is_none());
+        assert!(search_page_view(1, 9).next.is_none());
+        assert_eq!(
+            search_page_view(2, 19).previous,
+            Some(UiRouteQueryIntent::clear("page"))
+        );
+        assert_eq!(
+            search_page_view(2, 19).next,
+            Some(UiRouteQueryIntent::replace("page", "3"))
+        );
+        assert!(search_page_view(100, u64::MAX).next.is_none());
+        assert!(search_page_view(usize::MAX, u64::MAX).next.is_none());
+    }
     fn feed() -> BlogStorefrontFetchRequest {
         BlogStorefrontFetchRequest {
             post_slug: String::new(),

@@ -14127,7 +14127,6 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
- "serde_qs 1.1.3",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
  "uuid",
@@ -15497,6 +15496,7 @@ dependencies = [
 name = "rustok-grid-leptos"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "leptos",
  "leptos-use",
  "rustok-grid",

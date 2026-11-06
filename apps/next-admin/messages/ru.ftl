@@ -1277,9 +1277,6 @@ blog-editor-imagePreview = Предпросмотр главного изобр�
 
 blog-editor-slugRequired = Канонический адрес обязателен
 
-blog-status-draft = Черновик
-blog-status-published = Опубликовано
-blog-status-archived = В архиве
 blog-status-unknown = Неизвестный статус
 blog-detail-notFound = Запись не найдена.
 blog-detail-publishedAt = Опубликовано { $date }

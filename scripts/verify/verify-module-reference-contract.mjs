@@ -665,6 +665,18 @@ requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter
   "Err(error) => Err(public_blog_error(error))",
   "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
 ]);
+for (const path of [
+  "crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs",
+  "crates/modules/rustok-blog/admin/src/transport/native_server_adapter/widget.rs",
+]) {
+  const serverFunctions = [...read(path).matchAll(/#\[server\(([\s\S]*?)\)\]/g)];
+  if (serverFunctions.length === 0) fail(`${path}: expected native server functions`);
+  for (const [, attributes] of serverFunctions) {
+    if (!/\binput\s*=\s*leptos::server_fn::codec::Json\b/.test(attributes)) {
+      fail(`${path}: native admin inputs must preserve JSON null, number and string types`);
+    }
+  }
+}
 requireAll("crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs", [
   "fn public_internal_error() -> ServerFnError",
   "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
