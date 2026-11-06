@@ -120,7 +120,7 @@ fn oversized_configuration_is_rejected_before_normalization() {
 #[tokio::test]
 async fn invalid_configuration_and_permission_denial_do_not_reach_persistence() {
     let service = BlogWidgetService::new(
-        DatabaseConnection::Disconnected,
+        DatabaseConnection::default(),
         TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
     );
     let tenant = Uuid::new_v4();
