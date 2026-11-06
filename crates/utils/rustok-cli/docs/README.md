@@ -34,3 +34,9 @@ registries, not through hardcoded server-owned task calls.
 - Keep seed and migration flows in typed CLI commands.
 - Keep module command adapters next to the owning module, outside domain core.
 - Keep the production server binary focused on HTTP runtime startup.
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)

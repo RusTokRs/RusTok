@@ -38,3 +38,9 @@ Do not add CLI command implementations to module domain crates or to the product
 server runtime.
 
 Related guide: [Backend Module Architecture](../../../../docs/backend/module-backend-architecture.md).
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)

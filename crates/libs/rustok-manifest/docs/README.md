@@ -25,6 +25,8 @@
 
 ## Related Documents
 
-- [Manifest-Layer Contracts](../../../docs/modules/manifest.md)
-- [Architecture Quick Reference](../../../ARCHITECTURE.md)
-- [ADR: Shared Platform Manifest Foundation Library](../../../DECISIONS/2026-10-15-rustok-manifest-foundation-library.md)
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [Manifest-Layer Contracts](../../../../docs/modules/manifest.md)
+- [Architecture Quick Reference](../../../../ARCHITECTURE.md)
+- [ADR: Shared Platform Manifest Foundation Library](../../../../DECISIONS/2026-10-15-rustok-manifest-foundation-library.md)

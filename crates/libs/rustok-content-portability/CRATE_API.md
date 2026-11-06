@@ -22,4 +22,4 @@ Concrete implementations of content import and export services, format handlers 
 - **Fail-safe byte parsing**: Parsing operates over immutable byte slices without executing untrusted code or arbitrary deserialization side-effects.
 
 ## Errors
-- Reuses [`PortabilityError`](rustok_content_portability_api::PortabilityError) covering format parsing, I/O errors, validation failures, and unsupported formats.
+- Reuses `PortabilityError` covering format parsing, I/O errors, validation failures, and unsupported formats.

@@ -46,10 +46,10 @@ Deliberate public modules and exports:
 
 - [`TenantContext`](src/context/mod.rs): Scopes database queries, caches, and storage to a single tenant.
 - [`AuthContext`](src/context/mod.rs): Carries validated actor identity and permission claims.
-- [`Permission`](src/permissions/mod.rs): Strongly-typed platform permission identifier.
-- [`PortContext`](src/ports/mod.rs): Invocation envelope for cross-module port execution.
-- [`PortCallPolicy`](src/ports/mod.rs): Enforces idempotent write or read-only constraints on port boundaries.
-- [`HostRuntimeContext`](src/runtime/mod.rs): Shared runtime provider bag for native adapters and server functions.
+- [`Permission`](src/permissions.rs): Strongly-typed platform permission identifier.
+- [`PortContext`](src/ports.rs): Invocation envelope for cross-module port execution.
+- [`PortCallPolicy`](src/ports.rs): Enforces idempotent write or read-only constraints on port boundaries.
+- [`HostRuntimeContext`](src/runtime.rs): Shared runtime provider bag for native adapters and server functions.
 
 ## Invariants
 

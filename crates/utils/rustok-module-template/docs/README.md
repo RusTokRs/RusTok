@@ -39,3 +39,9 @@ The renderer validates the sandbox scenario and renders the Index boundary
 guide before returning the ordered file set. The static verifier additionally
 rejects a direct `rustok-index` dependency or an invented `platform.index`
 capability in the standalone template.
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)

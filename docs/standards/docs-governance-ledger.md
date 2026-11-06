@@ -324,12 +324,27 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-14..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+### DAR-14: Platform Foundation Libraries & Utilities
 
-**Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
-**Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
+**Scope:** Documentation across 45 platform foundation crates in `crates/libs/`, `crates/utils/`, and `crates/workers/` (161 files, 11,529 LOC).
+**Goal:** Verify and synchronize shared runtime contracts, CRATE_API, manifest layer specifications, CLI runner and provider architecture, Component Model WIT boundaries, and worker isolation contracts.
 
-- [ ] **DAR-14: Platform Foundation Libraries & Utilities** (`crates/libs/*`, `crates/utils/*`, `crates/workers/*`).
+- [x] **DAR-14.1: Reconcile Source Links in `rustok-api` and Manifest Contracts.** Corrected broken source links in `crates/libs/rustok-api/CRATE_API.md` (`src/permissions/mod.rs` -> `src/permissions.rs`, `src/ports/mod.rs` -> `src/ports.rs`, `src/runtime/mod.rs` -> `src/runtime.rs`). Fixed relative path depth in `crates/libs/rustok-manifest/docs/README.md` (`../../../docs/modules/manifest.md` -> `../../../../docs/modules/manifest.md`, `../../../ARCHITECTURE.md`, and ADR links) and `crates/workers/rustok-artifact-node-transport/README.md`.
+- [x] **DAR-14.2: Purge Pseudo-Links in CRATE_API.** Replaced fake Rust type paths in markdown link syntax (`rustok_content_portability_api::PortabilityError`, `rustok_api::PortError`) with backtick code spans in `crates/libs/rustok-content-portability/CRATE_API.md` and `crates/libs/rustok-fba/CRATE_API.md`.
+- [x] **DAR-14.3: Index Unreferenced Implementation Plans Across Foundation Crates.** Reconciled and indexed `implementation-plan.md` in `docs/README.md` across 10 foundation and utility crates:
+  - `rustok-fba`, `rustok-manifest`, `rustok-runtime`, `rustok-web`
+  - `rustok-cli`, `rustok-cli-core`, `rustok-cli-platform`, `rustok-cli-registry`
+  - `rustok-module-sdk`, `rustok-module-template`
+- [x] **DAR-14.4: Verify Full Link & Anchor Integrity Across Foundation Layer.** Audited all 161 markdown files and 219 internal links across all 45 foundation crates. Verified zero broken links, zero dangling anchors, and 100% indexed documentation coverage.
+- [x] **DAR-14.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-15..DAR-16: Host Applications & Automated Governance
+
+**Scope:** Documentation across client applications, server host, and CI verification automation.
+**Goal:** Verify client host package contracts and establish continuous orphaned doc / dead link detection in CI.
+
 - [ ] **DAR-15: Client Applications & Host Packages** (`apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).
 - [ ] **DAR-16: Continuous Documentation Verification Evolution** (Automated orphaned document detection, dead path detection, and ADR lifecycle enforcement in CI).
 

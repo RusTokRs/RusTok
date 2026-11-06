@@ -29,6 +29,12 @@ inside this shared boundary.
 
 Related guide: [Backend Module Implementation](../../../../docs/backend/module-backend-implementation.md).
 
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)
+
 The [HTTP retry-advice contract](../../../../docs/architecture/api.md#http-error-retry-advice)
 records transport scope and the actual client projection. No automatic mutation replay or new
 idempotency identity is granted by this field.

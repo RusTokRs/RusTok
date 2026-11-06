@@ -18,3 +18,9 @@ module.
   packages instead of adding them here.
 - Keep `rustok-cli` focused on terminal dispatch and output.
 
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)
+

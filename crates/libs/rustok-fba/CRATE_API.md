@@ -21,4 +21,4 @@ Fluid Backend Architecture contracts defining neutral module boundaries, capabil
 - **Fail-safe fallback**: Consumer dependencies explicitly declare fallback modes (`fallback_modes`) when optional dependencies degrade.
 
 ## Errors
-- Reuses canonical [`PortError`](rustok_api::PortError) for boundary crossing failures, timeouts, and capability unreachability.
+- Reuses canonical `PortError` for boundary crossing failures, timeouts, and capability unreachability.

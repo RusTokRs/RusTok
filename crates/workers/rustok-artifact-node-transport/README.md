@@ -16,4 +16,4 @@ own transaction. The crate owns no topology source, CAS access, sandbox
 execution, artifact policy, AI, or product behavior.
 
 See [local documentation](./docs/README.md) and the [module control-plane
-plan](../../docs/modules/module-control-plane-consolidation-plan.md).
+plan](../../../docs/modules/module-control-plane-consolidation-plan.md).

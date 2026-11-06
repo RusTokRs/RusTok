@@ -33,3 +33,9 @@ response and error semantics still use `rustok-api::ports` primitives; transport
 implementations stay in owner modules or adapter crates.
 
 Related guide: [Backend Module Architecture](../../../../docs/backend/module-backend-architecture.md).
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)

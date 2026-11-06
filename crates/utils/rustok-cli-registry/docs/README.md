@@ -22,3 +22,9 @@ domain crates.
 - Connect module-local `cli/` adapter packages through explicit provider entries.
 - Keep real command implementation beside the owning module or integration.
 - Keep the production HTTP server free from CLI provider aggregation.
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)

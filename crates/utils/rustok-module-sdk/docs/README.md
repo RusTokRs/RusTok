@@ -44,3 +44,9 @@ The build worker compiles guest crates with the pinned component toolchain and
 then derives the WIT surface from the produced component. Admission rejects an
 artifact whose imports, exports, package, world, or package version differs
 from the immutable build request.
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [CRATE_API](../CRATE_API.md)
